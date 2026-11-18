@@ -543,12 +543,12 @@ describe("timeline CLI rendering snapshots", () => {
           ── Ran sqlite3 ~/.bb-dev/bb.db '.tables'
             $ sqlite3 ~/.bb-dev/bb.db '.tables'
 
-      ── Assistant ───────────────────────────────────────────────
-      Done.
-
       ── User ────────────────────────────────────────────────────
       Please account for the restart
-      steer pending"
+      steer pending
+
+      ── Assistant ───────────────────────────────────────────────
+      Done."
     `);
   });
 
@@ -1091,7 +1091,7 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.turnRows).toHaveLength(1);
     expect(timeline.turnRows[0]).toMatchObject({
-      sourceSeqStart: 1,
+      sourceSeqStart: 2,
       sourceSeqEnd: 5,
     });
     expect(timeline.text).toMatchInlineSnapshot(`
@@ -1141,7 +1141,7 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.turnRows).toHaveLength(1);
     expect(timeline.turnRows[0]).toMatchObject({
-      sourceSeqStart: 1,
+      sourceSeqStart: 2,
       sourceSeqEnd: 6,
     });
     expect(timeline.text).toMatchInlineSnapshot(`

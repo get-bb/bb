@@ -31,7 +31,6 @@ import {
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
   getContextWindowUsagePruningBoundarySequence,
-  getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
@@ -48,7 +47,7 @@ import {
   getStoredItemLifecycleSequenceRange,
   getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
-  getTimelineGroupingContextChangesInRange,
+  hasTimelineGroupingContextChangesInRange,
   getTurnFinalAgentMessageEventRow,
   getUnfinishedCommandItemData,
   hasRootStoredTurnStarted,
@@ -1106,9 +1105,9 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getTimelineGroupingContextChangesInRange`,
+    name: `${EVENTS}#hasTimelineGroupingContextChangesInRange`,
     run: (db, fixture) =>
-      getTimelineGroupingContextChangesInRange(db, {
+      hasTimelineGroupingContextChangesInRange(db, {
         afterSequence: turnAt(fixture, -2).completedSequence,
         threadId: fixture.threadId,
         throughSequence: fixture.latestSequence,
@@ -1134,15 +1133,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
         maxInlineOutputChars: MAX_INLINE_OUTPUT_CHARS,
         threadId: fixture.threadId,
         throughSequence: fixture.latestSequence,
-      }),
-  },
-  {
-    name: `${EVENTS}#getFirstParentedTimelineBoundarySequence`,
-    run: (db, fixture) =>
-      getFirstParentedTimelineBoundarySequence(db, {
-        maxSeq: fixture.latestSequence,
-        sequenceStart: 0,
-        threadId: fixture.threadId,
       }),
   },
   {

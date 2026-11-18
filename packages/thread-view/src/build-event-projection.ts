@@ -124,7 +124,6 @@ interface BuildDetailedProjectionArgs {
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
-  externalUserBoundarySeqsByTurnId: BuildEventProjectionOptions["externalUserBoundarySeqsByTurnId"];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
@@ -970,7 +969,6 @@ function buildDetailedProjection(
   const projection = groupEventProjectionTurns({
     delegatedTurnIds: args.delegatedTurnIds,
     events: args.events,
-    externalUserBoundarySeqsByTurnId: args.externalUserBoundarySeqsByTurnId,
     messages: args.messages,
   });
   const semanticProjection = normalizeEventProjection({
@@ -1005,7 +1003,6 @@ function buildFullEventProjection(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events,
-    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1041,7 +1038,6 @@ export function buildEventProjectionEntries(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
-    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1122,7 +1118,6 @@ function copyProjectionStateForFinish(
 export function finishEventProjectionFold(
   fold: EventProjectionFold,
   events: ThreadEventWithMeta[],
-  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>,
 ): EventProjection {
   const orderedEvents = getOrderedThreadEvents(events);
   const flatProjection = finishFlatProjection(
@@ -1137,7 +1132,6 @@ export function finishEventProjectionFold(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
-    externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: fold.options.turnMessageDetail,
   });

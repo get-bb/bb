@@ -524,7 +524,7 @@ describe("completed turn summary rendering", () => {
     expect(rowSignatures(timeline.rows)).toEqual([
       "conversation:user",
       "system:operation",
-      "turn:1-8",
+      "turn:6-8",
       "conversation:assistant",
     ]);
   });
@@ -576,7 +576,7 @@ describe("completed turn summary rendering", () => {
       const timeline = renderCompletedTimeline({ events });
 
       expect(rowSignatures(timeline.rows)).toEqual([
-        "turn:1-7",
+        "turn:2-7",
         "conversation:assistant",
       ]);
       expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);

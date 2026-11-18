@@ -400,7 +400,7 @@ describe("background task timeline projection", () => {
       (row) => row.kind === "turn" && row.turnId === "turn-1",
     );
     expect(spawningTurnRow).toMatchObject({
-      sourceSeqStart: 1,
+      sourceSeqStart: 2,
       sourceSeqEnd: 3,
     });
 

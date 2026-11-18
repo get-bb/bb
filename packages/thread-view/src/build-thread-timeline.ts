@@ -783,7 +783,7 @@ function convertMessage(
               ? null
               : []
             : filterDelegationChildRows(
-                buildTimelineRows(message.childProjection, childOptions),
+                buildTimelineRows(message.childProjection, childOptions, []),
               ),
           ...rowPresentation(message),
         },
@@ -1107,62 +1107,6 @@ function isRootOwnedHumanSteerRow(row: TimelineRow): boolean {
   );
 }
 
-function collectExternalUserBoundarySeqs(
-  projection: EventProjection,
-): number[] {
-  const boundarySeqs = new Set<number>();
-  for (const entry of projection.entries) {
-    if (entry.kind !== "turn") {
-      continue;
-    }
-    for (const seq of entry.turn.externalUserBoundarySeqs ?? []) {
-      boundarySeqs.add(seq);
-    }
-  }
-  return [...boundarySeqs].sort((left, right) => left - right);
-}
-
-function compareTimelineRowsBySource(
-  left: TimelineRow,
-  right: TimelineRow,
-): number {
-  if (left.sourceSeqStart !== right.sourceSeqStart) {
-    return left.sourceSeqStart - right.sourceSeqStart;
-  }
-  if (left.sourceSeqEnd !== right.sourceSeqEnd) {
-    return left.sourceSeqEnd - right.sourceSeqEnd;
-  }
-  return 0;
-}
-
-function orderRowsAfterExternalUserBoundary(
-  rows: TimelineRow[],
-  boundarySeqs: readonly number[],
-): TimelineRow[] {
-  const firstBoundarySeq = boundarySeqs[0];
-  if (firstBoundarySeq === undefined) {
-    return rows;
-  }
-
-  const suffixStartIndex = rows.findIndex(
-    (row) => row.sourceSeqStart >= firstBoundarySeq,
-  );
-  if (suffixStartIndex === -1) {
-    return rows;
-  }
-
-  const suffix = rows.slice(suffixStartIndex);
-  const orderedSuffix = suffix
-    .map((row, index) => ({ index, row }))
-    .sort((left, right) => {
-      const sourceOrder = compareTimelineRowsBySource(left.row, right.row);
-      return sourceOrder === 0 ? left.index - right.index : sourceOrder;
-    })
-    .map(({ row }) => row);
-
-  return [...rows.slice(0, suffixStartIndex), ...orderedSuffix];
-}
-
 function materializeTimelineMessages(
   messages: readonly EventProjectionMessage[],
   options: BuildTimelineRowsOptions,
@@ -1213,43 +1157,46 @@ function hasDelegationChildRows(
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
+  steerRows: readonly TimelineRow[],
 ): TimelineRow[] {
+  const planned = [
+    ...planTimelineRows(
+      projection,
+      options.completedTurnDisplay,
+      options.rowIdPrefix,
+    ).flatMap((item) => materializeTimelinePlan(item, options)),
+    ...steerRows,
+  ];
   const rows: TimelineRow[] = [];
-  for (const item of planTimelineRows(
-    projection,
-    options.completedTurnDisplay,
-    options.rowIdPrefix,
-  )) {
-    appendRows(rows, materializeTimelinePlan(item, options));
-  }
-
-  return orderRowsAfterExternalUserBoundary(
+  appendRows(
     rows,
-    collectExternalUserBoundarySeqs(projection),
+    planned
+      .map((row, index) => ({ index, row }))
+      .sort(
+        (left, right) =>
+          left.row.sourceSeqStart - right.row.sourceSeqStart ||
+          left.index - right.index,
+      )
+      .map(({ row }) => row),
   );
+  return rows;
 }
 
 export function projectThreadTimelineEvents(
   args: Pick<
     BuildThreadTimelineFromEventsArgs,
     "acceptedClientRequestContext" | "events" | "fold" | "options"
-  > & {
-    externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>;
-  },
+  >,
 ): EventProjection {
   return args.fold === undefined
-    ? buildEventProjection(args.events, {
-        ...threadTimelineProjectionOptions(
+    ? buildEventProjection(
+        args.events,
+        threadTimelineProjectionOptions(
           args.acceptedClientRequestContext,
           args.options,
         ),
-        externalUserBoundarySeqsByTurnId: args.externalUserBoundarySeqsByTurnId,
-      })
-    : finishEventProjectionFold(
-        args.fold,
-        args.events,
-        args.externalUserBoundarySeqsByTurnId,
-      );
+      )
+    : finishEventProjectionFold(args.fold, args.events);
 }
 
 export function buildThreadTimelineFromEvents(
@@ -1268,8 +1215,9 @@ export function buildThreadTimelineFromProjection(
 ): ThreadTimelineFromEventsResult {
   const { projection } = args;
 
-  const rows = [
-    ...buildTimelineRows(projection, {
+  const rows = buildTimelineRows(
+    projection,
+    {
       completedTurnDisplay: args.options.completedTurnDisplay,
       includeNestedRows: args.options.includeNestedRows,
       omitSettledDelegationChildRows:
@@ -1277,8 +1225,8 @@ export function buildThreadTimelineFromProjection(
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
-    }),
-    ...buildPendingSteerMessagesFromEvents(
+    },
+    buildPendingSteerMessagesFromEvents(
       args.acceptedClientRequestContext,
       args.events,
       args.options,
@@ -1287,7 +1235,7 @@ export function buildThreadTimelineFromProjection(
       .map((message) =>
         convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
       ),
-  ];
+  );
 
   return {
     activePromptMode: !args.options.isLatestPage
@@ -1407,7 +1355,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   }
   return {
     kind: "ungrouped",
-    rows: buildTimelineRows(projection, options).filter(
+    rows: buildTimelineRows(projection, options, []).filter(
       (row) => !isRootOwnedHumanSteerRow(row),
     ),
   };

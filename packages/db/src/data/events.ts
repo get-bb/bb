@@ -3432,27 +3432,6 @@ export interface ListTimelineWindowHintsDescendingArgs {
   sequenceStart: number;
 }
 
-const visibleTimelineRequestInputSql = sql`(
-  (
-    json_extract(events.data, '$.input[0].type') = 'text'
-    AND COALESCE(json_extract(events.data, '$.input[0].text'), '') <> ''
-    AND COALESCE(json_extract(events.data, '$.input[0].visibility'), '') <> 'agent-only'
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM json_each(events.data, '$.input') AS input_part
-    WHERE COALESCE(json_extract(input_part.value, '$.visibility'), '') <> 'agent-only'
-      AND (
-        (
-          json_extract(input_part.value, '$.type') = 'text'
-          AND COALESCE(json_extract(input_part.value, '$.text'), '') <> ''
-        )
-        OR json_extract(input_part.value, '$.type')
-          IN ('image', 'localImage', 'localFile')
-      )
-  )
-)`;
-
 export interface FindTimelineWindowBudgetFloorSequenceArgs {
   excludeDiagnosticEvents?: boolean;
   excludedTypes: readonly ThreadEventType[];
@@ -3569,21 +3548,6 @@ const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
   "turn/completed",
 ] as const satisfies readonly ThreadEventType[];
 
-const lateRootItemStartSql = sql`(
-  events.type = 'item/started'
-  AND events.item_kind = 'delegation'
-  AND events.parent_tool_call_id IS NULL
-  AND events.turn_id IS NOT NULL
-  AND EXISTS (
-    SELECT 1 FROM events AS completed
-    INDEXED BY events_thread_turn_type_item_sequence_idx
-    WHERE completed.thread_id = events.thread_id
-      AND completed.turn_id = events.turn_id
-      AND completed.type = 'turn/completed'
-      AND completed.sequence < events.sequence
-  )
-)`;
-
 interface TimelineOrderingContextRow {
   sequence: number;
   turnId: string | null;
@@ -3591,8 +3555,6 @@ interface TimelineOrderingContextRow {
   parentToolCallId: string | null;
   requestId: string | null;
   clientRequestId: string | null;
-  expectedTurnId: string | null;
-  hasVisibleUserInput: number;
 }
 
 export function listTimelineOrderingContext(
@@ -3612,17 +3574,7 @@ export function listTimelineOrderingContext(
       CASE
         WHEN events.type = 'turn/input/accepted'
         THEN json_extract(events.data, '$.clientRequestId')
-      END AS clientRequestId,
-      CASE
-        WHEN events.type = 'client/turn/requested'
-        THEN json_extract(events.data, '$.target.expectedTurnId')
-      END AS expectedTurnId,
-      CASE
-        WHEN events.type = 'client/turn/requested'
-          AND json_extract(events.data, '$.initiator') = 'user'
-        THEN CASE WHEN ${visibleTimelineRequestInputSql} THEN 1 ELSE 0 END
-        ELSE 0
-      END AS hasVisibleUserInput
+      END AS clientRequestId
     FROM ${events} INDEXED BY events_thread_type_sequence_idx
     WHERE events.thread_id = ${args.threadId}
       AND events.sequence >= ${args.sequenceStart}
@@ -3631,46 +3583,28 @@ export function listTimelineOrderingContext(
         TIMELINE_ORDERING_CONTEXT_EVENT_TYPES.map((type) => sql`${type}`),
         sql`, `,
       )})
-    UNION ALL
-    SELECT
-      events.sequence AS sequence,
-      events.turn_id AS turnId,
-      events.type AS type,
-      events.parent_tool_call_id AS parentToolCallId,
-      NULL AS requestId,
-      NULL AS clientRequestId,
-      NULL AS expectedTurnId,
-      0 AS hasVisibleUserInput
-    FROM ${events} INDEXED BY events_thread_type_item_kind_sequence_idx
-    WHERE events.thread_id = ${args.threadId}
-      AND events.type = 'item/started'
-      AND events.item_kind = 'delegation'
-      AND events.sequence >= ${args.sequenceStart}
-      AND events.sequence <= ${args.maxSeq}
-      AND ${lateRootItemStartSql}
     ORDER BY sequence
   `);
 }
 
-export function getTimelineGroupingContextChangesInRange(
+export function hasTimelineGroupingContextChangesInRange(
   db: DbConnection,
   args: { afterSequence: number; threadId: string; throughSequence: number },
-): { ordering: boolean; parented: boolean } {
-  const row = db
-    .select({
-      ordering: sql<number>`COALESCE(MAX(CASE WHEN ${inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES])} OR ${lateRootItemStartSql} THEN 1 ELSE 0 END), 0)`,
-      parented: sql<number>`COALESCE(MAX(CASE WHEN ${events.parentToolCallId} is not null THEN 1 ELSE 0 END), 0)`,
-    })
-    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gt(events.sequence, args.afterSequence),
-        lte(events.sequence, args.throughSequence),
-      ),
-    )
-    .get();
-  return { ordering: row?.ordering === 1, parented: row?.parented === 1 };
+): boolean {
+  return (
+    db.get<{ found: number }>(sql`
+      SELECT 1 AS found
+      FROM ${events} INDEXED BY events_thread_type_sequence_idx
+      WHERE events.thread_id = ${args.threadId}
+        AND events.type IN (${sql.join(
+          TIMELINE_ORDERING_CONTEXT_EVENT_TYPES.map((type) => sql`${type}`),
+          sql`, `,
+        )})
+        AND events.sequence > ${args.afterSequence}
+        AND events.sequence <= ${args.throughSequence}
+      LIMIT 1
+    `) !== undefined
+  );
 }
 
 export function listStoredEventRowsInSequenceRange(
@@ -3775,67 +3709,6 @@ export function selectAppendedTimelineWindowRows(
   }
   const excludedTypes = new Set(args.excludedTypes);
   return rows.filter((row) => !excludedTypes.has(row.type));
-}
-
-export function getFirstParentedTimelineBoundarySequence(
-  db: DbConnection,
-  args: { threadId: string; sequenceStart: number; maxSeq: number },
-): number | null {
-  const result = db.get<{ sequence: number | null }>(sql`
-    WITH nested_history AS MATERIALIZED (
-      SELECT 1
-      FROM events INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
-      WHERE thread_id = ${args.threadId} AND parent_tool_call_id IS NOT NULL
-      LIMIT 1
-    ), parents AS MATERIALIZED (
-      SELECT item_id, turn_id, min(sequence) AS start
-      FROM nested_history CROSS JOIN events INDEXED BY events_delegating_item_lookup_idx
-      WHERE thread_id = ${args.threadId}
-        AND item_kind IN ('toolCall', 'delegation')
-        AND parent_tool_call_id IS NULL
-        AND sequence >= ${args.sequenceStart} AND sequence <= ${args.maxSeq}
-        AND EXISTS (
-          SELECT 1 FROM events AS root_start INDEXED BY events_thread_turn_type_item_sequence_idx
-          WHERE root_start.thread_id = events.thread_id
-            AND root_start.turn_id = events.turn_id
-            AND root_start.type = 'turn/started'
-            AND root_start.parent_tool_call_id IS NULL
-            AND root_start.sequence <= ${args.maxSeq}
-        )
-      GROUP BY item_id, turn_id
-    ), spans AS MATERIALIZED (
-      SELECT start, (
-        SELECT max(child.sequence)
-        FROM events AS child INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
-        WHERE child.thread_id = ${args.threadId}
-          AND child.parent_tool_call_id IS NOT NULL
-          AND child.parent_tool_call_id = parents.item_id
-          AND child.sequence <= ${args.maxSeq}
-      ) AS end FROM parents
-    )
-    SELECT min((
-      SELECT ${events.sequence}
-      FROM events INDEXED BY events_thread_type_sequence_idx
-      WHERE ${events.threadId} = ${args.threadId}
-        AND ${events.type} = 'client/turn/requested'
-        AND ${events.sequence} > spans.start
-        AND ${events.sequence} < spans.end
-        AND ${visibleTimelineRequestInputSql}
-        AND (
-          COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
-            IN ('thread-start', 'new-turn')
-          OR (
-            json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
-            AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
-          )
-        )
-        AND json_extract(${events.data}, '$.initiator') = 'user'
-      ORDER BY ${events.sequence}
-      LIMIT 1
-    )) AS sequence
-    FROM spans
-  `);
-  return result?.sequence ?? null;
 }
 
 export function listTimelineWindowHintsDescending(

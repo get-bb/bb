@@ -131,7 +131,6 @@ function canReuse(
 function nextCheckpoint(
   projection: ConversationOutlineProjection,
   previous: Checkpoint,
-  orderingBoundarySequence: number | null,
 ): Checkpoint {
   const activeTurns = new Set<string>();
   const pendingRequests = new Set<string>();
@@ -153,12 +152,7 @@ function nextCheckpoint(
       pendingRequests.delete(event.requestId);
     if (event.scope.kind !== "turn") continue;
     if (event.type === "turn/started") {
-      if (
-        activeTurns.size === 0 &&
-        (orderingBoundarySequence === null ||
-          completedBoundary <= orderingBoundarySequence)
-      )
-        boundary = completedBoundary;
+      if (activeTurns.size === 0) boundary = completedBoundary;
       activeTurns.add(event.scope.turnId);
     }
     if (event.type === "turn/completed") {
@@ -227,7 +221,6 @@ export function projectConversationOutlineIncrementally(args: {
   key: string;
   maxSeq: number;
   historySequenceStart: number;
-  orderingBoundarySequence: number | null;
   resolveProjectionState: (
     sequenceStart: number,
     previous: ConversationOutlineProjectionState | null,
@@ -264,8 +257,6 @@ export function projectConversationOutlineIncrementally(args: {
     entry.dataVersion === dataVersion &&
     entry.generation === generation &&
     entry.historySequenceStart === args.historySequenceStart &&
-    (args.orderingBoundarySequence === null ||
-      entry.checkpoint.sequenceStart <= args.orderingBoundarySequence) &&
     entry.maxSeq <= args.maxSeq;
   const previousState = canReuseEntry ? entry.projectionState : null;
   const projectionState = args.resolveProjectionState(
@@ -310,11 +301,7 @@ export function projectConversationOutlineIncrementally(args: {
     ...checkpoint.items,
     ...projection.items.map(({ item }) => item),
   ];
-  const next = nextCheckpoint(
-    projection,
-    checkpoint,
-    args.orderingBoundarySequence,
-  );
+  const next = nextCheckpoint(projection, checkpoint);
   if (next.sequenceStart > args.historySequenceStart) {
     const chars =
       next === entry?.checkpoint

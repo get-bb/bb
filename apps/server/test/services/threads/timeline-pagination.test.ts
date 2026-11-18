@@ -74,7 +74,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 0,
       ownedSequenceEnd: 3,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [user, assistant, { ...assistant }],
     });
@@ -96,7 +95,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 0,
       ownedSequenceEnd: 4,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 2 },
       rows,
     });
@@ -141,7 +139,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 13,
       ownedSequenceEnd: 21,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows,
     });
@@ -178,7 +175,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 20,
       ownedSequenceEnd: 32,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [olderUser, lateOlderRow, latestUser],
     });
@@ -203,7 +199,6 @@ describe("paginateTimelineRows", () => {
         maxBytes,
         ownedSequenceStart: 20,
         ownedSequenceEnd: 22,
-        ownershipSequenceOf: (row) => row.sourceSeqStart,
         page: { kind: "latest", segmentLimit: 1 },
         rows: [older, latest],
       });
@@ -269,7 +264,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 20,
       ownedSequenceEnd: 27,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "older" }),
@@ -306,7 +300,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 1,
       ownedSequenceEnd: 31,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "prompt" }),
@@ -340,7 +333,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 10,
       ownedSequenceEnd: 40,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [
         assistantRow(12),
@@ -391,7 +383,6 @@ describe("paginateTimelineRows", () => {
         maxBytes,
         ownedSequenceStart: 1,
         ownedSequenceEnd: 32,
-        ownershipSequenceOf: (row) => row.sourceSeqStart,
         page: { kind: "latest", segmentLimit: 20 },
         rows: [nested, tail],
       });
@@ -419,7 +410,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 300,
       ownedSequenceStart: 1,
       ownedSequenceEnd: 21,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [
         {
@@ -463,7 +453,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 0,
       ownedSequenceEnd: 4,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 1 },
       rows: [
         provisioning,
@@ -483,7 +472,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 0,
       ownedSequenceEnd: 3,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "older", beforeCursor: page.olderCursor!, segmentLimit: 1 },
       rows: [
         provisioning,
@@ -503,7 +491,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 15,
       ownedSequenceEnd: 30,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 8 },
       rows: [
         assistantRow(10),
@@ -532,7 +519,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 12545,
       ownedSequenceEnd: 14416,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 20 },
       rows: [
         userRow({ id: "thread-1:user-seed:5198", seq: 5198, text: "context" }),
@@ -569,7 +555,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 1,
       ownedSequenceEnd: 30,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 1 },
       rows: [
         userRow({ id: "thread-1:user-seed:1", seq: 1, text: "first" }),
@@ -596,7 +581,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 100,
       ownedSequenceEnd: 200,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "latest", segmentLimit: 8 },
       rows: [userRow({ id: "thread-1:user-seed:5", seq: 5, text: "old" })],
     });
@@ -615,7 +599,6 @@ describe("paginateTimelineRows", () => {
       maxBytes: 1_000_000,
       ownedSequenceStart: 0,
       ownedSequenceEnd: 100,
-      ownershipSequenceOf: (row) => row.sourceSeqStart,
       page: { kind: "older", beforeCursor: page.olderCursor!, segmentLimit: 8 },
       rows: [],
     });
