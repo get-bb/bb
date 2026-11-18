@@ -297,15 +297,25 @@ describe("message.dispatch hook context", () => {
       const sender = seedThread(harness.deps, {
         environmentId: senderSide.environment.id,
         projectId: senderSide.project.id,
+        status: "active",
       });
-      const seen: { senderThreadId: string | null; hostId: string | null }[] =
-        [];
+      seedTurnStarted(harness.deps, {
+        environmentId: senderSide.environment.id,
+        threadId: sender.id,
+        turnId: "turn-spawn-sender",
+      });
+      const seen: {
+        initiator: MessageDispatchHookContext["initiator"];
+        senderThreadId: string | null;
+        hostId: string | null;
+      }[] = [];
       installHooks({
         "message.dispatch": [
           {
             pluginId: "device-selection-guard",
             handler: (context) => {
               seen.push({
+                initiator: context.initiator,
                 senderThreadId: context.senderThreadId,
                 hostId: context.host?.id ?? null,
               });
@@ -343,8 +353,16 @@ describe("message.dispatch hook context", () => {
       const other = await spawnOn(otherSide, "/tmp/dispatch-hooks-other");
 
       expect(seen).toEqual([
-        { senderThreadId: sender.id, hostId: senderSide.host.id },
-        { senderThreadId: sender.id, hostId: otherSide.host.id },
+        {
+          initiator: "user",
+          senderThreadId: sender.id,
+          hostId: senderSide.host.id,
+        },
+        {
+          initiator: "user",
+          senderThreadId: sender.id,
+          hostId: otherSide.host.id,
+        },
       ]);
       expect(turnRequests(harness, same.id)).toHaveLength(1);
       expect(queuedRows(harness, same.id)).toHaveLength(0);
@@ -387,7 +405,7 @@ describe("pending admission races", () => {
           pluginSubmission: null,
           origin: null,
           originPluginId: null,
-          startedOnBehalfOf: null,
+          requestedBy: null,
           trigger: "user",
         });
 
@@ -796,7 +814,7 @@ describe("message.dispatch hook message author", () => {
         retryOf: { requestId: originalRequestId, attempt: 2 },
         origin: null,
         originPluginId: null,
-        startedOnBehalfOf: null,
+        requestedBy: null,
         trigger: "user",
       });
 
@@ -1028,7 +1046,7 @@ describe("message.dispatch hook message author", () => {
         pluginSubmission: null,
         origin: "sdk",
         originPluginId: null,
-        startedOnBehalfOf: { initiator: "agent", senderThreadId: sender.id },
+        requestedBy: { initiator: "agent", senderThreadId: sender.id },
         trigger: "user",
       });
 

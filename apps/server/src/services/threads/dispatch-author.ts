@@ -1,10 +1,14 @@
-import type { StartedOnBehalfOf, ThreadTurnInitiator } from "@bb/domain";
+import type {
+  DispatchRequester,
+  StartedOnBehalfOf,
+  ThreadTurnInitiator,
+} from "@bb/domain";
 
 interface ResolveDispatchAuthorArgs {
   retrying: boolean;
   systemNotice: boolean;
   senderThreadId: string | null;
-  startedOnBehalfOf: StartedOnBehalfOf | null;
+  requestedBy: DispatchRequester | null;
 }
 
 export interface DispatchAuthor {
@@ -21,11 +25,30 @@ export function resolveDispatchAuthor(
   if (args.senderThreadId !== null) {
     return { initiator: "agent", senderThreadId: args.senderThreadId };
   }
-  if (args.startedOnBehalfOf !== null) {
+  if (args.requestedBy !== null) {
     return {
-      initiator: args.startedOnBehalfOf.initiator,
-      senderThreadId: args.startedOnBehalfOf.senderThreadId,
+      initiator: args.requestedBy.initiator,
+      senderThreadId: args.requestedBy.senderThreadId,
     };
   }
   return { initiator: "user", senderThreadId: null };
+}
+
+export function resolveTurnAuthor(author: DispatchAuthor): DispatchAuthor {
+  if (author.initiator === "user") {
+    return { initiator: "user", senderThreadId: null };
+  }
+  return author;
+}
+
+export function startedOnBehalfOfRequester(
+  requestedBy: DispatchRequester | null,
+): StartedOnBehalfOf | null {
+  if (requestedBy === null || requestedBy.initiator === "user") {
+    return null;
+  }
+  return {
+    initiator: requestedBy.initiator,
+    senderThreadId: requestedBy.senderThreadId,
+  };
 }

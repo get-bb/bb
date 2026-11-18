@@ -44,7 +44,7 @@ export async function acceptThreadSendRequest(
       systemNotice: null,
       origin: null,
       originPluginId: null,
-      startedOnBehalfOf: null,
+      requestedBy: null,
       trigger: "user",
     });
     return {
@@ -83,7 +83,7 @@ export async function acceptThreadSendRequest(
         systemNotice: null,
         origin: payload.originPluginId === undefined ? null : "plugin",
         originPluginId: payload.originPluginId ?? null,
-        startedOnBehalfOf: null,
+        requestedBy: null,
         trigger: "user",
       }),
   );

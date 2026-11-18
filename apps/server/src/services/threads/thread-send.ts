@@ -622,7 +622,7 @@ async function sendThreadMessageWithoutContextClear(
     retrying: args.retryOf !== undefined,
     systemNotice: args.systemNotice !== undefined,
     senderThreadId,
-    startedOnBehalfOf: null,
+    requestedBy: null,
   });
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;

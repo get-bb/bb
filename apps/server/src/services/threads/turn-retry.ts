@@ -336,7 +336,7 @@ async function dispatchRetry(
       retryOf: { requestId: originalRequestId, attempt },
       origin: null,
       originPluginId: null,
-      startedOnBehalfOf: null,
+      requestedBy: null,
       trigger: "user",
     });
     if (outcome.kind === "dispatched") {

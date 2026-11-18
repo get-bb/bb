@@ -456,7 +456,7 @@ export async function editThreadMessage(
     retrying: false,
     systemNotice: false,
     senderThreadId,
-    startedOnBehalfOf: null,
+    requestedBy: null,
   });
 
   const initialTarget = resolveEditableTurn(
@@ -653,7 +653,7 @@ export async function editThreadMessage(
       systemNotice: null,
       origin: null,
       originPluginId: null,
-      startedOnBehalfOf: null,
+      requestedBy: null,
       trigger: "user",
     });
     deps.hub.notifyThread(

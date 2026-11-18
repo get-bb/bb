@@ -9,6 +9,7 @@ import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
   type Project,
+  type DispatchRequester,
   type SessionOptionSelections,
   type Thread,
   type ThreadOriginKind,
@@ -452,6 +453,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
+    firstMessageRequester: DispatchRequester | null;
     sendAt: number | undefined;
   },
 ) {
@@ -539,9 +541,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
           ? { executionInputSources: args.request.executionInputSources }
           : {}),
         ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-        ...(args.request.senderThreadId !== undefined
-          ? { senderThreadId: args.request.senderThreadId }
-          : {}),
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
@@ -551,7 +550,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       executionDefaults: executionPlanArgs,
       origin: args.request.origin,
       originPluginId: args.request.originPluginId ?? null,
-      startedOnBehalfOf: args.request.startedOnBehalfOf,
+      requestedBy: args.firstMessageRequester,
       trigger: "user",
     });
   } catch (error) {
@@ -563,6 +562,25 @@ async function createPendingThreadAndAttemptFirstDispatch(
     request: args.request,
   });
   return getThreadSafe(deps, thread.id);
+}
+
+function resolveFirstMessageRequester(
+  deps: ThreadCreateDeps,
+  request: Pick<
+    ThreadCreateServiceRequest,
+    "senderThreadId" | "startedOnBehalfOf"
+  >,
+): DispatchRequester | null {
+  if (request.startedOnBehalfOf !== null) {
+    return request.startedOnBehalfOf;
+  }
+  if (
+    request.senderThreadId === undefined ||
+    getActiveTurnId(deps, request.senderThreadId) === null
+  ) {
+    return null;
+  }
+  return { initiator: "user", senderThreadId: request.senderThreadId };
 }
 
 interface ResolveCreateThreadVisibilityArgs {
@@ -876,24 +894,25 @@ export async function createThreadFromRequest(
       : {}),
     request,
   };
+  const firstMessageRequester = resolveFirstMessageRequester(deps, request);
   const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
     ...createArgs,
+    firstMessageRequester,
     sendAt: request.sendAt,
   });
   const { initiator } = resolveDispatchAuthor({
     retrying: false,
     systemNotice: false,
     senderThreadId: null,
-    startedOnBehalfOf: request.startedOnBehalfOf,
+    requestedBy: request.startedOnBehalfOf,
   });
-  const spawnedByWorkingAgent =
-    request.senderThreadId !== undefined &&
-    getActiveTurnId(deps, request.senderThreadId) !== null;
   const telemetryInitiator = resolveTelemetryInitiator({
     origin: request.origin,
     originPluginId: request.originPluginId ?? null,
     initiator:
-      spawnedByWorkingAgent && initiator === "user" ? "agent" : initiator,
+      initiator === "user" && firstMessageRequester !== null
+        ? "agent"
+        : initiator,
   });
   deps.telemetry.capture({
     name: "thread_created",

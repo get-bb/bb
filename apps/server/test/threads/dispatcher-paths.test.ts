@@ -31,7 +31,10 @@ import { createThreadFromRequest } from "../../src/services/threads/thread-creat
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
-import { listQueuedThreadCommands } from "../helpers/commands.js";
+import {
+  listQueuedThreadCommands,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   EMPTY_WORKSPACE_AGENT_CONTEXT,
   registerHostRpcResponder,
@@ -178,6 +181,187 @@ describe("first message of a pending thread", () => {
       });
       expect(firstText(request)).toContain(sender.id);
       expect(firstText(request)).toContain("Please review the plan");
+    });
+  });
+});
+
+describe("first message of a CLI spawn from a thread", () => {
+  type SeenAuthor = Pick<
+    MessageDispatchHookContext,
+    "initiator" | "senderThreadId"
+  >;
+
+  function recordDispatchAuthors(
+    decide: () => { action: "proceed" } | { action: "wait"; reason: string },
+  ): SeenAuthor[] {
+    const seen: SeenAuthor[] = [];
+    installDispatchHook((context) => {
+      seen.push({
+        initiator: context.initiator,
+        senderThreadId: context.senderThreadId,
+      });
+      return decide();
+    });
+    return seen;
+  }
+
+  function seedSpawnSender(
+    harness: TestAppHarness,
+    args: { hostId: string; working: boolean },
+  ) {
+    const fixture = seedRunnableThread(harness, {
+      hostId: args.hostId,
+      status: args.working ? "active" : "idle",
+      title: "Sender",
+    });
+    return { ...fixture, sender: fixture.thread };
+  }
+
+  function spawnFromSender(
+    harness: TestAppHarness,
+    args: {
+      hostId: string;
+      path?: string;
+      permissionMode?: "accept-edits";
+      projectId: string;
+      senderThreadId: string;
+    },
+  ) {
+    return createThreadFromRequest(harness.deps, {
+      environment: {
+        type: "host",
+        hostId: args.hostId,
+        workspace: {
+          type: "unmanaged",
+          path: args.path ?? "/tmp/dispatcher-paths-spawn",
+        },
+      },
+      input: textInput("Compare the source clip"),
+      origin: "cli",
+      ...(args.permissionMode !== undefined
+        ? { permissionMode: args.permissionMode }
+        : {}),
+      projectId: args.projectId,
+      providerId: "codex",
+      senderThreadId: args.senderThreadId,
+      startedOnBehalfOf: null,
+    });
+  }
+
+  it("shows a working sender to the dispatch hook and starts the turn as the user's, unwrapped", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordDispatchAuthors(() => ({ action: "proceed" }));
+      const { host, project, sender } = seedSpawnSender(harness, {
+        hostId: "host-spawn-working",
+        working: true,
+      });
+
+      const child = await spawnFromSender(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        senderThreadId: sender.id,
+      });
+
+      expect(seen).toEqual([{ initiator: "user", senderThreadId: sender.id }]);
+      const [request] = turnRequests(harness, child.id);
+      expect(request).toMatchObject({
+        initiator: "user",
+        senderThreadId: null,
+      });
+      expect(request?.input).toEqual(textInput("Compare the source clip"));
+    });
+  });
+
+  it("keeps the sender on the queued row and the plain prompt through a plugin wait and its release", async () => {
+    await withTestHarness(async (harness) => {
+      recordDispatchAuthors(() => ({ action: "wait", reason: "Not yet" }));
+      const { host, project, sender } = seedSpawnSender(harness, {
+        hostId: "host-spawn-released",
+        working: true,
+      });
+
+      const child = await spawnFromSender(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        senderThreadId: sender.id,
+      });
+
+      const [queued] = queuedRows(harness, child.id);
+      expect(queued).toMatchObject({
+        initiator: "user",
+        senderThreadId: sender.id,
+        content: textInput("Compare the source clip"),
+      });
+      expect(turnRequests(harness, child.id)).toEqual([]);
+
+      const seenOnRelease = recordDispatchAuthors(() => ({
+        action: "proceed",
+      }));
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seenOnRelease).toEqual([
+        { initiator: "user", senderThreadId: sender.id },
+      ]);
+      const [request] = turnRequests(harness, child.id);
+      expect(request).toMatchObject({
+        initiator: "user",
+        senderThreadId: null,
+      });
+      expect(request?.input).toEqual(textInput("Compare the source clip"));
+      expect(queuedRows(harness, child.id)).toEqual([]);
+    });
+  });
+
+  it("lets a working sender's accept-edits child ask for sandbox escalation on its first turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, sender } = seedSpawnSender(harness, {
+        hostId: "host-spawn-escalation",
+        working: true,
+      });
+
+      const child = await spawnFromSender(harness, {
+        hostId: host.id,
+        path: WORKSPACE_PATH,
+        permissionMode: "accept-edits",
+        projectId: project.id,
+        senderThreadId: sender.id,
+      });
+
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === child.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: {
+          permissionMode: "accept-edits",
+          permissionEscalation: "ask",
+        },
+      });
+    });
+  });
+
+  it("names no sender when the sender has no running turn", async () => {
+    await withTestHarness(async (harness) => {
+      const seen = recordDispatchAuthors(() => ({ action: "proceed" }));
+      const { host, project, sender } = seedSpawnSender(harness, {
+        hostId: "host-spawn-person",
+        working: false,
+      });
+
+      const child = await spawnFromSender(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        senderThreadId: sender.id,
+      });
+
+      expect(seen).toEqual([{ initiator: "user", senderThreadId: null }]);
+      const [request] = turnRequests(harness, child.id);
+      expect(request).toMatchObject({
+        initiator: "user",
+        senderThreadId: null,
+      });
+      expect(request?.input).toEqual(textInput("Compare the source clip"));
     });
   });
 });
