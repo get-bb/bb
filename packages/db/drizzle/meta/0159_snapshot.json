@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "75281ae3-3b2e-491d-bd31-1dddfd02d49b",
+  "id": "fade12d9-3aac-41d7-a13b-bfd0d56a40fc",
   "prevId": "6f87679c-0cb7-4535-9de6-396234f6113e",
   "tables": {
     "app_settings": {
@@ -1464,6 +1464,13 @@
         },
         "teardown_status": {
           "name": "teardown_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "teardown_blocked_by_environment_id": {
+          "name": "teardown_blocked_by_environment_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

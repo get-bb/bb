@@ -1,4 +1,4 @@
-import { nextPersistedRetryAt } from "@bb/db";
+import { nextPersistedRetryAt, persistedRetryExhausted } from "@bb/db";
 
 const MINUTE_MS = 60_000;
 
@@ -50,6 +50,12 @@ export function needsRecoveryMessage(
     : `${NEEDS_RECOVERY_PREFIX} ${sentence} ${recovery}`;
 }
 
-export function isNeedsRecoveryMessage(message: string | null): boolean {
-  return message?.startsWith(NEEDS_RECOVERY_PREFIX) ?? false;
+export function teardownNeedsRecovery(teardown: {
+  teardownAttempt: number;
+  teardownStatus: string | null;
+}): boolean {
+  return (
+    teardown.teardownStatus === "failed" &&
+    persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, teardown.teardownAttempt)
+  );
 }

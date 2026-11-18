@@ -17,7 +17,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
-  restoreSuspendRetryAtColumn,
+  rewindMachineTeardownRecoveryColumns,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -127,7 +127,7 @@ it.each([false, true])(
       dropThreadStatusChangedAtColumn(db);
       dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
-      restoreSuspendRetryAtColumn(db);
+      rewindMachineTeardownRecoveryColumns(db);
       migrate(db);
       migrate(db);
 

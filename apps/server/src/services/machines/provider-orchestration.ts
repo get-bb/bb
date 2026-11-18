@@ -64,9 +64,9 @@ import { errorMessage } from "../lib/error-log-fields.js";
 import {
   NEEDS_RECOVERY_RETRY_INTERVAL_MS,
   TEARDOWN_RETRY_DELAYS_MS,
-  isNeedsRecoveryMessage,
   needsRecoveryMessage,
   nextSlowPersistedRetryAt,
+  teardownNeedsRecovery,
 } from "../lib/persisted-retry.js";
 import { toHostWithStatus } from "../lib/entity-lookup.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
@@ -1167,6 +1167,7 @@ export async function retryMachineCleanup(
   updateHost(deps.db, deps.hub, hostId, {
     removeRetryAt: Date.now(),
     teardownAttempt: 0,
+    teardownBlockedByEnvironmentId: null,
     teardownStatus: "running",
     statusMessage: null,
   });
@@ -1192,11 +1193,11 @@ function recordMachineTeardownFailure(
   );
   updateHost(deps.db, deps.hub, hostId, {
     teardownAttempt: failure.attempt,
+    teardownBlockedByEnvironmentId: null,
     teardownStatus: "failed",
-    statusMessage:
-      needsRecovery && !isNeedsRecoveryMessage(failure.message)
-        ? needsRecoveryMessage(failure.message, null)
-        : failure.message,
+    statusMessage: needsRecovery
+      ? needsRecoveryMessage(failure.message, null)
+      : failure.message,
     removeRetryAt,
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
@@ -1319,6 +1320,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
   updateHost(deps.db, deps.hub, hostId, {
     machineOperationId: operationId,
     teardownAttempt: attempt,
+    teardownBlockedByEnvironmentId: null,
     teardownStatus: "running",
     statusMessage: creationFailureMessage,
   });
@@ -1504,17 +1506,20 @@ export async function sweepProviderMachine(
         .limit(1)
         .get();
       if (failed) {
-        const message = failed.teardownMessage ?? "Environment cleanup failed";
         updateHost(deps.db, deps.hub, hostId, {
           teardownStatus: "failed",
-          statusMessage:
-            failed.retireAt === null && !isNeedsRecoveryMessage(message)
-              ? needsRecoveryMessage(message, null)
-              : message,
+          teardownBlockedByEnvironmentId: teardownNeedsRecovery(failed)
+            ? failed.id
+            : null,
+          statusMessage: failed.teardownMessage ?? "Environment cleanup failed",
           removeRetryAt:
             failed.retireAt ?? Date.now() + NEEDS_RECOVERY_RETRY_INTERVAL_MS,
         });
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
+      } else if (row.teardownBlockedByEnvironmentId !== null) {
+        updateHost(deps.db, deps.hub, hostId, {
+          teardownBlockedByEnvironmentId: null,
+        });
       }
       return;
     }

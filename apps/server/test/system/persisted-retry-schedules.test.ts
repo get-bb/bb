@@ -175,13 +175,11 @@ async function arrangeEnvironmentTeardown(
       const body = z
         .object({
           lifecycle: z.object({
-            teardown: z.object({ message: z.string().optional() }).nullable(),
+            teardown: z.object({ needsRecovery: z.boolean() }).nullable(),
           }),
         })
         .parse(await readJson(response));
-      return (
-        body.lifecycle.teardown?.message?.startsWith("Needs recovery:") ?? false
-      );
+      return body.lifecycle.teardown?.needsRecovery === true;
     },
   };
 }
@@ -225,15 +223,11 @@ async function arrangeMachineTeardown(
       const body = z
         .object({
           lifecycle: z.object({
-            message: z.string().nullable(),
             teardown: z.object({ needsRecovery: z.boolean() }).nullable(),
           }),
         })
         .parse(await readJson(response));
-      return (
-        body.lifecycle.teardown?.needsRecovery === true &&
-        (body.lifecycle.message?.startsWith("Needs recovery:") ?? false)
-      );
+      return body.lifecycle.teardown?.needsRecovery === true;
     },
   };
 }

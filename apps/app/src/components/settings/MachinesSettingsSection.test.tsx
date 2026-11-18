@@ -232,6 +232,7 @@ describe("MachinesSettingsSection", () => {
           status: "failed" as const,
           attempt: 3,
           needsRecovery: false,
+          blockedByEnvironmentId: null,
         },
       },
     };
@@ -696,6 +697,7 @@ describe("MachinesSettingsSection", () => {
           status: "failed" as const,
           attempt: 0,
           needsRecovery: false,
+          blockedByEnvironmentId: null,
         },
       },
     };

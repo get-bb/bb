@@ -14,7 +14,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
-  restoreSuspendRetryAtColumn,
+  rewindMachineTeardownRecoveryColumns,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -63,7 +63,7 @@ function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   dropThreadStatusChangedAtColumn(db);
   dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
-  restoreSuspendRetryAtColumn(db);
+  rewindMachineTeardownRecoveryColumns(db);
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(migrationTimestamp);

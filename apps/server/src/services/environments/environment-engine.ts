@@ -10,7 +10,6 @@ import {
 } from "@bb/db";
 import {
   TEARDOWN_RETRY_DELAYS_MS,
-  isNeedsRecoveryMessage,
   needsRecoveryMessage,
 } from "../lib/persisted-retry.js";
 import {
@@ -956,12 +955,14 @@ async function sweepProviderEnvironmentInSlot(
     return;
   }
   if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt)) {
-    if (row.retireAt !== null || !isNeedsRecoveryMessage(row.teardownMessage))
+    if (row.teardownStatus !== "failed")
       writeEnvironmentTeardownFailure(
         deps,
         environmentId,
         row.teardownMessage ?? "Cleanup did not complete.",
       );
+    else if (row.retireAt !== null)
+      writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
   if (row.retireAt === null) {
@@ -1082,7 +1083,7 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt))
     throw new ApiError(
       409,
-      "invalid_request",
+      "environment_needs_recovery",
       `Needs recovery. Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
     );
   writeEnvironment(deps, environmentId, { retireAt: Date.now() });

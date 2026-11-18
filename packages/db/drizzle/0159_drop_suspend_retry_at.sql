@@ -1,1 +1,0 @@
-ALTER TABLE `hosts` DROP COLUMN `suspend_retry_at`;

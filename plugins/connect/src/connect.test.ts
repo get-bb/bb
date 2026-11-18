@@ -2009,7 +2009,12 @@ describe("connect plugin", () => {
           suspendedAt: null,
           message: null,
           pendingLog: "",
-          teardown: { status: "removed", attempt: 0, needsRecovery: false },
+          teardown: {
+            status: "removed",
+            attempt: 0,
+            needsRecovery: false,
+            blockedByEnvironmentId: null,
+          },
         },
         maxPermissionMode: "full",
         lastSeenAt: null,

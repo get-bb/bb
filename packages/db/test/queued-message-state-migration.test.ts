@@ -11,7 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
-  restoreSuspendRetryAtColumn,
+  rewindMachineTeardownRecoveryColumns,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   rewindQueuedMessageStateMigration,
@@ -66,7 +66,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   dropThreadStatusChangedAtColumn(db);
   dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
-  restoreSuspendRetryAtColumn(db);
+  rewindMachineTeardownRecoveryColumns(db);
   return { db, threadId: thread.id };
 }
 

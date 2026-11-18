@@ -101,6 +101,7 @@ export const environmentLifecycleSchema = z.object({
     .object({
       status: z.enum(["running", "failed", "removed"]),
       attempt: z.number().int().nonnegative(),
+      needsRecovery: z.boolean(),
       message: z.string().optional(),
     })
     .nullable(),

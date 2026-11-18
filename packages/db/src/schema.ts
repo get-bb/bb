@@ -136,6 +136,7 @@ export const hosts = sqliteTable(
     teardownStatus: text("teardown_status").$type<
       "running" | "failed" | "removed"
     >(),
+    teardownBlockedByEnvironmentId: text("teardown_blocked_by_environment_id"),
     maxPermissionMode: text("max_permission_mode")
       .$type<PermissionMode>()
       .notNull()

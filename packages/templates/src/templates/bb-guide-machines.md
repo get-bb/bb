@@ -96,8 +96,9 @@ failed attempts the machine needs recovery: its lifecycle message starts with
 "Needs recovery", `lifecycle.teardown.needsRecovery` is true, `bb machine list`
 prints a retry-cleanup hint, and teardown keeps retrying once an hour so an
 orphaned cloud machine is still deleted. A machine waiting on an environment
-whose cleanup needs recovery shows that environment's message; recover the
-environment with `bb environment cleanup <id> --recover`. Retry cleanup is
+whose cleanup needs recovery also needs recovery: it shows that environment's
+message, `lifecycle.teardown.blockedByEnvironmentId` names the environment, and
+`bb machine list` tells you to run `bb environment cleanup <id> --recover`. Retry cleanup is
 accepted only for a retiring machine whose provider teardown failed; it resets
 the five-attempt budget and retries now. `bb machine remove` and
 `bb machine retry-cleanup` (`hosts.delete`, `hosts.experimental_retryCleanup`)
