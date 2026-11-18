@@ -3916,7 +3916,7 @@ files, containment and line locations.
 
 ## Message Markdown (`MarkdownProps.experimental_message`)
 
-Requires SDK 0.6.157.
+Requires SDK 0.6.158.
 
 The Markdown component accepts the `{ id, threadId, turnId, projectId }` of the
 chat message it shows, the same shape message directives and code-fence
