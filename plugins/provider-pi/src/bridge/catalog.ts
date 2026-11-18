@@ -1,6 +1,5 @@
 import {
   experimental_buildProviderCliEnv as buildProviderCliEnv,
-  experimental_withoutThreadIdentityEnv as withoutThreadIdentityEnv,
   type AvailableModel,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { resolve } from "node:path";
@@ -385,13 +384,12 @@ export function getPiCatalog(
   extensionPath: string,
   envVars: Readonly<Record<string, string>>,
 ): Promise<PiCatalog> {
-  const sharedEnvVars = withoutThreadIdentityEnv(envVars);
-  const key = catalogKey(cwd, sharedEnvVars);
+  const key = catalogKey(cwd, envVars);
   const existing = catalogsByKey.get(key);
   if (existing) {
     return existing;
   }
-  const created = spawnCatalog(resolve(cwd), extensionPath, sharedEnvVars, () =>
+  const created = spawnCatalog(resolve(cwd), extensionPath, envVars, () =>
     touchCatalog(key),
   ).catch((error: unknown) => {
     catalogsByKey.delete(key);

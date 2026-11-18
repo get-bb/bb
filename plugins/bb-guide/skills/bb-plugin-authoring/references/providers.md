@@ -235,10 +235,7 @@ without bridge-only runtime variables, plus the request's `envVars` (thread
 identity, `BB_*`, and plugin contributions). Pass the same env to the launch
 lookup and to the maintenance probes (`experimental_resolveExecutablePath`,
 `experimental_readCliVersion`, `experimental_commandOutput`, which take it as
-an optional last argument and otherwise use the bridge's own environment).
-A process that serves many threads, such as a model catalog, should drop the
-per-thread names first with `experimental_withoutThreadIdentityEnv(envVars)`
-so threads with the same environment share it. Launch the provider CLI by name with
+an optional last argument and otherwise use the bridge's own environment). Launch the provider CLI by name with
 `experimental_spawnPortableProcess` (it resolves `PATH`/`PATHEXT` and npm
 `.cmd` shims on Windows) and end it with `experimental_killPortableProcess`
 (it terminates the whole process tree on Windows). Read

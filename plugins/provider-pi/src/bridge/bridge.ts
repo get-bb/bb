@@ -74,6 +74,7 @@ import {
   type PiRpcSessionOptions,
   type ToolCallForwarder,
 } from "./rpc-session.js";
+import type { PiModelRef } from "./model-selection.js";
 import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
@@ -199,7 +200,7 @@ interface ThreadSession {
   providerThreadId: string;
   cwd: string;
   construction: PiSessionParams;
-  constructionModel: { provider: string; id: string } | undefined;
+  constructionModel: PiModelRef | undefined;
 }
 
 let sessionSerialCounter = 0;
@@ -696,51 +697,15 @@ async function handleProviderHealth(
   }
 }
 
-async function resolvePiModel(
-  modelStr: string,
-  cwd: string,
-  envVars: Readonly<Record<string, string>>,
-): Promise<{ provider: string; id: string }> {
-  const catalog = await getPiCatalog(cwd, requireExtensionPath(), envVars);
-  const models = await catalog.rawModels();
-  const canonical = models.find(
-    (model) => `${model.provider}/${model.id}` === modelStr,
-  );
-  if (canonical) {
-    return { provider: canonical.provider, id: canonical.id };
-  }
-  const served = models.filter((model) => model.id === modelStr);
-  if (served.length > 1) {
-    throw new Error(
-      `Ambiguous Pi model "${modelStr}": served by ${served
-        .map((m) => String(m.provider))
-        .join(", ")}. Prefix it with the provider you want.`,
-    );
-  }
-  const match = served[0];
-  if (!match || typeof match.provider !== "string") {
-    throw new Error(`Failed to resolve Pi model "${modelStr}"`);
-  }
-  return { provider: match.provider, id: modelStr };
-}
-
-async function buildSessionOptions(args: {
+function buildSessionOptions(args: {
   params: PiSessionParams;
   providerThreadId: string;
   threadId: string;
   sessionSerial: number;
-}): Promise<PiRpcSessionOptions> {
+}): PiRpcSessionOptions {
   return {
     cwd: args.params.cwd,
-    ...(args.params.model
-      ? {
-          model: await resolvePiModel(
-            args.params.model,
-            args.params.cwd,
-            args.params.shellEnvOverrides,
-          ),
-        }
-      : {}),
+    ...(args.params.model ? { model: args.params.model } : {}),
     sessionFilePath: resolvePiSessionFilePath({
       ...piSessionPaths(),
       threadId: args.providerThreadId,
@@ -774,7 +739,7 @@ async function constructPiThreadSession(
   params: PiSessionParams,
 ): Promise<ThreadSession> {
   const sessionSerial = nextSessionSerial();
-  const sessionOptions = await buildSessionOptions({
+  const sessionOptions = buildSessionOptions({
     params,
     providerThreadId,
     threadId,
@@ -793,11 +758,12 @@ async function constructPiThreadSession(
     providerThreadId,
     cwd: params.cwd,
     construction: params,
-    constructionModel: sessionOptions.model,
+    constructionModel: undefined,
   };
   sessions.set(threadId, threadSession);
   try {
     await session.start();
+    threadSession.constructionModel = session.getSelectedModel();
     const liveModel = session.getLiveModel();
     if (
       liveModel &&
@@ -1049,13 +1015,9 @@ async function reconcileTurnOptions(
     return threadSession;
   }
   const nextModel =
-    changedModelRequest === undefined
+    changedModelRequest === undefined || piExited
       ? undefined
-      : await resolvePiModel(
-          changedModelRequest,
-          construction.cwd,
-          shellEnvOverrides ?? construction.shellEnvOverrides,
-        );
+      : await threadSession.session.resolveModel(changedModelRequest);
   const modelChanged =
     nextModel !== undefined &&
     (threadSession.constructionModel === undefined ||
