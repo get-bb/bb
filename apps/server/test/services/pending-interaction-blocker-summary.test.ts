@@ -53,7 +53,7 @@ describe("child-thread blocker summary", () => {
     ).toBe("Blocked on secrets request:\nAdd a token");
   });
 
-  it("names a plugin's own request the same way", () => {
+  it("reports a plugin's own card as pending, with its title and interaction id", () => {
     expect(
       buildChildThreadBlockerSummary(
         interaction(
@@ -61,6 +61,6 @@ describe("child-thread blocker summary", () => {
           { kind: "plugin", pluginId: "secrets", rendererId: "secret-request" },
         ),
       ),
-    ).toBe("Blocked on plugin request:\nAdd secrets");
+    ).toBe("Pending plugin request: Add secrets\nInteraction: pint_1");
   });
 });

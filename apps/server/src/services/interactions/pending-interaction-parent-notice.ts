@@ -2,9 +2,11 @@ import { formatPendingInteractionSubjectDetailLines } from "@bb/core-ui";
 import {
   isApprovalPendingInteractionPayload,
   isPluginExtensionInteractionRequestPayload,
+  isPluginPendingInteraction,
   isUserQuestionPendingInteractionPayload,
   parseExtensionKind,
   type PendingInteraction,
+  type ProviderPendingInteraction,
   type Thread,
 } from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
@@ -19,16 +21,13 @@ const CHILD_THREAD_BLOCKER_SUMMARY_TRUNCATION_MARKER =
   "\n[... summary truncated ...]";
 
 function pendingInteractionBlockerLabel(
-  interaction: PendingInteraction,
+  interaction: ProviderPendingInteraction,
 ): string {
   if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return "user question";
   }
   if (isPluginExtensionInteractionRequestPayload(interaction.payload)) {
     return `${parseExtensionKind(interaction.payload.kind).pluginId} request`;
-  }
-  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
-    return "plugin request";
   }
   switch (interaction.payload.subject.kind) {
     case "command":
@@ -71,6 +70,11 @@ function pluginFormTitleLines(interaction: PendingInteraction): string[] {
 export function buildChildThreadBlockerSummary(
   interaction: PendingInteraction,
 ): string | null {
+  if (isPluginPendingInteraction(interaction)) {
+    return truncateChildThreadBlockerSummary(
+      `Pending plugin request: ${interaction.payload.title}\nInteraction: ${interaction.id}`,
+    );
+  }
   const detailLines = formatPendingInteractionSubjectDetailLines(interaction);
   const details = (
     detailLines.length > 0 ? detailLines : pluginFormTitleLines(interaction)
