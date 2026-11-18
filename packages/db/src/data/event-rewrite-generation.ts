@@ -1,4 +1,6 @@
-import type { DbConnection } from "../connection.js";
+import { eq } from "drizzle-orm";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
+import { threadConversationOutlines } from "../schema.js";
 
 const generationsByThreadId = new Map<string, number>();
 
@@ -6,11 +8,21 @@ export function getThreadEventRewriteGeneration(threadId: string): number {
   return generationsByThreadId.get(threadId) ?? 0;
 }
 
-export function bumpThreadEventRewriteGeneration(threadId: string): void {
+export function bumpThreadEventRewriteGeneration(
+  db: DbQueryConnection,
+  threadId: string,
+): void {
+  db.delete(threadConversationOutlines)
+    .where(eq(threadConversationOutlines.threadId, threadId))
+    .run();
   generationsByThreadId.set(
     threadId,
     getThreadEventRewriteGeneration(threadId) + 1,
   );
+}
+
+export function forgetThreadEventRewriteGenerations(): void {
+  generationsByThreadId.clear();
 }
 
 export function getDatabaseDataVersion(db: DbConnection): number {
