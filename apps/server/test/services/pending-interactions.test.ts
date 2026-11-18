@@ -2264,6 +2264,95 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("treats a repeated plan denial as a conflict when the comments differ", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-plan-comments",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-plan-comments",
+          providerId: "codex",
+          providerThreadId: "provider-thread-plan-comments",
+          providerRequestId: "request-plan-comments",
+          payload: {
+            kind: "approval",
+            subject: {
+              kind: "plan",
+              itemId: "item-plan-comments",
+              plan: "1. Add the check.",
+              planFilePath: null,
+            },
+            reason: "Review the plan",
+            availableDecisions: ["allow_once", "deny"],
+          },
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+
+      const first = harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: created.interaction.id,
+        resolution: {
+          decision: "deny",
+          comments: "Please include a focused test.",
+        },
+      });
+      expect(first).toMatchObject({
+        status: "resolving",
+        resolution: {
+          decision: "deny",
+          comments: "Please include a focused test.",
+        },
+      });
+
+      const retry = harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: created.interaction.id,
+        resolution: {
+          decision: "deny",
+          comments: "Please include a focused test.",
+        },
+      });
+      expect(retry).toMatchObject({
+        id: created.interaction.id,
+        status: "resolving",
+        resolution: first.resolution,
+      });
+
+      expect(() =>
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: {
+            decision: "deny",
+            comments: "Please rewrite the approach.",
+          },
+        }),
+      ).toThrow(
+        `Pending interaction ${created.interaction.id} is already resolving`,
+      );
+    });
+  });
+
   it("rejects session command approvals without granted permissions", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

@@ -321,6 +321,30 @@ describe("Grok recording redaction", () => {
         },
       },
       {
+        method: "session/update",
+        params: {
+          update: {
+            rawInput: {
+              subagent_id: "child-alpha",
+              text,
+              delivery: "interject",
+            },
+          },
+        },
+      },
+      {
+        method: "session/update",
+        params: {
+          update: {
+            rawInput: {
+              subagent_id: "private-child",
+              text: "private-tell-body",
+              delivery: "interject",
+            },
+          },
+        },
+      },
+      {
         method: "thread/start",
         params: {
           options: {
@@ -349,6 +373,19 @@ describe("Grok recording redaction", () => {
     expect(redacted).not.toContain("private-tool-output");
     expect(redacted).not.toContain("private-key-value");
     expect(redacted).not.toContain("private-subagent-message");
+    expect(redacted).not.toContain("private-tell-body");
+    expect(readMessages(output)).toContainEqual({
+      method: "session/update",
+      params: {
+        update: {
+          rawInput: {
+            subagent_id: "child-alpha",
+            text,
+            delivery: "interject",
+          },
+        },
+      },
+    });
     expect(redacted).not.toContain("PRIVATE_CHILD");
     expect(readMessages(output)).toContainEqual({
       method: "thread/delta",

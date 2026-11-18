@@ -7921,7 +7921,7 @@ describe("acp bridge: questions the agent asks", () => {
 
   it("settles a running grok subagent when the agent exits", async () => {
     const readyFile = join(workspaceDir, "grok-exit-ready");
-    const { providerThreadId } = await startGrokSubagentThread({
+    await startGrokSubagentThread({
       FAKE_ACP_READY_FILE: readyFile,
     });
     trackedAgent(readyFile).kill("SIGTERM");
@@ -8205,6 +8205,46 @@ describe("acp bridge: questions the agent asks", () => {
         },
       },
     });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain('grok-plan:{"outcome":"approved"}');
+  });
+
+  it("grok_plan_full_permission_still_requests_review", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      permissionMode: "full",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "full" }),
+      input: [{ type: "text", text: "grok-plan-approve", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded Grok plan approval under full permission",
+    );
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        kind: "approval",
+        subject: { kind: "plan", itemId: "grok-plan-tool-call" },
+      },
+    });
+    expect(agentMessageTexts().join("\n")).not.toContain(
+      '"outcome":"approved"',
+    );
 
     handleLine(
       JSON.stringify({

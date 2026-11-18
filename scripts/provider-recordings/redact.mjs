@@ -190,7 +190,9 @@ function redactAllStrings(value) {
 }
 
 function redactUserContent(value) {
-  if (typeof value === "string") return "REDACTED_TEXT";
+  if (typeof value === "string") {
+    return value === GROK_SYNTHETIC_SUBAGENT_MESSAGE ? value : "REDACTED_TEXT";
+  }
   if (Array.isArray(value)) return value.map(redactUserContent);
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
