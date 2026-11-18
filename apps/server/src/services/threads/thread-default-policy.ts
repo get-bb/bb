@@ -28,7 +28,6 @@ import {
   projectCheckoutPathOnHost,
   resolveProjectWorkspaceTarget,
 } from "../projects/project-workspace.js";
-import { resolveDefaultWorktreeBaseBranch } from "../projects/worktree-base-branch.js";
 import {
   checkoutProviderInputs,
   worktreeProviderInputs,
@@ -315,7 +314,7 @@ async function projectSourceHasWorktreeBase(
       remoteRefresh: "background",
     },
   });
-  return resolveDefaultWorktreeBaseBranch(inspection) !== null;
+  return inspection.defaultWorktreeBaseBranch !== null;
 }
 
 export async function resolveProjectDefaultThreadEnvironment(

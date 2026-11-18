@@ -102,9 +102,8 @@ import {
   onClientSocketOpen,
 } from "./ws/client-protocol.js";
 import {
-  onDaemonSocketClose,
-  onDaemonSocketMessage,
-  onDaemonSocketOpen,
+  createDaemonSocketEvents,
+  endDaemonSessionChannels,
   validateDaemonWebSocket,
 } from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "@bb/process-utils";
@@ -117,7 +116,10 @@ import {
   createBbAppArtifactService,
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM,
+} from "@bb/host-daemon-contract";
 import {
   createPluginCatalogService,
   type PluginCatalogService,
@@ -1038,30 +1040,23 @@ export function createApp(
     "/internal/ws",
     upgradeWebSocket(async (context) => {
       declineWebSocketCompression(context);
-      const websocketContext = await validateDaemonWebSocket(deps, {
+      const target = await validateDaemonWebSocket(deps, {
         authorizationHeader: context.req.header("authorization"),
         protocolHeader: context.req.header("sec-websocket-protocol"),
+        resumeFrom:
+          context.req.query(HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM) ?? null,
         sessionId: context.req.query("sessionId") ?? null,
       });
+      const events = createDaemonSocketEvents(
+        deps,
+        target,
+        pluginService,
+        serverMove,
+      );
       return {
-        onOpen: (_event, socket) =>
-          onDaemonSocketOpen(deps, {
-            ...websocketContext,
-            socket,
-          }),
-        onMessage: (event, socket) =>
-          onDaemonSocketMessage(
-            deps,
-            {
-              hostId: websocketContext.hostId,
-              raw: event.data,
-              sessionId: websocketContext.sessionId,
-              socket,
-            },
-            pluginService,
-            serverMove,
-          ),
-        onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
+        onOpen: (_event, socket) => events.onOpen(socket),
+        onMessage: (event, socket) => events.onMessage(socket, event.data),
+        onClose: (event, socket) => events.onClose(socket, event.reason),
       };
     }),
   );
@@ -1078,12 +1073,18 @@ export function createApp(
 
   return {
     app,
-    closeWebSockets: () =>
-      closeWebSocketServer({
+    closeWebSockets: () => {
+      endDaemonSessionChannels(
+        deps.hub,
+        WEB_SOCKET_SHUTDOWN_CODE,
+        WEB_SOCKET_SHUTDOWN_REASON,
+      );
+      return closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,
         reason: WEB_SOCKET_SHUTDOWN_REASON,
         server: wss,
-      }),
+      });
+    },
     injectWebSocket,
     pluginService,
     pluginCatalogService,

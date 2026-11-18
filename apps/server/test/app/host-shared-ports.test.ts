@@ -390,7 +390,9 @@ describe("HostSharedPortCoordinator", () => {
   });
 
   it("stores only daemon-reported tunnel identity", () => {
-    const { host, sharedPorts } = setup();
+    const { host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
     expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
     expect(
       sharedPorts.recordTunnelIdentity(host.id, {
@@ -402,6 +404,21 @@ describe("HostSharedPortCoordinator", () => {
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
+  });
+
+  it("treats a host as connected while the hub holds its socket, whatever the persisted lease says", () => {
+    const { db, host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
+    heartbeatSession(db, session.id, Date.now() - 1);
+    expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
+
+    hub.unregisterDaemon(session.id);
+    expect(() => sharedPorts.getTunnelIdentity(host.id)).toThrow(
+      expect.objectContaining({
+        body: expect.objectContaining({ code: "connect_host_offline" }),
+      }),
+    );
   });
 });
 
@@ -515,10 +532,10 @@ describe("daemon session connect shares", () => {
         hostId: "host-1",
         sessionId: session.sessionId,
         socket: daemonSocket,
-        raw: JSON.stringify({
+        message: {
           type: "connect-tunnel.identity",
           identity: { label: "sawyer-air", baseDomain: "getbb.app" },
-        }),
+        },
       });
       expect(harness.deps.sharedPorts.getTunnelIdentity("host-1")).toEqual({
         label: "sawyer-air",
@@ -730,7 +747,7 @@ describe("connect next machine tunnels", () => {
         hostId: "host-1",
         sessionId: session.sessionId,
         socket: daemonSocket,
-        raw: JSON.stringify({
+        message: {
           type: "connect-next.status",
           status: {
             state: "connecting",
@@ -740,7 +757,7 @@ describe("connect next machine tunnels", () => {
             since: 1,
             shares: [],
           },
-        }),
+        },
       });
       expect(
         daemonSocket.messages.map((message) => JSON.parse(message)),

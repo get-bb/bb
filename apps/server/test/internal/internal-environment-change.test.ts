@@ -24,7 +24,7 @@ function createTestDaemonSocket(): TestDaemonSocket {
 }
 
 describe("internal environment change websocket hints", () => {
-  it("renews an active session from a late heartbeat after lease expiry", async () => {
+  it("acknowledges a heartbeat for an active session whose persisted lease lapsed", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-late-heartbeat",
@@ -40,7 +40,7 @@ describe("internal environment change websocket hints", () => {
         hostId: host.id,
         sessionId: session.id,
         socket,
-        raw: JSON.stringify({ type: "heartbeat" }),
+        message: { type: "heartbeat" },
       });
 
       const updatedSession = harness.db
@@ -49,7 +49,6 @@ describe("internal environment change websocket hints", () => {
         .where(eq(hostDaemonSessions.id, session.id))
         .get();
       expect(updatedSession?.status).toBe("active");
-      expect(updatedSession?.leaseExpiresAt).toBeGreaterThan(Date.now());
       expect(socket.send).toHaveBeenCalledWith(
         JSON.stringify({ type: "heartbeat-ack" }),
       );
@@ -93,13 +92,13 @@ describe("internal environment change websocket hints", () => {
         hostId: hostB.host.id,
         sessionId: hostB.session.id,
         socket,
-        raw: JSON.stringify({
+        message: {
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
           commandType: "host.list_files",
           ok: true,
           result: { files: [], truncated: false },
-        }),
+        },
       });
 
       await Promise.resolve();
@@ -110,13 +109,13 @@ describe("internal environment change websocket hints", () => {
         hostId: hostA.host.id,
         sessionId: hostA.session.id,
         socket,
-        raw: JSON.stringify({
+        message: {
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
           commandType: "host.list_files",
           ok: true,
           result: { files: [], truncated: false },
-        }),
+        },
       });
 
       await expect(observed).resolves.toEqual({
@@ -158,10 +157,10 @@ describe("internal environment change websocket hints", () => {
           hostId,
           sessionId,
           socket: createTestDaemonSocket(),
-          raw: JSON.stringify({
+          message: {
             type: "thread-storage-change",
             threadId: thread.id,
-          }),
+          },
         });
 
       send(other.host.id, other.session.id);
@@ -204,11 +203,11 @@ describe("internal environment change websocket hints", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "environment-change",
             environmentId: environment.id,
             change,
-          }),
+          },
         });
 
         expect(notifyEnvironmentSpy).toHaveBeenCalledWith(environment.id, [
@@ -246,7 +245,7 @@ describe("internal environment change websocket hints", () => {
         hostId: host.id,
         sessionId: session.id,
         socket,
-        raw: JSON.stringify({
+        message: {
           type: "environment-metadata-change",
           environmentId: environment.id,
           workspace: {
@@ -256,7 +255,7 @@ describe("internal environment change websocket hints", () => {
             branchName: "main",
             defaultBranch: "main",
           },
-        }),
+        },
       });
 
       expect(socket.close).not.toHaveBeenCalled();
@@ -275,7 +274,7 @@ describe("internal environment change websocket hints", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "environment-metadata-change",
             environmentId: environment.id,
             workspace: {
@@ -285,7 +284,7 @@ describe("internal environment change websocket hints", () => {
               branchName,
               defaultBranch: "main",
             },
-          }),
+          },
         });
         expect(getEnvironment(harness.db, environment.id)).toMatchObject({
           branchName,
@@ -327,11 +326,11 @@ describe("internal environment change websocket hints", () => {
         hostId: hostA.host.id,
         sessionId: hostA.session.id,
         socket,
-        raw: JSON.stringify({
+        message: {
           type: "environment-change",
           environmentId: environment.id,
           change: "work-status-changed",
-        }),
+        },
       });
 
       expect(notifyEnvironmentSpy).not.toHaveBeenCalled();
@@ -361,11 +360,11 @@ describe("internal environment change websocket hints", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "environment-change",
             environmentId,
             change: "work-status-changed",
-          }),
+          },
         });
       }
 
@@ -386,11 +385,11 @@ describe("internal environment change websocket hints", () => {
         hostId: host.id,
         sessionId: session.id,
         socket,
-        raw: JSON.stringify({
+        message: {
           type: "environment-change",
           environmentId: "env-1",
           change: "status-changed",
-        }),
+        },
       });
 
       expect(socket.close).toHaveBeenCalledWith(1008, "invalid-message");

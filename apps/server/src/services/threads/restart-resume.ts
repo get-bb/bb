@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   environments,
-  getExperiments,
+  getAppSettings,
   getThread,
   getUnfinishedCommandItemData,
   listCommandItemDataByItemIds,
@@ -203,7 +203,7 @@ export function planRestartResumes(
   args: { hostId: string; ownerStoppedSinceMs: number },
 ): Map<string, string> {
   const continuations = new Map<string, string>();
-  if (!getExperiments(deps.db).resumeThreadsAfterRestart) {
+  if (!getAppSettings(deps.db).resumeThreadsAfterRestart) {
     return continuations;
   }
   const openRowsByThread = groupRowsByThread(

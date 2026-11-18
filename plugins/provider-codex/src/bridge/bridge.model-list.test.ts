@@ -137,8 +137,11 @@ it("launches the catalog app-server on the requested pool route", async () => {
   expect(launches).toHaveLength(3);
   expect(launches[0]?.args).toContain('model_provider="bb-account-pool"');
   expect(launches[0]?.args).toContain(
-    'openai_base_url="http://127.0.0.1:1/pool/v1"',
+    'model_providers.bb-account-pool.base_url="http://127.0.0.1:1/pool/v1"',
   );
+  expect(
+    launches[0]?.args.some((arg) => arg.startsWith("openai_base_url=")),
+  ).toBe(false);
   expect(launches[0]?.poolToken).toBe("machine-token");
   expect(launches[1]?.args).toContain('model_provider="bb-account-pool"');
   expect(launches[1]?.poolToken).toBe("machine-token");

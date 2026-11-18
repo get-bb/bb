@@ -21,7 +21,7 @@ export function useStartAppUpdate(): StartAppUpdate {
   const appUpdate = useAppUpdateStatus().data;
   const applyAppUpdate = useApplyAppUpdate();
   const threadsResumeAfterRestart =
-    useSystemConfig().data?.experiments.resumeThreadsAfterRestart === true;
+    useSystemConfig().data?.generalSettings.resumeThreadsAfterRestart === true;
   const [confirmingThreads, setConfirmingThreads] = useState<number | null>(
     null,
   );

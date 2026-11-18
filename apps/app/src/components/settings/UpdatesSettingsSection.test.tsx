@@ -12,7 +12,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultExperiments, type Host } from "@bb/domain";
+import { defaultAppSettings, type Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -394,15 +394,6 @@ beforeEach(() => {
     startInstall: startInstallMock,
   });
 });
-
-function useUpdateWhenIdleExperiment(enabled: boolean): void {
-  vi.mocked(sdk.system.config).mockResolvedValue(
-    makeSystemConfig({
-      primaryHostId: "host_primary",
-      experiments: { ...defaultExperiments, updateWhenIdle: enabled },
-    }),
-  );
-}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -1367,6 +1358,63 @@ The published lede.
         (label) => label.textContent,
       ),
     ).toEqual(["mise", "Homebrew"]);
+  });
+
+  it("recognizes a provider's own updater when the machine reports its executable by path", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const withExecutable = (
+      provider: "codex" | "claude-code",
+      executableName: string,
+      command: string,
+    ): ProviderCliActionableIssue => {
+      const issue = makeUpdateIssue({ provider });
+      const action = { ...issue.action, command };
+      return {
+        ...issue,
+        action,
+        status: {
+          ...issue.status,
+          executableName,
+          executablePath: executableName,
+          installAction: action,
+        },
+      };
+    };
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            issues: [
+              withExecutable(
+                "codex",
+                "C:\\Users\\Jo's PC\\.local\\bin\\codex.exe",
+                "'C:\\Users\\Jo'\\''s PC\\.local\\bin\\codex.exe' update",
+              ),
+              withExecutable(
+                "claude-code",
+                "/home/user/.local/bin/claude",
+                "/home/user/.local/bin/claude update",
+              ),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(screen.getByRole("button", { name: "workstation" }));
+
+    expect(
+      [...document.querySelectorAll("[data-provider-updater]")].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Built-in updater", "Built-in updater"]);
   });
 
   it("badges the client-local daemon independently from the server machine", async () => {
@@ -2384,7 +2432,10 @@ The published lede.
     vi.mocked(sdk.system.config).mockResolvedValue(
       makeSystemConfig({
         primaryHostId: "host_primary",
-        experiments: { ...defaultExperiments, resumeThreadsAfterRestart: true },
+        generalSettings: {
+          ...defaultAppSettings,
+          resumeThreadsAfterRestart: true,
+        },
       }),
     );
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
@@ -2406,38 +2457,30 @@ The published lede.
     ).toBeDefined();
   });
 
-  it.each([
-    { experiment: false, running: 2 },
-    { experiment: true, running: 2 },
-  ])(
-    "updates with a single Update button while $running threads run (updateWhenIdle $experiment)",
-    async ({ experiment, running }) => {
-      useWebApp();
-      useUpdateWhenIdleExperiment(experiment);
-      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
-        makeAppUpdateStatus({ runningThreadCount: running }),
-      );
+  it("updates with a single Update button while threads run", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
 
-      renderSection();
+    renderSection();
 
-      expect(await screen.findByText("2 threads running")).toBeDefined();
-      expect(
-        screen
-          .getAllByRole("button")
-          .map((button) => button.textContent)
-          .filter((label) => label !== null && /^Update/.test(label)),
-      ).toEqual(["Update"]);
-      expect(
-        screen.queryByRole("switch", {
-          name: "Restart and update bb automatically",
-        }) !== null,
-      ).toBe(experiment);
-    },
-  );
+    expect(await screen.findByText("2 threads running")).toBeDefined();
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+        .filter((label) => label !== null && /^Update/.test(label)),
+    ).toEqual(["Update"]);
+    expect(
+      screen.queryByRole("switch", {
+        name: "Restart and update bb automatically",
+      }) !== null,
+    ).toBe(true);
+  });
 
   it("turns on automatic updates and shows the update waiting for threads", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({ runningThreadCount: 2 }),
     );
@@ -2470,7 +2513,6 @@ The published lede.
 
   it("skips a waiting update and says why it is not installing", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({
         autoUpdate: true,
@@ -2515,7 +2557,6 @@ The published lede.
 
   it("updates now from a waiting update after confirming the interruption", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({
         autoUpdate: true,
@@ -2963,7 +3004,6 @@ The published lede.
       desktopInfo,
       isDesktop: true,
     });
-    useUpdateWhenIdleExperiment(true);
     useUpdateInventoryMock.mockReturnValue(desktopFleet());
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
 

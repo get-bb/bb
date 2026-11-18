@@ -34,7 +34,11 @@ const CLAUDE_POWERSHELL_INSTALL_SCRIPT_URL = "https://claude.ai/install.ps1";
 
 const claudeAccountFileSchema = z.object({
   oauthAccount: z
-    .object({ accountUuid: z.string().uuid().nullish() })
+    .object({
+      accountUuid: z.string().uuid().nullish(),
+      organizationType: z.string().nullish(),
+      emailAddress: z.string().nullish(),
+    })
     .nullish(),
 });
 
@@ -244,7 +248,7 @@ function probeArgs(env: NodeJS.ProcessEnv) {
   return { env, cwd: process.cwd() };
 }
 
-async function readAccountUuid(env: NodeJS.ProcessEnv): Promise<string | null> {
+async function readAccountProfile(env: NodeJS.ProcessEnv) {
   try {
     const parsed = claudeAccountFileSchema.safeParse(
       JSON.parse(
@@ -254,11 +258,30 @@ async function readAccountUuid(env: NodeJS.ProcessEnv): Promise<string | null> {
         ),
       ),
     );
-    return parsed.success
-      ? (parsed.data.oauthAccount?.accountUuid ?? null)
-      : null;
+    return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {
     return null;
+  }
+}
+
+function profileAccount(
+  account: AccountInfo,
+  profile: Awaited<ReturnType<typeof readAccountProfile>>,
+): AccountInfo {
+  if (
+    (account.apiProvider ?? "firstParty") !== "firstParty" ||
+    !/^(?:claude\s+)?(?:pro|max)$/iu.test(account.subscriptionType ?? "") ||
+    (profile?.emailAddress &&
+      profile.emailAddress.toLowerCase() !== account.email?.toLowerCase())
+  )
+    return account;
+  switch (profile?.organizationType) {
+    case "claude_pro":
+      return { ...account, subscriptionType: "Pro" };
+    case "claude_max":
+      return { ...account, subscriptionType: "Max" };
+    default:
+      return account;
   }
 }
 
@@ -326,7 +349,9 @@ export async function getClaudeProviderHealth(
     const { account } = await probeClaudeInitialization(probeArgs(env));
     return isSignedIn(account)
       ? healthResult("ready", {
-          ...accountFields(account),
+          ...accountFields(
+            profileAccount(account, await readAccountProfile(process.env)),
+          ),
           installedVersion: version,
         })
       : healthResult("unauthenticated", { installedVersion: version });
@@ -467,10 +492,12 @@ export async function getClaudeProviderUsage(
       },
     };
   }
-  const { account, usage } = probe;
-  if (!isSignedIn(account) || !usage.rate_limits_available) {
+  const { usage } = probe;
+  if (!isSignedIn(probe.account) || !usage.rate_limits_available) {
     return { supported: true, usage: { status: "unauthenticated" } };
   }
+  const profile = await readAccountProfile(args.env);
+  const account = profileAccount(probe.account, profile);
   if (usage.rate_limits === null) {
     return {
       supported: true,
@@ -481,7 +508,7 @@ export async function getClaudeProviderUsage(
       },
     };
   }
-  const accountUuid = await readAccountUuid(args.env);
+  const accountUuid = profile?.accountUuid;
   return {
     supported: true,
     usage: {

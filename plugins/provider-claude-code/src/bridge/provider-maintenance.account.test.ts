@@ -28,6 +28,8 @@ vi.mock("node:fs/promises", () => ({
         JSON.stringify({
           oauthAccount: {
             accountUuid: "4f6c1d2e-8a9b-4c3d-9e1f-2a3b4c5d6e7f",
+            organizationType: "claude_pro",
+            organizationRateLimitTier: "default_claude_ai",
           },
         }),
       );
@@ -50,7 +52,7 @@ import {
 
 const signedIn: AccountInfo = {
   email: "claude@example.com",
-  subscriptionType: "Claude Ultra",
+  subscriptionType: "max",
   apiProvider: "firstParty",
 };
 const signedOut: AccountInfo = {
@@ -84,8 +86,8 @@ describe("Claude Code account status", () => {
       usage: {
         status: "ok",
         accountEmail: "claude@example.com",
-        planLabel: "Ultra",
-        plan: { id: "ultra", multiplier: null },
+        planLabel: "Pro",
+        plan: { id: "pro", multiplier: null },
         windows: [
           {
             kind: "five-hour",
@@ -124,7 +126,7 @@ describe("Claude Code account status", () => {
       health: {
         status: "ready",
         accountEmail: "claude@example.com",
-        planLabel: "Ultra",
+        planLabel: "Pro",
       },
     });
 

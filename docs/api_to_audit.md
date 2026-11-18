@@ -673,8 +673,9 @@ every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
 `turn.failed` carries ids and failure facts after a thread lands in `error`,
 including `originPluginId`, the plugin that sent the failed message. Provider
-retry uses it to ask only that plugin whether to re-run the turn
-(`provider-retry.v1.consent`); Automations is the one sender that answers.
+retry uses it to decide and queue retries, then publishes the decision through
+its `decision.get` RPC; Automations and Workflows wait for that decision before
+re-running failed work.
 
 Docs: `backend-events.md`.
 
@@ -1085,8 +1086,7 @@ Docs: `backend-sdk.md`.
 `experimental_useExperiment(key)` returns whether the bb experiment `key` is
 on, from the same live system config core reads (Settings → Experiments,
 `bb settings experiment`). It is false while config loads and for unknown
-keys. Callers: the built-in thread list, which gates row metadata on
-`threadRowMetadata`, and push notifications, which reads
+keys. Caller: push notifications, which reads
 `skipFocusedThreadNotifications`.
 
 **Audit before stabilizing.**
@@ -3494,8 +3494,7 @@ draw without waiting.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
-plugin-built list makes, only while the `threadRowMetadata` experiment is on
-and the user turns on Organize → Rows → Metadata (`showRowMetadata`); both are
+plugin-built list makes, when the user turns on Organize → Rows → Metadata (`showRowMetadata`); the preference is
 off by default. The row grows to two lines only
 while an item draws something, the line is hidden while the row is renamed or
 customized, and clicks on it go through the row's own click handling. The
@@ -3939,6 +3938,28 @@ workspace. Omitting it keeps message routing.
 Stabilize after plugin consumers verify nested paths, source identity, missing
 files, containment and line locations.
 
+## Message Markdown (`MarkdownProps.experimental_message`)
+
+Requires SDK 0.6.158.
+
+The Markdown component accepts the `{ id, threadId, turnId, projectId }` of the
+chat message it shows, the same shape message directives and code-fence
+renderers receive. With it, the code-fence renderers and message directives
+plugins register render in the Markdown as they do in the thread timeline, and
+receive that object as their `message`. A plugin that draws its own view of a
+thread can then show a reply's inline UI, chips and embeds. Without it, or
+when `id` or `threadId` is blank, fences render as code and directives as their
+source text, as before. `openWorkspaceFile` is null.
+
+Core caller: the thread timeline. `ThreadTimelineRows` provides the registries
+through the same `MessageSlotRegistriesProvider`, and `ConversationMessageContent`
+mounts fences and directives through the same `useMessageDirectives` and
+`MessageCodeFences` (`apps/app/src/components/ui/message-markdown-slots.tsx`).
+
+Stabilize after plugin consumers verify streaming text (the host passes
+`streaming: false`), workspace file opening, and fence state keyed by a plugin
+message id across remounts.
+
 ## `PluginFileOpenerProps.experimental_lineRange` (`@get-bb/plugin-sdk/app`)
 
 Passes the owning file tab's latest one-based, inclusive
@@ -4087,8 +4108,7 @@ opened it or marked it read, or the user sent it a turn. Marking a thread
 unread does not fire it. Core's own read path is the trigger: every
 `lastReadAt` write raises the `read-state-changed` thread change, and the hub
 emits the event from there, so the payload is the same read state the
-sidebar's unread dot uses. Push-notifications uses it, behind the
-`dismissReadNotifications` experiment, to remove the thread's delivered
+sidebar's unread dot uses. Push-notifications uses it to remove the thread's delivered
 notifications from phones and from open web and desktop clients.
 
 Docs: `backend-sdk.md`, `backend-events.md`.
@@ -4510,9 +4530,7 @@ launcher a `defer` decision, and the desktop service hands the download back.
 downloading by `activity.phase`. Scheduling again while one is pending returns
 it unchanged. Both refuse like `applyAppUpdate` when the update is unsupported,
 blocked, unavailable, or already running, and 403 for machine credentials.
-Both return 403 `update_when_idle_experiment_disabled` while the
-`updateWhenIdle` experiment is off, and turning it off drops a waiting update.
-While it is on, the server sends `app-update-changed` whenever the running
+The server sends `app-update-changed` whenever the running
 thread count changes, so `runningThreadCount` stays current for clients.
 `experimental_cancelScheduledAppUpdate()` clears the schedule, and a scheduled
 update that is already downloading defers instead of restarting; it is a no-op
@@ -4537,7 +4555,7 @@ automatically" switch, and Skip this version on a waiting update) and
 Stabilize after deciding whether the schedule should persist across server
 restarts, whether threads waiting on a user decision should count as running,
 and whether the settle window should be configurable, and once the
-`updateWhenIdle` experiment ships on for everyone; then rename project-wide and
+update scheduling API has completed its audit; then rename project-wide and
 remove this entry.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`

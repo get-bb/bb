@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 
@@ -15,34 +15,27 @@ function DimProbe() {
 
 afterEach(cleanup);
 
-it("an app Dialog dims the browser through the shared-ui env seam", async () => {
-  const { rerender } = render(
-    <>
-      <Dialog open>
-        <DialogContent>
-          <DialogTitle>Seam check</DialogTitle>
-        </DialogContent>
-      </Dialog>
-      <DimProbe />
-    </>,
-  );
+it("keeps the browser hidden until both app and plugin dialogs close", async () => {
+  vi.resetModules();
+  const plugin = await import("@bb/shared-ui/hooks/use-browser-dimming-modal");
 
-  await waitFor(() =>
-    expect(screen.getByTestId("dim").textContent).toBe("dimmed"),
-  );
+  function PluginOverlay() {
+    plugin.useBrowserDimmingModal(true);
+    return null;
+  }
 
-  rerender(
-    <>
-      <Dialog open={false}>
-        <DialogContent>
-          <DialogTitle>Seam check</DialogTitle>
-        </DialogContent>
-      </Dialog>
-      <DimProbe />
-    </>,
+  render(<DimProbe />);
+  const appDialog = render(
+    <Dialog open>
+      <DialogContent>
+        <DialogTitle>App dialog</DialogTitle>
+      </DialogContent>
+    </Dialog>,
   );
-
-  await waitFor(() =>
-    expect(screen.getByTestId("dim").textContent).toBe("clear"),
-  );
+  expect(screen.getByTestId("dim").textContent).toBe("dimmed");
+  const pluginOverlay = render(<PluginOverlay />);
+  appDialog.unmount();
+  expect(screen.getByTestId("dim").textContent).toBe("dimmed");
+  pluginOverlay.unmount();
+  expect(screen.getByTestId("dim").textContent).toBe("clear");
 });

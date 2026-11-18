@@ -56,6 +56,27 @@ export function matchesFilters(
   );
 }
 
+export function matchesSearch(task: Task, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (needle === "") return true;
+  return (
+    task.key.toLowerCase().includes(needle) ||
+    task.title.toLowerCase().includes(needle)
+  );
+}
+
+export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
+  const widest = new Map<string, string>();
+  for (const task of tasks) {
+    const prefix = task.key.slice(0, task.key.lastIndexOf("-"));
+    const current = widest.get(prefix);
+    if (current === undefined || task.key.length > current.length) {
+      widest.set(prefix, task.key);
+    }
+  }
+  return [...widest.values()];
+}
+
 export function listTasksQuery(
   projectId: string | null,
   activeOnly: boolean,

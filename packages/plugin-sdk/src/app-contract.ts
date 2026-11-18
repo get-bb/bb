@@ -1942,8 +1942,7 @@ export interface ExperimentalThreadRowMetadataDataInput {
 /**
  * A small item on a thread row's metadata line, under the title: a badge, not
  * a control. Items share one line, left to right, and the line clips at the
- * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
- * experiment is on and the user turns on Organize → Rows → Metadata, and only
+ * row's edge. bb's sidebar draws the line when the user turns on Organize → Rows → Metadata, and only
  * on rows where an item shows something.
  * Load the line's data in `useData`, a React hook bb calls once for the
  * whole app while any list draws a metadata line, never per row; it
@@ -5237,6 +5236,13 @@ export interface MarkdownProps {
     rootPath: string;
     target: Exclude<ExperimentalLiveFileTarget, { kind: "host" }>;
   };
+  /**
+   * The chat message this Markdown shows. With it, the code-fence renderers
+   * and message directives plugins register render here as they do in the
+   * thread timeline, and receive this as their `message`. Without it, fences
+   * render as code and directives as their source text.
+   */
+  experimental_message?: PluginMessageDirectiveMessage;
 }
 
 /**

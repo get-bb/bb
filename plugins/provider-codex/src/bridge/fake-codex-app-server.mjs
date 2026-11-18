@@ -30,8 +30,12 @@ function respond(id, result) {
   send({ jsonrpc: "2.0", id, result });
 }
 
-function respondError(id, code, message) {
-  send({ jsonrpc: "2.0", id, error: { code, message } });
+function respondError(id, code, message, data) {
+  send({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message, ...(data === undefined ? {} : { data }) },
+  });
 }
 
 const ZERO_WORK_PROMPT_TEXT = "/clear";
@@ -513,6 +517,20 @@ async function handleRequest(message) {
       return;
     }
     case "thread/resume": {
+      if (script?.resumeProviderMissing) {
+        respondError(id, -32600, "Pool no longer configured", {
+          type: "modelProviderNotConfigured",
+          modelProvider: "bb-account-pool",
+        });
+        return;
+      }
+      if (script?.resumeProviderMismatch) {
+        respondError(id, -32600, "Provider mismatch", {
+          type: "modelProviderMismatch",
+          ...script.resumeProviderMismatch,
+        });
+        return;
+      }
       servesThread = true;
       if (!acquireWriterLock()) {
         logProcessStep("writer-conflict");
@@ -540,6 +558,7 @@ async function handleRequest(message) {
         replayLastTurnUsage(params.threadId);
       }
       respond(id, {
+        modelProvider: script?.resumedModelProvider,
         thread: {
           id: params.threadId,
           ...(script?.resumedDaybreakEnabled === undefined
@@ -575,7 +594,10 @@ async function handleRequest(message) {
       const threadId = replaysUsage
         ? `usage-replay-fork-${processInstanceId}-${threadCounter}`
         : `codex-fx-${processInstanceId}-fork-${threadCounter}`;
-      respond(id, { thread: { id: threadId } });
+      respond(id, {
+        modelProvider: params.modelProvider,
+        thread: { id: threadId },
+      });
 
       if (replaysUsage) {
         replayLastTurnUsage(threadId);

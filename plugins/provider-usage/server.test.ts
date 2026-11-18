@@ -50,7 +50,19 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
               },
             ],
           };
-    if (failure) throw new Error("Upstream failed");
+    if (failure && input.resourceId === "claude") {
+      return {
+        observedAt: null,
+        usage: {
+          status: "error",
+          message: "Subscription required.",
+          accountEmail: null,
+          planLabel: null,
+        },
+      };
+    }
+    if (failure && input.resourceId === "work")
+      throw new Error("Upstream failed");
     return {
       observedAt: 123,
       usage: {
@@ -164,6 +176,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
     expect(
       await host.harness.behavior.callRpc("getUsage", {
         ...target,
+        providerIds: ["codex", "claude-code"],
         force: true,
       }),
     ).toMatchObject({
@@ -171,11 +184,14 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
         { id: "host" },
         {
           id: "source:pool",
-          error: "Some usage could not be refreshed.",
+          error: null,
           providers: [
             { usage: { status: "ok" } },
-            { usage: { status: "ok" } },
-            { usage: null },
+            {
+              usage: { status: "ok" },
+              refreshError: "Usage could not be refreshed.",
+            },
+            { usage: { status: "error", message: "Subscription required." } },
           ],
         },
       ],

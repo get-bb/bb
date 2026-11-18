@@ -47,14 +47,11 @@ import {
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import type { MarkdownPromptMentions } from "@/components/ui/markdown-prompt-mentions.js";
+import type { MarkdownMessageDirectives } from "@/components/ui/markdown-message-directives.js";
 import {
-  useMessageDirectiveRegistry,
-  type MarkdownMessageDirectives,
-} from "@/components/ui/markdown-message-directives.js";
-import {
-  CodeFenceRendererHost,
-  useCodeFenceRendererRegistry,
-} from "@/components/ui/markdown-code-fence-renderers.js";
+  MessageCodeFences,
+  useMessageDirectives,
+} from "@/components/ui/message-markdown-slots.js";
 import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
@@ -519,7 +516,6 @@ function AssistantConversationMessage({
   const onOpenLocalFileLink = navigation?.onOpenLocalFileLink;
   const workspaceRootPath = navigation?.workspaceRootPath;
 
-  const messageDirectiveRegistry = useMessageDirectiveRegistry();
   const openDirectiveWorkspaceFile = useMemo<
     MarkdownMessageDirectives["openWorkspaceFile"]
   >(() => {
@@ -543,38 +539,13 @@ function AssistantConversationMessage({
       return link === null ? false : onOpenLocalFileLink(link);
     };
   }, [onOpenLocalFileLink, workspaceRootPath]);
-  const messageDirectives = useMemo<
-    MarkdownMessageDirectives | undefined
-  >(() => {
-    if (
-      messageDirectiveRegistry === null ||
-      messageDirectiveRegistry.size === 0
-    ) {
-      return undefined;
-    }
-    return {
-      registry: messageDirectiveRegistry,
-      message: {
-        id,
-        threadId,
-        turnId,
-        projectId: projectId ?? null,
-      },
-      openWorkspaceFile: openDirectiveWorkspaceFile,
-    };
-  }, [
-    messageDirectiveRegistry,
-    id,
-    threadId,
-    turnId,
-    projectId,
-    openDirectiveWorkspaceFile,
-  ]);
-
-  const codeFenceRendererRegistry = useCodeFenceRendererRegistry();
-  const codeFenceMessage = useMemo(
+  const slotMessage = useMemo(
     () => ({ id, threadId, turnId, projectId: projectId ?? null }),
     [id, threadId, turnId, projectId],
+  );
+  const messageDirectives = useMessageDirectives(
+    slotMessage,
+    openDirectiveWorkspaceFile,
   );
   const markdown = (
     <>
@@ -617,17 +588,9 @@ function AssistantConversationMessage({
       data-message-column=""
     >
       <SelectableMessageProse onSelect={onSelectProse}>
-        {codeFenceRendererRegistry === null ? (
-          markdown
-        ) : (
-          <CodeFenceRendererHost
-            registry={codeFenceRendererRegistry}
-            message={codeFenceMessage}
-            streaming={streaming}
-          >
-            {markdown}
-          </CodeFenceRendererHost>
-        )}
+        <MessageCodeFences message={slotMessage} streaming={streaming}>
+          {markdown}
+        </MessageCodeFences>
       </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}

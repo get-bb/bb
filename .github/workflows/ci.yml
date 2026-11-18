@@ -72,6 +72,9 @@ jobs:
       - name: Check tests observe processes by handle
         run: node scripts/check-test-process-identity.mjs
 
+      - name: Check branch ref owner
+        run: node scripts/check-branch-ref-owner.mjs
+
   dependencies:
     name: Validate dependencies
     needs: plan

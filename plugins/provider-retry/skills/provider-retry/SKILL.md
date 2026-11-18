@@ -25,12 +25,14 @@ account for the failed request's model, including parent pools, so a generic
 provider 429 without quota windows can still schedule a retry. Unknown resets,
 authentication failures, and unavailable pool sources do not schedule retries.
 
-Before scheduling a retry, the plugin asks the plugin that sent the failed
-message, when that plugin answers the `provider-retry.v1.consent` RPC. A
-decline skips the retry, and `explain` reports `declined-by-sender` with the
-plugin's reason. A failing or slow answer counts as consent. Automations
-declines retries of turns that scheduled runs of recurring automations
-started, because those run again on their own schedule.
+Provider retry owns a failed turn, including turns Automations and Workflows
+sent. It records its decision for each failure, after queueing any retry, and
+publishes it through the discoverable `decision.get` RPC. A plugin that re-runs
+failed work waits for that decision on the failed request, for at most a
+minute, then re-runs the work only when no retry is queued or ran in the
+thread. Automations records the skipped quick retry with the reason, and
+Workflows keeps waiting on the same worker instead of replacing it. A retry
+core queues after a bb restart counts the same way.
 
 A turn gets at most four automatic retries. The `maximumWait` setting
 (`6 hours` by default, or `24 hours` or `No limit`) skips a subscription-limit

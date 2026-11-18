@@ -133,10 +133,7 @@ import {
   decodeTimelineSelectionRows,
   withRowMeta,
 } from "./timeline-selection-decode.js";
-import {
-  getOrProjectTimelineTurnDetails,
-  type TimelineTurnDetailsProjection,
-} from "./timeline-turn-details-cache.js";
+import { getOrProjectTimelineTurnDetails } from "./timeline-turn-details-cache.js";
 import {
   forgetTimelineProjectionFolds,
   keepTimelineProjectionFold,
@@ -2484,16 +2481,21 @@ function buildTimelineTurnSummaryDetailsPage(
     ]),
   );
   const contentCursor = readTimelineContentCursor(detailsPage);
-  const now = Date.now();
   const projection = getOrProjectTimelineTurnDetails(db, {
-    now,
     project: () =>
-      projectTimelineTurnSummaryDetails(db, thread, options, snapshot, now),
+      projectTimelineTurnSummaryDetails(
+        db,
+        thread,
+        options,
+        snapshot,
+        Date.now(),
+      ),
     revision: JSON.stringify([
       timelineSnapshotKey(snapshot),
       getThreadEventRewriteGeneration(thread.id),
     ]),
     slot: JSON.stringify([thread.id, snapshot.surface]),
+    threadId: thread.id,
   });
   const contents = paginateTimelineContents(
     projection.rows,
@@ -2526,7 +2528,7 @@ function projectTimelineTurnSummaryDetails(
   options: BuildTimelineTurnSummaryDetailsOptions,
   snapshot: TimelineSnapshot,
   now: number,
-): Pick<TimelineTurnDetailsProjection, "expiresAt" | "rows"> {
+): { expiresAt: number | null; rows: TimelineRow[] } {
   const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const detailsWindow = {
     beforeSequence: Math.min(options.sourceSeqEnd, snapshot.maxSeq) + 1,

@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { resolveAppServerLaunch } from "./bridge.js";
 
 describe("Codex Account Pool launch", () => {
-  it("adds an in-memory base URL and environment-backed hub header", () => {
+  it("scopes the pool URL and environment-backed hub header to the pooled provider", () => {
     const launch = resolveAppServerLaunch({
       CODEX_OPENAI_BASE_URL: "https://bb.example/pool/v1",
       CODEX_POOL_AUTH_TOKEN: "secret-machine-token",
     });
     expect(launch.command).toBe("codex");
-    expect(launch.args).toContain(
-      'openai_base_url="https://bb.example/pool/v1"',
+    expect(launch.args.some((arg) => arg.startsWith("openai_base_url="))).toBe(
+      false,
     );
     expect(launch.args).toContain('model_provider="bb-account-pool"');
     expect(launch.args).toContain(

@@ -363,6 +363,7 @@ function acpClientCapabilities(
     fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
     terminal: false,
     auth: { terminal: true },
+    session: { compaction: {} },
     ...(elicitation ? { elicitation: { form: {} } } : {}),
     ...(parameterizedModelPicker === true
       ? { _meta: { parameterizedModelPicker: true } }

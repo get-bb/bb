@@ -184,6 +184,7 @@ describe("createServerClient", () => {
             agentCpuPriority: false,
             heartbeatIntervalMs: 5_000,
             leaseTimeoutMs: 30_000,
+            reconnectGraceMs: 30_000,
             endedInteractiveRequests: [],
           },
           { status: 201 },
