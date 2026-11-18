@@ -9,6 +9,7 @@ import { EmptyState } from "../../components/empty-state.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   matchesFilters,
@@ -107,6 +108,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     });
   };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchQuery = search.trim().toLowerCase();
 
   const labelProjectIds = useMemo(
     () =>
@@ -190,25 +193,34 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return tasksQuery.data.filter((task) =>
-      matchesFilters(
-        task,
-        filters.statuses,
-        filters.priorities,
-        labelIds ?? [],
-      ),
+    return tasksQuery.data.filter(
+      (task) =>
+        (task.key.toLowerCase().includes(searchQuery) ||
+          task.title.toLowerCase().includes(searchQuery)) &&
+        matchesFilters(
+          task,
+          filters.statuses,
+          filters.priorities,
+          labelIds ?? [],
+        ),
     );
-  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds]);
+  }, [
+    tasksQuery.data,
+    filters.statuses,
+    filters.priorities,
+    labelIds,
+    searchQuery,
+  ]);
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
     [displayTasks, sort],
   );
 
   const showProject = projectId === null;
-  const filtered = hasActiveFilters(filters);
+  const filtered = hasActiveFilters(filters) || searchQuery.length > 0;
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
+  const scopeKey = `${listScrollScopeKey({ projectId, activeOnly, filters, sort })}:${searchQuery}`;
   const settledScope = useRef(scopeKey);
   const scopeChanged = settledScope.current !== scopeKey;
   useEffect(() => {
@@ -251,7 +263,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setFilters(EMPTY_FILTERS)}
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setSearch("");
+              }}
             >
               Clear filters
             </Button>
@@ -327,6 +342,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-border-hairline px-3.5 py-1.5">
+        <Input
+          type="search"
+          aria-label="Search tasks"
+          placeholder="Search by key or title…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="h-7"
+        />
+      </div>
       <ListFilterBar
         filters={filters}
         onChange={setFilters}
