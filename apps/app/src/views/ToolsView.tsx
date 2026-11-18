@@ -425,6 +425,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         <PluginDetailBanners
           plugin={selectedPlugin}
           configurationPath={configurationPath}
+          catalogEntry={selectedCatalogEntry}
           catalogEntries={catalogQuery.data?.entries ?? []}
           onOpenPlugin={handleOpenCatalogPlugin}
         />

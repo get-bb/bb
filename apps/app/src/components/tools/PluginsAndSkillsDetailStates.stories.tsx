@@ -518,6 +518,7 @@ Sign in once with \`gh auth login\`. The plugin reuses your GitHub CLI session a
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: null,
   installed: false,
   conflictingInstallSource: null,
@@ -599,6 +600,7 @@ function Plugin({
         <div className="-mx-4 md:-mx-5">
           <PluginDetailBanners
             plugin={plugin}
+            catalogEntry={null}
             catalogEntries={[]}
             onOpenPlugin={noop}
           />

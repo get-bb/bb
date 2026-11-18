@@ -152,6 +152,7 @@ describe("plugin catalog queries", () => {
           publisherKey: "acme-plugins",
           publisherLabel: "Acme Plugins",
           official: false,
+          listings: [],
           author: {
             name: "Acme",
             github: null,

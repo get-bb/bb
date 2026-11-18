@@ -544,6 +544,16 @@ export type PluginCatalogCollection = z.infer<
   typeof pluginCatalogCollectionSchema
 >;
 
+export const pluginCatalogListingSchema = z.object({
+  marketplace: z.string(),
+  marketplaceDisplayName: z.string(),
+  publisherLabel: z.string(),
+  entryId: z.string(),
+  official: z.boolean(),
+  source: z.string(),
+});
+export type PluginCatalogListing = z.infer<typeof pluginCatalogListingSchema>;
+
 export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
   pluginId: z.string(),
@@ -566,6 +576,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   publisherKey: z.string(),
   publisherLabel: z.string(),
   official: z.boolean(),
+  listings: z.array(pluginCatalogListingSchema).default([]),
   author: pluginCatalogAuthorSchema.nullable(),
   installed: z.boolean(),
   installedByDefault: z.boolean().default(false),

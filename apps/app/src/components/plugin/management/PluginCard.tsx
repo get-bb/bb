@@ -20,6 +20,7 @@ export function PluginCardGrid({ children }: { children: ReactNode }) {
 
 interface PluginCardProps {
   title: string;
+  titleDetail?: ReactNode;
   description: ReactNode;
   descriptionLines?: 2 | 3 | "expandable";
   density?: "default" | "compact";

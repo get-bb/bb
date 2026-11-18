@@ -142,6 +142,7 @@ const GITHUB_CATALOG_ENTRY = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: null,
   installed: false,
   conflictingInstallSource: null,
@@ -206,6 +207,7 @@ function renderPluginDetail(
         {options.withBanners ? (
           <PluginDetailBanners
             plugin={plugin}
+            catalogEntry={null}
             catalogEntries={[]}
             onOpenPlugin={vi.fn()}
           />
@@ -746,6 +748,58 @@ describe("PluginDetail official catalog lifecycle", () => {
         "Included with BB; disable this plugin instead.",
       ),
     ).not.toHaveLength(0);
+  });
+
+  it("installs a plugin listed by two marketplaces from the one the user picks", () => {
+    const onInstall = vi.fn();
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: "acme-github",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherLabel: "BB Community",
+      official: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+          official: false,
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    renderWithQueryClient(
+      <CatalogPluginDetail
+        entry={entry}
+        onInstall={onInstall}
+        catalogEntries={[entry]}
+        onOpenPlugin={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Acme Plugins/u }));
+    fireEvent.click(screen.getByRole("button", { name: /^Install/u }));
+
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplace: "acme",
+        publisherLabel: "Acme Plugins",
+        official: false,
+      }),
+    );
   });
 
   it("copies the public marketplace link for a BB Community catalog entry", async () => {
@@ -1884,6 +1938,7 @@ describe("PluginDetail banner precedence", () => {
     render(
       <PluginDetailBanners
         plugin={collision}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
@@ -1902,6 +1957,50 @@ describe("PluginDetail banner precedence", () => {
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
   });
 
+  it("names the other marketplaces that list an installed plugin's source", () => {
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+      official: false,
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: managedPlugin.id,
+      marketplace: "acme",
+      marketplaceDisplayName: "Acme Plugins",
+      installed: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailBanners
+        plugin={managedPlugin}
+        catalogEntry={entry}
+        catalogEntries={[entry]}
+        onOpenPlugin={vi.fn()}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Also listed in BB Community")).toBeTruthy();
+    expect(screen.queryByText(/Acme Plugins/u)).toBeNull();
+  });
+
   it("does not promote cumulative handler diagnostics into a page banner", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -1910,6 +2009,7 @@ describe("PluginDetail banner precedence", () => {
           ...managedPlugin,
           handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
         }}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
