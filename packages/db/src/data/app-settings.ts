@@ -20,7 +20,7 @@ import {
   type DbConnection,
   type DbQueryConnection,
 } from "../connection.js";
-import { appSettingsValues, systemExperiments } from "../schema.js";
+import { appSettingsValues } from "../schema.js";
 import {
   deepFreeze,
   sameStoredSettingRows,
@@ -83,18 +83,6 @@ const parsedAppSettings = new WeakMap<
 
 export function getAppSettings(db: DbConnection): AppSettings {
   const rows = prepareCachedQuery(db, prepareAppSettingsRows).all();
-  if (!rows.some((row) => row.key === "resumeThreadsAfterRestart")) {
-    const legacy = db
-      .select({ value: systemExperiments.value })
-      .from(systemExperiments)
-      .where(eq(systemExperiments.key, "resumeThreadsAfterRestart"))
-      .get();
-    if (legacy)
-      rows.push({
-        key: "resumeThreadsAfterRestart",
-        value: JSON.stringify(legacy.value),
-      });
-  }
   const cached = parsedAppSettings.get(db);
   if (cached !== undefined && sameStoredSettingRows(cached.rows, rows)) {
     return cached.settings;

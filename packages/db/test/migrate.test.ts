@@ -1796,16 +1796,69 @@ describe("migrate", () => {
     }
   });
 
+  it.each([
+    { name: "opt-in", experiment: 1, existing: null, expected: "true" },
+    { name: "opt-out", experiment: 0, existing: null, expected: "false" },
+    { name: "no experiment", experiment: null, existing: null, expected: null },
+    {
+      name: "existing general setting",
+      experiment: 1,
+      existing: "false",
+      expected: "false",
+    },
+  ])(
+    "migrates restart recovery: $name",
+    ({ experiment, existing, expected }) => {
+      const db = createMigratedConnection();
+      try {
+        if (experiment !== null) {
+          db.$client
+            .prepare(
+              "INSERT INTO system_experiments (key, value, updated_at) VALUES ('resumeThreadsAfterRestart', ?, 1234)",
+            )
+            .run(experiment);
+        }
+        if (existing !== null) {
+          db.$client
+            .prepare(
+              "INSERT INTO app_settings_values (key, value, updated_at) VALUES ('resumeThreadsAfterRestart', ?, 5678)",
+            )
+            .run(existing);
+        }
+        runMigrationFile({
+          db,
+          migrationPath: resolve(
+            __dirname,
+            "..",
+            "drizzle",
+            "0158_resume_threads_general_setting.sql",
+          ),
+        });
+        const row = db.$client
+          .prepare<[], { value: string; updatedAt: number }>(
+            "SELECT value, updated_at AS updatedAt FROM app_settings_values WHERE key = 'resumeThreadsAfterRestart'",
+          )
+          .get();
+        expect(row ?? null).toEqual(
+          expected === null
+            ? null
+            : { value: expected, updatedAt: existing === null ? 1234 : 5678 },
+        );
+        expect(getAppSettings(db).resumeThreadsAfterRestart).toBe(
+          expected === "true",
+        );
+      } finally {
+        closeConnection(db);
+      }
+    },
+  );
+
   it("moves app settings columns into key/value rows without losing values", () => {
     const db = createConnection(":memory:");
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );        CREATE TABLE app_settings (
+        CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
           show_keyboard_hints integer DEFAULT true NOT NULL,
@@ -1885,11 +1938,6 @@ describe("migrate", () => {
     const db = createConnection(":memory:");
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -1976,11 +2024,6 @@ describe("migrate", () => {
     const db = createConnection(":memory:");
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2043,11 +2086,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
@@ -2083,11 +2121,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings (
           id text PRIMARY KEY NOT NULL,
           caffeinate integer DEFAULT false NOT NULL,
@@ -2125,11 +2158,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2154,11 +2182,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2183,11 +2206,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2230,11 +2248,6 @@ describe("migrate", () => {
 
     try {
       db.$client.exec(`
-        CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
         CREATE TABLE app_settings_values (
           key text PRIMARY KEY NOT NULL,
           value text NOT NULL,
@@ -2263,11 +2276,6 @@ describe("migrate", () => {
   });
 
   const ONBOARDING_STAMP_FIXTURE = `
-    CREATE TABLE system_experiments (
-          key text PRIMARY KEY NOT NULL,
-          value integer NOT NULL,
-          updated_at integer NOT NULL
-        );
     CREATE TABLE app_settings_values (
       key text PRIMARY KEY NOT NULL,
       value text NOT NULL,
