@@ -95,6 +95,10 @@ function browseTabs(): { tabs: string[]; activePluginId: string | null } {
   };
 }
 
+vi.mock("@/components/ScreenPaintSignal", () => ({
+  ScreenPaintSignal: () => null,
+}));
+
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -1477,6 +1481,13 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(screen.getByRole("textbox", { name: searchLabel })).toBe(search);
 
+      const detailLocation = installed
+        ? "/plugins/github?view=installed&query=Local+GitHub"
+        : "/plugins/github";
+      await waitFor(() => {
+        expect(screen.getByTestId("location").textContent).toBe(detailLocation);
+      });
+
       fireEvent.click(
         screen.getByRole("button", { name: `Close ${pluginName}` }),
       );
@@ -1496,9 +1507,7 @@ describe("BB Official plugin detail routing", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
       await waitFor(() => {
-        expect(screen.getByTestId("location").textContent).toBe(
-          installed ? "/plugins/github?view=installed" : "/plugins/github",
-        );
+        expect(screen.getByTestId("location").textContent).toBe(detailLocation);
       });
     },
   );
