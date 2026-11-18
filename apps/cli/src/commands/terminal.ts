@@ -14,6 +14,7 @@ import {
 } from "@bb/server-contract";
 import { action, CliExitError, CliUsageError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { reportCommandResult } from "../command-result.js";
 import { terminalScopeHint } from "../context-hints.js";
 import { durationHelp, parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
@@ -477,8 +478,24 @@ export function registerTerminalCommands(
           terminalId,
           mode: opts.ifClean ? "if-clean" : "force",
         });
-        if (outputJson(opts, session)) return;
-        console.log(`Closed terminal ${terminalId}`);
+        reportCommandResult(
+          opts,
+          session,
+          session.status === "exited"
+            ? { text: [`Closed terminal ${terminalId}`], failure: null }
+            : {
+                text: [],
+                failure: {
+                  message: opts.ifClean
+                    ? `Terminal ${terminalId} was left open because it received user input`
+                    : `Terminal ${terminalId} is still ${session.status}`,
+                  code: "terminal_not_closed",
+                  hint: opts.ifClean
+                    ? `Close it anyway with bb terminal close ${terminalId}.`
+                    : null,
+                },
+              },
+        );
       }),
     );
 

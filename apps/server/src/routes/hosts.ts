@@ -28,6 +28,7 @@ import { resolveBridgeLaunchForProviderId } from "../services/system/provider-br
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
+import { errorMessage } from "../services/lib/error-log-fields.js";
 import {
   getGateAuthKind,
   type RequestHeaderReader,
@@ -59,6 +60,7 @@ import {
   startMachineReconciliation,
   forceMachineRemoval,
   retryMachineCleanup,
+  readMachineRemovalOutcome,
   sweepProviderMachine,
 } from "../services/machines/provider-orchestration.js";
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
@@ -133,6 +135,11 @@ async function revokeConnectMachineCredential(
     deps.logger.error(
       { err: error, machineId },
       "Host was removed locally, but its bb connect machine credential could not be revoked. Revoke this machine manually from the getbb.app dashboard.",
+    );
+    throw new ApiError(
+      502,
+      "connect_credential_revoke_failed",
+      `The machine was removed from this server, but its bb connect credential could not be revoked: ${errorMessage(error)}. Revoke it from the getbb.app dashboard.`,
     );
   }
 }
@@ -296,16 +303,16 @@ export function registerHostRoutes(
 
   post(routes.retryCleanup, async (context) => {
     assertHostManagementAllowed(context);
-    await retryMachineCleanup(deps, context.req.param("id"));
-    return context.json({ ok: true as const });
+    return context.json(
+      await retryMachineCleanup(deps, context.req.param("id")),
+    );
   });
 
   del(routes.delete, async (context, query) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
     if (query.force === "true") {
-      await forceMachineRemoval(deps, hostId);
-      return context.json({ ok: true as const });
+      return context.json(await forceMachineRemoval(deps, hostId));
     }
     const host = requireMutableHost(deps, hostId);
     if (resolvePrimaryHostId(deps) === hostId) {
@@ -320,7 +327,7 @@ export function registerHostRoutes(
       requestMachineRemoval(deps, hostId);
       settleRemovedHostWork(deps, { hostId });
       await sweepProviderMachine(deps, hostId);
-      return context.json({ ok: true });
+      return context.json(readMachineRemovalOutcome(deps, hostId));
     }
 
     await serverAccess.release(deps, { key: hostId, hostId });
@@ -344,7 +351,7 @@ export function registerHostRoutes(
         host.connectMachineId,
       );
     }
-    return context.json({ ok: true });
+    return context.json({ ok: true as const, status: "removed" as const });
   });
 
   get(routes.discoveredRepos, async (context) => {

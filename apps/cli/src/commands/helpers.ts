@@ -19,7 +19,36 @@ export interface JsonOutputOptions {
   json?: boolean;
 }
 
-export function outputJson(opts: JsonOutputOptions, data: unknown): boolean {
+type Deeper<Depth extends readonly unknown[]> = [...Depth, unknown];
+
+type CarriesFailureFlag<
+  T,
+  Depth extends readonly unknown[] = [],
+> = Depth["length"] extends 5
+  ? false
+  : T extends readonly (infer Item)[]
+    ? CarriesFailureFlag<Item, Deeper<Depth>>
+    : T extends object
+      ? {
+          [K in keyof T]-?: K extends "ok" | "success"
+            ? false extends T[K]
+              ? true
+              : false
+            : CarriesFailureFlag<T[K], Deeper<Depth>>;
+        }[keyof T]
+      : false;
+
+export type WithoutFailureFlag<T> =
+  true extends CarriesFailureFlag<T>
+    ? {
+        "This result can report a failure; print it with reportCommandResult": never;
+      }
+    : unknown;
+
+export function outputJson<const T>(
+  opts: JsonOutputOptions,
+  data: T & WithoutFailureFlag<T>,
+): boolean {
   if (!opts.json) return false;
   console.log(JSON.stringify(data, null, 2));
   noteJsonPayloadWritten();

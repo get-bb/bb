@@ -3,6 +3,7 @@ import { Command } from "commander";
 import type { PluginMarketplace } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { reportCommandResult } from "../command-result.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
@@ -139,18 +140,22 @@ export function registerMarketplaceCommands(
         const results = await createCliBbSdk(
           getUrl(),
         ).plugins.marketplaces.refresh(name === undefined ? {} : { name });
-        if (opts.json) {
-          outputJson(opts, results);
-          return;
-        }
-        for (const result of results) {
-          console.log(
+        const failed = results.filter((result) => !result.ok);
+        reportCommandResult(opts, results, {
+          text: results.map((result) =>
             result.ok
               ? `${result.name}: ${result.marketplace.entryCount} entries`
               : `${result.name}: refresh failed (${result.error ?? "unknown error"}); keeping the last catalog`,
-          );
-        }
-        if (results.some((result) => !result.ok)) process.exit(1);
+          ),
+          failure:
+            failed.length === 0
+              ? null
+              : {
+                  message: `${failed.length} marketplace refresh${failed.length === 1 ? "" : "es"} failed: ${failed.map((result) => result.name).join(", ")}`,
+                  code: "marketplace_refresh_failed",
+                  hint: null,
+                },
+        });
       }),
     );
 

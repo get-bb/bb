@@ -31,6 +31,7 @@ import type {
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { reportCommandResult } from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
@@ -468,15 +469,25 @@ export function registerSettingsCommands(
         const result = await createCliBbSdk(getUrl()).system.testAiService({
           task: task.data,
         });
-        if (outputJson(opts, result)) return;
-        if (result.ok) {
-          console.log(
-            `${result.displayName} (${result.durationMs}ms): ${result.text}`,
-          );
-          return;
-        }
-        console.log(`Failed after ${result.durationMs}ms: ${result.message}`);
-        process.exitCode = 1;
+        reportCommandResult(
+          opts,
+          result,
+          result.ok
+            ? {
+                text: [
+                  `${result.displayName} (${result.durationMs}ms): ${result.text}`,
+                ],
+                failure: null,
+              }
+            : {
+                text: [],
+                failure: {
+                  message: `Failed after ${result.durationMs}ms: ${result.message}`,
+                  code: "ai_service_test_failed",
+                  hint: null,
+                },
+              },
+        );
       }),
     );
 

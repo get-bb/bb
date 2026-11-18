@@ -11,6 +11,7 @@ import {
 import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { reportCommandResult } from "../../command-result.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   BbHttpError,
@@ -655,13 +656,39 @@ export function registerActionsCommands(
       ),
     );
 
+  parent
+    .command("stop [id]")
+    .description("Stop work and release the loaded agent runtime")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const result = await createCliBbSdk(getUrl()).threads.stop({
+          threadId,
+        });
+        const stillRunning =
+          result.status === "starting" ||
+          result.status === "active" ||
+          result.status === "stopping";
+        reportCommandResult(
+          opts,
+          { ok: !stillRunning, threadId, status: result.status },
+          stillRunning
+            ? {
+                text: [],
+                failure: {
+                  message: `Thread ${threadId} is still ${result.status}; the stop did not finish`,
+                  code: "thread_stop_unfinished",
+                  hint: `Check it with bb thread show ${threadId}, then run bb thread stop ${threadId} again.`,
+                },
+              }
+            : { text: [`Thread ${threadId} stopped`], failure: null },
+        );
+      }),
+    );
+
   for (const { name, description, method, done } of [
-    {
-      name: "stop",
-      description: "Stop work and release the loaded agent runtime",
-      method: "stop",
-      done: "stopped",
-    },
     {
       name: "compact",
       description: "Request compaction of an idle or errored thread's context",

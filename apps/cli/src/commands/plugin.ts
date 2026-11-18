@@ -34,6 +34,7 @@ import {
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
 import { action, CliExitError } from "../action.js";
+import { reportCommandResult } from "../command-result.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import { resolveContextThreadId } from "../context-env.js";
 import {
@@ -623,14 +624,36 @@ async function changePluginRange(args: {
       ? `${args.id}: now follows ${args.range}; updated and activated ${mutation.from.display} → ${mutation.to?.display ?? args.range}.`
       : `${args.id}: ${mutation.outcome}${mutation.detail ? ` — ${mutation.detail}` : ""}; the saved range is unchanged.`,
   );
+  if (mutation.outcome === "rolled-back") {
+    throw pluginUpdateRolledBackError([args.id]);
+  }
+}
+
+function pluginUpdateRolledBackError(
+  pluginIds: readonly string[],
+): CliExitError {
+  return new CliExitError(
+    `The update of ${pluginIds.join(", ")} failed to start and was rolled back to the previous version.`,
+    1,
+    { code: "plugin_update_rolled_back", hint: null },
+  );
 }
 
 function outputMutationJson(
   opts: JsonOutputOptions,
-  result: { ok: boolean },
+  result: { ok: boolean; error?: string },
 ): boolean {
-  if (!outputJson(opts, result)) return false;
-  if (!result.ok) process.exit(1);
+  if (!opts.json) return false;
+  reportCommandResult(opts, result, {
+    text: [],
+    failure: result.ok
+      ? null
+      : {
+          message: result.error ?? "Command failed",
+          code: "plugin_command_failed",
+          hint: null,
+        },
+  });
   return true;
 }
 
@@ -1332,13 +1355,30 @@ export function registerPluginCommands(
             request.kind === "source"
               ? await plugins.install(request.args)
               : await plugins.catalog.install(request.args);
-          const result = { ok: true as const, plugin };
-          if (opts.json) {
-            outputJson(opts, result);
-            return;
-          }
-          console.log("Installed:");
-          printPlugin(plugin);
+          const loadError =
+            plugin.status === "error"
+              ? (plugin.statusDetail ?? `plugin "${plugin.id}" failed to load`)
+              : null;
+          reportCommandResult(
+            opts,
+            loadError === null
+              ? { ok: true as const, plugin }
+              : { ok: false as const, plugin, error: loadError },
+            {
+              text: () => {
+                console.log("Installed:");
+                printPlugin(plugin);
+              },
+              failure:
+                loadError === null
+                  ? null
+                  : {
+                      message: loadError,
+                      code: "plugin_load_failed",
+                      hint: null,
+                    },
+            },
+          );
         },
       ),
     );
@@ -1544,6 +1584,7 @@ export function registerPluginCommands(
               sources.set(entry.id, entry.sourceDisplay);
           }
 
+          const rolledBack: string[] = [];
           for (const result of results) {
             const source = sources.get(result.id) ?? "unknown source";
             const detail = updateDetail(result);
@@ -1612,7 +1653,10 @@ export function registerPluginCommands(
                 `${result.id}: ${mutation.outcome}${mutation.detail ? ` — ${mutation.detail}` : ""}`,
               );
             }
+            if (mutation.outcome === "rolled-back") rolledBack.push(result.id);
           }
+          if (rolledBack.length > 0)
+            throw pluginUpdateRolledBackError(rolledBack);
         },
       ),
     );

@@ -339,7 +339,10 @@ describe("MachineSettingsView", () => {
         },
       },
     ]);
-    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({
+      ok: true,
+      status: "removed",
+    });
     stubSupportingFetches();
     renderView();
 

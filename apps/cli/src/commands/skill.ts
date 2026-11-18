@@ -5,6 +5,7 @@ import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { reportCommandResult } from "../command-result.js";
 import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
@@ -458,21 +459,27 @@ export function registerSkillCommands(
           throw new Error("No connected machine to install the skills onto.");
         }
         const result = await sdk.system.installCliSkills({ hostIds });
-        if (outputJson(options, result)) return;
-        for (const entry of result.results) {
-          if (!entry.ok) {
-            console.error(`${entry.hostName}: ${entry.errorMessage}`);
-            continue;
-          }
-          for (const installation of entry.installations) {
-            console.log(
-              `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
-            );
-          }
-        }
-        if (result.results.some((entry) => !entry.ok)) {
-          throw new Error("The install failed on at least one machine.");
-        }
+        const failures = result.results.flatMap((entry) =>
+          entry.ok ? [] : [`${entry.hostName}: ${entry.errorMessage}`],
+        );
+        reportCommandResult(options, result, {
+          text: result.results.flatMap((entry) =>
+            entry.ok
+              ? entry.installations.map(
+                  (installation) =>
+                    `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
+                )
+              : [],
+          ),
+          failure:
+            failures.length === 0
+              ? null
+              : {
+                  message: `The install failed on at least one machine.\n${failures.join("\n")}`,
+                  code: "cli_skills_install_failed",
+                  hint: null,
+                },
+        });
       }),
     );
 }

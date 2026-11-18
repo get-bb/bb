@@ -195,6 +195,21 @@ describe("bb marketplace", () => {
     expect(output).toContain("keeping the last catalog");
   });
 
+  it("exits non-zero for a failed refresh under --json too", async () => {
+    const results = [
+      { name: "acme-plugins", ok: false, error: "HTTP 503", marketplace: acme },
+    ];
+    vi.mocked(fetch).mockResolvedValueOnce(json({ results }));
+
+    await expect(
+      runCommand(["marketplace", "refresh", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toMatchObject([{ name: "acme-plugins", ok: false, error: "HTTP 503" }]);
+  });
+
   it("names the plugins a removal kept as direct installs", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ ok: true, convertedPluginIds: ["notes", "status"] }),

@@ -456,7 +456,7 @@ describe("bb thread action command output", () => {
   ])(
     "bb thread %s posts its action without reading the thread first",
     async (command, route, output) => {
-      const post = vi.fn(async () => ({ ok: true }));
+      const post = vi.fn(async () => ({ ok: true, status: "idle" }));
       stubServerApi({ [`v1.threads.:id.${route}.$post`]: post });
 
       await runCommand(["thread", command, "thread-action"], register);
@@ -465,6 +465,26 @@ describe("bb thread action command output", () => {
       expect(post).toHaveBeenCalledWith({ param: { id: "thread-action" } });
       expect(collectLogLines(vi.mocked(console.log))).toContain(
         `Thread thread-action ${output}`,
+      );
+    },
+  );
+
+  it.each(["active", "stopping"] as const)(
+    "bb thread stop fails when the thread is still %s",
+    async (status) => {
+      stubServerApi({
+        "v1.threads.:id.stop.$post": vi.fn(async () => ({ ok: true, status })),
+      });
+
+      await expect(
+        runCommand(["thread", "stop", "thread-action", "--json"], register),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(
+        JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+      ).toEqual({ ok: false, threadId: "thread-action", status });
+      expect(console.error).toHaveBeenCalledWith(
+        `Error: Thread thread-action is still ${status}; the stop did not finish`,
       );
     },
   );

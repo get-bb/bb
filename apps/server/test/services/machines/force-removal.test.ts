@@ -173,7 +173,12 @@ it("finishes removing a machine whose workspace cleanup cannot reach it", async 
       destroyedAt: null,
     });
     const removals = captureEnvironmentRemovals();
-    await retryMachineCleanup(harness.deps, target.host.id);
+    await expect(
+      retryMachineCleanup(harness.deps, target.host.id),
+    ).rejects.toMatchObject({
+      status: 502,
+      body: { code: "machine_teardown_failed" },
+    });
     expect(getHost(harness.db, target.host.id)).toMatchObject({
       phase: "removing",
       teardownStatus: "failed",
@@ -251,7 +256,7 @@ it("exposes forced removal as a forced machine delete", async () =>
       { method: "DELETE" },
     );
     expect(response.status).toBe(200);
-    expect(await readJson(response)).toEqual({ ok: true });
+    expect(await readJson(response)).toEqual({ ok: true, status: "removed" });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
     const missing = await harness.app.request(
@@ -312,7 +317,15 @@ it("leaves a provider removal failure retryable after skipping cleanup", async (
       },
     );
     await strandRemoval(harness, target.host.id, target.session.id);
-    await forceMachineRemoval(harness.deps, target.host.id);
+    await expect(
+      forceMachineRemoval(harness.deps, target.host.id),
+    ).rejects.toMatchObject({
+      status: 502,
+      body: {
+        code: "machine_teardown_failed",
+        message: "Provider API unavailable",
+      },
+    });
     expect(getHost(harness.db, target.host.id)).toMatchObject({
       phase: "removing",
       teardownStatus: "failed",
@@ -329,7 +342,9 @@ it("leaves a provider removal failure retryable after skipping cleanup", async (
       body: { code: "machine_cleanup_not_blocked" },
     });
     providerDown = false;
-    await retryMachineCleanup(harness.deps, target.host.id);
+    await expect(
+      retryMachineCleanup(harness.deps, target.host.id),
+    ).resolves.toEqual({ ok: true, status: "removed" });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledTimes(2);
   }));

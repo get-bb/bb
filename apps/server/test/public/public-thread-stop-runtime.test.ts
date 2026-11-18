@@ -391,7 +391,12 @@ describe("thread runtime stop", () => {
         errorMessage: "Test interrupt failure",
       });
 
-      expect((await responsePromise).status).toBe(200);
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        status: "stopping",
+      });
       expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
       expect(
         listEvents(harness.db, { threadId: thread.id }).find(
@@ -1345,7 +1350,10 @@ describe("thread runtime stop", () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({ ok: true });
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        status: "idle",
+      });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
     });
   });

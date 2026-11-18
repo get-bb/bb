@@ -447,7 +447,11 @@ export function registerThreadActionRoutes(
       thread,
     });
     await stopThreadForCurrentState(deps, thread, environment);
-    return context.json({ ok: true });
+    const stopped = getThread(deps.db, thread.id);
+    if (stopped === null) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    return context.json({ ok: true as const, status: stopped.status });
   });
 
   post(routes.compact, async (context) => {

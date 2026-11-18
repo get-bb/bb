@@ -233,6 +233,81 @@ describe("bb updates command output", () => {
     ]);
   });
 
+  it("bb updates apply --json exits non-zero when an update fails", async () => {
+    const job = {
+      id: "job_1",
+      hostId: hosts[0].id,
+      provider: "codex",
+      actionKind: "update",
+      startedAt: 1,
+    };
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () =>
+        providerStatus({ codexNeedsUpdate: true }),
+      ),
+      "v1.hosts.:id.provider-clis.install-jobs.$post": vi.fn(async () => ({
+        job: { ...job, state: "running" },
+      })),
+      "v1.hosts.:id.provider-clis.install-jobs.:jobId.$get": vi.fn(
+        async () => ({
+          job: {
+            ...job,
+            state: "completed",
+            finishedAt: 2,
+            events: [
+              {
+                type: "completed",
+                provider: "codex",
+                success: false,
+                exitCode: 1,
+                signal: null,
+              },
+            ],
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      runCommand(["updates", "apply", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual({
+      results: [
+        {
+          hostId: hosts[0].id,
+          hostName: hosts[0].name,
+          provider: "codex",
+          success: false,
+          message: "The install exited with code 1",
+        },
+      ],
+    });
+  });
+
+  it("bb updates apply does not call machines it could not check up to date", async () => {
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () => {
+        throw new Error("status timed out");
+      }),
+    });
+
+    await expect(runCommand(["updates", "apply"], register)).rejects.toThrow(
+      "process.exit:1",
+    );
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "No updates bb can apply on the machines it could check.",
+    ]);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Couldn't check 1 machine for updates."),
+    );
+  });
+
   it("bb updates apply reports when everything is current", async () => {
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),

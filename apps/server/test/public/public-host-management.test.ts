@@ -645,7 +645,7 @@ describe("public host management", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({ ok: true });
+      expect(await readJson(response)).toEqual({ ok: true, status: "removed" });
       await expect(
         harness.deps.machineAuth.verifyDaemonHostKey(hostKey),
       ).resolves.toBeNull();
@@ -747,7 +747,10 @@ describe("public host management", () => {
         });
 
         expect(removed.status).toBe(200);
-        expect(await readJson(removed)).toEqual({ ok: true });
+        expect(await readJson(removed)).toEqual({
+          ok: true,
+          status: "removed",
+        });
         expect(remove).toHaveBeenCalledOnce();
         expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
         expect(getEnvironment(harness.db, environment.id)?.status).toBe(
@@ -773,6 +776,51 @@ describe("public host management", () => {
       });
     },
   );
+
+  it("fails a removal whose provider teardown fails and keeps the machine retryable", async () => {
+    await withTestHarness(async (harness) => {
+      let providerDown = true;
+      const remove = vi.fn(async () =>
+        providerDown
+          ? { status: "failed" as const, message: "Provider API unavailable" }
+          : { status: "removed" as const },
+      );
+      installMachineProvider({ remove });
+      const primary = seedHost(harness.deps, { id: "host_primary" });
+      seedPrimaryHost(harness.deps, primary.id);
+      const host = seedHost(harness.deps, { id: "host_sandbox" });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        phase: "active",
+        resource: { allocation: "sandbox" },
+        type: "ephemeral",
+      });
+
+      const removed = await harness.app.request(`${API}/hosts/${host.id}`, {
+        method: "DELETE",
+      });
+
+      expect(removed.status).toBe(502);
+      expect(await readJson(removed)).toMatchObject({
+        code: "machine_teardown_failed",
+        message: "Provider API unavailable",
+      });
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        phase: "removing",
+        teardownStatus: "failed",
+        destroyedAt: null,
+      });
+
+      providerDown = false;
+      const retried = await harness.app.request(
+        `${API}/hosts/${host.id}/retry-cleanup`,
+        { method: "POST" },
+      );
+      expect(retried.status).toBe(200);
+      expect(await readJson(retried)).toEqual({ ok: true, status: "removed" });
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+    });
+  });
 
   it("deletes a removed host's stored provider model catalogs", async () => {
     await withTestHarness(async (harness) => {
@@ -895,6 +943,33 @@ describe("public host management", () => {
         { kind: "client" },
         null,
       );
+    });
+  }, 30_000);
+
+  it("fails a removal whose bb connect credential cannot be revoked", async () => {
+    await withTestHarness(async (harness) => {
+      const primary = seedHost(harness.deps, { id: "host_primary" });
+      seedPrimaryHost(harness.deps, primary.id);
+      const host = seedHost(harness.deps, {
+        connectMachineId: "machine-cloud-stuck",
+        id: "host_cloud_stuck",
+      });
+      await harness.pluginService.install("builtin:connect", { kind: "root" });
+      vi.spyOn(harness.pluginService, "invokeRpcHandler").mockResolvedValue({
+        ok: false,
+        error: { code: "handler_error", message: "getbb.app unreachable" },
+      });
+
+      const response = await harness.app.request(`${API}/hosts/${host.id}`, {
+        method: "DELETE",
+      });
+
+      expect(response.status).toBe(502);
+      expect(await readJson(response)).toMatchObject({
+        code: "connect_credential_revoke_failed",
+        message: expect.stringContaining("getbb.app unreachable"),
+      });
+      expect(getHost(harness.db, host.id)?.destroyedAt).not.toBeNull();
     });
   }, 30_000);
 });

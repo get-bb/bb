@@ -235,6 +235,7 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, failedHost]);
     vi.mocked(sdk.hosts.experimental_retryCleanup).mockResolvedValue({
       ok: true,
+      status: "removing",
     });
     stubSidebarBootstrapFetch();
     renderSection();
@@ -649,7 +650,10 @@ describe("MachinesSettingsSection", () => {
   it("removes a machine after confirmation", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
-    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({
+      ok: true,
+      status: "removed",
+    });
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -684,7 +688,10 @@ describe("MachinesSettingsSection", () => {
     };
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, strandedHost]);
-    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({
+      ok: true,
+      status: "removed",
+    });
     stubSidebarBootstrapFetch();
 
     renderSection();

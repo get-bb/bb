@@ -449,10 +449,15 @@ describe("bb plugin update commands", () => {
         }),
       );
 
-    await runCommand(["plugin", "update", "notes", "--yes"], register);
+    await expect(
+      runCommand(["plugin", "update", "notes", "--yes"], register),
+    ).rejects.toThrow("process.exit:1");
 
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "notes: rolled-back — activation failed; restored 1",
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: The update of notes failed to start and was rolled back to the previous version.",
     );
   });
 

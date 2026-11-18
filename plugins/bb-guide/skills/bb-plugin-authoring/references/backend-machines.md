@@ -147,7 +147,10 @@ By default it waits until the host is active; `wait: false` returns the
 creating host for polling with `bb.sdk.hosts.get`. `bb machine create`
 (`--no-wait`) and `bb machine show` are the CLI equivalents. Deleting the host
 (`bb.sdk.hosts.delete`, `bb machine remove`) cancels creation; closing a
-client or aborting its signal only stops following.
+client or aborting its signal only stops following. `hosts.delete` and
+`hosts.experimental_retryCleanup` resolve with `status: "removed"` or
+`"removing"`, and reject with `machine_teardown_failed` when the provider's
+removal fails; the host then stays removing and core retries it.
 
 With `wait: false` the manual enrollment command may not be ready yet. Poll
 `bb.sdk.hosts.experimental_getEnrollmentCommand({ hostId })` while the host

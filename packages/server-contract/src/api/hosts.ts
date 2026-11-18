@@ -133,6 +133,14 @@ export const hostActionResponseSchema = z
   .strict();
 export type HostActionResponse = z.infer<typeof hostActionResponseSchema>;
 
+export const hostRemovalResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    status: z.enum(["removed", "removing"]),
+  })
+  .strict();
+export type HostRemovalResponse = z.infer<typeof hostRemovalResponseSchema>;
+
 export const hostRetryUpdateResponseSchema = hostActionResponseSchema;
 export type HostRetryUpdateResponse = z.infer<
   typeof hostRetryUpdateResponseSchema

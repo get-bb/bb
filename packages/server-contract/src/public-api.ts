@@ -68,6 +68,7 @@ import {
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
   type ThreadQueuedMessage,
+  type ThreadStatus,
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
@@ -130,7 +131,7 @@ import {
   type HostDeleteQuery,
   type HostProviderCliStatusQuery,
   type EnvironmentCleanupQuery,
-  type HostActionResponse,
+  type HostRemovalResponse,
   type HostCloneDefaultPathQuery,
   type HostCloneDefaultPathResponse,
   type HostFileListRequest,
@@ -949,7 +950,7 @@ export const publicApiRoutes = {
       path: "/hosts/:id/retry-cleanup",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<HostActionResponse>(),
+      response: jsonResponse<HostRemovalResponse>(),
     }),
     delete: defineRoute({
       path: "/hosts/:id",
@@ -957,7 +958,7 @@ export const publicApiRoutes = {
       request: optionalQueryRequest<PathId, HostDeleteQuery>(
         hostDeleteQuerySchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<HostRemovalResponse>(),
     }),
     directory: defineRoute({
       path: "/hosts/:id/directory",
@@ -1591,7 +1592,7 @@ export const publicApiRoutes = {
       path: "/threads/:id/stop",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<{ ok: true; status: ThreadStatus }>(),
     }),
     compact: defineRoute({
       path: "/threads/:id/compact",

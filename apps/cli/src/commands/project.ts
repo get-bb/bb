@@ -698,7 +698,7 @@ export function registerProjectCommands(
 
           const sdk = createCliBbSdk(getUrl());
           await sdk.projects.sources.delete({ projectId, sourceId });
-          const result = { ok: true, projectId, sourceId };
+          const result = { ok: true as const, projectId, sourceId };
           if (outputJson(opts, result)) return;
           console.log(`Project source ${sourceId} deleted`);
         },

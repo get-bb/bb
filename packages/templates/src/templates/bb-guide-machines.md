@@ -92,7 +92,12 @@ explicit request, not a timer: for a machine core records as suspended, it runs
 the provider's save-and-stop operation, and the CLI polls until completion.
 Active machines and lifecycle operations already in progress are left alone.
 Retry cleanup is accepted only for a retiring machine whose provider teardown
-failed. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
+failed. `bb machine remove` and `bb machine retry-cleanup`
+(`hosts.delete`, `hosts.experimental_retryCleanup`) answer `status: "removed"`
+once the machine is gone and `"removing"` while teardown is still running. When
+the provider teardown or environment cleanup fails they fail with
+`machine_teardown_failed` (HTTP 502) and exit non-zero; the machine stays
+removing and bb keeps retrying the teardown. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
 finishes removing a persistent machine that is disconnected and whose
 environment cleanup failed, for example because the computer no longer exists:
 it marks the machine's environments destroyed without running their teardown on
@@ -174,7 +179,10 @@ update is deferred, cancelled, or fails they go out at once.
 that hosting app through its native updater. It never updates the desktop you
 are viewing from unless that desktop hosts this server.
 
-`bb updates apply` covers provider CLIs only. `bb updates app apply` updates
+`bb updates apply` covers provider CLIs only. It exits non-zero, with or
+without `--json`, when an install fails or a connected machine's provider
+status cannot be read; `bb machine provider-cli install` exits non-zero when
+its install fails. `bb updates app apply` updates
 bb itself when it was started from `npx bb-app` (or a global `bb-app`) without
 `--no-in-app-updates`: it installs the new version next to the running one and
 restarts into it. It does not roll back if the new version fails to start.
@@ -246,7 +254,9 @@ fresh provider availability and the effective selection; failed or timed-out
 checks report unavailable. Machines use this access for ongoing runtime
 requests, including account-pool endpoints. A machine on bb connect access holds
 a getbb.app machine credential that `bb machine remove` revokes; if that
-revocation fails, revoke the machine in the getbb.app dashboard.
+revocation fails, the machine is still removed from this server but the removal
+fails with `connect_credential_revoke_failed`, so revoke the machine in the
+getbb.app dashboard.
 
 Remote access through getbb.app comes from the bundled bb account and Connect
 plugins: `bb account login|status|logout` signs this server in (bb-account

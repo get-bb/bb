@@ -101,7 +101,10 @@ function stubManualLaunch(configure?: () => void) {
     expiresAt: Date.now() + 60_000,
   });
   vi.mocked(sdk.hosts.get).mockImplementation(() => new Promise(() => {}));
-  vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.hosts.delete).mockResolvedValue({
+    ok: true,
+    status: "removed",
+  });
   configure?.();
 }
 
