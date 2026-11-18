@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import path from "node:path";
 import { Command } from "commander";
 import { isRawThreadId } from "@bb/domain";
@@ -9,11 +10,7 @@ import {
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { requireThreadId, resolveContextThreadId } from "../../context-env.js";
-import {
-  outputJson,
-  printThreadContextLabel,
-  type ResolvedId,
-} from "../helpers.js";
+import { printThreadContextLabel, type ResolvedId } from "../helpers.js";
 
 interface ThreadOpenCommandOptions {
   line?: string;

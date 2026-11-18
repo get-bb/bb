@@ -31,6 +31,7 @@ import {
   updateHost,
 } from "@bb/db";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import type { HostRemovalResponse } from "@bb/server-contract";
 import type {
   PluginMachineProviderCreateResult,
   PluginMachineProviderResource,
@@ -38,6 +39,10 @@ import type {
 } from "@get-bb/plugin-sdk/machine-provider";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
 import { ApiError } from "../../errors.js";
+import {
+  operationComplete,
+  operationInProgress,
+} from "../lib/operation-response.js";
 import type { ThreadProvisioningDeps } from "../threads/thread-provisioning-environment.js";
 import { decideWithinBox } from "../threads/dispatch-hooks.js";
 import {
@@ -1103,10 +1108,28 @@ export function requestAutomaticMachineRemoval(
   return requestMachineRemoval(deps, hostId);
 }
 
+export function readMachineRemovalOutcome(
+  deps: Deps,
+  hostId: string,
+): HostRemovalResponse {
+  const row = getHost(deps.db, hostId);
+  if (row === null || row.destroyedAt !== null) {
+    return { ...operationComplete(), warnings: [] };
+  }
+  if (row.teardownStatus === "failed") {
+    throw new ApiError(
+      502,
+      "machine_teardown_failed",
+      row.statusMessage ?? "Machine teardown failed",
+    );
+  }
+  return { ...operationInProgress(), warnings: [] };
+}
+
 export async function retryMachineCleanup(
   deps: Deps,
   hostId: string,
-): Promise<void> {
+): Promise<HostRemovalResponse> {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) {
     throw new ApiError(404, "host_not_found", "Host not found");
@@ -1142,6 +1165,7 @@ export async function retryMachineCleanup(
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   await sweepProviderMachine(deps, hostId);
+  return readMachineRemovalOutcome(deps, hostId);
 }
 
 function assertForcedRemovalAllowed(deps: Deps, row: MachineHostRow): void {
@@ -1182,7 +1206,7 @@ function assertForcedRemovalAllowed(deps: Deps, row: MachineHostRow): void {
 export async function forceMachineRemoval(
   deps: Deps,
   hostId: string,
-): Promise<void> {
+): Promise<HostRemovalResponse> {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) {
     throw new ApiError(404, "host_not_found", "Host not found");
@@ -1209,6 +1233,7 @@ export async function forceMachineRemoval(
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   await sweepProviderMachine(deps, hostId);
+  return readMachineRemovalOutcome(deps, hostId);
 }
 
 async function removeMachine(deps: Deps, hostId: string): Promise<void> {

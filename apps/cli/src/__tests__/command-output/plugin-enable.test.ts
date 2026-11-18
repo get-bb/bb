@@ -62,7 +62,7 @@ describe("bb plugin enable", () => {
       "  source: path:/plugins/boom",
     ]);
     expect(console.error).toHaveBeenCalledWith(
-      'plugin "boom" did not start: boom',
+      'Error: plugin "boom" did not start: boom',
     );
   });
 

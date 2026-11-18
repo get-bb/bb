@@ -356,7 +356,10 @@ describe("ProjectsSettingsSection", () => {
 
   it("deletes a project after confirmation", async () => {
     stubSidebarBootstrapFetch(projects);
-    vi.mocked(sdk.projects.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.projects.delete).mockResolvedValue({
+      ok: true,
+      progress: "complete",
+    });
 
     renderSection();
     await openProjectMenu("ingest");

@@ -1,9 +1,5 @@
 import { createApiClient } from "@bb/server-contract";
-import {
-  readJsonResponse,
-  readVoidResponse,
-  resolveResponse,
-} from "./response.js";
+import { readJsonResponse, resolveResponse } from "./response.js";
 import type { BbSdkTransport, CreateHttpTransportArgs } from "./transport.js";
 
 const SAME_ORIGIN_BASE_URL = "";
@@ -23,7 +19,6 @@ export function createHttpTransport(
     runtime: args.runtime,
     websocket: args.websocket,
     readJson: readJsonResponse,
-    readVoid: readVoidResponse,
     resolve: resolveResponse,
   };
 }

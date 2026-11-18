@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Host } from "@bb/domain";
 import {
   collectLogLines,
   runCommand,
@@ -367,6 +368,56 @@ describe("bb skill commands", () => {
 
     expect(vi.mocked(console.log)).toHaveBeenCalledWith(
       JSON.stringify({ skill: { ...entry, stars: 27_053 }, detail }, null, 2),
+    );
+  });
+
+  it("bb skill install-cli-skills --json exits non-zero when a machine fails", async () => {
+    const result = {
+      results: [
+        {
+          ok: false,
+          hostId: "host-1",
+          hostName: "laptop",
+          errorMessage: "disk full",
+        },
+      ],
+    };
+    const host: Host = {
+      id: "host-1",
+      name: "laptop",
+      type: "persistent",
+      status: "connected",
+      machineProviderId: null,
+      lifecycle: {
+        phase: "active",
+        suspendedAt: null,
+        message: null,
+        pendingLog: "",
+        teardown: null,
+      },
+      maxPermissionMode: "full",
+      lastSeenAt: 1,
+      lastRejectedProtocolVersion: null,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [host]),
+      "v1.system.cli-skills.install.$post": vi.fn(async () => result),
+    });
+
+    await expect(
+      runCommand(
+        ["skill", "install-cli-skills", "--machine", "host-1", "--json"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(result);
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: The install failed on at least one machine.\nlaptop: disk full",
     );
   });
 });

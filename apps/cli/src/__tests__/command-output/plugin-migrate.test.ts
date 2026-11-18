@@ -312,7 +312,9 @@ describe("legacy vendored SDK layout", () => {
         ),
       ).rejects.toThrow("process.exit:1");
 
-      expect(vi.mocked(console.error)).toHaveBeenCalledWith(message);
+      expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+        `Error: ${message}`,
+      );
       expect(await readFile(declarationsPath, "utf8")).toBe(before);
     },
   );
@@ -448,7 +450,9 @@ describe("bb plugin types on a package-layout plugin", () => {
       await expect(
         runCommand(["plugin", "types", rootDir, "--check"], register),
       ).rejects.toThrow("process.exit:1");
-      expect(vi.mocked(console.error).mock.calls.flat()).toContain(check);
+      expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+        check,
+      );
 
       await runCommand(["plugin", "types", rootDir], register);
 
