@@ -143,6 +143,40 @@ describe("setup guide agent checks", () => {
     });
   });
 
+  it("rechecks one agent instead of repeating its failed connect-time check", async () => {
+    await withTestHarness(async (harness) => {
+      let claudeAttempts = 0;
+      const { hostId, checkedProviderIds } = connectHost(
+        harness,
+        (providerId) => {
+          if (providerId !== "claude-code") return healthAnswer(providerId);
+          claudeAttempts += 1;
+          return claudeAttempts === 1
+            ? {
+                ok: false,
+                errorCode: "command_failed",
+                errorMessage: "health check failed",
+              }
+            : healthAnswer(providerId);
+        },
+      );
+
+      await runSetupGuideAgentChecks(harness.deps, hostId);
+      const checkedBefore = checkedProviderIds().length;
+      const result = await getProviderStates(harness.deps, {
+        hostId,
+        providerId: "claude-code",
+      });
+
+      expect(result.providers).toEqual([
+        expect.objectContaining({ providerId: "claude-code", status: "ready" }),
+      ]);
+      expect(checkedProviderIds().slice(checkedBefore)).toEqual([
+        "claude-code",
+      ]);
+    });
+  });
+
   it("checks a single agent directly when no connect-time checks are held", async () => {
     await withTestHarness(async (harness) => {
       const { hostId, checkedProviderIds } = connectHost(harness);

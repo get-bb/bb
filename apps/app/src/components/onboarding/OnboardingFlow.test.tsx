@@ -7,7 +7,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import {
   MemoryRouter,
   useNavigate,
@@ -36,6 +38,10 @@ import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
 
 const sdkCalls = vi.hoisted(() => [] as string[]);
+const providerStateAnswers = vi.hoisted(
+  () => new Map<string, () => Promise<unknown>>(),
+);
+const providerStateCalls = vi.hoisted(() => [] as (string | undefined)[]);
 
 vi.mock("@/lib/sdk", () => ({
   sdk: new Proxy(
@@ -45,8 +51,14 @@ vi.mock("@/lib/sdk", () => ({
         new Proxy(
           {},
           {
-            get: (_area, method) => () => {
-              sdkCalls.push(`${String(area)}.${String(method)}`);
+            get: (_area, method) => (args?: { providerId?: string }) => {
+              const call = `${String(area)}.${String(method)}`;
+              sdkCalls.push(call);
+              if (call === "system.providerStates") {
+                providerStateCalls.push(args?.providerId);
+                const answer = providerStateAnswers.get(args?.providerId ?? "");
+                if (answer !== undefined) return answer();
+              }
               return new Promise<never>(() => {});
             },
           },
@@ -92,19 +104,66 @@ function agentLoadFailures(): unknown[] {
     );
 }
 
+function catalogEntry(id: string): SystemProviderCatalogEntry {
+  return {
+    id,
+    displayName: id === "claude-code" ? "Claude Code" : "Codex",
+    pluginId: `provider-${id}`,
+    pluginName: id,
+    pluginEnabled: true,
+    enabled: true,
+    available: true,
+    logoUrl: null,
+    info: null,
+  };
+}
+
+function providerState(
+  providerId: string,
+  overrides: Partial<SystemProviderState> = {},
+): SystemProviderState {
+  return {
+    providerId,
+    displayName: providerId === "claude-code" ? "Claude Code" : "Codex",
+    status: "ready",
+    statusMessage: null,
+    accountEmail: null,
+    planLabel: null,
+    installedVersion: "2.1.0",
+    minimumSupportedVersion: null,
+    canInstall: true,
+    canUpdate: true,
+    loginCommand: "claude auth login",
+    localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
+    ...overrides,
+  };
+}
+
 function renderFlow({
   initialStep,
   onClose = vi.fn(),
+  catalog,
+  hostStatus = "connected",
 }: {
   initialStep: OnboardingStepId;
   onClose?: () => void;
+  catalog?: string[];
+  hostStatus?: "connected" | "disconnected";
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient.setQueryData(hostsQueryOptions(false).queryKey, [
-    makeHost({ id: "host_1", name: "bee" }),
+    makeHost({ id: "host_1", name: "bee", status: hostStatus }),
   ]);
+  if (catalog !== undefined) {
+    queryClient.setQueryData(
+      systemProviderCatalogQueryKey(),
+      catalog.map(catalogEntry),
+    );
+  }
   const flow = (closing: boolean) => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -126,6 +185,12 @@ function renderFlow({
     setClosing: (closing: boolean) => view.rerender(flow(closing)),
     unmount: view.unmount,
   };
+}
+
+function agentRow(id: string): HTMLElement {
+  const row = document.querySelector(`[data-agent-id="${id}"]`);
+  if (!(row instanceof HTMLElement)) throw new Error(`No row for ${id}`);
+  return row;
 }
 
 function button(name: RegExp): HTMLButtonElement {
@@ -185,6 +250,8 @@ afterEach(() => {
   router.navigate = null;
   vi.useRealTimers();
   sdkCalls.length = 0;
+  providerStateAnswers.clear();
+  providerStateCalls.length = 0;
 });
 
 describe("OnboardingFlow", () => {
@@ -248,9 +315,7 @@ describe("OnboardingFlow", () => {
       vi.advanceTimersByTime(10_000);
     });
 
-    expect(
-      screen.getByText("Provider readiness could not be checked."),
-    ).toBeTruthy();
+    expect(screen.getByText("Couldn't load agents")).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
     expect(agentLoadFailures()).toEqual(["timed_out"]);
 
@@ -317,10 +382,89 @@ describe("OnboardingFlow", () => {
     });
 
     expect(screen.getByText("Claude Code")).toBeTruthy();
-    expect(
-      screen.queryByText("Provider readiness could not be checked."),
-    ).toBeNull();
+    expect(screen.queryByText("Couldn't load agents")).toBeNull();
     expect(agentLoadFailures()).toEqual([]);
+  });
+
+  it("shows one agent whose check failed as its own row and rechecks only that agent", async () => {
+    providerStateAnswers.set("claude-code", () =>
+      Promise.resolve({ providers: [providerState("claude-code")] }),
+    );
+    providerStateAnswers.set("codex", () =>
+      Promise.reject(new BbRequestTimeoutError(75_000)),
+    );
+    renderFlow({ initialStep: "agent", catalog: ["claude-code", "codex"] });
+
+    const codexRow = await waitFor(() => agentRow("codex"));
+    expect(within(codexRow).getByText("Didn't respond in time.")).toBeTruthy();
+    expect(within(agentRow("claude-code")).getByText("Ready")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load agents")).toBeNull();
+
+    const callsBeforeRetry = providerStateCalls.length;
+    providerStateAnswers.set("codex", () =>
+      Promise.resolve({ providers: [providerState("codex")] }),
+    );
+    fireEvent.click(within(codexRow).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(within(agentRow("codex")).getByText("Ready")).toBeTruthy(),
+    );
+    expect(providerStateCalls.slice(callsBeforeRetry)).toEqual(["codex"]);
+  });
+
+  it("says an agent couldn't load when its check fails for another reason", async () => {
+    providerStateAnswers.set("claude-code", () =>
+      Promise.resolve({ providers: [providerState("claude-code")] }),
+    );
+    providerStateAnswers.set("codex", () => Promise.reject(new Error("boom")));
+    renderFlow({ initialStep: "agent", catalog: ["claude-code", "codex"] });
+
+    const codexRow = await waitFor(() => agentRow("codex"));
+    expect(within(codexRow).getByText("Couldn't load agent")).toBeTruthy();
+    expect(
+      within(codexRow).getByRole("button", { name: "Retry" }),
+    ).toBeTruthy();
+  });
+
+  it("shows one list-wide failure when every check failed, and Retry rechecks just those agents", async () => {
+    providerStateAnswers.set("", () => Promise.reject(new Error("boom")));
+    providerStateAnswers.set("claude-code", () =>
+      Promise.reject(new Error("boom")),
+    );
+    providerStateAnswers.set("codex", () => Promise.reject(new Error("boom")));
+    renderFlow({ initialStep: "agent", catalog: ["claude-code", "codex"] });
+
+    expect(await screen.findByText("Couldn't load agents")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load agent")).toBeNull();
+
+    const callsBeforeRetry = providerStateCalls.length;
+    fireEvent.click(button(/^Retry$/u));
+
+    await waitFor(() =>
+      expect(providerStateCalls.slice(callsBeforeRetry).sort()).toEqual([
+        "claude-code",
+        "codex",
+      ]),
+    );
+  });
+
+  it("says the machine can't be reached when every check failed while it is offline", async () => {
+    providerStateAnswers.set("", () => Promise.reject(new Error("boom")));
+    providerStateAnswers.set("claude-code", () =>
+      Promise.reject(new Error("boom")),
+    );
+    providerStateAnswers.set("codex", () => Promise.reject(new Error("boom")));
+    renderFlow({
+      initialStep: "agent",
+      catalog: ["claude-code", "codex"],
+      hostStatus: "disconnected",
+    });
+
+    expect(
+      await screen.findByText(
+        "Can't reach bee. Make sure bb is running there, then retry.",
+      ),
+    ).toBeTruthy();
   });
 
   it.each([

@@ -428,7 +428,8 @@ async function getOneProviderState(
   const held = (await entry?.checks)?.byProviderId.get(args.providerId);
   if (held !== undefined) {
     const state = await held;
-    return state === null ? [] : [state];
+    if (state === null) return [];
+    if (state.status !== "unknown") return [state];
   }
   await deps.providerRegistry.whenRegistrationsSettled();
   return await checkProviderStates(

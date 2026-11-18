@@ -264,6 +264,8 @@ function agentSubline(
       return state.message;
     case "unknown":
       return state.message ?? AGENT_STATUS_COPY.unknown;
+    case "checkFailed":
+      return state.message;
     case "signingIn":
       return setup === "connect"
         ? "Choose a provider and sign in below."
@@ -335,6 +337,24 @@ interface AgentRowHandlers {
   onSignIn: (id: string) => void;
   onInstall: (id: string) => void;
   onCancelSignIn: (id: string) => void;
+  onRetryCheck: (id: string) => void;
+}
+
+function RetryButton({
+  retrying,
+  onClick,
+}: {
+  retrying: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button size="sm" variant="outline" disabled={retrying} onClick={onClick}>
+      {retrying ? (
+        <Icon name="Spinner" aria-hidden className="size-4 animate-spin" />
+      ) : null}
+      Retry
+    </Button>
+  );
 }
 
 function AgentRow({
@@ -342,6 +362,7 @@ function AgentRow({
   onSignIn,
   onInstall,
   onCancelSignIn,
+  onRetryCheck,
 }: AgentRowHandlers & { agent: OnboardingAgent }) {
   const { state } = agent;
   const setup = agent.setup ?? "signIn";
@@ -429,6 +450,12 @@ function AgentRow({
               onClick={() => onInstall(agent.id)}
             />
           ) : null}
+          {state.status === "checkFailed" ? (
+            <RetryButton
+              retrying={state.retrying}
+              onClick={() => onRetryCheck(agent.id)}
+            />
+          ) : null}
           {state.status === "signingIn" ? (
             <RowDismissButton
               label={`Cancel signing in to ${agent.name}`}
@@ -464,14 +491,14 @@ function AgentRowSkeleton() {
 interface AgentStepProps extends AgentRowHandlers {
   machineName: string | null;
   agents: readonly (OnboardingAgent | AgentLoadingRow)[] | null;
-  loadFailedMessage: string | null;
+  loadFailed: { message: string; retrying: boolean } | null;
   onRecheck: () => void;
 }
 
 export function AgentStep({
   machineName,
   agents,
-  loadFailedMessage,
+  loadFailed,
   onRecheck,
   ...rowHandlers
 }: AgentStepProps) {
@@ -485,15 +512,13 @@ export function AgentStep({
             : `On ${machineName}`}
         </span>
       </div>
-      {agents === null && loadFailedMessage !== null ? (
+      {loadFailed !== null ? (
         <ul className={ONBOARDING_LIST_CLASS}>
           <li className="flex items-center gap-3 px-3 py-3">
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-              {loadFailedMessage}
+              {loadFailed.message}
             </span>
-            <Button size="sm" variant="outline" onClick={onRecheck}>
-              Retry
-            </Button>
+            <RetryButton retrying={loadFailed.retrying} onClick={onRecheck} />
           </li>
         </ul>
       ) : agents === null ? (

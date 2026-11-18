@@ -16,6 +16,8 @@ import {
 } from "./OnboardingViews";
 import {
   STEP_COPY,
+  agentCheckFailedMessage,
+  agentListFailedMessage,
   agentSignInView,
   resolveAgentSetupState,
   type AgentSetupState,
@@ -301,6 +303,7 @@ function AgentFrame({
   states = {},
   expanded = {},
   extraAgents = [],
+  loadFailed = null,
 }: {
   signingIn: SignInStory | null;
   pi?: PiStage | null;
@@ -308,6 +311,7 @@ function AgentFrame({
   states?: Partial<Record<AgentId, AgentSetupState>>;
   expanded?: Partial<Record<AgentId, ReactNode>>;
   extraAgents?: readonly OnboardingAgent[];
+  loadFailed?: { message: string; retrying: boolean } | null;
 }) {
   const signInAgentId = signingIn === "codex-browser" ? "codex" : signingIn;
   const baseAgents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
@@ -369,11 +373,12 @@ function AgentFrame({
       >
         <AgentStep
           machineName={MACHINE_NAME}
-          agents={agents}
-          loadFailedMessage={null}
+          agents={loadFailed === null ? agents : null}
+          loadFailed={loadFailed}
           onSignIn={noop}
           onInstall={noop}
           onCancelSignIn={noop}
+          onRetryCheck={noop}
           onRecheck={noop}
         />
       </OnboardingLayout>
@@ -624,6 +629,58 @@ export function Devices() {
           />
         </OnboardingLayout>
       </TooltipProvider>
+    </div>
+  );
+}
+
+export function AgentOneCheckTimedOut() {
+  return (
+    <div className="flex h-screen flex-col">
+      <AgentFrame
+        signingIn={null}
+        states={{
+          "claude-code": { status: "ready", detail: null },
+          codex: {
+            status: "checkFailed",
+            message: agentCheckFailedMessage("timed_out"),
+            retrying: false,
+          },
+        }}
+      />
+    </div>
+  );
+}
+
+export function AgentAllChecksFailed() {
+  return (
+    <div className="flex h-screen flex-col">
+      <AgentFrame
+        signingIn={null}
+        loadFailed={{
+          message: agentListFailedMessage({
+            failure: "other",
+            machineName: MACHINE_NAME,
+          }),
+          retrying: false,
+        }}
+      />
+    </div>
+  );
+}
+
+export function AgentMachineUnreachable() {
+  return (
+    <div className="flex h-screen flex-col">
+      <AgentFrame
+        signingIn={null}
+        loadFailed={{
+          message: agentListFailedMessage({
+            failure: "host_unavailable",
+            machineName: MACHINE_NAME,
+          }),
+          retrying: false,
+        }}
+      />
     </div>
   );
 }

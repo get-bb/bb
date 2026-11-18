@@ -53,6 +53,7 @@ import {
   hostProviderCliStatusQueryOptions,
   useHostProviderCliStatus,
   useSystemConfig,
+  recheckHostProviderStates,
   useHostProviderStatesAsTheyLoad,
   useSystemProviderCatalog,
   useSystemProviderStates,
@@ -99,8 +100,11 @@ import {
   connectFlowFailed,
   defaultSelectedRepoPaths,
   ONBOARDING_PLUGIN_ENTRY_IDS,
-  agentRowsSoFar,
-  type AgentRowSoFar,
+  agentCheckFailedMessage,
+  agentListFailedMessage,
+  agentListFailure,
+  failedAgentProviderIds,
+  resolveAgentRows,
   hasReadyAgent,
   operationFailureReason,
   projectsPrimaryAction,
@@ -155,8 +159,6 @@ const INSTALL_SETTLE_POLL_MS = 2_000;
 const INSTALL_FAILED_MESSAGE =
   "Couldn't install. Check your connection and retry.";
 const AGENT_STATES_LOAD_TIMEOUT_MS = 10_000;
-const AGENT_STATES_LOAD_FAILED_MESSAGE =
-  "Provider readiness could not be checked.";
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
 
@@ -352,6 +354,7 @@ function AgentStepContainer({
   chrome,
   entry,
   hostId,
+  hostConnected,
   noHost,
   hostName,
   loadRecords,
@@ -360,6 +363,7 @@ function AgentStepContainer({
   chrome: StepChrome;
   entry: OnboardingEntry;
   hostId: string | null;
+  hostConnected: boolean;
   noHost: boolean;
   hostName: string | null;
   loadRecords: StepLoadRecords;
@@ -398,25 +402,59 @@ function AgentStepContainer({
         .map((entry) => entry.id),
     [catalogQuery.data],
   );
-  const checksSoFar = useHostProviderStatesAsTheyLoad({
+  const checks = useHostProviderStatesAsTheyLoad({
     hostId,
     providerIds: checkedProviderIds,
-    enabled: statesLoading,
+    enabled: hostId !== null && states === undefined,
   });
+  const providerNames = useMemo(
+    () =>
+      new Map(
+        (catalogQuery.data ?? []).map((entry) => [entry.id, entry.displayName]),
+      ),
+    [catalogQuery.data],
+  );
+  const checksSettled = checks.every((check) => check.kind !== "pending");
   const statesLoadTimedOut =
-    statesLoad.timedOut && checksSoFar.every((check) => check.state === null);
-  const statesLoadFailed =
+    statesLoad.timedOut &&
+    checks.every((check) => check.kind === "absent" || check.kind === "failed");
+  const rows = resolveAgentRows({
+    states,
+    statesSettledAt: statesQuery.dataUpdatedAt,
+    checks,
+    names: providerNames,
+  });
+  const listFailed =
     hostId !== null &&
-    states === undefined &&
-    (statesQuery.isError || statesLoadTimedOut);
-  const rows: AgentRowSoFar[] | undefined = statesLoadFailed
-    ? undefined
-    : states !== undefined
-      ? states.map((state) => ({ kind: "agent", state }))
-      : agentRowsSoFar(checksSoFar);
+    (rows === undefined
+      ? states === undefined &&
+        checksSettled &&
+        (statesQuery.isError || statesLoad.timedOut)
+      : rows.length > 0 && rows.every((row) => row.kind === "failed"));
+  const loadFailed = listFailed
+    ? {
+        message: agentListFailedMessage({
+          failure: agentListFailure({
+            hostConnected,
+            errors: [
+              statesQuery.error,
+              ...checks.flatMap((check) =>
+                check.kind === "failed" ? [check.error] : [],
+              ),
+            ],
+          }),
+          machineName: hostName,
+        }),
+        retrying: !checksSettled,
+      }
+    : null;
   const shownStates = rows?.flatMap((row) =>
     row.kind === "agent" ? [row.state] : [],
   );
+  const recheck = (providerIds: readonly string[]) => {
+    if (hostId === null || providerIds.length === 0) return;
+    void recheckHostProviderStates({ queryClient, hostId, providerIds });
+  };
   useLoadTelemetry({
     entry,
     step: "agent",
@@ -532,17 +570,30 @@ function AgentStepContainer({
     installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
   };
 
+  const providerIcon = (providerId: string) =>
+    providersQuery.data?.find((provider) => provider.id === providerId) ??
+    catalogQuery.data?.find((entry) => entry.id === providerId) ?? {
+      id: providerId,
+      logoUrl: null,
+    };
   const agents: (OnboardingAgent | AgentLoadingRow)[] | null =
-    hostId === null || rows === undefined
+    hostId === null || rows === undefined || listFailed
       ? null
       : rows.map((row) => {
           if (row.kind === "loading") return { loadingKey: row.key };
+          if (row.kind === "failed") {
+            return {
+              id: row.providerId,
+              name: row.name,
+              provider: providerIcon(row.providerId),
+              state: {
+                status: "checkFailed",
+                message: agentCheckFailedMessage(row.failure),
+                retrying: row.retrying,
+              },
+            };
+          }
           const health = row.state;
-          const info =
-            providersQuery.data?.find(
-              (provider) => provider.id === health.providerId,
-            ) ??
-            catalogQuery.data?.find((entry) => entry.id === health.providerId);
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signIn = signIns.signIns.get(health.providerId) ?? null;
           const starting = signIns.startingProviderIds.has(health.providerId);
@@ -555,7 +606,7 @@ function AgentStepContainer({
           return {
             id: health.providerId,
             name: health.displayName,
-            provider: info ?? { id: health.providerId, logoUrl: null },
+            provider: providerIcon(health.providerId),
             setup: agentRowSetup({
               connect: connectFlow !== null,
               awaitingSession: starting && signIn === null,
@@ -622,20 +673,18 @@ function AgentStepContainer({
       <AgentStep
         machineName={hostName}
         agents={agents}
-        loadFailedMessage={
-          statesLoadFailed ? AGENT_STATES_LOAD_FAILED_MESSAGE : null
-        }
+        loadFailed={loadFailed}
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={(providerId) => void startInstall(providerId)}
         onCancelSignIn={(providerId) => signIns.end(providerId)}
+        onRetryCheck={(providerId) => recheck([providerId])}
         onRecheck={() => {
-          if (statesLoadFailed) {
-            statesLoad.restart();
+          statesLoad.restart();
+          if (checks.length === 0) {
             void restartSystemProviderStatesLoad({ queryClient, hostId });
-          } else {
-            void refetchStates();
+            return;
           }
-          void cliStatusQuery.refetch();
+          recheck(failedAgentProviderIds(rows, checks));
         }}
       />
     </OnboardingLayout>
@@ -1305,6 +1354,7 @@ export function OnboardingFlow({
           chrome={chrome}
           entry={entry}
           hostId={hostId}
+          hostConnected={primaryHost?.status === "connected"}
           noHost={noHost}
           hostName={primaryHost?.name ?? null}
           loadRecords={loadRecords}

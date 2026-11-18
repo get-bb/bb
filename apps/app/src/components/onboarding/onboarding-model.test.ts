@@ -8,7 +8,12 @@ import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
   agentRowSetup,
-  agentRowsSoFar,
+  agentCheckFailedMessage,
+  agentListFailedMessage,
+  agentListFailure,
+  failedAgentProviderIds,
+  resolveAgentRows,
+  type AgentCheck,
   agentSignInView,
   connectAccessUrl,
   devicesShowMachines,
@@ -699,26 +704,52 @@ describe("projectsPrimaryAction", () => {
   });
 });
 
-describe("agentRowsSoFar", () => {
+describe("resolveAgentRows", () => {
   const codex = health({ providerId: "codex", displayName: "Codex" });
   const pi = health({ providerId: "pi", displayName: "Pi" });
+  const names = new Map([
+    ["codex", "Codex"],
+    ["claude-code", "Claude Code"],
+    ["pi", "Pi"],
+  ]);
+  const timedOut = new BbRequestTimeoutError(75_000);
+  const pending = (providerId: string): AgentCheck => ({
+    providerId,
+    kind: "pending",
+  });
+  const answered = (state: SystemProviderState, settledAt = 1): AgentCheck => ({
+    providerId: state.providerId,
+    kind: "answered",
+    state,
+    settledAt,
+  });
+  const failed = (
+    providerId: string,
+    error: unknown = new Error("boom"),
+    settledAt = 1,
+  ): AgentCheck => ({ providerId, kind: "failed", error, settledAt });
+  const absent = (providerId: string): AgentCheck => ({
+    providerId,
+    kind: "absent",
+    settledAt: 1,
+  });
+  const resolve = (
+    checks: AgentCheck[],
+    states?: SystemProviderState[],
+    statesSettledAt = 0,
+  ) => resolveAgentRows({ states, statesSettledAt, checks, names });
 
   it("shows nothing until the first agent's check finishes", () => {
-    expect(
-      agentRowsSoFar([
-        { providerId: "codex", state: undefined },
-        { providerId: "pi", state: undefined },
-      ]),
-    ).toBeUndefined();
+    expect(resolve([pending("codex"), pending("pi")])).toBeUndefined();
   });
 
-  it("holds a slot for an agent still loading above one already shown", () => {
+  it("holds a slot for an agent still loading above one already shown and skips absent agents", () => {
     expect(
-      agentRowsSoFar([
-        { providerId: "codex", state: codex },
-        { providerId: "claude-code", state: undefined },
-        { providerId: "pi", state: pi },
-        { providerId: "acp-opencode", state: null },
+      resolve([
+        answered(codex),
+        pending("claude-code"),
+        answered(pi),
+        absent("acp-opencode"),
       ]),
     ).toEqual([
       { kind: "agent", state: codex },
@@ -729,16 +760,129 @@ describe("agentRowsSoFar", () => {
 
   it("adds one trailing placeholder while later agents may still appear", () => {
     expect(
-      agentRowsSoFar([
-        { providerId: "codex", state: codex },
-        { providerId: "acp-opencode", state: null },
-        { providerId: "acp-hermes-agent", state: undefined },
-        { providerId: "acp-grok", state: undefined },
+      resolve([
+        answered(codex),
+        absent("acp-opencode"),
+        pending("acp-hermes-agent"),
+        pending("acp-grok"),
       ]),
     ).toEqual([
       { kind: "agent", state: codex },
       { kind: "loading", key: "more" },
     ]);
+  });
+
+  it("shows one agent whose check failed as its own row while the others answer", () => {
+    expect(
+      resolve([answered(codex), failed("claude-code", timedOut), answered(pi)]),
+    ).toEqual([
+      { kind: "agent", state: codex },
+      {
+        kind: "failed",
+        providerId: "claude-code",
+        name: "Claude Code",
+        failure: "timed_out",
+        retrying: false,
+      },
+      { kind: "agent", state: pi },
+    ]);
+  });
+
+  it("treats an agent the server could not check as failed", () => {
+    const unknown = health({
+      providerId: "claude-code",
+      displayName: "Claude Code",
+      status: "unknown",
+    });
+    expect(resolve([], [codex, unknown], 5)).toEqual([
+      { kind: "agent", state: codex },
+      {
+        kind: "failed",
+        providerId: "claude-code",
+        name: "Claude Code",
+        failure: "other",
+        retrying: false,
+      },
+    ]);
+  });
+
+  it("marks a failed agent as retrying while its recheck runs, then shows the fresh answer", () => {
+    const unknown = health({
+      providerId: "claude-code",
+      displayName: "Claude Code",
+      status: "unknown",
+    });
+    const claude = health({
+      providerId: "claude-code",
+      displayName: "Claude Code",
+    });
+    expect(resolve([pending("claude-code")], [codex, unknown], 5)?.[1]).toEqual(
+      expect.objectContaining({ kind: "failed", retrying: true }),
+    );
+    expect(resolve([answered(claude, 9)], [codex, unknown], 5)).toEqual([
+      { kind: "agent", state: codex },
+      { kind: "agent", state: claude },
+    ]);
+    expect(resolve([answered(claude, 3)], [codex, unknown], 5)?.[1]).toEqual(
+      expect.objectContaining({ kind: "failed" }),
+    );
+  });
+
+  it("rechecks only the failed agents, or every agent when none answered", () => {
+    const rows = resolve([
+      answered(codex),
+      failed("claude-code"),
+      answered(pi),
+    ]);
+    expect(failedAgentProviderIds(rows, [])).toEqual(["claude-code"]);
+    expect(
+      failedAgentProviderIds(undefined, [absent("codex"), failed("pi")]),
+    ).toEqual(["pi"]);
+    expect(
+      failedAgentProviderIds(undefined, [absent("codex"), absent("pi")]),
+    ).toEqual(["codex", "pi"]);
+  });
+});
+
+describe("agent check failure copy", () => {
+  it.each([
+    ["timed_out", "Didn't respond in time."],
+    ["other", "Couldn't load agent"],
+  ] as const)("says %s for one agent", (failure, message) => {
+    expect(agentCheckFailedMessage(failure)).toBe(message);
+  });
+
+  it("says the machine can't be reached when it is offline or the server says so", () => {
+    expect(agentListFailure({ hostConnected: false, errors: [] })).toBe(
+      "host_unavailable",
+    );
+    expect(
+      agentListFailure({
+        hostConnected: true,
+        errors: [
+          new BbHttpError({
+            body: null,
+            code: "host_unavailable",
+            message: "offline",
+            status: 503,
+          }),
+        ],
+      }),
+    ).toBe("host_unavailable");
+    expect(
+      agentListFailure({ hostConnected: true, errors: [null, new Error("x")] }),
+    ).toBe("other");
+    expect(
+      agentListFailedMessage({
+        failure: "host_unavailable",
+        machineName: "dev-laptop",
+      }),
+    ).toBe(
+      "Can't reach dev-laptop. Make sure bb is running there, then retry.",
+    );
+    expect(
+      agentListFailedMessage({ failure: "other", machineName: "dev-laptop" }),
+    ).toBe("Couldn't load agents");
   });
 });
 
