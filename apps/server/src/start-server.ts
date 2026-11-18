@@ -31,6 +31,7 @@ import {
 import {
   createThreadReadPool,
   THREAD_READ_WORKER_PAGE_CACHE_KIB,
+  threadReadPoolSize,
 } from "./services/threads/read-pool/thread-read-pool.js";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
@@ -190,7 +191,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     fallbackDb: db,
     logger,
     pageCacheKib: THREAD_READ_WORKER_PAGE_CACHE_KIB,
-    size: Math.min(4, Math.floor(availableParallelism() / 2)),
+    size: threadReadPoolSize(availableParallelism()),
     workerUrl: new URL(
       import.meta.url.endsWith(".ts")
         ? "./thread-read-worker.ts"

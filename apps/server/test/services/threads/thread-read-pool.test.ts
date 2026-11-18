@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,8 +16,16 @@ import {
   upsertHost,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
+import { isThreadTimelineDelta } from "@bb/server-contract";
 import { ApiError } from "../../../src/errors.js";
-import { createThreadReadPool } from "../../../src/services/threads/read-pool/thread-read-pool.js";
+import {
+  createThreadReadPool,
+  threadReadPoolSize,
+} from "../../../src/services/threads/read-pool/thread-read-pool.js";
+import { createThreadTimelineWindows } from "../../../src/services/threads/thread-timeline-windows.js";
+import { timelineRowHash } from "../../../src/services/threads/timeline-window-tag.js";
+import { NotificationHub } from "../../../src/ws/hub.js";
+import { withTestHarness } from "../../helpers/test-app.js";
 
 function fixtureWorker(name: string): URL {
   return new URL(`../../fixtures/thread-read-workers/${name}`, import.meta.url);
@@ -28,6 +37,46 @@ function outlineRequest(threadId: string) {
     providers: {},
     rewriteGeneration: 0,
     threadId,
+  };
+}
+
+function createOnDiskThread(messages: readonly string[]) {
+  const dir = mkdtempSync(join(tmpdir(), "bb-thread-read-pool-"));
+  const databasePath = join(dir, "bb.db");
+  const db = createConnection(databasePath);
+  migrate(db);
+  const host = upsertHost(db, noopNotifier, { name: "test-host" });
+  const { project } = createProject(db, noopNotifier, {
+    name: "test-project",
+    source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+  });
+  const thread = createThread(db, noopNotifier, {
+    projectId: project.id,
+    providerId: "codex",
+    status: "idle",
+  });
+  insertEvents(
+    db,
+    noopNotifier,
+    messages.map((text, index) => ({
+      threadId: thread.id,
+      sequence: index + 1,
+      type: "system/manager/user_message" as const,
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ text }),
+    })),
+  );
+  return {
+    databasePath,
+    db,
+    thread,
+    cleanup() {
+      db.$client.close();
+      rmSync(dir, { force: true, recursive: true });
+    },
   };
 }
 
@@ -110,31 +159,8 @@ describe("thread read pool", () => {
   }, 30_000);
 
   it("drops a worker's cached window only when main's rewrite generation changes", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "bb-thread-read-pool-"));
-    const databasePath = join(dir, "bb.db");
-    const db = createConnection(databasePath);
-    migrate(db);
-    const host = upsertHost(db, noopNotifier, { name: "test-host" });
-    const { project } = createProject(db, noopNotifier, {
-      name: "test-project",
-      source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
-    });
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "idle",
-    });
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ text: "Original message" }),
-      },
+    const { databasePath, db, thread, cleanup } = createOnDiskThread([
+      "Original message",
     ]);
     const pool = createThreadReadPool({
       databasePath,
@@ -170,8 +196,90 @@ describe("thread read pool", () => {
       expect(await readText()).toContain("Rewritten message");
     } finally {
       await pool.close();
-      db.$client.close();
-      rmSync(dir, { force: true, recursive: true });
+      cleanup();
     }
   }, 30_000);
+
+  it("seeds main's row digests with the hashes of the rows a worker returns", async () => {
+    await withTestHarness(async (harness) => {
+      const { databasePath, db, thread, cleanup } = createOnDiskThread([
+        "First message",
+        "Second message",
+        "Third message",
+      ]);
+      const pool = createThreadReadPool({
+        databasePath,
+        fallbackDb: db,
+        logger: { warn: () => {} },
+        pageCacheKib: 1_024,
+        size: 1,
+        workerUrl: fixtureWorker("source-worker.mjs"),
+      });
+      try {
+        const windows = createThreadTimelineWindows({
+          ...harness.deps,
+          db,
+          hub: new NotificationHub(),
+          threadReads: pool,
+        });
+        const response = await windows.read(
+          thread.id,
+          {
+            deferContent: false,
+            includeNestedRows: false,
+            page: { kind: "latest", segmentLimit: 20 },
+          },
+          undefined,
+        );
+        if (isThreadTimelineDelta(response)) {
+          throw new Error("expected a full timeline window");
+        }
+        expect(response.rows.length).toBeGreaterThanOrEqual(3);
+        for (const row of response.rows) {
+          expect(timelineRowHash(row)).toBe(
+            createHash("sha256")
+              .update(JSON.stringify(row))
+              .digest("base64url"),
+          );
+        }
+      } finally {
+        await pool.close();
+        cleanup();
+      }
+    });
+  }, 30_000);
+
+  it("runs reads in-process without starting a worker at size 0", async () => {
+    const db = createMigratedConnection();
+    const warnings: string[] = [];
+    const pool = createThreadReadPool({
+      databasePath: ":memory:",
+      fallbackDb: db,
+      logger: { warn: (_fields, message) => warnings.push(message) },
+      pageCacheKib: 1_024,
+      size: 0,
+      workerUrl: fixtureWorker("exits-on-read.mjs"),
+    });
+    try {
+      await expect(pool.run(outlineRequest("thr_missing"))).resolves.toEqual({
+        kind: "conversation-outline",
+        outline: null,
+      });
+      expect(warnings).toEqual([]);
+    } finally {
+      await pool.close();
+      db.$client.close();
+    }
+  });
+
+  it.each([
+    [1, 1],
+    [2, 1],
+    [3, 1],
+    [4, 2],
+    [8, 4],
+    [16, 4],
+  ])("sizes the pool for %i cores at %i workers", (cores, workers) => {
+    expect(threadReadPoolSize(cores)).toBe(workers);
+  });
 });

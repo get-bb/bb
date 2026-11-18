@@ -38,7 +38,11 @@ import {
   shortenTimelineResponseOutputs,
 } from "../timeline-output-shortening.js";
 import { reuseUnchangedTimelineWindowParts } from "../timeline-window-reuse.js";
-import { timelineWindowTag } from "../timeline-window-tag.js";
+import {
+  timelineRowDigests,
+  timelineWindowTag,
+  type TimelineRowDigest,
+} from "../timeline-window-tag.js";
 
 export interface ThreadReadProviderFacts {
   completedTurnDisplay: CompletedTurnDisplay;
@@ -80,6 +84,7 @@ export interface ThreadTimelineWindowReadResult {
   window: {
     build: ThreadTimelineBuildCost | null;
     response: ThreadTimelineResponse;
+    rowDigests: TimelineRowDigest[];
   } | null;
 }
 
@@ -245,7 +250,10 @@ function readTimelineWindow(
       };
     },
   );
-  return { kind: "timeline-window", window: { build, response } };
+  return {
+    kind: "timeline-window",
+    window: { build, response, rowDigests: timelineRowDigests(response.rows) },
+  };
 }
 
 export function runThreadRead(

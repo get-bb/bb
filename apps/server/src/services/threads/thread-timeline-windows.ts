@@ -27,7 +27,10 @@ import { forgetTimelineGroupingContexts } from "./timeline-context-order.js";
 import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
 import { forgetLatestTimelineSelections } from "./timeline-selection-memo.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
-import { timelineRowHash } from "./timeline-window-tag.js";
+import {
+  seedTimelineRowDigests,
+  timelineRowHash,
+} from "./timeline-window-tag.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 type ThreadTimelineWindowDeps = Pick<
@@ -117,6 +120,7 @@ export function createThreadTimelineWindows(
       window: request,
     });
     if (window === null) return null;
+    seedTimelineRowDigests(window.response.rows, window.rowDigests);
     if (window.build !== null) {
       slowTimelineBuildLogger.log({ ...window.build, threadId });
     }

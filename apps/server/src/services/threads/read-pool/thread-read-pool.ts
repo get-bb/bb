@@ -89,9 +89,16 @@ export function createInProcessThreadReadPool(
   };
 }
 
+export function threadReadPoolSize(availableCores: number): number {
+  return Math.max(1, Math.min(4, Math.floor(availableCores / 2)));
+}
+
 export function createThreadReadPool(
   options: CreateThreadReadPoolOptions,
 ): ThreadReadPool {
+  if (options.size < 1) {
+    return createInProcessThreadReadPool(options.fallbackDb);
+  }
   let nextId = 1;
   let closed = false;
   const slots: PoolSlot[] = Array.from(
