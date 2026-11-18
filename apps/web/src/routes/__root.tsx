@@ -68,10 +68,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
         <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
-        {}
         <meta
           name="theme-color"
           media="(prefers-color-scheme: light)"
