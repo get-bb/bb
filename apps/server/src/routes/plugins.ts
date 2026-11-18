@@ -814,17 +814,19 @@ export function registerPluginRoutes(
   });
 
   app.post("/plugins/:id/enable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), true);
-    if (!plugin)
+    const outcome = await plugins.setEnabled(context.req.param("id"), true);
+    if (!outcome)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   app.post("/plugins/:id/disable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), false);
-    if (!plugin)
+    const outcome = await plugins.setEnabled(context.req.param("id"), false);
+    if (!outcome)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   const NOT_RUNNING = {
@@ -849,12 +851,18 @@ export function registerPluginRoutes(
       );
     }
     try {
-      const view = await plugins.updateSettings(
+      const outcome = await plugins.updateSettings(
         context.req.param("id"),
         body.data.values,
       );
-      if (!view) return context.json(NOT_RUNNING, 404);
-      return context.json({ ok: true, ...view });
+      if (!outcome) return context.json(NOT_RUNNING, 404);
+      if (!outcome.ok) {
+        return context.json(
+          { ok: false, error: outcome.error, ...outcome.view },
+          422,
+        );
+      }
+      return context.json({ ok: true, ...outcome.view });
     } catch (error) {
       if (error instanceof PluginSettingsValidationError) {
         return context.json({ ok: false, error: error.message }, 400);

@@ -649,6 +649,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginCommandRegistration",
           "PluginCommandContext",
           "PluginCommandShortcut",
+          "experimental_matchesShortcutKey",
+          "ExperimentalShortcutKeyEvent",
         ],
         firstParty: ["File Editor"],
       },
@@ -1281,6 +1283,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginEvents",
           "PluginThreadEventPayloads",
+          "PluginThreadSettledEvent",
           "PluginTurnFailedEvent",
         ],
         firstParty: [
@@ -1527,6 +1530,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_webSearchPresentation",
           "experimental_webFetchPresentation",
           "experimental_planStepsPresentation",
+          "experimental_unansweredInteractionWarning",
+          "experimental_unansweredInteractionErrorMessage",
+          "UnansweredInteractionCause",
+          "UnansweredInteractionAnswer",
+          "UnansweredInteractionWarningArgs",
           "experimental_readBoundedLines",
           "experimental_buildProviderCliEnv",
           "experimental_withoutThreadIdentityEnv",

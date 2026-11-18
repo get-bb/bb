@@ -14,9 +14,14 @@ import type {
 import { action, CliExitError } from "../action.js";
 import { CliUsageError } from "../cli-usage-error.js";
 import { createCliBbSdk } from "../client.js";
+import { outputJson, reportCommandResult } from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
-import { resolveMachineId, selectMachines } from "./machine.js";
+import { confirmDestructiveAction } from "./helpers.js";
+import {
+  providerCliInstallFailure,
+  resolveMachineId,
+  selectMachines,
+} from "./machine.js";
 
 const APP_UPDATE_POLL_INTERVAL_MS = 1_000;
 const APP_UPDATE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -538,15 +543,20 @@ function registerAppUpdateCommands(
           return;
         }
         const result = finished.lastResult;
-        if (outputJson(opts, finished)) {
-          if (result?.outcome !== "updated") process.exitCode = 1;
-          return;
-        }
-        if (result === null) return;
-        if (result.outcome !== "updated") {
-          throw new CliExitError(describeAppUpdateResult(result), 1);
-        }
-        console.log(describeAppUpdateResult(result));
+        const summary =
+          result === null
+            ? "bb did not report an update result. Run bb updates app to check on it."
+            : describeAppUpdateResult(result);
+        reportCommandResult(
+          opts,
+          finished,
+          result?.outcome === "updated"
+            ? { text: [summary], failure: null }
+            : {
+                text: [],
+                failure: { message: summary, code: "error", hint: null },
+              },
+        );
       }),
     );
 
@@ -683,8 +693,16 @@ export function registerUpdatesCommands(
           selectUpdateHosts(hosts, opts.machine),
         );
         const targets = actionableTargets(entries);
+        const uncheckedMachines = entries.flatMap((entry) =>
+          entry.statusError === null
+            ? []
+            : [`${entry.host.name}: ${entry.statusError}`],
+        );
+        const uncheckedFailure =
+          uncheckedMachines.length === 0
+            ? null
+            : `Couldn't check ${uncheckedMachines.length} machine${uncheckedMachines.length === 1 ? "" : "s"} for updates.\n${uncheckedMachines.join("\n")}`;
         if (targets.length === 0) {
-          if (outputJson(opts, { results: [] })) return;
           const hasManualUpdates = entries.some(
             (entry) =>
               entry.providerStatus !== null &&
@@ -695,10 +713,26 @@ export function registerUpdatesCommands(
                   status.installAction === null,
               ),
           );
-          console.log(
-            hasManualUpdates
-              ? "No updates bb can apply. Run bb updates status for manual updates."
-              : "Everything is up to date.",
+          reportCommandResult(
+            opts,
+            { results: [] },
+            {
+              text: [
+                hasManualUpdates
+                  ? "No updates bb can apply. Run bb updates status for manual updates."
+                  : uncheckedFailure === null
+                    ? "Everything is up to date."
+                    : "No updates bb can apply on the machines it could check.",
+              ],
+              failure:
+                uncheckedFailure === null
+                  ? null
+                  : {
+                      message: uncheckedFailure,
+                      code: "updates_check_failed",
+                      hint: null,
+                    },
+            },
           );
           return;
         }
@@ -723,28 +757,19 @@ export function registerUpdatesCommands(
               provider: target.provider,
               actionKind,
             });
-            const completed = events.find(
-              (event) => event.type === "completed",
-            );
-            const errorEvent = events.find((event) => event.type === "error");
-            const success =
-              completed?.type === "completed" && completed.success;
+            const failure = providerCliInstallFailure(events);
             results.push({
               hostId: target.host.id,
               hostName: target.host.name,
               provider: target.provider,
-              success,
-              message: errorEvent?.type === "error" ? errorEvent.message : null,
+              success: failure === null,
+              message: failure,
             });
             if (!opts.json) {
               console.log(
-                success
+                failure === null
                   ? `${target.status.displayName} on ${target.host.name}: done`
-                  : `${target.status.displayName} on ${target.host.name}: failed${
-                      errorEvent?.type === "error"
-                        ? ` (${errorEvent.message})`
-                        : ""
-                    }`,
+                  : `${target.status.displayName} on ${target.host.name}: failed (${failure})`,
               );
             }
           } catch (error) {
@@ -764,13 +789,30 @@ export function registerUpdatesCommands(
             }
           }
         }
-        if (outputJson(opts, { results })) return;
         const failures = results.filter((result) => !result.success);
-        if (failures.length > 0) {
-          throw new Error(
-            `${failures.length} update${failures.length === 1 ? "" : "s"} failed.`,
-          );
-        }
+        const failureMessages = [
+          ...(failures.length === 0
+            ? []
+            : [
+                `${failures.length} update${failures.length === 1 ? "" : "s"} failed.`,
+              ]),
+          ...(uncheckedFailure === null ? [] : [uncheckedFailure]),
+        ];
+        reportCommandResult(
+          opts,
+          { results },
+          {
+            text: [],
+            failure:
+              failureMessages.length === 0
+                ? null
+                : {
+                    message: failureMessages.join("\n"),
+                    code: "updates_apply_failed",
+                    hint: null,
+                  },
+          },
+        );
       }),
     );
 }

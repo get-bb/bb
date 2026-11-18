@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.159",
+  "version": "0.6.162",
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
@@ -98,6 +98,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-thread-status.d.ts",
       "import": "./dist/internal/thread-status.js",
       "default": "./dist/internal/thread-status.js"
+    },
+    "./internal/thread-event-gate": {
+      "source": "./src/internal/thread-event-gate.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-thread-event-gate.d.ts",
+      "import": "./dist/internal/thread-event-gate.js",
+      "default": "./dist/internal/thread-event-gate.js"
     },
     "./internal/file-navigation-validation": {
       "source": "./src/internal/file-navigation-validation.ts",

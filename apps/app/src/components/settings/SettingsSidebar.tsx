@@ -51,6 +51,7 @@ import {
 import { getSettingsSectionRoutePath } from "./settings-sections";
 import { usePluginSettingSearch } from "./usePluginSettingSearch";
 import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface SettingsSidebarProps {
   backTo: string | null;
@@ -91,7 +92,7 @@ function useFocusSettingsSearchShortcut(
         event.key !== "/" ||
         isCompactViewport ||
         event.defaultPrevented ||
-        event.isComposing ||
+        isImeComposing(event) ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -351,8 +352,8 @@ export function SettingsSidebarContent({
   };
 
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === "Escape") {
+    if (isImeComposing(event)) return;
+    if (isNonImeKey(event, "Escape")) {
       if (query.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -367,7 +368,7 @@ export function SettingsSidebarContent({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveActiveResult(-1);
-    } else if (event.key === "Enter") {
+    } else if (isNonImeKey(event, "Enter")) {
       event.preventDefault();
       openResult(activeResult);
     }

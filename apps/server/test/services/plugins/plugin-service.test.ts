@@ -867,10 +867,12 @@ describe("plugin service", () => {
     expect(tracked.list().find((entry) => entry.id === "tracked")?.status).toBe(
       "running",
     );
-    expect((await tracked.setEnabled("tracked", false))?.status).toBe(
+    expect((await tracked.setEnabled("tracked", false))?.plugin.status).toBe(
       "disabled",
     );
-    expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
+    expect((await tracked.setEnabled("tracked", true))?.plugin.status).toBe(
+      "running",
+    );
     expect(captured).toHaveLength(1);
     await tracked.stop();
   });
@@ -1247,14 +1249,18 @@ describe("plugin service", () => {
     }
 
     it("keeps it unloaded when it is enabled, even when it is already enabled", async () => {
-      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+      expect(
+        (await service.setEnabled("held-copy", true))?.plugin,
+      ).toMatchObject({
         status: "disabled",
         statusDetail: HELD_DETAIL,
       });
       expectHeld();
 
       await service.setEnabled("held-copy", false);
-      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+      expect(
+        (await service.setEnabled("held-copy", true))?.plugin,
+      ).toMatchObject({
         status: "disabled",
         statusDetail: HELD_DETAIL,
       });
@@ -1278,7 +1284,9 @@ describe("plugin service", () => {
     it("loads it on enable or reload once the hold is released, without a restart", async () => {
       holdActive = false;
 
-      expect(await service.setEnabled("held-copy", true)).toMatchObject({
+      expect(
+        (await service.setEnabled("held-copy", true))?.plugin,
+      ).toMatchObject({
         status: "running",
       });
       expect(service.getApi("held-copy")).toBeDefined();
@@ -1295,7 +1303,9 @@ describe("plugin service", () => {
       serverSource: `export default function plugin() {}`,
     });
     await service.install(rootDir, { kind: "root" });
-    expect(await service.setEnabled("reinstalled", false)).toMatchObject({
+    expect(
+      (await service.setEnabled("reinstalled", false))?.plugin,
+    ).toMatchObject({
       enabled: false,
       status: "disabled",
     });
@@ -1512,7 +1522,7 @@ describe("plugin service", () => {
       serverSource: serverSource("b"),
     });
     await service.installPath(checkoutA);
-    expect(await service.setEnabled("dormant", false)).toMatchObject({
+    expect((await service.setEnabled("dormant", false))?.plugin).toMatchObject({
       enabled: false,
       status: "disabled",
     });
@@ -1535,7 +1545,7 @@ describe("plugin service", () => {
     ).toBeUndefined();
     expect(service.getApi("dormant")).toBeUndefined();
 
-    expect(await service.setEnabled("dormant", true)).toMatchObject({
+    expect((await service.setEnabled("dormant", true))?.plugin).toMatchObject({
       status: "running",
     });
     expect((globalThis as Record<string, unknown>).__disabledMoveStarted).toBe(

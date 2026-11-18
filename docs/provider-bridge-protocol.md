@@ -161,6 +161,13 @@ deltas and owns every timeline invariant:
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
+- **Withdrawn requests.** A bridge that stops waiting on an
+  `interaction/request` or `item/tool/call` it sent (the provider answered
+  or cancelled it, it timed out, or the session ended) sends
+  `notifications/cancelled { requestId }` with that request's JSON-RPC id.
+  The runtime then never answers it: a withdrawn tool call is aborted, and a
+  withdrawn interaction is closed on the server as interrupted, so its card
+  no longer holds back the thread's next message.
 - **Turn lifecycle.** Only `turn.open`, a claiming `turn.boundary`
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn

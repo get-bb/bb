@@ -185,6 +185,9 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),
+    "sidebar.updates.providerCli": uiPreferenceEntry(
+      "sidebar.updates.providerCli",
+    ),
     "composer.provider": uiPreferenceEntry("composer.provider"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
@@ -553,6 +556,7 @@ export class DemoWorld {
       activeThinking: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],
+      pendingSteers: [],
       pendingTodos: null,
       extensionStates: {},
       providerCommands: null,

@@ -136,9 +136,12 @@ function approvalItemWriteFor(interaction: PendingInteraction): {
   return item === null ? null : { interaction, item };
 }
 
+type PendingInteractionSubjectItemOwner = "server" | "provider";
+
 function buildPendingInteractionTimelineWrites(
   db: Pick<AppDeps, "db">["db"] | DbTransaction,
   interaction: PendingInteraction,
+  subjectItemOwner: PendingInteractionSubjectItemOwner,
 ): AppendStoredThreadEventArgs[] {
   const environmentId =
     getThread(db, interaction.threadId)?.environmentId ?? null;
@@ -151,7 +154,8 @@ function buildPendingInteractionTimelineWrites(
       data: { interaction: toInteractionLifecycle(interaction) },
     },
   ];
-  const write = approvalItemWriteFor(interaction);
+  const write =
+    subjectItemOwner === "server" ? approvalItemWriteFor(interaction) : null;
   if (write !== null) {
     const { providerThreadId, turnId } = write.interaction;
     writes.push({
@@ -169,10 +173,12 @@ function buildPendingInteractionTimelineWrites(
 export function appendPendingInteractionTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   interaction: PendingInteraction,
+  subjectItemOwner: PendingInteractionSubjectItemOwner,
 ): void {
   for (const write of buildPendingInteractionTimelineWrites(
     deps.db,
     interaction,
+    subjectItemOwner,
   )) {
     appendThreadEvent(deps, write);
   }
@@ -182,7 +188,11 @@ export function appendPendingInteractionTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
   interaction: PendingInteraction,
 ): void {
-  const writes = buildPendingInteractionTimelineWrites(deps.db, interaction);
+  const writes = buildPendingInteractionTimelineWrites(
+    deps.db,
+    interaction,
+    "server",
+  );
   for (const write of writes) {
     appendThreadEventInTransaction(deps.db, write);
   }

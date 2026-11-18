@@ -24,6 +24,7 @@ import {
 } from "./gesture-dom.js";
 import { useHorizontalDismissDrag } from "./use-horizontal-dismiss-drag.js";
 import { MACOS_WINDOW_DRAG_CLASS } from "@/lib/bb-desktop";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_MOBILE_VIEWPORT_FRACTION = 0.86;
@@ -978,7 +979,7 @@ const SidebarMobilePanel = React.forwardRef<
         if (event.defaultPrevented) {
           return;
         }
-        if (event.key === "Escape") {
+        if (isNonImeKey(event, "Escape")) {
           onDismiss();
           return;
         }

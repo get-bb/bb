@@ -305,6 +305,31 @@ and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
 
+## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
+
+`experimental_matchesShortcutKey(event, key)` says whether a keydown presses
+`key`, compared the way bb compares keys for its own and plugins' keybindings.
+The caller checks modifiers. Letter, digit and punctuation keys match by
+physical position (`event.code`) when the layout types a non-Latin character
+there (or, with Alt held, anything but an ASCII letter or digit); otherwise
+they match the typed character with Shift removed from US punctuation, so
+Latin layouts such as Dvorak and AZERTY keep their own letters. Without Alt,
+the typed character also matches, which keeps shortcuts saved under a
+non-Latin character working.
+
+Docs: `frontend-renderer-slots.md`.
+
+Core callers: `matchesAppShortcut` in `@bb/domain` (app commands, plugin
+commands, the desktop embedded browser and shortcut conflicts), the desktop
+reload shortcut and the terminal copy/paste keys all call the same
+`matchesAppShortcutKey`; the SDK function is that function. Plugin callers:
+the Composer's paste-as-plain-text check, Prompt Library's Mod+S and Tasks'
+single-key shortcuts.
+
+Before stabilizing, decide whether plugins also need a full-chord matcher that
+resolves `mod` per platform, and whether settings should label shortcuts with
+the active layout's characters (`navigator.keyboard.getLayoutMap()`).
+
 ## Discoverable RPC
 
 `bb.rpc.register` accepts `experimental_discoverable` and
@@ -1584,6 +1609,36 @@ file read, search, web search, web fetch and plan-steps rows, and
    sets `suppress: true` (the todo banner reads the snapshot); codex keeps its
    own uncollapsed variant. Decide which default a third-party bridge should
    get.
+
+## `experimental_unansweredInteractionWarning`, `experimental_unansweredInteractionErrorMessage` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_unansweredInteractionWarning` builds the `provider.warning` delta
+a bridge sends whenever it answers a provider question or permission request
+with something the user did not choose, whatever the provider receives.
+`experimental_unansweredInteractionErrorMessage` is the matching JSON-RPC error
+or deny text for the agent. The five causes are an unshowable request, a
+runtime error (bb stopped waiting), an unreadable resolution, an answer that
+does not fit the question, and a question the bridge withdrew. The `answer`
+names what the provider got (an error or a protocol value such as `cancel`).
+Summary and details wording is bb's, and the delta is vouched to the open turn.
+Core callers: the ACP bridge (`packages/provider-bridge-acp`), the Pi
+extension-dialog coordinator, every Codex question request, and Claude Code's
+canUseTool denials. The `unanswered-interactions` contract test in
+`@bb/provider-bridge-protocol` runs each bridge's question kinds (ACP, Pi and
+Codex rows come from the kinds each bridge routes) through every cause and a
+stopped turn.
+
+**Audit before stabilizing.**
+
+1. **The cause list is closed.** A third-party bridge with a sixth way to
+   answer without the user has no cause to name. Decide whether `cause` takes
+   free text before freezing the union.
+2. **The wording is a product decision**, as with the presentation builders:
+   English summary and details persist on the warning row, and the error text
+   reaches the model.
+3. **Error versus cancel stays the bridge's call.** Decide whether the kit
+   should pick the provider answer too (it cannot without knowing each
+   protocol) or keep only the warning and the message.
 
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
@@ -4124,6 +4179,30 @@ Docs: `backend-sdk.md`, `backend-events.md`.
 
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
+
+## Thread settled outcomes
+
+`experimental_thread.settled` delivers one `PluginThreadSettledEvent`, a union
+over every way a thread's work ends: `completed` (with `lastAssistantText`),
+`failed` (with `error`), `cancelled` (with the removed queued `entry`, so
+`entry.originPluginId` names whose message it was), `archived` and `deleted`.
+Core emits it from the same seams as `thread.idle`, `thread.failed`,
+`thread.archived`, `thread.deleted` and `message.cancelled`
+(`apps/server/src/services/plugins/plugin-service.ts`), so it is never a
+second, drifting source. Like every thread event it reaches the spawning
+plugin only after that plugin's `threads.spawn` / `threads.fork` returns.
+Automations (agent runs), Workflows (worker calls) and Tasks (delegated
+thread status) close their records from it with one exhaustive `switch`; each
+has a test table typed `Record<outcome, …>`, so a new outcome fails their
+typecheck until handled. The fake plugin host follows the four thread events
+with it; tests emit the `cancelled` outcome directly.
+
+Docs: `backend-events.md`.
+
+Stabilization requires deciding whether it replaces `thread.idle` /
+`thread.failed` for record keeping, whether `cancelled` should also cover rows
+dropped by other paths (a failed drain), and per-message correlation for
+plugins that send several messages to one thread.
 
 ## Host deletion notifications
 

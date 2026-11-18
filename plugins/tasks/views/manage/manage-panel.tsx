@@ -35,6 +35,7 @@ import {
   type PresetDraft,
 } from "./preset-dialog.js";
 import { ColorSwatchPicker, DEFAULT_COLOR } from "./shared.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 function useActionError() {
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +80,7 @@ function LabelEditorRow({
         placeholder="Label name"
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && name.trim() !== "") {
+          if (isNonImeKey(event, "Enter") && name.trim() !== "") {
             event.preventDefault();
             submit();
           }
@@ -462,11 +463,11 @@ function FolderRow({
             value={draftName}
             onChange={(event) => setDraftName(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && draftName.trim() !== "") {
+              if (isNonImeKey(event, "Enter") && draftName.trim() !== "") {
                 event.preventDefault();
                 rename();
               }
-              if (event.key === "Escape") setRenaming(false);
+              if (isNonImeKey(event, "Escape")) setRenaming(false);
             }}
             className="h-7 w-44 text-xs"
           />

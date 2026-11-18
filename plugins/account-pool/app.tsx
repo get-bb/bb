@@ -83,6 +83,7 @@ import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
 } from "./src/realtime.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 type DialogState =
   | { kind: "account" | "priority" | "remove"; accountId: string }
@@ -1411,7 +1412,7 @@ function AccountPoolSettings() {
                     void saveConfigField("anthropicUpstreamBaseUrl")
                   }
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
                   }}
                 />
               </ConfigFieldRow>
@@ -1437,7 +1438,7 @@ function AccountPoolSettings() {
                   }
                   onBlur={() => void saveConfigField("codexUpstreamBaseUrl")}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
                   }}
                 />
               </ConfigFieldRow>
@@ -1462,7 +1463,7 @@ function AccountPoolSettings() {
                   }
                   onBlur={() => void saveConfigField("switchThreshold")}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
                   }}
                 />
               </ConfigFieldRow>

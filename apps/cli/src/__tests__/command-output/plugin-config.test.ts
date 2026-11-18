@@ -123,7 +123,7 @@ describe("bb plugin config", () => {
       ),
     ).rejects.toThrow("process.exit:1");
     expect(console.error).toHaveBeenCalledWith(
-      'Setting "retries" is a number — pass a finite number.',
+      'Error: Setting "retries" is a number — pass a finite number.',
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

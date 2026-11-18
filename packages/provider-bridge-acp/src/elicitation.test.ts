@@ -155,21 +155,24 @@ describe("planAcpElicitation", () => {
     });
   });
 
-  it("declines when an answer does not fit its field", () => {
+  it("reports an answer that does not fit its field instead of declining for the user", () => {
     const plan = questions(
       planAcpElicitation(form({ retries: { type: "integer" } })),
     );
+    const unmappable = {
+      unmappable: 'the answer to "retries" does not fit that field',
+    };
     for (const freeText of ["many", "2.5"]) {
       expect(
         plan.toResponse({
           kind: "user_answer",
           answers: { retries: { selected: [], freeText } },
         }),
-      ).toEqual({ action: "decline" });
+      ).toEqual(unmappable);
     }
-    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
-      action: "decline",
-    });
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual(
+      unmappable,
+    );
   });
 
   it("asks for a typed answer when a choice has more options than the card can list, and matches it by value or label", () => {
@@ -201,7 +204,7 @@ describe("planAcpElicitation", () => {
         kind: "user_answer",
         answers: { branch: { selected: [], freeText: "staging" } },
       }),
-    ).toEqual({ action: "decline" });
+    ).toEqual({ unmappable: 'the answer to "branch" does not fit that field' });
   });
 
   it("shows a form without fields as accept or decline", () => {
@@ -224,6 +227,9 @@ describe("planAcpElicitation", () => {
         answers: { confirm: { selected: ["decline"] } },
       }),
     ).toEqual({ action: "decline" });
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
+      unmappable: "the answer was neither Accept nor Decline",
+    });
   });
 
   it("folds an omp choice and its optional __other text field into one question (#6031)", () => {

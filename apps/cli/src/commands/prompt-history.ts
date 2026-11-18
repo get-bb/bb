@@ -1,9 +1,9 @@
+import { outputJson } from "../command-result.js";
 import { Command } from "commander";
 import type { PromptHistoryListEntry } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { columnWidths, printBorderlessTable, truncateCell } from "../table.js";
-import { outputJson } from "./helpers.js";
 
 interface PromptHistoryListOptions {
   cursor?: string;

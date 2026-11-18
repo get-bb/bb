@@ -6,6 +6,7 @@ import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPromptDraftAccessor,
+  sendPromptDraft,
   usePromptDraftController,
   usePromptDraftInputEmpty,
   usePromptDraftInputThreadIds,
@@ -404,5 +405,60 @@ describe("usePromptDraftController", () => {
     );
 
     expect(result.current.text).toBe("typed");
+  });
+});
+
+describe("sendPromptDraft", () => {
+  const submitted = {
+    text: "message being sent",
+    mentions: [],
+    attachments: [
+      { type: "localFile" as const, path: "uploads/a.txt", name: "a.txt" },
+    ],
+  };
+
+  it("clears the draft and leaves it cleared when the send succeeds", async () => {
+    const draft = getPromptDraftAccessor(uniqueScope());
+    draft.setDraft(submitted);
+
+    await sendPromptDraft(draft, submitted, async () => {
+      expect(draft.getCurrent().text).toBe("");
+    });
+
+    expect(draft.getCurrent().text).toBe("");
+  });
+
+  it("merges a failed send back ahead of text typed while it was pending", async () => {
+    const draft = getPromptDraftAccessor(uniqueScope());
+    draft.setDraft(submitted);
+
+    await expect(
+      sendPromptDraft(draft, submitted, async () => {
+        draft.setTextAndMentions("next thought", []);
+        throw new Error("Simulated transport failure");
+      }),
+    ).rejects.toThrow("Simulated transport failure");
+
+    expect(draft.getCurrent()).toEqual({
+      ...submitted,
+      text: "message being sent\n\nnext thought",
+    });
+  });
+
+  it("does not restore a draft it never cleared", async () => {
+    const draft = getPromptDraftAccessor(uniqueScope());
+    draft.setDraft({
+      text: "changed before send",
+      mentions: [],
+      attachments: [],
+    });
+
+    await expect(
+      sendPromptDraft(draft, submitted, async () => {
+        throw new Error("Simulated transport failure");
+      }),
+    ).rejects.toThrow("Simulated transport failure");
+
+    expect(draft.getCurrent().text).toBe("changed before send");
   });
 });

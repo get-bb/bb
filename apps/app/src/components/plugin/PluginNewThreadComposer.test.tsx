@@ -2207,7 +2207,7 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(promptBoxText()).toBe("review every PR for slop");
   });
 
-  it("does not replace a new draft when submission fails", async () => {
+  it("merges a failed submission ahead of a new draft", async () => {
     let failSubmit: (() => void) | null = null;
     const onSubmit = vi.fn(
       () =>
@@ -2235,7 +2235,7 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().isSubmitting).toBe(false);
     });
-    expect(promptBoxText()).toBe("next thread");
+    expect(promptBoxText()).toBe("review every PR for slop\n\nnext thread");
   });
 
   it("accepts overlapping uploads and stays busy until every batch settles", async () => {

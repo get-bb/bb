@@ -238,7 +238,10 @@ beforeEach(() => {
     ok: true,
   });
   mockCascade({ thr_parent: ["thr_child"] });
-  vi.mocked(sdk.threads.unarchive).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.unarchive).mockResolvedValue({
+    ok: true,
+    progress: "complete",
+  });
   mocks.closePanesForThreads.mockReturnValue({
     focusedRoute: null,
     removedAny: false,
@@ -619,7 +622,7 @@ describe("ThreadActionsProvider archive feedback", () => {
       vi.mocked(sdk.threads.unarchive).mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            releaseParent = () => resolve({ ok: true });
+            releaseParent = () => resolve({ ok: true, progress: "complete" });
           }),
       );
       render(<button onClick={undo.onClick}>Undo archive</button>);

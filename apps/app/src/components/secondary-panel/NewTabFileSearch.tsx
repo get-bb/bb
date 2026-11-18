@@ -50,6 +50,7 @@ import {
   NewTabActions,
   type NewTabAction,
 } from "./NewTabActions";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
@@ -623,7 +624,7 @@ export function NewTabFileSearch({
         return;
       }
 
-      if (event.key === "Enter" && activeEntry) {
+      if (isNonImeKey(event, "Enter") && activeEntry) {
         event.preventDefault();
         if (activeEntry.kind === "action") {
           activeEntry.action.onSelect();

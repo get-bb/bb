@@ -21,10 +21,9 @@ import {
 import {
   appendDaemonEventsInTransaction,
   findLastCompletedRootStoredTurn,
-  getFirstParentedTimelineBoundarySequence,
   getLatestStoredThreadEventOfTypes,
   getLatestModelFallbackRowSinceTurnRequest,
-  getTimelineGroupingContextChangesInRange,
+  hasTimelineGroupingContextChangesInRange,
   getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
@@ -689,62 +688,25 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("resolves root turn starts for the parented boundary through the turn index", () => {
+  it("probes appended grouping-context rows through the type index", () => {
     const { db, thread } = setup();
 
-    const captured = captureStatements(db, () => {
-      expect(
-        getFirstParentedTimelineBoundarySequence(db, {
-          maxSeq: 10,
-          sequenceStart: 0,
-          threadId: thread.id,
-        }),
-      ).toBeNull();
-    });
-    const query = captured.find((entry) => entry.sql.includes("root_start"));
-    if (!query) {
-      throw new Error("Expected the parented timeline boundary SQL");
-    }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH events USING INDEX events_thread_type_sequence_idx \(thread_id=\? AND type=\? AND sequence>\? AND sequence<\?\)/u,
+    const [query] = captureStatements(db, () =>
+      hasTimelineGroupingContextChangesInRange(db, {
+        afterSequence: 10,
+        threadId: thread.id,
+        throughSequence: 30,
+      }),
     );
-    expect(details).not.toContain("SCAN spans");
-    expect(details).toMatch(
-      /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
-    );
-    expect(details).toMatch(
-      /SEARCH events USING COVERING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id>\?\)/u,
-    );
-    expect(details.indexOf("SCAN nested_history")).toBeGreaterThanOrEqual(0);
-    expect(details.indexOf("SCAN nested_history")).toBeLessThan(
-      details.indexOf("INDEX events_delegating_item_lookup_idx"),
-    );
-    expect(details).toMatch(
-      /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
-    );
+    if (!query) throw new Error("Expected the grouping-context probe SQL");
+    expect(queryPlanDetails({ db, ...query }).split("\n")).toEqual([
+      "SEARCH events USING COVERING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+    ]);
 
     db.$client.close();
   });
 
   it.each([
-    {
-      name: "probes appended grouping-context rows",
-      run: (db: DbConnection, threadId: string) =>
-        getTimelineGroupingContextChangesInRange(db, {
-          afterSequence: 10,
-          threadId,
-          throughSequence: 30,
-        }),
-      probes: [
-        "CORRELATED SCALAR SUBQUERY 1",
-        "SEARCH completed USING COVERING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
-      ],
-    },
     {
       name: "lists rows in a sequence range",
       run: (db: DbConnection, threadId: string) =>

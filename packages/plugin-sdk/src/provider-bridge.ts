@@ -229,6 +229,8 @@ export {
   toOptionalRecord,
   toOptionalString,
   toolPresentation as experimental_toolPresentation,
+  unansweredInteractionErrorMessage as experimental_unansweredInteractionErrorMessage,
+  unansweredInteractionWarning as experimental_unansweredInteractionWarning,
   versionFrom as experimental_versionFrom,
   webFetchPresentation as experimental_webFetchPresentation,
   webSearchPresentation as experimental_webSearchPresentation,
@@ -253,6 +255,9 @@ export type {
   ProviderRawEventDescription,
   ProviderRuntimeEvent,
   ProviderVisibilityMetadata,
+  UnansweredInteractionAnswer,
+  UnansweredInteractionCause,
+  UnansweredInteractionWarningArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**

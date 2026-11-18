@@ -216,6 +216,13 @@ const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
 
 const extensionUi: ExtensionUiCoordinator = createExtensionUiCoordinator({
   sendInteractionRequest: send,
+  sendThreadDeltas: (threadId, deltas) => sendThreadDeltas(threadId, deltas),
+  sendRequestCancelled: (requestId) =>
+    send({
+      jsonrpc: "2.0",
+      method: BRIDGE_NOTIFICATION_METHODS.requestCancelled,
+      params: { requestId },
+    }),
 });
 
 let configuredSkillPaths: string[] | null = null;

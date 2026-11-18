@@ -85,6 +85,7 @@ import type {
   SessionOptionChoice,
   SessionOptionMenuSection,
 } from "./SessionOptionsMenu";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const NO_AGENT_SECTIONS: readonly SessionOptionMenuSection[] = [];
 function ignoreAgentOptionChange(): void {}
@@ -908,7 +909,7 @@ export function ModelReasoningPicker({
         return;
       }
 
-      if (event.key === "Enter") {
+      if (isNonImeKey(event, "Enter")) {
         event.preventDefault();
         if (row.kind === "model") {
           if (row.option.disabled === true) return;

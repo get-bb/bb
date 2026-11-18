@@ -14,6 +14,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export const InlinePendingInteractionContext = createContext<{
   promptShownAbove: string;
@@ -60,7 +61,7 @@ export function PendingInteractionShell({
   const contentId = useId();
   const errorId = useId();
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape" && isExpanded && !event.defaultPrevented) {
+    if (isNonImeKey(event, "Escape") && isExpanded && !event.defaultPrevented) {
       event.preventDefault();
       event.stopPropagation();
       setIsExpanded(false);

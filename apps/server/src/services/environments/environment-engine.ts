@@ -60,7 +60,10 @@ import {
   type ThreadStatus,
   threadScope,
 } from "@bb/domain";
-import { type ThreadResponse } from "@bb/server-contract";
+import {
+  type OperationResponse,
+  type ThreadResponse,
+} from "@bb/server-contract";
 import {
   type PluginEnvironmentProviderCreateContext,
   type PluginEnvironmentProviderCreateResult,
@@ -132,6 +135,10 @@ import {
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
 import { ApiError } from "../../errors.js";
+import {
+  operationComplete,
+  operationInProgress,
+} from "../lib/operation-response.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 
 type Deps = ThreadProvisioningDeps;
@@ -1021,6 +1028,34 @@ async function sweepProviderEnvironmentInSlot(
   } catch (error) {
     writeEnvironmentTeardownFailure(deps, environmentId, errorMessage(error));
   }
+}
+
+export function readEnvironmentRecoveryOutcome(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): OperationResponse {
+  const row = getEnvironment(deps.db, environmentId);
+  if (row === null || row.teardownStatus === "removed") {
+    return operationComplete();
+  }
+  if (row.teardownStatus === "failed") {
+    throw new ApiError(
+      502,
+      "environment_teardown_failed",
+      row.teardownMessage ?? "Environment cleanup failed",
+    );
+  }
+  return operationInProgress();
+}
+
+export function readEnvironmentRemovalProgress(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): OperationResponse {
+  const row = getEnvironment(deps.db, environmentId);
+  return row === null || row.teardownStatus === "removed"
+    ? operationComplete()
+    : operationInProgress();
 }
 
 export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {

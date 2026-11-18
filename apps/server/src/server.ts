@@ -318,6 +318,8 @@ export function registerStaticAppRoutes(
     const headers = new Headers();
     headers.set("cache-control", STATIC_INDEX_CACHE_CONTROL);
     headers.set("etag", etag);
+    headers.set("content-security-policy", "frame-ancestors 'none'");
+    headers.set("x-frame-options", "DENY");
     if (requestMatchesEntityTag(ifNoneMatchHeader, etag)) {
       return new Response(null, { status: 304, headers });
     }

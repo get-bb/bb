@@ -85,7 +85,8 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
 
   it("enabling an already-running plugin disposes the previous instance instead of orphaning it", async () => {
     expect(globals.__rfLoads).toBe(1);
-    const entry = await harness.pluginService.setEnabled(PLUGIN_ID, true);
+    const entry = (await harness.pluginService.setEnabled(PLUGIN_ID, true))
+      ?.plugin;
     expect(entry?.status).toBe("running");
     expect(globals.__rfLoads).toBe(2);
     expect(globals.__rfDisposals).toBe(1);

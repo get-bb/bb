@@ -1,8 +1,10 @@
 import { unlink } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
+  makeQueueEntry,
   makeThreadResponse,
   PluginContextStaleError,
   type FakePluginHost,
@@ -302,6 +304,18 @@ async function createAgentAutomation(
   );
 }
 
+async function listRuns(
+  harness: FakePluginHost["harness"],
+  automationId: string,
+): Promise<AutomationRunResponse[]> {
+  return automationRunListResponseSchema.parse(
+    await harness.callRpc("automations_runs", {
+      projectId: PROJECT_ID,
+      automationId,
+    }),
+  ).runs;
+}
+
 function signalKinds(host: FakePluginHost) {
   return host.harness.realtimeSignals
     .filter((signal) => signal.channel === "automations")
@@ -330,9 +344,10 @@ describe("automations server plugin harness", () => {
       harness.registrations.services.map((service) => service.name),
     ).toEqual(["automation-sweep"]);
     expect(harness.registrations.threadEventHandlers).toMatchObject({
-      "thread.idle": 1,
-      "thread.failed": 1,
-      "thread.deleted": 1,
+      "experimental_thread.settled": 1,
+      "thread.idle": 0,
+      "thread.failed": 0,
+      "thread.deleted": 0,
     });
     expect(harness.registrations.settingsDescriptors).toEqual({});
 
@@ -893,7 +908,8 @@ describe("automations server plugin harness", () => {
             origin: "agent",
           }),
         ).rejects.toThrow();
-        await harness.emitThreadEvent("thread.idle", {
+        await harness.emitThreadEvent("experimental_thread.settled", {
+          outcome: "completed",
           thread: makeThreadResponse({ id: THREAD_ID }),
           lastAssistantText: "Build delivered and heartbeat stopped",
         });
@@ -1917,7 +1933,8 @@ describe("automations server plugin harness", () => {
       trigger: "schedule",
     });
 
-    await harness.emitThreadEvent("thread.idle", {
+    await harness.emitThreadEvent("experimental_thread.settled", {
+      outcome: "completed",
       thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
       lastAssistantText: null,
     });
@@ -1938,6 +1955,155 @@ describe("automations server plugin harness", () => {
       ]),
     );
 
+    await harness.dispose();
+  });
+
+  const SETTLED_RUNS: Record<
+    PluginThreadSettledEvent["outcome"],
+    {
+      event: (
+        thread: PluginThreadSettledEvent["thread"],
+      ) => PluginThreadSettledEvent;
+      run: Partial<AutomationRunResponse>;
+    }
+  > = {
+    completed: {
+      event: (thread) => ({
+        outcome: "completed",
+        thread,
+        lastAssistantText: "done",
+      }),
+      run: { status: "succeeded", error: null, skipReason: null },
+    },
+    failed: {
+      event: (thread) => ({
+        outcome: "failed",
+        thread,
+        error: "HTTP 400: stub failure",
+      }),
+      run: { status: "failed", error: "HTTP 400: stub failure" },
+    },
+    cancelled: {
+      event: (thread) => ({
+        outcome: "cancelled",
+        thread,
+        entry: makeQueueEntry({
+          threadId: thread.id,
+          originPluginId: "automations",
+        }),
+      }),
+      run: {
+        status: "skipped",
+        skipReason: "cancelled: its message was deleted before it ran",
+      },
+    },
+    archived: {
+      event: (thread) => ({ outcome: "archived", thread }),
+      run: {
+        status: "skipped",
+        skipReason: "interrupted: thread thr_settled was archived",
+      },
+    },
+    deleted: {
+      event: (thread) => ({ outcome: "deleted", thread }),
+      run: {
+        status: "skipped",
+        skipReason: "interrupted: thread thr_settled was deleted",
+      },
+    },
+  };
+
+  it.each(
+    Object.entries(SETTLED_RUNS).flatMap(([outcome, expected]) =>
+      (["before", "after"] as const).map((timing) => ({
+        outcome,
+        timing,
+        expected,
+      })),
+    ),
+  )(
+    "closes an agent run when its thread settles as $outcome $timing spawn returns",
+    async ({ timing, expected }) => {
+      const host = await bootAutomationsPlugin();
+      const { harness } = host;
+      const automation = await createAgentAutomation(harness, {
+        name: "Settled run",
+      });
+      let thread = makeThreadResponse({ id: "thr_settled" });
+      harness.sdk.stub("threads.spawn", async () => {
+        thread = makeThreadResponse({
+          id: "thr_settled",
+          projectId: PROJECT_ID,
+          createdAt: Date.now(),
+        });
+        if (timing === "before") {
+          void harness.emitThreadEvent(
+            "experimental_thread.settled",
+            expected.event(thread),
+          );
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        return thread;
+      });
+
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      if (timing === "after") {
+        await vi.waitFor(async () => {
+          expect(await listRuns(harness, automation.id)).toEqual([
+            expect.objectContaining({ threadId: "thr_settled" }),
+          ]);
+        });
+        await harness.emitThreadEvent(
+          "experimental_thread.settled",
+          expected.event(thread),
+        );
+      }
+
+      await vi.waitFor(async () => {
+        expect(await listRuns(harness, automation.id)).toEqual([
+          expect.objectContaining({
+            threadId: "thr_settled",
+            ...expected.run,
+          }),
+        ]);
+      });
+      await harness.dispose();
+    },
+  );
+
+  it("leaves its run open when another sender's queued message is cancelled", async () => {
+    const host = await bootAutomationsPlugin();
+    const { harness } = host;
+    const automation = await createAgentAutomation(harness, {
+      name: "Busy thread",
+    });
+    const thread = makeThreadResponse({
+      id: "thr_settled",
+      projectId: PROJECT_ID,
+    });
+    harness.sdk.stub("threads.spawn", async () => thread);
+    await harness.callRpc("automations_run", {
+      projectId: PROJECT_ID,
+      automationId: automation.id,
+    });
+    await vi.waitFor(async () => {
+      expect(await listRuns(harness, automation.id)).toEqual([
+        expect.objectContaining({ threadId: "thr_settled" }),
+      ]);
+    });
+
+    await harness.emitThreadEvent("experimental_thread.settled", {
+      outcome: "cancelled",
+      thread,
+      entry: makeQueueEntry({ threadId: thread.id, originPluginId: null }),
+    });
+
+    expect(await listRuns(harness, automation.id)).toEqual([
+      expect.objectContaining({ status: "running" }),
+    ]);
     await harness.dispose();
   });
 
@@ -2254,7 +2420,8 @@ describe("automations server plugin harness", () => {
       targetThreadId: THREAD_ID,
     });
 
-    await harness.emitThreadEvent("thread.deleted", {
+    await harness.emitThreadEvent("experimental_thread.settled", {
+      outcome: "deleted",
       thread: makeThreadResponse({
         id: THREAD_ID,
         projectId: PROJECT_ID,

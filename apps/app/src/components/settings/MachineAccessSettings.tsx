@@ -13,6 +13,7 @@ import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { SettingsWithControl } from "@/components/ui/settings-section";
 import { machineServerAccessBlockedReason } from "@/components/machines/machine-server-access";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 function parseUrl(value: string): URL | null {
   try {
@@ -304,7 +305,7 @@ function MachineAccessDetails({
               disabled={disabled}
               onChange={(event) => machineAccess.editDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") void machineAccess.commitUrl();
+                if (isNonImeKey(event, "Enter")) void machineAccess.commitUrl();
               }}
             />
             <Button

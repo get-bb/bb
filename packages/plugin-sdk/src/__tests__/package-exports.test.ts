@@ -39,6 +39,7 @@ describe("packed plugin SDK exports", () => {
       "./internal/composer-handle",
       "./internal/composer-view",
       "./internal/thread-status",
+      "./internal/thread-event-gate",
       "./internal/file-navigation-validation",
       "./internal/host-policy",
       "./internal/plugin-app-collector",

@@ -47,6 +47,7 @@ import {
   endsInsideExactRawThreadIdCodeSpan,
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
 } from "@bb/client-core";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface AutomationLink {
   automationId: string;
@@ -438,7 +439,7 @@ function stopRowToggle(event: MouseEvent<HTMLAnchorElement>): void {
 }
 
 function stopRowToggleKey(event: KeyboardEvent<HTMLAnchorElement>): void {
-  if (event.key === "Enter" || event.key === " ") {
+  if (isNonImeKey(event, "Enter") || event.key === " ") {
     event.stopPropagation();
   }
 }

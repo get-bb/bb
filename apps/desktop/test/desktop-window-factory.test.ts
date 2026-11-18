@@ -410,6 +410,33 @@ describe("desktop window factory", () => {
     expect(loadedWhenCreated).toEqual([[]]);
   });
 
+  it.each([
+    { code: "ERR_ABORTED", errno: -3, rejects: false },
+    { code: "", errno: -3, rejects: false },
+    { code: "ERR_CONNECTION_REFUSED", errno: -102, rejects: true },
+  ])(
+    "ignores only aborted loads (errno $errno, code $code) when loading every window",
+    async ({ code, errno, rejects }) => {
+      const { createdWindows, factory } = await createFactoryHarness();
+      await factory.createWindow({ initialUrl: null, stateKey: null });
+      const window = createdWindows[0];
+      if (!window) throw new Error("Expected a window");
+      window.loadURL = async (url: string) => {
+        throw Object.assign(new Error(`${code} (${errno}) loading '${url}'`), {
+          code,
+          errno,
+          url,
+        });
+      };
+      const loading = factory.loadUrl({ url: "data:text/html,loading" });
+      if (rejects) {
+        await expect(loading).rejects.toThrow(`(${errno})`);
+      } else {
+        await expect(loading).resolves.toBeUndefined();
+      }
+    },
+  );
+
   it("does not register the zoom event for non-Mac windows", async () => {
     const { createdWindows, factory } = await createFactoryHarness({
       isMac: false,

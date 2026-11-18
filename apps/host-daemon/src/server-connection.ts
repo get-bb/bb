@@ -61,7 +61,8 @@ export type ServerSessionInvalidationSource =
   | "fetchPluginHostArtifact"
   | "interruptInteractiveRequests"
   | "postEvents"
-  | "registerInteractiveRequest";
+  | "registerInteractiveRequest"
+  | "withdrawInteractiveRequest";
 
 export interface HandleServerSessionInvalidatedArgs {
   code: "inactive_session";

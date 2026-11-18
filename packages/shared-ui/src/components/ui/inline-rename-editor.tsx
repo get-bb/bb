@@ -4,6 +4,7 @@ import { COARSE_POINTER_ICON_SIZE_CLASS } from "./coarse-pointer-sizing";
 import { cn } from "../../lib/utils";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "./sidebar-row-classes";
 import type { InlineRenameEditorProps } from "./inline-rename";
+import { isImeComposing, isNonImeKey } from "../../lib/ime-keyboard";
 
 export function InlineRenameEditor({
   session,
@@ -92,11 +93,14 @@ export function InlineRenameEditor({
       onKeyUp={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         event.stopPropagation();
-        if (event.nativeEvent.isComposing || composingRef.current) return;
-        if (event.key === "Escape") {
+        if (isImeComposing(event) || composingRef.current) return;
+        if (isNonImeKey(event, "Escape")) {
           event.preventDefault();
           cancel(true);
-        } else if (event.key === "Enter" && event.target === inputRef.current) {
+        } else if (
+          isNonImeKey(event, "Enter") &&
+          event.target === inputRef.current
+        ) {
           event.preventDefault();
           void submit(true);
         }
