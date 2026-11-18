@@ -65,7 +65,6 @@ import {
   environments,
   events,
   promptHistoryEntries,
-  threadConversationOutlines,
   threadDynamicContextFileStates,
   threadSearchSegments,
   threads,
@@ -81,6 +80,12 @@ import {
   getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
 } from "./event-rewrite-generation.js";
+import {
+  conversationOutlineItemKinds,
+  conversationOutlineLifecycleTypes,
+  conversationOutlineStructuralItemKinds,
+  conversationOutlineStructuralLifecycleTypes,
+} from "./conversation-outline-event-types.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
   upsertThreadSearchSegments,
@@ -355,10 +360,10 @@ export function deleteThreadEventSuffixInTransaction(
     )
     .run();
   if (result.changes > 0) {
-    db.delete(threadConversationOutlines)
-      .where(eq(threadConversationOutlines.threadId, args.threadId))
-      .run();
-    bumpThreadEventRewriteGeneration(args.threadId);
+    bumpThreadEventRewriteGeneration(db, {
+      threadId: args.threadId,
+      conversationFromSequence: args.cutoffSequence,
+    });
     rewindResolvedItemPruning(db, {
       threadId: args.threadId,
       beforeSequence: args.cutoffSequence,
@@ -565,7 +570,10 @@ export function insertEvents(
           insertedInputIndexes.push(index);
           const highWaterMark = highWaterMarks[input.threadId];
           if (highWaterMark !== undefined && input.sequence <= highWaterMark) {
-            bumpThreadEventRewriteGeneration(input.threadId);
+            bumpThreadEventRewriteGeneration(tx, {
+              threadId: input.threadId,
+              conversationFromSequence: input.sequence,
+            });
             rewindResolvedItemPruning(tx, {
               threadId: input.threadId,
               beforeSequence: input.sequence,
@@ -3128,33 +3136,6 @@ export function findLastRootStoredTurnStarted(
     .get();
   return row?.turnId ? { sequence: row.sequence, turnId: row.turnId } : null;
 }
-
-const conversationOutlineLifecycleTypes = [
-  "client/turn/requested",
-  "turn/input/accepted",
-  "turn/started",
-  "turn/completed",
-  "system/manager/user_message",
-  "system/thread/interrupted",
-  "system/error",
-  "provider/error",
-  "item/agentMessage/delta",
-  "item/plan/delta",
-] satisfies ThreadEventType[];
-const conversationOutlineItemKinds = [
-  "agentMessage",
-  "plan",
-] satisfies ThreadEventItemType[];
-const conversationOutlineStructuralItemKinds = [
-  "backgroundTask",
-  "toolCall",
-] satisfies ThreadEventItemType[];
-const conversationOutlineStructuralLifecycleTypes = [
-  "item/started",
-  "item/completed",
-  "item/backgroundTask/progress",
-  "item/backgroundTask/completed",
-] satisfies ThreadEventType[];
 
 function storedConversationOutlineLifecycleWhere(
   threadId: string,

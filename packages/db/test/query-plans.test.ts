@@ -1785,7 +1785,7 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, created_at AS scan_created_at, data, thread_id FROM events",
+          "SELECT id, created_at, created_at AS scan_created_at, data, sequence, thread_id FROM events",
         ) &&
         fields.bindingArgumentCount === 14,
     });
@@ -1886,7 +1886,7 @@ describe("slow query index plans", () => {
       predicate: (fields) =>
         fields.operation === "get" &&
         fields.sql.startsWith(
-          "SELECT id, created_at, 0 AS scan_created_at, data, thread_id FROM events",
+          "SELECT id, created_at, 0 AS scan_created_at, data, sequence, thread_id FROM events",
         ) &&
         fields.bindingArgumentCount === 9,
     });

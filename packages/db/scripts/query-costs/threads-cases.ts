@@ -6,8 +6,12 @@ import {
   listStoredThreadPromptHistoryRows,
 } from "../../src/data/prompt-history.js";
 import {
-  getThreadConversationOutlineRecord,
-  upsertThreadConversationOutlineRecord,
+  deleteThreadConversationOutlineCheckpoint,
+  getThreadConversationOutlineCheckpoint,
+  getThreadConversationOutlineKeys,
+  invalidateThreadConversationOutlineFrom,
+  updateThreadConversationOutlineResponse,
+  upsertThreadConversationOutlineCheckpoint,
 } from "../../src/data/thread-conversation-outlines.js";
 import {
   getThreadPluginMetadata,
@@ -628,21 +632,54 @@ const PLUGIN_METADATA_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
 
 const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
-    name: `${OUTLINES}#getThreadConversationOutlineRecord`,
+    name: `${OUTLINES}#getThreadConversationOutlineCheckpoint`,
     run: (db, fixture) =>
-      getThreadConversationOutlineRecord(db, fixture.threadId),
+      getThreadConversationOutlineCheckpoint(db, fixture.threadId),
   },
   {
-    name: `${OUTLINES}#upsertThreadConversationOutlineRecord`,
+    name: `${OUTLINES}#upsertThreadConversationOutlineCheckpoint`,
     prepare: (_db, fixture) => {
       nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
     },
     run: (db, fixture) =>
-      upsertThreadConversationOutlineRecord(db, {
+      upsertThreadConversationOutlineCheckpoint(db, {
         threadId: fixture.threadId,
-        projectionKey: `v3:${fixture.latestSequence + 1}`,
+        projectionKey: "v3",
+        sequenceStart: fixture.latestSequence + 1,
         itemsJson: nextOutlineItemsJson,
+        response: { responseKey: "v3:next", responseTailJson: "[]" },
+        stateJson: "{}",
       }),
+  },
+  {
+    name: `${OUTLINES}#getThreadConversationOutlineKeys`,
+    run: (db, fixture) =>
+      getThreadConversationOutlineKeys(db, fixture.threadId),
+  },
+  {
+    name: `${OUTLINES}#updateThreadConversationOutlineResponse`,
+    prepare: (_db, fixture) => {
+      nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
+    },
+    run: (db, fixture) =>
+      updateThreadConversationOutlineResponse(db, {
+        threadId: fixture.threadId,
+        responseKey: "v3:next",
+        responseTailJson: nextOutlineItemsJson,
+      }),
+  },
+  {
+    name: `${OUTLINES}#invalidateThreadConversationOutlineFrom`,
+    run: (db, fixture) =>
+      invalidateThreadConversationOutlineFrom(db, {
+        threadId: fixture.threadId,
+        sequence: fixture.latestSequence,
+      }),
+  },
+  {
+    name: `${OUTLINES}#deleteThreadConversationOutlineCheckpoint`,
+    run: (db, fixture) =>
+      deleteThreadConversationOutlineCheckpoint(db, fixture.threadId),
   },
 ];
 

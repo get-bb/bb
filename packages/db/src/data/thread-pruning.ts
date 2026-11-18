@@ -361,7 +361,7 @@ function advanceThreadPruningTransaction(
 ) {
   const scope = threadScope ?? "";
   const batchSize = threadScope === undefined ? BATCH_SIZE : LIVE_BATCH_SIZE;
-  const result = db.transaction(
+  return db.transaction(
     (tx) => {
       const deadline = performance.now() + THREAD_PRUNING_ADVANCE_WORK_BUDGET_MS;
       const withinDeadline = () => performance.now() < deadline;
@@ -373,6 +373,7 @@ function advanceThreadPruningTransaction(
         | "thread-busy"
         | "missing-thread" = "advanced";
       let removed = 0;
+      let conversationFromSequence: number | null = null;
       let scanned = 0;
       let removedBytes = 0;
       if (
@@ -427,6 +428,7 @@ function advanceThreadPruningTransaction(
           });
           scanned = batch.scanned;
           removed = batch.removed;
+          conversationFromSequence = batch.conversationFromSequence;
           if (batch.complete) {
             if (cursor.step === 0) cursor.step = 1;
             else action = "thread-complete";
@@ -579,6 +581,15 @@ function advanceThreadPruningTransaction(
           ),
         )
         .run();
+      if (
+        threadId !== null &&
+        removed > 0 &&
+        !TIMELINE_PRESERVING_POLICIES.has(policy)
+      )
+        bumpThreadEventRewriteGeneration(tx, {
+          threadId,
+          conversationFromSequence,
+        });
       return {
         policy,
         action,
@@ -591,13 +602,6 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
-  if (
-    result.removed > 0 &&
-    result.threadId !== null &&
-    !TIMELINE_PRESERVING_POLICIES.has(policy)
-  )
-    bumpThreadEventRewriteGeneration(result.threadId);
-  return result;
 }
 
 export function findUnprunableThreadEventSequence(

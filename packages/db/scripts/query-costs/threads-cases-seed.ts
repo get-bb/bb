@@ -17,7 +17,7 @@ import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createPromptHistoryEntry } from "../../src/data/prompt-history.js";
 import { createTerminalSession } from "../../src/data/terminal-sessions.js";
-import { upsertThreadConversationOutlineRecord } from "../../src/data/thread-conversation-outlines.js";
+import { upsertThreadConversationOutlineCheckpoint } from "../../src/data/thread-conversation-outlines.js";
 import { createPromptHistoryEntryId, createThreadId } from "../../src/ids.js";
 import { insertThreadPluginMetadata } from "../../src/data/thread-plugin-metadata.js";
 import {
@@ -773,6 +773,13 @@ function tabsJson(index: number): string {
   });
 }
 
+function outlineStateJson(turns: number): string {
+  return JSON.stringify({
+    turnIds: Array.from({ length: turns }, (_, turn) => `turn-${turn}`),
+    requestIds: Array.from({ length: turns }, (_, turn) => `creq_${turn}`),
+  });
+}
+
 function outlineItemsJson(count: number, label: number): string {
   return JSON.stringify(
     Array.from({ length: count }, (_, item) => ({
@@ -821,33 +828,44 @@ function seedThreadState(
         threadId: thread.id,
       });
     }
-    upsertThreadConversationOutlineRecord(db, {
+    upsertThreadConversationOutlineCheckpoint(db, {
       threadId: fixture.threadId,
-      projectionKey: `v3:${fixture.latestSequence}`,
+      projectionKey: "v3",
+      sequenceStart: fixture.latestSequence,
       itemsJson: outlineItemsJson(fixture.turns.length * 2, 0),
+      response: {
+        responseKey: `v3:${fixture.latestSequence}`,
+        responseTailJson: "[]",
+      },
+      stateJson: outlineStateJson(fixture.turns.length),
     });
     for (const chunk of chunks(
       withOutlines.filter((t) => !real(t)),
       BULK_ROWS,
     )) {
-      db.run(sql`INSERT INTO thread_conversation_outlines (thread_id, projection_key, items_json)
-        SELECT row.value ->> '$.threadId', row.value ->> '$.projectionKey', row.value ->> '$.itemsJson'
+      db.run(sql`INSERT INTO thread_conversation_outlines (thread_id, projection_key, sequence_start, items_json, state_json)
+        SELECT row.value ->> '$.threadId', row.value ->> '$.projectionKey', row.value ->> '$.sequenceStart', row.value ->> '$.itemsJson', row.value ->> '$.stateJson'
         FROM json_each(${JSON.stringify(
           chunk.map((thread) => ({
             threadId: thread.id,
-            projectionKey: `v3:${thread.requestSequences.at(-1) ?? 0}`,
+            projectionKey: "v3",
+            sequenceStart: thread.requestSequences.at(-1) ?? 0,
             itemsJson: outlineItemsJson(
               thread.spec.turns * 2,
               thread.spec.index,
             ),
+            stateJson: outlineStateJson(thread.spec.turns),
           })),
         )}) AS row`);
     }
     for (const thread of withOutlines.filter(real)) {
-      upsertThreadConversationOutlineRecord(db, {
+      upsertThreadConversationOutlineCheckpoint(db, {
         threadId: thread.id,
-        projectionKey: `v3:${thread.requestSequences.at(-1) ?? 0}`,
+        projectionKey: "v3",
+        sequenceStart: thread.requestSequences.at(-1) ?? 0,
         itemsJson: outlineItemsJson(thread.spec.turns * 2, thread.spec.index),
+        response: null,
+        stateJson: outlineStateJson(thread.spec.turns),
       });
     }
     for (const thread of threads) {

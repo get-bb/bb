@@ -4,6 +4,7 @@ import {
   type CompletedTurnDisplay,
 } from "@bb/domain";
 import {
+  advanceThreadPruning,
   deleteThreadEventSuffixInTransaction,
   createThread,
   noopNotifier,
@@ -102,12 +103,20 @@ function accepted(requestId: string, turnId: string): RowSpec {
   };
 }
 
+function requestIdFor(index: number): string {
+  return `creq_${index.toString(8).replaceAll("0", "a").replaceAll("1", "b").padStart(10, "a")}`;
+}
+
+function managerMessage(text: string): RowSpec {
+  return { type: "system/manager/user_message", data: { text } };
+}
+
 function seed(testThread: TestThread, count = 3): void {
   appendRows(
     testThread,
     Array.from({ length: count }, (_, i) => {
       const turnId = `turn-${i}`;
-      const requestId = `creq_${i.toString(8).replaceAll("0", "a").replaceAll("1", "b").padStart(10, "a")}`;
+      const requestId = requestIdFor(i);
       return [
         request(requestId),
         started(turnId),
@@ -225,6 +234,20 @@ function expectMatchesFull(
     }),
   );
   return result;
+}
+
+function restarted(testThread: TestThread): TestThread {
+  return { ...testThread, db: testThread.coldDb, coldDb: testThread.db };
+}
+
+function pruneLive(testThread: TestThread): number {
+  let removed = 0;
+  for (let pass = 0; pass < 20; pass += 1) {
+    removed += advanceThreadPruning(testThread.db, {
+      threadId: testThread.thread.id,
+    }).removed;
+  }
+  return removed;
 }
 
 function countSelectedEventRows(
@@ -701,7 +724,7 @@ describe("incremental conversation outlines", () => {
       }),
   );
 
-  it("evicts old checkpoints without changing their rebuilt outlines", () => {
+  it("resumes evicted checkpoints from storage without changing their outlines", () => {
     withTestThread((testThread) => {
       seed(testThread, 100);
       expectMatchesFull(testThread);
@@ -717,10 +740,9 @@ describe("incremental conversation outlines", () => {
       }
       testThread.thread = firstThread;
       const count = countSelectedEventRows(testThread, () => {
-        load(testThread);
+        expectMatchesFull(testThread);
       });
-      expect(count).toBeGreaterThan(500);
-      expectMatchesFull(testThread);
+      expect(count).toBeLessThan(20);
       appendRows(testThread, [delta("live", " after eviction")]);
       expect(
         countSelectedEventRows(testThread, () => {
@@ -728,6 +750,228 @@ describe("incremental conversation outlines", () => {
         }),
       ).toBeLessThan(20);
       expectMatchesFull(testThread);
+    });
+  });
+
+  it("keeps the settled prefix across every thread status change", () => {
+    withTestThread((testThread) => {
+      seed(testThread, 100);
+      appendRows(testThread, [
+        message("live", "Finished prelude"),
+        completed("live"),
+        ...nestedTurn(0),
+        ...backgroundTurn(0),
+        request(requestIdFor(900), "steered"),
+        started("steered"),
+        delta("steered", "Live"),
+      ]);
+      expectMatchesFull(testThread);
+      for (const status of [
+        "idle",
+        "error",
+        "active",
+        "stopping",
+        "pending",
+        "starting",
+        "active",
+      ] as const) {
+        testThread.thread = { ...testThread.thread, status };
+        const selected = countSelectedEventRows(testThread, () =>
+          expectMatchesFull(testThread),
+        );
+        expect(selected).toBeLessThan(25);
+      }
+    });
+  });
+
+  it("only reads the newest manager messages as they arrive", () => {
+    withTestThread((testThread) => {
+      appendRows(
+        testThread,
+        Array.from({ length: 300 }, (_, index) =>
+          managerMessage(`Update ${index}`),
+        ),
+      );
+      expectMatchesFull(testThread);
+      for (const rows of [
+        [managerMessage("One more update")],
+        [
+          request(requestIdFor(1)),
+          started("between"),
+          accepted(requestIdFor(1), "between"),
+          message("between", "Handled"),
+          completed("between"),
+        ],
+        [managerMessage("After the turn")],
+        [managerMessage("Another update")],
+      ]) {
+        appendRows(testThread, rows);
+        const selected = countSelectedEventRows(testThread, () =>
+          expectMatchesFull(testThread),
+        );
+        expect(selected).toBeLessThan(25);
+      }
+    });
+  });
+
+  it("matches a full rebuild when manager messages arrive while a request waits", () => {
+    withTestThread((testThread) => {
+      seed(testThread);
+      for (const rows of [
+        [message("live", "Finished"), completed("live")],
+        [request(requestIdFor(70))],
+        [managerMessage("While the request waits")],
+        [managerMessage("Still waiting")],
+        [
+          started("queued"),
+          accepted(requestIdFor(70), "queued"),
+          message("queued", "Queued answer"),
+          completed("queued"),
+        ],
+        [managerMessage("After the queued turn")],
+        [managerMessage("Later update")],
+      ]) {
+        appendRows(testThread, rows);
+        expectMatchesFull(testThread);
+      }
+    });
+  });
+
+  it.each(["idle", "active"] as const)(
+    "resumes the stored checkpoint after a restart (%s)",
+    (status) => {
+      withTestThread((testThread) => {
+        testThread.thread = { ...testThread.thread, status };
+        seed(testThread, 100);
+        expectMatchesFull(testThread);
+        const next = restarted(testThread);
+        expect(
+          countSelectedEventRows(next, () => expectMatchesFull(next)),
+        ).toBeLessThan(25);
+        appendRows(next, [
+          delta("live", " more"),
+          message("live", "Done"),
+          completed("live"),
+          started("after-restart"),
+          delta("after-restart", "Next"),
+        ]);
+        expect(
+          countSelectedEventRows(next, () => expectMatchesFull(next)),
+        ).toBeLessThan(25);
+      });
+    },
+  );
+
+  it.each(["tail", "prefix"] as const)(
+    "keeps the stored checkpoint only when a rewind leaves its prefix alone (%s)",
+    (rewound) => {
+      withTestThread((testThread) => {
+        seed(testThread, 100);
+        appendRows(testThread, [delta("live", " streaming")]);
+        expectMatchesFull(testThread);
+        const maxSeq = getLatestThreadSequence(testThread.db, {
+          threadId: testThread.thread.id,
+        });
+        testThread.db.transaction((tx) =>
+          deleteThreadEventSuffixInTransaction(tx, {
+            threadId: testThread.thread.id,
+            cutoffSequence: rewound === "tail" ? maxSeq : 4,
+            oldMaxSequence: maxSeq,
+          }),
+        );
+        appendRows(testThread, [delta("live", " rewritten")]);
+        const next = restarted(testThread);
+        const selected = countSelectedEventRows(next, () =>
+          expectMatchesFull(next),
+        );
+        if (rewound === "tail") expect(selected).toBeLessThan(25);
+        else expect(selected).toBeGreaterThan(0);
+      });
+    },
+  );
+
+  it.each(["tail", "prefix"] as const)(
+    "drops the stored checkpoint only when pruning removes frozen deltas (%s)",
+    (pruned) => {
+      withTestThread((testThread) => {
+        seed(testThread, 100);
+        appendRows(testThread, [
+          delta("live", " more"),
+          delta("live", " words"),
+          message("live", "Finished"),
+          completed("live"),
+          ...(pruned === "prefix"
+            ? [started("next"), delta("next", "Next")]
+            : []),
+        ]);
+        expectMatchesFull(testThread);
+        expect(pruneLive(testThread)).toBeGreaterThan(0);
+        const selected = countSelectedEventRows(testThread, () =>
+          expectMatchesFull(testThread),
+        );
+        if (pruned === "tail") expect(selected).toBeLessThan(25);
+        else expect(selected).toBeGreaterThan(100);
+        const next = restarted(testThread);
+        expect(
+          countSelectedEventRows(next, () => expectMatchesFull(next)),
+        ).toBeLessThan(25);
+      });
+    },
+  );
+
+  it("keeps the stored checkpoint when pruning only removes rate-limit snapshots", () => {
+    withTestThread((testThread) => {
+      const rateLimits: RowSpec = {
+        type: "provider/rateLimits/updated",
+        data: { rateLimits: {} },
+      };
+      appendRows(testThread, [rateLimits]);
+      seed(testThread, 100);
+      appendRows(testThread, [rateLimits, delta("live", " more")]);
+      expectMatchesFull(testThread);
+      expect(pruneLive(testThread)).toBeGreaterThan(0);
+      const next = restarted(testThread);
+      expect(
+        countSelectedEventRows(next, () => expectMatchesFull(next)),
+      ).toBeLessThan(25);
+    });
+  });
+
+  it("keeps advancing the checkpoint after a rejected steer", () => {
+    withTestThread((testThread) => {
+      const steer = request(requestIdFor(800));
+      seed(testThread);
+      appendRows(testThread, [
+        message("live", "Finished"),
+        completed("live"),
+        {
+          ...steer,
+          data: {
+            ...steer.data,
+            target: { kind: "steer", expectedTurnId: null },
+          },
+        },
+        {
+          type: "client/turn/rejected",
+          data: {
+            requestId: requestIdFor(800),
+            reason: "command_failed",
+            message: "Refusing to start a competing turn",
+          },
+        },
+        ...Array.from({ length: 100 }, (_, index) => [
+          started(`after-${index}`),
+          message(`after-${index}`, `After ${index}`),
+          completed(`after-${index}`),
+        ]).flat(),
+        started("tail"),
+        delta("tail", "Tail"),
+      ]);
+      expectMatchesFull(testThread);
+      appendRows(testThread, [delta("tail", " more")]);
+      expect(
+        countSelectedEventRows(testThread, () => expectMatchesFull(testThread)),
+      ).toBeLessThan(25);
     });
   });
 

@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { prepareCachedQuery } from "../connection.js";
+import { isConversationOutlineEventType } from "./conversation-outline-event-types.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { events, threadPruningCursors } from "../schema.js";
 import { and, eq, sql, type SQL } from "drizzle-orm";
@@ -124,6 +125,7 @@ function pruneResolvedItemCandidates(
   const probe = args.probe;
   let discarded: string[] = [];
   let removed = 0;
+  let conversationFromSequence: number | null = null;
   const deleteDiscarded = () => {
     if (discarded.length === 0) return;
     removed += db.run(
@@ -219,6 +221,11 @@ function pruneResolvedItemCandidates(
       if (match) {
         if (args.kind === "background" || probe.probePhase === 1) {
           discarded.push(candidate.id);
+          if (isConversationOutlineEventType(candidate.type))
+            conversationFromSequence = Math.min(
+              conversationFromSequence ?? candidate.sequence,
+              candidate.sequence,
+            );
           finished = true;
         } else {
           probe.probePhase = 1;
@@ -244,7 +251,13 @@ function pruneResolvedItemCandidates(
     if (discarded.length >= RESOLVED_ITEM_PRUNING_DELETE_CHUNK) deleteDiscarded();
   }
   deleteDiscarded();
-  return { removed, sequence, processed, complete: processed === rows.length };
+  return {
+    removed,
+    sequence,
+    processed,
+    complete: processed === rows.length,
+    conversationFromSequence,
+  };
 }
 
 function resolvedItemResumeSequence(
@@ -314,7 +327,13 @@ export function advanceLiveEventPruning(
   const latest = db.get<{ sequence: number }>(
     sql`SELECT sequence FROM events WHERE thread_id = ${args.threadId} ORDER BY sequence DESC LIMIT 1`,
   );
-  if (!latest) return { removed: 0, scanned: 0, complete: true };
+  if (!latest)
+    return {
+      removed: 0,
+      scanned: 0,
+      complete: true,
+      conversationFromSequence: null,
+    };
   const passUpper = latest.sequence - 1;
   let cursor = db.select().from(threadPruningCursors).where(key).get();
   if (!cursor || cursor.version !== RESTING_CURSOR_VERSION) {
@@ -333,7 +352,12 @@ export function advanceLiveEventPruning(
       .get();
   } else if (cursor.sequence >= cursor.upperSequence) {
     if (passUpper <= cursor.upperSequence)
-      return { removed: 0, scanned: 0, complete: true };
+      return {
+        removed: 0,
+        scanned: 0,
+        complete: true,
+        conversationFromSequence: null,
+      };
     cursor.sequence = resolvedItemResumeSequence(db, {
       threadId: args.threadId,
       kind: args.kind,
@@ -347,6 +371,7 @@ export function advanceLiveEventPruning(
       ? ["item/backgroundTask/progress"]
       : Object.keys(deltaKinds);
   const budget = { remaining: args.limit, started: false };
+  let conversationFromSequence: number | null = null;
   let scanned = 0;
   let removed = 0;
   let complete = false;
@@ -369,6 +394,11 @@ export function advanceLiveEventPruning(
     });
     scanned += result.processed;
     removed += result.removed;
+    if (result.conversationFromSequence !== null)
+      conversationFromSequence = Math.min(
+        conversationFromSequence ?? result.conversationFromSequence,
+        result.conversationFromSequence,
+      );
     if (result.sequence > 0) cursor.sequence = result.sequence;
     if (!result.complete) break;
     if (candidates.length < pageSize || cursor.sequence >= cursor.upperSequence) {
@@ -389,7 +419,7 @@ export function advanceLiveEventPruning(
       set: cursor,
     })
     .run();
-  return { removed, scanned, complete };
+  return { removed, scanned, complete, conversationFromSequence };
 }
 
 function listResolvedItemCandidates(

@@ -91,6 +91,7 @@ interface CompletedEventOutputCandidateRow {
   data: string;
   id: string;
   scan_created_at: number;
+  sequence: number;
   thread_id: string;
 }
 
@@ -274,7 +275,7 @@ function findCompletedEventOutputCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, created_at AS scan_created_at, data, thread_id
+        SELECT id, created_at, created_at AS scan_created_at, data, sequence, thread_id
         FROM events
         WHERE type = ?
           AND item_kind = ?
@@ -344,7 +345,7 @@ function findLegacyImageGenerationCandidate(
       CompletedEventOutputCandidateRow
     >(
       `
-        SELECT id, created_at, 0 AS scan_created_at, data, thread_id
+        SELECT id, created_at, 0 AS scan_created_at, data, sequence, thread_id
         FROM events
         WHERE id > ?
           AND id <= ?
@@ -676,7 +677,10 @@ function migrateNextCompletedEventOutput(
       }
       if (prepared.data !== candidate.data)
         markThreadPruningPolicyWork(tx, [candidate.thread_id], "resolved-items");
-      bumpThreadEventRewriteGeneration(candidate.thread_id);
+      bumpThreadEventRewriteGeneration(tx, {
+        threadId: candidate.thread_id,
+        conversationFromSequence: candidate.sequence,
+      });
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {
           eventId: candidate.id,

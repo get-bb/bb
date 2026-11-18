@@ -76,8 +76,8 @@ import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection, listEvents } from "../../src/testing.js";
 import {
-  getThreadConversationOutlineRecord,
-  upsertThreadConversationOutlineRecord,
+  getThreadConversationOutlineCheckpoint,
+  upsertThreadConversationOutlineCheckpoint,
 } from "../../src/data/thread-conversation-outlines.js";
 
 function turnInterruptionState(
@@ -2604,12 +2604,15 @@ describe("events", () => {
     ).toEqual([]);
   });
 
-  it("drops only the rewound thread's stored conversation outline", () => {
+  it("drops only stored outline checkpoints that froze rewound events", () => {
     const { db, project, thread } = setup();
-    const otherThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
+    const createOther = () =>
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+    const tailThread = createOther();
+    const otherThread = createOther();
     const message = (threadId: string, sequence: number) => ({
       threadId,
       sequence,
@@ -2620,15 +2623,24 @@ describe("events", () => {
     insertEvents(db, noopNotifier, [
       message(thread.id, 1),
       message(thread.id, 2),
+      message(tailThread.id, 1),
+      message(tailThread.id, 2),
       message(otherThread.id, 1),
     ]);
-    for (const threadId of [thread.id, otherThread.id]) {
-      upsertThreadConversationOutlineRecord(db, {
-        threadId,
+    const checkpoint = (threadId: string, sequenceStart: number) => {
+      const record = {
         itemsJson: "[]",
         projectionKey: "key",
-      });
-    }
+        response: null,
+        sequenceStart,
+        stateJson: "{}",
+      };
+      upsertThreadConversationOutlineCheckpoint(db, { ...record, threadId });
+      return record;
+    };
+    checkpoint(thread.id, 3);
+    const tailCheckpoint = checkpoint(tailThread.id, 2);
+    const otherCheckpoint = checkpoint(otherThread.id, 2);
     const rewind = (threadId: string, cutoffSequence: number) =>
       db.transaction((tx) =>
         deleteThreadEventSuffixInTransaction(tx, {
@@ -2640,12 +2652,15 @@ describe("events", () => {
 
     expect(rewind(otherThread.id, 5).deletedEventCount).toBe(0);
     expect(rewind(thread.id, 2).deletedEventCount).toBe(1);
+    expect(rewind(tailThread.id, 2).deletedEventCount).toBe(1);
 
-    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
-    expect(getThreadConversationOutlineRecord(db, otherThread.id)).toEqual({
-      itemsJson: "[]",
-      projectionKey: "key",
-    });
+    expect(getThreadConversationOutlineCheckpoint(db, thread.id)).toBeNull();
+    expect(getThreadConversationOutlineCheckpoint(db, tailThread.id)).toEqual(
+      tailCheckpoint,
+    );
+    expect(getThreadConversationOutlineCheckpoint(db, otherThread.id)).toEqual(
+      otherCheckpoint,
+    );
   });
 
   describe("repeated latest-state lookups", () => {

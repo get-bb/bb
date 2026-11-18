@@ -1,4 +1,5 @@
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
+import { invalidateThreadConversationOutlineFrom } from "./thread-conversation-outlines.js";
 
 const generationsByThreadId = new Map<string, number>();
 
@@ -6,11 +7,19 @@ export function getThreadEventRewriteGeneration(threadId: string): number {
   return generationsByThreadId.get(threadId) ?? 0;
 }
 
-export function bumpThreadEventRewriteGeneration(threadId: string): void {
+export function bumpThreadEventRewriteGeneration(
+  db: DbQueryConnection,
+  args: { threadId: string; conversationFromSequence: number | null },
+): void {
   generationsByThreadId.set(
-    threadId,
-    getThreadEventRewriteGeneration(threadId) + 1,
+    args.threadId,
+    getThreadEventRewriteGeneration(args.threadId) + 1,
   );
+  if (args.conversationFromSequence !== null)
+    invalidateThreadConversationOutlineFrom(db, {
+      threadId: args.threadId,
+      sequence: args.conversationFromSequence,
+    });
 }
 
 export function getDatabaseDataVersion(db: DbConnection): number {

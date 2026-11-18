@@ -6,7 +6,7 @@ import {
   deleteThreadEventSuffixInTransaction,
   getLatestStoredConversationOutlineSequence,
   getThread,
-  getThreadConversationOutlineRecord,
+  getThreadConversationOutlineCheckpoint,
   insertEvents,
   noopNotifier,
   threads,
@@ -133,7 +133,7 @@ describe("thread conversation outline performance", () => {
     db.$client.close();
   });
 
-  it("rejects materialized outlines after metadata changes and rewinds", () => {
+  it("rejects materialized outlines after status changes and rewinds", () => {
     const { db, queries, thread } = setup("idle");
     insertEvents(db, noopNotifier, [
       {
@@ -154,16 +154,16 @@ describe("thread conversation outline performance", () => {
       outlineSequence: 1,
     });
     db.update(threads)
-      .set({ title: "Renamed thread" })
+      .set({ status: "error" })
       .where(eq(threads.id, thread.id))
       .run();
-    const renamedThread = getThread(db, thread.id);
-    if (renamedThread === null) {
-      throw new Error("Expected renamed thread");
+    const erroredThread = getThread(db, thread.id);
+    if (erroredThread === null) {
+      throw new Error("Expected errored thread");
     }
     queries.length = 0;
 
-    loadThreadConversationOutline(db, renamedThread, {
+    loadThreadConversationOutline(db, erroredThread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
       maxSeq: 1,
@@ -182,7 +182,7 @@ describe("thread conversation outline performance", () => {
     );
     queries.length = 0;
 
-    const rewound = loadThreadConversationOutline(db, renamedThread, {
+    const rewound = loadThreadConversationOutline(db, erroredThread, {
       completedTurnDisplay: "collapse",
       includeClearedContextHistory: false,
       maxSeq: 0,
@@ -218,7 +218,9 @@ describe("thread conversation outline performance", () => {
       outlineSequence: 1,
     });
 
-    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
+    expect(
+      getThreadConversationOutlineCheckpoint(db, thread.id)?.response ?? null,
+    ).toBeNull();
     db.$client.close();
   });
 

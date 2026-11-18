@@ -837,8 +837,18 @@ export const threadConversationOutlines = sqliteTable(
       .primaryKey()
       .references(() => threads.id, { onDelete: "cascade" }),
     projectionKey: text("projection_key").notNull(),
+    sequenceStart: integer("sequence_start").notNull(),
+    responseKey: text("response_key"),
     itemsJson: text("items_json").notNull(),
+    stateJson: text("state_json").notNull(),
+    responseTailJson: text("response_tail_json"),
   },
+  (table) => [
+    check(
+      "thread_conversation_outlines_response_check",
+      sql`(${table.responseKey} IS NULL) = (${table.responseTailJson} IS NULL)`,
+    ),
+  ],
 );
 
 export const threadDynamicContextFileStates = sqliteTable(

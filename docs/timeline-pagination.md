@@ -358,13 +358,38 @@ kept selection and projection. Dropping either only costs a fresh read.
 The conversation outline returns the full list of message previews;
 `role=user` or `role=assistant` returns only that role's items, sharing one
 cache. The app requests user items while the table of contents is visible and
-assistant items only while its Agent messages tab is open. Active
-threads reuse completed outline items from a bounded in-memory cache (16 threads,
-8 million characters) and reproject only the tail; history rewrites, context
-clears, metadata or display changes, and writes from another database connection
+assistant items only while its Agent messages tab is open.
+
+The server reuses a checkpoint of settled outline items and reprojects only the
+tail after it. A checkpoint covers history up to a point where no root turn is
+running and no steer is waiting; a completed turn followed by a new turn or a
+manager message moves it forward. Settled items do not depend on the thread's
+status or title, so status changes and renames reuse it; the tail is always
+projected with the current status. Checkpoints are kept in memory for 16 threads
+(8 million characters) and stored in `thread_conversation_outlines`, so eviction
+and restarts resume from the stored checkpoint instead of rebuilding.
+
+A history rewrite reports the lowest sequence it changed, and only checkpoints
+that froze that sequence are dropped: a rewind or gap-fill at that sequence, a
+completed-output migration of that event, or pruning of agent message deltas
+and background task progress. Pruning rate-limit snapshots, usage and turn
+diffs never drops a checkpoint, because the outline does not read those events.
+Context clears, display changes and writes from another database connection
 force a rebuild. Background tasks in the kept history do not prevent reuse, but
 a later event for one of them, like a child event of a kept tool call, forces a
-rebuild. Eviction only affects performance.
+rebuild. A checkpoint never moves past the thread's first timeline ordering
+boundary, so history after an overlapping user message or a user message sent
+during a delegation is always reprojected.
+
+Idle and errored threads also store their exact response next to the
+checkpoint, keyed by the latest outline sequence and the thread status, so
+reopening an unchanged thread reads no events. Any history rewrite that
+touches outline events clears it.
+
+`pnpm --filter @bb/server test:timeline-history` with `BB_TIMELINE_HISTORY_DB`
+set to a bb database replays the five largest threads in random chunks, with
+status changes, pruning and restarts, and checks every incremental outline
+against a full build.
 
 ## Catch-up feedback
 

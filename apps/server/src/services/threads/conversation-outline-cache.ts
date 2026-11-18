@@ -1,9 +1,18 @@
+import { z } from "zod";
 import {
+  deleteThreadConversationOutlineCheckpoint,
   getDatabaseDataVersion,
+  getThreadConversationOutlineCheckpoint,
+  getThreadConversationOutlineKeys,
   getThreadEventRewriteGeneration,
+  updateThreadConversationOutlineResponse,
+  upsertThreadConversationOutlineCheckpoint,
   type DbConnection,
 } from "@bb/db";
-import type { ThreadConversationOutlineItem } from "@bb/server-contract";
+import {
+  threadConversationOutlineItemSchema,
+  type ThreadConversationOutlineItem,
+} from "@bb/server-contract";
 import {
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
   type ThreadEventWithMeta,
@@ -47,6 +56,7 @@ interface Entry {
   maxSeq: number;
   chars: number;
   projectionState: ConversationOutlineProjectionState;
+  responseKey: string | null;
 }
 
 interface OutlineCache {
@@ -57,6 +67,119 @@ interface OutlineCache {
 const caches = new WeakMap<DbConnection, OutlineCache>();
 const MAX_ENTRIES = 16;
 const MAX_CHARS = 8_000_000;
+
+const storedItemsSchema = threadConversationOutlineItemSchema.array();
+const storedStateSchema = z.object({
+  checkpointAgentMessageDeltaCount: z.number().int().nonnegative(),
+  agentMessageDeltaCount: z.number().int().nonnegative(),
+  historySequenceStart: z.number().int().nonnegative(),
+  projectionState: z.object({
+    includeNestedEvents: z.boolean(),
+    summaryCompactionEnabled: z.boolean(),
+  }),
+  turnIds: z.array(z.string()),
+  requestIds: z.array(z.string()),
+  parentItemIds: z.array(z.string()),
+});
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function entryChars(checkpoint: Checkpoint, itemsJson: string): number {
+  return (
+    itemsJson.length +
+    [
+      ...checkpoint.turnIds,
+      ...checkpoint.requestIds,
+      ...checkpoint.parentItemIds,
+    ].reduce((sum, id) => sum + id.length, 0)
+  );
+}
+
+function readStoredEntry(
+  db: DbConnection,
+  args: {
+    threadId: string;
+    key: string;
+    dataVersion: number;
+    generation: number;
+  },
+): Entry | null {
+  const record = getThreadConversationOutlineCheckpoint(db, args.threadId);
+  if (record === null || record.projectionKey !== args.key) return null;
+  const items = storedItemsSchema.safeParse(parseJson(record.itemsJson));
+  const state = storedStateSchema.safeParse(parseJson(record.stateJson));
+  if (!items.success || !state.success) return null;
+  const checkpoint: Checkpoint = {
+    agentMessageDeltaCount: state.data.checkpointAgentMessageDeltaCount,
+    items: items.data,
+    sequenceStart: record.sequenceStart,
+    turnIds: new Set(state.data.turnIds),
+    requestIds: new Set(state.data.requestIds),
+    parentItemIds: new Set(state.data.parentItemIds),
+  };
+  return {
+    agentMessageDeltaCount: state.data.agentMessageDeltaCount,
+    checkpoint,
+    historySequenceStart: state.data.historySequenceStart,
+    dataVersion: args.dataVersion,
+    generation: args.generation,
+    key: args.key,
+    maxSeq: record.sequenceStart - 1,
+    chars: entryChars(checkpoint, record.itemsJson),
+    projectionState: state.data.projectionState,
+    responseKey: record.response?.responseKey ?? null,
+  };
+}
+
+export function readStoredConversationOutline(
+  db: DbConnection,
+  args: { threadId: string; key: string; responseKey: string },
+): ThreadConversationOutlineItem[] | null {
+  const keys = getThreadConversationOutlineKeys(db, args.threadId);
+  if (keys?.projectionKey !== args.key || keys.responseKey !== args.responseKey)
+    return null;
+  const record = getThreadConversationOutlineCheckpoint(db, args.threadId);
+  if (record?.response?.responseKey !== args.responseKey) return null;
+  const items = storedItemsSchema.safeParse(parseJson(record.itemsJson));
+  const tail = storedItemsSchema.safeParse(
+    parseJson(record.response.responseTailJson),
+  );
+  return items.success && tail.success ? [...items.data, ...tail.data] : null;
+}
+
+function storeEntry(
+  db: DbConnection,
+  threadId: string,
+  entry: Entry,
+  itemsJson: string,
+  responseTailJson: string | null,
+): void {
+  upsertThreadConversationOutlineCheckpoint(db, {
+    threadId,
+    projectionKey: entry.key,
+    sequenceStart: entry.checkpoint.sequenceStart,
+    itemsJson,
+    response:
+      entry.responseKey === null || responseTailJson === null
+        ? null
+        : { responseKey: entry.responseKey, responseTailJson },
+    stateJson: JSON.stringify({
+      checkpointAgentMessageDeltaCount: entry.checkpoint.agentMessageDeltaCount,
+      agentMessageDeltaCount: entry.agentMessageDeltaCount,
+      historySequenceStart: entry.historySequenceStart,
+      projectionState: entry.projectionState,
+      turnIds: [...entry.checkpoint.turnIds],
+      requestIds: [...entry.checkpoint.requestIds],
+      parentItemIds: [...entry.checkpoint.parentItemIds],
+    }),
+  });
+}
 
 function referencedRequestId(
   event: ThreadEventWithMeta["event"],
@@ -135,6 +258,7 @@ function nextCheckpoint(
 ): Checkpoint {
   const activeTurns = new Set<string>();
   const pendingRequests = new Set<string>();
+  const unacceptedRequests = new Set<string>();
   let completedBoundary = previous.sequenceStart;
   let boundary = previous.sequenceStart;
   for (const { event, meta } of projection.events) {
@@ -143,14 +267,32 @@ function nextCheckpoint(
     }
     if (
       event.type === "client/turn/requested" &&
-      (event.target.kind === "steer" ||
-        (event.target.kind === "auto" && event.target.expectedTurnId !== null))
+      (event.target.kind === "steer" || event.target.kind === "auto") &&
+      event.target.expectedTurnId !== null
     )
       pendingRequests.add(event.requestId);
-    if (event.type === "turn/input/accepted")
+    if (event.type === "client/turn/requested")
+      unacceptedRequests.add(event.requestId);
+    if (event.type === "turn/input/accepted") {
       pendingRequests.delete(event.clientRequestId);
-    if (event.type === "client/turn/rejected")
+      unacceptedRequests.delete(event.clientRequestId);
+    }
+    if (event.type === "client/turn/rejected") {
       pendingRequests.delete(event.requestId);
+      unacceptedRequests.delete(event.requestId);
+    }
+    if (
+      event.type === "system/manager/user_message" &&
+      activeTurns.size === 0 &&
+      unacceptedRequests.size === 0
+    ) {
+      if (
+        orderingBoundarySequence === null ||
+        completedBoundary <= orderingBoundarySequence
+      )
+        boundary = completedBoundary;
+      completedBoundary = meta.seq + 1;
+    }
     if (event.scope.kind !== "turn") continue;
     if (event.type === "turn/started") {
       if (
@@ -228,6 +370,8 @@ export function projectConversationOutlineIncrementally(args: {
   maxSeq: number;
   historySequenceStart: number;
   orderingBoundarySequence: number | null;
+  responseKey: string;
+  materializeResponse: boolean;
   resolveProjectionState: (
     sequenceStart: number,
     previous: ConversationOutlineProjectionState | null,
@@ -245,10 +389,10 @@ export function projectConversationOutlineIncrementally(args: {
   }
   const dataVersion = getDatabaseDataVersion(args.db);
   const generation = getThreadEventRewriteGeneration(args.threadId);
-  const entry = cache.entries.get(args.threadId);
-  if (entry !== undefined) {
+  const cached = cache.entries.get(args.threadId);
+  if (cached !== undefined) {
     cache.entries.delete(args.threadId);
-    cache.chars -= entry.chars;
+    cache.chars -= cached.chars;
   }
   const empty: Checkpoint = {
     agentMessageDeltaCount: 0,
@@ -258,22 +402,40 @@ export function projectConversationOutlineIncrementally(args: {
     requestIds: new Set(),
     parentItemIds: new Set(),
   };
-  const canReuseEntry =
-    entry !== undefined &&
-    entry.key === args.key &&
-    entry.dataVersion === dataVersion &&
-    entry.generation === generation &&
-    entry.historySequenceStart === args.historySequenceStart &&
+  const isUsable = (candidate: Entry) =>
+    candidate.key === args.key &&
+    candidate.historySequenceStart === args.historySequenceStart &&
     (args.orderingBoundarySequence === null ||
-      entry.checkpoint.sequenceStart <= args.orderingBoundarySequence) &&
-    entry.maxSeq <= args.maxSeq;
-  const previousState = canReuseEntry ? entry.projectionState : null;
+      candidate.checkpoint.sequenceStart <= args.orderingBoundarySequence) &&
+    candidate.maxSeq <= args.maxSeq;
+  let entry: Entry | null = null;
+  if (
+    cached !== undefined &&
+    cached.dataVersion === dataVersion &&
+    cached.generation === generation &&
+    isUsable(cached)
+  ) {
+    entry = cached;
+  } else if (cached !== undefined && cached.dataVersion !== dataVersion) {
+    deleteThreadConversationOutlineCheckpoint(args.db, args.threadId);
+  } else {
+    const stored = readStoredEntry(args.db, {
+      threadId: args.threadId,
+      key: args.key,
+      dataVersion,
+      generation,
+    });
+    if (stored !== null && isUsable(stored)) entry = stored;
+    else if (stored !== null)
+      deleteThreadConversationOutlineCheckpoint(args.db, args.threadId);
+  }
+  const previousState = entry?.projectionState ?? null;
   const projectionState = args.resolveProjectionState(
-    canReuseEntry ? entry.maxSeq + 1 : args.historySequenceStart,
+    entry === null ? args.historySequenceStart : entry.maxSeq + 1,
     previousState,
   );
   let checkpoint =
-    canReuseEntry &&
+    entry !== null &&
     previousState?.includeNestedEvents ===
       projectionState.includeNestedEvents &&
     previousState.summaryCompactionEnabled ===
@@ -291,7 +453,7 @@ export function projectConversationOutlineIncrementally(args: {
       ({ event }) => event.type === "item/agentMessage/delta",
     ).length;
   const crossedCompactionThreshold =
-    entry !== undefined &&
+    entry !== null &&
     entry.agentMessageDeltaCount <
       MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION &&
     agentMessageDeltaCount >= MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION;
@@ -305,6 +467,8 @@ export function projectConversationOutlineIncrementally(args: {
       ({ event }) => event.type === "item/agentMessage/delta",
     ).length;
   }
+  if (entry !== null && checkpoint === empty)
+    deleteThreadConversationOutlineCheckpoint(args.db, args.threadId);
   const projection = { events: selection.events, items: selection.project() };
   const items = [
     ...checkpoint.items,
@@ -315,29 +479,52 @@ export function projectConversationOutlineIncrementally(args: {
     checkpoint,
     args.orderingBoundarySequence,
   );
-  if (next.sequenceStart > args.historySequenceStart) {
-    const chars =
-      next === entry?.checkpoint
-        ? entry.chars
-        : JSON.stringify(next.items).length +
-          [...next.turnIds, ...next.requestIds, ...next.parentItemIds].reduce(
-            (sum, id) => sum + id.length,
-            0,
-          );
-    if (chars <= MAX_CHARS) {
-      cache.entries.set(args.threadId, {
-        agentMessageDeltaCount,
-        checkpoint: next,
-        historySequenceStart: args.historySequenceStart,
-        dataVersion,
-        generation,
-        key: args.key,
-        maxSeq: args.maxSeq,
-        chars,
-        projectionState,
-      });
-      cache.chars += chars;
-    }
+  const hasCheckpoint = next.sequenceStart > args.historySequenceStart;
+  const unchanged = entry !== null && next === entry.checkpoint;
+  const storeResponse =
+    args.materializeResponse && entry?.responseKey !== args.responseKey;
+  const responseTailJson = storeResponse
+    ? JSON.stringify(items.slice(next.items.length))
+    : null;
+  const responseKey = storeResponse
+    ? args.responseKey
+    : unchanged
+      ? (entry?.responseKey ?? null)
+      : null;
+  const itemsJson = unchanged ? null : JSON.stringify(next.items);
+  const nextEntry: Entry = {
+    agentMessageDeltaCount,
+    checkpoint: next,
+    historySequenceStart: args.historySequenceStart,
+    dataVersion,
+    generation,
+    key: args.key,
+    maxSeq: args.maxSeq,
+    chars:
+      itemsJson === null ? (entry?.chars ?? 0) : entryChars(next, itemsJson),
+    projectionState,
+    responseKey,
+  };
+  if (itemsJson !== null && (hasCheckpoint || responseTailJson !== null))
+    storeEntry(args.db, args.threadId, nextEntry, itemsJson, responseTailJson);
+  else if (
+    responseTailJson !== null &&
+    !updateThreadConversationOutlineResponse(args.db, {
+      threadId: args.threadId,
+      responseKey: args.responseKey,
+      responseTailJson,
+    })
+  )
+    storeEntry(
+      args.db,
+      args.threadId,
+      nextEntry,
+      JSON.stringify(next.items),
+      responseTailJson,
+    );
+  if (hasCheckpoint && nextEntry.chars <= MAX_CHARS) {
+    cache.entries.set(args.threadId, nextEntry);
+    cache.chars += nextEntry.chars;
   }
   while (cache.entries.size > MAX_ENTRIES || cache.chars > MAX_CHARS) {
     const oldest = cache.entries.keys().next().value;
