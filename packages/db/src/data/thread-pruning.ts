@@ -39,7 +39,7 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "rate-limits": 1,
   usage: 1,
   "turn-diffs": 1,
-  "resolved-items": 1,
+  "resolved-items": 2,
 };
 export const PRUNABLE_THREAD_EVENT_TYPES = [
   "provider/rateLimits/updated",
