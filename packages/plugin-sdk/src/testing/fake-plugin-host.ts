@@ -358,6 +358,8 @@ export interface FakePluginInspectionState {
   readonly realtimeSignals: FakeRealtimeSignal[];
   /** Every `bb.status.needsConfiguration` message, in order. */
   readonly needsConfigurationMessages: string[];
+  /** How many times the plugin called `bb.status.experimental_configured()`. */
+  readonly experimental_configuredCount: number;
   /**
    * How many times the plugin called
    * `bb.experimental_hooks.recheck()` — the wake it asks core for when a
@@ -1165,6 +1167,7 @@ function createFakePluginHostInternal(
 
   // --- status ---
   const needsConfigurationMessages: string[] = [];
+  let configuredCount = 0;
   const status: PluginStatusApi = {
     needsConfiguration(message) {
       assertLive();
@@ -1173,6 +1176,10 @@ function createFakePluginHostInternal(
           ? message
           : "needs configuration",
       );
+    },
+    experimental_configured() {
+      assertLive();
+      configuredCount += 1;
     },
   };
 
@@ -1753,6 +1760,9 @@ function createFakePluginHostInternal(
     experimental_rpcInvalidations: rpcInvalidations,
     realtimeSignals,
     needsConfigurationMessages,
+    get experimental_configuredCount() {
+      return configuredCount;
+    },
     get recheckCount() {
       return requestedDrains;
     },

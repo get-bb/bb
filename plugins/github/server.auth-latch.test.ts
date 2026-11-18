@@ -143,6 +143,21 @@ describe("github plugin gh auth probe (#1758)", () => {
     expect(status.ghState).toBe("needs_configuration");
   });
 
+  it("clears needs-configuration once gh is signed in, without a reload", async () => {
+    writeFileSync(noTokenFlag, "");
+    const { harness } = await loadWithSyncServiceOnce();
+    const reported = harness.needsConfigurationMessages.length;
+    expect(reported).toBeGreaterThan(0);
+    expect(harness.experimental_configuredCount).toBe(0);
+
+    rmSync(noTokenFlag);
+    const status = (await harness.callRpc("status")) as { ghState: string };
+
+    expect(status.ghState).toBe("ready");
+    expect(harness.experimental_configuredCount).toBe(1);
+    expect(harness.needsConfigurationMessages).toHaveLength(reported);
+  });
+
   it("control: with gh working from the start the plugin never reports needs-configuration", async () => {
     const { harness } = await loadWithSyncServiceOnce();
     expect(harness.needsConfigurationMessages).toEqual([]);

@@ -1,7 +1,6 @@
 const SERVER_SESSION_STALE_TIME_MS = 60 * 60_000;
 const FOCUS_OWNED_LIVE_STALE_TIME_MS = 30_000;
 const TYPEAHEAD_STALE_TIME_MS = 15_000;
-const HOST_DERIVED_STALE_TIME_MS = 30_000;
 
 export const SESSION_STATIC_QUERY_POLICY = {
   refetchOnMount: false,
@@ -33,14 +32,19 @@ export const TYPEAHEAD_QUERY_POLICY = {
   staleTime: TYPEAHEAD_STALE_TIME_MS,
 } as const;
 
-export const HOST_DERIVED_QUERY_META = { hostDerived: true } as const;
+const HOST_DERIVED_META_KEY = "hostDerivedHostId";
 
-export const HOST_DERIVED_QUERY_POLICY = {
-  meta: HOST_DERIVED_QUERY_META,
-  refetchOnReconnect: false,
-  refetchOnWindowFocus: false,
-  staleTime: HOST_DERIVED_STALE_TIME_MS,
-} as const;
+export function hostDerivedQueryPolicy(hostId: string | null) {
+  return { meta: { [HOST_DERIVED_META_KEY]: hostId } };
+}
+
+export function readHostDerivedQueryHostId(
+  meta: Record<string, unknown> | undefined,
+): string | null | undefined {
+  if (meta === undefined || !(HOST_DERIVED_META_KEY in meta)) return undefined;
+  const hostId = meta[HOST_DERIVED_META_KEY];
+  return typeof hostId === "string" ? hostId : null;
+}
 
 export const EXPENSIVE_MANUAL_QUERY_POLICY = {
   refetchOnWindowFocus: false,

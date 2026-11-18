@@ -60,6 +60,7 @@ export const HOST_CHANGE_KINDS = [
   "provider-commands-changed",
   "provider-cli-status-changed",
   "provider-cli-install-jobs-changed",
+  "host-state-changed",
 ] as const;
 export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 

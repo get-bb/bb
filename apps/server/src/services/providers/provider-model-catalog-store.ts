@@ -104,6 +104,7 @@ export interface ProviderModelCatalogStore {
   ): Promise<void>;
   clearFailure(hostId: string, providerId: string): void;
   markAllStale(): void;
+  markHostStale(hostId: string): void;
   forgetHost(deps: WorkSessionDeps, hostId: string): void;
 }
 
@@ -363,6 +364,18 @@ function evaluate(
     };
   }
   return { kind: "wait" };
+}
+
+function markEntryStale(entry: CatalogEntry): void {
+  entry.failure = null;
+  entry.unavailableDetail = null;
+  entry.selectedModels.clear();
+  if (entry.good !== null) {
+    entry.good.fetchedAt = 0;
+  }
+  if (entry.refresh !== null) {
+    entry.refresh.markedStale = true;
+  }
 }
 
 export function createProviderModelCatalogStore(options: {
@@ -872,16 +885,12 @@ export function createProviderModelCatalogStore(options: {
     },
 
     markAllStale() {
+      for (const entry of entries.values()) markEntryStale(entry);
+    },
+
+    markHostStale(hostId) {
       for (const entry of entries.values()) {
-        entry.failure = null;
-        entry.unavailableDetail = null;
-        entry.selectedModels.clear();
-        if (entry.good !== null) {
-          entry.good.fetchedAt = 0;
-        }
-        if (entry.refresh !== null) {
-          entry.refresh.markedStale = true;
-        }
+        if (entry.key.hostId === hostId) markEntryStale(entry);
       }
     },
 

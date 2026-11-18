@@ -421,6 +421,7 @@ type SystemCliCommandQueryKey = readonly [typeof SYSTEM_CLI_COMMAND_QUERY_KEY];
 type LocalWorkspaceOpenTargetsQueryKey = readonly [
   typeof LOCAL_WORKSPACE_OPEN_TARGETS_QUERY_KEY,
   number | null,
+  string | null,
 ];
 type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 type SystemAppUpdateQueryKey = readonly [typeof SYSTEM_APP_UPDATE_QUERY_KEY];
@@ -1002,8 +1003,9 @@ export function systemCliCommandQueryKey(): SystemCliCommandQueryKey {
 
 export function localWorkspaceOpenTargetsQueryKey(
   daemonPort: number | null,
+  path: string | null,
 ): LocalWorkspaceOpenTargetsQueryKey {
-  return [LOCAL_WORKSPACE_OPEN_TARGETS_QUERY_KEY, daemonPort];
+  return [LOCAL_WORKSPACE_OPEN_TARGETS_QUERY_KEY, daemonPort, path];
 }
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {

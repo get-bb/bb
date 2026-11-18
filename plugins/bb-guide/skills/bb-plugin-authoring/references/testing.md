@@ -101,7 +101,8 @@ Inspect: `harness.inspection.sdk.calls` /
 `bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.experimental_hostRpcCalls`,
-`harness.needsConfigurationMessages`, and
+`harness.needsConfigurationMessages`,
+`harness.experimental_configuredCount`, and
 `harness.registrations` (HTTP and WebSocket routes, rpc methods, services,
 schedules, cli, agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names

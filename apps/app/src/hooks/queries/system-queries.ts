@@ -65,7 +65,9 @@ import {
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
-  HOST_DERIVED_QUERY_POLICY,
+  hostDerivedQueryPolicy,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+  REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
 } from "./query-policies";
 
@@ -304,8 +306,8 @@ export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
       return providers;
     },
     enabled: args.enabled ?? true,
-    ...HOST_DERIVED_QUERY_POLICY,
     staleTime: 60_000,
+    ...hostDerivedQueryPolicy(hostId),
     placeholderData: () => {
       const remembered = readCachedProviderList(providersCacheKey);
       if (remembered === null) return undefined;
@@ -480,8 +482,8 @@ function systemExecutionOptionsQueryOptions({
       }
       return response;
     },
-    ...HOST_DERIVED_QUERY_POLICY,
     staleTime: 60_000,
+    ...hostDerivedQueryPolicy(hostId),
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
   });
@@ -637,7 +639,8 @@ export function useCliSkillsStatus(options?: QueryOptions) {
     queryKey: systemCliSkillsQueryKey(),
     queryFn: ({ signal }) => sdk.system.cliSkillsStatus({ signal }),
     enabled: options?.enabled ?? true,
-    ...HOST_DERIVED_QUERY_POLICY,
+    staleTime: 30_000,
+    ...hostDerivedQueryPolicy(null),
   });
 }
 
@@ -646,7 +649,8 @@ export function useCliCommandStatus(options?: QueryOptions) {
     queryKey: systemCliCommandQueryKey(),
     queryFn: ({ signal }) => sdk.system.experimental_cliCommand({ signal }),
     enabled: options?.enabled ?? true,
-    ...HOST_DERIVED_QUERY_POLICY,
+    staleTime: 30_000,
+    ...hostDerivedQueryPolicy(null),
   });
 }
 
@@ -680,7 +684,10 @@ export function hostProviderCliStatusQueryOptions({
         signal,
       }),
     enabled: (enabled ?? true) && hostId !== null,
-    ...HOST_DERIVED_QUERY_POLICY,
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+    refetchOnReconnect: false,
+    ...hostDerivedQueryPolicy(hostId),
   });
 }
 
@@ -702,7 +709,7 @@ export function systemProviderStatesQueryOptions(
         signal,
       }),
     enabled: options.enabled ?? true,
-    ...HOST_DERIVED_QUERY_POLICY,
+    ...hostDerivedQueryPolicy(hostId),
     ...(options.poll === false
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
@@ -732,8 +739,9 @@ function hostProviderStateQueryOptions(args: {
         providerId,
         signal,
       }),
-    ...HOST_DERIVED_QUERY_POLICY,
+    staleTime: Infinity,
     retry: false,
+    ...hostDerivedQueryPolicy(hostId),
   });
 }
 

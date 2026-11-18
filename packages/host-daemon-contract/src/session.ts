@@ -826,6 +826,12 @@ export type HostDaemonConnectNextStatusMessage = z.infer<
   typeof hostDaemonConnectNextStatusMessageSchema
 >;
 
+const hostToolchainChangedMessageSchema = z
+  .object({
+    type: z.literal("host.toolchain-changed"),
+  })
+  .strict();
+
 const pluginHostWorkerExitedMessageSchema = z
   .object({
     type: z.literal("plugin-host.worker-exited"),
@@ -922,6 +928,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   hostDaemonConnectNextStatusMessageSchema,
+  hostToolchainChangedMessageSchema,
   pluginHostWorkerExitedMessageSchema,
   pluginHostSignalMessageSchema,
   environmentHookProgressMessageSchema,

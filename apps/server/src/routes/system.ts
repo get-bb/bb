@@ -1,4 +1,5 @@
 import { withReportedProviderId } from "../services/system/provider-telemetry.js";
+import { requestAllHostDerivedStateRefresh } from "../services/hosts/host-derived-state.js";
 import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
@@ -269,6 +270,7 @@ export function registerSystemRoutes(
     );
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
+    requestAllHostDerivedStateRefresh(deps);
     return context.json(await machineEnvironmentView(deps.db));
   });
 
@@ -282,6 +284,7 @@ export function registerSystemRoutes(
     await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
+    requestAllHostDerivedStateRefresh(deps);
     return context.json(await machineEnvironmentView(deps.db));
   });
 
@@ -298,6 +301,7 @@ export function registerSystemRoutes(
     await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
+    requestAllHostDerivedStateRefresh(deps);
     return context.json(await machineEnvironmentView(deps.db));
   });
 

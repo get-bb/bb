@@ -76,7 +76,7 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
   }
   invalidateSystemVersion({ queryClient });
   invalidateAppUpdateStatus({ queryClient });
-  void invalidateHostDerivedState(queryClient);
+  void invalidateHostDerivedState(queryClient, null);
 }
 
 export function refetchErroredRealtimeQueriesOnInitialConnect({

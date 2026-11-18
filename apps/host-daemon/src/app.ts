@@ -1,9 +1,11 @@
 import path from "node:path";
+import { startToolchainWatch } from "./toolchain-watch.js";
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import {
   readAgentCpuPriority,
   setAgentWorkloadsLowered,
   writeAgentCpuPriority,
+  hostToolchain,
 } from "@bb/process-utils";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
@@ -731,8 +733,24 @@ export async function createHostDaemonApp(
     threadStorageRootPath,
   });
   const nowMs = options.nowMs ?? Date.now;
+  const toolchainWatch = startToolchainWatch({
+    readSearchPath: () =>
+      hostToolchain.environment(runtimeManager.getShellEnv()).PATH,
+    onChange: () => {
+      sendServerMessage({ type: "host.toolchain-changed" });
+    },
+    onWatchError: (directory, error) => {
+      options.logger.warn(
+        { directory, err: error },
+        "Toolchain directory watch failed; installs there are detected on the next read",
+      );
+    },
+  });
   const runtimeShellEnvCache = createRuntimeShellEnvCache({
-    applyShellEnv: (shellEnv) => runtimeManager.replaceBaseShellEnv(shellEnv),
+    applyShellEnv: async (shellEnv) => {
+      await runtimeManager.replaceBaseShellEnv(shellEnv);
+      toolchainWatch.resync();
+    },
     now: nowMs,
     onRefreshError: (error) => {
       options.logger.warn(
@@ -1066,6 +1084,7 @@ export async function createHostDaemonApp(
     shutdownRuntimes: async () => {
       await desktopBrowserBroker.close();
       idleProviderSessionReaper.stop();
+      toolchainWatch.stop();
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
       await pluginHostManager.shutdown();

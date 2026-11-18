@@ -654,6 +654,23 @@ Docs: `backend-events.md`.
 - **The single server-wide lock.** One slow handler delays every dispatch in
   the server, up to its 10 s box.
 
+## `bb.status.experimental_configured`
+
+`bb.status.experimental_configured()` clears a `needs-configuration` status
+the plugin reported with `bb.status.needsConfiguration`, returning it to
+`running` without a reload. It does nothing when the plugin is not in
+`needs-configuration`; before activation it drops a pending report. The fake
+plugin host counts calls in `experimental_configuredCount`. The GitHub plugin
+calls it when a later `gh` probe succeeds after a load-time "GitHub CLI not
+found" or "not authenticated". Core never reports `needs-configuration` for
+a plugin, so there is no core caller of the clear itself; core's own path is
+the reload that clears the status on load.
+
+Docs: `backend-ui-lifecycle.md`, Plugin Guide, Plugin page
+(`plugins/plugin-api-docs/src/surfaces.ts`). Before stabilization, decide
+whether the status API should become a single `set(status)` that also covers
+`needs-configuration`, and whether plugin settings saves should clear it.
+
 ## `interaction.pending` (`bb.events.on`)
 
 Fires after core commits a pending interaction. It carries the public thread

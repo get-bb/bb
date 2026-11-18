@@ -70,9 +70,7 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
   allHostProviderCliInstallJobsQueryKeyPrefix,
-  allHostProviderCliStatusQueryKeyPrefix,
   hostProviderCliInstallJobsQueryKey,
-  hostProviderCliStatusQueryKey,
 } from "../queries/query-keys";
 import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
@@ -522,7 +520,6 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
   "host-connected": {
     dirty: [
       ...HOST_CONNECTION_DIRTY_HANDLERS,
-      dirtyHostSystemExecutionOptionQueries,
       dirtyAllThreadStorageQueries,
       dirtyHostDerivedState,
     ],
@@ -537,13 +534,13 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
     dirty: [dirtyProjectCommandCatalogQueries],
   },
   "provider-cli-status-changed": {
-    dirty: [
-      dirtyHostProviderCliStatusQueries,
-      dirtyHostSystemExecutionOptionQueries,
-    ],
+    dirty: [dirtyHostDerivedState],
   },
   "provider-cli-install-jobs-changed": {
     dirty: [dirtyHostProviderCliInstallJobQueries],
+  },
+  "host-state-changed": {
+    dirty: [dirtyHostDerivedState],
   },
 } satisfies HostChangeRegistry;
 
@@ -556,7 +553,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
       dirtyEnvironmentProviderQueries,
-      dirtyHostDerivedState,
     ],
   },
   "plugins-changed": {
@@ -567,7 +563,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginManagementQueries,
       dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
-      dirtyHostDerivedState,
     ],
   },
   "plugin-update-jobs-changed": {
@@ -577,11 +572,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
     dirty: [dirtyPluginInstallJobQueries],
   },
   "provider-registrations-changed": {
-    dirty: [
-      dirtySystemProviderQueries,
-      dirtySystemExecutionOptionQueries,
-      dirtyHostDerivedState,
-    ],
+    dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
   },
   "environment-availability-changed": {
     dirty: [dirtyEnvironmentProviderQueries],
@@ -1158,8 +1149,11 @@ function dirtyAllThreadTimelineQueries(): QueryKey[] {
   return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
 }
 
-function dirtyHostDerivedState({ queryClient }: RealtimeDirtyContext): void {
-  void invalidateHostDerivedState(queryClient);
+function dirtyHostDerivedState({
+  hostId,
+  queryClient,
+}: HostRealtimeDirtyContext): void {
+  void invalidateHostDerivedState(queryClient, hostId ?? null);
 }
 
 function dirtySystemProviderQueries(): QueryKey[] {
@@ -1185,16 +1179,6 @@ function dirtyHostProviderCliInstallJobQueries({
     hostId === undefined
       ? allHostProviderCliInstallJobsQueryKeyPrefix()
       : hostProviderCliInstallJobsQueryKey(hostId),
-  ];
-}
-
-function dirtyHostProviderCliStatusQueries({
-  hostId,
-}: HostRealtimeDirtyContext): QueryKey[] {
-  return [
-    hostId === undefined
-      ? allHostProviderCliStatusQueryKeyPrefix()
-      : hostProviderCliStatusQueryKey(hostId),
   ];
 }
 

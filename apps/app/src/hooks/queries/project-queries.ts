@@ -35,7 +35,7 @@ import {
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
-  HOST_DERIVED_QUERY_POLICY,
+  hostDerivedQueryPolicy,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
@@ -326,8 +326,8 @@ export function useProjectCommands(
       }),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
-    ...HOST_DERIVED_QUERY_POLICY,
     staleTime: 0,
+    ...hostDerivedQueryPolicy(args.environmentId === null ? args.hostId : null),
   });
 }
 

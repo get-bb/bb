@@ -10,7 +10,6 @@ import {
   environmentFilePreviewQueryKey,
   hostPathExistenceQueryKey,
   hostsQueryKey,
-  hostProviderCliStatusQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
@@ -46,6 +45,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
 import { SYSTEM_CHANGE_KINDS } from "@bb/domain";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import { hostDerivedQueryPolicy } from "./queries/query-policies";
 import { createAppQueryClient } from "@/lib/query-client";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
@@ -652,36 +652,41 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
-    it("refetches only the pushed host's provider CLI status and models", () => {
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const hostAKey = hostProviderCliStatusQueryKey("host-a");
-      const hostBKey = hostProviderCliStatusQueryKey("host-b");
-      const [hostAModelsKey, hostBModelsKey] = ["host-a", "host-b"].map(
-        (hostId) =>
-          systemExecutionOptionsQueryKey({
-            environmentId: null,
-            hostId,
-            providerId: "codex",
-          }),
-      );
-      for (const key of [hostAKey, hostBKey, hostAModelsKey, hostBModelsKey]) {
-        queryClient.setQueryData(key, {});
-      }
+    it.each(["host-state-changed", "provider-cli-status-changed"] as const)(
+      "refetches host-derived state for the pushed host on %s",
+      (change) => {
+        const { effects, queryClient } = createRealtimeEffectsTestContext();
+        const tagged: Array<[string, string | null]> = [
+          ["host-a", "host-a"],
+          ["host-b", "host-b"],
+          ["any-host", null],
+        ];
+        for (const [key, hostId] of tagged) {
+          queryClient
+            .getQueryCache()
+            .build(queryClient, {
+              queryKey: [key],
+              ...hostDerivedQueryPolicy(hostId),
+            })
+            .setData({});
+        }
+        queryClient.setQueryData(["untagged"], {});
 
-      effects.handleChanged({
-        type: "changed",
-        entity: "host",
-        id: "host-a",
-        changes: ["provider-cli-status-changed"],
-      });
+        effects.handleChanged({
+          type: "changed",
+          entity: "host",
+          id: "host-a",
+          changes: [change],
+        });
 
-      expect(
-        [hostAKey, hostBKey, hostAModelsKey, hostBModelsKey].map(
-          (key) => queryClient.getQueryState(key)?.isInvalidated,
-        ),
-      ).toEqual([true, false, true, false]);
-      effects.dispose();
-    });
+        expect(
+          ["host-a", "host-b", "any-host", "untagged"].map(
+            (key) => queryClient.getQueryState([key])?.isInvalidated,
+          ),
+        ).toEqual([true, false, true, false]);
+        effects.dispose();
+      },
+    );
   });
 
   it("invalidates timelines when config changes provider event visibility", () => {
