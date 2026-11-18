@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { getImageSize } from "./image-sizes";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const FOCUSABLE = 'button, [href], [tabindex]:not([tabindex="-1"])';
 
@@ -35,7 +36,7 @@ export function LightboxImage({
     }
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         close();
         return;
       }

@@ -31,6 +31,7 @@ import {
   type StarredPromptRow,
   type promptLibraryRpcContract,
 } from "./contract.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const POPUP_ID = "prompt-library";
 
@@ -202,10 +203,10 @@ function PromptTitleEditor({
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
               event.stopPropagation();
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              if (isNonImeKey(event, "Enter")) {
                 event.preventDefault();
                 void save();
-              } else if (event.key === "Escape") {
+              } else if (isNonImeKey(event, "Escape")) {
                 event.preventDefault();
                 if (!saving) cancel();
               }
@@ -494,10 +495,10 @@ function PromptLibraryPopup() {
       const step = event.key === "ArrowDown" ? 1 : -1;
       const next = rows[(activeIndex + step + rows.length) % rows.length];
       if (next !== undefined) setHighlightedKey(next.key);
-    } else if (event.key === "Enter") {
+    } else if (isNonImeKey(event, "Enter")) {
       event.preventDefault();
       if (row !== undefined) activate(row);
-    } else if (event.key === "Escape") {
+    } else if (isNonImeKey(event, "Escape")) {
       event.preventDefault();
       if (previewKey !== null && !twoPane) {
         setPreviewKey(null);

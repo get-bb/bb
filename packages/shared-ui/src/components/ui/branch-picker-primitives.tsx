@@ -15,6 +15,7 @@ import {
 import { Icon, type IconName } from "./icon";
 import { Input } from "./input";
 import { LIST_HOVER_TRANSITION } from "./motion";
+import { isImeComposing, isNonImeKey } from "../../lib/ime-keyboard";
 
 const BRANCH_PICKER_ROW_CLASS_NAME =
   "flex w-full min-w-0 scroll-mt-7 items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-left text-xs outline-none data-[highlighted]:bg-state-hover data-[highlighted]:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground";
@@ -107,7 +108,7 @@ export function BranchPickerNavigation({
     setHighlightState({ resetKey, value });
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing) return;
+    if (isImeComposing(event)) return;
     const rows = Array.from(
       rootRef.current?.querySelectorAll<HTMLButtonElement>(
         BRANCH_PICKER_ROW_SELECTOR,
@@ -116,7 +117,7 @@ export function BranchPickerNavigation({
     const currentIndex = rows.findIndex(
       (row) => row.dataset.value === highlighted,
     );
-    if (event.key === "Enter") {
+    if (isNonImeKey(event, "Enter")) {
       if (!(event.target instanceof HTMLInputElement)) return;
       event.preventDefault();
       event.stopPropagation();

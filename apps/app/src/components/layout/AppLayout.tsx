@@ -134,6 +134,7 @@ import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
 import { HistoryCommandHandlers } from "./HistoryCommandHandlers";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -793,7 +794,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         finishSidebarResize();
       }
     };

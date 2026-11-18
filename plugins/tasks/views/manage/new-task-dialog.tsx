@@ -56,6 +56,7 @@ import {
   type NewTaskDraft,
 } from "./new-task-draft.js";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const NO_LABELS: Label[] = [];
 
@@ -384,7 +385,7 @@ export function NewTaskDialog({
       <DialogContent
         className="flex max-h-[85dvh] min-h-0 max-w-xl flex-col gap-0 p-0"
         onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          if (isNonImeKey(event, "Enter") && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
             void submit();
           }
@@ -454,7 +455,7 @@ export function NewTaskDialog({
               updateDraft(() => ({ title: next }));
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              if (isNonImeKey(event, "Enter")) {
                 event.preventDefault();
                 event.stopPropagation();
                 void submit();

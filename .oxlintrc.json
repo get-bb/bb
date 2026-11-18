@@ -250,6 +250,28 @@
     },
     {
       "files": [
+        "apps/app/src/**/*.{ts,tsx}",
+        "apps/web/src/**/*.{ts,tsx}",
+        "packages/shared-ui/src/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "bb/ime-safe-key-handlers": "error"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx",
+        "**/__tests__/**"
+      ],
+      "rules": {
+        "bb/ime-safe-key-handlers": "off"
+      }
+    },
+    {
+      "files": [
         "packages/shared-ui/src/lib/shared-resize-observer.ts",
         "apps/app/src/components/ui/scroll-position-keeper.ts",
         "apps/web/src/landing/hero-window-stage.tsx",

@@ -34,6 +34,7 @@ import { DetailToasts, useDetailToasts } from "./toast.js";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 interface DetailViewProps {
   taskKey: string;
@@ -94,7 +95,7 @@ function EditableTitle({
       aria-label="Task title"
       className="mb-2.5 mt-1 text-2xl font-semibold leading-tight outline-none"
       onKeyDown={(event) => {
-        if (event.key === "Enter") {
+        if (isNonImeKey(event, "Enter")) {
           event.preventDefault();
           event.currentTarget.blur();
         }
@@ -165,8 +166,8 @@ function SubTasksSection({
             className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void submit();
-              if (event.key === "Escape") {
+              if (isNonImeKey(event, "Enter")) void submit();
+              if (isNonImeKey(event, "Escape")) {
                 setAdding(false);
                 setTitle("");
               }

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "ime-keyboard",
+  "type": "registry:lib",
+  "title": "ime-keyboard",
+  "description": "BB lib \"ime-keyboard\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/lib/ime-keyboard.ts",
+      "content": "const IME_PROCESS_KEY_CODE = 229;\n\ntype CompositionState = Pick<KeyboardEvent, \"isComposing\" | \"keyCode\">;\n\ntype KeyboardEventLike =\n  | (CompositionState & Pick<KeyboardEvent, \"key\">)\n  | { key: string; nativeEvent: CompositionState };\n\nexport function isImeComposing(event: KeyboardEventLike): boolean {\n  const state = \"nativeEvent\" in event ? event.nativeEvent : event;\n  return state.isComposing || state.keyCode === IME_PROCESS_KEY_CODE;\n}\n\nexport function isNonImeKey(event: KeyboardEventLike, key: string): boolean {\n  return event.key === key && !isImeComposing(event);\n}\n",
+      "type": "registry:lib",
+      "target": "lib/ime-keyboard.ts"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "./button";
 import { CHROME_SECTION_LABEL_CLASS } from "./chrome-style-tokens";
 import { cn } from "../../lib/utils";
+import { isNonImeKey } from "../../lib/ime-keyboard";
 
 export function SidebarCustomizePanel({
   autoFocusDone = false,
@@ -70,7 +71,7 @@ export function SidebarCustomizePanel({
       data-testid={testId}
       onKeyDown={(event) => {
         if (
-          event.key !== "Escape" ||
+          !isNonImeKey(event, "Escape") ||
           !(event.target instanceof Node) ||
           !event.currentTarget.contains(event.target)
         )

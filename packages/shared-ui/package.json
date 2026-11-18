@@ -279,6 +279,11 @@
       "types": "./src/lib/utils.ts",
       "default": "./src/lib/utils.ts"
     },
+    "./lib/ime-keyboard": {
+      "source": "./src/lib/ime-keyboard.ts",
+      "types": "./src/lib/ime-keyboard.ts",
+      "default": "./src/lib/ime-keyboard.ts"
+    },
     "./lib/portal-scope": {
       "source": "./src/lib/portal-scope.ts",
       "types": "./src/lib/portal-scope.ts",
@@ -558,6 +563,7 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "typecheck": "tsrs --noEmit",
+    "lint": "oxlint src",
     "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts"
   },

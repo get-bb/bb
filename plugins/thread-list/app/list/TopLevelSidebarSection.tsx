@@ -40,6 +40,7 @@ import {
 } from "./groupRollups.js";
 import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 function stopActionsClick(event: MouseEvent<HTMLSpanElement>) {
   event.stopPropagation();
@@ -159,7 +160,7 @@ export function TopLevelSidebarSection({
   const stopCollapseControlKeyDown = useCallback<
     KeyboardEventHandler<HTMLButtonElement>
   >((event) => {
-    if (event.key === "Enter" || event.key === " ") {
+    if (isNonImeKey(event, "Enter") || event.key === " ") {
       event.stopPropagation();
     }
   }, []);

@@ -1,15 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { isImeComposing } from "@bb/shared-ui/lib/ime-keyboard";
 
 let keyboardSeen = false;
 const listeners = new Set<() => void>();
 
-function isNonImeKeyDown(event: KeyboardEvent): boolean {
-  return !event.isComposing && event.keyCode !== 229;
-}
-
 function handleKeyDown(event: KeyboardEvent): void {
-  if (!isNonImeKeyDown(event)) {
+  if (isImeComposing(event)) {
     return;
   }
   keyboardSeen = true;

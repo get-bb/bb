@@ -21,6 +21,7 @@ import {
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DOWNLOAD_PAGE_PATH, GITHUB_STARS, formatStarCount } from "./site";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const NAV_DOWNLOAD_CLASS = "btn btn-primary btn-sm nav-download";
 
@@ -46,7 +47,7 @@ function NavMenu({
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && menu.current?.open) {
+      if (isNonImeKey(event, "Escape") && menu.current?.open) {
         menu.current.removeAttribute("open");
         menu.current.querySelector("summary")?.focus();
       }

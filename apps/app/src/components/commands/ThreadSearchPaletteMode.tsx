@@ -62,6 +62,7 @@ import {
   PaletteShell,
   PaletteShortcut,
 } from "./PaletteShell";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const GROUP_LIMIT = 6;
 const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
@@ -338,14 +339,14 @@ export function ThreadSearchPaletteMode({
 
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.nativeEvent.isComposing) return;
+      if (isImeComposing(event)) return;
       if (event.key === "Backspace" && query.length === 0) {
         event.preventDefault();
         event.stopPropagation();
         onExit();
         return;
       }
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         event.stopPropagation();
         onExit();
@@ -370,7 +371,7 @@ export function ThreadSearchPaletteMode({
         highlightOption(event.key === "Home" ? 0 : options.length - 1);
         return;
       }
-      if (event.key === "Enter") {
+      if (isNonImeKey(event, "Enter")) {
         const option = options[activeIndex];
         if (option === undefined) return;
         event.preventDefault();
