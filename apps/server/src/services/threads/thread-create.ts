@@ -540,9 +540,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
         startupContext: JSON.stringify({
           kind: "pending",
           ...startContext,
-          ...(historyEndSequence === null
-            ? {}
-            : { historyCopy: FORK_HISTORY_COPY_MARK }),
         }),
       });
       setThreadExecutionOverride(deps.db, {
@@ -581,7 +578,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
     discardUnstartedThread(deps, thread);
     throw error;
   }
-  if (!args.createEmpty) {
+  if (!args.createEmpty && args.request.rememberProjectDefaults !== false) {
     rememberProjectExecutionDefaultsForCreate(deps, {
       execution,
       request: args.request,

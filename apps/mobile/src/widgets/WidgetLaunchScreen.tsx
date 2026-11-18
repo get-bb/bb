@@ -10,7 +10,7 @@ import { BbHttpError } from "@bb/sdk/browser";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { requireOptionalNativeModule } from "expo";
 import { File } from "expo-file-system";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WidgetPhotoCapture } from "./WidgetPhotoCapture";
 import { withWidgetSdk } from "./widget-sdk";
@@ -59,10 +59,7 @@ function WidgetLaunchEntry({ token }: { token: string | undefined }) {
       </GroupedScreen>
     );
   }
-  if (target === null)
-    return (
-      <WidgetLaunchError message="Open this shortcut from your Android home screen." />
-    );
+  if (target === null) return <Redirect href="/" />;
   const profile = profiles.find(
     (candidate) => candidate.id === target.profileId,
   );
@@ -96,6 +93,7 @@ async function startWidgetThread(
   return withWidgetSdk(profile, undefined, async (sdk) => {
     const options = {
       origin: "app" as const,
+      rememberProjectDefaults: false as const,
       projectId: target.projectId,
       environment: widgetEnvironment(target),
       ...(target.providerId === null ? {} : { providerId: target.providerId }),

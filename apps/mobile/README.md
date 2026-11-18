@@ -245,7 +245,8 @@ Remove and add a widget again to change its settings or refresh a renamed
 project's label.
 
 **New thread** opens an empty thread with the selected settings. The first
-prompt starts the agent. **Attach a photo** opens the camera, lets you retake
+prompt starts the agent. The empty thread stays in the project if you leave
+before sending. **Attach a photo** opens the camera, lets you retake
 or cancel, and starts the thread with the photo after you confirm.
 **Voice input** opens an empty thread with the composer’s voice input ready.
 

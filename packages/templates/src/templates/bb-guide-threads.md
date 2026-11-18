@@ -78,6 +78,7 @@ Spawning:
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                 CLI-local absolute path, file: URL, or uploaded image path
     --origin-kind <kind>           Create a fork thread
+    --empty                        Create a thread without sending a first message; cannot be combined with a fork or --send-at
     --source-thread <id>           Source thread for a fork
     --source-seq-end <seq>         Fork after the source turn containing this event sequence
 

@@ -380,9 +380,10 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults; createEmpty is omitted for normal first-message creation.",
+      "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults; createEmpty is omitted for normal first-message creation, and rememberProjectDefaults is an explicit false opt-out.",
     fields: [
       "createThreadRequestSchema.createEmpty",
+      "createThreadRequestSchema.rememberProjectDefaults",
       "createThreadRequestSchema.sectionId",
       "createThreadRequestSchema.pinned",
       "createThreadRequestSchema.model",
@@ -1443,6 +1444,18 @@ describe("server-contract canonical schemas", () => {
     expect(() =>
       createThreadRequestSchema.parse({ ...createBase, createEmpty: false }),
     ).toThrow("input must contain at least one entry");
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...createBase,
+        originKind: "fork",
+      }),
+    ).toThrow("createEmpty cannot be combined with a fork");
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...createBase,
+        pluginSubmission: { pluginId: "drafts", data: {} },
+      }),
+    ).toThrow("pluginSubmission is not available when createEmpty is true");
   });
 
   it("keeps only intentional optional request fields", () => {

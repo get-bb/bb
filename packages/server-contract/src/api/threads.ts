@@ -139,6 +139,7 @@ export const createThreadRequestSchema = z
     title: z.string().min(1).optional(),
     input: z.array(promptInputSchema),
     createEmpty: z.boolean().optional(),
+    rememberProjectDefaults: z.literal(false).optional(),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
@@ -217,6 +218,20 @@ export const createThreadRequestSchema = z
         code: "custom",
         message: "sendAt is not available when createEmpty is true",
         path: ["sendAt"],
+      });
+    }
+    if (value.createEmpty === true && value.originKind === "fork") {
+      ctx.addIssue({
+        code: "custom",
+        message: "createEmpty cannot be combined with a fork",
+        path: ["createEmpty"],
+      });
+    }
+    if (value.createEmpty === true && value.pluginSubmission !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "pluginSubmission is not available when createEmpty is true",
+        path: ["pluginSubmission"],
       });
     }
     if (

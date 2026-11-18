@@ -329,13 +329,13 @@ export function registerSpawnCommand(
     )
     .option(
       "--prompt <prompt>",
-      "Initial prompt for the thread (required unless --prompt-file is given)",
+      "Initial prompt for the thread (required unless --prompt-file or --empty is given)",
     )
     .option(
       "--prompt-file <path>",
       `Read the initial prompt from a file instead of --prompt; ${TEXT_FILE_HELP_SUFFIX}`,
     )
-    .option("--empty", "Create an idle thread without sending a first message")
+    .option("--empty", "Create a thread without sending a first message")
     .option(
       "--lifecycle-owner-thread <id>",
       "Archive/delete this thread with its lifecycle owner",
@@ -430,6 +430,9 @@ export function registerSpawnCommand(
           throw new Error(
             "--empty cannot be combined with --prompt or --prompt-file.",
           );
+        }
+        if (opts.empty && opts.sendAt !== undefined) {
+          throw new Error("--empty cannot be combined with --send-at.");
         }
         if (
           opts.empty &&
@@ -594,6 +597,11 @@ export function registerSpawnCommand(
         if (opts.originKind !== undefined && opts.originKind !== "fork") {
           throw new Error("--origin-kind must be fork.");
         }
+        if (opts.originKind === "fork" && opts.empty) {
+          throw new Error(
+            "--empty cannot be combined with --origin-kind fork.",
+          );
+        }
         const sourceSeqEnd =
           opts.sourceSeqEnd === undefined
             ? undefined
@@ -628,9 +636,7 @@ export function registerSpawnCommand(
             projectId,
             ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
-            ...(opts.empty
-              ? { createEmpty: true as const }
-              : { input }),
+            ...(opts.empty ? { createEmpty: true as const } : { input }),
             ...(reasoningLevel ? { reasoningLevel } : {}),
             ...(opts.title ? { title: opts.title } : {}),
             ...(serviceTier ? { serviceTier } : {}),

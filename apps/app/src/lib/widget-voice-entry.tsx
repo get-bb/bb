@@ -23,7 +23,10 @@ export function useWidgetVoiceEntry(): boolean {
 
   useEffect(() => {
     const consumed = consumeWidgetVoiceSearch(location.search);
-    if (!consumed.shouldOpenVoiceReady) return;
+    if (!consumed.shouldOpenVoiceReady) {
+      setVoiceReadyPath((path) => (path === location.pathname ? path : null));
+      return;
+    }
 
     setVoiceReadyPath(location.pathname);
     void navigate(`${location.pathname}${consumed.search}${location.hash}`, {

@@ -94,6 +94,41 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("rejects empty threads with forks or a scheduled first message", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--empty",
+          "--origin-kind",
+          "fork",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--empty",
+          "--send-at",
+          "2h",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("bb thread spawn --prompt-file sends shell-active text untouched", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-spawn-prompt-"));
     const path = join(dir, "prompt.md");
@@ -543,6 +578,9 @@ describe("bb thread spawn command output", () => {
   it("bb thread spawn help does not point at bb curl", async () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).not.toContain("bb curl");
+    expect(helpOutput.replaceAll(/\s+/gu, " ")).toContain(
+      "Initial prompt for the thread (required unless --prompt-file or --empty is given)",
+    );
   });
 
   it("bb thread spawn reports invalid permission mode choices", async () => {

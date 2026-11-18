@@ -32,6 +32,7 @@ export function WidgetPhotoCapture({
   const [photo, setPhoto] = useState<WidgetPhoto | null>(null);
   const [pictureSize, setPictureSize] = useState<string | undefined>();
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
@@ -129,11 +130,16 @@ export function WidgetPhotoCapture({
           />
         ) : (
           <CameraView
+            key={cameraAttempt}
             ref={cameraRef}
             style={{ flex: 1 }}
             facing="back"
             pictureSize={pictureSize}
             onCameraReady={() => void configureCamera()}
+            onMountError={() => {
+              setCameraReady(false);
+              setError("Could not open the camera. Try again.");
+            }}
           />
         )}
       </View>
@@ -166,7 +172,7 @@ export function WidgetPhotoCapture({
           variant="outline"
           onPress={() => {
             setError(null);
-            void configureCamera();
+            setCameraAttempt((attempt) => attempt + 1);
           }}
         >
           Retry camera

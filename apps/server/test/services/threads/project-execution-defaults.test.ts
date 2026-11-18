@@ -116,6 +116,56 @@ describe("project execution defaults persistence", () => {
     });
   });
 
+  it("does not overwrite project defaults when explicitly disabled for a nonempty thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-no-remember-defaults",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      await createThreadFromRequest(harness.deps, {
+        origin: "app",
+        startedOnBehalfOf: null,
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+        permissionMode: "accept-edits",
+        serviceTier: "fast",
+        rememberProjectDefaults: false,
+        input: textInput("Do not change defaults"),
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+      });
+
+      expect(
+        getProjectExecutionDefaults(harness.db, {
+          projectId: project.id,
+        }),
+      ).toEqual({
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+    });
+  });
+
   it("does not overwrite project defaults for a fork/side-chat child spawn", async () => {
     await withTestHarness(async (harness) => {
       installFakeGitWorktreeProvider();
