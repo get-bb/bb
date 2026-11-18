@@ -1001,7 +1001,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Tell people what's missing instead of failing silently",
           "Send them to Settings, then reload after they save",
-          "Clear the warning with experimental_configured() once what was missing appears, such as a CLI installed later",
+          "Clear the warning once what was missing appears, such as a CLI installed later",
         ],
         apiSymbols: ["PluginStatusApi"],
         firstParty: [
