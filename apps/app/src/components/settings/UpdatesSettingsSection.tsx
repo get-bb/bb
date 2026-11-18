@@ -1543,28 +1543,51 @@ export function MachineUpdateRow({
   );
 }
 
-export function AutoAppUpdateSetting({
-  label,
-  checked,
-  onCheckedChange,
-}: {
+interface AutoAppUpdatePreference {
   label: string;
   checked: boolean;
   onCheckedChange: (enabled: boolean) => void;
+}
+
+const SHOW_PROVIDER_CLI_UPDATES_LABEL =
+  "Show provider CLI updates in the sidebar";
+
+export function UpdatePreferencesSection({
+  autoAppUpdate,
+  showProviderCliUpdates,
+  onShowProviderCliUpdatesChange,
+}: {
+  autoAppUpdate: AutoAppUpdatePreference | null;
+  showProviderCliUpdates: boolean;
+  onShowProviderCliUpdatesChange: (show: boolean) => void;
 }) {
   return (
-    <div className="py-3.5 pr-4 pl-13">
-      <SettingsWithControl
-        label={label}
-        description="Checks every hour and restarts bb into a new version once no thread has run for 15 minutes."
-      >
-        <Switch
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          aria-label={label}
-        />
-      </SettingsWithControl>
-    </div>
+    <SettingsSection title="Update preferences">
+      <div className="space-y-5">
+        {autoAppUpdate === null ? null : (
+          <SettingsWithControl
+            label={autoAppUpdate.label}
+            description="Checks every hour and restarts bb into a new version once no thread has run for 15 minutes."
+          >
+            <Switch
+              checked={autoAppUpdate.checked}
+              onCheckedChange={autoAppUpdate.onCheckedChange}
+              aria-label={autoAppUpdate.label}
+            />
+          </SettingsWithControl>
+        )}
+        <SettingsWithControl
+          label={SHOW_PROVIDER_CLI_UPDATES_LABEL}
+          description="Turn this off if your agent CLIs are updated outside bb. This page still lists their updates."
+        >
+          <Switch
+            checked={showProviderCliUpdates}
+            onCheckedChange={onShowProviderCliUpdatesChange}
+            aria-label={SHOW_PROVIDER_CLI_UPDATES_LABEL}
+          />
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -1654,8 +1677,6 @@ interface ProviderCliUpdatesSectionProps extends ProviderCliJobState {
   onRetryDaemonUpdate: (hostId: string) => void;
   onRetryAllDaemonUpdates: (hostIds: string[]) => void;
   onRecheckClis: (hostId: string) => void;
-  showInSidebar: boolean;
-  onShowInSidebarChange: (show: boolean) => void;
 }
 
 export function ProviderCliUpdatesSection({
@@ -1671,8 +1692,6 @@ export function ProviderCliUpdatesSection({
   onRetryDaemonUpdate,
   onRetryAllDaemonUpdates,
   onRecheckClis,
-  showInSidebar,
-  onShowInSidebarChange,
 }: ProviderCliUpdatesSectionProps) {
   const [expandedHostIds, setExpandedHostIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -1804,18 +1823,6 @@ export function ProviderCliUpdatesSection({
             })}
           </div>
         )}
-        <div className="border-t border-border px-4 py-3.5">
-          <SettingsWithControl
-            label="Show provider CLI updates in the sidebar"
-            description="Turn this off if your agent CLIs are updated outside bb. This page still lists their updates."
-          >
-            <Switch
-              checked={showInSidebar}
-              onCheckedChange={onShowInSidebarChange}
-              aria-label="Show provider CLI updates in the sidebar"
-            />
-          </SettingsWithControl>
-        </div>
       </SettingsSection>
       {quiet.length === 0 ? null : (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-subtle-foreground">
@@ -2323,23 +2330,6 @@ export function UpdatesSettingsSection() {
         ) : null}
         {serverAppRow}
         {releaseNotesPanel("server")}
-        {appUpdate !== undefined &&
-        (appUpdate.support.kind === "supported" ||
-          appUpdate.desktopUpdateSupported === true) ? (
-          <AutoAppUpdateSetting
-            label={
-              serverRunsSeparately
-                ? "Restart and update the server automatically"
-                : "Restart and update bb automatically"
-            }
-            checked={
-              setAutoAppUpdate.isPending
-                ? (setAutoAppUpdate.variables ?? appUpdate.autoUpdate)
-                : appUpdate.autoUpdate
-            }
-            onCheckedChange={(enabled) => setAutoAppUpdate.mutate(enabled)}
-          />
-        ) : null}
       </BbUpdatesCard>
 
       <ProviderCliUpdatesSection
@@ -2359,8 +2349,6 @@ export function UpdatesSettingsSection() {
         onRecheckClis={(hostId) => {
           void refreshHostProviderCliStatus({ queryClient, hostId });
         }}
-        showInSidebar={showProviderCliUpdates}
-        onShowInSidebarChange={setShowProviderCliUpdates}
       />
       {inventory.plugins === null ? null : (
         <PluginUpdatesSection
@@ -2370,6 +2358,25 @@ export function UpdatesSettingsSection() {
           onStartUpdates={startPluginUpdates}
         />
       )}
+      <UpdatePreferencesSection
+        autoAppUpdate={
+          appUpdate !== undefined &&
+          (appUpdate.support.kind === "supported" ||
+            appUpdate.desktopUpdateSupported === true)
+            ? {
+                label: serverRunsSeparately
+                  ? "Restart and update the server automatically"
+                  : "Restart and update bb automatically",
+                checked: setAutoAppUpdate.isPending
+                  ? (setAutoAppUpdate.variables ?? appUpdate.autoUpdate)
+                  : appUpdate.autoUpdate,
+                onCheckedChange: (enabled) => setAutoAppUpdate.mutate(enabled),
+              }
+            : null
+        }
+        showProviderCliUpdates={showProviderCliUpdates}
+        onShowProviderCliUpdatesChange={setShowProviderCliUpdates}
+      />
       {appUpdateStart.confirmDialog}
     </div>
   );

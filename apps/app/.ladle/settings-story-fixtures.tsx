@@ -300,8 +300,6 @@ export function SettingsUpdatesStory() {
         onRetryDaemonUpdate={noop}
         onRetryAllDaemonUpdates={noop}
         onRecheckClis={noop}
-        showInSidebar
-        onShowInSidebarChange={noop}
       />
       <PluginUpdatesSection
         plugins={{ trackedCount: 0, items: [] }}
