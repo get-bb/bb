@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { signalDescendantProcesses } from "@bb/test-helpers";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -343,55 +343,16 @@ function hasStartedCommand(ctx: Ctx, threadId: string, since: number): boolean {
     );
 }
 
-function processTree(): Array<{ pid: number; ppid: number; command: string }> {
-  return execFileSync("ps", ["-axo", "pid=,ppid=,command="], {
-    encoding: "utf8",
-  })
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) => {
-      const match = /^(\d+)\s+(\d+)\s+(.*)$/.exec(line)!;
-      return {
-        pid: Number(match[1]),
-        ppid: Number(match[2]),
-        command: match[3]!,
-      };
-    });
-}
-
-function descendants(
-  rootPid: number,
-): Array<{ pid: number; ppid: number; command: string }> {
-  const tree = processTree();
-  const result: Array<{ pid: number; ppid: number; command: string }> = [];
-  const queue = [rootPid];
-  while (queue.length > 0) {
-    const parent = queue.shift()!;
-    for (const proc of tree) {
-      if (proc.ppid === parent) {
-        result.push(proc);
-        queue.push(proc.pid);
-      }
-    }
-  }
-  return result;
-}
-
-function killProviderCli(ctx: Ctx): string[] {
-  const procs = descendants(process.pid);
-  const bridges = procs.filter((proc) => proc.ppid === process.pid);
-  const killed: string[] = [];
+async function killProviderCli(ctx: Ctx): Promise<string[]> {
   const pattern = CLI_PATTERNS[ctx.providerId]!;
-  for (const bridge of bridges) {
-    for (const child of procs.filter((proc) => proc.ppid === bridge.pid)) {
-      if (!pattern.test(child.command)) continue;
-      if (/--no-session|model\/list/.test(child.command)) continue;
-      process.kill(child.pid, "SIGKILL");
-      killed.push(`${child.pid} ${child.command.slice(0, 160)}`);
-    }
-  }
-  return killed;
+  const killed = await signalDescendantProcesses({
+    select: (entry, parent) =>
+      parent?.ppid === process.pid &&
+      pattern.test(entry.args) &&
+      !/--no-session|model\/list/.test(entry.args),
+    signal: "SIGKILL",
+  });
+  return killed.map((entry) => `${entry.pid} ${entry.args.slice(0, 160)}`);
 }
 
 function writeNotes(
@@ -656,7 +617,7 @@ const SCENARIOS: Record<
       60_000,
     );
     await new Promise((resolve) => setTimeout(resolve, 1_500));
-    const killed = killProviderCli(ctx);
+    const killed = await killProviderCli(ctx);
     note(ctx, `killed ${JSON.stringify(killed)}`);
     await waitUntil(
       "killed turn settles",

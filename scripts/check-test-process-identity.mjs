@@ -18,45 +18,118 @@ const SOURCE_RE = /\.[cm]?[jt]sx?$/u;
 const PID_NAME_RE =
   /(?:^|[^A-Za-z0-9_$.])(?:pids?|[A-Za-z0-9_$]*Pids?)\b(?![.-])|\.pid\b(?![.\-"'`])/u;
 
+const OWNER_FILES = new Set([
+  "packages/test-helpers/src/child-processes.ts",
+  "packages/test-helpers/src/process-sweep.ts",
+]);
+const PID_FILE_RE = /pid(?:File|Path)\b/iu;
+const IDENTITY_FIELD_RE = /\b(?:lstart|etimes?|start)=?/u;
+const HANDLE_ADVICE =
+  "Observe the owned ChildProcess (trackChildProcesses() from @bb/test-helpers), a lifeline or descendant pipe the process holds (createProcessLifeline(), createDescendantPipe()), or a recorded identity (readProcessIdentity() from @bb/process-utils).";
+
+const mentionsPid = (text) => PID_NAME_RE.test(text) && !isOwnPid(text);
+const isOwnPid = (text) => /^\s*process\.p?pid\s*$/u.test(text);
+
 const RULES = [
   {
     id: "signal-zero-probe",
-    message:
-      "Signal 0 asks whether some process holds this PID, not whether the test's process is alive; PIDs are reused (Windows reuses them quickly). Track the ChildProcess with trackChildProcesses() from @bb/test-helpers, or hold a pipe the process inherits and wait for it to close.",
+    message: `Signal 0 (kill(pid, 0), kill -0) asks whether some process holds this PID now, not whether the test's process is alive; PIDs are reused, quickly on Windows. ${HANDLE_ADVICE}`,
     find(source) {
-      return matchAll(
-        source,
-        /\bkill\s*\(\s*[^,;()]+(?:\([^()]*\))?\s*,\s*0\s*,?\s*\)/gu,
-      );
+      return [
+        ...calls(source, /\bkill\s*\(/gu).filter(
+          (call) => call.args.length >= 2 && call.args.at(-1).trim() === "0",
+        ),
+        ...matchAll(source, /\bkill\s+(?:-0|-s\s+0)\b/gu),
+      ];
     },
   },
   {
     id: "pid-liveness-helper",
-    message:
-      "A liveness helper given a PID answers for whichever process holds that PID now. Observe the owned ChildProcess (trackChildProcesses() from @bb/test-helpers), or a lifeline the process holds (createProcessLifeline()).",
+    message: `A liveness helper given a PID answers for whichever process holds that PID now. ${HANDLE_ADVICE}`,
     find(source) {
-      const calls = matchAll(
-        source,
-        /\b[A-Za-z0-9_$]*(?:[Aa]live|[Rr]unning)\s*\(\s*([^;()]*(?:\([^()]*\))?[^;()]*)\)/gu,
-      ).filter((match) => PID_NAME_RE.test(match.groups[0]));
-      const callbacks = matchAll(
-        source,
-        /\.(?:some|every|filter|find|findIndex)\(\s*[A-Za-z0-9_$]*(?:[Aa]live|[Rr]unning)\s*\)/gu,
+      return [
+        ...calls(
+          source,
+          /\b[A-Za-z0-9_$]*(?:[Aa]live|[Rr]unning)\s*\(/gu,
+        ).filter(
+          (call) => mentionsPid(call.argText) || PID_FILE_RE.test(call.argText),
+        ),
+        ...calls(source, /\b[A-Za-z0-9_$]*[Ee]xists?\s*\(/gu).filter((call) =>
+          mentionsPid(call.argText),
+        ),
+        ...matchAll(
+          source,
+          /\.(?:some|every|filter|find|findIndex)\(\s*[A-Za-z0-9_$]*(?:[Aa]live|[Rr]unning|[Ee]xists?)\s*\)/gu,
+        ),
+      ];
+    },
+  },
+  {
+    id: "pid-os-probe",
+    message: `Reading /proc/<pid> or asking ps about a PID describes whichever process holds that PID now. ${HANDLE_ADVICE} A ps call that reads a start time (lstart, etime) to compare identities is allowed.`,
+    find(source) {
+      const procPaths = [
+        ...matchAll(
+          source,
+          /\/proc\/(?:\$\{([^}]*)\}|["'`]\s*\+\s*([A-Za-z0-9_$.()]+))/gu,
+        ),
+        ...matchAll(source, /["'`]\/proc["'`]\s*,\s*([^,)]+)/gu),
+      ].filter((match) =>
+        match.groups.some((group) => group && mentionsPid(group)),
       );
-      return [...calls, ...callbacks];
+      const psArrays = matchAll(
+        source,
+        /["'`]ps["'`]\s*,\s*\[([^\]]*)\]/gu,
+      ).filter(
+        (match) =>
+          /["'`]-p["'`]/u.test(match.groups[0]) &&
+          !IDENTITY_FIELD_RE.test(match.groups[0]) &&
+          !/["'`]-p["'`]\s*,\s*String\(\s*process\.p?pid\s*\)/u.test(
+            match.groups[0],
+          ),
+      );
+      const psCommands = matchAll(
+        source,
+        /\bps\s+(?:-[A-Za-z]+\s+)*[^|;&\n"'`]*?-p\b[^|;&\n"'`]*/gu,
+      ).filter((match) => !IDENTITY_FIELD_RE.test(match.text));
+      return [...procPaths, ...psArrays, ...psCommands];
     },
   },
   {
     id: "pid-identity-assertion",
     message:
-      "A restarted process can receive the PID of the one it replaced. Compare an identity the process reports itself (for example a boot id), or the ChildProcess objects from trackChildProcesses().",
+      "A restarted process can receive the PID of the one it replaced. Compare an identity the process reports itself (for example a boot id), the ChildProcess objects from trackChildProcesses(), or lifeline holders.",
     find(source) {
-      const re =
-        /expect\(\s*([^;]*?)\)\s*\.not\s*\.to(?:Be|Equal|StrictEqual)\(\s*([^;]*?)\)/gu;
-      return matchAll(source, re).filter(
+      const negated = matchAll(
+        source,
+        /expect\(\s*([^;]*?)\)\s*\.not\s*\.to(?:Be|Equal|StrictEqual|Contain)\(\s*([^;]*?)\)/gu,
+      ).filter(
         (match) =>
-          PID_NAME_RE.test(match.groups[0]) ||
-          PID_NAME_RE.test(match.groups[1]),
+          !isOwnPid(match.groups[0]) &&
+          !isOwnPid(match.groups[1]) &&
+          (mentionsPid(match.groups[0]) || mentionsPid(match.groups[1])),
+      );
+      const compared = calls(source, /\bexpect\s*\(/gu).filter((call) => {
+        const parts = call.argText.split(/[!=]==/u);
+        return (
+          parts.length === 2 &&
+          parts.every((part) => !isOwnPid(part)) &&
+          parts.some(mentionsPid)
+        );
+      });
+      return [...negated, ...compared];
+    },
+  },
+  {
+    id: "pid-signal",
+    message:
+      "Signalling a remembered PID can hit whichever process holds it now; a failed spawn's `pid ?? 0` signals the whole process group. Signal through the handle: child.kill() or killProcessGroup({ child }) from @bb/process-utils, holder.kill() or tracker.killRunning() from @bb/test-helpers, or stopVerifiedProcess() from @bb/config for a process identified by start time.",
+    find(source) {
+      return calls(source, /\bprocess\.kill\s*\(/gu).filter(
+        (call) =>
+          call.args.length >= 1 &&
+          !isOwnPid(call.args[0]) &&
+          !(call.args.length >= 2 && call.args.at(-1).trim() === "0"),
       );
     },
   },
@@ -68,6 +141,52 @@ function matchAll(source, re) {
     text: match[0],
     groups: match.slice(1),
   }));
+}
+
+const CLOSERS = { "(": ")", "[": "]", "{": "}" };
+
+function calls(source, calleeRe) {
+  return matchAll(source, calleeRe).flatMap((match) => {
+    const open = match.index + match.text.length - 1;
+    const stack = [];
+    const args = [];
+    let argStart = open + 1;
+    let quote = null;
+    for (let index = open; index < source.length; index += 1) {
+      const char = source[index];
+      if (quote !== null) {
+        if (char === "\\") index += 1;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'" || char === "`") {
+        quote = char;
+      } else if (char in CLOSERS) {
+        stack.push(CLOSERS[char]);
+      } else if (char === ")" || char === "]" || char === "}") {
+        if (stack.pop() !== char) return [];
+        if (stack.length === 0) {
+          args.push(source.slice(argStart, index));
+          const argText = source.slice(open + 1, index);
+          return [
+            {
+              index: match.index,
+              text: source.slice(match.index, index + 1),
+              args: args.filter(
+                (arg, position) =>
+                  position < args.length - 1 || arg.trim() !== "",
+              ),
+              argText,
+            },
+          ];
+        }
+      } else if (char === "," && stack.length === 1) {
+        args.push(source.slice(argStart, index));
+        argStart = index + 1;
+      }
+    }
+    return [];
+  });
 }
 
 export function isTestSource(path) {
@@ -108,7 +227,7 @@ export function findProcessIdentityChecks(source) {
 
 export function scanFiles(root, paths) {
   return paths
-    .filter(isTestSource)
+    .filter((path) => isTestSource(path) && !OWNER_FILES.has(path))
     .flatMap((path) =>
       findProcessIdentityChecks(readFileSync(join(root, path), "utf8")).map(
         (finding) => ({ path, ...finding }),

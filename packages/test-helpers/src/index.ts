@@ -13,7 +13,11 @@ export {
   readPositivePidFile,
   resolveProjectEnvCandidates,
 } from "./process-fixtures.js";
-export { killProcessesReferencingPath } from "./process-sweep.js";
+export {
+  killProcessesReferencingPath,
+  signalDescendantProcesses,
+} from "./process-sweep.js";
+export type { ListedProcess } from "./process-sweep.js";
 export {
   corpusAvailable,
   listCorpusThreads,

@@ -3,9 +3,21 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { createProcessLifeline, type ProcessLifeline } from "@bb/test-helpers";
+import {
+  createProcessLifeline,
+  trackChildProcesses,
+  type ProcessLifeline,
+} from "@bb/test-helpers";
 import { createAgentRuntime } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -415,6 +427,8 @@ describe("codex process topology", () => {
   }, 30_000);
 
   it("sweeps every app-server child when the bridge dies unexpectedly", async () => {
+    const children = trackChildProcesses();
+    onTestFinished(() => children.dispose());
     const topology = createCodexTopologyRuntime();
     const { runtime } = topology;
     await startCodexThread(runtime, "t1");
@@ -426,7 +440,9 @@ describe("codex process topology", () => {
         ?.split(":")[2],
     );
 
-    process.kill(bridgePid, "SIGKILL");
+    const bridge = children.running().find((child) => child.pid === bridgePid);
+    if (bridge === undefined) throw new Error("The bridge is not running");
+    bridge.kill("SIGKILL");
     await waitForRuntimeState({
       label: "the runtime reported the unexpected bridge exit",
       predicate: () => topology.bridgeExits.length === 1,

@@ -8,6 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import type { ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, normalize } from "node:path";
@@ -658,7 +659,7 @@ function callDynamicToolBridge(args: {
   });
 }
 
-async function waitForAgentExit(readyFile: string): Promise<void> {
+function trackedAgent(readyFile: string): ChildProcess {
   const pid = Number(readFileSync(readyFile, "utf8"));
   expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
   const child = [...childProcesses.children]
@@ -666,7 +667,11 @@ async function waitForAgentExit(readyFile: string): Promise<void> {
     .find((candidate) => candidate.pid === pid);
   if (child === undefined)
     throw new Error(`No tracked ACP child for pid ${pid}`);
-  await waitForExit(child);
+  return child;
+}
+
+async function waitForAgentExit(readyFile: string): Promise<void> {
+  await waitForExit(trackedAgent(readyFile));
 }
 
 beforeEach(({ signal }) => {
@@ -4266,7 +4271,7 @@ describe("acp bridge", () => {
       FAKE_ACP_REQUEST_LOG: requestLog,
     };
     const source = await startThread({ envVars });
-    process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+    trackedAgent(readyFile).kill("SIGTERM");
     await waitForAgentExit(readyFile);
     await waitFor(
       () => notifications("error").at(-1),
@@ -5015,7 +5020,7 @@ describe("acp bridge", () => {
           status: "completed",
         });
       }
-      process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+      trackedAgent(readyFile).kill("SIGTERM");
       await waitForAgentExit(readyFile);
       const error = await waitFor(
         () => notifications("error").at(-1),
@@ -5091,7 +5096,7 @@ describe("acp bridge", () => {
         toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
       });
       try {
-        process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+        trackedAgent(readyFile).kill("SIGTERM");
         expect(await waitForTurnCompleted()).toMatchObject({
           status: "failed",
         });
@@ -5462,7 +5467,7 @@ describe("acp bridge: work the agent starts on its own", () => {
     await runPromptedTurn(providerThreadId, "then-unprompted-open-tool");
     await waitForTurnStartedCount(2);
 
-    process.kill(Number(readFileSync(readyFile, "utf8")), "SIGKILL");
+    trackedAgent(readyFile).kill("SIGKILL");
     await waitFor(
       () => (turnStatuses().length === 2 ? true : undefined),
       "failed agent turn",

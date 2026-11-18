@@ -1723,6 +1723,9 @@ importers:
       '@bb/server-archive':
         specifier: workspace:*
         version: link:../server-archive
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -6492,12 +6495,18 @@ importers:
 
   tests/qa:
     dependencies:
+      '@bb/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract

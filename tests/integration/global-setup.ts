@@ -2,13 +2,14 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setupMigratedConnectionTemplate } from "@bb/db/testing";
+import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import { readProcessIdentity } from "@bb/process-utils";
 import {
   killProcessesReferencingPath,
   listOpenFilePids,
   readPositivePidFile,
 } from "@bb/test-helpers";
-import { isNodeError, removePathWithRetry } from "./helpers/remove-path.js";
+import { removePathWithRetry } from "./helpers/remove-path.js";
 import { setupBuiltinHostBuildRecords } from "./helpers/builtin-plugin-fixture.js";
 
 import { setupTestGitRepoTemplate } from "./helpers/seed.js";
@@ -17,27 +18,29 @@ const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
 const PS_START_TIME_RESOLUTION_MS = 1_000;
 
-function signal(pids: Iterable<number>, name: NodeJS.Signals): void {
-  for (const pid of pids) {
-    try {
-      process.kill(pid, name);
-    } catch (error) {
-      if (!isNodeError(error) || error.code !== "ESRCH") throw error;
-    }
-  }
-}
-
 async function stopOpenFileHolders(tmpRoot: string): Promise<void> {
-  let remaining = await listOpenFilePids(tmpRoot);
-  if (remaining.length === 0) return;
-  signal(remaining, "SIGTERM");
-  const deadline = Date.now() + 5_000;
-  while (remaining.length > 0 && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const stillHolding = new Set(await listOpenFilePids(tmpRoot));
-    remaining = remaining.filter((pid) => stillHolding.has(pid));
-  }
-  signal(remaining, "SIGKILL");
+  const holders = await Promise.all(
+    (await listOpenFilePids(tmpRoot)).map(async (pid) => ({
+      pid,
+      identity: await readProcessIdentity(pid),
+    })),
+  );
+  await Promise.all(
+    holders.flatMap(({ pid, identity }) =>
+      identity?.command == null || identity.startedAt === null
+        ? []
+        : [
+            stopVerifiedProcess({
+              pid,
+              startedAt: new Date(identity.startedAt).toISOString(),
+              verifyTokens: [identity.command],
+              signal: "SIGTERM",
+              timeoutMs: 5_000,
+              killTimeoutMs: 0,
+            }),
+          ],
+    ),
+  );
 }
 
 async function cleanupTmpRoot(tmpRoot: string): Promise<void> {

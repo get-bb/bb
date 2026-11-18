@@ -53,7 +53,7 @@ interface SpawnMockState {
   openFilePidsStdout: string;
   processScanErrorCode: ProcessScanErrorCode | null;
   processStartErrorCode: string | null;
-  processStarts: Map<number, string>;
+  processStarts: Map<number, number>;
   invocations: SpawnInvocation[];
   tempDirs: string[];
 }
@@ -100,11 +100,13 @@ function createProcessKillError(code: string): ProcessKillError {
 
 function startedProcesses(starts: Record<number, number>): void {
   for (const [pid, startedAt] of Object.entries(starts)) {
-    spawnMockState.processStarts.set(
-      Number(pid),
-      new Date(startedAt).toString().slice(0, 24),
-    );
+    spawnMockState.processStarts.set(Number(pid), startedAt);
   }
+}
+
+function formatElapsed(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function recordSignals(): string[] {
@@ -113,6 +115,7 @@ function recordSignals(): string[] {
     if (!spawnMockState.processStarts.has(pid)) {
       throw createProcessKillError("ESRCH");
     }
+    if (signal === 0) return true;
     signals.push(`${String(pid)}:${String(signal)}`);
     spawnMockState.processStarts.delete(pid);
     return true;
@@ -163,7 +166,8 @@ vi.mock("node:child_process", async (importOriginal) => {
     spawnMockState.children.push(child);
 
     const processScanErrorCode = spawnMockState.processScanErrorCode;
-    if (command === "ps" && processScanErrorCode) {
+    const tool = path.basename(command);
+    if (tool === "ps" && processScanErrorCode) {
       const error = Object.assign(
         new Error(`spawn ${String(processScanErrorCode)}`),
         {
@@ -174,9 +178,17 @@ vi.mock("node:child_process", async (importOriginal) => {
       return child;
     }
 
-    if (command === "ps" && commandArgs?.[0] === "-p") {
+    if (tool === "ps" && commandArgs?.[0] === "-p") {
       const startErrorCode = spawnMockState.processStartErrorCode;
-      const started = spawnMockState.processStarts.get(Number(commandArgs[1]));
+      const startedAt = spawnMockState.processStarts.get(
+        Number(commandArgs[1]),
+      );
+      const started =
+        startedAt === undefined
+          ? undefined
+          : commandArgs.includes("lstart=")
+            ? new Date(startedAt).toString().slice(0, 24)
+            : `${formatElapsed(Date.now() - startedAt)} node standalone-process`;
       const error =
         startErrorCode !== null
           ? Object.assign(new Error(`spawn ${startErrorCode}`), {

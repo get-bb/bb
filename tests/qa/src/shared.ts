@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import { hostSchema } from "@bb/domain";
+import { readProcessIdentity } from "@bb/process-utils";
 import type { Host } from "@bb/domain";
 import {
   type CreateProjectRequest,
@@ -334,26 +336,23 @@ export async function killProcess(
     return;
   }
 
-  const startedAt = await readProcessStartedAt(pid);
-  if (startedAt === null) {
+  const identity = await readProcessIdentity(pid);
+  if (identity?.command == null || identity.startedAt === null) {
     return;
   }
-  const isSameProcessRunning = async () =>
-    (await readProcessStartedAt(pid)) === startedAt;
-
-  process.kill(pid, "SIGTERM");
-  await waitFor(async () => !(await isSameProcessRunning()), {
+  const result = await stopVerifiedProcess({
+    pid,
+    startedAt: new Date(identity.startedAt).toISOString(),
+    verifyTokens: [identity.command],
+    signal: "SIGTERM",
     timeoutMs: 5_000,
-    description: `process ${pid} to exit`,
-  }).catch(async () => {
-    if (await isSameProcessRunning()) {
-      process.kill(pid, "SIGKILL");
-      await waitFor(async () => !(await isSameProcessRunning()), {
-        timeoutMs: 5_000,
-        description: `process ${pid} to exit after SIGKILL`,
-      });
-    }
+    killTimeoutMs: 5_000,
   });
+  if (result.kind === "still-running") {
+    throw new Error(
+      `Timed out waiting for process ${pid} to exit after SIGKILL`,
+    );
+  }
 }
 
 export async function loadDotEnv(): Promise<LoadDotEnvResult> {
@@ -734,8 +733,9 @@ export function buildDaemonRestartCommand(
     `case "$daemon_pid" in '' ) ;; *[!0-9]*) echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0 ;; *) if ! [ "$daemon_pid" -gt 0 ]; then echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0; fi ;; esac`,
   ].join("; ");
   const shutdownCommand = [
+    `daemon_started=$(ps -o lstart= -p "$daemon_pid" 2>/dev/null)`,
     `(kill "$daemon_pid" >/dev/null 2>&1 || true)`,
-    `while kill -0 "$daemon_pid" 2>/dev/null; do sleep 1; done`,
+    `while [ -n "$daemon_started" ] && [ "$(ps -o lstart= -p "$daemon_pid" 2>/dev/null)" = "$daemon_started" ]; do sleep 1; done`,
   ].join("; ");
 
   const envFileCommand = args.envFilePath

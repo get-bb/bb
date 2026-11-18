@@ -1,4 +1,5 @@
 import {
+  type ChildProcess,
   execFile as execFileCallback,
   spawn as spawnProcess,
 } from "node:child_process";
@@ -6,6 +7,7 @@ import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { killProcessGroup } from "@bb/process-utils";
 import {
   createProcessLifeline,
   killProcessesReferencingPath,
@@ -25,7 +27,7 @@ const RESTART_PROVIDER_ENV_BLOCK =
 const DAEMON_ENV_BLOCK_PREFIX = "; BB_DATA_DIR=";
 
 interface ShellCommandResult {
-  processGroupId: number;
+  shell: ChildProcess;
   stderr: string;
   stdout: string;
 }
@@ -97,23 +99,13 @@ async function runShellCommand(
         );
         return;
       }
-      if (!child.pid) {
-        reject(new Error("Shell command exited without a pid"));
-        return;
-      }
       resolve({
-        processGroupId: child.pid,
+        shell: child,
         stderr,
         stdout,
       });
     });
   });
-}
-
-function signalProcessGroup(processGroupId: number): void {
-  try {
-    process.kill(-processGroupId, "SIGTERM");
-  } catch {}
 }
 
 async function runRestartProviderEnvBlock(
@@ -398,7 +390,7 @@ describe("standalone restart command", () => {
       const [first] = await lifeline.waitForHolders(1);
       expect(await readPidFile(pidPath)).toBe(first?.pid);
 
-      signalProcessGroup(shellResult.processGroupId);
+      killProcessGroup({ child: shellResult.shell, signal: "SIGTERM" });
       expect(first?.kill("SIGUSR2")).toBe(true);
       const [, fence] = await lifeline.waitForHolders(2);
       expect(fence?.label).toBe("signal-fence");

@@ -757,37 +757,18 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
           expiresAt: Date.now() + 60_000,
         }),
       });
-      const pidPath = join(fixture.dataDir, "install-daemon.pid");
-      try {
-        expect(result.status, result.stderr).toBe(0);
-        expect(
-          JSON.parse(
-            readFileSync(join(fixture.dataDir, "enrollment-argv"), "utf8"),
-          ),
-        ).toEqual(["machine", "enroll", "--bootstrap-env", "BB_ENROLLMENT"]);
-        expect(result.stdout + result.stderr).not.toContain(
-          "private-bootstrap-test",
-        );
-        expect(
-          spawnSync("sh", ["-n", join(fixture.homeDir, ".local/bin/bb")])
-            .status,
-        ).toBe(0);
-      } finally {
-        if (existsSync(pidPath)) {
-          try {
-            process.kill(Number(readFileSync(pidPath, "utf8")), "SIGTERM");
-          } catch (error) {
-            if (
-              !(
-                error instanceof Error &&
-                "code" in error &&
-                error.code === "ESRCH"
-              )
-            )
-              throw error;
-          }
-        }
-      }
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dataDir, "enrollment-argv"), "utf8"),
+        ),
+      ).toEqual(["machine", "enroll", "--bootstrap-env", "BB_ENROLLMENT"]);
+      expect(result.stdout + result.stderr).not.toContain(
+        "private-bootstrap-test",
+      );
+      expect(
+        spawnSync("sh", ["-n", join(fixture.homeDir, ".local/bin/bb")]).status,
+      ).toBe(0);
     },
   );
 
@@ -823,10 +804,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(
       JSON.parse(readFileSync(join(fixture.dataDir, "auth.json"), "utf8")),
     ).toEqual({ hostId: "host-test", hostKey: "secret" });
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("starts the daemon for an existing enrollment when service setup is skipped", () => {
@@ -843,22 +820,16 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
-    try {
-      expect(existsSync(daemonPidPath)).toBe(true);
-      expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
-        "host-daemon",
-        "--auto-update",
-        "--supervise",
-        "--host-daemon-port",
-        readFileSync(join(fixture.dataDir, "host-daemon-port"), "utf8").trim(),
-        "--server-url",
-        "https://machine.getbb.app",
-      ]);
-    } finally {
-      if (existsSync(daemonPidPath)) {
-        process.kill(Number(readFileSync(daemonPidPath, "utf8")), "SIGTERM");
-      }
-    }
+    expect(existsSync(daemonPidPath)).toBe(true);
+    expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
+      "host-daemon",
+      "--auto-update",
+      "--supervise",
+      "--host-daemon-port",
+      readFileSync(join(fixture.dataDir, "host-daemon-port"), "utf8").trim(),
+      "--server-url",
+      "https://machine.getbb.app",
+    ]);
   });
 
   it("restarts its own running daemon on reconnect when service setup is skipped", async () => {
@@ -946,10 +917,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
       "--server-url",
       "http://localhost:20101",
     ]);
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("installs the server tarball even when a same-version bb-app is on PATH", () => {
@@ -968,10 +935,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(npmInvocation).toMatch(
       /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
     );
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("prefers the server-matched tarball when bb-app is absent", () => {
@@ -1012,10 +975,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(result.stdout).toContain("  ✓  Installed the server's bb-app build");
     expect(result.stdout).toContain("Waiting for the host daemon to connect");
     expect(result.stdout).toContain("Host daemon output is logged to");
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it.each([
@@ -1056,10 +1015,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
         .split("\n"),
     ).toEqual(["504", "200"]);
     expect(result.stdout).toContain("Downloaded the server's bb-app package");
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("skips downloading and installing an identical host artifact", () => {
@@ -1087,10 +1042,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
       `If-None-Match: "sha256-${FIXTURE_ARTIFACT_DIGEST}"`,
     );
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("rejects a server host artifact whose digest does not match", () => {
@@ -1120,10 +1071,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toMatch(
       /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm bb-app\n$/u,
     );
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("fails loudly when npm skipped the native add-on install scripts", () => {
@@ -1160,10 +1107,6 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     expect(
       JSON.parse(readFileSync(join(defaultDataDir, "auth.json"), "utf8")),
     ).toMatchObject({ hostId: "host-test" });
-    const daemonPid = Number(
-      readFileSync(join(defaultDataDir, "install-daemon.pid"), "utf8"),
-    );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("refuses a data dir enrolled for a different host instead of faking success", () => {
@@ -1283,10 +1226,6 @@ fi
     );
 
     expect(result.status, result.stderr).toBe(0);
-    process.kill(
-      Number(readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8")),
-      "SIGTERM",
-    );
     expect(
       readFileSync(join(fixture.dataDir, "curl-config.log"), "utf8"),
     ).toContain('header = "x-bb-connect-machine: legacy-credential"');
@@ -1370,10 +1309,6 @@ fi
       expect(readFileSync(invocationPath, "utf8")).toContain(
         `--host-daemon-port\n${selectedPort}\n`,
       );
-      const daemonPid = Number(
-        readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
-      );
-      process.kill(daemonPid, "SIGTERM");
     } finally {
       if (occupiedByTest) {
         await new Promise<void>((resolve, reject) => {
@@ -1420,9 +1355,10 @@ setInterval(() => {}, 1000);
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
 if [ "$1" = bootout ] && [ -f "${join(fixture.dataDir, "service-daemon.pid")}" ]; then
   service_pid=$(sed -n '1p' "${join(fixture.dataDir, "service-daemon.pid")}")
+  service_started=$(ps -o lstart= -p "$service_pid" 2>/dev/null)
   kill "$service_pid" 2>/dev/null || true
   attempts=0
-  while kill -0 "$service_pid" 2>/dev/null && [ "$attempts" -lt 100 ]; do
+  while [ -n "$service_started" ] && [ "$(ps -o lstart= -p "$service_pid" 2>/dev/null)" = "$service_started" ] && [ "$attempts" -lt 100 ]; do
     attempts=$((attempts + 1))
     sleep 0.01
   done
@@ -1835,20 +1771,13 @@ fi
       DBUS_SESSION_BUS_ADDRESS: undefined,
     });
 
-    try {
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout + result.stderr).toContain(
-        "Service installation skipped",
-      );
-      expect(existsSync(join(fixture.homeDir, ".config/systemd/user"))).toBe(
-        false,
-      );
-    } finally {
-      const pidPath = join(fixture.dataDir, "install-daemon.pid");
-      if (existsSync(pidPath)) {
-        process.kill(Number(readFileSync(pidPath, "utf8")), "SIGTERM");
-      }
-    }
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "Service installation skipped",
+    );
+    expect(existsSync(join(fixture.homeDir, ".config/systemd/user"))).toBe(
+      false,
+    );
   });
 
   it.each([false, true])(

@@ -169,7 +169,13 @@ it("keeps the thread resumable when the rebuild after the child died hits an ext
   if (childPid === undefined) {
     throw new Error("Expected the fake app-server child to have spawned");
   }
-  process.kill(childPid, "SIGKILL");
+  const appServer = children
+    ?.running()
+    .find((candidate) => candidate.pid === childPid);
+  if (appServer === undefined) {
+    throw new Error("Expected the fake app-server child to be running");
+  }
+  appServer.kill("SIGKILL");
   const deadline = Date.now() + 15_000;
   while (
     !harness.messages.some(

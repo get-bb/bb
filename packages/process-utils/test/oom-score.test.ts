@@ -4,24 +4,31 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { preferOutOfMemoryKill } from "../src/oom-score.js";
 
-function readOomScoreAdj(pid: number | "self"): number {
-  return Number(readFileSync(`/proc/${pid}/oom_score_adj`, "utf8"));
+function readOwnOomScoreAdj(): number {
+  return Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
 }
 
 describe.runIf(process.platform === "linux")("preferOutOfMemoryKill", () => {
-  it("ranks the child ahead of its parent for the out-of-memory killer", () => {
-    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], {
-      stdio: "ignore",
-    });
+  it("ranks the child ahead of its parent for the out-of-memory killer", async () => {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        'process.stdin.once("data", () => process.stdout.write(require("node:fs").readFileSync("/proc/self/oom_score_adj", "utf8")));',
+      ],
+      { stdio: ["pipe", "pipe", "ignore"] },
+    );
     onTestFinished(() => {
       child.kill("SIGKILL");
     });
     if (child.pid === undefined) throw new Error("child did not start");
+    const reported = once(child.stdout, "data");
 
     preferOutOfMemoryKill(child.pid);
+    child.stdin.write("report\n");
 
-    expect(readOomScoreAdj(child.pid)).toBe(
-      Math.min(1_000, readOomScoreAdj("self") + 500),
+    expect(Number(String((await reported)[0]))).toBe(
+      Math.min(1_000, readOwnOomScoreAdj() + 500),
     );
   });
 

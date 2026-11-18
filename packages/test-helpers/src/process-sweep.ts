@@ -9,7 +9,7 @@ const POLL_INTERVAL_MS = 50;
 const DEFAULT_GRACE_MS = 1_000;
 const PROCESS_LIST_MAX_BUFFER = 64 * 1024 * 1024;
 
-interface ListedProcess {
+export interface ListedProcess {
   pid: number;
   ppid: number;
   args: string;
@@ -116,4 +116,34 @@ export async function killProcessesReferencingPath(
   }
   signal(remaining, "SIGKILL");
   return [...targets.keys()];
+}
+
+interface SignalDescendantProcessesArgs {
+  select: (entry: ListedProcess, parent: ListedProcess | undefined) => boolean;
+  signal: NodeJS.Signals;
+}
+
+export async function signalDescendantProcesses(
+  args: SignalDescendantProcessesArgs,
+): Promise<ListedProcess[]> {
+  const processes = await listProcesses();
+  const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
+  const descendants: ListedProcess[] = [];
+  const pending = [process.pid];
+  while (pending.length > 0) {
+    const parent = pending.shift()!;
+    for (const entry of processes) {
+      if (entry.ppid !== parent) continue;
+      descendants.push(entry);
+      pending.push(entry.pid);
+    }
+  }
+  const selected = descendants.filter((entry) =>
+    args.select(entry, byPid.get(entry.ppid)),
+  );
+  signal(
+    selected.map((entry) => entry.pid),
+    args.signal,
+  );
+  return selected;
 }

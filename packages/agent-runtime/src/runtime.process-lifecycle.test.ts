@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   afterEach,
   beforeEach,
@@ -36,6 +37,7 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   createScriptedEchoLaunch,
+  scriptedEchoBridgeModulePath,
   createScriptedEchoProcessLog,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
@@ -256,20 +258,35 @@ describe("createAgentRuntime process lifecycle", () => {
   it.runIf(process.platform === "linux")(
     "ranks provider processes ahead of bb for the out-of-memory killer",
     async () => {
+      const reportPath = join(tmpDir, "provider-oom-score-adj");
+      const reportingBridgePath = join(tmpDir, "oom-reporting-bridge.mjs");
+      writeFileSync(
+        reportingBridgePath,
+        [
+          'import { readFileSync, writeFileSync } from "node:fs";',
+          `export * from ${JSON.stringify(pathToFileURL(scriptedEchoBridgeModulePath).href)};`,
+          `writeFileSync(${JSON.stringify(reportPath)}, readFileSync("/proc/self/oom_score_adj", "utf8"));`,
+        ].join("\n"),
+      );
+      const adapter = createProviderForId("fake", {
+        additionalWorkspaceWriteRoots: [],
+        bridgeLaunch: createScriptedEchoLaunch({
+          modulePath: reportingBridgePath,
+        }),
+      });
       const manager = createProviderProcessManager({
+        createAdapter: () => adapter,
         onProcessExit: vi.fn(),
         workspacePath: tmpDir,
       });
       onTestFinished(() => manager.shutdown());
 
       await manager.ensureProvider(MANAGER_PROVIDER);
-      const providerPid =
-        manager.requireProviderProcess(MANAGER_PROVIDER).child.pid;
 
       const ownScore = Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
-      expect(
-        Number(readFileSync(`/proc/${providerPid}/oom_score_adj`, "utf8")),
-      ).toBe(Math.min(1_000, ownScore + 500));
+      expect(Number(readFileSync(reportPath, "utf8"))).toBe(
+        Math.min(1_000, ownScore + 500),
+      );
     },
   );
 
@@ -1642,7 +1659,10 @@ describe("createAgentRuntime process lifecycle", () => {
       throw new Error("The scripted bridge logged no spawn");
     }
 
-    process.kill(bridgePid, "SIGKILL");
+    const bridge = tracker.running().find((child) => child.pid === bridgePid);
+    if (bridge === undefined)
+      throw new Error("The scripted bridge is not running");
+    bridge.kill("SIGKILL");
     await waitForRuntimeState({
       label: "the dead bridge's background task settled",
       predicate: () => backgroundTaskCompletions(events).length > 0,

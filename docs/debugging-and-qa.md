@@ -172,23 +172,38 @@ DESC`.
 
 ## Observing Processes in Tests
 
-A test must not decide whether a process is alive from its PID. The operating
-system reuses PIDs (Windows quickly), so `process.kill(pid, 0)`, a liveness
-helper given a PID, and `expect(newPid).not.toBe(oldPid)` can all answer for an
-unrelated process. `node scripts/check-test-process-identity.mjs`, run in CI's
-plan job, rejects them in test code. Use the fixtures in
-`@bb/test-helpers/child-processes` instead; forkable plugins get the same ones
-as `experimental_` exports of `@get-bb/plugin-sdk/testing`.
+A test must not learn about a process from its PID alone. The operating system
+reuses PIDs (Windows quickly), so a remembered PID can name an unrelated
+process. `node scripts/check-test-process-identity.mjs`, run in CI's plan job,
+rejects these in test code:
+
+- signal 0 (`kill(pid, 0)`, shell `kill -0`);
+- liveness helpers given a PID (`…Alive(pid)`, `…Running(pid)`, `…Exists(pid)`);
+- `/proc/<pid>` reads and `ps -p <pid>` probes;
+- PID comparisons (`.not.toBe(oldPid)`, `a.pid === b.pid`, `.not.toContain(oldPid)`);
+- `process.kill(<remembered pid>, signal)`, including group signals. A failed
+  spawn's `child.pid ?? 0` would signal the runner's whole process group.
+
+The process's own `process.pid` is allowed, and so is a `ps` call that reads a
+start time (`lstart`, `etime`) to compare a recorded identity. Use the fixtures
+in `@bb/test-helpers/child-processes`, the module that owns guarded signalling;
+forkable plugins get the same ones as `experimental_` exports of
+`@get-bb/plugin-sdk/testing`.
 
 - **Direct children:** `trackChildProcesses()` records every `ChildProcess`
   spawned in the test process, including ones production code spawns
   internally. Use `running()`, `waitForExit()`, `waitForClose()` and
-  `killRunning()`.
-- **Node descendants:** `createProcessLifeline()` gives a socket the descendant
-  joins with `holdSource(label, onHeld?)`. Await `holder.exited`; `holder.kill()`
-  never signals a reused PID.
+  `killRunning()`. Signal an owned child with `child.kill()` or
+  `killProcessGroup({ child })` from `@bb/process-utils`.
+- **Node descendants and fake daemons:** `createProcessLifeline()` gives a
+  socket they join with `holdSource(label, onHeld?)`. Await `holder.exited`;
+  `holder.kill()` never signals a reused PID.
 - **Shell descendants on POSIX:** redirect into `createDescendantPipe()`'s
-  `path` and await `opened`, then `closed`.
+  `path` and await `opened`, then `closed`. Shell code that must wait for a
+  process compares its recorded `ps -o lstart= -p` start time.
+- **Real processes found through PID files or listings:** compare
+  `readProcessIdentity()` from `@bb/process-utils`, or stop them with
+  `stopVerifiedProcess()` from `@bb/config`.
 - **Restarted processes:** compare an identity the process reports itself, such
   as a boot id.
 
