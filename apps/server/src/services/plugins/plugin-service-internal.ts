@@ -162,6 +162,7 @@ export interface PluginServiceDeps {
     hostId: string;
     signal?: AbortSignal;
     timeoutMs?: number;
+    providerEnv?: string;
     artifact: PluginHostArtifactSnapshot;
   }) => Promise<unknown>;
   disposePluginHost?: (args: {

@@ -213,6 +213,7 @@ async function pickModels(
 ): Promise<{ first: AvailableModel; second: AvailableModel }> {
   const { models } = await ctx.runtime.listModels({
     providerId: ctx.providerId,
+    contributedEnv: [],
   });
   const preferred = process.env.BB_SCENARIO_RECORD_MODELS?.split(",");
   const byModel = (id: string) => models.find((model) => model.model === id);

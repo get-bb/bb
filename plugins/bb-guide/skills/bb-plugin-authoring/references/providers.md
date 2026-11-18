@@ -131,10 +131,12 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
 ```
 
 The server calls the resolver for every matching start, resume, fork, and turn
-command, and when it lists the provider's models, checks its health, or checks
-its installation on a host. Its `ExperimentalPluginProviderEnvContext` has
+command, and when it lists the provider's models or commands, checks its
+health, usage, or installation, or runs an install or update on a host. Its `ExperimentalPluginProviderEnvContext` has
 `threadId`, `projectId`, and `hostId`; `threadId` and `projectId` are `null`
-for model listing, health, and installation checks, which serve no thread.
+for these host-scoped requests, which serve no thread. A `bb.host` call that
+starts or inspects a provider's CLI can pass `providerEnv: providerId` in its
+call options to run with that provider's contributed env too.
 First-party bridges start their CLI with these values, so a contributed
 executable path or home directory (`BB_CLAUDE_CODE_EXECUTABLE`,
 `BB_CODEX_BRIDGE_APP_SERVER_COMMAND`, `CODEX_HOME`, `BB_PI_BRIDGE_COMMAND`)

@@ -65,6 +65,7 @@ import { getMachineEnrollmentService } from "../services/machines/machine-servic
 import { manualHostCommand } from "../services/machines/manual-provider.js";
 import { prepareReconnect } from "../services/machines/reconnect.js";
 import { emitPluginHostDeleted } from "../services/plugins/plugin-thread-events.js";
+import { resolveHostProviderEnv } from "../services/plugins/plugin-agent-contributions.js";
 
 const DISCOVERED_REPOS_MAX_DEPTH = 5;
 const DISCOVERED_REPOS_SINCE_DAYS = 30;
@@ -511,6 +512,10 @@ export function registerHostRoutes(
             providerId: payload.provider,
             action: payload.actionKind,
             bridgeLaunch,
+            contributedEnv: await resolveHostProviderEnv(
+              hostId,
+              payload.provider,
+            ),
           },
         });
         const events = await settleUnneededProviderInstallation(deps, {

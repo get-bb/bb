@@ -1,4 +1,5 @@
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
+import { resolveHostProviderEnv } from "./plugin-agent-contributions.js";
 import { randomUUID } from "node:crypto";
 import { listPublicHosts } from "@bb/db";
 import type {
@@ -71,6 +72,7 @@ export async function callPluginHostRpc(
     hostId: string;
     signal?: AbortSignal;
     timeoutMs?: number;
+    providerEnv?: string;
     artifact: PluginHostArtifactSnapshot;
   },
 ): Promise<unknown> {
@@ -104,10 +106,15 @@ export async function callPluginHostRpc(
     timeoutMs: timeoutMs + HOST_RPC_TRANSPORT_GRACE_MS,
     command: {
       type: "plugin.host.call" as const,
-      contributedEnv: await resolveHostEnvironment(deps, {
-        hostId: args.hostId,
-        projectId: null,
-      }),
+      contributedEnv: [
+        ...(await resolveHostEnvironment(deps, {
+          hostId: args.hostId,
+          projectId: null,
+        })),
+        ...(args.providerEnv === undefined
+          ? []
+          : await resolveHostProviderEnv(args.hostId, args.providerEnv)),
+      ],
       pluginId: args.pluginId,
       generation: args.artifact.generation,
       artifact: {

@@ -1741,6 +1741,10 @@ Docs: `backend-foundation.md`, `testing.md`.
 2. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` defaults to 30 s
    and is capped at 30 minutes. Confirm the cap, and whether the default should
    be declared per method on the contract instead.
+   `ExperimentalHostCallOptions.providerEnv` names a provider whose
+   host-scoped contributed env joins the host environment for the call. Core's
+   native-roots lookup and the ACP agent probe use it. Confirm one provider per
+   call is enough and whether it belongs on the method declaration instead.
 3. **Contract shape.** Confirm Standard Schema values remain the right runtime
    boundary and decide whether method-specific typed errors are necessary.
 4. **Targeting.** Confirm explicit host ids are enough for V1 and add an

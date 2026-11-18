@@ -769,7 +769,7 @@ export async function completeCodexInference(
   signal: AbortSignal,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(process.env);
   const request = buildCodexResponsesRequest(command);
   const response = await fetchResponses({ auth, command, deadline, request });
 
@@ -884,7 +884,7 @@ export async function transcribeCodexVoice(
   signal: AbortSignal,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(process.env);
   const response = await fetchTranscription({ auth, command, deadline });
 
   if (!response.ok) {

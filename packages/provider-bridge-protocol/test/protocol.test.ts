@@ -42,20 +42,29 @@ describe("handshake", () => {
 });
 
 describe("provider installation status", () => {
+  it("requires the host-scoped contributed env on every request", () => {
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({ providerId: "codex" })
+        .success,
+    ).toBe(false);
+  });
+
   it("defaults legacy requests to update discovery and accepts local-only probes", () => {
     expect(
-      providerInstallationStatusParamsSchema.parse({ providerId: "codex" })
+      providerInstallationStatusParamsSchema.parse({ providerId: "codex", envVars: {} })
         .checkUpdates,
     ).toBe(true);
     expect(
       providerInstallationStatusParamsSchema.parse({
         providerId: "codex",
+        envVars: {},
         checkUpdates: false,
       }).checkUpdates,
     ).toBe(false);
     expect(
       providerInstallationStatusParamsSchema.safeParse({
         providerId: "codex",
+        envVars: {},
         checkUpdates: "false",
       }).success,
     ).toBe(false);
@@ -64,12 +73,14 @@ describe("provider installation status", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({
         providerId: "codex",
+        envVars: {},
         requirement: "thread_rewind",
       }).requirement,
     ).toBe("thread_rewind");
     expect(
       providerInstallationStatusParamsSchema.safeParse({
         providerId: "codex",
+        envVars: {},
         requirement: "anything",
       }).success,
     ).toBe(false);

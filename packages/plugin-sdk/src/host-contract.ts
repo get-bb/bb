@@ -26,6 +26,14 @@ export interface ExperimentalHostCallOptions {
    * job the host entry runs in the background and reports on.
    */
   readonly timeoutMs?: number;
+  /**
+   * A provider id whose plugin-contributed environment (from
+   * `bb.providers.experimental_contributeEnv`, resolved for this host with no
+   * thread or project) joins the host environment for this call. Use it when
+   * the host entry starts or inspects that provider's CLI, so it sees the same
+   * executable and home directories a session does.
+   */
+  readonly providerEnv?: string;
 }
 
 export interface ExperimentalHostClient<

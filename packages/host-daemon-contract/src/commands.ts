@@ -939,6 +939,7 @@ const providerListCommandsCommandSchema = z
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).nullable(),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -967,6 +968,7 @@ const providerInstallationRunCommandSchema = z
     providerId: z.string().min(1),
     action: providerCliInstallActionKindSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -1223,6 +1225,7 @@ const providerUsageCommandSchema = z
     type: z.literal("provider.usage"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 

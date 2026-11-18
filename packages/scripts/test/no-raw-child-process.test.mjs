@@ -17,7 +17,7 @@ function lint(visit) {
 
 describe("no-raw-child-process", () => {
   it.each(["node:child_process", "child_process", "cross-spawn", "execa"])(
-    "reports value imports, requires, dynamic imports and re-exports of %s",
+    "reports value imports, requires, getBuiltinModule, dynamic imports and re-exports of %s",
     (specifier) => {
       expect(
         lint((visitors) => {
@@ -36,6 +36,14 @@ describe("no-raw-child-process", () => {
             arguments: [literal(specifier)],
           });
           visitors.ImportExpression({ source: literal(specifier) });
+          visitors.CallExpression({
+            callee: {
+              type: "MemberExpression",
+              object: { type: "Identifier", name: "process" },
+              property: { type: "Identifier", name: "getBuiltinModule" },
+            },
+            arguments: [literal(specifier)],
+          });
           visitors.ExportNamedDeclaration({
             exportKind: "value",
             source: literal(specifier),
@@ -45,7 +53,7 @@ describe("no-raw-child-process", () => {
             source: literal(specifier),
           });
         }),
-      ).toEqual(Array(6).fill(specifier));
+      ).toEqual(Array(7).fill(specifier));
     },
   );
 

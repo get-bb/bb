@@ -1199,7 +1199,7 @@ describe("bridge", () => {
     });
 
     try {
-      bridge.sendRequest(1, "commands/list", { cwd: "/tmp/commands-project" });
+      bridge.sendRequest(1, "commands/list", { envVars: {}, cwd: "/tmp/commands-project" });
       const response = await bridge.waitForResponse(1);
 
       expect(response.result).toEqual({
@@ -1227,7 +1227,7 @@ describe("bridge", () => {
     });
 
     try {
-      bridge.sendRequest(1, "model/list", {});
+      bridge.sendRequest(1, "model/list", { envVars: {} });
       const missing = await bridge.waitForResponse(1);
 
       expect(missing.error?.code).toBe(
@@ -1243,7 +1243,7 @@ describe("bridge", () => {
           .mockRejectedValue(new Error("Claude SDK stream closed")),
         close: vi.fn(),
       });
-      bridge.sendRequest(2, "model/list", {});
+      bridge.sendRequest(2, "model/list", { envVars: {} });
       const other = await bridge.waitForResponse(2);
 
       expect(other.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR);

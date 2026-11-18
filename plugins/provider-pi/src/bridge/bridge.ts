@@ -619,7 +619,7 @@ function toPiSessionParams(
 
 async function handleModelList(
   id: string | number,
-  params: { cwd?: string; envVars?: Record<string, string> },
+  params: { cwd?: string; envVars: Record<string, string> },
 ): Promise<void> {
   const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
@@ -638,7 +638,7 @@ async function handleModelList(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
-      params.envVars ?? {},
+      params.envVars,
     );
     contextWindows.learn(await catalog.rawModels());
     sendResult(id, await catalog.listModels());
@@ -653,7 +653,7 @@ async function handleModelList(
 
 async function handleProviderHealth(
   id: string | number,
-  params: { cwd?: string; envVars?: Record<string, string> },
+  params: { cwd?: string; envVars: Record<string, string> },
 ): Promise<void> {
   const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
@@ -665,7 +665,7 @@ async function handleProviderHealth(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
-      params.envVars ?? {},
+      params.envVars,
     );
     await catalog.probe();
     const models = await catalog.rawModels();

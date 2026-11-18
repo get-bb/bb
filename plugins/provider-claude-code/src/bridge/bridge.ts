@@ -70,6 +70,7 @@ import {
 import {
   PROVIDER_COMMANDS_STATE_KIND,
   createClaudeCodeBridgeCommandListMemo,
+  listClaudeCodeBridgeCommands,
   toProviderCommandsState,
 } from "./provider-commands.js";
 import {
@@ -868,6 +869,8 @@ async function applyLiveSessionSettings(
 
 const PROVIDER_CATALOG_MEMO_TTL_MS = 2 * 60_000;
 const listCommandsMemoized = createClaudeCodeBridgeCommandListMemo({
+  list: (cwd, envVars) =>
+    listClaudeCodeBridgeCommands(cwd, buildSessionEnv(envVars)),
   ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
 });
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
@@ -2311,7 +2314,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       try {
         sendResult(
           request.id,
-          await listModelsMemoized(request.params.envVars ?? {}),
+          await listModelsMemoized(request.params.envVars),
         );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
@@ -2327,7 +2330,13 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "commands/list":
       try {
-        sendResult(request.id, await listCommandsMemoized(request.params.cwd));
+        sendResult(
+          request.id,
+          await listCommandsMemoized(
+            request.params.cwd,
+            request.params.envVars,
+          ),
+        );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
           sendError(
@@ -2344,7 +2353,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderHealth(
-          buildSessionEnv(request.params.envVars ?? {}),
+          buildSessionEnv(request.params.envVars),
         ),
       );
       break;
@@ -2352,7 +2361,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderUsage(
-          buildSessionEnv(request.params.envVars ?? {}),
+          buildSessionEnv(request.params.envVars),
         ),
       );
       break;
@@ -2360,7 +2369,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderInstallationStatus(
-          buildSessionEnv(request.params.envVars ?? {}),
+          buildSessionEnv(request.params.envVars),
           request.params.checkUpdates,
         ),
       );
@@ -2369,7 +2378,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(
         request.id,
         await getClaudeProviderInstallationRun(
-          buildSessionEnv(request.params.envVars ?? {}),
+          buildSessionEnv(request.params.envVars),
           request.params.action,
         ),
       );
@@ -2591,7 +2600,9 @@ async function toClaudeSessionParams(
             roots: configuredSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
-            claudeDir: claudeSkillsConfigDirectory(),
+            claudeDir: claudeSkillsConfigDirectory(
+              buildSessionEnv(params.options.envVars ?? {}),
+            ),
           }),
         );
   return buildClaudeSessionParams({

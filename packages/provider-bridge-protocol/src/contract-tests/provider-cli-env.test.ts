@@ -99,6 +99,9 @@ interface ProviderCliEnvCase {
   cliLaunches(ctx: CaseContext): z.infer<typeof recordedLaunchSchema>[];
   probeEnv(ctx: CaseContext): Record<string, string>;
   probeParams(ctx: CaseContext): BridgeJsonRpcObject;
+  reportsUsage: boolean;
+  listsCommands: boolean;
+  runsInstallation: boolean;
   cleanup(
     send: (method: string, params: BridgeJsonRpcObject) => Promise<void>,
   ): Promise<void>;
@@ -154,6 +157,8 @@ function fakeCli(ctx: CaseContext, name: string, output: string): string {
 }
 
 function pathWithFakeBin(ctx: CaseContext): string {
+  fakeCli(ctx, "npm", "");
+  fakeCli(ctx, "bun", "");
   return [ctx.fakeBinDir, process.env.PATH ?? ""].join(delimiter);
 }
 
@@ -229,9 +234,15 @@ const cases: ProviderCliEnvCase[] = [
     cliLaunches: recordedLaunches,
     probeEnv: (ctx) => {
       fakeCli(ctx, "codex", `codex-cli ${PROBED_VERSION}`);
-      return { PATH: pathWithFakeBin(ctx) };
+      return {
+        PATH: pathWithFakeBin(ctx),
+        CODEX_HOME: join(ctx.dir, "codex-home"),
+      };
     },
     probeParams: () => ({}),
+    reportsUsage: true,
+    listsCommands: false,
+    runsInstallation: true,
     cleanup: (send) =>
       send("thread/stop", {
         threadId: "thr_cli_env_contract",
@@ -265,6 +276,7 @@ const cases: ProviderCliEnvCase[] = [
       launch.args[0] === join(ctx.fakeBinDir, "claude"),
     cliLaunches: () => claudeLaunches(),
     probeEnv: (ctx) => ({
+      PATH: pathWithFakeBin(ctx),
       BB_CLAUDE_CODE_EXECUTABLE: fakeCli(
         ctx,
         "claude-probe",
@@ -272,6 +284,9 @@ const cases: ProviderCliEnvCase[] = [
       ),
     }),
     probeParams: () => ({}),
+    reportsUsage: true,
+    listsCommands: true,
+    runsInstallation: true,
     cleanup: (send) =>
       send("thread/stop", {
         threadId: CLAUDE_FAKE_SESSION_ID,
@@ -299,8 +314,14 @@ const cases: ProviderCliEnvCase[] = [
     launchedByThreadEnv: () => true,
     cliLaunches: (ctx) =>
       recordedLaunches(ctx).filter((launch) => !launch.args.includes("--version")),
-    probeEnv: () => ({ FAKE_PI_VERSION: PROBED_VERSION }),
+    probeEnv: (ctx) => ({
+      PATH: pathWithFakeBin(ctx),
+      FAKE_PI_VERSION: PROBED_VERSION,
+    }),
     probeParams: () => ({}),
+    reportsUsage: false,
+    listsCommands: false,
+    runsInstallation: true,
     cleanup: async () => {
       await closeAllSchema
         .parse(await importModule("plugins/provider-pi/src/bridge/bridge.ts"))
@@ -344,6 +365,9 @@ const cases: ProviderCliEnvCase[] = [
         },
       },
     }),
+    reportsUsage: false,
+    listsCommands: false,
+    runsInstallation: false,
     cleanup: (send) =>
       send("thread/stop", {
         threadId: "thr_cli_env_contract",
@@ -500,6 +524,53 @@ describe.each(cases)("provider CLI env contract: $provider", (testCase) => {
         supported: true,
         health: { installedVersion: PROBED_VERSION },
       });
+    },
+    30_000,
+  );
+
+  it.skipIf(process.platform === "win32" || !testCase.reportsUsage)(
+    "usage probes the CLI the contributed env selects",
+    async () => {
+      const usage = await send("provider/usage", {
+        providerId: testCase.provider,
+        envVars: testCase.probeEnv(ctx),
+        ...testCase.probeParams(ctx),
+      });
+      expect(usage.result).toMatchObject({ supported: true });
+      expect(usage.result).not.toMatchObject({
+        usage: { status: "not_installed" },
+      });
+    },
+    30_000,
+  );
+
+  it.skipIf(process.platform === "win32" || !testCase.runsInstallation)(
+    "installation run plans against the CLI the contributed env selects",
+    async () => {
+      const run = await send("provider/installation/run", {
+        providerId: testCase.provider,
+        action: "install",
+        envVars: testCase.probeEnv(ctx),
+        ...testCase.probeParams(ctx),
+      });
+      expect(run.result).toMatchObject({ available: false });
+    },
+    30_000,
+  );
+
+  it.skipIf(!testCase.listsCommands)(
+    "command-list CLI receives the contributed env and launch override",
+    async () => {
+      const envVars = {
+        CONTRIBUTED_SETTING: "contributed-value",
+        ...(testCase.launchFromThreadEnv?.(ctx) ?? {}),
+      };
+      await send("commands/list", { cwd: ctx.dir, envVars });
+      const launches = testCase.cliLaunches(ctx);
+      expectCliReceived(launches, envVars);
+      for (const launch of launches) {
+        expect(testCase.launchedByThreadEnv(ctx, launch)).toBe(true);
+      }
     },
     30_000,
   );

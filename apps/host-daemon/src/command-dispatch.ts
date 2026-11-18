@@ -307,6 +307,7 @@ async function runProviderInstallationOnHost(
     const maintenanceArgs = {
       providerId: command.providerId,
       bridgeLaunch,
+      contributedEnv: command.contributedEnv,
     };
     const run = await options.providerInstallationRun({
       ...maintenanceArgs,
@@ -335,10 +336,7 @@ async function runProviderInstallationOnHost(
     if (events.some((event) => event.type === "completed" && event.success)) {
       try {
         const status =
-          await options.providerInstallationStatus({
-            ...maintenanceArgs,
-            contributedEnv: [],
-          });
+          await options.providerInstallationStatus(maintenanceArgs);
         if (!installationVerificationPassed(run.verification, status)) {
           events = failProviderInstallationVerification({
             providerId: command.providerId,
@@ -669,6 +667,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         options,
       ),
       cwd,
+      contributedEnv: command.contributedEnv,
     });
   },
   "provider.health": (command, options) =>
@@ -682,6 +681,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         command.bridgeLaunch,
         options,
       ),
+      contributedEnv: command.contributedEnv,
     }),
   "host.discover_repos": (command) =>
     discoverRepos({

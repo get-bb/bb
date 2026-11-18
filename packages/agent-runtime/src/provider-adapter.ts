@@ -45,13 +45,17 @@ export type AdapterCommand =
       selectedModel?: string;
       envVars: Record<string, string>;
     }
-  | { type: "commands/list"; cwd: string }
+  | { type: "commands/list"; cwd: string; envVars: Record<string, string> }
   | {
       type: "provider/health";
       cwd?: string;
       envVars: Record<string, string>;
     }
-  | { type: "provider/usage"; cwd?: string }
+  | {
+      type: "provider/usage";
+      cwd?: string;
+      envVars: Record<string, string>;
+    }
   | {
       type: "provider/installation/status";
       cwd?: string;
@@ -63,6 +67,7 @@ export type AdapterCommand =
       type: "provider/installation/run";
       action: "install" | "update";
       cwd?: string;
+      envVars: Record<string, string>;
     }
   | {
       type: "thread/start";

@@ -70,6 +70,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<CommandListResult>;
   providerHealth: (args: {
     providerId: string;
@@ -81,6 +82,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderUsageResult>;
   providerInstallationStatus: (args: {
     providerId: string;
@@ -95,6 +97,7 @@ export interface CommandDispatchOptions {
     action: "install" | "update";
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderInstallationRunResult>;
   streamProviderInstallation?: (args: {
     providerId: string;

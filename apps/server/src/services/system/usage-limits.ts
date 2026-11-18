@@ -15,6 +15,7 @@ import {
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
+import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 
 type UsageResult = HostDaemonOnlineRpcResult<"provider.usage">;
 const usageCaches = new WeakMap<object, AsyncTtlMemo<string, UsageResult>>();
@@ -62,8 +63,12 @@ export async function getProviderUsageLimits(
       const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
       if (bridgeLaunch === null) return null;
       try {
+        const contributedEnv = await resolveHostProviderEnv(
+          hostId,
+          provider.id,
+        );
         const result = await providerUsageCache(deps).run(
-          `${hostId} ${provider.id} ${deps.providerRegistry.getRegistrationRevision()} ${JSON.stringify(bridgeLaunch)}`,
+          `${hostId} ${provider.id} ${deps.providerRegistry.getRegistrationRevision()} ${JSON.stringify(bridgeLaunch)} ${JSON.stringify(contributedEnv.map((entry) => [entry.name, entry.value]))}`,
           () =>
             callHostRetryableOnlineRpc(deps, {
               hostId,
@@ -72,6 +77,7 @@ export async function getProviderUsageLimits(
                 type: "provider.usage",
                 providerId: provider.id,
                 bridgeLaunch,
+                contributedEnv,
               },
             }),
           { refresh: query.refresh === "true" },

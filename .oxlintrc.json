@@ -115,7 +115,8 @@
         "**/*.test.tsx",
         "**/*test-support.ts",
         "**/test-fixture.ts",
-        "**/scripts/**"
+        "**/scripts/**",
+        "apps/desktop/src/bb-process.ts"
       ],
       "rules": {
         "bb/no-raw-child-process": "off"

@@ -165,6 +165,7 @@ async function callResolveNativeRoots(
         method: "resolveNativeRoots",
         input: { providerId, cwd: args.cwd },
         hostId: args.hostId,
+        providerEnv: providerId,
         timeoutMs: args.timeoutMs,
         artifact,
       }),

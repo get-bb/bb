@@ -42,13 +42,16 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({
     cwd: z.string().min(1).optional(),
-    envVars: z.record(z.string(), z.string()).optional(),
+    envVars: z.record(z.string(), z.string()),
     selectedModel: z.string().min(1).optional(),
   })
   .passthrough();
 
 export const commandListParamsSchema = z
-  .object({ cwd: z.string().min(1) })
+  .object({
+    cwd: z.string().min(1),
+    envVars: z.record(z.string(), z.string()),
+  })
   .passthrough();
 
 export const commandListResultSchema = threadProviderCommandsStateSchema;

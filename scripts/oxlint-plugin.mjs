@@ -115,7 +115,8 @@ const noRawChildProcess = {
         check(node.source, false);
       },
       CallExpression(node) {
-        if (calleeName(node.callee) === "require") {
+        const callee = calleeName(node.callee);
+        if (callee === "require" || callee === "process.getBuiltinModule") {
           check(node.arguments[0], false);
         }
       },

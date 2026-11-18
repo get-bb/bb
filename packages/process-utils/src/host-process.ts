@@ -230,6 +230,7 @@ export function spawnHostProcessSync(
   const result = crossSpawn.sync(launch.command, launch.args, {
     ...options,
     env: launch.env,
+    windowsHide: options.windowsHide ?? true,
   });
   hostToolchain.invalidateFailure(result.error ?? result.status);
   return result;

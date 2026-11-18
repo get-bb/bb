@@ -164,7 +164,7 @@ it("declares the Daybreak switch per model and moves the alias out of the main l
       ),
       selectedOnlyModels: z.array(z.object({ model: z.string() })),
     })
-    .parse(await request("model/list", {}));
+    .parse(await request("model/list", { envVars: {} }));
 
   expect(
     result.models.map((model) => [model.model, model.sessionOptions]),

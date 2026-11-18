@@ -26,8 +26,28 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-const { execHostFileCallback, forkHostProcess, spawnHostProcess } =
-  await import("../src/host-process.js");
+vi.mock("cross-spawn", async (importOriginal) => {
+  const actual = await importOriginal<{ default: object }>();
+  return {
+    default: Object.assign(actual.default, {
+      sync: (
+        _command: string,
+        _args: string[],
+        options: { windowsHide?: unknown },
+      ) => {
+        launches.push({ windowsHide: options.windowsHide });
+        return { status: 0, error: undefined };
+      },
+    }),
+  };
+});
+
+const {
+  execHostFileCallback,
+  forkHostProcess,
+  spawnHostProcess,
+  spawnHostProcessSync,
+} = await import("../src/host-process.js");
 
 const helpers = [
   {
@@ -39,6 +59,11 @@ const helpers = [
     name: "spawnHostProcess with a shell",
     launch: (options: { windowsHide?: boolean }) =>
       spawnHostProcess("echo", [], { ...options, shell: true }),
+  },
+  {
+    name: "spawnHostProcessSync",
+    launch: (options: { windowsHide?: boolean }) =>
+      spawnHostProcessSync("node", [], options),
   },
   {
     name: "execHostFileCallback",

@@ -294,26 +294,24 @@ export interface ListModelsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
-  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 export interface ListCommandsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd: string;
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
-}
-
-interface ProviderProbeArgs extends ProviderMaintenanceArgs {
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
-interface ProviderInstallationStatusArgs extends ProviderProbeArgs {
+interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
   checkUpdates?: boolean;
 }
@@ -352,7 +350,7 @@ export interface AgentRuntime {
 
   listCommands(args: ListCommandsArgs): Promise<CommandListResult>;
 
-  providerHealth(args: ProviderProbeArgs): Promise<ProviderHealthResult>;
+  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
   providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
 

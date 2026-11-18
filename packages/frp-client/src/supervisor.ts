@@ -363,7 +363,6 @@ export class FrpcSupervisor {
   ): void {
     const child = spawn(binary, ["-c", setup.configFile], {
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
     });
     const running: Running = {
       ...setup,

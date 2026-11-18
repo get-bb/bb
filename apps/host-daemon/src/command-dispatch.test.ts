@@ -359,6 +359,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
   const result = await dispatchOnlineRpcCommand(
     {
       type: "provider.installation.run",
+      contributedEnv: [],
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "claude-code",
       action: "update",
@@ -427,6 +428,7 @@ describe("dispatchCommand", () => {
       const result = await dispatchOnlineRpcCommand(
         {
           type: "provider.list_commands",
+          contributedEnv: [],
           providerId: "pi",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           cwd,
@@ -1933,6 +1935,7 @@ describe("dispatchCommand", () => {
     );
     const command: CommandOf<"provider.installation.run"> = {
       type: "provider.installation.run",
+      contributedEnv: [],
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "codex",
       action: "update",
@@ -2037,6 +2040,7 @@ describe("dispatchCommand", () => {
       const result = await dispatchOnlineRpcCommand(
         {
           type: "provider.installation.run",
+          contributedEnv: [],
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           providerId: testCase.provider,
           action: testCase.action,
@@ -2099,6 +2103,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        contributedEnv: [],
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
@@ -2186,6 +2191,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        contributedEnv: [],
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
@@ -2462,6 +2468,7 @@ describe("dispatchCommand", () => {
       dispatchOnlineRpcCommand(
         {
           type: "provider.usage",
+          contributedEnv: [],
           providerId: "pi",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         },
@@ -2486,6 +2493,7 @@ describe("dispatchCommand", () => {
     expect(providerUsage).toHaveBeenCalledWith({
       providerId: "pi",
       bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
+      contributedEnv: [],
     });
   });
 });

@@ -801,6 +801,7 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.list_commands",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         cwd: "/tmp/worktree",
@@ -811,6 +812,7 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.usage",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       },
@@ -850,6 +852,7 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.installation.run",
+        contributedEnv: [],
         providerId: "codex",
         action: "install",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
@@ -982,6 +985,7 @@ describe("createHostDaemonApp", () => {
         requestId: "first-env-list-commands",
         command: {
           type: "provider.list_commands",
+          contributedEnv: [],
           providerId: "codex",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           cwd: "/tmp/worktree",

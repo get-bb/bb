@@ -29,7 +29,7 @@ for (const warm of [false, true]) {
     `starts the exact model %s with a ${warm ? "warm" : "cold"} catalog`,
     async (model, contextWindow) => {
       if (warm) {
-        const catalog = await harness.request(1, "model/list", {
+        const catalog = await harness.request(1, "model/list", { envVars: {},
           cwd: harness.workspaceDir,
         });
         expect(catalog.error).toBeUndefined();
@@ -66,7 +66,7 @@ for (const warm of [false, true]) {
     `rejects %s during resolution with a ${warm ? "warm" : "cold"} catalog`,
     async (model, message) => {
       if (warm) {
-        const catalog = await harness.request(1, "model/list", {
+        const catalog = await harness.request(1, "model/list", { envVars: {},
           cwd: harness.workspaceDir,
         });
         expect(catalog.error).toBeUndefined();

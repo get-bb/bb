@@ -3,6 +3,7 @@ import { updateHost } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../src/services/system/execution-options.js";
 import { getProviderInstallations } from "../../src/services/system/provider-installations.js";
+import { getProviderUsageLimits } from "../../src/services/system/usage-limits.js";
 import { getProviderStates } from "../../src/services/system/provider-states.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
@@ -148,7 +149,7 @@ describe("getProviderStates", () => {
     });
   });
 
-  it("probes health and installation with the host's contributed provider env", async () => {
+  it("probes health, installation, and usage with the host's contributed provider env", async () => {
     await withTestHarness(async (harness) => {
       const contexts: unknown[] = [];
       setPluginAgentContributions({
@@ -188,7 +189,8 @@ describe("getProviderStates", () => {
             const { command } = request;
             if (
               command.type !== "provider.health" &&
-              command.type !== "provider.installation.status"
+              command.type !== "provider.installation.status" &&
+              command.type !== "provider.usage"
             ) {
               throw new Error(`Unexpected command ${command.type}`);
             }
@@ -197,6 +199,9 @@ describe("getProviderStates", () => {
                 type: command.type,
                 env: command.contributedEnv.map((entry) => entry.name),
               });
+            }
+            if (command.type === "provider.usage") {
+              return { ok: true, result: { supported: false } };
             }
             return command.type === "provider.health"
               ? {
@@ -231,6 +236,11 @@ describe("getProviderStates", () => {
           hostId: host.id,
           mode: "refresh",
         });
+        await getProviderUsageLimits(harness.deps, {
+          hostId: host.id,
+          providerId: "claude-code",
+          refresh: "true",
+        });
 
         expect(probes).toEqual([
           { type: "provider.health", env: ["BB_CLAUDE_CODE_EXECUTABLE"] },
@@ -238,6 +248,7 @@ describe("getProviderStates", () => {
             type: "provider.installation.status",
             env: ["BB_CLAUDE_CODE_EXECUTABLE"],
           },
+          { type: "provider.usage", env: ["BB_CLAUDE_CODE_EXECUTABLE"] },
         ]);
         expect(contexts).toContainEqual({
           threadId: null,

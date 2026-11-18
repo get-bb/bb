@@ -3911,7 +3911,7 @@ async function handleRequest(
         inModelListWorkspace(
           buildAcpModelListParams(
             decodeLaunchSpec(request.params.providerOptions),
-            { ...modelPicker, envVars: request.params.envVars ?? {} },
+            { ...modelPicker, envVars: request.params.envVars },
           ),
           await resolveModelListWorkspace(request.params.cwd),
         ),

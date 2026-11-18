@@ -47,8 +47,10 @@ function fetchCodexUsage(headers: Headers): Promise<Response> {
   });
 }
 
-async function readCredentials(): Promise<CodexAuthCredentials | null> {
-  const auth = await readCodexAuthFile();
+async function readCredentials(
+  env: NodeJS.ProcessEnv,
+): Promise<CodexAuthCredentials | null> {
+  const auth = await readCodexAuthFile(env);
   switch (auth.state) {
     case "ok":
       return auth.credentials;
@@ -225,7 +227,7 @@ export async function getCodexProviderHealth(
     return healthResult("unsupported_version", { installedVersion: version });
   }
   try {
-    const credentials = await readCredentials();
+    const credentials = await readCredentials(env);
     if (credentials === null) {
       return healthResult("unauthenticated", { installedVersion: version });
     }
@@ -340,7 +342,7 @@ export async function getCodexProviderUsage(
   }
   let credentials: CodexAuthCredentials | null;
   try {
-    credentials = await readCredentials();
+    credentials = await readCredentials(env);
   } catch (error) {
     return {
       supported: true,
