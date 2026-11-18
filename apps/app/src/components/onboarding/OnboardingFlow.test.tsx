@@ -87,11 +87,9 @@ function agentLoadFailures(): unknown[] {
 function renderFlow({
   initialStep,
   onClose = vi.fn(),
-  variant = "new",
 }: {
   initialStep: OnboardingStepId;
   onClose?: () => void;
-  variant?: "control" | "new";
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -107,7 +105,6 @@ function renderFlow({
           <OnboardingFlow
             initialStep={initialStep}
             entry="first_run"
-            setupGuide={{ variant }}
             closing={closing}
             onClose={onClose}
           />
@@ -217,27 +214,20 @@ describe("OnboardingFlow", () => {
     expect(finishedOutcomes()).toEqual(["skipped"]);
   });
 
-  it.each([
-    ["control", false],
-    ["new", true],
-  ] as const)(
-    "prefetches the plugin catalog when the guide opens only in the new guide (%s)",
-    (variant, prefetched) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(() => new Promise<never>(() => {})),
-      );
-      onTestFinished(() => {
-        vi.unstubAllGlobals();
-      });
-      const { queryClient } = renderFlow({ initialStep: "agent", variant });
+  it("prefetches the plugin catalog when the guide opens", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<never>(() => {})),
+    );
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const { queryClient } = renderFlow({ initialStep: "agent" });
 
-      expect(
-        queryClient.getQueryState(pluginCatalogSearchQueryKey("")) !==
-          undefined,
-      ).toBe(prefetched);
-    },
-  );
+    expect(
+      queryClient.getQueryState(pluginCatalogSearchQueryKey("")),
+    ).toBeDefined();
+  });
 
   it("offers Retry and Continue when the agent check never answers", () => {
     vi.useFakeTimers();
@@ -271,21 +261,17 @@ describe("OnboardingFlow", () => {
   });
 
   it.each([
-    ["new", "narrow window", "bottom-right"],
-    ["new", "phone", "top-center"],
-    ["control", "narrow window", "top-center"],
-  ] as const)(
-    "shows toasts for a %s guide on a %s at %s",
-    async (variant, viewport, placement) => {
-      stubViewport(viewport);
-      render(<AppToasterView />);
-      renderFlow({ initialStep: "plugins", variant });
+    ["narrow window", "bottom-right"],
+    ["phone", "top-center"],
+  ] as const)("shows toasts on a %s at %s", async (viewport, placement) => {
+    stubViewport(viewport);
+    render(<AppToasterView />);
+    renderFlow({ initialStep: "plugins" });
 
-      expect(await toasterPlacement()).toBe(placement);
-    },
-  );
+    expect(await toasterPlacement()).toBe(placement);
+  });
 
-  it("returns toasts to the app's narrow-window placement once the new guide closes", async () => {
+  it("returns toasts to the app's narrow-window placement once the guide closes", async () => {
     stubViewport("narrow window");
     render(<AppToasterView />);
     const { unmount } = renderFlow({ initialStep: "plugins" });

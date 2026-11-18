@@ -7,7 +7,6 @@ import type {
 import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
-  agentContinueDisabled,
   agentRowSetup,
   agentRowsSoFar,
   agentSignInView,
@@ -82,19 +81,15 @@ const idle = {
   signingIn: false,
   signInFailed: false,
   installInfoPending: false,
-  whileInstallInfoPending: "checking" as const,
 };
 
 describe("resolveAgentSetupState", () => {
-  it("shows Codex's plan only in the new guide; today's guide shows main's line", () => {
+  it("shows the setup guide's plan label, falling back to the agent's plan", () => {
     const codex = health({
       providerId: "codex",
       accountEmail: "a@b.dev",
       internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
     });
-    expect(
-      resolveAgentSetupState({ ...idle, health: codex, cliStatus: undefined }),
-    ).toEqual({ status: "ready", detail: "a@b.dev" });
     expect(
       resolveAgentSetupState({
         ...idle,
@@ -117,7 +112,6 @@ describe("resolveAgentSetupState", () => {
         signingIn: true,
         signInFailed: true,
         installInfoPending: true,
-        whileInstallInfoPending: "checking",
       }),
     ).toEqual({ status: "ready", detail: "a@b.dev · Ultra" });
     expect(
@@ -153,31 +147,11 @@ describe("resolveAgentSetupState", () => {
     ).toEqual({ status: "install", canInstall: false });
   });
 
-  it("keeps a missing agent in checking until install info has loaded", () => {
-    expect(
-      resolveAgentSetupState({
-        health: health({ status: "not_installed" }),
-        cliStatus: undefined,
-        ...idle,
-        installInfoPending: true,
-      }),
-    ).toEqual({ status: "checking" });
-    expect(
-      resolveAgentSetupState({
-        health: health({ status: "unauthenticated" }),
-        cliStatus: undefined,
-        ...idle,
-        installInfoPending: true,
-      }),
-    ).toEqual({ status: "signIn", reason: "signedOut", canSignIn: true });
-  });
-
-  it("offers Install or Update in the new guide while install info is still loading", () => {
+  it("offers Install or Update while install info is still loading", () => {
     const pending = {
       ...idle,
       cliStatus: undefined,
       installInfoPending: true,
-      whileInstallInfoPending: "offerInstall" as const,
     };
     expect(
       resolveAgentSetupState({
@@ -205,6 +179,12 @@ describe("resolveAgentSetupState", () => {
         health: health({ status: "not_installed" }),
       }),
     ).toEqual({ status: "install", canInstall: false });
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        health: health({ status: "unauthenticated" }),
+      }),
+    ).toEqual({ status: "signIn", reason: "signedOut", canSignIn: true });
   });
 
   it("reports a running install before a previous failure, and a failure before the health state", () => {
@@ -214,7 +194,6 @@ describe("resolveAgentSetupState", () => {
       signingIn: false,
       signInFailed: false,
       installInfoPending: false,
-      whileInstallInfoPending: "checking" as const,
     };
     expect(
       resolveAgentSetupState({
@@ -510,7 +489,7 @@ describe("parseSignInOutput", () => {
       "On a remote or headless machine? Use `codex login --device-auth` instead.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output, "last")).toEqual({
+    expect(parseSignInOutput(output)).toEqual({
       url: "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&state=L0qZB807yNu-ZBqrvo6vcNcN_URyZ",
       userCode: null,
       acceptsPastedCode: false,
@@ -524,7 +503,7 @@ describe("parseSignInOutput", () => {
       "Paste code here if prompted > ",
     ].join("");
 
-    expect(parseSignInOutput(output, "last")).toEqual({
+    expect(parseSignInOutput(output)).toEqual({
       url: CLAUDE_URL,
       userCode: null,
       acceptsPastedCode: true,
@@ -543,7 +522,7 @@ describe("parseSignInOutput", () => {
       "Continue only if you started this login in Codex.\r\n",
     ].join("");
 
-    expect(parseSignInOutput(output, "last")).toEqual({
+    expect(parseSignInOutput(output)).toEqual({
       url: "https://auth.openai.com/codex/device",
       userCode: "JWMS-GLRCB",
       acceptsPastedCode: false,
@@ -554,14 +533,13 @@ describe("parseSignInOutput", () => {
     const wrapped = `${CLAUDE_URL.slice(0, 60)}\r\n${CLAUDE_URL.slice(60)}`;
     const output = `visit: ${ESC}]8;;${CLAUDE_URL}${BEL}${wrapped}${ESC}]8;;${BEL}\r\nPaste code here if prompted > `;
 
-    expect(parseSignInOutput(output, "last").url).toBe(CLAUDE_URL);
+    expect(parseSignInOutput(output).url).toBe(CLAUDE_URL);
   });
 
   it("does not mistake part of a link for a one-time code", () => {
     expect(
       parseSignInOutput(
         "Visit https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345 to sign in\n",
-        "last",
       ),
     ).toEqual({
       url: "https://example.com/auth?state=ABCD-EFGH&x=WXYZ-12345",
@@ -571,13 +549,13 @@ describe("parseSignInOutput", () => {
   });
 
   it("reports nothing to act on before the command has printed a link", () => {
-    expect(parseSignInOutput("", "last")).toEqual({
+    expect(parseSignInOutput("")).toEqual({
       url: null,
       userCode: null,
       acceptsPastedCode: false,
     });
     expect(
-      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`, "last"),
+      parseSignInOutput(`${ESC}[2J${ESC}[HChoose a text style\r\n`),
     ).toEqual({
       url: null,
       userCode: null,
@@ -636,27 +614,11 @@ const PI_LOGIN_FAILED_OUTPUT = `${PI_LOGIN_OUTPUT}\r\n${ESC}[7;1H${ESC}[2K${ESC}
 
 describe("Pi's sign-in", () => {
   it("takes the sign-in link Pi shows last, not an earlier link", () => {
-    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "last")).toEqual({
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT)).toEqual({
       url: PI_AUTH_URL,
       userCode: null,
       acceptsPastedCode: true,
     });
-  });
-
-  it("keeps today's guide on the first terminal link, as on main", () => {
-    expect(parseSignInOutput(PI_LOGIN_OUTPUT, "first").url).toBe(
-      PI_CHANGELOG_URL,
-    );
-    expect(
-      agentSignInView({
-        parsed: true,
-        connect: false,
-        outputText: PI_LOGIN_OUTPUT,
-        fallbackDue: false,
-        terminalChoice: null,
-        signInLink: "first",
-      }).guide?.url,
-    ).toBe(PI_CHANGELOG_URL);
   });
 
   it("shows Pi's row like every other agent's until its sign-in terminal exists", () => {
@@ -780,42 +742,6 @@ describe("agentRowsSoFar", () => {
   });
 });
 
-describe("agentContinueDisabled", () => {
-  it("holds Continue in the redesign only while agent states load", () => {
-    expect(
-      agentContinueDisabled({
-        redesign: true,
-        agentReady: false,
-        statesLoading: true,
-      }),
-    ).toBe(true);
-    expect(
-      agentContinueDisabled({
-        redesign: true,
-        agentReady: false,
-        statesLoading: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps today's guide blocked until an agent is ready", () => {
-    expect(
-      agentContinueDisabled({
-        redesign: false,
-        agentReady: false,
-        statesLoading: false,
-      }),
-    ).toBe(true);
-    expect(
-      agentContinueDisabled({
-        redesign: false,
-        agentReady: true,
-        statesLoading: true,
-      }),
-    ).toBe(false);
-  });
-});
-
 describe("devicesShowMachines", () => {
   it("offers other machines only once bb connect is on", () => {
     expect(devicesShowMachines({ status: "on", url: "https://x" })).toBe(true);
@@ -841,7 +767,6 @@ describe("agentSignInView", () => {
       connect: false,
       fallbackDue: false,
       terminalChoice: null,
-      signInLink: "last" as const,
     };
     expect(agentSignInView({ ...base, outputText: null })).toEqual({
       guide: null,
@@ -871,7 +796,6 @@ describe("agentSignInView", () => {
         outputText: null,
         fallbackDue: false,
         terminalChoice: null,
-        signInLink: "last",
       }),
     ).toEqual({ guide: null, terminalVisible: true, started: true });
   });
@@ -884,14 +808,13 @@ describe("agentSignInView", () => {
         outputText: DEVICE_OUTPUT,
         fallbackDue: false,
         terminalChoice: null,
-        signInLink: "last",
       }),
     ).toEqual({
-      guide: parseSignInOutput(DEVICE_OUTPUT, "last"),
+      guide: parseSignInOutput(DEVICE_OUTPUT),
       terminalVisible: false,
       started: true,
     });
-    expect(parseSignInOutput(DEVICE_OUTPUT, "last").url).not.toBeNull();
+    expect(parseSignInOutput(DEVICE_OUTPUT).url).not.toBeNull();
   });
 });
 

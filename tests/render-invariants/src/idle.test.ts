@@ -53,7 +53,7 @@ describe("render invariants", () => {
         if (PLUGIN_BUNDLE_URL.test(pathname)) requested.add(pathname);
       });
       await page.goto(serverUrl);
-      await page.waitForSelector("text=Skip setup", {
+      await page.waitForSelector('[data-testid="onboarding"]', {
         timeout: ONBOARDING_TIMEOUT_MS,
       });
       await expect
