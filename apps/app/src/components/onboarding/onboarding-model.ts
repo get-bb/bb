@@ -6,9 +6,7 @@ import type {
   HostDiscoveredRepo,
   RecordTelemetryEventRequest,
   ServerAccessStatus,
-  SetupGuideVariant,
   SystemProviderState,
-  SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
@@ -61,67 +59,35 @@ export function agentRowSetup({
   return connect && !awaitingSession ? "connect" : "signIn";
 }
 
-export type SetupGuide = SystemSetupGuideResponse;
-
 interface StepCopy {
   title: string;
   description: string;
   primaryLabel: string;
 }
 
-export const STEP_COPY: Readonly<
-  Record<SetupGuideVariant, Readonly<Record<OnboardingStepId, StepCopy>>>
-> = {
-  control: {
-    agent: {
-      title: "Connect a coding agent",
-      description:
-        "bb runs the agents you already use. You need one that is installed and signed in on this computer.",
-      primaryLabel: "Continue",
-    },
-    projects: {
-      title: "Add your projects",
-      description:
-        "Git repos on this computer that you've worked in over the last 30 days.",
-      primaryLabel: "Continue",
-    },
-    plugins: {
-      title: "Make bb yours",
-      description:
-        "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins.",
-      primaryLabel: "Continue",
-    },
-    devices: {
-      title: "Use bb from anywhere",
-      description:
-        "All optional. Everything here also lives in Settings → Machines.",
-      primaryLabel: "Start using bb",
-    },
+export const STEP_COPY: Readonly<Record<OnboardingStepId, StepCopy>> = {
+  agent: {
+    title: "Connect a coding agent",
+    description:
+      "Agents run on your machine. bb needs one installed and signed in.",
+    primaryLabel: "Continue",
   },
-  new: {
-    agent: {
-      title: "Connect a coding agent",
-      description:
-        "Agents run on your machine. bb needs one installed and signed in.",
-      primaryLabel: "Continue",
-    },
-    projects: {
-      title: "Add your projects",
-      description: "Choose local Git repos used in the last 30 days.",
-      primaryLabel: "Continue",
-    },
-    plugins: {
-      title: "Make bb yours",
-      description:
-        "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
-      primaryLabel: "Continue",
-    },
-    devices: {
-      title: "Use bb away from this computer",
-      description:
-        "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
-      primaryLabel: "Start using bb",
-    },
+  projects: {
+    title: "Add your projects",
+    description: "Choose local Git repos used in the last 30 days.",
+    primaryLabel: "Continue",
+  },
+  plugins: {
+    title: "Make bb yours",
+    description:
+      "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
+    primaryLabel: "Continue",
+  },
+  devices: {
+    title: "Use bb away from this computer",
+    description:
+      "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
+    primaryLabel: "Start using bb",
   },
 };
 
@@ -138,7 +104,6 @@ export function skippedStepIds(
 }
 
 export type AgentSetupState =
-  | { status: "checking" }
   | { status: "ready"; detail: string | null }
   | {
       status: "signIn";
@@ -160,7 +125,6 @@ interface ResolveAgentSetupStateArgs {
   signingIn: boolean;
   signInFailed: boolean;
   installInfoPending: boolean;
-  whileInstallInfoPending: "checking" | "offerInstall";
 }
 
 export function setupGuidePlanHealth(
@@ -181,7 +145,6 @@ export function resolveAgentSetupState({
   signingIn,
   signInFailed,
   installInfoPending,
-  whileInstallInfoPending,
 }: ResolveAgentSetupStateArgs): AgentSetupState {
   if (health.status === "ready") {
     const detail = [health.accountEmail, health.planLabel]
@@ -197,21 +160,16 @@ export function resolveAgentSetupState({
   }
   const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
   const canInstall =
-    (awaitingInstallInfo && whileInstallInfoPending === "offerInstall") ||
+    awaitingInstallInfo ||
     (cliStatus?.installAction !== null &&
       cliStatus?.installAction !== undefined);
   if (installFailure !== null) {
     return { status: "installFailed", message: installFailure, canInstall };
   }
-  const checking =
-    awaitingInstallInfo && whileInstallInfoPending === "checking";
   switch (health.status) {
     case "not_installed":
-      return checking
-        ? { status: "checking" }
-        : { status: "install", canInstall };
+      return { status: "install", canInstall };
     case "unsupported_version":
-      if (checking) return { status: "checking" };
       return {
         status: "update",
         detail:
@@ -258,18 +216,6 @@ export function resolveSignInCommand(
   return browserIsOnMachine && health.localLoginCommand !== null
     ? health.localLoginCommand
     : health.loginCommand;
-}
-
-export function agentContinueDisabled({
-  redesign,
-  agentReady,
-  statesLoading,
-}: {
-  redesign: boolean;
-  agentReady: boolean;
-  statesLoading: boolean;
-}): boolean {
-  return redesign ? statesLoading : !agentReady;
 }
 
 export function projectsPrimaryAction({
@@ -377,11 +323,7 @@ export function defaultSelectedRepoPaths(
 }
 
 export type OperationFailureReason =
-  | "host_unavailable"
-  | "timed_out"
-  | "not_found"
-  | "permission"
-  | "other";
+  "host_unavailable" | "timed_out" | "not_found" | "permission" | "other";
 
 export function operationFailureReason(error: unknown): OperationFailureReason {
   if (error instanceof BbRequestTimeoutError) return "timed_out";
@@ -450,8 +392,6 @@ export interface SignInGuide {
   acceptsPastedCode: boolean;
 }
 
-export type SignInLinkChoice = "first" | "last";
-
 export interface AgentSignInView {
   guide: SignInGuide | null;
   terminalVisible: boolean;
@@ -464,19 +404,15 @@ export function agentSignInView({
   outputText,
   fallbackDue,
   terminalChoice,
-  signInLink,
 }: {
   parsed: boolean;
   connect: boolean;
   outputText: string | null;
   fallbackDue: boolean;
   terminalChoice: boolean | null;
-  signInLink: SignInLinkChoice;
 }): AgentSignInView {
   const guide =
-    parsed && outputText !== null
-      ? parseSignInOutput(outputText, signInLink)
-      : null;
+    parsed && outputText !== null ? parseSignInOutput(outputText) : null;
   const hasOutput = outputText !== null && outputText.length > 0;
   return {
     guide,
@@ -514,14 +450,12 @@ export function connectFlowFailed(
   return flow.failure.test(stripTerminalSequences(output));
 }
 
-export function parseSignInOutput(
-  output: string,
-  signInLink: SignInLinkChoice,
-): SignInGuide {
+export function parseSignInOutput(output: string): SignInGuide {
   const text = stripTerminalSequences(output);
-  const hyperlinks = [...output.matchAll(TERMINAL_HYPERLINK)];
-  const hyperlink = signInLink === "last" ? hyperlinks.at(-1) : hyperlinks[0];
-  const url = hyperlink?.[1] ?? SIGN_IN_URL.exec(text)?.[0] ?? null;
+  const url =
+    [...output.matchAll(TERMINAL_HYPERLINK)].at(-1)?.[1] ??
+    SIGN_IN_URL.exec(text)?.[0] ??
+    null;
   const withoutUrls = text.replace(new RegExp(SIGN_IN_URL.source, "gu"), " ");
   return {
     url,

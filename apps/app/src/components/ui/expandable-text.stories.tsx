@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import { OnboardingPluginCard } from "../onboarding/OnboardingViews";
 import { ModelLoadErrorMessage } from "../pickers/model-load-error-message";
 
 export default { title: "Readability/Expandable text" };
@@ -11,26 +9,9 @@ const error =
   "The package registry could not be reached. Check your network connection and proxy settings, then try again. The request timed out while downloading the provider package from the registry. If your network requires a proxy, configure it for the host running this agent. Your existing projects and conversations have not been changed.";
 
 export function Descriptions() {
-  const [enabled, setEnabled] = useState(false);
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6 p-4">
       <h1 className="text-lg font-semibold">Description disclosures</h1>
-      <p className="text-sm text-muted-foreground">
-        Expand the description: the plugin should stay off. Use its switch to
-        enable it.
-      </p>
-      <OnboardingPluginCard
-        name="Browser Automation"
-        description={description}
-        icon={{ icon: "Globe", iconUrl: null, iconTinted: false }}
-        enabled={enabled}
-        pending={false}
-        unavailableReason={null}
-        onToggle={setEnabled}
-      />
-      <p role="status" className="text-sm">
-        Plugin is {enabled ? "on" : "off"}.
-      </p>
       <section className="space-y-2 rounded-lg border border-border p-4">
         <h2 className="text-sm font-medium">Settings description</h2>
         <ExpandableText className="text-xs text-muted-foreground">

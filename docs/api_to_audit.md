@@ -1414,7 +1414,7 @@ terminal in the row. The validator fills `false` when the field is absent and
 refuses a non-boolean. The server keeps it on the provider registration and
 projects it onto every provider-states row (`GET /system/provider-states`) as
 a required boolean, so the Agent step's row and its sign-in mode come from the
-same response. It is not part of `ProviderInfo`. Today's guide ignores it.
+same response. It is not part of `ProviderInfo`.
 
 Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
 Cursor agent only. Core caller: the onboarding Agent step
@@ -1430,11 +1430,11 @@ Pi's terminal `/login` flow belongs in the same declaration.
 
 Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
-A provider bridge's health result may set `internal_DO_NOT_USE_setupGuidePlanLabel` to a plan name (for example "Plus") that only the redesigned first-run setup guide shows next to the account on a ready agent row. `planLabel` keeps its existing meaning, so today's guide and every other surface show what they showed before. The field is optional on the bridge result and passes through older daemons unchanged; the server fills `null` when it is absent, so provider-states rows always carry it.
+A provider bridge's health result may set `internal_DO_NOT_USE_setupGuidePlanLabel` to a plan name (for example "Plus") that only the first-run setup guide shows next to the account on a ready agent row. `planLabel` keeps its existing meaning, so every other surface shows what it showed before. The field is optional on the bridge result and passes through older daemons unchanged; the server fills `null` when it is absent, so provider-states rows always carry it.
 
-Callers: `provider-codex` only (its ChatGPT plan). Core caller: the new guide's Agent step (`OnboardingFlow`), which prefers it over `planLabel`.
+Callers: `provider-codex` only (its ChatGPT plan). Core caller: the setup guide's Agent step (`OnboardingFlow`), which prefers it over `planLabel`.
 
-**Audit before stabilizing.** Decide whether the plan should become part of `planLabel` everywhere (Settings, today's guide) and the field be removed.
+**Audit before stabilizing.** Decide whether the plan should become part of `planLabel` everywhere (such as Settings) and the field be removed.
 
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
@@ -4414,10 +4414,7 @@ the same fixed set.
 `unhandled_rejection`) with the guide's step, from `OnboardingErrorTelemetry`
 around the guide in `OnboardingGate`, which reports and rethrows render errors
 and listens for window errors only while the guide is open.
-`onboarding_exposed` (`entry`) marks the guide being shown; the server saves
-the assignment, adds `setup_guide_variant` and `setup_guide_source`, and sends
-`$feature_flag_called` when the variant came from the PostHog flag. Every
-setup-guide event gets `setup_guide_variant` from the server.
+`onboarding_exposed` (`entry`) marks the guide being shown.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

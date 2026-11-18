@@ -491,16 +491,6 @@ export type RecordTelemetryEventRequest = z.infer<
   typeof recordTelemetryEventRequestSchema
 >;
 
-export const setupGuideVariantSchema = z.enum(["control", "new"]);
-export type SetupGuideVariant = z.infer<typeof setupGuideVariantSchema>;
-
-export const systemSetupGuideResponseSchema = z.object({
-  variant: setupGuideVariantSchema,
-});
-export type SystemSetupGuideResponse = z.infer<
-  typeof systemSetupGuideResponseSchema
->;
-
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
     z.object({

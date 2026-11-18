@@ -253,7 +253,6 @@ change the host-daemon protocol.
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                                                                                                                                                                                                                                              |
 | `BB_TELEMETRY`                 | `bb-app env`, or environment                       | Startup-only            | `false` always disables anonymous usage telemetry, overriding the `telemetryEnabled` setting.                                                                                                                                                                                                                                       |
 | `BB_SKIP_ONBOARDING`           | Environment                                        | Startup-only            | Default false. `1` marks first-run setup completed at startup when it is not yet, so the setup screen is skipped. Settings → General can still replay it. `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`; an explicit `0` retains setup.                                                          |
-| `BB_SETUP_GUIDE_VARIANT`       | Environment                                        | Startup-only QA         | `control` or `new` forces the first-run setup guide variant, ignoring telemetry and the `setup-guide-redesign` experiment. Unset by default. See [General settings](#general-settings).                                                                                                                                             |
 | `BB_PERF_DIAGNOSTICS`          | `bb-app env`, environment, or `--perf-diagnostics` | Startup-only            | Default false. Permits the `performanceDiagnostics` experiment; see [Experiments](#experiments).                                                                                                                                                                                                                                    |
 | `BB_QUERY_PLAN_AUDIT`          | Environment                                        | Startup-only debugging  | Default false. `1` logs `Slow SQLite query plan` for each query whose plan walks a large table or picks a weaker index; see [diagnostics](debugging-and-qa.md#slow-sqlite-query-plans). `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`. The `performanceDiagnostics` experiment also turns it on. |
 | `BB_CLI_ERROR_LOG`             | Environment of the `bb` process                    | Optional                | `0` stops the CLI recording failed invocations (command path, error code, no argument values) to `<dataDir>/logs/cli-errors.jsonl`. See `bb guide overview`.                                                                                                                                                                        |
@@ -341,14 +340,6 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings �
 General → Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
-The guide shown is `control` (current) or `new` (redesign), from the app's
-`GET /api/v1/system/setup-guide` request (`{ variant }`). The server resolves
-it once per run on the first request from the `setup-guide-redesign` PostHog
-flag, evaluated for the anonymous install id (3-second timeout). It is
-`control` when telemetry is off or unavailable, or when the evaluation fails,
-the flag is missing or disabled, or its variant is unknown. The assignment
-saved in `<dataDir>/setup-guide-assignment.json` is reused.
-`BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -371,20 +362,14 @@ notes open under the bb row, `web` for the full notes on getbb.app).
 that isn't listed", with `item_count` 1), `remote_access` (`started` when
 getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
 not when the bb connect panel is merely opened), and `add_machine` (`started`
-when the machine setup command is shown). In both guides, Continue on the projects
+when the machine setup command is shown). Continue on the projects
 step counts as completed only when a project was selected or added during the
 guide (by either route), and Continue on the plugins step only when a featured
 plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
-being shown: the server saves the flag assignment, adds `setup_guide_variant`
-and `setup_guide_source` (`override`, `flag`, or `default`), and sends PostHog's
-`$feature_flag_called` when the flag decided the variant. The server adds
-`setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
-`recommendation`), and once the flag assignment is known every event carries
-`$feature/setup-guide-redesign`.
+being shown.
 `onboarding_operation` records a setup-guide action's `started`,
-`succeeded`, or `failed` outcome with counts only, the same way in both
-guides. A Projects step `scan` records nothing after the guide's first
+`succeeded`, or `failed` outcome with counts only. A Projects step `scan` records nothing after the guide's first
 successful scan, such as the rescan after an import, and adds `timed_out`
 (true when the repo scan ran
 out of time and the list may be partial) and `unreadable_count` (how many

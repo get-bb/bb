@@ -7,7 +7,6 @@ import { OnboardingGate } from "./OnboardingGate";
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   useSystemConfig: vi.fn(),
-  useSetupGuideAssignment: vi.fn(),
   useHostProviderCliStatus: vi.fn(),
   usePrimaryHost: vi.fn(),
   markScreenPainted: vi.fn(),
@@ -15,7 +14,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: mocks.useSystemConfig,
-  useSetupGuideAssignment: mocks.useSetupGuideAssignment,
   useHostProviderCliStatus: mocks.useHostProviderCliStatus,
 }));
 vi.mock("@/hooks/queries/host-queries", () => ({
@@ -30,15 +28,13 @@ vi.mock("@/lib/screen-paint", () => ({
 vi.mock("./OnboardingFlow", () => ({
   OnboardingFlow: ({
     initialStep,
-    setupGuide,
     onClose,
   }: {
     initialStep: string;
-    setupGuide: { variant: string };
     onClose: () => void;
   }) => (
     <button type="button" onClick={onClose}>
-      Setup guide at {initialStep} ({setupGuide.variant})
+      Setup guide at {initialStep}
     </button>
   ),
 }));
@@ -64,10 +60,6 @@ function renderGate() {
 beforeEach(() => {
   window.localStorage.clear();
   mocks.usePrimaryHost.mockReturnValue({ id: "host-1" });
-  mocks.useSetupGuideAssignment.mockReturnValue({
-    isPending: false,
-    data: { variant: "control" },
-  });
 });
 
 afterEach(() => {
@@ -149,92 +141,23 @@ describe("OnboardingGate", () => {
     expect(screen.getByText("App shell")).toBeTruthy();
   });
 
-  it("shows the variant the server assigned and waits for the assignment first", async () => {
+  it("starts loading agent install info only while setup is unfinished", () => {
     configWith({ onboardingCompletedAt: null });
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: true,
-      data: undefined,
-    });
     const { view } = renderGate();
-    expect(screen.queryByText(/Setup guide/u)).toBeNull();
-    expect(screen.queryByText("App shell")).toBeNull();
-
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      data: { variant: "new" },
-    });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
-
-    expect(await screen.findByText("Setup guide at agent (new)")).toBeTruthy();
-  });
-
-  it("shows today's guide when the assignment request fails", async () => {
-    configWith({ onboardingCompletedAt: null });
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      isError: true,
-      data: undefined,
-    });
-
-    renderGate();
-
-    expect(
-      await screen.findByText("Setup guide at agent (control)"),
-    ).toBeTruthy();
-  });
-
-  it("only asks for an assignment while setup is unfinished", () => {
-    configWith({ onboardingCompletedAt: COMPLETED_AT });
-
-    renderGate();
-
-    expect(mocks.useSetupGuideAssignment).toHaveBeenLastCalledWith({
-      enabled: false,
-    });
-  });
-
-  it("starts loading agent install info before the new guide renders, and leaves today's guide as it was", () => {
-    configWith({ onboardingCompletedAt: null });
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: true,
-      data: undefined,
-    });
-    const { view } = renderGate();
-    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
-      hostId: "host-1",
-      enabled: false,
-    });
-
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      data: { variant: "control" },
-    });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
-    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
-      hostId: "host-1",
-      enabled: false,
-    });
-
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      data: { variant: "new" },
-    });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
     expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
       hostId: "host-1",
       enabled: true,
+    });
+
+    configWith({ onboardingCompletedAt: COMPLETED_AT });
+    view.rerender(
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
+    );
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host-1",
+      enabled: false,
     });
   });
 
