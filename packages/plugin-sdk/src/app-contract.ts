@@ -4346,9 +4346,10 @@ export interface ComposerCustomization {
   scopes?: readonly PluginComposerScope["kind"][];
   /**
    * Controls rendered in the composer's action row, before the voice, stop
-   * and submit controls, in both the expanded and the compact layout. bb
-   * shows the first three plugins' actions inline and the rest behind a
-   * "More plugin actions" button.
+   * and submit controls. The collapsed single-line layout leaves them out,
+   * as it does bb's `+` menu and model picker; they show once the composer
+   * expands. bb shows the first three plugins' actions inline and the rest
+   * behind a "More plugin actions" button.
    */
   actions?: readonly { id: string; component: ComponentType }[];
   banners?: readonly {

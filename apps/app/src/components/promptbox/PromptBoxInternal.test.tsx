@@ -2975,43 +2975,29 @@ describe("ComposerBox plugin composer actions", () => {
     expect(staleWrite).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { layout: "expanded", compact: undefined },
-    {
-      layout: "compact",
-      compact: { when: "always", placeholder: "Ask a follow-up" },
-    },
-  ] as const)(
-    "mounts plugin actions before the submit control in the $layout layout",
-    ({ compact }) => {
-      setPluginSlotRegistrations(
-        "layout-actions",
-        pluginRegistrationSet([
-          {
-            id: "tools",
-            actions: [
-              {
-                id: "shown",
-                component: () => <button type="button">Plugin action</button>,
-              },
-            ],
-          },
-        ]),
-      );
-      render(
-        <ControlledComposerBox
-          {...createPromptBoxProps(compact === undefined ? {} : { compact })}
-        />,
-      );
+  it("does not mount plugin actions in compact layout", () => {
+    setPluginSlotRegistrations(
+      "compact",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "hidden", component: () => <button>Plugin action</button> },
+          ],
+        },
+      ]),
+    );
+    render(
+      <ControlledComposerBox
+        {...createPromptBoxProps({
+          compact: { when: "always", placeholder: "Ask a follow-up" },
+        })}
+      />,
+    );
 
-      const action = screen.getByRole("button", { name: "Plugin action" });
-      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
-      expect(
-        action.compareDocumentPosition(submit) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    },
-  );
+    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+  });
 });
 
 describe("ComposerBox attachment previews", () => {

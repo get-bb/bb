@@ -3413,7 +3413,7 @@ export function PromptBoxInternal({
             }
             className={cn(
               "relative",
-              showCompactLayout && "min-w-24 flex-1",
+              showCompactLayout && "min-w-0 flex-1",
               showCompactLayout && showVoiceActionGroup && "invisible",
             )}
           >
@@ -3532,7 +3532,7 @@ export function PromptBoxInternal({
               data-promptbox-action-row=""
               className={cn(
                 "relative flex shrink-0 select-none flex-row flex-wrap items-center gap-3 pb-2 pl-3.5 pr-[13px] pt-1.5",
-                showCompactLayout && "min-w-0 shrink flex-nowrap gap-0 p-0 pr-2",
+                showCompactLayout && "flex-nowrap gap-0 p-0 pr-2",
                 showCompactLayout && showVoiceActionGroup && "absolute inset-0",
               )}
             >
@@ -3591,7 +3591,6 @@ export function PromptBoxInternal({
                 data-promptbox-standard-actions=""
                 className={cn(
                   "flex min-w-0 max-w-full shrink-0 flex-row flex-wrap items-center justify-end gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-                  showCompactLayout && "shrink flex-nowrap",
                   showVoiceActionGroup
                     ? "pointer-events-none translate-y-1 opacity-0"
                     : "translate-y-0 opacity-100",
@@ -3599,16 +3598,7 @@ export function PromptBoxInternal({
                 inert={showVoiceActionGroup ? true : undefined}
               >
                 <>
-                  {showCompactLayout ? (
-                    <div
-                      data-promptbox-compact-plugin-actions=""
-                      className="flex min-w-0 shrink items-center gap-1 overflow-x-auto [scrollbar-width:none]"
-                    >
-                      <contributions.Actions />
-                    </div>
-                  ) : (
-                    <contributions.Actions />
-                  )}
+                  {!showCompactLayout ? <contributions.Actions /> : null}
                   {compactBeforeSend}
                   {!showCompactLayout || showCompactVoiceAction ? (
                     <>
