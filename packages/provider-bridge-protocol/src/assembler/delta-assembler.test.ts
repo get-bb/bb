@@ -54,6 +54,36 @@ describe("delta assembler", () => {
     });
   });
 
+  it("records provider input in its vouched turn, and drops it without any turn", () => {
+    const assembler = createAssembler();
+    expect(
+      assemble(assembler, {
+        kind: "input.provider",
+        text: "No open turn",
+      }),
+    ).toEqual([]);
+    const [started] = assemble(assembler, {
+      kind: "turn.open",
+      providerTurnId: "provider-turn",
+    });
+    const events = assemble(assembler, {
+      kind: "input.provider",
+      text: "Plan the release",
+      providerTurnId: "provider-turn",
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: started?.scope,
+        item: {
+          type: "userMessage",
+          id: expect.any(String),
+          content: [{ type: "text", text: "Plan the release" }],
+        },
+      }),
+    ]);
+  });
+
   it("emits accepted input immediately into an already-open turn", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });

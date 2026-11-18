@@ -1,4 +1,9 @@
 import {
+  threadVoiceCommandSchema,
+  type ThreadVoiceCommand,
+  type ThreadVoiceResult,
+} from "@bb/domain";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1610,6 +1615,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    voice: defineRoute({
+      path: "/threads/:id/voice",
+      method: "post",
+      request: jsonRequest<PathId, ThreadVoiceCommand>(
+        threadVoiceCommandSchema,
+      ),
+      response: jsonResponse<ThreadVoiceResult>(),
     }),
     clearGoal: defineRoute({
       path: "/threads/:id/goal/clear",

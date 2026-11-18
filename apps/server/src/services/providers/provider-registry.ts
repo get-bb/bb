@@ -77,6 +77,7 @@ export interface ProviderRegistryService {
   ): readonly PermissionMode[] | null;
   supportsFork(providerId: string): boolean;
   supportsSessionRewind(providerId: string): boolean;
+  supportsThreadVoice(providerId: string): boolean;
   supportsManualCompaction(providerId: string): boolean;
   getExtensionKindSchemas(
     kind: ExtensionKind,
@@ -311,6 +312,13 @@ export function createProviderRegistryService(
       return (
         getRegistration(providerId)?.info.capabilities.supportsSessionRewind ??
         false
+      );
+    },
+
+    supportsThreadVoice(providerId) {
+      return (
+        getRegistration(providerId)?.info.capabilities
+          .experimental_supportsThreadVoice ?? false
       );
     },
 

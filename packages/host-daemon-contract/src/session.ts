@@ -567,6 +567,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("turn.submit"),
     commandRpcResponseSuccessSchemaFor("thread.stop"),
     commandRpcResponseSuccessSchemaFor("thread.storage.delete"),
+    commandRpcResponseSuccessSchemaFor("thread.voice"),
     commandRpcResponseSuccessSchemaFor("thread.goal.clear"),
     commandRpcResponseSuccessSchemaFor("thread.plan.cancel"),
     commandRpcResponseSuccessSchemaFor("thread.rename"),

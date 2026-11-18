@@ -69,6 +69,7 @@ import {
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
+import { resolvePermissionEscalation } from "../../services/threads/thread-runtime-config.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
@@ -501,6 +502,63 @@ export function registerThreadActionRoutes(
       );
     }
     return context.json({ ok: true });
+  });
+
+  post(routes.voice, async (context, command) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (command.action === "start") {
+      ensureThreadIsWritable(thread);
+      await deps.providerRegistry.whenRegistrationsSettled();
+      if (!deps.providerRegistry.supportsThreadVoice(thread.providerId)) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Provider "${thread.providerId}" does not support native thread voice`,
+        );
+      }
+    }
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    requireConnectedHostSession(deps, environment.hostId);
+    if (command.action !== "start") {
+      const result = await runLiveHostCommand(deps, {
+        command: {
+          type: "thread.voice",
+          environmentId: environment.id,
+          threadId: thread.id,
+          command,
+        },
+        hostId: environment.hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      });
+      return context.json(result);
+    }
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      { threadId: thread.id },
+    );
+    const prepared = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      input: [],
+      permissionEscalation: resolvePermissionEscalation({ initiator: "user" }),
+      target: { mode: "auto", expectedTurnId: null },
+      thread,
+    });
+    const result = await runLiveHostCommand(deps, {
+      command: {
+        type: "thread.voice",
+        environmentId: environment.id,
+        threadId: thread.id,
+        command,
+        options: prepared.options,
+        resumeContext: prepared.resumeContext,
+        bridgeLaunch: prepared.bridgeLaunch,
+      },
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    return context.json(result);
   });
 
   post(routes.clearGoal, async (context) => {

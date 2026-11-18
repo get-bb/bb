@@ -422,6 +422,16 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
             },
           });
+        case "thread/voice":
+          return gate("threadVoice", {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.threadVoice,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+              command: command.command,
+            },
+          });
         case "thread/goal/clear":
           return gate("threadGoalClear", {
             kind: "request",

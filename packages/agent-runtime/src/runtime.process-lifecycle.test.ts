@@ -820,6 +820,105 @@ describe("createAgentRuntime process lifecycle", () => {
     return { processLog, processExits, runtime };
   }
 
+  it("keeps native voice alive while idle and makes the session reapable after voice stops", async () => {
+    const events: ThreadEvent[] = [];
+    const { runtime } = createCodexRuntime({ events });
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      if (!runtime.voice) throw new Error("Missing voice operation");
+      await expect(
+        runtime.voice({
+          threadId: "t1",
+          command: { action: "start", sessionId, sdp: "offer" },
+        }),
+      ).resolves.toEqual({ sdp: "native-answer" });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+      const held = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 3600000,
+      });
+      expect(held.reapedSessions).toEqual([]);
+      await runtime.voice({
+        threadId: "t1",
+        command: { action: "stop", sessionId },
+      });
+      const released = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 3600000,
+      });
+      expect(released.reapedSessions).toEqual([
+        expect.objectContaining({ threadId: "t1" }),
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("completes hang-up for a detached thread without resuming it or disturbing other voice threads", async () => {
+    const events: ThreadEvent[] = [];
+    const { processLog, runtime } = createCodexRuntime({ events });
+    const detachedSessionId = "11111111-1111-4111-8111-111111111111";
+    const liveSessionId = "22222222-2222-4222-8222-222222222222";
+    try {
+      for (const threadId of ["t1", "t2"]) {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId,
+          projectId: "p1",
+          providerId: "codex",
+          options: fullRuntimeOptions,
+        });
+      }
+      if (!runtime.voice) throw new Error("Missing voice operation");
+      await runtime.voice({
+        threadId: "t2",
+        command: { action: "start", sessionId: liveSessionId, sdp: "offer" },
+      });
+      const reaped = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now() + 3600000,
+      });
+      expect(reaped.reapedSessions).toEqual([
+        expect.objectContaining({ threadId: "t1" }),
+      ]);
+      expect(runtime.hasThread("t1")).toBe(false);
+
+      await expect(
+        runtime.voice({
+          threadId: "t1",
+          command: { action: "stop", sessionId: detachedSessionId },
+        }),
+      ).resolves.toEqual({ sdp: null });
+      await expect(
+        runtime.voice({
+          threadId: "t1",
+          command: { action: "keepAlive", sessionId: detachedSessionId },
+        }),
+      ).rejects.toThrow("Voice session is no longer active");
+
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.hasThread("t2")).toBe(true);
+      await expect(
+        runtime.voice({
+          threadId: "t2",
+          command: { action: "keepAlive", sessionId: liveSessionId },
+        }),
+      ).resolves.toEqual({ sdp: null });
+      expect(
+        processLog.read().filter((line) => line.startsWith("spawn:")),
+      ).toHaveLength(1);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("runs every codex thread on one provider process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });

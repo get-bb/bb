@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import {
+  CodexVoiceSession,
+  requireNativeVoiceVersion,
+  voiceCommandSchema,
+} from "./voice.js";
 
 import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { createHash } from "node:crypto";
@@ -167,6 +172,14 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/unarchive"),
     params: threadUnarchiveParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/voice"),
+    params: z.object({
+      threadId: z.string().min(1),
+      providerThreadId: z.string().min(1),
+      command: voiceCommandSchema,
+    }),
   }),
   z.object({
     method: z.literal("thread/goal/clear"),
@@ -500,6 +513,7 @@ interface CodexBridgeSession {
   goalStatus: CodexGoalStatus | null;
 }
 
+const voiceSessions = new WeakMap<CodexBridgeSession, CodexVoiceSession>();
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
 const maintenanceConnections = new Set<CodexAppServerConnection>();
 let sessionSerialCounter = 0;
@@ -523,10 +537,14 @@ function currentSession(
   return session;
 }
 
-function releaseSession(session: CodexBridgeSession): Promise<void> {
+function releaseSession(
+  session: CodexBridgeSession,
+  voiceEndReason: string,
+): Promise<void> {
   if (session.releasePromise !== null) {
     return session.releasePromise;
   }
+  voiceSessions.get(session)?.close(voiceEndReason, "closed");
   session.closing = true;
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
@@ -721,6 +739,10 @@ async function handleChildNotification(
 ): Promise<void> {
   const session = currentSession(bbThreadId, serial);
   if (!session) {
+    return;
+  }
+  if (method.startsWith("thread/realtime/")) {
+    voiceSessions.get(session)?.notification(method, params);
     return;
   }
   if (method === "thread/started") {
@@ -945,6 +967,7 @@ function handleChildExit(
   if (!session) {
     return;
   }
+  voiceSessions.get(session)?.close("Codex disconnected");
   session.connection = null;
 
   const openTurnIds = [...session.openCodexTurnIds];
@@ -1016,6 +1039,11 @@ const initializeChildResultSchema = z.object({
   userAgent: z.string().optional(),
 });
 
+const initializedUserAgents = new WeakMap<
+  CodexAppServerConnection,
+  string | null
+>();
+
 async function initializeChild(
   connection: CodexAppServerConnection,
 ): Promise<boolean> {
@@ -1025,6 +1053,7 @@ async function initializeChild(
     resultSchema: initializeChildResultSchema,
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
+  initializedUserAgents.set(connection, result.userAgent ?? null);
   if (configuredSkillExtraRoots !== null) {
     await connection.request({
       method: "skills/extraRoots/set",
@@ -1291,7 +1320,10 @@ async function constructThreadSession(
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
-    const previousChildExit = releaseSession(existing);
+    const previousChildExit = releaseSession(
+      existing,
+      "The Codex session restarted",
+    );
     session.previousChildExit = previousChildExit;
     await previousChildExit;
     if (session.previousChildExit === previousChildExit) {
@@ -1606,6 +1638,7 @@ function handleInitialize(id: string | number): void {
       sessionRestore: true,
       threadArchive: true,
       threadRename: true,
+      threadVoice: true,
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
@@ -2239,7 +2272,7 @@ async function handleThreadStop(
 
   if (params.intent === "release") {
     if (session) {
-      await releaseSession(session);
+      await releaseSession(session, "The Codex session was released");
     }
     sendResult(id, { ok: true });
     return;
@@ -2301,7 +2334,10 @@ async function handleThreadStop(
       providerThreadId: session.codexThreadId,
     }),
   );
-  await releaseSession(session);
+  await releaseSession(
+    session,
+    "The Codex session was reset after stopping its turn",
+  );
   sendResult(id, { ok: true });
 }
 
@@ -2536,7 +2572,10 @@ async function handleThreadMaintenance(
     if (options?.releaseAfter) {
       const session = sessionsByBbThreadId.get(params.threadId);
       if (session) {
-        await releaseSession(session);
+        await releaseSession(
+          session,
+          `The Codex session was released for ${request.method}`,
+        );
       }
     }
     sendResult(id, { ok: true });
@@ -2742,6 +2781,57 @@ async function handleRequest(
         { alreadyInRequestedState: CODEX_NOT_ARCHIVED_ERROR_PATTERN },
       );
       break;
+    case "thread/voice": {
+      try {
+        const session = sessionsByBbThreadId.get(request.params.threadId);
+        const { action } = request.params.command;
+        if (
+          !session ||
+          session.closing ||
+          !session.connection ||
+          session.connection.exited ||
+          session.codexThreadId !== request.params.providerThreadId
+        ) {
+          if (action === "stop") {
+            sendResult(request.id, { sdp: null });
+            return;
+          }
+          throw new Error(
+            action === "start"
+              ? "Codex thread must be loaded before starting voice"
+              : "Voice session is no longer active",
+          );
+        }
+        if (action === "start")
+          requireNativeVoiceVersion(
+            initializedUserAgents.get(session.connection) ?? null,
+          );
+        let voice = voiceSessions.get(session);
+        if (!voice) {
+          voice = new CodexVoiceSession(
+            session.connection,
+            request.params.providerThreadId,
+            (payload) => {
+              session.translator.setNativeVoiceActive(
+                payload.status === "active",
+              );
+              sendThreadDeltas(session, [
+                {
+                  kind: "extension.state",
+                  extensionKind: "provider-codex/voice",
+                  payload,
+                },
+              ]);
+            },
+          );
+          voiceSessions.set(session, voice);
+        }
+        sendResult(request.id, await voice.command(request.params.command));
+      } catch (error) {
+        rejectWithCodexError(request.id, error);
+      }
+      return;
+    }
     case "thread/goal/clear":
       await handleThreadGoalClear(request.id, request.params);
       break;
@@ -2789,6 +2879,7 @@ export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 function killAllChildren(): void {
   for (const session of sessionsByBbThreadId.values()) {
+    voiceSessions.get(session)?.close("The Codex bridge shut down", "closed");
     session.closing = true;
     void session.connection?.kill();
     session.connection = null;

@@ -332,6 +332,39 @@ export function applyGeneratedThreadTitle(
   return true;
 }
 
+const untitledThreadTitleGenerations = new Set<string>();
+
+export async function titleUntitledThreadFromInput(
+  deps: CommandResultSideEffectsDeps & LoggedWorkSessionDeps,
+  args: { threadId: string; input: PromptInput[] },
+): Promise<void> {
+  if (
+    getThread(deps.db, args.threadId)?.title ||
+    untitledThreadTitleGenerations.has(args.threadId)
+  ) {
+    return;
+  }
+  untitledThreadTitleGenerations.add(args.threadId);
+  try {
+    const outcome = await generateThreadMetadataWithOutcome(deps, {
+      threadId: args.threadId,
+      input: visiblePromptInput(args.input),
+    });
+    if (
+      outcome.metadata?.title &&
+      applyGeneratedThreadTitle(deps, {
+        threadId: args.threadId,
+        title: outcome.metadata.title,
+      })
+    ) {
+      const titled = getThread(deps.db, args.threadId);
+      if (titled) syncThreadTitleToProvider(deps, titled);
+    }
+  } finally {
+    untitledThreadTitleGenerations.delete(args.threadId);
+  }
+}
+
 interface RegenerateThreadTitleArgs {
   thread: Thread;
 }

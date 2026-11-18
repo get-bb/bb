@@ -2298,6 +2298,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
+          threadVoice: false,
           fork: "checkpoint",
           approvalEnforcedBy: "provider",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
