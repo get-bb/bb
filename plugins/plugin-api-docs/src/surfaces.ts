@@ -1281,6 +1281,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginEvents",
           "PluginThreadEventPayloads",
+          "PluginThreadSettledEvent",
           "PluginTurnFailedEvent",
         ],
         firstParty: [

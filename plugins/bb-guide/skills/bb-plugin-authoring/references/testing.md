@@ -94,6 +94,10 @@ names `bb.events.on` does. As on the server, an event for a thread whose
 `createdAt` is at or after the start of a pending `threads.spawn` or
 `threads.fork` waits until that call returns; emit it from inside the stub,
 without awaiting, to test a turn that ends before spawn returns.
+`thread.idle`, `thread.failed`, `thread.archived` and `thread.deleted` are
+each followed by their `experimental_thread.settled` event, as on the server;
+emit the `cancelled` outcome yourself, since the fake has no thread to attach
+to a `message.cancelled`.
 Thread events are observe-only; there are exactly seven `thread.*` events
 (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
 `thread.archived`, `thread.unarchived`, `thread.deleted`), and handler return

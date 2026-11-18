@@ -1,6 +1,9 @@
+import type { PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makePluginAgentConfigurationContext,
+  makeQueueEntry,
+  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
@@ -324,7 +327,8 @@ describe("workflows plugin", () => {
         ],
       });
 
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-1" } as never,
         lastAssistantText: "done",
       });
@@ -547,7 +551,8 @@ describe("workflows plugin", () => {
           { threadId: "child-3", projectId: "project-test" },
         ),
       ).resolves.toMatchObject({ isError: true });
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-3" } as never,
         lastAssistantText: null,
       });
@@ -563,7 +568,8 @@ describe("workflows plugin", () => {
           mode: "auto",
         });
       });
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-3" } as never,
         lastAssistantText: "still not JSON",
       });
@@ -590,7 +596,8 @@ describe("workflows plugin", () => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(4);
       });
       for (let failure = 1; failure <= 2; failure += 1) {
-        await harness.emitThreadEvent("thread.idle", {
+        await harness.emitThreadEvent("experimental_thread.settled", {
+          outcome: "completed",
           thread: { id: "child-4" } as never,
           lastAssistantText: null,
         });
@@ -605,7 +612,8 @@ describe("workflows plugin", () => {
           ).toHaveLength(failure);
         });
       }
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-4" } as never,
         lastAssistantText: null,
       });
@@ -720,20 +728,73 @@ describe("workflows plugin", () => {
     STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS,
   );
 
-  it.each([
+  const SETTLED_CALLS: Record<
+    PluginThreadSettledEvent["outcome"],
     {
-      event: "thread.failed",
-      call: { status: "failed", error: "HTTP 400: stub failure" },
-      run: "failed",
-    },
-    {
-      event: "thread.idle",
+      event: (
+        thread: PluginThreadSettledEvent["thread"],
+      ) => PluginThreadSettledEvent;
+      call: Record<string, unknown>;
+      run: "succeeded" | "failed";
+    }
+  > = {
+    completed: {
+      event: (thread) => ({
+        outcome: "completed",
+        thread,
+        lastAssistantText: "worker output",
+      }),
       call: { status: "succeeded", resultJson: '"worker output"' },
       run: "succeeded",
     },
-  ] as const)(
-    "settles a call whose worker emits $event before spawn returns",
-    async ({ event, call, run }) => {
+    failed: {
+      event: (thread) => ({
+        outcome: "failed",
+        thread,
+        error: "HTTP 400: stub failure",
+      }),
+      call: { status: "failed", error: "HTTP 400: stub failure" },
+      run: "failed",
+    },
+    cancelled: {
+      event: (thread) => ({
+        outcome: "cancelled",
+        thread,
+        entry: makeQueueEntry({
+          threadId: thread.id,
+          originPluginId: "workflows",
+        }),
+      }),
+      call: {
+        status: "failed",
+        error: "The workflow worker's message was deleted before it ran",
+      },
+      run: "failed",
+    },
+    archived: {
+      event: (thread) => ({ outcome: "archived", thread }),
+      call: { status: "failed", error: "Workflow worker was archived" },
+      run: "failed",
+    },
+    deleted: {
+      event: (thread) => ({ outcome: "deleted", thread }),
+      call: { status: "failed", error: "Workflow worker was deleted" },
+      run: "failed",
+    },
+  };
+
+  it.each(
+    Object.entries(SETTLED_CALLS).flatMap(([outcome, expected]) =>
+      (["before", "after"] as const).map((timing) => ({
+        outcome,
+        timing,
+        expected,
+      })),
+    ),
+  )(
+    "settles a call whose worker settles as $outcome $timing spawn returns",
+    async ({ timing, expected }) => {
+      let worker = makeThreadResponse({ id: "child-settled" });
       const { bb, harness } = createFakePluginHost({
         pluginId: "workflows",
         sdk: {
@@ -752,22 +813,18 @@ describe("workflows plugin", () => {
               source: "default",
             }),
             spawn: async () => {
-              const thread = makeThreadResponse({
-                id: "child-fast",
-                status: event === "thread.failed" ? "error" : "idle",
+              worker = makeThreadResponse({
+                id: "child-settled",
                 createdAt: Date.now(),
               });
-              void (event === "thread.failed"
-                ? harness.emitThreadEvent("thread.failed", {
-                    thread,
-                    error: "HTTP 400: stub failure",
-                  })
-                : harness.emitThreadEvent("thread.idle", {
-                    thread,
-                    lastAssistantText: "worker output",
-                  }));
-              await new Promise((resolve) => setImmediate(resolve));
-              return thread;
+              if (timing === "before") {
+                void harness.emitThreadEvent(
+                  "experimental_thread.settled",
+                  expected.event(worker),
+                );
+                await new Promise((resolve) => setImmediate(resolve));
+              }
+              return worker;
             },
             send: async () => ({ ok: true }),
             stop: async () => ({ ok: true }),
@@ -816,28 +873,33 @@ describe("workflows plugin", () => {
       await plugin(bb);
       const started = JSON.parse(
         (await harness.callAgentTool("bb_workflow_run", {
-          source: `export const meta = { name: "fast-worker", description: "One worker" };
+          source: `export const meta = { name: "settled-worker", description: "One worker" };
     return await agent("Finish at once");`,
         })) as string,
       ) as { runId: string };
 
-      const worker = harness.runService("workflow-worker");
+      const service = harness.runService("workflow-worker");
       try {
-        await eventually(() => {
-          expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
-        });
         const db = bb.storage.database();
         await eventually(() => {
-          expect(getCall(db, started.runId, 0)).toMatchObject({
-            childThreadId: "child-fast",
-            ...call,
-          });
-          expect(getRunRequired(db, started.runId).status).toBe(run);
+          expect(getCall(db, started.runId, 0)?.childThreadId).toBe(
+            "child-settled",
+          );
+        });
+        if (timing === "after") {
+          await harness.emitThreadEvent(
+            "experimental_thread.settled",
+            expected.event(worker),
+          );
+        }
+        await eventually(() => {
+          expect(getCall(db, started.runId, 0)).toMatchObject(expected.call);
+          expect(getRunRequired(db, started.runId).status).toBe(expected.run);
         });
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
       } finally {
-        worker.controller.abort();
-        await worker.done;
+        service.controller.abort();
+        await service.done;
       }
     },
   );

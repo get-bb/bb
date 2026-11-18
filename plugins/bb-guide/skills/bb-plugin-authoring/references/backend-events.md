@@ -21,16 +21,23 @@ bb.events.on("message.queued", ({ entry }) => { ... });                    // en
 bb.events.on("message.dispatched", ({ entry }) => { ... });
 bb.events.on("turn.failed", (event) => { ... });                           // ids + failure facts
 bb.events.on("message.cancelled", ({ entry }) => { ... });                 // row deleted before dispatch
+bb.events.on("experimental_thread.settled", (event) => { ... });           // one terminal outcome, below
 ```
 
-**Events are announcements core makes.** Something already happened, your
-handler is told, and whatever it returns is ignored. Handlers run
-fire-and-forget after the change and can never block or veto it; errors are
-caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
-stats survive reloads and reset on remove). The surface that asks is
-`bb.experimental_hooks`, below, where core acts on your answer.
+**Events are announcements core makes.** Handlers run fire-and-forget after
+the change, can never block or veto it, and their return value is ignored;
+errors are caught, logged, and counted in `bb plugin list` handler stats. The
+surface that asks is `bb.experimental_hooks`, below.
 
-Eighteen events. The seven `thread.*` ones are thread lifecycle.
+**Keeping a record per run? Close it from `experimental_thread.settled`.** It
+fires with every `thread.idle` (`outcome: "completed"`, `lastAssistantText`),
+`thread.failed` (`"failed"`, `error`), `thread.archived` (`"archived"`) and
+`thread.deleted` (`"deleted"`), and with every `message.cancelled` whose thread
+still exists (`"cancelled"`, `entry`; check `entry.originPluginId` to see
+whether it was your message). `switch` on `event.outcome` with no default so a
+new outcome fails your typecheck instead of leaving a run open.
+
+Nineteen events. The seven `thread.*` ones are thread lifecycle.
 `interaction.pending` fires after core commits a pending interaction row. The
 three `message.*` ones fire when a dispatch is queued behind a wait (again when
 its wait or `sendAt` is rewritten), when a queued row's waits all clear and it
@@ -40,14 +47,6 @@ listener sees every queued row, so a plugin that only wants its own filters on
 `message.cancelled` is the only signal for that removal: release resources held
 for a waiting message (a sandbox mid-provision, a reserved slot) there.
 Archiving or deleting the whole thread fires the thread event instead.
-
-**Events for a thread you are creating wait for your call.** A plugin gets no
-event for a thread its own `bb.sdk.threads.spawn` or `bb.sdk.threads.fork` may
-have created until that call has returned to it; held events then arrive in
-order. Store the returned id before your next `await`, and a turn that ends
-before the response arrives still reaches your `thread.idle` or
-`thread.failed` handler. You never need to re-read the thread after attaching
-it to catch an event you missed.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
@@ -78,15 +77,12 @@ bb.events.on("turn.failed", async (event) => {
 });
 ```
 
-`threads.retry` re-submits the failed turn: the user's message never re-enters
-the timeline, and what the provider is sent follows `inputAccepted` — an input
-the provider never took is re-sent verbatim, while an accepted turn (already in
-the provider's conversation) is continued with a nudge rather than asked twice.
-The next failure's `attemptNumber` counts the retry. A future `sendAt` queues
-it on the clock; without one it is attempted now. Either way it is an ordinary
-dispatch attempt, so it still passes the `message.dispatch` hook. Core allows
-one live retry per original turn and enforces no ceiling beyond that — the cap
-is yours.
+`threads.retry` re-submits the failed turn without re-adding the user's
+message: an input the provider never took (`inputAccepted: false`) is re-sent
+verbatim, an accepted one is continued with a nudge. The next failure's
+`attemptNumber` counts the retry. A future `sendAt` queues it; without one it
+is attempted now, still through the `message.dispatch` hook. Core allows one
+live retry per original turn and no ceiling beyond that — the cap is yours.
 
 The seven `thread.*` events carry `thread`, the same DTO
 `GET /api/v1/threads/:id` serves, and reach every loaded plugin regardless of
@@ -99,10 +95,8 @@ provider that tore its workspace down is asked for one again when the thread
 next needs to run, so this is where to start warming one up.
 
 Events that occur while your plugin is unloaded are not replayed. Register
-handlers first, then reconcile tracked threads once at startup to catch changes
-from a restart, reload, or disabled period. Make handlers idempotent if a live
-event overlaps reconciliation. Avoid polling thread state to detect lifecycle
-changes.
+handlers first, then reconcile tracked threads once at startup, with
+idempotent handlers. Avoid polling thread state for lifecycle changes.
 
 `thread.created` fires on row creation, so the first user message is not
 always in the timeline yet. To react to a thread's content, listen on
@@ -112,11 +106,9 @@ always in the timeline yet. To react to a thread's content, listen on
 thread's turn.
 
 `experimental_thread.events` notifies that the thread event sequence advanced,
-coalesced per thread into at most one notification per second with the latest
-sequence and current thread DTO. Continuous output produces periodic updates
-and a final pending update. Reading history does not notify. The payload
-contains no event contents; read them with `bb.sdk.threads.events.list` if
-your policy needs them.
+at most once per second per thread, with the latest sequence and thread DTO
+(and a final pending update after continuous output). Reading history does not
+notify. Read contents with `bb.sdk.threads.events.list`.
 
 `experimental_terminal.input` fires after nonempty real user input is forwarded to a
 terminal. Its public terminal DTO includes hostId; keystrokes are not included. Output,

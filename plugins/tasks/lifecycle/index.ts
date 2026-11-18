@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { BbPluginApi, PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
 import {
   invalidateComments,
   invalidateThreads,
@@ -25,6 +25,25 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
       return "working";
     case "idle":
       return "idle";
+  }
+}
+
+function liveStatusFromSettled(
+  event: PluginThreadSettledEvent,
+): TaskThreadLiveStatus {
+  switch (event.outcome) {
+    case "completed":
+      return "idle";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return event.thread.status === "pending"
+        ? "idle"
+        : liveStatusFromThread(event.thread);
+    case "archived":
+      return "idle";
+    case "deleted":
+      return "completed";
   }
 }
 
@@ -140,14 +159,13 @@ export async function registerLifecycle(
   bb.events.on("thread.active", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "working");
   });
-  bb.events.on("thread.idle", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "idle");
-  });
-  bb.events.on("thread.failed", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "failed");
-  });
-  bb.events.on("thread.deleted", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "completed");
+  bb.events.on("experimental_thread.settled", (event) => {
+    transitionTrackedThread(
+      bb,
+      store,
+      event.thread.id,
+      liveStatusFromSettled(event),
+    );
   });
 
   await reconcileTrackedThreads(bb, store);

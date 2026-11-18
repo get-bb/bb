@@ -209,6 +209,28 @@ export interface PluginStorage {
 // ---------------------------------------------------------------------------
 
 /**
+ * One terminal outcome of the work on a thread, in a single union so a plugin
+ * that keeps a record per run handles every way that work can end in one
+ * exhaustive `switch`. Experimental: see docs/api_to_audit.md.
+ *
+ * - `completed`: the thread went idle; `lastAssistantText` as on `thread.idle`.
+ * - `failed`: the thread landed in `error`; `error` as on `thread.failed`.
+ * - `cancelled`: a queued message was removed before it dispatched; `entry`
+ *   is that message, so `entry.originPluginId` says whose it was.
+ * - `archived` / `deleted`: the thread itself is gone.
+ */
+export type PluginThreadSettledEvent =
+  | {
+      outcome: "completed";
+      thread: ThreadResponse;
+      lastAssistantText: string | null;
+    }
+  | { outcome: "failed"; thread: ThreadResponse; error: string | null }
+  | { outcome: "cancelled"; thread: ThreadResponse; entry: ThreadQueuedMessage }
+  | { outcome: "archived"; thread: ThreadResponse }
+  | { outcome: "deleted"; thread: ThreadResponse };
+
+/**
  * Why a turn failed, assembled by core from the failed turn's own records so a
  * listener never has to replay the event log to find out.
  *
@@ -378,6 +400,13 @@ export interface PluginThreadEventPayloads {
    * event, not this one.
    */
   "message.cancelled": { entry: ThreadQueuedMessage };
+  /**
+   * Fired with every `thread.idle`, `thread.failed`, `thread.archived` and
+   * `thread.deleted`, and with every `message.cancelled` whose thread still
+   * exists, as one {@link PluginThreadSettledEvent}. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  "experimental_thread.settled": PluginThreadSettledEvent;
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;

@@ -1,5 +1,7 @@
+import type { PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
+  makeQueueEntry,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
@@ -60,6 +62,63 @@ function trackedThreadFixture(
 }
 
 describe("task thread lifecycle", () => {
+  const SETTLED_LIVE_STATUS: Record<
+    PluginThreadSettledEvent["outcome"],
+    {
+      event: (
+        thread: PluginThreadSettledEvent["thread"],
+      ) => PluginThreadSettledEvent;
+      liveStatus: TaskThreadLiveStatus;
+    }
+  > = {
+    completed: {
+      event: (thread) => ({
+        outcome: "completed",
+        thread,
+        lastAssistantText: null,
+      }),
+      liveStatus: "idle",
+    },
+    failed: {
+      event: (thread) => ({ outcome: "failed", thread, error: "boom" }),
+      liveStatus: "failed",
+    },
+    cancelled: {
+      event: (thread) => ({
+        outcome: "cancelled",
+        thread: { ...thread, status: "pending" },
+        entry: makeQueueEntry({ threadId: thread.id, originPluginId: "tasks" }),
+      }),
+      liveStatus: "idle",
+    },
+    archived: {
+      event: (thread) => ({ outcome: "archived", thread }),
+      liveStatus: "idle",
+    },
+    deleted: {
+      event: (thread) => ({ outcome: "deleted", thread }),
+      liveStatus: "completed",
+    },
+  };
+
+  it.each(Object.entries(SETTLED_LIVE_STATUS))(
+    "moves a starting task thread out of starting when its thread settles as %s",
+    async (_outcome, expected) => {
+      const fixture = trackedThreadFixture("starting", "starting");
+      await registerLifecycle(fixture.bb, fixture.store);
+
+      await fixture.harness.emitThreadEvent(
+        "experimental_thread.settled",
+        expected.event(makeThreadResponse({ id: "thr_worker" })),
+      );
+
+      expect(
+        fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
+      ).toBe(expected.liveStatus);
+      await fixture.harness.dispose();
+    },
+  );
+
   it("reconciles each non-terminal task thread once during startup", async () => {
     const fixture = trackedThreadFixture("working", "active");
 
@@ -218,9 +277,10 @@ describe("task thread lifecycle", () => {
     expect(handlersAtFirstRead).toMatchObject({
       "thread.created": 1,
       "thread.active": 1,
-      "thread.idle": 1,
-      "thread.failed": 1,
-      "thread.deleted": 1,
+      "experimental_thread.settled": 1,
+      "thread.idle": 0,
+      "thread.failed": 0,
+      "thread.deleted": 0,
       "interaction.pending": 0,
       "message.queued": 0,
       "message.dispatched": 0,

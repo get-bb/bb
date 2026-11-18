@@ -54,6 +54,7 @@ const THREAD_OF_EVENT: ThreadOfEvent = {
   "message.dispatched": ({ entry }) => fromThreadId(entry.threadId),
   "message.cancelled": ({ entry }) => fromThreadId(entry.threadId),
   "turn.failed": ({ threadId }) => fromThreadId(threadId),
+  "experimental_thread.settled": ({ thread }) => fromThread(thread),
 };
 
 export function threadOfEvent<E extends PluginThreadEventName>(

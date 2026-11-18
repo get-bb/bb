@@ -362,6 +362,7 @@ export interface WorkflowService {
   runWorker(signal: AbortSignal): Promise<void>;
   onThreadIdle(threadId: string, output: string | null): void;
   onThreadFailed(threadId: string, error: string | null): void;
+  onWorkerMessageCancelled(threadId: string): void;
   onThreadArchived(threadId: string): void;
   onThreadDeleted(threadId: string): void;
   onOriginUnavailable(threadId: string): Promise<void>;
@@ -1853,6 +1854,11 @@ export function createWorkflowService(
     onOriginUnavailable,
     onThreadFailed: (threadId, error) =>
       failWorkerThread(threadId, error ?? "Workflow worker failed"),
+    onWorkerMessageCancelled: (threadId) =>
+      failThreadCall(
+        threadId,
+        "The workflow worker's message was deleted before it ran",
+      ),
     onThreadArchived: (threadId) =>
       failThreadCall(threadId, "Workflow worker was archived"),
     onThreadDeleted: (threadId) =>

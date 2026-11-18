@@ -116,6 +116,7 @@ import type {
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
+  PluginThreadSettledEvent,
   PluginUi,
   PluginRpcError,
   ExperimentalPluginRpcCaller,
@@ -485,7 +486,10 @@ export interface FakePluginBehaviorDrivers {
    * an event for a thread whose `createdAt` is at or after the start of a
    * pending `bb.sdk.threads.spawn` or `bb.sdk.threads.fork` waits until that
    * call has returned to the plugin, and the promise resolves once the
-   * handlers have run.
+   * handlers have run. `thread.idle`, `thread.failed`, `thread.archived` and
+   * `thread.deleted` are followed by their `experimental_thread.settled`
+   * event as on the server; `message.cancelled` is not, because the fake has
+   * no thread to attach, so emit the `cancelled` outcome directly.
    */
   emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
@@ -1264,8 +1268,64 @@ function createFakePluginHostInternal(
     "message.dispatched": [],
     "turn.failed": [],
     "message.cancelled": [],
+    "experimental_thread.settled": [],
     "thread.unarchived": [],
   };
+  function deliverThreadEvent<E extends PluginThreadEventName>(
+    event: E,
+    payload: PluginThreadEventPayloads[E],
+  ): Promise<{ errors: unknown[] }> {
+    const thread = threadOfEvent(event, payload);
+    return new Promise((resolve) => {
+      threadEventGate.deliver(
+        thread === null
+          ? null
+          : { threadId: thread.threadId, createdAt: () => thread.createdAt },
+        () => {
+          void (async () => {
+            const errors: unknown[] = [];
+            for (const handler of [...threadEventHandlers[event]]) {
+              try {
+                await handler(payload);
+              } catch (error) {
+                errors.push(error);
+                emitLog(
+                  "warn",
+                  `${event} handler failed: ${errorMessage(error)}`,
+                );
+              }
+            }
+            resolve({ errors });
+          })();
+        },
+      );
+    });
+  }
+
+  function settledEventFor<E extends PluginThreadEventName>(
+    event: E,
+    payload: PluginThreadEventPayloads[E],
+  ): PluginThreadSettledEvent | null {
+    const delivered: {
+      [K in PluginThreadEventName]?: PluginThreadEventPayloads[K];
+    } = {
+      [event]: payload,
+    };
+    if (delivered["thread.idle"] !== undefined) {
+      return { outcome: "completed", ...delivered["thread.idle"] };
+    }
+    if (delivered["thread.failed"] !== undefined) {
+      return { outcome: "failed", ...delivered["thread.failed"] };
+    }
+    if (delivered["thread.archived"] !== undefined) {
+      return { outcome: "archived", ...delivered["thread.archived"] };
+    }
+    if (delivered["thread.deleted"] !== undefined) {
+      return { outcome: "deleted", ...delivered["thread.deleted"] };
+    }
+    return null;
+  }
+
   const hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
@@ -1828,6 +1888,8 @@ function createFakePluginHostInternal(
             threadEventHandlers["message.dispatched"].length,
           "turn.failed": threadEventHandlers["turn.failed"].length,
           "message.cancelled": threadEventHandlers["message.cancelled"].length,
+          "experimental_thread.settled":
+            threadEventHandlers["experimental_thread.settled"].length,
           "thread.unarchived": threadEventHandlers["thread.unarchived"].length,
         };
       },
@@ -2259,32 +2321,16 @@ function createFakePluginHostInternal(
       await schedule.fn();
     },
 
-    emitThreadEvent(event, payload) {
-      const thread = threadOfEvent(event, payload);
-      return new Promise((resolve) => {
-        threadEventGate.deliver(
-          thread === null
-            ? null
-            : { threadId: thread.threadId, createdAt: () => thread.createdAt },
-          () => {
-            void (async () => {
-              const errors: unknown[] = [];
-              for (const handler of [...threadEventHandlers[event]]) {
-                try {
-                  await handler(payload);
-                } catch (error) {
-                  errors.push(error);
-                  emitLog(
-                    "warn",
-                    `${event} handler failed: ${errorMessage(error)}`,
-                  );
-                }
-              }
-              resolve({ errors });
-            })();
-          },
+    async emitThreadEvent(event, payload) {
+      const { errors } = await deliverThreadEvent(event, payload);
+      const settled = settledEventFor(event, payload);
+      if (settled !== null) {
+        errors.push(
+          ...(await deliverThreadEvent("experimental_thread.settled", settled))
+            .errors,
         );
-      });
+      }
+      return { errors };
     },
 
     async callAgentTool(name, input, ctx) {
