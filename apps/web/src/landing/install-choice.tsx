@@ -17,6 +17,9 @@ export function DesktopInstallChoice({
         className="btn btn-primary btn-install install-download"
       />
       <SendToComputerButton placement={placement} />
+      <span className="install-note install-note-touch">
+        bb runs on macOS, Windows, and Linux
+      </span>
     </span>
   );
 }
