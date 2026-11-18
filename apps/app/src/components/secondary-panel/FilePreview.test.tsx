@@ -24,6 +24,7 @@ import {
   PierreWorkerPoolGateContext,
   type PierreWorkerPoolGate,
 } from "@/lib/pierre-worker-pool-gate";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 interface MockPierreFileProps {
   file: {
@@ -263,11 +264,8 @@ describe("FilePreview", () => {
       />,
     );
 
-    await act(async () => {
-      await import("@/components/code/BbSourceCode");
-    });
-
-    await waitFor(() => expect(pierreMock.state.statsCallback).not.toBeNull());
+    await settleLazyModules();
+    expect(pierreMock.state.statsCallback).not.toBeNull();
     const renderCountBeforeStatsChange = Number(
       screen.getByTestId("pierre-file").dataset.renderCount,
     );

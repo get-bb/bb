@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { useWorkerPool } from "@pierre/diffs/react";
 import type { WorkerPoolManager } from "@pierre/diffs/worker";
 import { useEffect } from "react";
@@ -10,6 +10,7 @@ import {
   useRequirePierreWorkerPool,
 } from "@/lib/pierre-worker-pool-gate";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 let finishPoolInitialization: () => void = () => {};
 let poolInitialization = Promise.resolve();
@@ -29,8 +30,6 @@ vi.mock("@/lib/pierre-worker-pool", () => ({
     return null;
   },
 }));
-
-const flushLoad = () => act(() => new Promise((r) => setTimeout(r, 0)));
 
 class FakeWorker {}
 
@@ -86,7 +85,7 @@ describe("ThreadDetailWorkerPoolProvider", () => {
         <PlainPane />
       </ThreadDetailWorkerPoolProvider>,
     );
-    await flushLoad();
+    await settleLazyModules();
 
     expect(acquirePierreWorkerPool).not.toHaveBeenCalled();
     expect(screen.getByTestId("plain-pane").textContent).toBe("no pool");
@@ -101,7 +100,7 @@ describe("ThreadDetailWorkerPoolProvider", () => {
         </>
       </ThreadDetailWorkerPoolProvider>,
     );
-    await flushLoad();
+    await settleLazyModules();
     expect(mountCount).toBe(1);
 
     rerender(
@@ -114,7 +113,7 @@ describe("ThreadDetailWorkerPoolProvider", () => {
     );
     expect(screen.getByTestId("diff-consumer").textContent).toBe("waiting");
 
-    await flushLoad();
+    await settleLazyModules();
     expect(acquirePierreWorkerPool).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("diff-consumer").textContent).toBe(
       "ready with pool",
@@ -132,7 +131,7 @@ describe("ThreadDetailWorkerPoolProvider", () => {
         </>
       </ThreadDetailWorkerPoolProvider>,
     );
-    await flushLoad();
+    await settleLazyModules();
     expect(acquirePierreWorkerPool).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -148,12 +147,12 @@ describe("ThreadDetailWorkerPoolProvider", () => {
         <DiffConsumer />
       </ThreadDetailWorkerPoolProvider>,
     );
-    await flushLoad();
+    await settleLazyModules();
     expect(acquirePierreWorkerPool).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("diff-consumer").textContent).toBe("waiting");
 
     finishPoolInitialization();
-    await flushLoad();
+    await settleLazyModules();
     expect(screen.getByTestId("diff-consumer").textContent).toBe(
       "ready with pool",
     );
@@ -169,7 +168,7 @@ describe("ThreadDetailWorkerPoolProvider", () => {
     expect(screen.getByTestId("diff-consumer").textContent).toBe(
       "ready without pool",
     );
-    await flushLoad();
+    await settleLazyModules();
     expect(acquirePierreWorkerPool).not.toHaveBeenCalled();
   });
 });

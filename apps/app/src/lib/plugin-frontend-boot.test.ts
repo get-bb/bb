@@ -7,6 +7,9 @@ import {
   bootPluginFrontends,
   schedulePluginFrontendReconcile,
 } from "./plugin-frontend-lazy";
+import { settleLazyModules } from "@/test/lazy-modules";
+
+await import("./plugin-frontend");
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -27,11 +30,12 @@ it("reports a failed plugin frontend boot as failed until a retry succeeds", asy
   vi.spyOn(console, "warn").mockImplementation(() => {});
   const loadFailed = renderHook(() => usePluginFrontendLoadFailed());
 
-  await bootPluginFrontends();
+  await settleLazyModules(bootPluginFrontends());
   loadFailed.rerender();
   expect(loadFailed.result.current).toBe(true);
 
   schedulePluginFrontendReconcile();
+  await settleLazyModules();
   await vi.waitFor(() => {
     loadFailed.rerender();
     expect(loadFailed.result.current).toBe(false);
