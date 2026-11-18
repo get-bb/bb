@@ -900,6 +900,14 @@ describe("automation data access", () => {
               },
             },
           },
+          plugins: {
+            experimental_discoverRpc: async () => {
+              throw new Error("not expected");
+            },
+            callRpc: async () => {
+              throw new Error("not expected");
+            },
+          },
         },
         server: { loopbackBaseUrl: "http://127.0.0.1:38886" },
         realtime: { publish: () => undefined },

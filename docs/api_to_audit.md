@@ -673,8 +673,9 @@ every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
 `turn.failed` carries ids and failure facts after a thread lands in `error`,
 including `originPluginId`, the plugin that sent the failed message. Provider
-retry uses it to ask only that plugin whether to re-run the turn
-(`provider-retry.v1.consent`); Workflows is the one sender that answers.
+retry uses it to decide and queue retries, then publishes the decision through
+its `decision.get` RPC; Automations and Workflows wait for that decision before
+re-running failed work.
 
 Docs: `backend-events.md`.
 

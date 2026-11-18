@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   claimAutomationScheduledRun,
   closeAutomationRun,
+  listAutomationRuns,
   listDueAutomations,
   parseAutomationExecution,
   parseAutomationTrigger,
@@ -11,9 +12,10 @@ import {
   type Db,
 } from "./data.js";
 import {
-  providerRetrySkipReason,
-  type ProviderRetryReadApi,
-} from "./provider-retry-handoff.js";
+  readRetryHandoff,
+  type RetryHandoff,
+  type RetryHandoffApi,
+} from "./retry-handoff.js";
 import { publishAutomationChange } from "./realtime.js";
 import type { ScriptRunScope } from "./script-runner.js";
 import { computeNextScheduledTime } from "./schedule-helpers.js";
@@ -37,7 +39,7 @@ const hostListSchema = z.array(
 );
 type SweepApi = AgentRunApi &
   ScriptRunApi &
-  ProviderRetryReadApi & {
+  RetryHandoffApi & {
     sdk: { hosts: { list(): Promise<unknown> } };
   };
 
@@ -55,6 +57,37 @@ function buildScheduleFailureHandler(
       now: Date.now(),
     });
   };
+}
+
+async function readFailedRunHandoff(
+  bb: RetryHandoffApi,
+  db: Db,
+  args: { automation: AutomationRow; now: number },
+): Promise<RetryHandoff> {
+  const [latestRun] = listAutomationRuns(db, {
+    automationId: args.automation.id,
+    limit: 1,
+  });
+  if (
+    latestRun === undefined ||
+    latestRun.status !== "failed" ||
+    latestRun.trigger !== "schedule" ||
+    latestRun.threadId === null ||
+    latestRun.finishedAt === null
+  ) {
+    return { kind: "re-run" };
+  }
+  const handoff = await readRetryHandoff(bb, {
+    threadId: latestRun.threadId,
+    failedAt: latestRun.finishedAt,
+    now: args.now,
+  });
+  return handoff.kind === "stand-down"
+    ? {
+        kind: "stand-down",
+        reason: `failed run ${latestRun.id} is not re-run: ${handoff.reason}`,
+      }
+    : handoff;
 }
 
 async function processDueAutomation(
@@ -95,16 +128,20 @@ async function processDueAutomation(
     return;
   }
 
-  const skipReason =
+  const handoff: RetryHandoff =
     execution.mode === "agent"
-      ? await providerRetrySkipReason(bb, db, args.automation)
-      : null;
+      ? await readFailedRunHandoff(bb, db, {
+          automation: args.automation,
+          now: args.now,
+        })
+      : { kind: "re-run" };
+  if (handoff.kind === "wait") return;
   const claim = claimAutomationScheduledRun(db, {
     automationId: args.automation.id,
     expectedNextRunAt,
     newNextRunAt,
     now: args.now,
-    skipReason,
+    skipReason: handoff.kind === "stand-down" ? handoff.reason : null,
   });
   if (!claim.advanced) return;
   publishAutomationChange(bb, args.automation.projectId, [

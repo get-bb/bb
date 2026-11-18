@@ -1,16 +1,13 @@
 import {
   readRetryDiagnostic,
   retryDiagnosticContract,
-  type SenderConsent,
 } from "./src/diagnostics.js";
 import {
   retryAvailabilityMethod,
   retryAvailabilitySchema,
-  retryConsentMethod,
-  retryConsentSchema,
   type RetryAvailability,
 } from "./src/retry-contract.js";
-import type { BbPluginApi, PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import {
   DEFAULT_MAXIMUM_WAIT_MS,
@@ -18,40 +15,6 @@ import {
   isRateLimitFailure,
   type RetryDecision,
 } from "./src/retry-policy.js";
-
-async function askSender(
-  bb: BbPluginApi,
-  event: PluginTurnFailedEvent,
-  retry: Extract<RetryDecision, { kind: "retry" }>,
-): Promise<SenderConsent | null> {
-  if (event.originPluginId === null) return null;
-  const pluginId = event.originPluginId;
-  try {
-    const sources = await bb.sdk.plugins.experimental_discoverRpc({
-      pluginId,
-      method: retryConsentMethod,
-    });
-    if (sources.length === 0) return null;
-    const answer = await bb.sdk.plugins.callRpc({
-      pluginId,
-      method: retryConsentMethod,
-      input: {
-        threadId: event.threadId,
-        requestId: event.requestId,
-        reason: retry.reason,
-        sendAt: retry.sendAt,
-      },
-      outputSchema: retryConsentSchema,
-      signal: AbortSignal.timeout(5_000),
-    });
-    return { pluginId, answer };
-  } catch (error) {
-    bb.log.warn(
-      `Retry consent from ${pluginId} failed for ${event.threadId}; retrying anyway: ${String(error)}`,
-    );
-    return { pluginId, answer: { kind: "unanswered" } };
-  }
-}
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
 
@@ -87,9 +50,17 @@ export default async function plugin(bb: BbPluginApi) {
     maximumWait = maximumWaitMs(next.maximumWait);
   });
 
-  bb.rpc.register(retryDiagnosticContract, {
-    "decision.get": ({ threadId }) => readRetryDiagnostic(bb, threadId),
-  });
+  bb.rpc.register(
+    retryDiagnosticContract,
+    {
+      "decision.get": ({ threadId }) => readRetryDiagnostic(bb, threadId),
+    },
+    {
+      experimental_discoverable: true,
+      experimental_description:
+        "The last automatic retry decision for a thread, recorded after a scheduled retry is queued. A plugin that re-runs failed work waits for the decision on its failed request before re-running it.",
+    },
+  );
   bb.events.on("turn.failed", async (event) => {
     let availability: RetryAvailability = { kind: "not-routed" };
     if (isRateLimitFailure(event)) {
@@ -117,33 +88,24 @@ export default async function plugin(bb: BbPluginApi) {
         }
       }
     }
-    const policyDecision = decideRetry({
+    const decision = decideRetry({
       availability,
       failure: event,
       maximumWaitMs: maximumWait,
       now: Date.now(),
       random: Math.random(),
     });
-    const consent =
-      policyDecision.kind === "retry"
-        ? await askSender(bb, event, policyDecision)
-        : null;
-    const decision: RetryDecision =
-      consent?.answer.kind === "decline"
-        ? { kind: "decline", reason: "declined-by-sender" }
-        : policyDecision;
     const recordDecision = () =>
       bb.storage.kv.set(`decision:${event.threadId}`, {
         requestId: event.requestId,
         observedAt: Date.now(),
         availability,
         decision,
-        consent,
       });
     if (decision.kind === "decline") {
       await recordDecision();
       bb.log.info(
-        `Automatic retry skipped for ${event.threadId}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}${consent?.answer.kind === "decline" ? ` (${consent.pluginId}: ${consent.answer.reason})` : ""}.`,
+        `Automatic retry skipped for ${event.threadId}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}.`,
       );
       return;
     }

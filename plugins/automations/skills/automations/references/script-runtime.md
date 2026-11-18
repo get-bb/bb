@@ -87,11 +87,13 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
   later than the next scheduled run. After two retries, a failing automation
   waits for its next scheduled run. A failing run never pauses the automation;
   its latest error stays on the automation until a run succeeds.
-- A failed agent run has one retry owner. When the provider retry plugin has
-  queued or already sent a retry in the run's thread, the automation records
-  its quick retry as skipped and waits for its next scheduled run. It runs the
-  quick retry itself only when no provider retry took over, for example after
-  a failure provider retry does not handle or when that plugin is disabled.
+- A failed agent run has one retry owner. Before its quick retry, the
+  automation waits up to a minute for the provider retry plugin to decide on
+  the failed turn. When provider retry, or core after a bb restart, has queued
+  or already sent a retry in the run's thread, the automation records the quick
+  retry as skipped and waits for its next scheduled run. It runs the quick retry
+  itself only when nobody else retries the turn, for example after a failure
+  provider retry does not handle or when that plugin is disabled.
 - A successful or skipped run clears the failure count. A resume command also
   clears the count.
 - An unavailable target thread disables every enabled automation that targets
