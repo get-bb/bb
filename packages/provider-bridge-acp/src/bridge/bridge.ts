@@ -144,6 +144,7 @@ import {
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
 import type { AcpAgentCapabilities } from "../client/capabilities.js";
+import { ACP_RESOURCE_NOT_FOUND_CODE } from "../client/acp-client.js";
 import {
   createAcpSessionModel,
   type AcpSessionModel,
@@ -204,6 +205,8 @@ interface AcpNativeConfigState {
   models: AcpSessionModels | undefined;
 }
 
+type AcpSessionRebuildCause = "cancel-error" | "lost-session";
+
 interface AcpThreadSession {
   bbThreadId: string;
   construction: AcpSessionParams;
@@ -232,7 +235,7 @@ interface AcpThreadSession {
   promptRequestPending: boolean;
   cancelRequested: boolean;
   turnStartedAtMs: number | undefined;
-  restartAfterCancelError: boolean;
+  rebuildBeforeNextPrompt: AcpSessionRebuildCause | null;
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
@@ -296,6 +299,8 @@ const SESSION_BUSY_QUIET_MS = 2_000;
 const SESSION_BUSY_MAX_WAITS = 300;
 const SESSION_BUSY_MAX_RETRIES = 3;
 const ACP_SESSION_BUSY_ERROR_CODE = -32003;
+const ACP_LOST_SESSION_MESSAGE =
+  /\bsession\b(?:\s+\S+)?\s+not found|\bsession lock unavailable\b/i;
 const ACP_SESSION_SETUP_TIMEOUT_MS = 300_000;
 const ACP_SESSION_CONFIG_TIMEOUT_MS = 60_000;
 const ACP_AUTHENTICATE_TIMEOUT_MS = 120_000;
@@ -2445,7 +2450,7 @@ async function startAgentSession(
     promptRequestPending: false,
     cancelRequested: false,
     turnStartedAtMs: undefined,
-    restartAfterCancelError: false,
+    rebuildBeforeNextPrompt: null,
     loading: false,
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
@@ -3135,6 +3140,23 @@ function finishTurn(
   });
 }
 
+function isLostSessionError(error: unknown): boolean {
+  return (
+    error instanceof AcpAgentResponseError &&
+    (error.code === ACP_RESOURCE_NOT_FOUND_CODE ||
+      ACP_LOST_SESSION_MESSAGE.test(error.message))
+  );
+}
+
+function scheduleRebuildIfSessionLost(
+  session: AcpThreadSession,
+  error: unknown,
+): void {
+  if (isLostSessionError(error)) {
+    session.rebuildBeforeNextPrompt ??= "lost-session";
+  }
+}
+
 function isSessionBusyError(error: unknown): boolean {
   return (
     error instanceof AcpAgentResponseError &&
@@ -3261,7 +3283,10 @@ function runTurn(
           }
         }
       } catch (error) {
-        session.restartAfterCancelError = session.cancelRequested;
+        session.rebuildBeforeNextPrompt = session.cancelRequested
+          ? "cancel-error"
+          : null;
+        scheduleRebuildIfSessionLost(session, error);
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
         dropQueuedTurnInputs(
@@ -3384,7 +3409,7 @@ function reconcileExecutionSettings(
     launchModelChanged;
   const restart =
     session.connection.exited ||
-    session.restartAfterCancelError ||
+    session.rebuildBeforeNextPrompt !== null ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
   cancelPendingPermissions(session);
@@ -3442,9 +3467,11 @@ async function rebuildAgentSession(
   const previousProviderThreadId = session.providerThreadId;
   const reason = session.connection.exited
     ? "The ACP agent exited unexpectedly; its session was rebuilt before continuing."
-    : session.restartAfterCancelError
+    : session.rebuildBeforeNextPrompt === "cancel-error"
       ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
-      : "Execution settings changed; the ACP session was rebuilt to apply them.";
+      : session.rebuildBeforeNextPrompt === "lost-session"
+        ? "The ACP agent lost its session; the session was rebuilt before continuing."
+        : "Execution settings changed; the ACP session was rebuilt to apply them.";
   const queuedInputs = session.queuedInputs.splice(0);
   const continuingTurn = session.activePromptKind === "turn";
   if (continuingTurn) {
@@ -3563,6 +3590,7 @@ function startCompaction(
       );
     })
     .catch((error: unknown) => {
+      scheduleRebuildIfSessionLost(session, error);
       finish({
         status: "failed",
         error: error instanceof Error ? error.message : String(error),
@@ -4126,10 +4154,15 @@ async function handleRequest(
       const reconciled = reconcileExecutionSettings(session, params.options);
       session = reconciled instanceof Promise ? await reconciled : reconciled;
       if (params.options.sessionOptions !== undefined) {
-        await applySessionOptionSelections(
-          session,
-          params.options.sessionOptions,
-        );
+        try {
+          await applySessionOptionSelections(
+            session,
+            params.options.sessionOptions,
+          );
+        } catch (error) {
+          scheduleRebuildIfSessionLost(session, error);
+          throw error;
+        }
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,
