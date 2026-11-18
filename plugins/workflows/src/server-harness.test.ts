@@ -720,6 +720,128 @@ describe("workflows plugin", () => {
     STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS,
   );
 
+  it.each([
+    {
+      event: "thread.failed",
+      call: { status: "failed", error: "HTTP 400: stub failure" },
+      run: "failed",
+    },
+    {
+      event: "thread.idle",
+      call: { status: "succeeded", resultJson: '"worker output"' },
+      run: "succeeded",
+    },
+  ] as const)(
+    "settles a call whose worker emits $event before spawn returns",
+    async ({ event, call, run }) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "workflows",
+        sdk: {
+          threads: {
+            get: async () =>
+              ({
+                id: "thread-test",
+                environmentId: "environment-1",
+                providerId: "codex",
+              }) as never,
+            defaultExecutionOptions: async () => ({
+              model: "gpt-test",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              serviceTier: "default",
+              source: "default",
+            }),
+            spawn: async () => {
+              const thread = makeThreadResponse({
+                id: "child-fast",
+                status: event === "thread.failed" ? "error" : "idle",
+                createdAt: Date.now(),
+              });
+              void (event === "thread.failed"
+                ? harness.emitThreadEvent("thread.failed", {
+                    thread,
+                    error: "HTTP 400: stub failure",
+                  })
+                : harness.emitThreadEvent("thread.idle", {
+                    thread,
+                    lastAssistantText: "worker output",
+                  }));
+              await new Promise((resolve) => setImmediate(resolve));
+              return thread;
+            },
+            send: async () => ({ ok: true }),
+            stop: async () => ({ ok: true }),
+            archive: async () => ({ ok: true }),
+          },
+          providers: {
+            list: async () => [
+              {
+                id: "codex",
+                displayName: "Codex",
+                logoUrl: null,
+                available: true,
+                capabilities: {
+                  supportsThreadArchive: true,
+                  supportsThreadRename: true,
+                  supportsServiceTier: true,
+                  supportsNativeUserQuestion: false,
+                  supportsFork: true,
+                  permissionModes: ["full"],
+                },
+                composerActions: [],
+              },
+            ],
+            models: async () => ({
+              providers: [],
+              selectedOnlyModels: [],
+              modelLoadError: null,
+              models: [
+                {
+                  id: "gpt-test",
+                  model: "gpt-test",
+                  displayName: "GPT Test",
+                  description: "test",
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: "medium", description: "test" },
+                  ],
+                  defaultReasoningEffort: "medium",
+                  isDefault: true,
+                },
+              ],
+            }),
+          },
+        },
+      });
+      hosts.push(harness);
+      await plugin(bb);
+      const started = JSON.parse(
+        (await harness.callAgentTool("bb_workflow_run", {
+          source: `export const meta = { name: "fast-worker", description: "One worker" };
+    return await agent("Finish at once");`,
+        })) as string,
+      ) as { runId: string };
+
+      const worker = harness.runService("workflow-worker");
+      try {
+        await eventually(() => {
+          expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+        });
+        const db = bb.storage.database();
+        await eventually(() => {
+          expect(getCall(db, started.runId, 0)).toMatchObject({
+            childThreadId: "child-fast",
+            ...call,
+          });
+          expect(getRunRequired(db, started.runId).status).toBe(run);
+        });
+        expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+      } finally {
+        worker.controller.abort();
+        await worker.done;
+      }
+    },
+  );
+
   it("rejects cyclic and unsafe host values before persistence", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
     hosts.push(harness);

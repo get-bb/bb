@@ -128,6 +128,10 @@ import {
   type FakeSdkHarness,
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
+import {
+  createThreadEventGate,
+  threadOfEvent,
+} from "../internal/thread-event-gate.js";
 
 /**
  * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
@@ -477,7 +481,11 @@ export interface FakePluginBehaviorDrivers {
   /**
    * Deliver a thread lifecycle event to every `bb.events.on` handler. Handlers run
    * sequentially; errors are caught and logged like the host's
-   * fire-and-forget dispatch, and returned for assertions.
+   * fire-and-forget dispatch, and returned for assertions. As on the server,
+   * an event for a thread whose `createdAt` is at or after the start of a
+   * pending `bb.sdk.threads.spawn` or `bb.sdk.threads.fork` waits until that
+   * call has returned to the plugin, and the promise resolves once the
+   * handlers have run.
    */
   emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
@@ -1228,9 +1236,11 @@ function createFakePluginHostInternal(
   }> = [];
 
   // --- sdk ---
+  const threadEventGate = createThreadEventGate();
   const { sdk, harness: sdkHarness } = createFakeSdk({
     pluginId,
     overrides: options.sdk,
+    trackThreadCreation: (call) => threadEventGate.track(call),
   });
 
   // --- thread events / dispose ---
@@ -2249,17 +2259,32 @@ function createFakePluginHostInternal(
       await schedule.fn();
     },
 
-    async emitThreadEvent(event, payload) {
-      const errors: unknown[] = [];
-      for (const handler of [...threadEventHandlers[event]]) {
-        try {
-          await handler(payload);
-        } catch (error) {
-          errors.push(error);
-          emitLog("warn", `${event} handler failed: ${errorMessage(error)}`);
-        }
-      }
-      return { errors };
+    emitThreadEvent(event, payload) {
+      const thread = threadOfEvent(event, payload);
+      return new Promise((resolve) => {
+        threadEventGate.deliver(
+          thread === null
+            ? null
+            : { threadId: thread.threadId, createdAt: () => thread.createdAt },
+          () => {
+            void (async () => {
+              const errors: unknown[] = [];
+              for (const handler of [...threadEventHandlers[event]]) {
+                try {
+                  await handler(payload);
+                } catch (error) {
+                  errors.push(error);
+                  emitLog(
+                    "warn",
+                    `${event} handler failed: ${errorMessage(error)}`,
+                  );
+                }
+              }
+              resolve({ errors });
+            })();
+          },
+        );
+      });
     },
 
     async callAgentTool(name, input, ctx) {

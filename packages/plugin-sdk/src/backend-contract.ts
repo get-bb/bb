@@ -1921,7 +1921,12 @@ export interface PluginUi {
 export interface PluginEvents {
   /**
    * Add a thread lifecycle listener. Multiple listeners for the same event are
-   * additive and run independently in registration order.
+   * additive and run independently in registration order. Events for a thread
+   * that this plugin's own `bb.sdk.threads.spawn` or `bb.sdk.threads.fork`
+   * call may have created wait until that call has returned to the plugin,
+   * and keep their order. Record the returned thread before your next
+   * `await` and its `thread.idle` or `thread.failed` finds the record, even
+   * when the turn ends before the call returns.
    */
   on<E extends PluginThreadEventName>(
     event: E,

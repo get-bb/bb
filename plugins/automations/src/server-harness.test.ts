@@ -1941,6 +1941,60 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it.each([
+    {
+      event: "thread.failed",
+      settled: { status: "failed", error: "HTTP 400: stub failure" },
+    },
+    { event: "thread.idle", settled: { status: "succeeded", error: null } },
+  ] as const)(
+    "closes an agent run whose spawned thread emits $event before spawn returns",
+    async ({ event, settled }) => {
+      const host = await bootAutomationsPlugin();
+      const { harness } = host;
+      const automation = await createAgentAutomation(harness, {
+        name: "Fast turn",
+      });
+      harness.sdk.stub("threads.spawn", async () => {
+        const thread = makeThreadResponse({
+          id: "thr_fast_turn",
+          projectId: PROJECT_ID,
+          status: event === "thread.failed" ? "error" : "idle",
+          createdAt: Date.now(),
+        });
+        void (event === "thread.failed"
+          ? harness.emitThreadEvent("thread.failed", {
+              thread,
+              error: "HTTP 400: stub failure",
+            })
+          : harness.emitThreadEvent("thread.idle", {
+              thread,
+              lastAssistantText: "done",
+            }));
+        await new Promise((resolve) => setImmediate(resolve));
+        return thread;
+      });
+
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+
+      await vi.waitFor(async () => {
+        const runs = automationRunListResponseSchema.parse(
+          await harness.callRpc("automations_runs", {
+            projectId: PROJECT_ID,
+            automationId: automation.id,
+          }),
+        ).runs;
+        expect(runs).toEqual([
+          expect.objectContaining({ threadId: "thr_fast_turn", ...settled }),
+        ]);
+      });
+      await harness.dispose();
+    },
+  );
+
   async function failScheduledRun(harness: FakePluginHost["harness"]) {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));

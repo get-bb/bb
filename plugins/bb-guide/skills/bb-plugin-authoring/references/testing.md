@@ -90,7 +90,10 @@ aliases). `lifecycle.reload(factory)` preserves settings/KV/database state; a
 throwing replacement leaves the current registrations and API live.
 `lifecycle.install()` runs `bb.onInstall` handlers as a fresh install does; a
 throwing handler is logged at warn. `emitThreadEvent` accepts the event
-names `bb.events.on` does.
+names `bb.events.on` does. As on the server, an event for a thread whose
+`createdAt` is at or after the start of a pending `threads.spawn` or
+`threads.fork` waits until that call returns; emit it from inside the stub,
+without awaiting, to test a turn that ends before spawn returns.
 Thread events are observe-only; there are exactly seven `thread.*` events
 (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
 `thread.archived`, `thread.unarchived`, `thread.deleted`), and handler return

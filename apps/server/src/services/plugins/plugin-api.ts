@@ -3,6 +3,10 @@ import {
   type ContractTagDeclarations,
 } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
+  createThreadEventGate,
+  type ThreadEventGate,
+} from "@get-bb/plugin-sdk/internal/thread-event-gate";
+import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
@@ -273,6 +277,11 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
+  /**
+   * Holds this plugin's events for a thread its own `threads.spawn` or
+   * `threads.fork` call may have created until that call has returned to it.
+   */
+  threadEventGate: ThreadEventGate;
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
   environmentCompositions: Map<string, NormalizedPluginEnvironmentComposition>;
@@ -353,7 +362,11 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
+function wrapSdkForPlugin(
+  sdk: BbSdk,
+  pluginId: string,
+  threadEventGate: ThreadEventGate,
+): PluginBbSdk {
   return {
     ...sdk,
     environments: {
@@ -393,10 +406,14 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
         });
       },
       fork(args: ThreadForkArgs) {
-        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
+        return threadEventGate.track(() =>
+          sdk.threads.fork(withPluginThreadAttribution(args, pluginId)),
+        );
       },
       spawn(args: ThreadSpawnArgs) {
-        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
+        return threadEventGate.track(() =>
+          sdk.threads.spawn(withPluginThreadAttribution(args, pluginId)),
+        );
       },
       send(args) {
         return sdk.threads.send({ ...args, originPluginId: pluginId });
@@ -614,6 +631,7 @@ export function createPluginApi(options: {
     listeners: [],
   };
   const databaseHandles: Database.Database[] = [];
+  const threadEventGate = createThreadEventGate();
   const threadEventHandlers: PluginThreadEventHandlers = {
     "experimental_thread.events": [],
     "experimental_thread.parentChanged": [],
@@ -1461,6 +1479,7 @@ export function createPluginApi(options: {
           token: rpcCaller.token,
         }),
         pluginId,
+        threadEventGate,
       );
       return wrappedSdk;
     },
@@ -1484,6 +1503,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    threadEventGate,
     hooks,
     environmentCompositions,
     environmentProviders,

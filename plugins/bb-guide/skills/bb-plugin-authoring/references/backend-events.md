@@ -41,6 +41,14 @@ listener sees every queued row, so a plugin that only wants its own filters on
 for a waiting message (a sandbox mid-provision, a reserved slot) there.
 Archiving or deleting the whole thread fires the thread event instead.
 
+**Events for a thread you are creating wait for your call.** A plugin gets no
+event for a thread its own `bb.sdk.threads.spawn` or `bb.sdk.threads.fork` may
+have created until that call has returned to it; held events then arrive in
+order. Store the returned id before your next `await`, and a turn that ends
+before the response arrives still reaches your `thread.idle` or
+`thread.failed` handler. You never need to re-read the thread after attaching
+it to catch an event you missed.
+
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
 `threadId`, the failed turn's `requestId`, the provider `turnId` (null when the
