@@ -402,67 +402,6 @@ export function SpawnRow({
   );
 }
 
-export function SpawnSidebar() {
-  const { cycle, leaving } = useCycle(5600, 500);
-  return (
-    <div
-      className="spawnbar"
-      aria-label="bb spawns and manages a worker thread for each provider"
-    >
-      <div className="sb-head">
-        <span aria-hidden="true" className="bb-mark sb-mark" />
-        <span className="sb-title">Threads</span>
-        <span className="sb-active">5 active</span>
-      </div>
-      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
-        <SpawnRow
-          parent
-          icon={<ClaudeIcon className="sb-ic" />}
-          name="Claude Code"
-          task="Ship the release"
-          status="managing"
-          at={0.1}
-          doneAt={4}
-        />
-        <div className="sb-kids">
-          <SpawnRow
-            icon={<OpenAiIcon className="sb-ic" />}
-            name="Codex"
-            task="Port module to TS"
-            status="running"
-            at={0.6}
-            doneAt={2.3}
-          />
-          <SpawnRow
-            icon={<CursorIcon className="sb-ic" />}
-            name="Cursor"
-            task="Refactor the auth flow"
-            status="running"
-            at={1}
-            doneAt={3}
-          />
-          <SpawnRow
-            icon={<PiIcon className="sb-ic" />}
-            name="Pi"
-            task="Write release notes"
-            status="running"
-            at={1.4}
-            doneAt={3.7}
-          />
-          <SpawnRow
-            icon={<OpencodeIcon className="sb-ic" />}
-            name="OpenCode"
-            task="Add integration tests"
-            status="running"
-            at={1.8}
-            doneAt={3.4}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type CustomizeMessage = {
   role: "user" | "agent" | "tool";
   text: string;

@@ -148,26 +148,24 @@ describe("observeSectionViews", () => {
     expect(onView).not.toHaveBeenCalled();
   });
 
-  it("tracks each view and hands it to the page's latest callback", () => {
+  it("tracks each section view once", () => {
     const logos = section("logos");
-    const first = vi.fn();
-    const latest = vi.fn();
-    function Page({ onView }: { onView: (section: string) => void }) {
-      useSectionViews(onView);
+    function Page() {
+      useSectionViews();
       return null;
     }
     const root = createRoot(document.createElement("div"));
-    act(() => root.render(<Page onView={first} />));
-    act(() => root.render(<Page onView={latest} />));
+    act(() => root.render(<Page />));
+    act(() => root.render(<Page />));
 
+    report(logos, 1);
+    vi.advanceTimersByTime(SECTION_VIEW_DWELL_MS);
     report(logos, 1);
     vi.advanceTimersByTime(SECTION_VIEW_DWELL_MS);
     expect(trackLandingEvent).toHaveBeenCalledExactlyOnceWith({
       name: "landing_section_viewed",
       properties: { section: "logos" },
     });
-    expect(first).not.toHaveBeenCalled();
-    expect(latest).toHaveBeenCalledExactlyOnceWith("logos");
     act(() => root.unmount());
   });
 });
