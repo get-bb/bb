@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const OXLINT = join(ROOT, "node_modules", ".bin", "oxlint");
+const OXLINT = join(ROOT, "node_modules", "oxlint", "bin", "oxlint");
 
 const flagged = [
   "export const a = (text: string) => text.slice(0, MAX_CHARS);",
@@ -59,8 +59,9 @@ describe("bb/no-raw-text-truncation", () => {
 
   it("flags length-capped text cuts and leaves index, array, and id cuts alone", async () => {
     const result = await execFileAsync(
-      OXLINT,
+      process.execPath,
       [
+        OXLINT,
         "-c",
         join(dir, ".oxlintrc.json"),
         "-f",
@@ -68,7 +69,10 @@ describe("bb/no-raw-text-truncation", () => {
         join(dir, "fixture.ts"),
       ],
       { cwd: dir },
-    ).catch((error) => error);
+    ).catch((error) => {
+      if (typeof error.code !== "number") throw error;
+      return error;
+    });
     const flaggedLines = [
       ...String(result.stdout).matchAll(
         /fixture\.ts:(\d+):\d+:.*no-raw-text-truncation/gu,
