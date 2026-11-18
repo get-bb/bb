@@ -1,6 +1,7 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { terminalOutputToPlainText } from "@bb/text-utils";
+import type { HostProviderCheck } from "@/hooks/queries/system-queries";
 import { asHttpError } from "@/lib/http-error";
 import { viewerIsOnThisComputer } from "@/lib/local-host-daemon-access";
 import type {
@@ -241,18 +242,6 @@ export function projectsPrimaryAction({
   return added ? "completed" : "skipped";
 }
 
-export type AgentCheck =
-  | { providerId: string; kind: "pending" }
-  | { providerId: string; kind: "unchecked" }
-  | {
-      providerId: string;
-      kind: "answered";
-      state: SystemProviderState;
-      settledAt: number;
-    }
-  | { providerId: string; kind: "absent"; settledAt: number }
-  | { providerId: string; kind: "failed"; error: unknown; settledAt: number };
-
 export type AgentCheckFailure = "timed_out" | "other";
 
 export type AgentRowSoFar =
@@ -321,7 +310,7 @@ function stateRow(
 }
 
 function checkRow(
-  check: Exclude<AgentCheck, { kind: "pending" | "unchecked" }>,
+  check: Exclude<HostProviderCheck, { kind: "pending" | "unchecked" }>,
   names: ReadonlyMap<string, string>,
 ): AgentRowSoFar | null {
   switch (check.kind) {
@@ -349,7 +338,7 @@ export function resolveAgentRows({
 }: {
   states: readonly SystemProviderState[] | undefined;
   statesSettledAt: number;
-  checks: readonly AgentCheck[];
+  checks: readonly HostProviderCheck[];
   names: ReadonlyMap<string, string>;
 }): AgentRowSoFar[] | undefined {
   if (states !== undefined) {
@@ -397,7 +386,7 @@ export function resolveAgentRows({
 
 export function failedAgentProviderIds(
   rows: readonly AgentRowSoFar[] | undefined,
-  checks: readonly AgentCheck[],
+  checks: readonly HostProviderCheck[],
 ): string[] {
   const failed =
     rows === undefined
