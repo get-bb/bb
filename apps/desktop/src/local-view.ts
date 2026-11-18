@@ -18,7 +18,10 @@ export interface StartupAction {
   label: string;
 }
 
-export type LocalViewModel = LoadingViewModel | StartupErrorViewModel;
+export type LocalViewModel =
+  | LoadingViewModel
+  | RendererCrashViewModel
+  | StartupErrorViewModel;
 
 interface LoadingViewModel {
   kind: "loading";
@@ -31,6 +34,13 @@ interface StartupErrorViewModel {
   details: string;
   kind: "error";
   logText: string;
+  title: string;
+}
+
+interface RendererCrashViewModel {
+  details: string;
+  kind: "renderer-crash";
+  reloadHref: string;
   title: string;
 }
 
@@ -76,11 +86,29 @@ function renderErrorView(viewModel: StartupErrorViewModel): string {
   `;
 }
 
+function renderRendererCrashView(viewModel: RendererCrashViewModel): string {
+  return `
+    <main class="shell shell-error">
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.details)}</p>
+      <div class="actions"><a class="action" href="${escapeHtmlText(viewModel.reloadHref)}">Reload</a></div>
+    </main>
+  `;
+}
+
+function renderLocalViewBody(viewModel: LocalViewModel): string {
+  switch (viewModel.kind) {
+    case "loading":
+      return renderLoadingView(viewModel);
+    case "renderer-crash":
+      return renderRendererCrashView(viewModel);
+    case "error":
+      return renderErrorView(viewModel);
+  }
+}
+
 function renderLocalView(viewModel: LocalViewModel): string {
-  const body =
-    viewModel.kind === "loading"
-      ? renderLoadingView(viewModel)
-      : renderErrorView(viewModel);
+  const body = renderLocalViewBody(viewModel);
   return `<!doctype html>
 <html>
 <head>
@@ -154,7 +182,8 @@ function renderLocalView(viewModel: LocalViewModel): string {
       margin: 0;
     }
 
-    button {
+    button,
+    .action {
       background: CanvasText;
       border: 0;
       border-radius: 6px;
@@ -164,6 +193,7 @@ function renderLocalView(viewModel: LocalViewModel): string {
       font-size: 14px;
       font-weight: 600;
       padding: 8px 14px;
+      text-decoration: none;
     }
 
     .actions {
