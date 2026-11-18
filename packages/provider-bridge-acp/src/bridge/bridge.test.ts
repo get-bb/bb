@@ -5462,7 +5462,7 @@ describe("acp bridge: work the agent starts on its own", () => {
     }
   });
 
-  it("opens a turn for a compaction the agent reports only once it has finished", async () => {
+  it("settles a completion-only compaction even when stale progress follows", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
     try {

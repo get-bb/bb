@@ -226,7 +226,7 @@ interface AcpThreadSession {
   compactionAgentMessage: string;
   compactionUpdateOutcome: AcpCompactionUpdateOutcome | undefined;
   openAgentCompactionIds: Set<string>;
-  seenAgentCompactionIds: Set<string>;
+  finishedAgentCompactionIds: Set<string>;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
@@ -2439,7 +2439,7 @@ async function startAgentSession(
     compactionAgentMessage: "",
     compactionUpdateOutcome: undefined,
     openAgentCompactionIds: new Set(),
-    seenAgentCompactionIds: new Set(),
+    finishedAgentCompactionIds: new Set(),
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
@@ -3734,15 +3734,16 @@ function trackAgentCompaction(
   if (session.awaitingFirstPrompt && session.activePromptKind === null) {
     return;
   }
-  const firstSeen = !session.seenAgentCompactionIds.has(update.compactionId);
-  session.seenAgentCompactionIds.add(update.compactionId);
-  const terminal = TERMINAL_COMPACTION_STATUSES.has(update.status);
-  if (terminal) {
+  if (session.finishedAgentCompactionIds.has(update.compactionId)) {
+    return;
+  }
+  if (TERMINAL_COMPACTION_STATUSES.has(update.status)) {
+    session.finishedAgentCompactionIds.add(update.compactionId);
     session.openAgentCompactionIds.delete(update.compactionId);
   } else {
     session.openAgentCompactionIds.add(update.compactionId);
   }
-  if (session.activePromptKind === null && (firstSeen || !terminal)) {
+  if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
 }

@@ -109,7 +109,7 @@
  * - "then-unprompted-compaction" → a compaction_update in_progress, then
  *                                  completed
  * - "then-unprompted-finished-compaction"
- *                                → only a completed compaction_update
+ *                                → a completed update followed by stale progress
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
  * - "stop-reason:<reason>"       → end the turn with that stop reason
@@ -645,6 +645,7 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {
       notifyUpdate(compactionUpdate("cmp-finished", "completed"));
+      notifyUpdate(compactionUpdate("cmp-finished", "in_progress"));
     }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-compaction")) {
     notifyUpdate(messageChunk("prompted reply"));
