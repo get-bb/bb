@@ -469,6 +469,9 @@ function AgentRow({
       {state.status === "installFailed" && agent.installLog !== undefined ? (
         <AgentInstallErrorDetails log={agent.installLog} />
       ) : null}
+      {state.status === "checkFailed" && state.detail !== null ? (
+        <AgentInstallErrorDetails log={state.detail} />
+      ) : null}
     </li>
   );
 }

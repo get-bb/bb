@@ -445,7 +445,10 @@ function AgentStepContainer({
           }),
           machineName: hostName,
         }),
-        retrying: !checksSettled,
+        retrying:
+          rows === undefined
+            ? !checksSettled
+            : rows.some((row) => row.kind === "failed" && row.retrying),
       }
     : null;
   const shownStates = rows?.flatMap((row) =>
@@ -589,6 +592,7 @@ function AgentStepContainer({
               state: {
                 status: "checkFailed",
                 message: agentCheckFailedMessage(row.failure),
+                detail: row.detail,
                 retrying: row.retrying,
               },
             };

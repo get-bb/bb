@@ -116,7 +116,12 @@ export type AgentSetupState =
   | { status: "installing"; update: boolean }
   | { status: "installFailed"; message: string; canInstall: boolean }
   | { status: "unknown"; message: string | null }
-  | { status: "checkFailed"; message: string; retrying: boolean };
+  | {
+      status: "checkFailed";
+      message: string;
+      detail: string | null;
+      retrying: boolean;
+    };
 
 interface ResolveAgentSetupStateArgs {
   health: SystemProviderState;
@@ -237,6 +242,7 @@ export function projectsPrimaryAction({
 
 export type AgentCheck =
   | { providerId: string; kind: "pending" }
+  | { providerId: string; kind: "unchecked" }
   | {
       providerId: string;
       kind: "answered";
@@ -255,6 +261,7 @@ export type AgentRowSoFar =
       providerId: string;
       name: string;
       failure: AgentCheckFailure;
+      detail: string | null;
       retrying: boolean;
     }
   | { kind: "loading"; key: string };
@@ -306,13 +313,14 @@ function stateRow(
         providerId: state.providerId,
         name: state.displayName,
         failure: "other",
+        detail: state.statusMessage,
         retrying,
       }
     : { kind: "agent", state };
 }
 
 function checkRow(
-  check: Exclude<AgentCheck, { kind: "pending" }>,
+  check: Exclude<AgentCheck, { kind: "pending" | "unchecked" }>,
   names: ReadonlyMap<string, string>,
 ): AgentRowSoFar | null {
   switch (check.kind) {
@@ -326,6 +334,7 @@ function checkRow(
         providerId: check.providerId,
         name: names.get(check.providerId) ?? check.providerId,
         failure: checkFailure(check.error),
+        detail: null,
         retrying: false,
       };
   }
@@ -350,6 +359,7 @@ export function resolveAgentRows({
       if (
         check !== undefined &&
         check.kind !== "pending" &&
+        check.kind !== "unchecked" &&
         check.settledAt > statesSettledAt
       ) {
         const row = checkRow(check, names);
@@ -367,14 +377,18 @@ export function resolveAgentRows({
   if (lastShown === -1) return undefined;
   const rows: AgentRowSoFar[] = [];
   for (const check of checks.slice(0, lastShown + 1)) {
-    if (check.kind === "pending") {
+    if (check.kind === "pending" || check.kind === "unchecked") {
       rows.push({ kind: "loading", key: check.providerId });
       continue;
     }
     const row = checkRow(check, names);
     if (row !== null) rows.push(row);
   }
-  if (checks.slice(lastShown + 1).some((check) => check.kind === "pending")) {
+  if (
+    checks
+      .slice(lastShown + 1)
+      .some((check) => check.kind === "pending" || check.kind === "unchecked")
+  ) {
     rows.push({ kind: "loading", key: "more" });
   }
   return rows;

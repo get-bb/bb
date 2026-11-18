@@ -643,6 +643,7 @@ export function AgentOneCheckTimedOut() {
           codex: {
             status: "checkFailed",
             message: agentCheckFailedMessage("timed_out"),
+            detail: null,
             retrying: false,
           },
         }}

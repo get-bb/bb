@@ -28,6 +28,7 @@ import {
   hostProviderStateQueryKey,
   pluginCatalogSearchQueryKey,
   systemProviderCatalogQueryKey,
+  systemProviderStatesQueryKey,
 } from "@/hooks/queries/query-keys";
 import type {
   SystemProviderCatalogEntry,
@@ -145,11 +146,13 @@ function renderFlow({
   initialStep,
   onClose = vi.fn(),
   catalog,
+  cachedStates,
   hostStatus = "connected",
 }: {
   initialStep: OnboardingStepId;
   onClose?: () => void;
   catalog?: string[];
+  cachedStates?: SystemProviderState[];
   hostStatus?: "connected" | "disconnected";
 }) {
   const queryClient = new QueryClient({
@@ -162,6 +165,12 @@ function renderFlow({
     queryClient.setQueryData(
       systemProviderCatalogQueryKey(),
       catalog.map(catalogEntry),
+    );
+  }
+  if (cachedStates !== undefined) {
+    queryClient.setQueryData(
+      systemProviderStatesQueryKey({ environmentId: null, hostId: "host_1" }),
+      { providers: cachedStates },
     );
   }
   const flow = (closing: boolean) => (
@@ -410,6 +419,72 @@ describe("OnboardingFlow", () => {
       expect(within(agentRow("codex")).getByText("Ready")).toBeTruthy(),
     );
     expect(providerStateCalls.slice(callsBeforeRetry)).toEqual(["codex"]);
+  });
+
+  it("lets an agent the cached list could not check be retried on its own", async () => {
+    renderFlow({
+      initialStep: "agent",
+      catalog: ["claude-code", "codex"],
+      cachedStates: [
+        providerState("claude-code"),
+        providerState("codex", {
+          status: "unknown",
+          statusMessage: "Could not determine the codex version.",
+        }),
+      ],
+    });
+    providerStateAnswers.set("codex", () =>
+      Promise.resolve({ providers: [providerState("codex")] }),
+    );
+
+    const codexRow = await waitFor(() => agentRow("codex"));
+    expect(within(codexRow).getByText("Couldn't load agent")).toBeTruthy();
+    fireEvent.click(
+      within(codexRow).getByRole("button", { name: /Show details/u }),
+    );
+    expect(
+      within(codexRow).getByText("Could not determine the codex version."),
+    ).toBeTruthy();
+    const retry = within(codexRow).getByRole("button", { name: "Retry" });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+
+    const callsBeforeRetry = providerStateCalls.length;
+    fireEvent.click(retry);
+
+    await waitFor(() =>
+      expect(within(agentRow("codex")).getByText("Ready")).toBeTruthy(),
+    );
+    expect(providerStateCalls.slice(callsBeforeRetry)).toEqual(["codex"]);
+  });
+
+  it("lets the list be retried when an offline machine's cached agents all failed", async () => {
+    renderFlow({
+      initialStep: "agent",
+      catalog: ["claude-code", "codex"],
+      hostStatus: "disconnected",
+      cachedStates: [
+        providerState("claude-code", { status: "unknown" }),
+        providerState("codex", { status: "unknown" }),
+      ],
+    });
+
+    expect(
+      await screen.findByText(
+        "Can't reach bee. Make sure bb is running there, then retry.",
+      ),
+    ).toBeTruthy();
+    const retry = button(/^Retry$/u);
+    expect(retry.disabled).toBe(false);
+
+    const callsBeforeRetry = providerStateCalls.length;
+    fireEvent.click(retry);
+
+    await waitFor(() =>
+      expect(providerStateCalls.slice(callsBeforeRetry).sort()).toEqual([
+        "claude-code",
+        "codex",
+      ]),
+    );
   });
 
   it("says an agent couldn't load when its check fails for another reason", async () => {

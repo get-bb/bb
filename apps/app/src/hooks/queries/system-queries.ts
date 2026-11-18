@@ -736,6 +736,7 @@ function hostProviderStateQueryOptions(args: {
 
 export type HostProviderCheck =
   | { providerId: string; kind: "pending" }
+  | { providerId: string; kind: "unchecked" }
   | {
       providerId: string;
       kind: "answered";
@@ -759,9 +760,8 @@ export function useHostProviderStatesAsTheyLoad(args: {
     combine: (results) =>
       results.map((result, index): HostProviderCheck => {
         const providerId = args.providerIds[index] ?? "";
-        if (result.isFetching || result.isPending) {
-          return { providerId, kind: "pending" };
-        }
+        if (result.isFetching) return { providerId, kind: "pending" };
+        if (result.isPending) return { providerId, kind: "unchecked" };
         if (result.isError) {
           return {
             providerId,

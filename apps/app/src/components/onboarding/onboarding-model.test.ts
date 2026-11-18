@@ -782,6 +782,7 @@ describe("resolveAgentRows", () => {
         providerId: "claude-code",
         name: "Claude Code",
         failure: "timed_out",
+        detail: null,
         retrying: false,
       },
       { kind: "agent", state: pi },
@@ -793,6 +794,7 @@ describe("resolveAgentRows", () => {
       providerId: "claude-code",
       displayName: "Claude Code",
       status: "unknown",
+      statusMessage: "Could not determine the version.",
     });
     expect(resolve([], [codex, unknown], 5)).toEqual([
       { kind: "agent", state: codex },
@@ -801,9 +803,13 @@ describe("resolveAgentRows", () => {
         providerId: "claude-code",
         name: "Claude Code",
         failure: "other",
+        detail: "Could not determine the version.",
         retrying: false,
       },
     ]);
+    expect(
+      resolve([{ providerId: "claude-code", kind: "unchecked" }], [unknown], 5),
+    ).toEqual([expect.objectContaining({ kind: "failed", retrying: false })]);
   });
 
   it("marks a failed agent as retrying while its recheck runs, then shows the fresh answer", () => {
