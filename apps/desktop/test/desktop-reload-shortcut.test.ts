@@ -6,6 +6,7 @@ function input(
 ): Parameters<typeof resolveDesktopReloadShortcut>[0] {
   return {
     alt: false,
+    code: "KeyR",
     control: false,
     isAutoRepeat: false,
     isComposing: false,
@@ -23,6 +24,20 @@ describe("resolveDesktopReloadShortcut", () => {
     expect(resolveDesktopReloadShortcut(input({ shift: true }))).toBe(
       "force-reload",
     );
+  });
+
+  it.each([
+    { layout: "Russian", key: "к", code: "KeyR" },
+    { layout: "Greek", key: "ρ", code: "KeyR" },
+    { layout: "Dvorak", key: "r", code: "KeyO" },
+  ])("reloads from the R key on a $layout layout", ({ key, code }) => {
+    expect(resolveDesktopReloadShortcut(input({ key, code }))).toBe("reload");
+  });
+
+  it("follows Latin layouts rather than the physical R position", () => {
+    expect(
+      resolveDesktopReloadShortcut(input({ key: "p", code: "KeyR" })),
+    ).toBeNull();
   });
 
   it("ignores unrelated, repeated, and composing input", () => {
