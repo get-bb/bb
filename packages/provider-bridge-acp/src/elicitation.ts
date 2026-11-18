@@ -191,8 +191,10 @@ function questionFor(
 ): PendingInteractionUserQuestionQuestion {
   const label = readString(schema, "title")?.trim() || name;
   const description = readString(schema, "description")?.trim();
+  // omp sends a lone question both as the form message and as the field title.
+  const lead = message !== undefined && message !== label ? message : undefined;
   const lines = [
-    ...(message ? [message, ""] : []),
+    ...(lead ? [lead, ""] : []),
     label,
     ...(description ? [description] : []),
     ...(field.kind === "typedChoice"
