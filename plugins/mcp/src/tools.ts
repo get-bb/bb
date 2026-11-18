@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import type { CliRunner } from "./cli-runner.js";
 import {
   SEARCH_DEFAULT_LIMIT,
@@ -12,12 +13,6 @@ import {
   type SandboxHostFunction,
   type SandboxLimits,
 } from "./sandbox.js";
-
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
 
 export const SCRIPT_TOTAL_DEADLINE_MS = 25_000;
 const CLI_CALL_TIMEOUT_MS = 24_000;

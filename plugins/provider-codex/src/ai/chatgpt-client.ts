@@ -15,7 +15,7 @@ import {
   type CodexOpenAiApiKeyCredentials,
 } from "./codex-auth.js";
 import { AiServiceFailure } from "./failure.js";
-import { sliceUtf16Head } from "../utf16.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 type InferenceCompleteCommand = CodexAiCompleteInput;
 type VoiceTranscribeCommand = CodexAiTranscribeInput;

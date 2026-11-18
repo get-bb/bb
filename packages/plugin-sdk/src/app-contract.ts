@@ -6334,6 +6334,12 @@ export interface PluginSdkApp {
     event: ExperimentalShortcutKeyEvent,
     key: string,
   ): boolean;
+  /**
+   * Cuts `value` to at most `maxChars` UTF-16 code units without splitting a
+   * surrogate pair, so an emoji at the cut is dropped whole instead of leaving
+   * half of it. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sliceUtf16Head(value: string, maxChars: number): string;
   experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
   experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
   /**

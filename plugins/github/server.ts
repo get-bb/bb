@@ -10,14 +10,9 @@ import {
   defineCli,
   type BbPluginApi,
   type PluginCliResult,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
 
 const SYNC_INTERVAL_MS = 15 * 60_000;
 const SYNC_RETRY_MAX_MS = 5 * 60_000;

@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import {
   experimental_hostToolchain as hostToolchain,
   experimental_execHostFile,
@@ -16,12 +17,6 @@ import {
   resolveDefaultInterpreter,
   scriptsRoot,
 } from "./script-files.js";
-
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
 
 const execFileAsync = experimental_execHostFile;
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;

@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginCliContext,
   type PluginCliResult,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -14,12 +15,6 @@ import {
   secretRequestResponseSchema,
 } from "./secret-request.js";
 import { assertNoDuplicateAssignments, reconcileDotenv } from "./dotenv.js";
-
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
 
 interface ParsedRequest {
   names: string[];

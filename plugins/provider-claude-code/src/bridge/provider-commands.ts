@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { probeClaudeInitialization } from "./initialization-probe.js";
 import { isClaudeSkillPluginName } from "./skill-plugins.js";
-import { sliceUtf16Head } from "../utf16.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 export const PROVIDER_COMMANDS_STATE_KIND = "bb/provider-commands";
 

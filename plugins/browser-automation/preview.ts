@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PreviewFrame, PreviewSize } from "./contracts.js";
-import { sliceUtf16Head } from "./utf16.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 const messageSchema = z.object({
   id: z.number().int().optional(),

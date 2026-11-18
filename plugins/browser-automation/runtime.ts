@@ -16,7 +16,7 @@ import { outputSchema, type RunOutput } from "./contracts.js";
 import { createPreview, type PreviewSource } from "./preview.js";
 import { execute, OutputLimitError, supervise } from "./process.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
-import { sliceUtf16Head } from "./utf16.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 const frameSchema = z.discriminatedUnion("type", [
   z.object({

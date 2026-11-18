@@ -35,7 +35,7 @@ import {
   type LightboxTarget,
 } from "./lightbox-store.js";
 import { PREVIEW_DIRECTIVE_ID } from "./preview-directive.js";
-import { sliceUtf16Head } from "./utf16.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/app";
 
 const MIN_POLL_INTERVAL_MS = 400;
 const MAX_RETRY_INTERVAL_MS = 15_000;

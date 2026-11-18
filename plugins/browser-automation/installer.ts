@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { sliceUtf16Tail } from "./utf16.js";
+import { experimental_sliceUtf16Tail as sliceUtf16Tail } from "@get-bb/plugin-sdk/host";
 
 export const runtimePlatforms = [
   "linux-x64",

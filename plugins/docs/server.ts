@@ -4,6 +4,7 @@ import {
   experimental_joinHostPath as joinPath,
   experimental_getHostPathDirname as getHostPathDirname,
   experimental_getRelativeHostPath as getRelativeHostPath,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { proposalSchema, type Proposal } from "./proposals.js";
 import os from "node:os";
@@ -47,12 +48,6 @@ import {
   watchNativeVault,
   type WatchVault,
 } from "./vault-watches.js";
-
-function sliceUtf16Head(value: string, maxChars: number): string {
-  const end = Math.min(value.length, Math.max(0, maxChars));
-  const last = value.charCodeAt(end - 1);
-  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
-}
 
 const DEFAULT_DIR = "~/Notes";
 const PREVIEW_LENGTH = 100;
