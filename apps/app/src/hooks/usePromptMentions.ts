@@ -25,6 +25,7 @@ import {
   PLUGIN_MENTION_TRIGGER_VALUES,
   type OrderedMentionSuggestions,
   type PluginMentionTrigger,
+  type StaleMentionKinds,
 } from "@bb/client-core";
 import { buildPromptMentionResults } from "./promptMentionCandidates";
 
@@ -45,6 +46,7 @@ interface PromptMentionQuery {
 
 interface UsePromptMentionsResult {
   results: OrderedMentionSuggestions;
+  staleKinds: StaleMentionKinds;
   isLoading: boolean;
   isRefreshing: boolean;
   isError: boolean;
@@ -251,6 +253,16 @@ export function usePromptMentions(
     ],
   );
 
+  const pathsStale = includeBuiltInSources && hasQuery && pathSearch.isStale;
+  const pluginsStale =
+    hasMentionProviders &&
+    pluginSearchMatchesInput &&
+    pluginSearch.isPlaceholderData;
+  const staleKinds = useMemo<StaleMentionKinds>(
+    () => ({ path: pathsStale, plugin: pluginsStale }),
+    [pathsStale, pluginsStale],
+  );
+
   const isSearching =
     (includeBuiltInSources &&
       (pathSearch.isDebouncing ||
@@ -279,6 +291,7 @@ export function usePromptMentions(
 
   return {
     results,
+    staleKinds,
     isLoading,
     isRefreshing,
     isError,

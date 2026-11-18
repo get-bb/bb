@@ -33,6 +33,7 @@ describe("MentionMenu", () => {
                 {
                   key: "workspace",
                   label: "Workspace",
+                  stale: false,
                   suggestions: [suggestion],
                 },
               ],
@@ -78,8 +79,18 @@ describe("MentionMenu", () => {
             kind: "results",
             refreshing: false,
             groups: [
-              { key: "a", label: "A", suggestions: [path("one"), path("two")] },
-              { key: "b", label: "B", suggestions: [path("three")] },
+              {
+                key: "a",
+                label: "A",
+                stale: false,
+                suggestions: [path("one"), path("two")],
+              },
+              {
+                key: "b",
+                label: "B",
+                stale: false,
+                suggestions: [path("three")],
+              },
             ],
           },
         }}

@@ -488,6 +488,7 @@ export function NewTabFileSearch({
     isLoading,
     fileSearchError,
     isDebouncing,
+    isStale,
     isUnavailable,
   } = useFileSearchSuggestions({
     projectId,
@@ -587,9 +588,10 @@ export function NewTabFileSearch({
 
   const handleFileSelect = useCallback(
     (suggestion: FilePathSearchSuggestion) => {
+      if (isStale) return;
       onSelect({ source: suggestion.source, path: suggestion.path });
     },
-    [onSelect],
+    [isStale, onSelect],
   );
 
   const handleRecentSelect = useCallback(

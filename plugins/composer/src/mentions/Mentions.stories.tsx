@@ -379,7 +379,8 @@ function resultsState(
     const [key, label] = groupLabel(suggestion);
     const group = groups.get(key);
     if (group) group.suggestions.push(suggestion);
-    else groups.set(key, { key, label, suggestions: [suggestion] });
+    else
+      groups.set(key, { key, label, stale: false, suggestions: [suggestion] });
   }
   return { kind: "results", refreshing: false, groups: [...groups.values()] };
 }

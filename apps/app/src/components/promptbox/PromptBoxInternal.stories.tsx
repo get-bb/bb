@@ -848,6 +848,7 @@ function WithLiveMentionsRow() {
                   query: query.text,
                   suggestions: filterLiveMentions(query.text),
                 }),
+                { path: false, plugin: false },
               ),
       })}
     >

@@ -160,10 +160,14 @@ which the surface configures with what to search (project, environment,
 provider, triggers): a keystroke in an open menu renders the provider and the
 composer once, and plain typing never runs the search. A query passed during
 render would have to reach the provider from an effect, a second render.
-Both report `refreshing` while earlier results show. The command search has
-no paging, since bb returns every match, and no prefetch: commands load when
-the first command query arrives and report `loading` until they do, so
-focusing a composer costs no request. A character is a mention trigger or a command trigger, never both;
+Both report `refreshing` while earlier results show. A mention group whose
+rows answer an earlier query than the live one (a path or plugin search still
+debouncing or fetching) carries `stale: true`; it stays visible so the menu
+does not collapse mid-typing, and bb's composer refuses to insert its rows
+from Enter, Tab or a click until the live query's results replace it. The
+command search has no paging, since bb returns every match, and no prefetch:
+commands load when the first command query arrives and report `loading` until
+they do, so focusing a composer costs no request. A character is a mention trigger or a command trigger, never both;
 when a plugin mention provider claims `$`, `$` opens the mention menu.
 Every type in the contract is public: mentions, attachments and history use
 the `useComposer()` shapes, and suggestions carry the mention to insert plus

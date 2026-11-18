@@ -5,6 +5,7 @@ import {
   type PluginMentionTrigger,
   type PromptMentionSuggestion,
   type ProviderCommandSuggestion,
+  type StaleMentionKinds,
 } from "@bb/client-core";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
@@ -21,11 +22,15 @@ import type {
 interface ComposerSearchResults {
   mentionSuggestions: readonly PromptMentionSuggestion[];
   commandSuggestions: readonly ProviderCommandSuggestion[];
+  staleMentionKinds: StaleMentionKinds;
 }
+
+const FRESH_MENTION_KINDS: StaleMentionKinds = { path: false, plugin: false };
 
 let state: ComposerSearchResults = {
   mentionSuggestions: [],
   commandSuggestions: [],
+  staleMentionKinds: FRESH_MENTION_KINDS,
 };
 const listeners = new Set<() => void>();
 
@@ -53,19 +58,23 @@ export const composerSearchQueries = {
 export function setComposerSearchResults({
   mentionSuggestions = [],
   commandSuggestions = [],
+  staleMentionKinds = FRESH_MENTION_KINDS,
 }: {
   mentionSuggestions?: readonly PromptMentionSuggestion[];
   commandSuggestions?: readonly ProviderCommandSuggestion[];
+  staleMentionKinds?: StaleMentionKinds;
 } = {}): void {
   composerSearchQueries.mention.mockClear();
   composerSearchQueries.command.mockClear();
   if (
     sameItems(state.mentionSuggestions, mentionSuggestions) &&
-    sameItems(state.commandSuggestions, commandSuggestions)
+    sameItems(state.commandSuggestions, commandSuggestions) &&
+    state.staleMentionKinds.path === staleMentionKinds.path &&
+    state.staleMentionKinds.plugin === staleMentionKinds.plugin
   ) {
     return;
   }
-  state = { mentionSuggestions, commandSuggestions };
+  state = { mentionSuggestions, commandSuggestions, staleMentionKinds };
   for (const listener of [...listeners]) listener();
 }
 
@@ -81,7 +90,7 @@ function useFakePromptMentions(
   _source: PromptMentionSource,
   mention: { text: string; trigger: PluginMentionTrigger } | null,
 ): ReturnType<typeof usePromptMentions> {
-  const { mentionSuggestions } = useComposerSearchResults();
+  const { mentionSuggestions, staleMentionKinds } = useComposerSearchResults();
   composerSearchQueries.mention(
     mention?.text ?? null,
     mention?.trigger ?? null,
@@ -91,6 +100,7 @@ function useFakePromptMentions(
       query: mention?.text.trim() ?? "",
       suggestions: mentionSuggestions,
     }),
+    staleKinds: staleMentionKinds,
     isLoading: false,
     isRefreshing: false,
     isError: false,

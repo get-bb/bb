@@ -206,6 +206,7 @@ describe("usePromptMentions", () => {
       expect(result.current.results.suggestions).toHaveLength(1);
     });
     expect(result.current.isRefreshing).toBe(false);
+    expect(result.current.staleKinds.plugin).toBe(false);
 
     rerender({ mention: { text: "43", trigger: "#" } });
     await waitFor(() => {
@@ -214,6 +215,7 @@ describe("usePromptMentions", () => {
     });
     expect(result.current.isLoading).toBe(false);
     expect(result.current.results.suggestions).toHaveLength(1);
+    expect(result.current.staleKinds.plugin).toBe(true);
 
     act(() => {
       releaseSecondSearch?.();
@@ -221,5 +223,6 @@ describe("usePromptMentions", () => {
     await waitFor(() => {
       expect(result.current.isRefreshing).toBe(false);
     });
+    expect(result.current.staleKinds.plugin).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ export type MenuMentionSuggestion =
 export interface MenuMentionGroup {
   key: string;
   label: string;
+  stale: boolean;
   suggestions: readonly MenuMentionSuggestion[];
 }
 
@@ -95,7 +96,7 @@ export function attachmentMentionGroup(
     .map(({ suggestion }) => suggestion);
   return suggestions.length === 0
     ? null
-    : { key: "attachments", label: "Attachments", suggestions };
+    : { key: "attachments", label: "Attachments", stale: false, suggestions };
 }
 
 function commandSuggestionKey(

@@ -32,7 +32,23 @@ export type ComposerMentionSuggestionShape = { key: string; text: string } & (
 export interface ComposerMentionSuggestionGroupShape {
   key: string;
   label: string;
+  stale: boolean;
   suggestions: readonly ComposerMentionSuggestionShape[];
+}
+
+export interface StaleMentionKinds {
+  path: boolean;
+  plugin: boolean;
+}
+
+function isStaleMentionSuggestion(
+  suggestion: PromptMentionSuggestion,
+  staleKinds: StaleMentionKinds,
+): boolean {
+  return (
+    (suggestion.kind === "path" && staleKinds.path) ||
+    (suggestion.kind === "plugin" && staleKinds.plugin)
+  );
 }
 
 export function promptMentionSuggestionKey(
@@ -144,10 +160,14 @@ export function composerMentionSuggestionFromPrompt(
 
 export function composerMentionGroupsFromOrdered(
   results: OrderedMentionSuggestions,
+  staleKinds: StaleMentionKinds,
 ): ComposerMentionSuggestionGroupShape[] {
   return results.groups.map((group) => ({
     key: group.key,
     label: group.label,
+    stale: group.suggestions.some((suggestion) =>
+      isStaleMentionSuggestion(suggestion, staleKinds),
+    ),
     suggestions: group.suggestions.map(composerMentionSuggestionFromPrompt),
   }));
 }

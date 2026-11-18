@@ -5124,6 +5124,60 @@ describe("ComposerBox mention triggers", () => {
     );
   });
 
+  it("keeps the typed query when a stale path row is chosen", async () => {
+    const stalePath: PromptMentionSuggestion = {
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
+      path: "src/compiler.ts",
+      name: "compiler.ts",
+      replacement: "src/compiler.ts",
+    };
+    const livePath: PromptMentionSuggestion = {
+      ...stalePath,
+      path: "src/components.ts",
+      name: "components.ts",
+      replacement: "src/components.ts",
+    };
+    const { changes, onSubmit, promptBoxRef } = renderPromptBox(
+      "Read @src/compo",
+      { mentionSuggestions: [stalePath] },
+    );
+    setComposerSearchResults({
+      mentionSuggestions: [stalePath],
+      staleMentionKinds: { path: true, plugin: false },
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const staleRow = await screen.findByRole("button", {
+      name: /compiler\.ts/u,
+    });
+    const changeCount = changes.length;
+    await act(async () => {
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Tab" });
+      fireEvent.mouseDown(staleRow);
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(changes).toHaveLength(changeCount);
+    expect(getPromptEditorElement().textContent).toBe("Read @src/compo");
+
+    act(() => setComposerSearchResults({ mentionSuggestions: [livePath] }));
+    await screen.findByRole("button", { name: /components\.ts/u });
+    await act(async () => {
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+    });
+
+    await waitFor(() =>
+      expect(latestChange(changes)?.mentions).toEqual([
+        expect.objectContaining({
+          resource: expect.objectContaining({ path: "src/components.ts" }),
+        }),
+      ]),
+    );
+  });
+
   it("keeps the keyboard-selected mention when a stronger delayed result arrives", async () => {
     const threadSuggestion: PromptMentionSuggestion = {
       kind: "thread",

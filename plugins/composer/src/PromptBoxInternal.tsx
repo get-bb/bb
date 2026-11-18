@@ -2315,6 +2315,17 @@ export function PromptBoxInternal({
           : [],
     [activeTriggerKind, composerMentionGroups, orderedCommandSuggestions],
   );
+  const staleSuggestionKeys = useMemo(
+    () =>
+      new Set(
+        composerMentionGroups.flatMap((group) =>
+          group.stale
+            ? group.suggestions.map((suggestion) => suggestion.key)
+            : [],
+        ),
+      ),
+    [composerMentionGroups],
+  );
   const selectedSuggestionIndex = useMemo(() => {
     if (selectedSuggestionKey === null) return -1;
     return activeSuggestions.findIndex(
@@ -2590,9 +2601,10 @@ export function PromptBoxInternal({
         applyCommandSuggestion(item);
         return;
       }
+      if (staleSuggestionKeys.has(item.key)) return;
       applyMentionSuggestion(item);
     },
-    [applyCommandSuggestion, applyMentionSuggestion],
+    [applyCommandSuggestion, applyMentionSuggestion, staleSuggestionKeys],
   );
 
   const handleComposerMenuKeyDown = useCallback(

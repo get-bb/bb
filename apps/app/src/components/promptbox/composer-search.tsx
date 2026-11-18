@@ -76,7 +76,10 @@ export const ComposerSearchProvider = memo(function ComposerSearchProvider({
       groups:
         mentionQuery === null
           ? []
-          : composerMentionGroupsFromOrdered(mention.results),
+          : composerMentionGroupsFromOrdered(
+              mention.results,
+              mention.staleKinds,
+            ),
       search: (query) =>
         setMentionQuery((current) =>
           sameQuery(current, query) ? current : query,

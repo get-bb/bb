@@ -110,9 +110,10 @@ describe("composer mention suggestion conversion", () => {
     })),
     "",
   );
+  const fresh = { path: false, plugin: false };
 
   it("keeps groups and their order in the public shape", () => {
-    const groups = composerMentionGroupsFromOrdered(results);
+    const groups = composerMentionGroupsFromOrdered(results, fresh);
     expect(
       groups.map((group) => group.suggestions.map((item) => item.text)),
     ).toEqual(
@@ -130,28 +131,50 @@ describe("composer mention suggestion conversion", () => {
     );
   });
 
+  it("marks only the groups whose source answers an earlier query", () => {
+    const staleness = (staleKinds: { path: boolean; plugin: boolean }) =>
+      composerMentionGroupsFromOrdered(results, staleKinds).map((group) => [
+        group.key,
+        group.stale,
+      ]);
+
+    expect(staleness({ path: true, plugin: false })).toEqual([
+      ["path", true],
+      ["thread", false],
+      ["plugin", false],
+    ]);
+    expect(staleness({ path: false, plugin: true })).toEqual([
+      ["path", false],
+      ["thread", false],
+      ["plugin", true],
+    ]);
+  });
+
   it("tells an untitled thread apart while its pill falls back to the id", () => {
-    const [group] = composerMentionGroupsFromOrdered({
-      groups: [
-        {
-          key: "threads",
-          label: "Threads",
-          startIndex: 0,
-          suggestions: [
-            {
-              kind: "thread",
-              path: "thread:thr_1",
-              replacement: "thread:thr_1",
-              projectId: "prj_1",
-              threadId: "thr_1",
-              title: "",
-              relation: null,
-            },
-          ],
-        },
-      ],
-      suggestions: [],
-    });
+    const [group] = composerMentionGroupsFromOrdered(
+      {
+        groups: [
+          {
+            key: "threads",
+            label: "Threads",
+            startIndex: 0,
+            suggestions: [
+              {
+                kind: "thread",
+                path: "thread:thr_1",
+                replacement: "thread:thr_1",
+                projectId: "prj_1",
+                threadId: "thr_1",
+                title: "",
+                relation: null,
+              },
+            ],
+          },
+        ],
+        suggestions: [],
+      },
+      fresh,
+    );
     expect(group?.suggestions[0]).toMatchObject({
       title: null,
       mention: { label: "thr_1" },

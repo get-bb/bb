@@ -42,6 +42,7 @@ interface UsePathSuggestionsResult {
   isRefreshing: boolean;
   isError: boolean;
   isDebouncing: boolean;
+  isStale: boolean;
 }
 
 interface RankedPathSuggestion extends PathSuggestion {
@@ -237,6 +238,10 @@ export function usePathSuggestions(
   const isPending =
     (isWorkspaceQueryEnabled && workspaceQuery.isPending) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isPending);
+  const isStale =
+    isDebouncing ||
+    (isWorkspaceQueryEnabled && workspaceQuery.isPlaceholderData) ||
+    (isThreadStorageQueryEnabled && threadStorageQuery.isPlaceholderData);
   const isSearching = isDebouncing || isPending || isFetching;
   const isLoading = hasQuery && suggestions.length === 0 && isSearching;
   const isRefreshing = hasQuery && suggestions.length > 0 && isSearching;
@@ -251,5 +256,6 @@ export function usePathSuggestions(
     isRefreshing,
     isError,
     isDebouncing,
+    isStale,
   };
 }

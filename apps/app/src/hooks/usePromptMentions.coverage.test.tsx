@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -185,4 +185,79 @@ it("keeps successful mentions when storage search fails", async () => {
     expect.objectContaining({ kind: "thread", threadId: "thr_picker_0" }),
   );
   expect(picker.result.current.isError).toBe(false);
+});
+
+it("marks path rows from an earlier query stale until the live query answers", async () => {
+  vi.spyOn(sdk.system, "config").mockResolvedValue(makeSystemConfig());
+  const pathRequests: string[] = [];
+  let releaseLagPaths: (() => void) | null = null;
+  const pathsResponse = (path: string) =>
+    new Response(
+      JSON.stringify({
+        paths: [
+          {
+            kind: "file",
+            path,
+            name: path.split("/").at(-1),
+            score: 100,
+            positions: [],
+          },
+        ],
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+        "http://localhost",
+      );
+      if (url.pathname === "/api/v1/plugins/contributions") {
+        return new Response(
+          JSON.stringify({ threadActions: [], mentionProviders: [] }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/api/v1/projects/proj_picker/paths") {
+        const query = url.searchParams.get("query") ?? "";
+        pathRequests.push(query);
+        if (query === "old") return pathsResponse("docs/old-notes.md");
+        return new Promise<Response>((resolve) => {
+          releaseLagPaths = () => resolve(pathsResponse("docs/lag-notes.md"));
+        });
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    }),
+  );
+  const { queryClient, wrapper } = createQueryClientTestHarness();
+  queryClients.push(queryClient);
+  queryClient.setQueryData(sidebarNavigationQueryKey(), navigation(0));
+  const { result, rerender } = renderHook(
+    ({ query }: { query: string }) =>
+      usePromptMentions(
+        { projectId: "proj_picker", environmentId: null },
+        { text: query, trigger: "@" },
+      ),
+    { wrapper, initialProps: { query: "old" } },
+  );
+  const pathRows = () =>
+    result.current.results.suggestions.flatMap((suggestion) =>
+      suggestion.kind === "path" ? [suggestion.path] : [],
+    );
+
+  await waitFor(() => expect(pathRows()).toEqual(["docs/old-notes.md"]));
+  expect(result.current.staleKinds.path).toBe(false);
+
+  rerender({ query: "lag" });
+  expect(pathRows()).toEqual(["docs/old-notes.md"]);
+  expect(result.current.staleKinds.path).toBe(true);
+
+  await waitFor(() => expect(pathRequests).toContain("lag"));
+  expect(pathRows()).toEqual(["docs/old-notes.md"]);
+  expect(result.current.staleKinds.path).toBe(true);
+
+  act(() => releaseLagPaths?.());
+  await waitFor(() => expect(pathRows()).toEqual(["docs/lag-notes.md"]));
+  expect(result.current.staleKinds.path).toBe(false);
 });

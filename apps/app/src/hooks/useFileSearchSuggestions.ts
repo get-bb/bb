@@ -28,6 +28,7 @@ interface UseFileSearchSuggestionsResult {
   isLoading: boolean;
   fileSearchError: boolean;
   isDebouncing: boolean;
+  isStale: boolean;
   isUnavailable: boolean;
 }
 
@@ -81,6 +82,7 @@ export function useFileSearchSuggestions(
     isLoading: suggestions.length === 0 && pathSuggestions.isLoading,
     fileSearchError: pathSuggestions.isError,
     isDebouncing: pathSuggestions.isDebouncing,
+    isStale: pathSuggestions.isStale,
     isUnavailable: !canSearchWorkspace && !canSearchThreadStorage,
   };
 }

@@ -2997,6 +2997,11 @@ export type ExperimentalComposerMentionSuggestion = {
 export interface ExperimentalComposerMentionSuggestionGroup {
   key: string;
   label: string;
+  /**
+   * The rows answer an earlier query: they stay visible while the current
+   * query loads, but the composer must not insert them.
+   */
+  stale: boolean;
   suggestions: readonly ExperimentalComposerMentionSuggestion[];
 }
 
