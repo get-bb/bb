@@ -72,19 +72,21 @@ export function PluginMarketplaceByline({
   );
 }
 
-export function PluginMarketplaceCountTag({
+export function PluginMarketplaceBadges({
   entry,
 }: {
   entry: Pick<PluginCatalogSearchEntry, "listings">;
 }) {
   if (entry.listings.length < 2) return null;
   return (
-    <PluginNameTag
-      tag={{
-        label: `${entry.listings.length} marketplaces`,
-        tone: "neutral",
-      }}
-    />
+    <span className="flex flex-wrap items-center gap-1">
+      {entry.listings.map((listing) => (
+        <PluginNameTag
+          key={listing.marketplace}
+          tag={{ label: listing.marketplaceDisplayName, tone: "neutral" }}
+        />
+      ))}
+    </span>
   );
 }
 
