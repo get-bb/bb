@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   afterAll,
   afterEach,
@@ -22,6 +24,7 @@ import {
 } from "../src/workspace-git.js";
 import { fetchRemoteBranches } from "../src/branch-options.js";
 
+const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
 async function initReadGitBlobRepo() {
@@ -297,6 +300,51 @@ describe("user Git settings on machine reads", () => {
       ),
     ).resolves.toEqual(["machine", "never", "false"]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "leaves signature checks out of log and show output under log.showSignature",
+    async () => {
+      const repoPath = await repoWithConfig({});
+      const keyPath = path.join(path.dirname(repoPath), "signing-key");
+      await execFileAsync("ssh-keygen", [
+        "-q",
+        "-t",
+        "ed25519",
+        "-N",
+        "",
+        "-f",
+        keyPath,
+      ]);
+      const allowedSigners = path.join(path.dirname(repoPath), "signers");
+      await fs.writeFile(
+        allowedSigners,
+        `bb@example.com ${await fs.readFile(`${keyPath}.pub`, "utf8")}`,
+      );
+      for (const [key, value] of [
+        ["gpg.format", "ssh"],
+        ["user.signingKey", `${keyPath}.pub`],
+        ["gpg.ssh.allowedSignersFile", allowedSigners],
+        ["log.showSignature", "true"],
+      ]) {
+        await runGit(["config", key, value], { cwd: repoPath });
+      }
+      await runGit(["commit", "-S", "--allow-empty", "-m", "signed"], {
+        cwd: repoPath,
+      });
+      const sha = (
+        await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
+      ).stdout.trim();
+
+      const log = await runGit(["log", "-1", "--format=%H"], {
+        cwd: repoPath,
+      });
+      const show = await runGit(["show", "--format=%H", "--no-patch", "HEAD"], {
+        cwd: repoPath,
+      });
+
+      expect([log.stdout, show.stdout]).toEqual([`${sha}\n`, `${sha}\n`]);
+    },
+  );
 });
 
 describe("detectGitRepoKind", () => {

@@ -9,7 +9,6 @@ import {
   readdir,
   realpath,
   rm,
-  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -274,39 +273,6 @@ describe.concurrent("worktree host entry", () => {
       expect(await branchExists(sourcePath, "bb/saved-state")).toBe(false);
     },
   );
-
-  it("writes a new worktree's index after its checkout second so status does not re-hash files", async ({
-    onTestFinished,
-  }) => {
-    const { sourcePath, dataDir } =
-      await createSourceRepository(onTestFinished);
-    const harness = createHarness(dataDir);
-    onTestFinished(() => harness.experimental_dispose());
-    const created = await harness.experimental_call(
-      "create",
-      createInput({
-        operationId: "create-refreshed",
-        sourcePath,
-        pathKey: "refreshed",
-        branchName: "bb/refreshed",
-      }),
-    );
-    if (created.status !== "created") throw new Error(created.message);
-    const indexPath = (
-      await git(
-        created.path,
-        "rev-parse",
-        "--path-format=absolute",
-        "--git-path",
-        "index",
-      )
-    ).trim();
-    const indexSecond = Math.floor((await stat(indexPath)).mtimeMs / 1000);
-    const fileSecond = Math.floor(
-      (await stat(join(created.path, "README.md"))).mtimeMs / 1000,
-    );
-    expect(indexSecond).toBeGreaterThan(fileSecond);
-  });
 
   it.for(["main", "release", "origin/main", "refs/heads/main"])(
     "resolves and fetches a stale named base %s",

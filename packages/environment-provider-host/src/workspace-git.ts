@@ -134,6 +134,7 @@ const MACHINE_READ_GIT_CONFIG: readonly GitConfigEntry[] = [
   ["diff.suppressBlankEmpty", "false"],
   ["diff.relative", "false"],
   ["diff.submodule", "short"],
+  ["log.showSignature", "false"],
 ];
 
 const GIT_CONFIG_ENV_KEY = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/u;
