@@ -32,6 +32,7 @@ function response(rows: TimelineRow[]): ThreadTimelineWindow {
     activeThinking: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
+    pendingSteers: [],
     pendingTodos: null,
     extensionStates: {},
     providerCommands: null,

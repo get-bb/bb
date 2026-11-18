@@ -589,10 +589,13 @@ export function registerShowCommand(
           page = older.timelinePage;
         }
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
-        const text = formatThreadTimelineText(rows, {
-          verbose: format === "verbose",
-          color,
-        });
+        const text = formatThreadTimelineText(
+          [...rows, ...timeline.pendingSteers],
+          {
+            verbose: format === "verbose",
+            color,
+          },
+        );
         const notice =
           page.olderCursor !== null
             ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`

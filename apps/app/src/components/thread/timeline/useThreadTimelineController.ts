@@ -323,10 +323,13 @@ export function useThreadTimelineController({
     threadId,
     updateLoadedTimeline,
   ]);
-  const timelineRows =
+  const loadedRows =
     loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
       ? loadedTimeline.rows
       : (latestTimeline?.rows ?? []);
+  const pendingSteers = latestTimeline?.pendingSteers ?? [];
+  const timelineRows =
+    pendingSteers.length === 0 ? loadedRows : [...loadedRows, ...pendingSteers];
   const hasResolvedTimeline =
     latestTimelineQuery.data !== undefined || timelineRows.length > 0;
   const timelineQueryState = useConnectionAwareQueryState({

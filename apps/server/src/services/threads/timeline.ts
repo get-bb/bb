@@ -1766,6 +1766,7 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activeWorkflows : [],
     activeBackgroundCommands:
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
+    pendingSteers: options.page.kind === "latest" ? timeline.pendingSteers : [],
     pendingTodos: headState?.pendingTodos ?? null,
     extensionStates: headState?.extensionStates ?? {},
     providerCommands: headState?.providerCommands ?? null,
@@ -1984,7 +1985,10 @@ function buildThreadConversationRows(
       },
     });
     const conversationRows: TimelineConversationRow[] = [];
-    collectConversationRows(timeline.rows, conversationRows);
+    collectConversationRows(
+      [...timeline.rows, ...timeline.pendingSteers],
+      conversationRows,
+    );
     return conversationRows;
   });
 }
@@ -2050,7 +2054,7 @@ function selectThreadConversationOutline(
         },
       });
       const items: ReturnType<ConversationOutlineSelection["project"]> = [];
-      for (const row of timeline.rows) {
+      for (const row of [...timeline.rows, ...timeline.pendingSteers]) {
         if (row.kind !== "conversation") {
           continue;
         }

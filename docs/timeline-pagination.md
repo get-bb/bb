@@ -68,7 +68,11 @@ extend it. Delegated child turns render inside their delegation row and do not
 split root turns. A page loads each turn it shows in full, along with the
 requests across it, so it builds every summary row the way a full build does.
 
-Pending and rejected steers are ordered by their request like every other row.
+A rejected steer is a row ordered by its request. A steer still waiting for
+the running turn to accept it is live state, like `activeThinking`: it is not a
+row on any page, and the latest page returns it in `pendingSteers`. The app and
+`bb thread log` show pending steers after the rows. Once the turn accepts a
+steer, it becomes a row, with the same id, at the point where it was accepted.
 
 `timelinePage.historySnapshot` identifies the history tip, grouping version,
 and display surface. A walk excludes subsequent appends. Earlier events can

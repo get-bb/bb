@@ -144,6 +144,7 @@ export interface ThreadTimelineFromEventsResult {
   contextWindowUsage: ThreadContextWindowUsage | null;
   extensionStates: Record<string, JsonValue>;
   modelFallback: ThreadTimelineModelFallback | null;
+  pendingSteers: TimelineUserConversationRow[];
   pendingTodos: ThreadTimelinePendingTodos | null;
   providerCommands: ProviderCommand[] | null;
   sessionOptions: ThreadTimelineSessionOption[] | null;
@@ -1214,7 +1215,15 @@ export function buildThreadTimelineFromProjection(
   },
 ): ThreadTimelineFromEventsResult {
   const { projection } = args;
-
+  const steerRows = buildPendingSteerMessagesFromEvents(
+    args.acceptedClientRequestContext,
+    args.events,
+    args.options,
+  )
+    .filter((message) => !isSuppressedSystemMessage(message))
+    .map((message) =>
+      convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
+    );
   const rows = buildTimelineRows(
     projection,
     {
@@ -1226,15 +1235,7 @@ export function buildThreadTimelineFromProjection(
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
     },
-    buildPendingSteerMessagesFromEvents(
-      args.acceptedClientRequestContext,
-      args.events,
-      args.options,
-    )
-      .filter((message) => !isSuppressedSystemMessage(message))
-      .map((message) =>
-        convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
-      ),
+    steerRows.filter((row) => row.turnRequest.status !== "pending"),
   );
 
   return {
@@ -1275,6 +1276,9 @@ export function buildThreadTimelineFromProjection(
     modelFallback: !args.options.isLatestPage
       ? null
       : extractThreadTimelineModelFallback(args.events),
+    pendingSteers: steerRows.filter(
+      (row) => row.turnRequest.status === "pending",
+    ),
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(
