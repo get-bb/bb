@@ -1,6 +1,7 @@
 const SERVER_SESSION_STALE_TIME_MS = 60 * 60_000;
 const FOCUS_OWNED_LIVE_STALE_TIME_MS = 30_000;
 const TYPEAHEAD_STALE_TIME_MS = 15_000;
+const HOST_DERIVED_STALE_TIME_MS = 30_000;
 
 export const SESSION_STATIC_QUERY_POLICY = {
   refetchOnMount: false,
@@ -30,6 +31,15 @@ export const TYPEAHEAD_QUERY_POLICY = {
   refetchOnWindowFocus: false,
   retry: false,
   staleTime: TYPEAHEAD_STALE_TIME_MS,
+} as const;
+
+export const HOST_DERIVED_QUERY_META = { hostDerived: true } as const;
+
+export const HOST_DERIVED_QUERY_POLICY = {
+  meta: HOST_DERIVED_QUERY_META,
+  refetchOnReconnect: false,
+  refetchOnWindowFocus: false,
+  staleTime: HOST_DERIVED_STALE_TIME_MS,
 } as const;
 
 export const EXPENSIVE_MANUAL_QUERY_POLICY = {

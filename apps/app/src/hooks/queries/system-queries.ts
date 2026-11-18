@@ -65,8 +65,8 @@ import {
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
+  HOST_DERIVED_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
-  SESSION_STATIC_QUERY_POLICY,
 } from "./query-policies";
 
 interface UseSystemExecutionOptionsArgs {
@@ -304,6 +304,7 @@ export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
       return providers;
     },
     enabled: args.enabled ?? true,
+    ...HOST_DERIVED_QUERY_POLICY,
     staleTime: 60_000,
     placeholderData: () => {
       const remembered = readCachedProviderList(providersCacheKey);
@@ -479,6 +480,7 @@ function systemExecutionOptionsQueryOptions({
       }
       return response;
     },
+    ...HOST_DERIVED_QUERY_POLICY,
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
@@ -635,7 +637,7 @@ export function useCliSkillsStatus(options?: QueryOptions) {
     queryKey: systemCliSkillsQueryKey(),
     queryFn: ({ signal }) => sdk.system.cliSkillsStatus({ signal }),
     enabled: options?.enabled ?? true,
-    staleTime: 30_000,
+    ...HOST_DERIVED_QUERY_POLICY,
   });
 }
 
@@ -644,7 +646,7 @@ export function useCliCommandStatus(options?: QueryOptions) {
     queryKey: systemCliCommandQueryKey(),
     queryFn: ({ signal }) => sdk.system.experimental_cliCommand({ signal }),
     enabled: options?.enabled ?? true,
-    staleTime: 30_000,
+    ...HOST_DERIVED_QUERY_POLICY,
   });
 }
 
@@ -678,7 +680,7 @@ export function hostProviderCliStatusQueryOptions({
         signal,
       }),
     enabled: (enabled ?? true) && hostId !== null,
-    ...SESSION_STATIC_QUERY_POLICY,
+    ...HOST_DERIVED_QUERY_POLICY,
   });
 }
 
@@ -700,6 +702,7 @@ export function systemProviderStatesQueryOptions(
         signal,
       }),
     enabled: options.enabled ?? true,
+    ...HOST_DERIVED_QUERY_POLICY,
     ...(options.poll === false
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
@@ -729,7 +732,7 @@ function hostProviderStateQueryOptions(args: {
         providerId,
         signal,
       }),
-    staleTime: Infinity,
+    ...HOST_DERIVED_QUERY_POLICY,
     retry: false,
   });
 }

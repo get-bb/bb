@@ -1,13 +1,15 @@
+import { useQuery } from "@tanstack/react-query";
 import { atom } from "jotai";
 import { useMemo } from "react";
 import type {
   OpenInTargetRequest,
   WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
+import { localWorkspaceOpenTargetsQueryKey } from "@/hooks/queries/query-keys";
+import { HOST_DERIVED_QUERY_POLICY } from "@/hooks/queries/query-policies";
 import {
   hostDaemonPortAtom,
   localHostDaemonReachableAtom,
-  localWorkspaceOpenTargetsAtom,
 } from "@/lib/system-config-atoms";
 import {
   fetchWorkspaceOpenTargets,
@@ -17,7 +19,6 @@ import { useAsyncAtomState } from "@/lib/use-async-atom-value";
 
 const disabledLocalHostDaemonReachableAtom = atom(false);
 const disabledHostDaemonPortAtom = atom<number | null>(null);
-const disabledWorkspaceOpenTargetsAtom = atom<WorkspaceOpenTarget[]>([]);
 const NO_WORKSPACE_OPEN_TARGETS: WorkspaceOpenTarget[] = [];
 
 interface UseWorkspaceOpenTargetsArgs {
@@ -46,20 +47,22 @@ export function useWorkspaceOpenTargets(
     args.enabled ? hostDaemonPortAtom : disabledHostDaemonPortAtom,
     null,
   );
-  const workspaceOpenTargetsState = useAsyncAtomState(
-    args.enabled
-      ? localWorkspaceOpenTargetsAtom
-      : disabledWorkspaceOpenTargetsAtom,
-    NO_WORKSPACE_OPEN_TARGETS,
-  );
   const localHostDaemonReachable = localHostDaemonReachableState.data;
   const daemonPort = daemonPortState.data;
-  const workspaceOpenTargets = workspaceOpenTargetsState.data;
+  const workspaceOpenTargetsQuery = useQuery({
+    queryKey: localWorkspaceOpenTargetsQueryKey(daemonPort),
+    queryFn: () =>
+      daemonPort === null ? [] : fetchWorkspaceOpenTargets(daemonPort),
+    enabled: args.enabled && !daemonPortState.isLoading,
+    ...HOST_DERIVED_QUERY_POLICY,
+  });
+  const workspaceOpenTargets =
+    workspaceOpenTargetsQuery.data ?? NO_WORKSPACE_OPEN_TARGETS;
   const isLoading =
     args.enabled &&
     (localHostDaemonReachableState.isLoading ||
       daemonPortState.isLoading ||
-      workspaceOpenTargetsState.isLoading);
+      workspaceOpenTargetsQuery.isPending);
 
   const openWorkspace = useMemo(() => {
     if (

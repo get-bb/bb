@@ -3,6 +3,7 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it } from "vitest";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useLocalOpenTargets } from "./useLocalOpenTargets";
 
 afterEach(() => {
@@ -31,11 +32,14 @@ describe("useLocalOpenTargets", () => {
   it.each(contextCases)(
     "keeps file-open callbacks stable for equal $kind contexts",
     ({ createContext }) => {
-      const { result, rerender } = renderHook(() =>
-        useLocalOpenTargets({
-          enabled: false,
-          openContext: createContext(),
-        }),
+      const { wrapper } = createQueryClientTestHarness();
+      const { result, rerender } = renderHook(
+        () =>
+          useLocalOpenTargets({
+            enabled: false,
+            openContext: createContext(),
+          }),
+        { wrapper },
       );
       const initialOpenPathInFileTarget = result.current.openPathInFileTarget;
 

@@ -652,12 +652,21 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
-    it("refetches only the pushed host's provider CLI status", () => {
+    it("refetches only the pushed host's provider CLI status and models", () => {
       const { effects, queryClient } = createRealtimeEffectsTestContext();
       const hostAKey = hostProviderCliStatusQueryKey("host-a");
       const hostBKey = hostProviderCliStatusQueryKey("host-b");
-      queryClient.setQueryData(hostAKey, {});
-      queryClient.setQueryData(hostBKey, {});
+      const [hostAModelsKey, hostBModelsKey] = ["host-a", "host-b"].map(
+        (hostId) =>
+          systemExecutionOptionsQueryKey({
+            environmentId: null,
+            hostId,
+            providerId: "codex",
+          }),
+      );
+      for (const key of [hostAKey, hostBKey, hostAModelsKey, hostBModelsKey]) {
+        queryClient.setQueryData(key, {});
+      }
 
       effects.handleChanged({
         type: "changed",
@@ -666,8 +675,11 @@ describe("createRealtimeCacheEffects", () => {
         changes: ["provider-cli-status-changed"],
       });
 
-      expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
-      expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
+      expect(
+        [hostAKey, hostBKey, hostAModelsKey, hostBModelsKey].map(
+          (key) => queryClient.getQueryState(key)?.isInvalidated,
+        ),
+      ).toEqual([true, false, true, false]);
       effects.dispose();
     });
   });

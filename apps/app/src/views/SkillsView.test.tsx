@@ -895,9 +895,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         createDraftKind: "skill",
       });
       expect(
-        fetchMock.mock.calls.some(
-          ([input]) =>
-            requestPath(input).startsWith("/api/v1/skills-registry/install"),
+        fetchMock.mock.calls.some(([input]) =>
+          requestPath(input).startsWith("/api/v1/skills-registry/install"),
         ),
       ).toBe(false);
     },
@@ -1386,7 +1385,10 @@ describe("RegistrySkillDetailView reference creation", () => {
       onFork,
       onEditLocalSkill: () => {},
     };
-    const view = renderDom(<RegistrySkillDetailView {...props} />);
+    const { wrapper } = createQueryClientTestHarness();
+    const view = renderDom(<RegistrySkillDetailView {...props} />, {
+      wrapper,
+    });
 
     const forkButton = screen.getByRole("button", {
       name: "Fork Useful skill into a new bb skill",

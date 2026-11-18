@@ -13,7 +13,6 @@ import type {
 import type { ProviderInfo } from "@bb/domain";
 import { createMemoryStorage } from "@bb/test-helpers";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
-import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import {
   afterEach,
   beforeEach,
@@ -26,14 +25,12 @@ import {
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  hostProviderCliStatusQueryKey,
   systemExecutionOptionsQueryKey,
   systemProviderStatesQueryKey,
   systemProvidersQueryKey,
 } from "./query-keys";
 import {
   findKnownProviderModelCatalogScope,
-  hostProviderCliStatusQueryOptions,
   providerDirectoryQueryOptions,
   liveSystemExecutionOptionsQueryOptions,
   prefetchSystemExecutionOptions,
@@ -62,7 +59,6 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   modelLoadError: null,
 };
 
-const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
 const PROVIDERS: ProviderInfo[] = [];
 
 function providerStates(providerId: string): SystemProviderStatesResponse {
@@ -817,37 +813,6 @@ describe("useSystemExecutionOptions", () => {
       expect(observer.getCurrentResult().isError).toBe(true);
       expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
     });
-  });
-});
-
-describe("useHostProviderCliStatus", () => {
-  it("keeps host CLI status session-static", async () => {
-    vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
-      PROVIDER_CLI_STATUS_RESPONSE,
-    );
-    const { queryClient } = createQueryClientTestHarness();
-
-    observe(
-      queryClient,
-      hostProviderCliStatusQueryOptions({ hostId: "host-1", enabled: true }),
-    );
-
-    await vi.waitFor(() => {
-      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(1);
-    });
-
-    const query = queryClient.getQueryCache().find({
-      queryKey: hostProviderCliStatusQueryKey("host-1"),
-    });
-
-    expect(query?.options).toEqual(
-      expect.objectContaining({
-        refetchOnMount: false,
-        refetchOnReconnect: false,
-        refetchOnWindowFocus: false,
-        staleTime: Infinity,
-      }),
-    );
   });
 });
 

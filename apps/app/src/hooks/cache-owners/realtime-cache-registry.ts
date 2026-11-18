@@ -89,6 +89,7 @@ import {
   getThreadCompactedHistoryInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
+import { invalidateHostDerivedState } from "./host-derived-state-owner";
 
 interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
@@ -523,6 +524,7 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
       ...HOST_CONNECTION_DIRTY_HANDLERS,
       dirtyHostSystemExecutionOptionQueries,
       dirtyAllThreadStorageQueries,
+      dirtyHostDerivedState,
     ],
   },
   "host-disconnected": {
@@ -535,7 +537,10 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
     dirty: [dirtyProjectCommandCatalogQueries],
   },
   "provider-cli-status-changed": {
-    dirty: [dirtyHostProviderCliStatusQueries],
+    dirty: [
+      dirtyHostProviderCliStatusQueries,
+      dirtyHostSystemExecutionOptionQueries,
+    ],
   },
   "provider-cli-install-jobs-changed": {
     dirty: [dirtyHostProviderCliInstallJobQueries],
@@ -551,6 +556,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
       dirtyEnvironmentProviderQueries,
+      dirtyHostDerivedState,
     ],
   },
   "plugins-changed": {
@@ -561,6 +567,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginManagementQueries,
       dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
+      dirtyHostDerivedState,
     ],
   },
   "plugin-update-jobs-changed": {
@@ -570,7 +577,11 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
     dirty: [dirtyPluginInstallJobQueries],
   },
   "provider-registrations-changed": {
-    dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+    dirty: [
+      dirtySystemProviderQueries,
+      dirtySystemExecutionOptionQueries,
+      dirtyHostDerivedState,
+    ],
   },
   "environment-availability-changed": {
     dirty: [dirtyEnvironmentProviderQueries],
@@ -1145,6 +1156,10 @@ function dirtyPluginInstallJobQueries(): QueryKey[] {
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {
   return getThreadTimelineInvalidationQueryKeys({ threadId: undefined });
+}
+
+function dirtyHostDerivedState({ queryClient }: RealtimeDirtyContext): void {
+  void invalidateHostDerivedState(queryClient);
 }
 
 function dirtySystemProviderQueries(): QueryKey[] {

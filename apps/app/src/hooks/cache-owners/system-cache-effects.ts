@@ -45,6 +45,7 @@ import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/threa
 import type { QueryClientArg } from "../cache-effect-types";
 import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { invalidateAppUpdateStatus } from "./app-update-cache-owner";
+import { invalidateHostDerivedState } from "./host-derived-state-owner";
 import { invalidatePluginList } from "./plugin-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
@@ -75,6 +76,7 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
   }
   invalidateSystemVersion({ queryClient });
   invalidateAppUpdateStatus({ queryClient });
+  void invalidateHostDerivedState(queryClient);
 }
 
 export function refetchErroredRealtimeQueriesOnInitialConnect({
