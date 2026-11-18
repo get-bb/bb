@@ -54,7 +54,10 @@ function checkoutLabel(
   return `${verb} branch ${branch.name}`;
 }
 
-type BranchLocation = "local" | "origin" | "missing";
+type BranchLocation =
+  | { kind: "local" }
+  | { kind: "origin"; ref: string }
+  | { kind: "missing" };
 
 interface SwitchPlan {
   switchArgs: string[];
@@ -70,12 +73,12 @@ async function locateBranch(
   const originRef = `refs/remotes/origin/${name}`;
   const refs = await readRefs(repo.path, [localRef, originRef]);
   if (refs.has(localRef)) {
-    return "local";
+    return { kind: "local" };
   }
   if (refs.has(originRef)) {
-    return "origin";
+    return { kind: "origin", ref: originRef };
   }
-  return "missing";
+  return { kind: "missing" };
 }
 
 async function assertSwitchable(
@@ -145,11 +148,11 @@ async function planSwitch(
     const location = await locateBranch(repo, branch.name);
     return {
       switchArgs:
-        location === "origin"
-          ? ["switch", "--track", `origin/${branch.name}`]
+        location.kind === "origin"
+          ? ["switch", "--track", location.ref]
           : ["switch", branch.name],
       startPoint: null,
-      existingBranchMissing: location === "missing",
+      existingBranchMissing: location.kind === "missing",
     };
   }
   const { ref: startPoint } = await resolveBranchRef(

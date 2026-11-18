@@ -164,8 +164,9 @@ export async function readSharedGitRefsSnapshot(
         }
       }
       if (defaultBranch !== null) {
-        watched.add(`refs/heads/${defaultBranch}`);
-        watched.add(`refs/remotes/origin/${defaultBranch}`);
+        for (const ref of branchRefCandidates(defaultBranch)) {
+          watched.add(ref);
+        }
       }
       if (branchName !== null) {
         const head = `refs/heads/${branchName}`;
