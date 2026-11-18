@@ -81,7 +81,7 @@ import {
 } from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DownloadLink, GitHubLink } from "./cta";
+import { GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DesktopInstallChoice } from "./install-choice";
 import {
@@ -139,21 +139,6 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
               })
             }
           />
-          <span className="install-note">
-            {platform !== "windows" && (
-              <>
-                <DownloadLink
-                  placement={placement}
-                  platform="windows"
-                  className="install-note-link"
-                >
-                  {DESKTOP_DOWNLOADS.windows.label}
-                </DownloadLink>
-                ,{" "}
-              </>
-            )}
-            Intel Macs &amp; remote machines
-          </span>
         </span>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { CLI_COMMAND, GITHUB_URL } from "./site";
 const html = renderToStaticMarkup(<InstallOptions placement="closer" />);
 
 describe("install block", () => {
-  it("offers the macOS download, the repo, /download and the CLI command", () => {
+  it("offers the macOS download, the repo, /download and the CLI command with no note under it", () => {
     expect(html.match(/href="\/download\/(macos|linux)/g)).toEqual([
       'href="/download/macos',
     ]);
@@ -19,9 +19,8 @@ describe("install block", () => {
     expect(html).toContain(
       `aria-label="Copy browser install command: ${CLI_COMMAND}"`,
     );
-    expect(html).toMatch(
-      /href="\/download\/windows[^"]*"[^>]*>Windows \(Alpha\)<\/a>, Intel Macs &amp; remote machines<\/span>/,
-    );
+    expect(html).not.toContain("/download/windows");
+    expect(html).not.toContain("Intel Macs");
   });
 
   it("gives phones the same links without the platform note", () => {
