@@ -65,6 +65,8 @@ interface RemoveWorktreeArgs {
 }
 
 const REMOTE_BASE_FETCH_TIMEOUT_MS = 60_000;
+const RACY_INDEX_CLOCK_MARGIN_MS = 50;
+const RACY_INDEX_MAX_WAIT_MS = 2_000;
 const REMOTE_REF_LOCK_RETRY_INTERVAL_MS = 200;
 const REMOTE_REF_LOCK_RETRY_TIMEOUT_MS = 2_000;
 const WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT = 20;
@@ -501,7 +503,42 @@ async function readCompletedBranch(
   }
 }
 
+async function indexMtimeSecond(indexPath: string): Promise<number> {
+  return Math.floor((await fs.stat(indexPath)).mtimeMs / 1000);
+}
+
+async function refreshWorktreeIndex(
+  worktreePath: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const options = { cwd: worktreePath, ...signalOptions(signal) };
+  const refresh = () =>
+    runGit(["update-index", "-q", "--refresh", "--force-write-index"], {
+      ...options,
+      allowFailure: true,
+    });
+  try {
+    const indexPath = path.resolve(
+      worktreePath,
+      (
+        await runGit(["rev-parse", "--git-path", "index"], options)
+      ).stdout.trim(),
+    );
+    const checkoutSecond = await indexMtimeSecond(indexPath);
+    await refresh();
+    if ((await indexMtimeSecond(indexPath)) !== checkoutSecond) return;
+    const waitMs =
+      (checkoutSecond + 1) * 1000 + RACY_INDEX_CLOCK_MARGIN_MS - Date.now();
+    if (waitMs >= RACY_INDEX_MAX_WAIT_MS) return;
+    if (waitMs > 0) await delay(waitMs, undefined, signalOptions(signal));
+    await refresh();
+  } catch (error) {
+    if (signal?.aborted) throw createProvisionCancelledError(error);
+  }
+}
+
 async function finishWorktreeSetup(args: CreateWorktreeArgs): Promise<void> {
+  await refreshWorktreeIndex(args.targetPath, args.signal);
   emitCwd({
     onProgress: args.onProgress,
     keySuffix: "target",
