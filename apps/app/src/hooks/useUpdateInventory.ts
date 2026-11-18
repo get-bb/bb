@@ -23,7 +23,7 @@ import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { pluginHasUpdateSurfaces } from "@/components/plugin/management/PluginUpdatesCard";
+import { pluginHasUpdateSurfaces } from "@/components/plugin/management/plugin-status";
 import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import {

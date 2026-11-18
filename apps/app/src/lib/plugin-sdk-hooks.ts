@@ -89,8 +89,8 @@ export {
   isAutomationEditRoutePath,
   useSdk,
   useBbNavigate,
-  usePluginCanOpenFileExternally,
 } from "./plugin-navigation-hooks";
+export { usePluginCanOpenFileExternally } from "./plugin-file-open-hooks";
 type FetchLike = (
   input: string,
   init?: RequestInit,

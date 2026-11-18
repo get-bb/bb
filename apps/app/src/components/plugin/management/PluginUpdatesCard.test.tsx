@@ -18,8 +18,8 @@ import {
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
-  pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
+import { pluginHasUpdateSurfaces } from "./plugin-status";
 import { makePluginListItem } from "@/test/fixtures/plugins";
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
