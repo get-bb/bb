@@ -20,6 +20,12 @@ export interface ItemRecordStop extends ItemRecordPoint {
   interrupted: boolean;
 }
 
+export interface ItemRecordFileRow {
+  key: string;
+  matchKeys: string[];
+  start: ItemRecordPoint;
+}
+
 export interface ItemRecord {
   threadId: string;
   itemId: string;
@@ -41,7 +47,12 @@ export interface ItemRecord {
   text: string;
   output: string;
   lateOutput: string;
-  fileChangeStarts: Map<string, ItemRecordPoint>;
+  description: string | null;
+  reasoningSummary: string;
+  reasoningContent: string;
+  fileRows: ItemRecordFileRow[];
+  fileRowIndexes: number[];
+  foreignFileKeys: ReadonlySet<string>;
   progress: string | null;
   firstPresentation: ThreadEventItemPresentation | undefined;
   stop: ItemRecordStop | null;
@@ -313,7 +324,12 @@ function createRecord(
     text: "",
     output: "",
     lateOutput: "",
-    fileChangeStarts: new Map(),
+    description: null,
+    reasoningSummary: "",
+    reasoningContent: "",
+    fileRows: [],
+    fileRowIndexes: [],
+    foreignFileKeys: new Set(),
     progress: null,
     firstPresentation: undefined,
     stop: null,
@@ -360,6 +376,51 @@ function continuesClosedRecord(
   return role.carriesOver || (record.item?.type === "delegation" && !otherTurn);
 }
 
+function fileChangeMatchKeys(change: {
+  path: string;
+  movePath?: string | null;
+}): string[] {
+  return change.movePath && change.movePath !== change.path
+    ? [change.path, change.movePath]
+    : [change.path];
+}
+
+function matchFileRows(
+  record: ItemRecord,
+  item: Extract<ThreadEventItem, { type: "fileChange" }>,
+  at: ItemRecordPoint,
+): void {
+  const used = new Set<number>();
+  const identityCounts = new Map<string, number>();
+  record.fileRowIndexes = item.changes.map((change) => {
+    const matchKeys = fileChangeMatchKeys(change);
+    const existing = record.fileRows.findIndex(
+      (row, index) =>
+        !used.has(index) &&
+        row.matchKeys.some((key) => matchKeys.includes(key)),
+    );
+    if (existing !== -1) {
+      used.add(existing);
+      const row = record.fileRows[existing]!;
+      row.matchKeys = [...new Set([...row.matchKeys, ...matchKeys])];
+      return existing;
+    }
+    const identity = change.movePath ?? change.path;
+    const count = identityCounts.get(identity) ?? 0;
+    identityCounts.set(identity, count + 1);
+    const baseKey =
+      count === 0
+        ? `${record.itemId}:${identity}`
+        : `${record.itemId}:${identity}:${count}`;
+    const key = record.foreignFileKeys.has(baseKey)
+      ? `${record.turnId ?? "thread"}:${baseKey}`
+      : baseKey;
+    record.fileRows.push({ key, matchKeys, start: at });
+    used.add(record.fileRows.length - 1);
+    return record.fileRows.length - 1;
+  });
+}
+
 function applyItem(
   record: ItemRecord,
   item: ThreadEventItem,
@@ -380,12 +441,10 @@ function applyItem(
   record.item = item;
   record.firstItem ??= item;
   if (item.type === "fileChange") {
-    for (const change of item.changes) {
-      const identity = change.movePath ?? change.path;
-      if (!record.fileChangeStarts.has(identity)) {
-        record.fileChangeStarts.set(identity, at);
-      }
-    }
+    matchFileRows(record, item, at);
+  }
+  if (item.type === "commandExecution" && item.description) {
+    record.description = item.description;
   }
   record.finished = completes;
   if (completes) {
@@ -416,14 +475,15 @@ function applyRole(
   context: ApplyItemEventContext,
 ): void {
   const at = { seq: entry.meta.seq, createdAt: entry.meta.createdAt };
-  if (record.dropped) {
+  if (record.dropped || (record.textKind !== null && record.finished)) {
     return;
   }
   if (record.stop !== null) {
     if (
       record.textKind === "reasoning" &&
       role.kind === "item" &&
-      role.completes
+      role.completes &&
+      record.completion === null
     ) {
       record.item = role.item;
       record.completion = at;
@@ -466,6 +526,11 @@ function applyRole(
     case "text":
       if (role.delta.length > 0) {
         record.text += role.delta;
+        if (entry.event.type === "item/reasoning/summaryTextDelta") {
+          record.reasoningSummary += role.delta;
+        } else if (entry.event.type === "item/reasoning/textDelta") {
+          record.reasoningContent += role.delta;
+        }
         record.textStart ??= at;
         record.textEnd = at;
       }
@@ -503,7 +568,11 @@ export function applyItemEvent(
     record?.turnId !== undefined &&
     turnId !== undefined &&
     turnId !== record.turnId;
-  const keepsRecord = record?.item?.type === "backgroundTask";
+  const keepsRecord =
+    record?.item?.type === "backgroundTask" ||
+    (record !== undefined &&
+      !otherTurn &&
+      (record.textKind !== null || record.item?.type === "fileChange"));
   if (
     record === undefined ||
     (!keepsRecord &&
@@ -513,7 +582,15 @@ export function applyItemEvent(
     const item =
       role.kind === "item" || role.kind === "approval" ? role.item : null;
     const textKind = role.kind === "text" ? role.textKind : itemTextKind(item);
+    const previous = record;
     record = createRecord(store, entry, role.itemId, textKind, item, context);
+    if (previous?.item?.type === "fileChange") {
+      record.foreignFileKeys = new Set([
+        ...previous.foreignFileKeys,
+        ...previous.fileRows.map((row) => row.key),
+        `${previous.itemId}:0`,
+      ]);
+    }
   }
   applyRole(record, role, entry, context);
   if (record.finished) {

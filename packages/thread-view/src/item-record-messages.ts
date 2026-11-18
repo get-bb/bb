@@ -10,7 +10,6 @@ import type { EventProjection } from "./event-projection.js";
 import type {
   EventProjectionApprovalLifecycleStatus,
   EventProjectionAssistantTextMessage,
-  EventProjectionFileEditChange,
   EventProjectionFileEditMessage,
   EventProjectionMessage,
   EventProjectionOperationMessage,
@@ -178,7 +177,13 @@ function reasoningRecordMessage(
 ): EventProjectionOperationMessage | null {
   const end = record.stop ?? (record.finished ? record.completion : null);
   if (!end) return null;
-  const finalText = record.completion ? reasoningFinalText(record.item) : "";
+  const item = record.completion ? record.item : null;
+  const keepsStreamedOrder =
+    item?.type === "reasoning" &&
+    record.text.length > 0 &&
+    item.summary.join("") === record.reasoningSummary &&
+    item.content.join("") === record.reasoningContent;
+  const finalText = keepsStreamedOrder ? "" : reasoningFinalText(item);
   const detail = finalText.trim().length > 0 ? finalText : record.text;
   if (detail.trim().length === 0) return null;
   const durationMs = end.createdAt - record.start.createdAt;
@@ -268,62 +273,55 @@ export function collectItemRecordMessages(
   return messages;
 }
 
-function fileEditChangeIdentity(change: EventProjectionFileEditChange): string {
-  return change.movePath ?? change.path;
-}
-
 function fileEditMessages(
   record: ItemRecord,
   item: Extract<ThreadEventItem, { type: "fileChange" }> | null,
 ): EventProjectionFileEditMessage[] {
-  const changes: EventProjectionFileEditChange[] = (item?.changes ?? []).map(
-    (change) => ({
-      path: change.path,
-      kind: change.kind,
-      movePath: change.movePath ?? null,
-      diff: change.diff,
-    }),
-  );
-  const seen = new Map<string, number>();
+  const emptyKey = `${record.itemId}:0`;
   const entries =
-    changes.length > 0
-      ? changes.map((change) => {
-          const identity = fileEditChangeIdentity(change);
-          const count = seen.get(identity) ?? 0;
-          seen.set(identity, count + 1);
+    item !== null && item.changes.length > 0
+      ? item.changes.map((change, index) => {
+          const row = record.fileRows[record.fileRowIndexes[index] ?? -1];
           return {
-            change,
+            change: {
+              path: change.path,
+              kind: change.kind,
+              movePath: change.movePath ?? null,
+              diff: change.diff,
+            },
             key:
-              count === 0
-                ? `${record.itemId}:${identity}`
-                : `${record.itemId}:${identity}:${count}`,
+              row?.key ?? `${record.itemId}:${change.movePath ?? change.path}`,
+            start: row?.start ?? record.start,
           };
         })
-      : [{ change: null, key: `${record.itemId}:0` }];
-  return entries.map(({ change, key }, part) => {
-    const start =
-      (change && record.fileChangeStarts.get(fileEditChangeIdentity(change))) ??
-      record.start;
-    return {
-      kind: "file-edit" as const,
-      ...baseFields(
-        record,
-        messageId(record.threadId, "file-edit", key),
-        start,
-        record.end,
-      ),
-      sourceEvent: { seq: start.seq, part },
-      ...(item ? presentationOf(record, item) : {}),
-      callId: record.itemId,
-      changes: change ? [change] : [],
-      stdout: record.output.length > 0 ? record.output : undefined,
-      stderr: item?.error,
-      approvalStatus: item
-        ? itemStatusToApprovalStatus(item.approvalStatus)
-        : null,
-      status: item ? itemStatusToExecStatus(item.status) : "pending",
-    };
-  });
+      : [
+          {
+            change: null,
+            key: record.foreignFileKeys.has(emptyKey)
+              ? `${record.turnId ?? "thread"}:${emptyKey}`
+              : emptyKey,
+            start: record.start,
+          },
+        ];
+  return entries.map(({ change, key, start }, part) => ({
+    kind: "file-edit",
+    ...baseFields(
+      record,
+      messageId(record.threadId, "file-edit", key),
+      start,
+      record.end,
+    ),
+    sourceEvent: { seq: start.seq, part },
+    ...(item ? presentationOf(record, item) : {}),
+    callId: record.itemId,
+    changes: change ? [change] : [],
+    stdout: record.output.length > 0 ? record.output : undefined,
+    stderr: item?.error,
+    approvalStatus: item
+      ? itemStatusToApprovalStatus(item.approvalStatus)
+      : null,
+    status: item ? itemStatusToExecStatus(item.status) : "pending",
+  }));
 }
 
 function activityStatus(
@@ -363,7 +361,7 @@ function itemRecordMessages(record: ItemRecord): EventProjectionMessage[] {
           kind: "command",
           ...call("command"),
           command: command ?? "",
-          description: item.description ?? null,
+          description: record.description,
           cwd: item.cwd,
           parsedIntents: parseShellCommandIntents(command),
           source: null,
