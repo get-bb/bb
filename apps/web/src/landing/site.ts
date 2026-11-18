@@ -29,7 +29,6 @@ export type DesktopPlatform = "macos" | "linux" | "windows";
 export const DEFAULT_DESKTOP_PLATFORM: DesktopPlatform = "macos";
 
 export type DesktopDownload = {
-  label: string;
   buttonLabel: string;
   installerExtension: string;
   versionFeedUrl: string;
@@ -38,21 +37,18 @@ export type DesktopDownload = {
 
 export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
   macos: {
-    label: "macOS",
     buttonLabel: "Download for macOS",
     installerExtension: ".dmg",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version.json`,
     redirectPath: "/download/macos",
   },
   linux: {
-    label: "Linux (Alpha)",
     buttonLabel: "Download for Linux",
     installerExtension: ".AppImage",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-linux.json`,
     redirectPath: "/download/linux",
   },
   windows: {
-    label: "Windows (Alpha)",
     buttonLabel: "Download for Windows",
     installerExtension: ".exe",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,

@@ -560,8 +560,6 @@ html:has(.nav-sticky) {
   font-size: 13.5px;
 }
 
-/* Two equal-height CTAs — solid "Download for macOS" and an outline button
-   whose body is the copyable run command — over one centered caption. */
 .install-options {
   margin: 38px auto 0;
   display: flex;
@@ -716,19 +714,8 @@ html:has(.nav-sticky) {
   color: var(--ink);
 }
 
-.oss-link {
-  white-space: nowrap;
-}
-
-.oss-ic {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  margin-right: var(--gap-xs);
-  vertical-align: -2px;
-}
-
 .install-choice .install-send,
-.install-note-touch {
+.install-choice .install-note-touch {
   display: none;
 }
 
@@ -739,7 +726,7 @@ html:has(.nav-sticky) {
 
 @media (hover: none) and (pointer: coarse) {
   .install-choice .install-download,
-  .install-note-desktop {
+  .install-choice .install-note-desktop {
     display: none;
   }
 
@@ -747,7 +734,7 @@ html:has(.nav-sticky) {
     display: inline-flex;
   }
 
-  .install-note-touch {
+  .install-choice .install-note-touch {
     display: inline;
   }
 }
