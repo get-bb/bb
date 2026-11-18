@@ -30,6 +30,10 @@ export interface CompatibleServerProbeResult {
   serverUrl: string;
 }
 
+export type SettledServerProbeResult =
+  | CompatibleServerProbeResult
+  | IncompatibleServerProbeResult;
+
 interface IncompatibleServerProbeResult {
   kind: "incompatible";
   reason: string;
@@ -52,7 +56,7 @@ interface WaitForCompatibleServerArgs {
   fetchImpl?: ServerProbeFetch;
   intervalMs: number;
   serverUrl: string;
-  timeoutMs: number;
+  signal: AbortSignal;
 }
 
 interface FetchJsonArgs<TValue> {
@@ -95,11 +99,18 @@ interface FetchJsonNetworkErrorResult {
 
 interface SleepArgs {
   delayMs: number;
+  signal: AbortSignal;
 }
 
 async function sleep(args: SleepArgs): Promise<void> {
   await new Promise<void>((resolvePromise) => {
-    setTimeout(resolvePromise, args.delayMs);
+    const finish = (): void => {
+      clearTimeout(timer);
+      args.signal.removeEventListener("abort", finish);
+      resolvePromise();
+    };
+    const timer = setTimeout(finish, args.delayMs);
+    args.signal.addEventListener("abort", finish, { once: true });
   });
 }
 
@@ -223,35 +234,19 @@ export async function probeBbServer(
 
 export async function waitForCompatibleServer(
   args: WaitForCompatibleServerArgs,
-): Promise<ServerProbeResult> {
-  const deadline = Date.now() + args.timeoutMs;
-  let lastResult: ServerProbeResult = {
-    kind: "unavailable",
-    reason: "Probe has not started",
-    serverUrl: args.serverUrl,
-  };
-
-  while (Date.now() <= deadline) {
-    lastResult = await probeBbServer({
+): Promise<SettledServerProbeResult> {
+  for (;;) {
+    args.signal.throwIfAborted();
+    const result = await probeBbServer({
       ...(args.fetchImpl === undefined ? {} : { fetchImpl: args.fetchImpl }),
       serverUrl: args.serverUrl,
       timeoutMs: Math.min(args.intervalMs, 1_000),
     });
 
-    if (lastResult.kind === "compatible") {
-      return lastResult;
+    if (result.kind !== "unavailable") {
+      return result;
     }
 
-    if (lastResult.kind === "incompatible") {
-      return lastResult;
-    }
-
-    await sleep({ delayMs: args.intervalMs });
+    await sleep({ delayMs: args.intervalMs, signal: args.signal });
   }
-
-  return {
-    kind: "unavailable",
-    reason: `Timed out after ${args.timeoutMs}ms waiting for bb server. Last probe: ${lastResult.reason}`,
-    serverUrl: args.serverUrl,
-  };
 }

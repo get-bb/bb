@@ -1,3 +1,4 @@
+import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import {
   createServer,
@@ -6,7 +7,7 @@ import {
 } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BbAppStartContext,
   ManagedFullStackProcesses,
@@ -93,7 +94,29 @@ function createStartContext(args: {
   };
 }
 
+function spawnIdleChild(): ChildProcess {
+  return spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+    stdio: "ignore",
+  });
+}
+
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const exited = new Promise((resolvePromise) => {
+    child.once("exit", resolvePromise);
+  });
+  child.kill("SIGKILL");
+  await exited;
+}
+
 describe("waitForServerHealth", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   it("keeps polling past foreign answers until the child echoes its launch id", async () => {
     let healthRequests = 0;
     const server = await listen((_request, response) => {
@@ -105,37 +128,86 @@ describe("waitForServerHealth", () => {
           : { ok: true, launchId: "launch-expected" },
       );
     });
+    const child = spawnIdleChild();
 
     try {
       await waitForServerHealth({
-        childProcess: null,
+        childProcess: child,
         expectedLaunchId: "launch-expected",
-        timeoutMs: 5_000,
         url: `http://127.0.0.1:${server.port}/health`,
       });
       expect(healthRequests).toBe(3);
     } finally {
+      await stopChild(child);
       await server.close();
     }
   });
 
-  it("times out when the responder never echoes the launch id", async () => {
+  it("waits without a deadline while a slow child is still starting", async () => {
+    const child = spawnIdleChild();
+    let listening = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (!listening) {
+          throw new TypeError("fetch failed");
+        }
+        return Response.json({ ok: true, launchId: "launch-slow" });
+      }),
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+
+    try {
+      let outcome: string | null = null;
+      const ready = waitForServerHealth({
+        childProcess: child,
+        expectedLaunchId: "launch-slow",
+        url: "http://127.0.0.1:1/health",
+      }).then(
+        () => {
+          outcome = "healthy";
+        },
+        (error: unknown) => {
+          outcome = String(error);
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      expect(outcome).toBeNull();
+      expect(child.exitCode).toBeNull();
+      expect(child.signalCode).toBeNull();
+
+      listening = true;
+      await vi.advanceTimersByTimeAsync(1_000);
+      await ready;
+      expect(outcome).toBe("healthy");
+    } finally {
+      await stopChild(child);
+    }
+  });
+
+  it("fails once the child exits while another server answers", async () => {
     const server = await listen((_request, response) => {
       answerHealth(response, { ok: true, launchId: "launch-other" });
     });
+    const child = spawn(
+      process.execPath,
+      ["-e", "setTimeout(() => process.exit(1), 300)"],
+      { stdio: "ignore" },
+    );
 
     try {
       await expect(
         waitForServerHealth({
-          childProcess: null,
+          childProcess: child,
           expectedLaunchId: "launch-expected",
-          timeoutMs: 250,
           url: `http://127.0.0.1:${server.port}/health`,
         }),
       ).rejects.toThrow(
-        `Timed out waiting for health at http://127.0.0.1:${server.port}/health: another server is already answering`,
+        `Process exited before becoming healthy: another server is already answering at http://127.0.0.1:${server.port}/health`,
       );
     } finally {
+      await stopChild(child);
       await server.close();
     }
   });
