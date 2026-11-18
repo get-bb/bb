@@ -74,11 +74,17 @@ function ThreadSecondaryPanelPlaceholderContent({
   activeTab,
   metadataContent,
 }: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  const showsThreadInfo =
+    activeTab?.kind === "thread-info" ||
+    (activeTab?.kind === "plugin-fixed" &&
+      activeTab.pluginId === "core" &&
+      activeTab.tabId === "info");
+  if (showsThreadInfo) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
+    );
+  }
   switch (activeTab?.kind) {
-    case "thread-info":
-      return (
-        <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
-      );
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":

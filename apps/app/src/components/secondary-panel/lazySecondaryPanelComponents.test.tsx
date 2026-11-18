@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import type {
   BrowserFixedPanelTab,
   SecondaryFixedPanelTab,
@@ -26,9 +27,11 @@ function renderLoadingPanel({
   activeTab = null,
   isConversationCollapsed = false,
   isOpen = true,
+  metadataContent = null,
   renderAsDrawer = false,
 }: {
   activeTab?: SecondaryFixedPanelTab | null;
+  metadataContent?: ReactNode;
   isConversationCollapsed?: boolean;
   isOpen?: boolean;
   renderAsDrawer?: boolean;
@@ -39,14 +42,14 @@ function renderLoadingPanel({
         drawerFallback={
           <ThreadSecondaryPanelDrawerPlaceholder
             activeTab={activeTab}
-            metadataContent={null}
+            metadataContent={metadataContent}
           />
         }
         activeTab={activeTab}
         fixedTabs={[]}
         isConversationCollapsed={isConversationCollapsed}
         isOpen={isOpen}
-        metadataContent={null}
+        metadataContent={metadataContent}
         onClose={noop}
         onCollapse={noop}
         onOpenNewTab={noop}
@@ -113,6 +116,29 @@ describe("LazyThreadSecondaryPanel drawer", () => {
     ).not.toBeNull();
     expect(placeholder.textContent).toContain("notes/open-prs.md");
   });
+});
+
+describe("LazyThreadSecondaryPanel thread info placeholder", () => {
+  it.each([false, true])(
+    "shows thread details for the core info tab (drawer: %s)",
+    (renderAsDrawer) => {
+      renderLoadingPanel({
+        renderAsDrawer,
+        activeTab: {
+          id: "plugin-fixed:core:info",
+          kind: "plugin-fixed",
+          pluginId: "core",
+          tabId: "info",
+        },
+        metadataContent: <p>Thread details</p>,
+      });
+
+      expect(screen.getByText("Thread details")).not.toBeNull();
+      expect(
+        screen.queryByTestId("secondary-panel-content-skeleton"),
+      ).toBeNull();
+    },
+  );
 });
 
 describe("LazyBrowserTabDeck", () => {
