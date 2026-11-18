@@ -259,6 +259,8 @@ function StoryProviderClis({
       onRetryDaemonUpdate={noop}
       onRetryAllDaemonUpdates={noop}
       onRecheckClis={noop}
+      showInSidebar
+      onShowInSidebarChange={noop}
     />
   );
 }

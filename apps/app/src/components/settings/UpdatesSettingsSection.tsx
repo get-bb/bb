@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAtom } from "jotai";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type {
@@ -70,6 +71,7 @@ import {
   SettingsWithControl,
 } from "@/components/ui/settings-section";
 import { Switch } from "@bb/shared-ui/switch";
+import { showProviderCliUpdatesAtom } from "@/components/sidebar/sidebar-update-preferences";
 import { refreshHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateAppUpdateStatus } from "@/hooks/cache-owners/app-update-cache-owner";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
@@ -1652,6 +1654,8 @@ interface ProviderCliUpdatesSectionProps extends ProviderCliJobState {
   onRetryDaemonUpdate: (hostId: string) => void;
   onRetryAllDaemonUpdates: (hostIds: string[]) => void;
   onRecheckClis: (hostId: string) => void;
+  showInSidebar: boolean;
+  onShowInSidebarChange: (show: boolean) => void;
 }
 
 export function ProviderCliUpdatesSection({
@@ -1667,6 +1671,8 @@ export function ProviderCliUpdatesSection({
   onRetryDaemonUpdate,
   onRetryAllDaemonUpdates,
   onRecheckClis,
+  showInSidebar,
+  onShowInSidebarChange,
 }: ProviderCliUpdatesSectionProps) {
   const [expandedHostIds, setExpandedHostIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -1798,6 +1804,18 @@ export function ProviderCliUpdatesSection({
             })}
           </div>
         )}
+        <div className="border-t border-border px-4 py-3.5">
+          <SettingsWithControl
+            label="Show provider CLI updates in the sidebar"
+            description="Turn this off if your agent CLIs are updated outside bb. This page still lists their updates."
+          >
+            <Switch
+              checked={showInSidebar}
+              onCheckedChange={onShowInSidebarChange}
+              aria-label="Show provider CLI updates in the sidebar"
+            />
+          </SettingsWithControl>
+        </div>
       </SettingsSection>
       {quiet.length === 0 ? null : (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-subtle-foreground">
@@ -2077,6 +2095,9 @@ export function UpdatesSettingsSection() {
   const appUpdateStatus = useAppUpdateStatus();
   const appUpdateStart = useStartAppUpdate();
   const setAutoAppUpdate = useSetAutoAppUpdate();
+  const [showProviderCliUpdates, setShowProviderCliUpdates] = useAtom(
+    showProviderCliUpdatesAtom,
+  );
   const cancelScheduledAppUpdate = useCancelScheduledAppUpdate();
   const appUpdate = appUpdateStatus.data;
   const [openReleaseNotes, setOpenReleaseNotes] =
@@ -2338,6 +2359,8 @@ export function UpdatesSettingsSection() {
         onRecheckClis={(hostId) => {
           void refreshHostProviderCliStatus({ queryClient, hostId });
         }}
+        showInSidebar={showProviderCliUpdates}
+        onShowInSidebarChange={setShowProviderCliUpdates}
       />
       {inventory.plugins === null ? null : (
         <PluginUpdatesSection

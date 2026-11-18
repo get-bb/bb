@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAtomValue } from "jotai";
 import { Link } from "react-router-dom";
 import type { ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -35,6 +36,7 @@ import {
   type SidebarUpdateModel,
   type SidebarUpdateRow,
 } from "./sidebar-update-model";
+import { showProviderCliUpdatesAtom } from "./sidebar-update-preferences";
 
 interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
@@ -42,6 +44,7 @@ interface SidebarUpdatesBadgeProps {
 
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
+  const showProviderCliUpdates = useAtomValue(showProviderCliUpdatesAtom);
   const providers = useSystemProviders().data;
   const appUpdate = useAppUpdateStatus().data;
   const { desktopApi, isDesktop } = useDesktopUpdateInfo();
@@ -93,6 +96,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     bb,
     machines: inventory.machines,
     plugins: inventory.plugins,
+    showProviderCliUpdates,
     providerJobs,
     pluginJobs,
   });
