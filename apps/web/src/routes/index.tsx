@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
@@ -241,80 +241,12 @@ function LandingRoute() {
   return <LandingPage />;
 }
 
-function useConstructMock() {
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const mock = document.querySelector("[data-construct]");
-    if (!mock || mock.classList.contains("constructed")) {
-      return;
-    }
-    let timer = 0;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            el.classList.add("constructing");
-            observer.unobserve(el);
-            timer = window.setTimeout(() => {
-              el.classList.remove("constructing");
-              el.classList.add("constructed");
-            }, 1800);
-          }
-        }
-      },
-      { threshold: 0, rootMargin: "0px 0px -20% 0px" },
-    );
-    observer.observe(mock);
-    return () => {
-      observer.disconnect();
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, []);
-}
-
-type Status = "running" | "done" | "waiting";
-type Step =
-  | { kind: "user"; text: string }
-  | { kind: "step"; text: ReactNode }
-  | { kind: "say"; text: ReactNode }
-  | { kind: "spawn"; text: ReactNode; child: MockThread };
-type Ask = {
-  question: string;
-  options: { label: string; description: string }[];
-  selected: number;
-};
-type MockThread = {
-  id: string;
-  title: string;
-  status: Status;
-  branch: string;
-  pr?: number;
-  change: { files: number; add: number; del: number };
-  transcript: Step[];
-  stream?: Step[];
-  ask?: Ask;
-};
-
-function Closer({
-  title,
-  lede,
-  children,
-}: {
-  title: string;
-  lede: string;
-  children?: ReactNode;
-}) {
+function Closer({ title, lede }: { title: string; lede: string }) {
   return (
     <section className="closer" data-reveal data-section="closer">
       <h2 className="sec-title">{title}</h2>
       <p>{lede}</p>
       <InstallOptions placement="closer" />
-      {children}
     </section>
   );
 }
@@ -380,7 +312,6 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   useScrollReveal();
   useSectionViews();
-  useConstructMock();
 
   useEffect(() => {
     const companyProof = companyProofRef.current;

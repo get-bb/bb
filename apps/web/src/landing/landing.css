@@ -1218,146 +1218,6 @@ html:has(.nav-sticky) {
     0 30px 70px -32px color-mix(in oklab, var(--shade) 34%, transparent);
 }
 
-/* ── Self-constructing mock ───────────────────────────────────────────
-   On scroll-in the app assembles itself: frame drops in, title bar slides
-   down (dots pop), sidebar rows cascade from the left, then the
-   conversation rises and the composer settles in last. The `html.js` gate
-   holds it hidden from first paint; JS adds .constructing to play it.
-   Without JS the mock renders finished. */
-@keyframes c-frame {
-  from {
-    opacity: 0;
-    transform: translateY(26px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-down {
-  from {
-    opacity: 0;
-    transform: translateY(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes c-left {
-  from {
-    opacity: 0;
-    transform: translateX(-14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes c-up {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* When JS is available, hold the whole mock hidden from the first paint until
-   it scrolls into view and assembles. No-JS/prerender skip the `js` class, so
-   the finished mock stays visible. */
-html.js .mock[data-construct]:not(.constructing):not(.constructed) {
-  opacity: 0;
-}
-
-.mock.constructing {
-  animation: c-frame 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* title bar drops down, traffic-light dots pop in */
-.mock.constructing .mock-bar {
-  animation: c-down 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: 0.16s;
-}
-
-.mock.constructing .mock-dots i {
-  animation: c-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-.mock.constructing .mock-dots i:nth-child(1) {
-  animation-delay: 0.3s;
-}
-
-.mock.constructing .mock-dots i:nth-child(2) {
-  animation-delay: 0.37s;
-}
-
-.mock.constructing .mock-dots i:nth-child(3) {
-  animation-delay: 0.44s;
-}
-
-/* sidebar rows cascade in from the left */
-.mock.constructing .side > *:not(.threads) {
-  animation: c-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.mock.constructing .side > *:nth-child(1) {
-  animation-delay: 0.34s;
-}
-
-.mock.constructing .side > *:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.mock.constructing .side > *:nth-child(3) {
-  animation-delay: 0.46s;
-}
-
-.mock.constructing .side > *:nth-child(4) {
-  animation-delay: 0.52s;
-}
-
-.mock.constructing .side > *:nth-child(5) {
-  animation-delay: 0.58s;
-}
-
-/* gear in the footer lands last */
-.mock.constructing .side > *:nth-child(7) {
-  animation-delay: 0.88s;
-}
-
-.mock.constructing .threads li {
-  animation: c-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-  /* per-row delay set inline */
-}
-
-/* conversation rises message by message, composer settles in last */
-.mock.constructing .feed > * {
-  animation: c-up 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
-  /* per-message delay set inline */
-}
-
-.mock.constructing .feed ~ .composer {
-  animation: c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: 1s;
-}
-
 /* window title bar (mirrors the desktop app) */
 .mock-bar {
   display: flex;
@@ -1900,24 +1760,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bar-toggle .ri {
   width: 17px;
   height: 17px;
-}
-
-.dl {
-  display: flex;
-  padding: 0 12px;
-  white-space: pre;
-}
-
-.dl-ctx {
-  color: var(--dim);
-}
-
-.dl-add {
-  background: color-mix(in oklab, var(--add) 13%, transparent);
-}
-
-.dl-del {
-  background: color-mix(in oklab, var(--del) 13%, transparent);
 }
 
 /* ── Bands ──────────────────────────────────────────────────────── */
@@ -4388,19 +4230,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     transition: none;
   }
 
-  /* The mock construction is JS-gated off here, but keep it inert as a
-     safety net so the finished app always shows. */
-  html.js .mock[data-construct]:not(.constructing):not(.constructed) {
-    opacity: 1;
-  }
-
-  .mock.constructing,
-  .mock.constructing .mock-bar,
-  .mock.constructing .mock-dots i,
-  .mock.constructing .side > *,
-  .mock.constructing .threads li,
-  .mock.constructing .feed > *,
-  .mock.constructing .composer,
   .kid-li {
     animation: none;
   }
