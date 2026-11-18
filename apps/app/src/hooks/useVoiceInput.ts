@@ -7,6 +7,10 @@ import {
   type RefObject,
 } from "react";
 import { useMicrophoneSignal } from "./useMicrophoneSignal";
+import {
+  NativeVoiceRecorder,
+  nativeVoiceShell,
+} from "@/lib/native-shell/native-voice-recorder";
 import { useAudioInputDevices } from "./useAudioInputDevices";
 import { appToast } from "@/components/ui/app-toast";
 import { saveFile } from "@/lib/save-file";
@@ -246,7 +250,9 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const deviceRequestRef = useRef(0);
   const startingRef = useRef(false);
   const recordingPreferenceRef = useRef(preferredAudioInputDeviceId);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | NativeVoiceRecorder | null>(
+    null,
+  );
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtMsRef = useRef<number | null>(null);
@@ -561,27 +567,47 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     startingRef.current = true;
     const request = ++deviceRequestRef.current;
     const beginRecording = async () => {
-      const stream = await requestAudioInputStream(
-        navigator.mediaDevices,
-        preferredAudioInputDeviceId,
-      ).catch((error: unknown) => {
-        setCaptureError(
-          resolveRecordingErrorMessage(
-            error,
-            preferredAudioInputDeviceId !== null,
-          ),
-        );
-        throw error;
-      });
-      if (request !== deviceRequestRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
+      const nativeShell = nativeVoiceShell();
+      let preferredMimeType: string | null = null;
+      let recorder: MediaRecorder | NativeVoiceRecorder;
+      if (nativeShell !== null) {
+        recorder = new NativeVoiceRecorder(nativeShell);
+      } else {
+        const stream = await requestAudioInputStream(
+          navigator.mediaDevices,
+          preferredAudioInputDeviceId,
+        ).catch((error: unknown) => {
+          setCaptureError(
+            resolveRecordingErrorMessage(
+              error,
+              preferredAudioInputDeviceId !== null,
+            ),
+          );
+          throw error;
+        });
+        if (request !== deviceRequestRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        setCaptureError(null);
+        void refreshDevices();
+        recordingPreferenceRef.current = preferredAudioInputDeviceId;
+        streamRef.current = stream;
+        setStream(stream);
+
+        const recordingStream =
+          typeof AudioContext === "undefined"
+            ? null
+            : createMicrophoneRecordingStream(stream);
+        recordingStreamRef.current = recordingStream;
+        if (recordingStream) await recordingStream.resume();
+        if (request !== deviceRequestRef.current) return;
+        const recorderInput = recordingStream?.stream ?? stream;
+        preferredMimeType = resolvePreferredAudioMimeType();
+        recorder = preferredMimeType
+          ? new MediaRecorder(recorderInput, { mimeType: preferredMimeType })
+          : new MediaRecorder(recorderInput);
       }
-      setCaptureError(null);
-      void refreshDevices();
-      recordingPreferenceRef.current = preferredAudioInputDeviceId;
-      streamRef.current = stream;
-      setStream(stream);
       chunksRef.current = [];
       startedAtMsRef.current = Date.now();
       promptContextRef.current = options.getPromptContext?.();
@@ -590,26 +616,13 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       acceptOnUnmountRef.current = persistRecordings;
       shouldHoldWakeLockRef.current = true;
       requestRecordingWakeLock();
-
-      const recordingStream =
-        typeof AudioContext === "undefined"
-          ? null
-          : createMicrophoneRecordingStream(stream);
-      recordingStreamRef.current = recordingStream;
-      if (recordingStream) await recordingStream.resume();
-      if (request !== deviceRequestRef.current) return;
-      const recorderInput = recordingStream?.stream ?? stream;
-      const preferredMimeType = resolvePreferredAudioMimeType();
-      const recorder = preferredMimeType
-        ? new MediaRecorder(recorderInput, { mimeType: preferredMimeType })
-        : new MediaRecorder(recorderInput);
       mediaRecorderRef.current = recorder;
 
       recorder.onstart = () => {
         setState("recording");
       };
 
-      recorder.ondataavailable = (event: BlobEvent) => {
+      recorder.ondataavailable = (event: { data: Blob }) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
         }
@@ -670,7 +683,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         await transcribeRecording(recording);
       };
 
-      recorder.start(CHUNK_TIMESLICE_MS);
+      await recorder.start(CHUNK_TIMESLICE_MS);
     };
     const handleStartError = (error: unknown) => {
       stopMediaStream();

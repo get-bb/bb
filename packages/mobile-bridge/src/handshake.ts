@@ -34,6 +34,7 @@ export const nativeShellHandshakeSchema = z
     safeArea: safeAreaInsetsSchema,
     capabilities: z.array(nativeCapabilitySchema).readonly(),
     nativeDownloads: z.literal(true).optional(),
+    voiceRecording: z.literal(true).optional(),
   })
   .strict();
 

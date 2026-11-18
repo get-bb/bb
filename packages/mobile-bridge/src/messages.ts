@@ -38,6 +38,18 @@ export type BridgeSharePayload = z.infer<typeof sharePayloadSchema>;
 const bridgeRequestSchema = z.discriminatedUnion("kind", [
   z
     .object({
+      kind: z.literal("voice-start"),
+      payload: z.object({}).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("voice-stop"),
+      payload: z.object({}).strict(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("open-application"),
       payload: z.object({ url: z.string().max(8192) }).strict(),
     })

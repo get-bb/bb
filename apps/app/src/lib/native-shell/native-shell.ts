@@ -67,6 +67,7 @@ function pickHandshakeFields(bridge: NativeBridgeGlobal): unknown {
     safeArea: source.safeArea,
     capabilities: source.capabilities,
     nativeDownloads: source.nativeDownloads,
+    voiceRecording: source.voiceRecording,
   };
 }
 

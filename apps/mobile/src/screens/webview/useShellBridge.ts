@@ -14,6 +14,10 @@ import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { buildBridgeSharePayload, isExternallyOpenable } from "@/lib/shell";
 import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
+import {
+  startVoiceRecording,
+  stopVoiceRecording,
+} from "@/lib/shell/voice-recorder";
 
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
@@ -79,6 +83,21 @@ export function useShellBridge(
             try {
               await openApplicationUrl(message.request.payload.url);
               respond(message.id, { ok: true, result: null });
+            } catch (error) {
+              respond(message.id, { ok: false, error: describeError(error) });
+            }
+            return;
+          }
+          if (
+            message.request.kind === "voice-start" ||
+            message.request.kind === "voice-stop"
+          ) {
+            try {
+              const result =
+                message.request.kind === "voice-start"
+                  ? await startVoiceRecording()
+                  : await stopVoiceRecording();
+              respond(message.id, { ok: true, result: result ?? null });
             } catch (error) {
               respond(message.id, { ok: false, error: describeError(error) });
             }

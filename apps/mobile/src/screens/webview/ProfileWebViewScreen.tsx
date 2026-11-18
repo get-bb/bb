@@ -256,6 +256,7 @@ export function ProfileWebViewScreen() {
       ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
         ? { nativeDownloads: true as const }
         : {}),
+      ...(Platform.OS === "ios" ? { voiceRecording: true as const } : {}),
     };
   }, [profile, safeArea, sourceUrl]);
 

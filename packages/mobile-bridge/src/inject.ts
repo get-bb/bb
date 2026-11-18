@@ -32,6 +32,7 @@ export function buildBridgeInjectionScript(
       return;
     }
     var handshake = ${encodeForScript(injected)};
+    var REQUEST_TIMEOUTS_MS = { clipboard: 30000, "voice-start": 60000, "voice-stop": 30000 };
     var listeners = [];
     var pending = {};
     var nextId = 0;
@@ -146,7 +147,7 @@ export function buildBridgeInjectionScript(
           var timer = setTimeout(function () {
             delete pending[id];
             reject(new Error("native request timed out"));
-          }, kind === "clipboard" ? 30000 : 10000);
+          }, REQUEST_TIMEOUTS_MS[kind] || 10000);
           pending[id] = { resolve: resolve, reject: reject, timer: timer };
           post({ type: "request", id: id, request: { kind: kind, payload: payload } });
         });

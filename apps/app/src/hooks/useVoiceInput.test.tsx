@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { appToast } from "@/components/ui/app-toast";
 import { useAudioInputDevicePreferenceValue } from "@/lib/audio-input-device-preference";
 import { saveFile } from "@/lib/save-file";
+import { resetNativeShellForTests } from "@/lib/native-shell/native-shell";
 import { useVoiceInput } from "./useVoiceInput";
 
 vi.mock("@/components/ui/app-toast", () => ({ appToast: { error: vi.fn() } }));
@@ -783,4 +784,55 @@ it("keeps the same recorder and captured audio when a microphone disconnects, an
   expect(lateStop).toHaveBeenCalledOnce();
   expect(transcribe).toHaveBeenCalledOnce();
   expect(result.current.stream).toBeNull();
+});
+
+it("records through the iOS shell so the page never opens the microphone", async () => {
+  const request = vi.fn(async (kind: string) =>
+    kind === "voice-stop"
+      ? { base64: btoa("native audio"), mimeType: "audio/mp4" }
+      : null,
+  );
+  vi.stubGlobal("bb", {
+    native: {
+      bridgeVersion: 4,
+      appVersion: "1.0.0",
+      platform: "ios",
+      profileMode: "direct",
+      secureContext: true,
+      safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      capabilities: [],
+      voiceRecording: true,
+      post: vi.fn(),
+      request,
+      subscribe: () => () => {},
+    },
+  });
+  resetNativeShellForTests();
+  const transcribe = vi.fn().mockResolvedValue("spoken words");
+  const onTranscript = vi.fn();
+  const { result } = renderHook(() =>
+    useVoiceInput({
+      recordingKey: "thread/native",
+      onTranscribe: transcribe,
+      onTranscript,
+    }),
+  );
+  await act(() => result.current.start());
+  expect(result.current.state).toBe("recording");
+  vi.advanceTimersByTime(1500);
+  await act(async () => result.current.stop("insert"));
+  await act(async () => {
+    await vi.runAllTimersAsync();
+  });
+
+  expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  expect(request.mock.calls.map(([kind]) => kind)).toEqual([
+    "voice-start",
+    "voice-stop",
+  ]);
+  const file: File = transcribe.mock.calls[0]?.[0].file;
+  expect(file.name).toBe("recording.mp4");
+  expect(await file.text()).toBe("native audio");
+  expect(onTranscript).toHaveBeenCalledWith("spoken words", "insert");
+  resetNativeShellForTests();
 });
