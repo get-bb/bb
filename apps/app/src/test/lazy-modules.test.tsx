@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { settleLazyModules } from "./lazy-modules";
 
@@ -59,4 +59,24 @@ it("loads imports an awaited operation starts after settling began", async () =>
   })();
 
   await expect(settleLazyModules(operation)).resolves.toBe("module ready");
+});
+
+it("lets findBy wait for an import that starts a microtask after render and outlasts its deadline", async () => {
+  const View = lazy(() =>
+    Promise.resolve().then(() =>
+      globalThis.__bbTrackLazyImport(
+        new Promise<{ default: ComponentType }>((resolve) =>
+          setTimeout(() => resolve({ default: () => <p>Slow</p> }), 1_500),
+        ),
+        "./Slow",
+      ),
+    ),
+  );
+  render(
+    <Suspense fallback={<p>Loading slow</p>}>
+      <View />
+    </Suspense>,
+  );
+
+  expect(await screen.findByText("Slow")).toBeTruthy();
 });

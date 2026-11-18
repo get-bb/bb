@@ -103,12 +103,6 @@ export async function settleLazyModules<T>(
   });
 }
 
-async function settlePendingLazyModules(): Promise<void> {
-  const state = lazyImportState();
-  if (state.held.length === 0 && state.inFlight.size === 0) return;
-  await settleLazyModules();
-}
-
 export function installLazyImportTracking(): void {
   globalThis.__bbTrackLazyImport = trackLazyImport;
 }
@@ -118,9 +112,9 @@ export async function settleLazyModulesBeforeWaiting(): Promise<void> {
   const { asyncWrapper } = getConfig();
   if (Reflect.get(asyncWrapper, SETTLING_WRAPPER) === true) return;
   const settlingWrapper = async <T>(callback: () => Promise<T>) => {
-    await settlePendingLazyModules();
+    await settleLazyModules();
     const result = await whileImportsFlow(() => asyncWrapper(callback));
-    await settlePendingLazyModules();
+    await settleLazyModules();
     return result;
   };
   Reflect.set(settlingWrapper, SETTLING_WRAPPER, true);
