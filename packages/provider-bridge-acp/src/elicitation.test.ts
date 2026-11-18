@@ -267,6 +267,36 @@ describe("planAcpElicitation", () => {
     });
   });
 
+  it("shows omp's lone question once when it is both the message and the field title", () => {
+    const plan = questions(
+      planAcpElicitation({
+        sessionId: "s1",
+        mode: "form",
+        message: "What goes into this change?",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            q0: {
+              type: "array",
+              title: "What goes into this change?",
+              description: "Search fixes",
+              items: {
+                anyOf: [
+                  { const: "Quick fixes", title: "Quick fixes" },
+                  { const: "Big indexes", title: "Big indexes" },
+                ],
+              },
+            },
+            q0__other: { type: "string", title: "Other (type your own)" },
+          },
+        },
+      }),
+    );
+    expect(plan.payload.questions[0]?.prompt).toBe(
+      "What goes into this change?\nSearch fixes",
+    );
+  });
+
   it("folds a multi-select and its __other field, returning both the picks and the typed text", () => {
     const plan = questions(
       planAcpElicitation(
