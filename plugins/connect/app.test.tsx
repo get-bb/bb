@@ -765,6 +765,39 @@ describe("connect settings section", () => {
       }),
     );
   });
+
+  it("starts sign-in again when a failed sign-in is retried", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({
+        login: pendingLogin("denied"),
+        status: signedInAccount,
+      }),
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+    const loginStarts = () =>
+      account.calls.filter((call) => call.method === "login.start").length;
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    const retry = await slot.findByRole(
+      "button",
+      { name: "Try again" },
+      { timeout: 4_000 },
+    );
+    expect(loginStarts()).toBe(1);
+    fireEvent.click(retry);
+    await waitFor(() => expect(loginStarts()).toBe(2));
+  });
 });
 
 describe("Connect settings realtime recovery", () => {
