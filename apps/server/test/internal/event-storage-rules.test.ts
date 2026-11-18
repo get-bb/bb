@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { events, PROVIDER_UNHANDLED_EVENT_MAX_BYTES } from "@bb/db";
 import {
+  threadEventItemSchema,
   threadScope,
   turnScope,
   type ThreadEvent,
@@ -12,6 +13,7 @@ import {
 } from "@bb/host-daemon-contract";
 import {
   listRecordedCells,
+  projectParityRows,
   recordedCellInputs,
   RECORDINGS_ROOT,
 } from "@bb/provider-parity";
@@ -30,11 +32,13 @@ interface StoredRow {
   sequence: number;
   type: string;
   itemId: string | null;
+  scopeKind: string;
+  turnId: string | null;
   data: string;
 }
 
 interface StorageRuleViolation {
-  rule: "unhandled-cap" | "started-diff-duplicate";
+  rule: "row-size" | "started-repeat";
   sequence: number;
   detail: string;
 }
@@ -45,7 +49,18 @@ type ThreadEventInput = ThreadEvent extends infer Event
     : never
   : never;
 
+type JsonObject = Record<string, unknown>;
+
 const PROVIDER_THREAD_ID = "prov-1";
+const ROW_MAX_BYTES = PROVIDER_UNHANDLED_EVENT_MAX_BYTES;
+const REPEATED_FIELD_MIN_CHARS = 64;
+const ITEM_PER_EVENT_FIELDS = new Set([
+  "id",
+  "type",
+  "status",
+  "parentToolCallId",
+  "presentation",
+]);
 
 function storedRows(harness: TestAppHarness, threadId: string): StoredRow[] {
   return harness.db
@@ -53,6 +68,8 @@ function storedRows(harness: TestAppHarness, threadId: string): StoredRow[] {
       sequence: events.sequence,
       type: events.type,
       itemId: events.itemId,
+      scopeKind: events.scopeKind,
+      turnId: events.turnId,
       data: events.data,
     })
     .from(events)
@@ -61,55 +78,135 @@ function storedRows(harness: TestAppHarness, threadId: string): StoredRow[] {
     .all();
 }
 
-function fileChanges(row: StoredRow): ThreadEventFileChange[] | null {
-  const data = JSON.parse(row.data) as {
-    item?: { type?: string; changes?: ThreadEventFileChange[] };
-  };
-  return data.item?.type === "fileChange" ? (data.item.changes ?? null) : null;
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function rowItem(row: StoredRow): JsonObject | null {
+  const data = JSON.parse(row.data) as { item?: unknown };
+  return isJsonObject(data.item) ? data.item : null;
+}
+
+function carriesContent(type: string): boolean {
+  return (
+    type.startsWith("item/") ||
+    type === "client/turn/requested" ||
+    type === "system/manager/user_message"
+  );
+}
+
+function droppableRepeats(
+  started: unknown,
+  settled: unknown,
+  root: JsonObject,
+  path: string,
+): string[] {
+  if (typeof started !== "object" || started === null) return [];
+  if (typeof settled !== "object" || settled === null) return [];
+  const container = started as Record<string, unknown>;
+  const settledContainer = settled as Record<string, unknown>;
+  const found: string[] = [];
+  for (const key of Object.keys(container)) {
+    if (path === "" && ITEM_PER_EVENT_FIELDS.has(key)) continue;
+    if (Array.isArray(started) && !Array.isArray(settled)) continue;
+    const value = container[key];
+    const encoded = JSON.stringify(value);
+    if (
+      encoded.length < REPEATED_FIELD_MIN_CHARS ||
+      encoded !== JSON.stringify(settledContainer[key])
+    ) {
+      continue;
+    }
+    const fieldPath = `${path}${Array.isArray(started) ? `[${key}]` : `.${key}`}`;
+    if (!Array.isArray(started)) {
+      delete container[key];
+      const droppable = threadEventItemSchema.safeParse(root).success;
+      container[key] = value;
+      if (droppable) {
+        found.push(`${fieldPath} (${encoded.length} chars)`);
+        continue;
+      }
+    }
+    found.push(
+      ...droppableRepeats(value, settledContainer[key], root, fieldPath),
+    );
+  }
+  return found;
 }
 
 function storageRuleViolations(
   rows: readonly StoredRow[],
 ): StorageRuleViolation[] {
   const violations: StorageRuleViolation[] = [];
-  const completedChanges = new Map<string, ThreadEventFileChange[]>();
+  const completedItems = new Map<string, JsonObject>();
   for (const row of rows) {
-    if (row.type === "provider/unhandled") {
-      const bytes = Buffer.byteLength(row.data);
-      if (bytes > PROVIDER_UNHANDLED_EVENT_MAX_BYTES) {
-        violations.push({
-          rule: "unhandled-cap",
-          sequence: row.sequence,
-          detail: `${bytes} bytes`,
-        });
-      }
+    const bytes = Buffer.byteLength(row.data);
+    if (!carriesContent(row.type) && bytes > ROW_MAX_BYTES) {
+      violations.push({
+        rule: "row-size",
+        sequence: row.sequence,
+        detail: `${row.type} is ${bytes} bytes`,
+      });
     }
     if (row.type === "item/completed" && row.itemId !== null) {
-      const changes = fileChanges(row);
-      if (changes !== null) completedChanges.set(row.itemId, changes);
+      const item = rowItem(row);
+      if (item !== null) completedItems.set(row.itemId, item);
     }
   }
   for (const row of rows) {
     if (row.type !== "item/started" || row.itemId === null) continue;
-    const completed = completedChanges.get(row.itemId);
-    const started = fileChanges(row);
-    if (completed === undefined || started === null) continue;
-    for (const [index, change] of started.entries()) {
-      const settled = completed[index];
-      if (
-        change.diff !== undefined &&
-        settled?.path === change.path &&
-        settled.diff === change.diff
-      ) {
-        violations.push({
-          rule: "started-diff-duplicate",
-          sequence: row.sequence,
-          detail: `${row.itemId} changes[${index}] (${change.diff.length} chars)`,
-        });
-      }
+    const settled = completedItems.get(row.itemId);
+    const started = rowItem(row);
+    if (settled === undefined || started === null) continue;
+    if (started.type !== settled.type) continue;
+    if (!threadEventItemSchema.safeParse(started).success) continue;
+    for (const field of droppableRepeats(started, settled, started, "")) {
+      violations.push({
+        rule: "started-repeat",
+        sequence: row.sequence,
+        detail: `${String(started.type)} ${row.itemId} item${field}`,
+      });
     }
   }
   return violations;
+}
+
+function storedThreadEvents(
+  rows: readonly StoredRow[],
+  restoreStarted: ReadonlyMap<string, JsonObject[]>,
+): ThreadEvent[] {
+  const restored = new Map<string, number>();
+  return rows.map((row) => {
+    const data = JSON.parse(row.data) as JsonObject;
+    if (row.type === "item/started" && row.itemId !== null) {
+      const index = restored.get(row.itemId) ?? 0;
+      const original = restoreStarted.get(row.itemId)?.[index];
+      restored.set(row.itemId, index + 1);
+      if (original !== undefined) data.item = original;
+    }
+    return {
+      ...data,
+      type: row.type,
+      threadId: "thread-1",
+      scope:
+        row.scopeKind === "turn" && row.turnId !== null
+          ? turnScope(row.turnId)
+          : threadScope(),
+    } as ThreadEvent;
+  });
+}
+
+function startedItemsById(
+  recorded: readonly ThreadEvent[],
+): Map<string, JsonObject[]> {
+  const started = new Map<string, JsonObject[]>();
+  for (const event of recorded) {
+    if (event.type !== "item/started") continue;
+    const items = started.get(event.item.id) ?? [];
+    items.push(JSON.parse(JSON.stringify(event.item)) as JsonObject);
+    started.set(event.item.id, items);
+  }
+  return started;
 }
 
 interface ReplayHost {
@@ -311,7 +408,7 @@ const PAST_CASES: PastCase[] = [
 ];
 
 describe("event storage rules", () => {
-  it("hold for every provider recording replayed through ingest", async () => {
+  it("hold for every provider recording replayed through ingest, without changing its timeline", async () => {
     const harness = await createTestAppHarness();
     try {
       const host = seedReplayHost(harness);
@@ -328,6 +425,19 @@ describe("event storage rules", () => {
         for (const violation of storageRuleViolations(rows)) {
           violations.push(
             `${cell.provider}/${cell.cell} seq ${violation.sequence} ${violation.rule}: ${violation.detail}`,
+          );
+        }
+        const asStored = projectParityRows({
+          events: storedThreadEvents(rows, new Map()),
+          providerId: cell.provider,
+        });
+        const asRecorded = projectParityRows({
+          events: storedThreadEvents(rows, startedItemsById(recorded)),
+          providerId: cell.provider,
+        });
+        if (JSON.stringify(asStored) !== JSON.stringify(asRecorded)) {
+          violations.push(
+            `${cell.provider}/${cell.cell} timeline-parity: stored started rows render differently from the recorded ones`,
           );
         }
       }
@@ -348,9 +458,12 @@ describe("event storage rules", () => {
       expect(storageRuleViolations(rows)).toEqual([]);
       if (pastCase.expectStartedDiff !== undefined) {
         const started = rows.find((row) => row.type === "item/started");
-        expect(started && fileChanges(started)?.[0]?.diff).toBe(
-          pastCase.expectStartedDiff,
-        );
+        const changes = started && rowItem(started)?.changes;
+        expect(
+          Array.isArray(changes) && isJsonObject(changes[0])
+            ? changes[0].diff
+            : undefined,
+        ).toBe(pastCase.expectStartedDiff);
       }
     } finally {
       await harness.cleanup();

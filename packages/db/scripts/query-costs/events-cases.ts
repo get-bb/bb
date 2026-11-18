@@ -362,7 +362,6 @@ function selectSettledFileChangeRow(
   if (row === undefined) throw new Error("Expected a completed file change");
   settledFileChangeRow = {
     ...row,
-    itemKind: "fileChange",
     type: "item/completed",
   };
 }

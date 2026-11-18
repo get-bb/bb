@@ -165,22 +165,41 @@ describe("provider/unhandled cap", () => {
   });
 });
 
-describe("settled file change diffs", () => {
-  it("strips each started diff the completion repeats, and reads see the stripped row", () => {
+const SAME_DIFF = `@@ -1 +1 @@\n-${"a".repeat(40)}\n+${"b".repeat(40)}\n`;
+const PROPOSED_DIFF = `@@ -1 +1 @@\n-${"a".repeat(40)}\n+${"c".repeat(40)}\n`;
+const APPLIED_DIFF = `@@ -1 +1 @@\n-${"a".repeat(40)}\n+${"d".repeat(40)}\n`;
+
+function itemEvent(
+  threadId: string,
+  sequence: number,
+  type: "item/started" | "item/completed",
+  item: Record<string, unknown>,
+): InsertEventInput {
+  return event(
+    threadId,
+    sequence,
+    type,
+    { providerThreadId: "prov-1", item },
+    { id: String(item.id), kind: item.type as "fileChange" },
+  );
+}
+
+describe("settled started fields", () => {
+  it("strips the started diffs a completion repeats verbatim, keeps a set that differs, and reads see the stripped row", () => {
     const threadId = setup();
     insertEvents(db, noopNotifier, [
       fileChange(threadId, 1, "item/started", [
-        { path: "a.ts", diff: "same" },
-        { path: "b.ts", diff: "proposed" },
-        { path: "c.ts", diff: "moved" },
+        { path: "a.ts", diff: SAME_DIFF },
+        { path: "b.ts", diff: PROPOSED_DIFF },
+        { path: "c.ts", diff: SAME_DIFF },
       ]),
     ]);
     expect(rows(threadId)).toHaveLength(1);
     insertEvents(db, noopNotifier, [
       fileChange(threadId, 2, "item/completed", [
-        { path: "a.ts", diff: "same" },
-        { path: "b.ts", diff: "applied" },
-        { path: "d.ts", diff: "moved" },
+        { path: "a.ts", diff: SAME_DIFF },
+        { path: "b.ts", diff: PROPOSED_DIFF },
+        { path: "c.ts", diff: SAME_DIFF },
       ]),
     ]);
     const started = JSON.parse(rows(threadId)[0]!.data) as {
@@ -188,20 +207,99 @@ describe("settled file change diffs", () => {
     };
     expect(started.item.changes).toEqual([
       { kind: "update", path: "a.ts" },
-      { kind: "update", path: "b.ts", diff: "proposed" },
-      { kind: "update", path: "c.ts", diff: "moved" },
+      { kind: "update", path: "b.ts" },
+      { kind: "update", path: "c.ts" },
     ]);
+    insertEvents(db, noopNotifier, [
+      { ...fileChange(threadId, 3, "item/started", [
+        { path: "a.ts", diff: SAME_DIFF },
+        { path: "b.ts", diff: PROPOSED_DIFF },
+      ]), itemId: "edit-2" },
+      { ...fileChange(threadId, 4, "item/completed", [
+        { path: "a.ts", diff: SAME_DIFF },
+        { path: "b.ts", diff: APPLIED_DIFF },
+      ]), itemId: "edit-2" },
+    ]);
+    expect(storedData(threadId, 3)).toMatchObject({
+      item: {
+        changes: [
+          { path: "a.ts", diff: SAME_DIFF },
+          { path: "b.ts", diff: PROPOSED_DIFF },
+        ],
+      },
+    });
     expect(storedData(threadId, 1)).toEqual(started);
   });
 
   it("keeps the started diff when the completion carries no diff", () => {
     const threadId = setup();
     insertEvents(db, noopNotifier, [
-      fileChange(threadId, 1, "item/started", [{ path: "a.ts", diff: "keep" }]),
+      fileChange(threadId, 1, "item/started", [
+        { path: "a.ts", diff: SAME_DIFF },
+      ]),
       fileChange(threadId, 2, "item/completed", []),
     ]);
     expect(storedData(threadId, 1)).toMatchObject({
-      item: { changes: [{ path: "a.ts", diff: "keep" }] },
+      item: { changes: [{ path: "a.ts", diff: SAME_DIFF }] },
+    });
+  });
+
+  it("strips repeated tool arguments, keeps differing ones, and keeps required and per-event fields", () => {
+    const threadId = setup();
+    const presentation = {
+      label: { pending: "Running the build", completed: "Ran the build" },
+      icon: { glyph: "Terminal" },
+    };
+    const toolArguments = { query: "q".repeat(80), limit: 10 };
+    const command = `bash -lc '${"x".repeat(120)}'`;
+    const commandItem = {
+      type: "commandExecution",
+      id: "cmd-1",
+      command,
+      cwd: "/tmp/rules",
+      approvalStatus: null,
+      presentation,
+    };
+    const toolItem = (id: string, args: Record<string, unknown>) => ({
+      type: "toolCall",
+      id,
+      tool: "search",
+      arguments: args,
+    });
+    insertEvents(db, noopNotifier, [
+      itemEvent(threadId, 1, "item/started", { ...commandItem, status: "pending" }),
+      itemEvent(threadId, 2, "item/started", {
+        ...toolItem("tool-same", toolArguments),
+        status: "pending",
+      }),
+      itemEvent(threadId, 3, "item/started", {
+        ...toolItem("tool-changed", toolArguments),
+        status: "pending",
+      }),
+      itemEvent(threadId, 4, "item/completed", {
+        ...commandItem,
+        status: "completed",
+        aggregatedOutput: "ok",
+      }),
+      itemEvent(threadId, 5, "item/completed", {
+        ...toolItem("tool-same", toolArguments),
+        status: "completed",
+      }),
+      itemEvent(threadId, 6, "item/completed", {
+        ...toolItem("tool-changed", { ...toolArguments, limit: 20 }),
+        status: "completed",
+      }),
+    ]);
+    expect(storedData(threadId, 1)).toEqual({
+      providerThreadId: "prov-1",
+      item: { ...commandItem, status: "pending" },
+    });
+    expect(storedData(threadId, 2)).toEqual({
+      providerThreadId: "prov-1",
+      item: { type: "toolCall", id: "tool-same", tool: "search", status: "pending" },
+    });
+    expect(storedData(threadId, 3)).toMatchObject({
+      item: { arguments: toolArguments },
     });
   });
 });

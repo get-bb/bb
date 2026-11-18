@@ -492,7 +492,6 @@ function insertStoredEventRow(
   applySettledEventStorageRules(db, {
     data: prepared.data,
     itemId: args.itemId,
-    itemKind: args.itemKind,
     sequence: args.sequence,
     threadId: args.threadId,
     type: args.type,

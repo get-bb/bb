@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
-import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
+import {
+  threadEventItemSchema,
+  type ThreadEventItemType,
+  type ThreadEventType,
+} from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
 import {
   afterCommit,
@@ -25,7 +29,6 @@ interface StoredEventDataArgs {
 interface StoredEventRowRef {
   data: string;
   itemId: string | null;
-  itemKind: ThreadEventItemType | null;
   sequence: number;
   threadId: string;
   type: ThreadEventType;
@@ -111,76 +114,129 @@ export function prepareStoredEventData(
   return prepareCompletedEventOutputData(args);
 }
 
-function fileChangeEntries(data: string): {
-  payload: JsonObject;
-  changes: unknown[];
-} | null {
-  const payload: unknown = JSON.parse(data);
-  if (
-    !isJsonObject(payload) ||
-    !isJsonObject(payload.item) ||
-    payload.item.type !== "fileChange" ||
-    !Array.isArray(payload.item.changes)
-  ) {
-    return null;
-  }
-  return { payload, changes: payload.item.changes };
+const SETTLED_ITEM_PER_EVENT_FIELDS = new Set([
+  "id",
+  "type",
+  "status",
+  "parentToolCallId",
+  "presentation",
+]);
+const SETTLED_REPEATED_FIELD_MIN_CHARS = 64;
+
+type JsonContainer = JsonObject | unknown[];
+
+function isJsonContainer(value: unknown): value is JsonContainer {
+  return typeof value === "object" && value !== null;
 }
 
-function withoutSettledDiffs(
-  startedData: string,
-  settledChanges: readonly unknown[],
-): string | null {
-  const started = fileChangeEntries(startedData);
-  if (started === null) return null;
+function parseItemPayload(data: string): {
+  payload: JsonObject;
+  item: JsonObject;
+} | null {
+  const payload: unknown = JSON.parse(data);
+  if (!isJsonObject(payload) || !isJsonObject(payload.item)) return null;
+  return { payload, item: payload.item };
+}
+
+interface SettledStrip {
+  droppable: Map<string, boolean>;
+  isValid: () => boolean;
+}
+
+function canDrop(
+  strip: SettledStrip,
+  container: JsonObject,
+  key: string,
+  pattern: string,
+): boolean {
+  const cached = strip.droppable.get(pattern);
+  if (cached !== undefined) return cached;
+  const value = container[key];
+  delete container[key];
+  const droppable = strip.isValid();
+  container[key] = value;
+  strip.droppable.set(pattern, droppable);
+  return droppable;
+}
+
+function stripRepeatedFields(
+  strip: SettledStrip,
+  started: JsonContainer,
+  settled: JsonContainer,
+  pattern: string,
+): boolean {
+  if (Array.isArray(started)) {
+    if (!Array.isArray(settled)) return false;
+    let stripped = false;
+    for (const [index, entry] of started.entries()) {
+      const settledEntry = settled[index];
+      if (isJsonContainer(entry) && isJsonContainer(settledEntry)) {
+        stripped =
+          stripRepeatedFields(strip, entry, settledEntry, `${pattern}[]`) ||
+          stripped;
+      }
+    }
+    return stripped;
+  }
+  if (Array.isArray(settled)) return false;
   let stripped = false;
-  for (const [index, change] of started.changes.entries()) {
-    const settled = settledChanges[index];
+  for (const key of Object.keys(started)) {
+    if (pattern === "" && SETTLED_ITEM_PER_EVENT_FIELDS.has(key)) continue;
+    if (!(key in settled)) continue;
+    const value = started[key];
+    const settledValue = settled[key];
+    const encoded = JSON.stringify(value);
     if (
-      isJsonObject(change) &&
-      isJsonObject(settled) &&
-      typeof change.diff === "string" &&
-      change.path === settled.path &&
-      change.diff === settled.diff
+      encoded.length < SETTLED_REPEATED_FIELD_MIN_CHARS ||
+      encoded !== JSON.stringify(settledValue)
     ) {
-      delete change.diff;
+      continue;
+    }
+    const fieldPattern = `${pattern}.${key}`;
+    if (canDrop(strip, started, key, fieldPattern)) {
+      delete started[key];
       stripped = true;
+    } else if (isJsonContainer(value) && isJsonContainer(settledValue)) {
+      stripped =
+        stripRepeatedFields(strip, value, settledValue, fieldPattern) ||
+        stripped;
     }
   }
-  return stripped ? JSON.stringify(started.payload) : null;
+  return stripped;
+}
+
+function withoutSettledFields(
+  startedData: string,
+  settledItem: JsonObject,
+): string | null {
+  const started = parseItemPayload(startedData);
+  if (started === null || started.item.type !== settledItem.type) return null;
+  const isValid = () => threadEventItemSchema.safeParse(started.item).success;
+  if (!isValid()) return null;
+  const strip = { droppable: new Map<string, boolean>(), isValid };
+  return stripRepeatedFields(strip, started.item, settledItem, "") && isValid()
+    ? JSON.stringify(started.payload)
+    : null;
 }
 
 export function applySettledEventStorageRules(
   db: DbQueryConnection,
   row: StoredEventRowRef,
 ): void {
-  if (
-    row.type !== "item/completed" ||
-    row.itemKind !== "fileChange" ||
-    row.itemId === null
-  ) {
-    return;
-  }
-  const settled = fileChangeEntries(row.data);
-  if (
-    settled === null ||
-    !settled.changes.some(
-      (change) => isJsonObject(change) && typeof change.diff === "string",
-    )
-  ) {
-    return;
-  }
+  if (row.type !== "item/completed" || row.itemId === null) return;
   const startedRows = db.all<{ id: string; data: string }>(sql`
     SELECT id, data FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
     WHERE thread_id = ${row.threadId}
       AND item_id = ${row.itemId}
       AND type IN ('item/started', 'item/completed', 'item/backgroundTask/completed')
       AND type = 'item/started'
-      AND item_kind = 'fileChange'
       AND sequence < ${row.sequence}`);
+  if (startedRows.length === 0) return;
+  const settled = parseItemPayload(row.data);
+  if (settled === null) return;
   const root = rootConnectionOf(db);
   for (const started of startedRows) {
-    const data = withoutSettledDiffs(started.data, settled.changes);
+    const data = withoutSettledFields(started.data, settled.item);
     if (data === null) continue;
     db.run(sql`UPDATE events SET data = ${data} WHERE id = ${started.id}`);
     if (root !== undefined) {

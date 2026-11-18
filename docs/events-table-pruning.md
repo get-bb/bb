@@ -36,11 +36,16 @@ before and right after the insert:
 - A `provider/unhandled` row is at most 64 KiB. When it would be larger, the
   largest top-level fields of `rawEvent.params` are omitted until it fits, and
   `params` records `payloadOmitted: true` and the original `payloadBytes`.
-- When a `fileChange` item completes, each `changes[i].diff` in its
-  `item/started` row that the completion repeats at the same index and path is
-  removed from the started row. The timeline shows a completed change's diff
-  from its completion, so nothing visible changes. A completion without diffs,
-  such as a denied approval, leaves the started diffs in place.
+- When an item completes, each field of its `item/started` row that the
+  completion repeats verbatim is removed from the started row if the started
+  item stays valid without it, for example `changes[i].diff` on a file change
+  or `arguments` on a tool call. A required field the completion repeats is
+  kept and its parts are checked the same way. Fields shorter than 64
+  characters, identity fields and `presentation`, which the timeline reads
+  from each event, are kept. The timeline reads these fields from the
+  completion once an item settles, so nothing visible changes. A completion
+  that differs, or carries none, leaves the started value in place: a denied
+  approval keeps its diff.
 
 ## When pruning runs
 
