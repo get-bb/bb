@@ -9,6 +9,7 @@ import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { preloadTerminalModules } from "@/components/thread/terminal/terminal-modules";
+import { CHROME_ROW_HEIGHT_CLASS } from "@/lib/bb-desktop";
 import { FilePreviewLoading } from "./FilePreviewChrome";
 import { SecondaryPanelContentSkeleton } from "./SecondaryPanelContentSkeleton";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
@@ -73,11 +74,17 @@ function ThreadSecondaryPanelPlaceholderContent({
   activeTab,
   metadataContent,
 }: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  const showsThreadInfo =
+    activeTab?.kind === "thread-info" ||
+    (activeTab?.kind === "plugin-fixed" &&
+      activeTab.pluginId === "core" &&
+      activeTab.tabId === "info");
+  if (showsThreadInfo) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
+    );
+  }
   switch (activeTab?.kind) {
-    case "thread-info":
-      return (
-        <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
-      );
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
@@ -85,6 +92,26 @@ function ThreadSecondaryPanelPlaceholderContent({
     default:
       return <SecondaryPanelContentSkeleton />;
   }
+}
+
+export function ThreadSecondaryPanelDrawerPlaceholder({
+  activeTab,
+  metadataContent,
+}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  return (
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-sidebar"
+      data-testid="thread-secondary-panel-drawer-placeholder"
+    >
+      <div aria-hidden className={cn("shrink-0", CHROME_ROW_HEIGHT_CLASS)} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ThreadSecondaryPanelPlaceholderContent
+          activeTab={activeTab}
+          metadataContent={metadataContent}
+        />
+      </div>
+    </div>
+  );
 }
 
 type LazyThreadSecondaryPanelProps = ComponentProps<

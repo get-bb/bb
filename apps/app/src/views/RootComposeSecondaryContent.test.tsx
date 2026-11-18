@@ -345,7 +345,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
       expect(panelGroupState.setLayout).not.toHaveBeenCalled();
       expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
       expect(
-        screen.getByTestId("drawer-panel-loading-skeleton"),
+        screen.getByTestId("thread-secondary-panel-drawer-placeholder"),
       ).not.toBeNull();
 
       await act(async () => {

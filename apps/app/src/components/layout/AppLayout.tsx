@@ -57,7 +57,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
-  usePanelShelfState,
+  useFixedChromePanelShelfState,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 import { LazyProjectPathDialog } from "@/components/dialogs/LazyProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
@@ -251,7 +251,7 @@ function SidebarTriggerOverlay({
   const isCompactViewport = useIsCompactViewport();
   const { openMobile } = useSidebar();
   const isFramed = useIsSidebarFramed();
-  const panelShelfState = usePanelShelfState({
+  const panelShelfState = useFixedChromePanelShelfState({
     isCompactViewport,
     isSidebarDrawerOpen: openMobile,
   });
