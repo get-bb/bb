@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { shuffle } from "@vitest/utils/helpers";
 import { mergeConfig, type ViteUserConfig } from "vitest/config";
 import { BaseSequencer, type TestSpecification } from "vitest/node";
+import { TestDurationReporter } from "./vitest.test-durations.js";
 
 const GLOBAL_OBJECT = String.raw`(?:window|globalThis|global|document|navigator|process|[A-Z][\w$]*\.prototype)`;
 const GLOBAL_TARGET = String.raw`(?:${GLOBAL_OBJECT}|\(\s*${GLOBAL_OBJECT}\s+as\b[^)]*\))`;
@@ -335,6 +336,17 @@ export function defineWorkspaceTestConfig(
         ],
         ...(process.env.BB_CI_TEST_SHARD
           ? { shard: process.env.BB_CI_TEST_SHARD }
+          : {}),
+        ...(process.env.BB_TEST_DURATIONS_DIR
+          ? {
+              reporters: [
+                "default",
+                ...(process.env.GITHUB_ACTIONS === "true"
+                  ? ["github-actions"]
+                  : []),
+                new TestDurationReporter(process.env.BB_TEST_DURATIONS_DIR),
+              ],
+            }
           : {}),
         sequence: { sequencer: SharedWorkerSequencer },
         coverage: {

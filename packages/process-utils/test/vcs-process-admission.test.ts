@@ -59,7 +59,7 @@ it("admits only the background share of git children while a foreground status c
 it("releases admission after real git exit, spawn, and timeout failures", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "bb-vcs-failure-"));
   const options = { cwd, env: process.env, maxBuffer: 1024, timeout: 100 };
-  const alias = `!"${process.execPath.replaceAll("\\", "/")}" -e "setTimeout(() => {}, 30000)"`;
+  const alias = "!exec sleep 30 </dev/null >/dev/null 2>&1";
   try {
     const results = await Promise.allSettled([
       execPortableFile("git", ["bb-no-such-command"], options),
