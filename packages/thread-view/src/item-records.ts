@@ -369,7 +369,6 @@ function isClosed(record: ItemRecord): boolean {
 function continuesClosedRecord(
   record: ItemRecord,
   role: ItemEventRole,
-  otherTurn: boolean,
 ): boolean {
   if (role.kind === "output") {
     return record.finished;
@@ -377,7 +376,25 @@ function continuesClosedRecord(
   if (role.kind !== "item") {
     return false;
   }
-  return role.carriesOver || (record.item?.type === "delegation" && !otherTurn);
+  return role.carriesOver || record.item?.type === "delegation";
+}
+
+function startsNewRecord(
+  record: ItemRecord,
+  role: ItemEventRole,
+  turnId: string | undefined,
+): boolean {
+  if (record.item?.type === "backgroundTask") {
+    return false;
+  }
+  if (record.textKind !== null || record.item?.type === "fileChange") {
+    return (
+      record.turnId !== undefined &&
+      turnId !== undefined &&
+      turnId !== record.turnId
+    );
+  }
+  return isClosed(record) && !continuesClosedRecord(record, role);
 }
 
 function fileChangeMatchKeys(change: {
@@ -571,23 +588,10 @@ export function applyItemEvent(
   if (store.finalActivityIds.has(role.itemId)) {
     return null;
   }
-  const turnId = getThreadEventScopeTurnId(entry.event.scope);
   let record = store.currentByItemId.get(role.itemId);
-  const otherTurn =
-    record?.turnId !== undefined &&
-    turnId !== undefined &&
-    turnId !== record.turnId &&
-    (record.textKind !== null || record.item?.type === "fileChange");
-  const keepsRecord =
-    record?.item?.type === "backgroundTask" ||
-    (record !== undefined &&
-      !otherTurn &&
-      (record.textKind !== null || record.item?.type === "fileChange"));
   if (
     record === undefined ||
-    (!keepsRecord &&
-      (otherTurn ||
-        (isClosed(record) && !continuesClosedRecord(record, role, otherTurn))))
+    startsNewRecord(record, role, getThreadEventScopeTurnId(entry.event.scope))
   ) {
     const item =
       role.kind === "item" || role.kind === "approval" ? role.item : null;
@@ -613,7 +617,7 @@ export function applyItemEvent(
   return record;
 }
 
-export function stopOpenTextRecords(
+export function freezeTextAndFlushOutputAtStop(
   store: ItemRecordStore,
   turnId: string | null,
   stop: ItemRecordStop,

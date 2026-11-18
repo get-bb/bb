@@ -38,7 +38,7 @@ import {
 import {
   applyItemEvent,
   classifyItemEvent,
-  stopOpenTextRecords,
+  freezeTextAndFlushOutputAtStop,
 } from "./item-records.js";
 import {
   collectItemRecordMessages,
@@ -610,7 +610,7 @@ function foldProjectionEvent(
         turnId: completedTurnId,
         status: decoded.status,
       });
-      stopOpenTextRecords(state.items, completedTurnId, {
+      freezeTextAndFlushOutputAtStop(state.items, completedTurnId, {
         seq: meta.seq,
         createdAt: meta.createdAt,
         interrupted: decoded.status !== "completed",
@@ -621,7 +621,7 @@ function foldProjectionEvent(
         state,
         threadId: decoded.threadId,
       });
-      stopOpenTextRecords(state.items, null, {
+      freezeTextAndFlushOutputAtStop(state.items, null, {
         seq: meta.seq,
         createdAt: meta.createdAt,
         interrupted: true,
