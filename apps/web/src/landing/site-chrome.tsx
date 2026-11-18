@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   compareLinks,
@@ -18,7 +22,13 @@ import {
   guideMenu,
   type ContentLink,
 } from "./content-links";
-import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
+import {
+  DesktopDownloadButton,
+  DiscordLink,
+  DownloadLink,
+  GitHubLink,
+  XLink,
+} from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DOWNLOAD_PAGE_PATH, GITHUB_STARS, formatStarCount } from "./site";
 
@@ -186,17 +196,25 @@ function GuidesMenu({
   );
 }
 
-export function GitHubStarsLink({ stars }: { stars: number }) {
+export function GitHubStarsLink({ stars }: { stars: number | null }) {
   return (
     <GitHubLink
       placement="nav"
-      className="nav-icon-button nav-github-stars"
-      aria-label={`GitHub, ${stars.toLocaleString("en")} stars`}
+      className={
+        stars === null ? "nav-icon-button" : "nav-icon-button nav-github-stars"
+      }
+      aria-label={
+        stars === null
+          ? "GitHub"
+          : `GitHub, ${stars.toLocaleString("en")} stars`
+      }
     >
       <HugeiconsIcon icon={GithubIcon} />
-      <span className="nav-star-count" aria-hidden="true">
-        {formatStarCount(stars)}
-      </span>
+      {stars !== null && (
+        <span className="nav-star-count" aria-hidden="true">
+          {formatStarCount(stars)}
+        </span>
+      )}
     </GitHubLink>
   );
 }
@@ -208,8 +226,11 @@ export function SiteNav({
   current?: SiteNavPage;
   path?: string;
 }) {
+  const platform = useDesktopPlatform();
+  const newHeader = useExperiment("homepage-download-path") === "test";
+  useExperimentExposure("homepage-download-path", "desktop");
   return (
-    <nav className="nav nav-sticky nav-centered">
+    <nav className={newHeader ? "nav nav-sticky nav-centered" : "nav"}>
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />
       </a>
@@ -231,13 +252,25 @@ export function SiteNav({
           Changelog
         </a>
         <a href={DASHBOARD_PATH}>Sign in</a>
+        {newHeader ? null : (
+          <>
+            <GitHubStarsLink stars={null} />
+            <DesktopDownloadButton
+              placement="nav"
+              platform={platform}
+              className={NAV_DOWNLOAD_CLASS}
+            />
+          </>
+        )}
       </div>
-      <div className="nav-actions">
-        <GitHubStarsLink stars={GITHUB_STARS} />
-        <a className={NAV_DOWNLOAD_CLASS} href={DOWNLOAD_PAGE_PATH}>
-          Download
-        </a>
-      </div>
+      {newHeader ? (
+        <div className="nav-actions">
+          <GitHubStarsLink stars={GITHUB_STARS} />
+          <a className={NAV_DOWNLOAD_CLASS} href={DOWNLOAD_PAGE_PATH}>
+            Download
+          </a>
+        </div>
+      ) : null}
     </nav>
   );
 }

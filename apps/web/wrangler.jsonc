@@ -11,6 +11,10 @@
 //                 && pnpm --filter @bb/web exec wrangler deploy
 // Secrets (per worker): wrangler secret put [--name bb-web] GITHUB_CLIENT_ID /
 //   GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET / LANDING_POSTHOG_KEY / RESEND_API_KEY
+// Optional secret: POSTHOG_FLAGS_SECRET_KEY, a PostHog project secret API key
+//   (phs_) or a personal API key with feature_flag:read. When set, homepage
+//   experiments are assigned from cached flag definitions in the Worker;
+//   unset keeps per-request /flags.
 // Var: NEXT_BASE_DOMAIN — bb connect next's domain; /oauth/authorize also
 //   issues MCP tokens for https://<label>.<NEXT_BASE_DOMAIN>/mcp.
 // Var: GATE_PUBLIC_KEYS — the bb connect next gate's Ed25519 public key set

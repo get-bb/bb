@@ -7,8 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 
+import { useExperiment } from "../experiments/use-experiment";
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,10 +26,19 @@ function OnMount({ onMount }: { onMount: () => void }) {
   return null;
 }
 
-export function HeroWindowSlot() {
+export function HeroWindowSlot({
+  control,
+}: {
+  control: (ref: Ref<HTMLElement>) => ReactNode;
+}) {
+  const arm = useExperiment("homepage-hero");
   const { ref, active } =
     useActiveWhileVisible<HTMLElement>("0px 0px -20% 0px");
-  return <HeroWindow ref={ref} active={active} />;
+  return arm === "test" ? (
+    <HeroWindow ref={ref} active={active} />
+  ) : (
+    control(ref)
+  );
 }
 
 export function HeroWindow({
