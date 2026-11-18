@@ -1,0 +1,8 @@
+{
+  "optOuts": [
+    {
+      "path": "apps/server/test/perf/request-path-statements.test.ts",
+      "reason": "Replays a scripted sequence of requests (send while a retry is queued, edit, stop, fork) against one small and one large fixture per growth axis. Each request's statement count depends on the state earlier requests left, and rebuilding both fixtures per request would multiply the suite's fixture build time."
+    }
+  ]
+}

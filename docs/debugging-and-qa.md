@@ -172,14 +172,29 @@ DESC`.
 
 ## Reproducing Test Order Failures
 
-Blocking CI runs tests in a stable order. The nightly `Shuffled test order`
-workflow (`.github/workflows/test-order.yml`) reruns every Linux test shard on
-main with test files and the tests within each file shuffled, so an order
-dependency fails that run instead of an unrelated PR. Its seed is the run number
-unless a `seed` input is given to a manual run; the job title, the step summary,
-and Vitest's `Running tests with seed` line all print it, and a failing shard's
-summary gives the exact reproduction command. Batch the failures it finds into
-fix PRs. Reproduce a failing package with its logged seed:
+Blocking CI runs the full suites in a stable order. Two checks cover order
+independence:
+
+- **On each pull request**, `Changed tests in shuffled order` reruns only the
+  test files the PR adds or changes, once per fixed seed (1, 3 and 8, from
+  `scripts/plan-shuffled-tests.mjs`). It is skipped when no test file changed.
+  A new order dependency therefore fails the PR that introduced it, and a
+  failure prints the command that reproduces it.
+- **Nightly**, the `Shuffled test order` workflow
+  (`.github/workflows/test-order.yml`) reruns every Linux test shard on main
+  with files and tests shuffled. It finds the leaks that older files still
+  have, without failing unrelated PRs. Its seed is the run number unless a
+  manual run supplies a `seed` input. The job title, the step summary and
+  Vitest's `Running tests with seed` line all print the seed, and a failing
+  shard's summary gives the exact reproduction command. Batch the failures it
+  finds into fix PRs.
+
+A suite that must run in a fixed order declares `{ shuffle: false }`, and it
+needs an entry with a reason in `scripts/test-shuffle-opt-outs.json`.
+`scripts/check-test-shuffle-opt-outs.mjs`, run in CI's plan job, rejects
+unlisted opt-outs and stale entries.
+
+Reproduce a failing package with its logged seed:
 
 ```bash
 pnpm exec turbo run test --filter=@bb/app -- --sequence.shuffle --sequence.seed=4721 --maxWorkers=2
