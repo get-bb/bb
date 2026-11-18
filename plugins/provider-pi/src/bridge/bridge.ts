@@ -215,6 +215,7 @@ const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
 
 const extensionUi: ExtensionUiCoordinator = createExtensionUiCoordinator({
   sendInteractionRequest: send,
+  sendThreadDeltas: (threadId, deltas) => sendThreadDeltas(threadId, deltas),
 });
 
 let configuredSkillPaths: string[] | null = null;

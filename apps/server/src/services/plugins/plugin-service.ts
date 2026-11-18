@@ -226,6 +226,14 @@ export type PluginReloadOutcome =
   | { ok: true; plugins: InstalledPlugin[] }
   | { ok: false; error: string; plugins: InstalledPlugin[] };
 
+export type PluginSettingsUpdateOutcome =
+  | { ok: true; view: PluginSettingsView }
+  | { ok: false; error: string; view: PluginSettingsView };
+
+export type PluginEnabledOutcome =
+  | { ok: true; plugin: InstalledPlugin }
+  | { ok: false; error: string; plugin: InstalledPlugin };
+
 export function dispatchPluginSourceWatchChange(
   handleChange: (relativePath: string) => void,
   filename: string | null,
@@ -328,7 +336,7 @@ export interface PluginService {
   setEnabled(
     id: string,
     enabled: boolean,
-  ): Promise<InstalledPlugin | undefined>;
+  ): Promise<PluginEnabledOutcome | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getSafeMode(): boolean;
   setSafeMode(enabled: boolean): Promise<PluginSafeModeUpdateResponse>;
@@ -392,7 +400,7 @@ export interface PluginService {
   updateSettings(
     id: string,
     values: Record<string, unknown>,
-  ): Promise<PluginSettingsView | undefined>;
+  ): Promise<PluginSettingsUpdateOutcome | undefined>;
   getHttpRoute(
     id: string,
     method: string,
@@ -1870,7 +1878,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const applyEnabled = async (
           pluginId: string,
           nextEnabled: boolean,
-        ): Promise<boolean> => {
+        ): Promise<{ problem: string | null } | null> => {
           const plugin = loaded.get(pluginId);
           if (!nextEnabled && plugin !== undefined) {
             setDisabledPluginProviderCatalog(
@@ -1882,12 +1890,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
           if (!setInstalledPluginEnabled(deps.db, pluginId, nextEnabled)) {
-            return false;
+            return null;
           }
+          let problem: string | null = null;
           if (nextEnabled) {
             const row = getInstalledPlugin(deps.db, pluginId);
             if (row) {
-              await withLifecycleLock(pluginId, () => loadOne(row));
+              problem = await withLifecycleLock(pluginId, () => loadOne(row));
             }
           } else {
             await withLifecycleLock(pluginId, async () => {
@@ -1898,15 +1907,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             });
             deps.onPluginUnregistered?.(pluginId);
           }
-          return true;
+          return { problem };
         };
 
         if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
-        if (!(await applyEnabled(id, enabled))) return undefined;
+        const applied = await applyEnabled(id, enabled);
+        if (applied === null) return undefined;
         if (!enabled) forgetPluginRecommendation(deps.db, id);
         await syncCliSkill();
         notifyPluginsChanged();
-        return list().find((p) => p.id === id);
+        const plugin = list().find((p) => p.id === id);
+        if (plugin === undefined) return undefined;
+        return applied.problem === null
+          ? { ok: true, plugin }
+          : {
+              ok: false,
+              error: `plugin "${id}" did not start: ${applied.problem}`,
+              plugin,
+            };
       });
     },
 
@@ -2098,6 +2116,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
       const prev = await readPluginSettingsValues(storeArgs);
       await writePluginSettingsUpdate({ ...storeArgs, values });
+      let problem: string | null = null;
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {
@@ -2114,15 +2133,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (statuses.get(id)?.status === "needs-configuration") {
           const row = getInstalledPlugin(deps.db, id);
           if (row) {
-            await withLifecycleLock(id, async () => {
+            problem = await withLifecycleLock(id, async () => {
               await disposeOne(id);
-              await loadOne(row);
+              return loadOne(row);
             });
             notifyPluginsChanged();
           }
         }
       }
-      return buildPluginSettingsView(storeArgs);
+      const view = await buildPluginSettingsView(storeArgs);
+      return problem === null
+        ? { ok: true, view }
+        : {
+            ok: false,
+            error: `plugin "${id}" did not start: ${problem}`,
+            view,
+          };
     },
 
     getHttpRoute(id, method, path) {

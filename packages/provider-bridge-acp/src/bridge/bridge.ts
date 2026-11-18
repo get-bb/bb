@@ -40,12 +40,15 @@ import {
   experimental_defineProviderBridge,
   mimeTypeFromExtension,
   runBridgeRequest,
+  unansweredInteractionErrorMessage,
+  unansweredInteractionWarning,
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeJsonRpcResponse,
   BridgeToolCallContent,
   BridgeToolCallImage,
+  UnansweredInteractionCause,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
@@ -1911,20 +1914,56 @@ function pickPermissionOptionId(
   }
 }
 
-function respondPermission(
-  pending: PendingAcpPermission,
-  decision: "allow_once" | "allow_for_session" | "deny" | null,
+function answerWithoutUser(
+  session: AcpThreadSession,
+  responder: AcpAgentRequestResponder,
+  cause: UnansweredInteractionCause,
 ): void {
-  if (decision === null) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-    return;
-  }
+  sendThreadDeltas(session.bbThreadId, [
+    unansweredInteractionWarning({ cause, answer: { kind: "error" } }),
+  ]);
+  responder.error(
+    cause.kind === "unshowable-request" ? -32602 : -32603,
+    unansweredInteractionErrorMessage(cause),
+  );
+}
+
+function runtimeErrorCause(error: unknown): UnansweredInteractionCause {
+  return {
+    kind: "runtime-error",
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function respondPermission(
+  session: AcpThreadSession,
+  pending: PendingAcpPermission,
+  decision: "allow_once" | "allow_for_session" | "deny",
+): void {
   const optionId = pickPermissionOptionId(pending.options, decision);
   if (optionId === undefined) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    answerWithoutUser(session, pending.responder, {
+      kind: "unmappable-answer",
+      detail: `the agent offered no option for ${decision.replaceAll("_", " ")}`,
+    });
     return;
   }
   pending.responder.result({ outcome: { outcome: "selected", optionId } });
+}
+
+function withdrawPendingQuestions(
+  session: AcpThreadSession,
+  detail: string,
+): void {
+  const cause: UnansweredInteractionCause = { kind: "withdrawn", detail };
+  for (const pending of session.pendingPermissions) {
+    answerWithoutUser(session, pending.responder, cause);
+  }
+  session.pendingPermissions.clear();
+  for (const responder of session.pendingElicitations) {
+    answerWithoutUser(session, responder, cause);
+  }
+  session.pendingElicitations.clear();
 }
 
 function cancelPendingPermissions(session: AcpThreadSession): void {
@@ -1938,27 +1977,30 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
   session.pendingElicitations.clear();
 }
 
+const COMPACTION_QUESTION_CAUSE: UnansweredInteractionCause = {
+  kind: "unshowable-request",
+  detail: "the agent asked while bb was compacting the conversation",
+};
+
 function handleElicitationRequest(
   session: AcpThreadSession,
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
-  if (
-    session.stopping ||
-    session.cancelRequested ||
-    session.activePromptKind === "compaction"
-  ) {
+  if (session.stopping || session.cancelRequested) {
     responder.result({ action: "cancel" });
+    return;
+  }
+  if (session.activePromptKind === "compaction") {
+    answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
   const plan = planAcpElicitation(params);
   if (plan.kind === "unsupported") {
-    emitForSession(session, ACP_WARNING_METHOD, {
-      threadId: session.bbThreadId,
-      summary: "The agent asked a question bb could not show",
-      details: `bb answered the agent with an error because ${plan.reason}.`,
+    answerWithoutUser(session, responder, {
+      kind: "unshowable-request",
+      detail: plan.reason,
     });
-    responder.error(-32602, `bb cannot show this form: ${plan.reason}`);
     return;
   }
   if (session.activePromptKind === null) {
@@ -1977,17 +2019,27 @@ function handleElicitationRequest(
       }
       const resolution =
         userQuestionPendingInteractionResolutionSchema.safeParse(result);
-      responder.result(
-        resolution.success
-          ? plan.toResponse(resolution.data)
-          : { action: "cancel" },
-      );
+      if (!resolution.success) {
+        answerWithoutUser(session, responder, {
+          kind: "unreadable-resolution",
+        });
+        return;
+      }
+      const response = plan.toResponse(resolution.data);
+      if ("unmappable" in response) {
+        answerWithoutUser(session, responder, {
+          kind: "unmappable-answer",
+          detail: response.unmappable,
+        });
+        return;
+      }
+      responder.result(response);
     })
-    .catch(() => {
+    .catch((error: unknown) => {
       if (!session.pendingElicitations.delete(responder)) {
         return;
       }
-      responder.result({ action: "cancel" });
+      answerWithoutUser(session, responder, runtimeErrorCause(error));
     });
 }
 
@@ -2002,12 +2054,12 @@ function handlePermissionRequest(
     return;
   }
 
-  if (
-    session.stopping ||
-    session.cancelRequested ||
-    session.activePromptKind === "compaction"
-  ) {
+  if (session.stopping || session.cancelRequested) {
     responder.result({ outcome: { outcome: "cancelled" } });
+    return;
+  }
+  if (session.activePromptKind === "compaction") {
+    answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
 
@@ -2038,7 +2090,7 @@ function handlePermissionRequest(
   };
 
   if (session.policy.permissionMode === "full") {
-    respondPermission(pending, "allow_once");
+    respondPermission(session, pending, "allow_once");
     return;
   }
 
@@ -2076,7 +2128,7 @@ function handlePermissionRequest(
   });
   const grantKey = acpSessionGrantKey(payload);
   if (grantKey !== null && session.sessionGrants.has(grantKey)) {
-    respondPermission(pending, "allow_once");
+    respondPermission(session, pending, "allow_once");
     return;
   }
   if (session.activePromptKind === null) {
@@ -2100,16 +2152,22 @@ function handlePermissionRequest(
             resolution: resolution.data,
           })
         : null;
-      if (response?.decision === "allow_for_session" && grantKey !== null) {
+      if (response === null) {
+        answerWithoutUser(session, pending.responder, {
+          kind: "unreadable-resolution",
+        });
+        return;
+      }
+      if (response.decision === "allow_for_session" && grantKey !== null) {
         session.sessionGrants.add(grantKey);
       }
-      respondPermission(pending, response?.decision ?? null);
+      respondPermission(session, pending, response.decision);
     })
-    .catch(() => {
+    .catch((error: unknown) => {
       if (!session.pendingPermissions.delete(pending)) {
         return;
       }
-      respondPermission(pending, null);
+      answerWithoutUser(session, pending.responder, runtimeErrorCause(error));
     });
 }
 
@@ -3387,7 +3445,7 @@ function reconcileExecutionSettings(
     session.restartAfterCancelError ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
-  cancelPendingPermissions(session);
+  withdrawPendingQuestions(session, "a new prompt started before you answered");
   session.policy = {
     permissionMode: options.permissionMode,
     workspaceWriteRoots,
@@ -3585,24 +3643,37 @@ function finishCompaction(
   session.turnSettled = undefined;
 }
 
+const ACP_QUESTION_HANDLERS = new Map<
+  string,
+  (
+    session: AcpThreadSession,
+    params: unknown,
+    responder: AcpAgentRequestResponder,
+  ) => void
+>([
+  ["session/request_permission", handlePermissionRequest],
+  ["elicitation/create", handleElicitationRequest],
+]);
+
+export const ACP_QUESTION_REQUEST_METHODS = [...ACP_QUESTION_HANDLERS.keys()];
+
 function handleAgentRequest(
   session: AcpThreadSession,
   method: string,
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
+  const question = ACP_QUESTION_HANDLERS.get(method);
+  if (question !== undefined) {
+    question(session, params, responder);
+    return;
+  }
   switch (method) {
-    case "session/request_permission":
-      handlePermissionRequest(session, params, responder);
-      return;
     case "fs/read_text_file":
       void handleFsReadTextFile(params, responder);
       return;
     case "fs/write_text_file":
       void handleFsWriteTextFile(session, params, responder);
-      return;
-    case "elicitation/create":
-      handleElicitationRequest(session, params, responder);
       return;
     default:
       handleDialectRequest(session, method, params, responder);
