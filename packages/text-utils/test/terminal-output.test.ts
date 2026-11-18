@@ -128,6 +128,21 @@ const CONTROL_SEQUENCE_CASES: TerminalOutputCase[] = [
     expected: "abcd\te\n",
   },
   {
+    name: "cursor forward stops at the column limit",
+    input: `a\u001b[2147483647Cb\n`,
+    expected: `a${" ".repeat(1023)}b\n`,
+  },
+  {
+    name: "cursor column moves stay inside text longer than the column limit",
+    input: `${"x".repeat(2000)}\u001b[1500GY\n`,
+    expected: `${"x".repeat(1499)}Y${"x".repeat(500)}\n`,
+  },
+  {
+    name: "cursor down stops at the last line",
+    input: "a\nb\u001b[2147483647Bc\n",
+    expected: "a\nbc\n",
+  },
+  {
     name: "escape sequence cut off at the end of streamed output",
     input: "done\n\u001b[3",
     expected: "done\n",

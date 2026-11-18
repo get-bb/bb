@@ -5,6 +5,7 @@ const TAB = 0x09;
 const LINE_FEED = 0x0a;
 const CARRIAGE_RETURN = 0x0d;
 const DELETE = 0x7f;
+const MAX_CURSOR_COLUMN = 1024;
 
 const CONTROL_OR_ESCAPE_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/u;
 
@@ -312,7 +313,7 @@ class TerminalScreen {
   lineFeed(): void {
     this.row += 1;
     this.col = 0;
-    this.ensureRow();
+    if (this.row === this.lines.length) this.lines.push(emptyLine());
   }
 
   carriageReturn(): void {
@@ -320,7 +321,8 @@ class TerminalScreen {
   }
 
   moveColumn(col: number): void {
-    this.col = Math.max(0, col);
+    const limit = Math.max(MAX_CURSOR_COLUMN, this.currentLine().length);
+    this.col = Math.min(Math.max(0, col), limit);
   }
 
   moveColumnBy(delta: number): void {
@@ -328,8 +330,10 @@ class TerminalScreen {
   }
 
   moveRowBy(delta: number): void {
-    this.row = Math.max(0, this.row + delta);
-    this.ensureRow();
+    this.row = Math.min(
+      Math.max(0, this.row + delta),
+      this.lines.length - 1,
+    );
   }
 
   eraseInLine(mode: number): void {
@@ -400,12 +404,6 @@ class TerminalScreen {
 
   private currentLine(): TerminalLine {
     return this.lines[this.row]!;
-  }
-
-  private ensureRow(): void {
-    while (this.lines.length <= this.row) {
-      this.lines.push(emptyLine());
-    }
   }
 }
 
