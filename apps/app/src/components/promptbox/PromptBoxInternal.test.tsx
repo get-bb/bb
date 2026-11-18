@@ -6486,9 +6486,13 @@ describe("thread URL clipboard paste", () => {
     }
   });
 
-  it.each(["ctrlKey", "metaKey"])(
-    "keeps %s+Shift+V literal and converts the next normal clipboard paste through the SDK",
-    async (modifier) => {
+  it.each([
+    { modifier: "ctrlKey", key: "V" },
+    { modifier: "metaKey", key: "V" },
+    { modifier: "ctrlKey", key: "\u041c" },
+  ])(
+    "keeps $modifier+Shift+V ($key) literal and converts the next normal clipboard paste through the SDK",
+    async ({ modifier, key }) => {
       const lookup = vi
         .spyOn(sdk.threads, "resolveMentions")
         .mockResolvedValue([resolved]);
@@ -6496,14 +6500,14 @@ describe("thread URL clipboard paste", () => {
         const { changes, promptBoxRef } = renderPromptBox("");
         await focusPromptEnd(promptBoxRef);
         fireEvent.keyDown(getPromptEditorElement(), {
-          key: "V",
+          key,
           code: "KeyV",
           shiftKey: true,
           [modifier]: true,
         });
         pastePlainText(url);
         fireEvent.keyUp(getPromptEditorElement(), {
-          key: "V",
+          key,
           code: "KeyV",
         });
         await act(async () => {

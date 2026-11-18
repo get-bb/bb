@@ -164,6 +164,7 @@ import {
   type SourceCodeProps,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
+import { matchesAppShortcutKey } from "@bb/domain";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   appendComposerDraft,
@@ -1865,6 +1866,7 @@ const testPluginSdkApp = {
   experimental_VoiceRecordingBar: TestVoiceRecordingBar,
   experimental_FailedVoiceRecordings: TestFailedVoiceRecordings,
   experimental_ShortcutHint: TestShortcutHint,
+  experimental_matchesShortcutKey: matchesAppShortcutKey,
   experimental_ImageLightbox: TestImageLightbox,
   experimental_PromptMentionIcon: TestPromptMentionIcon,
   experimental_describePromptMention(

@@ -1,5 +1,8 @@
+import { matchesAppShortcutKey } from "@bb/domain";
+
 interface DesktopReloadShortcutInput {
   alt: boolean;
+  code: string;
   control: boolean;
   isAutoRepeat: boolean;
   isComposing: boolean;
@@ -21,7 +24,15 @@ export function resolveDesktopReloadShortcut(
     input.alt ||
     input.control ||
     !input.meta ||
-    input.key.toLowerCase() !== "r"
+    !matchesAppShortcutKey(
+      {
+        key: input.key,
+        code: input.code,
+        altKey: input.alt,
+        shiftKey: input.shift,
+      },
+      "r",
+    )
   ) {
     return null;
   }

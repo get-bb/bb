@@ -649,6 +649,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginCommandRegistration",
           "PluginCommandContext",
           "PluginCommandShortcut",
+          "experimental_matchesShortcutKey",
+          "ExperimentalShortcutKeyEvent",
         ],
         firstParty: ["File Editor"],
       },

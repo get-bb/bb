@@ -5,6 +5,7 @@ import type {
   Task,
   TaskThread,
 } from "../../shared/contract.js";
+import { experimental_matchesShortcutKey as matchesShortcutKey } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
@@ -189,11 +190,10 @@ export const TaskRow = memo(function TaskRow({
           onClick={() => onOpen(task.key)}
           onKeyDown={(event) => {
             if (!isBareKey(event)) return;
-            const key = event.key.toLowerCase();
-            if (key === "s") {
+            if (matchesShortcutKey(event, "s")) {
               event.preventDefault();
               setOpenMenu("status");
-            } else if (key === "p") {
+            } else if (matchesShortcutKey(event, "p")) {
               event.preventDefault();
               setOpenMenu("priority");
             }

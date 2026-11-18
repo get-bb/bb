@@ -3689,6 +3689,14 @@ export interface PluginCommandShortcut {
   shift?: boolean;
 }
 
+/** The fields of a keydown that {@link PluginSdkApp.experimental_matchesShortcutKey} reads; DOM and React keyboard events both fit. */
+export interface ExperimentalShortcutKeyEvent {
+  key: string;
+  code: string;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
 /**
  * A command registered with `app.commands.register`, listed in bb's quick
  * palette (Mod+Shift+P) under the plugin's name
@@ -6313,6 +6321,19 @@ export interface PluginSdkApp {
   experimental_VoiceRecordingBar: ComponentType<ExperimentalVoiceRecordingBarProps>;
   experimental_FailedVoiceRecordings: ComponentType<ExperimentalFailedVoiceRecordingsProps>;
   experimental_ShortcutHint: ComponentType<ExperimentalShortcutHintProps>;
+  /**
+   * Whether `event` presses `key` (a `PluginCommandShortcut` key such as
+   * `"k"`, `"["` or `"Enter"`), compared the way bb compares keys for its own
+   * keybindings; the caller checks modifiers. Letter, digit and punctuation
+   * keys match by physical position when the active layout types a non-Latin
+   * character there, so Ctrl+K is found on Cyrillic, Greek, Hebrew or Arabic
+   * layouts, while Latin layouts such as Dvorak keep their own letters.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_matchesShortcutKey(
+    event: ExperimentalShortcutKeyEvent,
+    key: string,
+  ): boolean;
   experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
   experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
   /**

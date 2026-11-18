@@ -305,6 +305,31 @@ and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
 
+## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
+
+`experimental_matchesShortcutKey(event, key)` says whether a keydown presses
+`key`, compared the way bb compares keys for its own and plugins' keybindings.
+The caller checks modifiers. Letter, digit and punctuation keys match by
+physical position (`event.code`) when the layout types a non-Latin character
+there (or, with Alt held, anything but an ASCII letter or digit); otherwise
+they match the typed character with Shift removed from US punctuation, so
+Latin layouts such as Dvorak and AZERTY keep their own letters. Without Alt,
+the typed character also matches, which keeps shortcuts saved under a
+non-Latin character working.
+
+Docs: `frontend-renderer-slots.md`.
+
+Core callers: `matchesAppShortcut` in `@bb/domain` (app commands, plugin
+commands, the desktop embedded browser and shortcut conflicts), the desktop
+reload shortcut and the terminal copy/paste keys all call the same
+`matchesAppShortcutKey`; the SDK function is that function. Plugin callers:
+the Composer's paste-as-plain-text check, Prompt Library's Mod+S and Tasks'
+single-key shortcuts.
+
+Before stabilizing, decide whether plugins also need a full-chord matcher that
+resolves `mod` per platform, and whether settings should label shortcuts with
+the active layout's characters (`navigator.keyboard.getLayoutMap()`).
+
 ## Discoverable RPC
 
 `bb.rpc.register` accepts `experimental_discoverable` and

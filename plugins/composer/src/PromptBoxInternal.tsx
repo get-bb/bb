@@ -2,6 +2,7 @@ import {
   experimental_ComposerRoot as ComposerRoot,
   experimental_FailedVoiceRecordings as FailedVoiceRecordings,
   experimental_Icon as SdkIcon,
+  experimental_matchesShortcutKey as matchesShortcutKey,
   experimental_ShortcutHint as AppCommandShortcutHint,
   experimental_useComposerCommandSearch as useComposerCommandSearch,
   experimental_useComposerContributions as useComposerContributions,
@@ -1794,7 +1795,7 @@ export function PromptBoxInternal({
             pasteWithoutFormattingRef.current =
               (event.metaKey || event.ctrlKey) &&
               event.shiftKey &&
-              event.key.toLowerCase() === "v";
+              matchesShortcutKey(event, "v");
             if (
               !_view.editable ||
               !isIPadOSWebKitDevice ||

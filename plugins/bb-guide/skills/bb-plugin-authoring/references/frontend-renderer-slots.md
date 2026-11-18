@@ -250,6 +250,11 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  Registered shortcuts match by physical key when the active layout types a
+  non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
+  character on Latin layouts such as Dvorak. A plugin that handles keys
+  itself compares them the same way with
+  `experimental_matchesShortcutKey(event, key)` and checks modifiers itself.
   A command that acts on the composer the user is typing in registers through
   `app.composer.experimental_registerCommand` instead; see the composer
   section of frontend-hooks-and-ui.
