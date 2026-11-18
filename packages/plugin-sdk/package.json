@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.152",
+  "version": "0.6.157",
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
@@ -179,6 +179,7 @@
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/skill-index": "workspace:*",
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/better-sqlite3": "^7.6.13",

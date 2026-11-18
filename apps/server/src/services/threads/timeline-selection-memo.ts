@@ -10,6 +10,9 @@ import {
   getThreadEventRewriteGeneration,
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
+  listStoredStandaloneThreadTimelineRows,
+  listStoredThreadInteractionLifecycleRows,
+  listStoredThreadNoticeAndInteractionRows,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
   listStoredTimelineTurnEventRows,
@@ -23,18 +26,20 @@ import {
 } from "@bb/db";
 import {
   getTimelineGroupingContext,
+  rootTurnJoinedByThreadRow,
   type TimelineGroupingContext,
 } from "./timeline-context-order.js";
 import { measuredTimelineRowJsonBytes } from "./timeline-content-pagination.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 import type { DecodedTimelineRows } from "./timeline-selection-decode.js";
 import { reuseUnchangedTimelineRows } from "./timeline-window-reuse.js";
+import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
 export interface TimelineEventRowSelection {
   contextOnlyInterruptionSequences: ReadonlySet<number>;
-  orderingBoundarySequence: number | null;
+  groupingContext: TimelineGroupingContext;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
   hasOlderSegments: boolean;
@@ -77,6 +82,15 @@ export interface TimelineSelectionRowSource {
   }): StoredEventRow[];
   listParentRows(
     args: Parameters<typeof listStoredDelegatingItemRowsByItemIds>[1],
+  ): StoredEventRow[];
+  listStandaloneThreadRows(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): StoredEventRow[];
+  listThreadNoticeAndInteractionRows(
+    args: Parameters<typeof listStoredThreadNoticeAndInteractionRows>[1],
+  ): StoredEventRow[];
+  listThreadInteractionRows(
+    args: Parameters<typeof listStoredThreadInteractionLifecycleRows>[1],
   ): StoredEventRow[];
   listRootWindowTurnIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
@@ -722,11 +736,41 @@ function acceptsBackgroundTask(
   );
 }
 
+function acceptsThreadRowJoiningTurn(
+  scope: SelectionExtensionScope,
+  row: StoredEventRow,
+): boolean {
+  const joined = rootTurnJoinedByThreadRow(
+    scope.db,
+    row,
+    groupingContextOf(scope).turnBlocks,
+  );
+  if (
+    joined !== null &&
+    !scope.extension.appendableTurnIds.has(joined.turnId)
+  ) {
+    return false;
+  }
+  if (row.turnId !== null || row.type !== "system/interaction/lifecycle") {
+    return true;
+  }
+  const event = decodeStoredEventRowCached(scope.db, row);
+  if (event.type !== "system/interaction/lifecycle") return false;
+  return listStoredThreadInteractionLifecycleRows(scope.db, {
+    threadId: scope.args.threadId,
+    interactionIds: [event.interaction.id],
+    sequenceStart: scope.args.epochSequenceStart,
+    beforeSequence: row.sequence,
+    maxInlineOutputChars: scope.args.maxInlineOutputChars,
+  }).every((earlier) => selectionHasRow(scope.entry.selection.rows, earlier));
+}
+
 function acceptsAppendedRow(
   scope: SelectionExtensionScope,
   row: StoredEventRow,
 ): boolean {
   return (
+    acceptsThreadRowJoiningTurn(scope, row) &&
     acceptsParent(scope, row) &&
     acceptsDelegatingItem(scope, row) &&
     acceptsTurn(scope, row) &&
@@ -888,6 +932,15 @@ function createTrimmedSelectionRowSource(
       }
       return [...turnIds];
     },
+    listStandaloneThreadRows(query) {
+      return listStoredStandaloneThreadTimelineRows(db, query);
+    },
+    listThreadNoticeAndInteractionRows(query) {
+      return listStoredThreadNoticeAndInteractionRows(db, query);
+    },
+    listThreadInteractionRows(query) {
+      return listStoredThreadInteractionLifecycleRows(db, query);
+    },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);
       return rows.filter(
@@ -1026,16 +1079,14 @@ export function lookupLatestTimelineSelection(
   }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
-    orderingBoundarySequence: appended.groupingContextChanged
-      ? (
-          appended.extension.groupingContext ??
-          getTimelineGroupingContext(db, {
-            maxSeq: args.maxSeq,
-            sequenceStart: args.epochSequenceStart,
-            threadId: args.threadId,
-          })
-        ).orderingBoundarySequence
-      : entry.selection.orderingBoundarySequence,
+    groupingContext: appended.groupingContextChanged
+      ? (appended.extension.groupingContext ??
+        getTimelineGroupingContext(db, {
+          maxSeq: args.maxSeq,
+          sequenceStart: args.epochSequenceStart,
+          threadId: args.threadId,
+        }))
+      : entry.selection.groupingContext,
     ownedSequenceEnd: args.maxSeq + 1,
     paginationPage: args.page,
     rows:

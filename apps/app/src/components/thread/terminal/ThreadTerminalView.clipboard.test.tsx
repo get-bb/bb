@@ -13,6 +13,7 @@ import { Terminal } from "@xterm/xterm";
 import { appToast } from "@/components/ui/app-toast";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import { ThreadTerminalView } from "./ThreadTerminalView";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const preferences = vi.hoisted(() => ({ terminalCopyOnSelect: true }));
 
@@ -77,10 +78,7 @@ async function mountTerminal() {
       session={makeTerminalSession({ status: "running" })}
     />,
   );
-  await act(async () => {
-    await opened;
-  });
-  const mountedTerminal = await opened;
+  const mountedTerminal = await settleLazyModules(opened);
   expect(view.container.querySelector(".xterm-screen")).not.toBeNull();
   await act(
     () =>

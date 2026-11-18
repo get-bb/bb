@@ -12,6 +12,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { downloadSplit } from "./split-prefetch";
 import { defineSplit } from "./define-split";
 
+vi.unmock("react");
+vi.unmock("./define-split");
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

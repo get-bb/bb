@@ -19,6 +19,8 @@ import { enrollDaemonHost } from "./enroll.js";
 import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
+import { PersistedHostAuthRejectedError } from "./persisted-auth-rejection.js";
+import { ServerResponseError } from "./server-client.js";
 import {
   prepareRuntimeShellEnv,
   resolvePowerShellExecutionPolicyDefault,
@@ -197,7 +199,14 @@ export async function startHostDaemon(
         .shutdown("daemon-lock-lost", 1)
         .catch(() => process.exit(1));
     };
-    await app.daemon.start();
+    try {
+      await app.daemon.start();
+    } catch (error) {
+      if (persistedAuth !== null && isHostKeyRejection(error)) {
+        throw new PersistedHostAuthRejectedError(error);
+      }
+      throw error;
+    }
     return app.daemon;
   } catch (error) {
     if (!app) {
@@ -206,4 +215,8 @@ export async function startHostDaemon(
     }
     throw error;
   }
+}
+
+function isHostKeyRejection(error: unknown): error is ServerResponseError {
+  return error instanceof ServerResponseError && error.status === 401;
 }

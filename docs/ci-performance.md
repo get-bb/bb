@@ -623,6 +623,25 @@ Compare several daily artifacts, separating changes in selected work from runtim
 gains. Cache transfer time is not a cache hit rate; inspect Turbo summaries or
 logs for task cache hits.
 
+### Tests near their time limit
+
+CI test jobs set `BB_TEST_DURATIONS_DIR`. The shared Vitest config then adds the
+reporter in `vitest.test-durations.ts`, which records each test that used at
+least a quarter of its own timeout (`testCase.options.timeout`, else the
+project's `testTimeout`). The records are uploaded in the `test-timings-*`
+artifacts, including from the Windows foundation job. The `CI Health` workflow
+downloads those artifacts from the last 20 completed `main` push runs. It lists
+in `.ci-health/test-headroom.md` and the step summary every test that reached
+half its timeout on some platform, with its worst duration and how many runs
+came that close. `scripts/lib/test-headroom.mjs` does the aggregation and is
+unit-tested.
+
+The report never fails a PR or the health run; it is a work list. A listed test
+pays for real work against a fixed deadline, usually Git or Node subprocess
+startup, a cold transform, or repeated query building on a slow Windows runner.
+Fix the cause: make it cheaper, share its setup in `beforeAll` or a template,
+or split it. A larger timeout only moves the deadline.
+
 ## Avoiding repeated setup
 
 The build job builds and checks the plugin SDK's published version before the

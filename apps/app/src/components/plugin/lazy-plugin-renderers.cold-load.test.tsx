@@ -1,6 +1,6 @@
 import { PierreWorkerPoolGateContext } from "@/lib/pierre-worker-pool-gate";
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { getDefaultStore } from "jotai";
 import {
@@ -16,41 +16,26 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { settleLazyModules } from "@/test/lazy-modules";
 import { LazyPluginDiff, LazyPluginSourceCode } from "./lazy-plugin-renderers";
 
-const downloads = await vi.hoisted(async () => {
-  const { createDeferredPromise } = await import("@bb/test-helpers");
-  return {
-    adapters: createDeferredPromise<void>(),
-    renderers: createDeferredPromise<void>(),
-    started: new Set<string>(),
-  };
-});
-vi.mock("./PluginDiff", async (original) => {
+const downloads = vi.hoisted(() => ({ started: new Set<string>() }));
+vi.mock("./PluginDiff", (original) => {
   downloads.started.add("diff adapter");
-  await downloads.adapters.promise;
   return original();
 });
-vi.mock("./PluginSourceCode", async (original) => {
+vi.mock("./PluginSourceCode", (original) => {
   downloads.started.add("source adapter");
-  await downloads.adapters.promise;
   return original();
 });
-vi.mock("@/components/code/BbDiff", async () => {
+vi.mock("@/components/code/BbDiff", () => {
   downloads.started.add("diff renderer");
-  await downloads.renderers.promise;
   return { default: () => <p>Diff ready</p> };
 });
-vi.mock("@/components/code/BbSourceCode", async () => {
+vi.mock("@/components/code/BbSourceCode", () => {
   downloads.started.add("source renderer");
-  await downloads.renderers.promise;
   return { default: () => <p>Source ready</p> };
 });
-
-await Promise.all([
-  vi.importActual("./PluginDiff"),
-  vi.importActual("./PluginSourceCode"),
-]);
 
 afterEach(() => {
   cleanup();
@@ -90,7 +75,7 @@ it("starts selected built-ins while SDK adapters are still downloading, without 
       </>
     </PierreWorkerPoolGateContext.Provider>,
   );
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(downloads.started).toEqual(
       new Set(["diff adapter", "source adapter"]),
     ),
@@ -106,7 +91,7 @@ it("starts selected built-ins while SDK adapters are still downloading, without 
       BUILT_IN_REPLACEMENT_PROVIDER,
     );
   });
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(downloads.started).toEqual(
       new Set([
         "diff adapter",
@@ -118,10 +103,7 @@ it("starts selected built-ins while SDK adapters are still downloading, without 
   );
   expect(requestWorkers).toHaveBeenCalled();
   expect(screen.queryByText("Diff ready")).toBeNull();
-  await act(async () => {
-    downloads.renderers.resolve();
-    downloads.adapters.resolve();
-  });
-  expect(await screen.findByText("Diff ready")).toBeDefined();
-  expect(await screen.findByText("Source ready")).toBeDefined();
+  await settleLazyModules();
+  expect(screen.getByText("Diff ready")).toBeDefined();
+  expect(screen.getByText("Source ready")).toBeDefined();
 });

@@ -7,6 +7,9 @@ import {
   bootPluginFrontends,
   schedulePluginFrontendReconcile,
 } from "./plugin-frontend-lazy";
+import { settleLazyModules } from "@/test/lazy-modules";
+
+await import("./plugin-frontend");
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -25,7 +28,7 @@ it("re-reads the plugin list after boot when a change was announced before boot 
   });
 
   schedulePluginFrontendReconcile();
-  await bootPluginFrontends();
+  await settleLazyModules(bootPluginFrontends());
   expect(fetchMock).not.toHaveBeenCalled();
 
   await vi.waitFor(() => {

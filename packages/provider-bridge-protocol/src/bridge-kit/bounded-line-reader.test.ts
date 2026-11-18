@@ -45,4 +45,19 @@ describe("readBoundedLines", () => {
     expect(lines).toEqual([]);
     expect(overflows).toEqual([]);
   });
+
+  it("counts multi-byte characters across chunks and resets per line", async () => {
+    const { lines, overflows } = await readAll(
+      [
+        "\u00e9\u00e9",
+        "\u00e9\u00e9\u00e9\n",
+        "\u00e9\u00e9\u00e9",
+        "\u00e9\u00e9\u00e9",
+        "\nok\n",
+      ],
+      10,
+    );
+    expect(lines).toEqual(["\u00e9".repeat(5), "ok"]);
+    expect(overflows).toEqual([12]);
+  });
 });

@@ -12,6 +12,11 @@
       "source": "./src/domain-fixtures.ts",
       "types": "./src/domain-fixtures.ts",
       "default": "./src/domain-fixtures.ts"
+    },
+    "./child-processes": {
+      "source": "./src/child-processes.ts",
+      "types": "./src/child-processes.ts",
+      "default": "./src/child-processes.ts"
     }
   },
   "types": "./src/index.ts",

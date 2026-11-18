@@ -15,7 +15,7 @@ import { createStore, Provider } from "jotai";
 import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultAppSettings,
   type AppCommandId,
@@ -44,13 +44,7 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { LocationProbe } from "@/test/location-probe";
-
-beforeAll(async () => {
-  await Promise.all([
-    import("./CommandPaletteBody"),
-    import("./ThreadSearchPaletteMode"),
-  ]);
-});
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -390,7 +384,7 @@ function renderPalette({
   return { ...result, store };
 }
 
-function openPalette(): KeyboardEvent {
+async function openPalette(): Promise<KeyboardEvent> {
   const event = new KeyboardEvent("keydown", {
     key: "p",
     ctrlKey: true,
@@ -398,7 +392,10 @@ function openPalette(): KeyboardEvent {
     bubbles: true,
     cancelable: true,
   });
-  (document.activeElement ?? window).dispatchEvent(event);
+  act(() => {
+    (document.activeElement ?? window).dispatchEvent(event);
+  });
+  await settleLazyModules();
   return event;
 }
 
@@ -409,10 +406,10 @@ async function openThreadSearch(): Promise<KeyboardEvent> {
     bubbles: true,
     cancelable: true,
   });
-  await act(async () => {
+  act(() => {
     (document.activeElement ?? window).dispatchEvent(event);
-    await import("./ThreadSearchPaletteMode");
   });
+  await settleLazyModules();
   return event;
 }
 
@@ -643,7 +640,7 @@ describe("CommandPalette", () => {
     "runs an available shortcut from %s even with no matches, after closing and restoring focus",
     async (mode) => {
       renderPalette();
-      if (mode === "commands") openPalette();
+      if (mode === "commands") await openPalette();
       else await openThreadSearch();
       await waitFor(() => expect(searchField()).toBeTruthy());
       fireEvent.change(searchField(), { target: { value: "no-such-result" } });
@@ -673,7 +670,7 @@ describe("CommandPalette", () => {
 
   it("switches modes by shortcut without losing the invocation target or intercepting editing, repeat, and composition events", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     await openThreadSearch();
     await waitFor(() =>
@@ -681,7 +678,7 @@ describe("CommandPalette", () => {
         screen.getByRole("combobox", { name: "Search threads" }),
       ).toBeTruthy(),
     );
-    openPalette();
+    await openPalette();
     await waitFor(() =>
       expect(
         screen.getByRole("combobox", { name: "Search commands" }),
@@ -726,7 +723,7 @@ describe("CommandPalette", () => {
         }),
       );
       renderPalette({ compact });
-      openPalette();
+      await openPalette();
       await waitFor(() => expect(searchField()).toBeTruthy());
       expect(commandList().querySelectorAll("kbd").length).toBe(
         compact ? 0 : 3,
@@ -743,7 +740,7 @@ describe("CommandPalette", () => {
 
   it("opens on its chord and lists the commands that apply", async () => {
     renderPalette();
-    const event = openPalette();
+    const event = await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     expect(event.defaultPrevented).toBe(true);
     const titles = optionTitles();
@@ -760,7 +757,7 @@ describe("CommandPalette", () => {
 
   it("groups resting commands, hides empty plugins, and distinguishes drill-in rows", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     const groups = within(commandList()).getAllByRole("group");
@@ -968,7 +965,7 @@ describe("CommandPalette", () => {
     expect(testState.calls).toEqual([]);
     fireEvent.keyDown(searchField(), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     expect(optionTitles()).toEqual(commandsAfterExit);
   });
@@ -1991,7 +1988,7 @@ describe("CommandPalette", () => {
 
   it("filters as the user types and keeps the selection on a live row", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     fireEvent.keyDown(searchField(), { key: "ArrowDown" });
@@ -2006,7 +2003,7 @@ describe("CommandPalette", () => {
 
   it("keeps hidden categories searchable and browser targets visible", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     for (const [query, title] of [
@@ -2029,7 +2026,7 @@ describe("CommandPalette", () => {
 
   it("finds commands when the query starts with a space", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     fireEvent.change(searchField(), { target: { value: "> new thread" } });
@@ -2040,7 +2037,7 @@ describe("CommandPalette", () => {
 
   it("wraps at both ends of the list", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     const lastTitle = optionTitles().at(-1);
 
@@ -2055,7 +2052,7 @@ describe("CommandPalette", () => {
     "leaves %s to an active IME composition",
     async (key) => {
       renderPalette();
-      openPalette();
+      await openPalette();
       await waitFor(() => expect(searchField()).toBeTruthy());
       fireEvent.keyDown(searchField(), { key: "ArrowDown" });
       fireEvent.keyDown(searchField(), { key: "ArrowDown" });
@@ -2100,7 +2097,7 @@ describe("CommandPalette", () => {
 
   it("keeps composition confirmation separate from command activation", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     fireEvent.change(searchField(), { target: { value: "toggle panel" } });
@@ -2136,7 +2133,7 @@ describe("CommandPalette", () => {
 
   it("keeps the default catalog unchanged after running a command", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     const initialTitles = optionTitles();
     fireEvent.change(searchField(), { target: { value: "toggle panel" } });
@@ -2146,7 +2143,7 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(searchField(), { key: "Enter" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
 
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     expect(optionTitles()).toEqual(initialTitles);
   });
@@ -2157,7 +2154,7 @@ describe("CommandPalette", () => {
       "scrollIntoView",
     ) as unknown as ReturnType<typeof vi.fn>;
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     scrollIntoView.mockClear();
 
@@ -2197,7 +2194,7 @@ describe("CommandPalette", () => {
         }),
       );
       renderPalette();
-      openPalette();
+      await openPalette();
       await waitFor(() => expect(searchField()).toBeTruthy());
 
       fireEvent.change(searchField(), { target: { value: ">linear" } });
@@ -2251,7 +2248,7 @@ describe("CommandPalette", () => {
     expect(run).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(window, { key: "u", ctrlKey: true, shiftKey: true });
     expect(run).toHaveBeenCalledTimes(2);
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     fireEvent.change(searchField(), { target: { value: ">linear" } });
     expect(screen.getByRole("option").textContent).toContain(
@@ -2280,7 +2277,7 @@ describe("CommandPalette", () => {
     "opens Installed plugins in Settings (compact: %s)",
     async (compact) => {
       renderPalette({ compact });
-      openPalette();
+      await openPalette();
       await waitFor(() => expect(searchField()).toBeTruthy());
       fireEvent.change(searchField(), {
         target: { value: "installed plugins" },
@@ -2299,7 +2296,7 @@ describe("CommandPalette", () => {
 
   it("only includes Files settings when local helper access is available", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     fireEvent.change(searchField(), {
@@ -2312,7 +2309,7 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(searchField(), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
     testState.filesAvailable = true;
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
     fireEvent.change(searchField(), {
       target: { value: "files settings" },
@@ -2332,7 +2329,7 @@ describe("CommandPalette", () => {
       name: "Linear",
     });
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     const pluginSettingsRow = await within(bucketGroup("Settings")).findByRole(
@@ -2376,7 +2373,7 @@ describe("CommandPalette", () => {
       }),
     );
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     const pluginPageRow = within(bucketGroup("Plugins")).getByRole("option");
@@ -2429,7 +2426,7 @@ describe("CommandPalette", () => {
       }),
     );
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     const pluginRow = within(bucketGroup("Plugins")).getByRole("option");
@@ -2448,7 +2445,7 @@ describe("CommandPalette", () => {
 
   it("says so when nothing matches", async () => {
     renderPalette();
-    openPalette();
+    await openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
     fireEvent.change(searchField(), { target: { value: "zzzzz" } });

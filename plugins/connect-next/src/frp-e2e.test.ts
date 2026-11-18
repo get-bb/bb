@@ -3,7 +3,16 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
+import { hasExited, trackChildProcesses } from "@bb/test-helpers";
 import {
   createFakePluginHost,
   type FakePluginHost,
@@ -18,7 +27,7 @@ import {
   makeTestCertificate,
   opensslAvailable,
   ownsSubdomain,
-  processAlive,
+  runningChild,
   startFrps,
   startGateHooks,
   startOrigin,
@@ -304,6 +313,8 @@ describe("connect next with real frpc and frps", () => {
   }, 60_000);
 
   it("restarts frpc after it is killed", async () => {
+    const children = trackChildProcesses();
+    onTestFinished(() => children.dispose());
     const current = await load({ server: localServer() });
     current.account.signIn({
       serverId: SERVER_ID,
@@ -311,12 +322,14 @@ describe("connect next with real frpc and frps", () => {
       credential: CREDENTIAL,
     });
     await waitForState(current, "connected");
-    const first = current.tunnel.childPid();
-    expect(first).not.toBeNull();
-    process.kill(first ?? 0, "SIGKILL");
+    const first = runningChild(children, current.tunnel.childPid());
+    first.kill("SIGKILL");
     await waitFor(
       () => current.tunnel.childPid(),
-      (pid) => pid !== null && pid !== first,
+      (pid) =>
+        children
+          .running()
+          .some((child) => child !== first && child.pid === pid),
     );
     await waitForState(current, "connected");
     expect(logText(current)).toMatch(/frpc exited/u);
@@ -329,6 +342,8 @@ describe("connect next with real frpc and frps", () => {
   }, 60_000);
 
   it("closes the ingress and frpc on stop, off, and sign-out", async () => {
+    const children = trackChildProcesses();
+    onTestFinished(() => children.dispose());
     const current = await load({ server: localServer() });
     current.account.signIn({
       serverId: SERVER_ID,
@@ -336,26 +351,26 @@ describe("connect next with real frpc and frps", () => {
       credential: CREDENTIAL,
     });
     await waitForState(current, "connected");
-    const first = current.tunnel.childPid() ?? 0;
+    const first = runningChild(children, current.tunnel.childPid());
 
     const off = await current.host.harness.runCli(["off", "--json"]);
     expect(JSON.parse(off.stdout)).toMatchObject({
       enabled: false,
       state: "off",
     });
-    expect(processAlive(first)).toBe(false);
+    expect(hasExited(first)).toBe(true);
     expect(current.ingress.open).toBe(0);
     expect(current.ingress.closed).toBe(1);
 
     const on = await current.host.harness.runCli(["on"]);
     expect(on.stdout).toContain("https://sawyer.next.getbb.app");
     await waitForState(current, "connected");
-    const second = current.tunnel.childPid() ?? 0;
+    const second = runningChild(children, current.tunnel.childPid());
 
     current.account.signOut();
     await waitForState(current, "signed-out");
     await current.tunnel.idle();
-    expect(processAlive(second)).toBe(false);
+    expect(hasExited(second)).toBe(true);
     expect(current.ingress.open).toBe(0);
 
     current.account.signIn({
@@ -364,12 +379,12 @@ describe("connect next with real frpc and frps", () => {
       credential: CREDENTIAL,
     });
     await waitForState(current, "connected");
-    const third = current.tunnel.childPid() ?? 0;
+    const third = runningChild(children, current.tunnel.childPid());
 
     loaded.splice(loaded.indexOf(current), 1);
     current.service.controller.abort();
     await current.service.done;
-    expect(processAlive(third)).toBe(false);
+    expect(hasExited(third)).toBe(true);
     expect(current.ingress.open).toBe(0);
     expect(current.ingress.closed).toBe(3);
     await current.host.harness.dispose();

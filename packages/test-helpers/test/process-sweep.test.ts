@@ -1,32 +1,27 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
-import { afterEach, describe, expect, it } from "vitest";
-import { killProcessesReferencingPath } from "../src/process-sweep.js";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import {
+  createProcessLifeline,
+  hasExited,
+  waitForExit,
+  type ProcessLifeline,
+} from "../src/child-processes.js";
+import {
+  killProcessesReferencingPath,
+  signalDescendantProcesses,
+} from "../src/process-sweep.js";
 
 const roots: string[] = [];
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForPid(path: string): Promise<number> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const pid = Number(await readFile(path, "utf8").catch(() => ""));
-    if (pid > 0) return pid;
-    await sleep(50);
-  }
-  throw new Error(`Timed out waiting for ${path}`);
-}
-
-function spawnStubborn(marker: string, childPidPath: string): number {
+function spawnStubborn(
+  lifeline: ProcessLifeline,
+  marker: string,
+  descendantLabel: string,
+): ChildProcess {
+  const descendant = `process.on('SIGTERM', () => {}); ${lifeline.holdSource(descendantLabel)} setInterval(() => {}, 1000);`;
   const child = spawn(
     process.execPath,
     [
@@ -34,18 +29,15 @@ function spawnStubborn(marker: string, childPidPath: string): number {
       [
         "process.on('SIGTERM', () => {});",
         "const { spawn } = require('node:child_process');",
-        "const fs = require('node:fs');",
-        "const grandchild = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { detached: true, stdio: 'ignore' });",
-        "fs.writeFileSync(process.argv[2], String(grandchild.pid));",
+        `spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { detached: true, stdio: 'ignore' });`,
         "setInterval(() => {}, 1000);",
       ].join(" "),
       marker,
-      childPidPath,
     ],
     { detached: true, stdio: "ignore" },
   );
   child.unref();
-  return child.pid!;
+  return child;
 }
 
 afterEach(async () => {
@@ -62,24 +54,65 @@ describe.skipIf(process.platform === "win32")(
       const root = await mkdtemp(join(tmpdir(), "bb-sweep-"));
       const sibling = `${root}-sibling`;
       roots.push(root, sibling);
-      const target = spawnStubborn(join(root, "marker"), join(root, "child"));
-      const bystander = spawnStubborn(sibling, `${sibling}.child`);
-      const grandchild = await waitForPid(join(root, "child"));
-      const bystanderChild = await waitForPid(`${sibling}.child`);
+      const lifeline = await createProcessLifeline();
+      onTestFinished(() => lifeline.close());
+      const target = spawnStubborn(lifeline, join(root, "marker"), "target");
+      const bystander = spawnStubborn(lifeline, sibling, "bystander");
+      const holders = await lifeline.waitForHolders(2);
+      const grandchild = holders.find((holder) => holder.label === "target");
+      const bystanderChild = holders.find(
+        (holder) => holder.label === "bystander",
+      );
 
       const killed = await killProcessesReferencingPath(root, {
         graceMs: 200,
       });
 
-      expect(killed).toEqual(expect.arrayContaining([target, grandchild]));
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        if (!isAlive(target) && !isAlive(grandchild)) break;
-        await sleep(50);
-      }
-      expect(isAlive(target)).toBe(false);
-      expect(isAlive(grandchild)).toBe(false);
-      expect(isAlive(bystander)).toBe(true);
-      expect(isAlive(bystanderChild)).toBe(true);
+      expect(killed).toEqual(
+        expect.arrayContaining([target.pid, grandchild?.pid]),
+      );
+      await Promise.all([waitForExit(target), grandchild?.exited]);
+      expect(hasExited(bystander)).toBe(false);
+      expect(bystanderChild?.alive()).toBe(true);
+    });
+  },
+);
+
+describe.skipIf(process.platform === "win32")(
+  "signalDescendantProcesses",
+  () => {
+    it("signals the selected grandchildren of this process and no others", async () => {
+      const lifeline = await createProcessLifeline();
+      onTestFinished(() => lifeline.close());
+      const grandchild = (label: string) =>
+        `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(
+          `${lifeline.holdSource(label)} setInterval(() => {}, 1000);`,
+        )}, ${JSON.stringify(label)}], { stdio: 'ignore' });`;
+      const parent = spawn(
+        process.execPath,
+        [
+          "-e",
+          `${grandchild("target")} ${grandchild("bystander")} setInterval(() => {}, 1000);`,
+        ],
+        { stdio: "ignore" },
+      );
+      onTestFinished(() => {
+        parent.kill("SIGKILL");
+      });
+      const holders = await lifeline.waitForHolders(2);
+      const target = holders.find((holder) => holder.label === "target");
+      const bystander = holders.find((holder) => holder.label === "bystander");
+
+      const signalled = await signalDescendantProcesses({
+        select: (entry, entryParent) =>
+          entryParent?.pid === parent.pid && entry.args.endsWith(" target"),
+        signal: "SIGKILL",
+      });
+      await target?.exited;
+
+      expect(signalled.map((entry) => entry.pid)).toEqual([target?.pid]);
+      expect(bystander?.alive()).toBe(true);
+      expect(hasExited(parent)).toBe(false);
     });
   },
 );

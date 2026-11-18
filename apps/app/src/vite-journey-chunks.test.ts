@@ -39,7 +39,7 @@ it("merges each journey's used modules into one chunk without making another jou
         "main.js":
           'window.route = import("./route.js"); window.thread = () => import("./thread.js"); window.compose = () => import("./compose.js"); window.menu = () => import("./menu.js");',
         "route.js":
-          'import { shell, starred } from "./barrel.js"; import { pill } from "./pill.js"; export default shell + pill + starred;',
+          'import { shell, starred } from "./barrel.js"; import { pill } from "./pill.js"; window.later = () => import("./later.js"); export default shell + pill + starred;',
         "barrel.js":
           'export { shell } from "./shell.js"; export { heavy } from "./heavy.js"; export * from "./star.js";',
         "shell.js": "export const shell = Math.random();",
@@ -56,6 +56,7 @@ it("merges each journey's used modules into one chunk without making another jou
         "timeline.js": "export const timeline = Math.random();",
         "editor.js": "export const editor = Math.random();",
         "diff.js": "export default Math.random();",
+        "later.js": "export default Math.random();",
       }).map(([name, source]) => writeFile(join(root, name), source)),
     );
     const output = await build({

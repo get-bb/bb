@@ -1,0 +1,184 @@
+{
+  "rejected": [
+    {
+      "name": "#7681 Codex app-server teardown",
+      "source": "function processIsAlive(pid: number): boolean {\n  try {\n    process.kill(pid, 0);\n    return true;\n  } catch (error) {\n    if (error instanceof Error && Reflect.get(error, \"code\") === \"ESRCH\") {\n      return false;\n    }\n    throw error;\n  }\n}\nwhile (childPids.some(processIsAlive)) {}",
+      "rules": ["pid-liveness-helper", "signal-zero-probe"]
+    },
+    {
+      "name": "#7681 ACP descendant check",
+      "source": "expect(process.kill(descendantPid, 0)).toBe(true);",
+      "rules": ["signal-zero-probe"]
+    },
+    {
+      "name": "#7683 restarted host worker",
+      "source": "expect(Reflect.get(Object(restarted.output), \"pid\")).not.toBe(firstPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "#5052 replacement provider",
+      "source": "expect(replacementProvider.child.pid).not.toBe(exitedPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "#5487 server-move pending server",
+      "source": "expect(isProcessGroupAlive(prepared.pid)).toBe(false);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "#6248 runtime shutdown",
+      "source": "function processIsAlive(pid: number): boolean {\n  try { process.kill(pid, 0); return true; } catch { return false; }\n}\nexpect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);",
+      "rules": ["pid-liveness-helper", "signal-zero-probe"]
+    },
+    {
+      "name": "imported PID helper",
+      "source": "expect(isProcessRunning(args.pid)).toBe(true);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "PID helper passed as a callback",
+      "source": "return processIds.every((pid) => !isProcessRunning(pid)) && pids.some(isAlive);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "a probe split across lines",
+      "source": "process.kill(\n  busy.child.pid!,\n  0,\n);",
+      "rules": ["signal-zero-probe"]
+    },
+    {
+      "name": "an assertion split across lines",
+      "source": "expect(\n  restartedDaemonPid,\n)\n  .not.toBe(firstDaemonPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "nested call around a PID file read",
+      "source": "expect(isAlive(Number(readFileSync(pidFile, \"utf8\")))).toBe(false);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "processExists helper",
+      "source": "expect(processExists(pid)).toBe(false);",
+      "rules": ["pid-liveness-helper"]
+    },
+    {
+      "name": "shell kill -0 loop in a fake tool",
+      "source": "const fake = `while kill -0 \"$service_pid\" 2>/dev/null; do sleep 0.01; done`;",
+      "rules": ["signal-zero-probe"]
+    },
+    {
+      "name": "/proc read after stop",
+      "source": "const stat = await readFile(`/proc/${String(grandchildPid)}/stat`, \"utf8\");",
+      "rules": ["pid-os-probe"]
+    },
+    {
+      "name": "ps -p existence check",
+      "source": "await execFile(\"ps\", [\"-o\", \"ppid=\", \"-p\", String(pid)]);",
+      "rules": ["pid-os-probe"]
+    },
+    {
+      "name": "shell ps -p existence check",
+      "source": "const check = `ps -p ${pid} >/dev/null`;",
+      "rules": ["pid-os-probe"]
+    },
+    {
+      "name": "PID equality inside expect",
+      "source": "expect(restarted.pid === first.pid).toBe(false);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "PID list without the old PID",
+      "source": "expect(listedPids).not.toContain(oldPid);",
+      "rules": ["pid-identity-assertion"]
+    },
+    {
+      "name": "SIGKILL cleanup of a remembered PID",
+      "source": "for (const pid of runningPids) process.kill(pid, \"SIGKILL\");",
+      "rules": ["pid-signal"]
+    },
+    {
+      "name": "a failed spawn's PID 0 kills the group",
+      "source": "cleanupPids.push(child.pid ?? 0);\nprocess.kill(cleanupPids[0], \"SIGKILL\");",
+      "rules": ["pid-signal"]
+    },
+    {
+      "name": "group signal by remembered PID",
+      "source": "process.kill(-leader.pid, \"SIGKILL\");",
+      "rules": ["pid-signal"]
+    }
+  ],
+  "accepted": [
+    {
+      "name": "an owned exit state",
+      "source": "expect(child.exitCode !== null || child.signalCode !== null).toBe(true);"
+    },
+    {
+      "name": "a boot identity",
+      "source": "expect(restarted.bootId).not.toBe(firstBootId);"
+    },
+    {
+      "name": "a present PID",
+      "source": "expect(pid).not.toBeNull();"
+    },
+    {
+      "name": "a lifeline holder",
+      "source": "await holder.exited; expect(holder.alive()).toBe(false);"
+    },
+    {
+      "name": "a group probe through the owned leader",
+      "source": "expect(isProcessGroupAlive(child)).toBe(true);"
+    },
+    {
+      "name": "a tracker query",
+      "source": "expect(tracker.running()).toEqual([]);"
+    },
+    {
+      "name": "an unrelated inequality",
+      "source": "expect(next.title).not.toBe(previous.title);"
+    },
+    {
+      "name": "a PID file name",
+      "source": "expect(hasLiveOwner(join(root, \"parent.pid\"))).toBe(true);"
+    },
+    {
+      "name": "a start-time identity read",
+      "source": "await execFile(\"ps\", [\"-o\", \"lstart=\", \"-p\", String(pid)]);"
+    },
+    {
+      "name": "a shell start-time identity loop",
+      "source": "const wait = `while [ \"$(ps -o lstart= -p \"$pid\")\" = \"$started\" ]; do sleep 0.1; done`;"
+    },
+    {
+      "name": "the process signalling itself",
+      "source": "process.kill(process.pid, \"SIGKILL\");"
+    },
+    {
+      "name": "the sweep not listing the test process",
+      "source": "expect(found.map((entry) => entry.pid)).not.toContain(process.pid);"
+    },
+    {
+      "name": "a signal through the ChildProcess",
+      "source": "child.kill(\"SIGKILL\");"
+    },
+    {
+      "name": "its own /proc entry",
+      "source": "readFileSync(\"/proc/self/oom_score_adj\", \"utf8\");"
+    },
+    {
+      "name": "a full process listing",
+      "source": "await execFile(\"ps\", [\"-A\", \"-o\", \"pid=\", \"-o\", \"args=\"]);"
+    },
+    {
+      "name": "a fixture signalling its live parent",
+      "source": "process.kill(process.ppid, \"SIGTERM\");"
+    },
+    {
+      "name": "a ps query about its own parent",
+      "source": "spawnSync(\"ps\", [\"-o\", \"ppid=\", \"-p\", String(process.ppid)]);"
+    }
+  ],
+  "lineReport": {
+    "source": "const a = 1;\n\nprocess.kill(pid, 0);\n",
+    "line": 3,
+    "rule": "signal-zero-probe"
+  }
+}

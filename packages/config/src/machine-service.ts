@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 
 export const MACHINE_INSTALLER_ENV_NAME = "BB_MACHINE_INSTALLER";
 export const HOST_DAEMON_RESTART_EXIT_CODE = 75;
+export const HOST_DAEMON_AUTH_REJECTED_EXIT_CODE = 78;
 
 const LAUNCHD_SERVICE_PREFIX = "app.getbb.host-daemon.";
 const LAUNCHD_SERVICE_SUFFIX = ".plist";

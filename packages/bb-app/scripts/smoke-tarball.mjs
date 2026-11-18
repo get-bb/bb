@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { createManagedProcessStop } from "./managed-process.mjs";
 
 const HTTP_WAIT_TIMEOUT_MS = 60_000;
+const LOG_TAIL_LINES = 80;
 const HTTP_WAIT_INTERVAL_MS = 250;
 const PLUGIN_LOAD_TIMEOUT_MS = 60_000;
 const PLUGIN_LOAD_INTERVAL_MS = 1_000;
@@ -289,6 +290,31 @@ async function readPortCollisionDetails(processRef, logPaths) {
   return PORT_COLLISION_PATTERN.test(details) ? details : null;
 }
 
+async function readLogTails(logPaths) {
+  const sections = [];
+  for (const directory of new Set(
+    logPaths.map((logPath) => dirname(logPath)),
+  )) {
+    let entries = [];
+    try {
+      entries = await readdir(directory);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    for (const entry of entries
+      .filter((name) => name.endsWith(".log"))
+      .sort()) {
+      const contents = await readFile(join(directory, entry), "utf8");
+      const lines = contents.trimEnd().split("\n");
+      if (lines.length === 1 && lines[0] === "") continue;
+      sections.push(
+        `${join(directory, entry)} (last ${Math.min(lines.length, LOG_TAIL_LINES)} of ${lines.length} lines):\n${lines.slice(-LOG_TAIL_LINES).join("\n")}`,
+      );
+    }
+  }
+  return sections.join("\n\n");
+}
+
 async function retryPortCollisions(label, run) {
   for (let attempt = 1; attempt <= PORT_COLLISION_MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -344,7 +370,7 @@ async function waitForHttp({
     await delay(HTTP_WAIT_INTERVAL_MS);
   }
   throw new Error(
-    `Timed out waiting for ${label} at ${url}\n${formatProcessOutput(processRef.output)}`,
+    `Timed out waiting for ${label} at ${url}\n${formatProcessOutput(processRef.output)}\n\n${await readLogTails(portCollisionLogPaths)}`,
   );
 }
 

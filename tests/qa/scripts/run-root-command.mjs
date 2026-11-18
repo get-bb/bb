@@ -28,8 +28,8 @@ const commandConfig = {
   },
 };
 
-function readParentPid(pid) {
-  const result = spawnSync("ps", ["-o", "ppid=", "-p", String(pid)], {
+function readGrandparentPid() {
+  const result = spawnSync("ps", ["-o", "ppid=", "-p", String(process.ppid)], {
     encoding: "utf8",
     shell: false,
     stdio: ["ignore", "pipe", "ignore"],
@@ -42,7 +42,7 @@ function readParentPid(pid) {
 }
 
 function resolveStandaloneParentPid() {
-  return readParentPid(process.ppid) ?? process.ppid;
+  return readGrandparentPid() ?? process.ppid;
 }
 
 function run(commandName, commandArgs, stdio, env = process.env) {

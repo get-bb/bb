@@ -17,6 +17,7 @@
     "@bb/domain": "workspace:*",
     "@bb/host-daemon": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
+    "@bb/process-utils": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server": "workspace:*",
     "@bb/server-contract": "workspace:*",

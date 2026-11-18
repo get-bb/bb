@@ -123,6 +123,7 @@ import {
 import {
   createMarkdownPieceCache,
   resolveMarkdownPieces,
+  resolveMarkdownPiecesUnlessHtml,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces.js";
 import { PAGE_CONTAINER_INSET_END_VARIABLE } from "./page-shell-content-style.js";
@@ -1776,9 +1777,9 @@ function MarkdownPreviewComponent({
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
   const [markdownPieceCache] = useState(createMarkdownPieceCache);
-  const rendersHtml = allowHtml && content.includes("<");
+  const mayRenderHtml = allowHtml && content.includes("<");
   const usesIncrementalBlocks =
-    incrementalBlocks && !rendersHtml && promptMentions === undefined;
+    incrementalBlocks && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1957,9 +1958,20 @@ function MarkdownPreviewComponent({
       resolvedUrlTransform,
     ],
   );
-  const markdownPieces = usesIncrementalBlocks
-    ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
-    : null;
+  const markdownPieces = !usesIncrementalBlocks
+    ? null
+    : mayRenderHtml
+      ? resolveMarkdownPiecesUnlessHtml(
+          markdownPieceCache,
+          markdownPieceRenderConfig,
+          body,
+        )
+      : resolveMarkdownPieces(
+          markdownPieceCache,
+          markdownPieceRenderConfig,
+          body,
+        );
+  const rendersHtml = mayRenderHtml && markdownPieces === null;
 
   const Markdown = rendersHtml ? LazyMarkdownHtml : ReactMarkdown;
   const renderedMarkdown =

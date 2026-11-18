@@ -9,7 +9,7 @@ const POLL_INTERVAL_MS = 50;
 const DEFAULT_GRACE_MS = 1_000;
 const PROCESS_LIST_MAX_BUFFER = 64 * 1024 * 1024;
 
-interface ListedProcess {
+export interface ListedProcess {
   pid: number;
   ppid: number;
   args: string;
@@ -66,17 +66,10 @@ function ancestorsOf(pid: number, parents: Map<number, number>): Set<number> {
   return ancestors;
 }
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return !(
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "ESRCH"
-    );
-  }
+async function stillListed(targets: Map<number, string>): Promise<number[]> {
+  return (await listProcesses())
+    .filter((entry) => targets.get(entry.pid) === entry.args)
+    .map((entry) => entry.pid);
 }
 
 function signal(pids: Iterable<number>, name: NodeJS.Signals): void {
@@ -95,12 +88,13 @@ export async function killProcessesReferencingPath(
   const spellings = await pathSpellings(path);
   const processes = await listProcesses();
   const parents = new Map(processes.map((entry) => [entry.pid, entry.ppid]));
+  const args = new Map(processes.map((entry) => [entry.pid, entry.args]));
   const protectedPids = ancestorsOf(process.pid, parents).add(process.pid);
   const children = new Map<number, number[]>();
   for (const entry of processes) {
     children.set(entry.ppid, [...(children.get(entry.ppid) ?? []), entry.pid]);
   }
-  const targets = new Set<number>();
+  const targets = new Map<number, string>();
   const pending = processes
     .filter((entry) =>
       spellings.some((spelling) => referencesPath(entry.args, spelling)),
@@ -109,16 +103,47 @@ export async function killProcessesReferencingPath(
   while (pending.length > 0) {
     const pid = pending.pop()!;
     if (protectedPids.has(pid) || targets.has(pid)) continue;
-    targets.add(pid);
+    targets.set(pid, args.get(pid) ?? "");
     pending.push(...(children.get(pid) ?? []));
   }
   if (targets.size === 0) return [];
-  signal(targets, "SIGTERM");
-  const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
-  for (let waited = 0; waited < graceMs; waited += POLL_INTERVAL_MS) {
-    if (![...targets].some(isAlive)) break;
+  signal(targets.keys(), "SIGTERM");
+  const deadline = Date.now() + (options.graceMs ?? DEFAULT_GRACE_MS);
+  let remaining = await stillListed(targets);
+  while (remaining.length > 0 && Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
+    remaining = await stillListed(targets);
   }
-  signal([...targets].filter(isAlive), "SIGKILL");
-  return [...targets];
+  signal(remaining, "SIGKILL");
+  return [...targets.keys()];
+}
+
+interface SignalDescendantProcessesArgs {
+  select: (entry: ListedProcess, parent: ListedProcess | undefined) => boolean;
+  signal: NodeJS.Signals;
+}
+
+export async function signalDescendantProcesses(
+  args: SignalDescendantProcessesArgs,
+): Promise<ListedProcess[]> {
+  const processes = await listProcesses();
+  const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
+  const descendants: ListedProcess[] = [];
+  const pending = [process.pid];
+  while (pending.length > 0) {
+    const parent = pending.shift()!;
+    for (const entry of processes) {
+      if (entry.ppid !== parent) continue;
+      descendants.push(entry);
+      pending.push(entry.pid);
+    }
+  }
+  const selected = descendants.filter((entry) =>
+    args.select(entry, byPid.get(entry.ppid)),
+  );
+  signal(
+    selected.map((entry) => entry.pid),
+    args.signal,
+  );
+  return selected;
 }
