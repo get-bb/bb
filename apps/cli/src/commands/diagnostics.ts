@@ -1,3 +1,4 @@
+import { outputJson } from "../command-result.js";
 import { rmSync } from "node:fs";
 import { Command } from "commander";
 import { action } from "../action.js";
@@ -10,7 +11,6 @@ import {
 } from "../cli-error-log.js";
 import { parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 
 interface CliErrorsOptions {
   clear?: boolean;

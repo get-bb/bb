@@ -1,4 +1,9 @@
 import {
+  outputJson,
+  reportCommandResult,
+  reportOperation,
+} from "../command-result.js";
+import {
   GIT_PLUGIN_ID,
   environmentStatusSchema,
   environmentStatusValues,
@@ -11,7 +16,7 @@ import { action } from "../action.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { outputJson, prependErrorContext } from "./helpers.js";
+import { prependErrorContext } from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
@@ -181,8 +186,10 @@ export function registerEnvironmentCommands(
             environmentId: id,
             recover: opts.recover,
           });
-          if (!outputJson(opts, result))
-            console.log("Environment cleanup requested.");
+          reportOperation(opts, result, {
+            complete: `Environment ${id} cleaned up.`,
+            inProgress: "Environment cleanup requested.",
+          });
         },
       ),
     );
@@ -305,10 +312,21 @@ export function registerEnvironmentCommands(
       action(async (id: string, opts: { json?: boolean }) => {
         const sdk = createCliBbSdk(getUrl());
         const result = await sdk.environments.delete({ environmentId: id });
-        if (outputJson(opts, result)) return;
+        if (result.progress === "complete" || opts.json) {
+          reportOperation(opts, result, {
+            complete: `Environment ${id} removed.`,
+            inProgress: `Cleanup requested for environment ${id}.`,
+          });
+          return;
+        }
         const environment = await sdk.environments.get({ environmentId: id });
-        console.log(`Cleanup requested for environment ${id}.`);
-        console.log(`Lifecycle: ${environment.lifecycle.phase}`);
+        reportCommandResult(opts, result, {
+          text: [
+            `Cleanup requested for environment ${id}.`,
+            `Lifecycle: ${environment.lifecycle.phase}`,
+          ],
+          failure: null,
+        });
       }),
     );
 

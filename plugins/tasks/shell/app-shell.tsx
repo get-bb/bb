@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
+import {
+  experimental_matchesShortcutKey as matchesShortcutKey,
+  type PluginNavPanelProps,
+} from "@get-bb/plugin-sdk/app";
 import { useProjects } from "./data.js";
 import {
   parseTasksRoute,
@@ -154,7 +157,13 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "c" || event.metaKey || event.ctrlKey || event.altKey)
+      if (
+        !matchesShortcutKey(event, "c") ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      )
         return;
       if (event.defaultPrevented || event.repeat) return;
       if (isEditableTarget(event.target)) return;

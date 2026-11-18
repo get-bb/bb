@@ -449,10 +449,15 @@ describe("bb plugin update commands", () => {
         }),
       );
 
-    await runCommand(["plugin", "update", "notes", "--yes"], register);
+    await expect(
+      runCommand(["plugin", "update", "notes", "--yes"], register),
+    ).rejects.toThrow("process.exit:1");
 
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "notes: rolled-back — activation failed; restored 1",
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: The update of notes failed to start and was rolled back to the previous version.",
     );
   });
 
@@ -480,7 +485,7 @@ describe("bb plugin update commands", () => {
       runCommand(["plugin", "update", "notes", "--yes"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "signature verification failed",
+      "Error: signature verification failed",
     );
 
     vi.clearAllMocks();
@@ -497,7 +502,7 @@ describe("bb plugin update commands", () => {
       runCommand(["plugin", "update", "notes"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "Refusing to update without confirmation — re-run with --yes.",
+      "Error: Refusing to update without confirmation — re-run with --yes.",
     );
   });
 

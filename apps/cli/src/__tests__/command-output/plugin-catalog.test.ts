@@ -363,6 +363,46 @@ describe("bb plugin catalog", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "fails an install whose plugin cannot load (json: %s)",
+    async (json_) => {
+      const broken = {
+        ...installedPlugin,
+        status: "error",
+        statusDetail: "server.js threw on load",
+      };
+      vi.mocked(fetch).mockResolvedValueOnce(
+        json({ ok: true, plugin: broken }),
+      );
+
+      await expect(
+        runCommand(
+          [
+            "plugin",
+            "install",
+            "path:/linear",
+            "--yes",
+            ...(json_ ? ["--json"] : []),
+          ],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(console.error).toHaveBeenCalledWith(
+        "Error: server.js threw on load",
+      );
+      if (json_) {
+        expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+          JSON.stringify(
+            { ok: false, plugin: broken, error: "server.js threw on load" },
+            null,
+            2,
+          ),
+        ]);
+      }
+    },
+  );
+
   it("keeps install --json free of human trust preamble output", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ ok: true, plugin: installedPlugin }),

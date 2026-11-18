@@ -1486,15 +1486,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
           lastAssistantText: getLatestTurnFinalOutput(deps.db, thread.id),
         }));
+        emitThreadEvent("experimental_thread.settled", () => ({
+          outcome: "completed",
+          thread: buildThreadDto(thread),
+          lastAssistantText: getLatestTurnFinalOutput(deps.db, thread.id),
+        }));
       },
       emitThreadFailed(thread) {
         emitThreadEvent("thread.failed", () => ({
           thread: buildThreadDto(thread),
           error: getLastThreadErrorMessage(deps.db, thread.id),
         }));
+        emitThreadEvent("experimental_thread.settled", () => ({
+          outcome: "failed",
+          thread: buildThreadDto(thread),
+          error: getLastThreadErrorMessage(deps.db, thread.id),
+        }));
       },
       emitThreadArchived(thread) {
         emitThreadEvent("thread.archived", () => ({
+          thread: buildThreadDto(thread),
+        }));
+        emitThreadEvent("experimental_thread.settled", () => ({
+          outcome: "archived",
           thread: buildThreadDto(thread),
         }));
       },
@@ -1511,6 +1525,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       },
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
+          thread: buildThreadDto(thread),
+        }));
+        emitThreadEvent("experimental_thread.settled", () => ({
+          outcome: "deleted",
           thread: buildThreadDto(thread),
         }));
       },
@@ -1535,7 +1553,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
       emitMessageDispatched:
         buildQueuedMessageEventEmitter("message.dispatched"),
-      emitMessageCancelled: buildQueuedMessageEventEmitter("message.cancelled"),
+      emitMessageCancelled(entry) {
+        buildQueuedMessageEventEmitter("message.cancelled")(entry);
+        emitThreadEvent("experimental_thread.settled", () => {
+          const thread = getThread(deps.db, entry.threadId);
+          return thread === null || thread.deletedAt !== null
+            ? null
+            : { outcome: "cancelled", thread: buildThreadDto(thread), entry };
+        });
+      },
       emitTurnFailed(threadId) {
         // Built lazily inside the emitter: with no listener the failure path
         // pays one map lookup and never touches the database.

@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import {
   assertNever,
@@ -36,7 +37,6 @@ import { createCliBbSdk } from "../../client.js";
 import { printBorderlessTable } from "../../table.js";
 import {
   collectOption,
-  outputJson,
   prependErrorContext,
   requireThreadIdOrSelf,
 } from "../helpers.js";

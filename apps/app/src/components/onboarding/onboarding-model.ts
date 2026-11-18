@@ -1,5 +1,6 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
+import { terminalOutputToPlainText } from "@bb/text-utils";
 import { asHttpError } from "@/lib/http-error";
 import { viewerIsOnThisComputer } from "@/lib/local-host-daemon-access";
 import type {
@@ -467,7 +468,11 @@ export function defaultSelectedRepoPaths(
 }
 
 export type OperationFailureReason =
-  "host_unavailable" | "timed_out" | "not_found" | "permission" | "other";
+  | "host_unavailable"
+  | "timed_out"
+  | "not_found"
+  | "permission"
+  | "other";
 
 export function operationFailureReason(error: unknown): OperationFailureReason {
   if (error instanceof BbRequestTimeoutError) return "timed_out";
@@ -571,8 +576,6 @@ export function agentSignInView({
   };
 }
 
-const TERMINAL_OSC_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu;
-const TERMINAL_CSI_SEQUENCE = /\u001b\[[0-9;?]*[ -/]*[@-~]/gu;
 const TERMINAL_HYPERLINK =
   /\u001b\]8;[^;\u0007\u001b]*;(https:\/\/[^\u0007\u001b]+)(?:\u0007|\u001b\\)/gu;
 const SIGN_IN_URL = /https:\/\/[^\s\u0007\u001b"'<>]+/u;
@@ -580,22 +583,15 @@ const SIGN_IN_USER_CODE =
   /(?<![A-Za-z0-9-])[A-Z0-9]{4,5}-[A-Z0-9]{4,5}(?![A-Za-z0-9-])/u;
 const SIGN_IN_PASTE_PROMPT = /paste (?:the |your )?(?:authorization )?code/iu;
 
-export function stripTerminalSequences(output: string): string {
-  return output
-    .replace(TERMINAL_OSC_SEQUENCE, "")
-    .replace(TERMINAL_CSI_SEQUENCE, "")
-    .replace(/\r/gu, "");
-}
-
 export function connectFlowFailed(
   flow: TerminalConnectFlow,
   output: string,
 ): boolean {
-  return flow.failure.test(stripTerminalSequences(output));
+  return flow.failure.test(terminalOutputToPlainText(output));
 }
 
 export function parseSignInOutput(output: string): SignInGuide {
-  const text = stripTerminalSequences(output);
+  const text = terminalOutputToPlainText(output);
   const url =
     [...output.matchAll(TERMINAL_HYPERLINK)].at(-1)?.[1] ??
     SIGN_IN_URL.exec(text)?.[0] ??

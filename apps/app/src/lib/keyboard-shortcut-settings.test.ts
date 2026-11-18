@@ -52,6 +52,29 @@ describe("keyboard shortcut settings", () => {
     ).toEqual([...APP_COMMAND_IDS].sort());
   });
 
+  it("records the physical key on a non-Latin layout", () => {
+    expect(
+      appShortcutFromInput(
+        {
+          key: "л",
+          code: "KeyK",
+          altKey: false,
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+        },
+        "Win32",
+      ),
+    ).toEqual({
+      key: "k",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    });
+  });
+
   it("records primary modifiers and unshifted punctuation", () => {
     expect(
       appShortcutFromInput(

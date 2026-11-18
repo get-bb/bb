@@ -2861,7 +2861,10 @@ describe("public thread data routes", () => {
         },
       );
       expect(deleteResponse.status).toBe(200);
-      await expect(readJson(deleteResponse)).resolves.toEqual({ ok: true });
+      await expect(readJson(deleteResponse)).resolves.toEqual({
+        ok: true,
+        progress: "complete",
+      });
       expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
     });
   });

@@ -3,7 +3,7 @@ import type {
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
 } from "@bb/domain";
-import type { BbSdk } from "@bb/sdk";
+import { BbHttpError, type BbSdk } from "@bb/sdk";
 
 interface FetchThreadPendingTodosArgs {
   sdk: Pick<BbSdk, "threads">;
@@ -18,8 +18,9 @@ export async function fetchThreadPendingTodos(
       threadId: args.threadId,
     });
     return headState.pendingTodos;
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof BbHttpError && error.status === 404) return null;
+    throw error;
   }
 }
 

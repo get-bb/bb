@@ -536,7 +536,7 @@ function RootComposeSurface({
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
   const setPromptDraft = composerActions.restoreDraft;
-  const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
+  const seedPromptDraftIfEmpty = promptDraft.seedIfEmpty;
 
   useEffect(() => {
     const initialPrompt = readInitialPromptFromSearch(location.search);
@@ -611,7 +611,7 @@ function RootComposeSurface({
     if (shouldReplaceInitialPromptFromLocationState(location.state)) {
       setPromptDraft(nextDraft);
     } else {
-      restorePromptDraftIfEmpty(nextDraft);
+      seedPromptDraftIfEmpty(nextDraft);
     }
     void navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -621,7 +621,7 @@ function RootComposeSurface({
     location.search,
     location.state,
     navigate,
-    restorePromptDraftIfEmpty,
+    seedPromptDraftIfEmpty,
     setPromptDraft,
     stateInitialDraft,
   ]);

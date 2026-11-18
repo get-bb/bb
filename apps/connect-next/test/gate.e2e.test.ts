@@ -864,6 +864,12 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       const second = await get("/shell?revalidate");
       expect(second.status).toBe(200);
       expect(second.headers["x-bb-cache"]).toBe("revalidated");
+      for (const shell of [first, second]) {
+        expect(shell.headers["content-security-policy"]).toBe(
+          "frame-ancestors 'none'",
+        );
+        expect(shell.headers["x-frame-options"]).toBe("DENY");
+      }
       expect(second.text).toContain("<title>shell</title>");
       expect(origin.seen.slice(before)[0]?.headers["if-none-match"]).toBe(
         '"shell-1"',

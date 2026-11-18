@@ -168,7 +168,8 @@ Making your repo work with bb:
 
   `bb environment cleanup <id> --recover [--json]` is an explicit acknowledgement
   after inspecting a failed environment. It marks interrupted hooks finished,
-  resets the retry budget, and retries removal. It also handles interrupted
+  resets the retry budget, and retries removal; it exits non-zero
+  (`environment_teardown_failed`) when that removal fails again. It also handles interrupted
   setup without a recorded hook operation. A teardown hook that never started
   still runs. A daemon reboot alone never proves a detached hook has stopped.
 

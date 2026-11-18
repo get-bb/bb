@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import {
   threadStatusSchema,
@@ -13,7 +14,7 @@ import type { ThreadCountResult } from "@bb/sdk";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { columnWidths, printBorderlessTable } from "../../table.js";
-import { joinValues, outputJson } from "../helpers.js";
+import { joinValues } from "../helpers.js";
 
 interface ThreadCountCommandOptions {
   by?: string;

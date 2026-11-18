@@ -52,6 +52,8 @@ runs:
   bb terminal rename <terminal-id> <title>
   bb terminal restart <terminal-id>       Atomically replaces it with a shell; does not replay the original command
   bb terminal close <terminal-id> [--if-clean]   (alias: stop)
+    --if-clean                            Close only if no user input was sent; exits
+                                          non-zero when the terminal is left open
 
   bb terminal output <terminal-id>
     --since-seq <n>                       Read output chunks from a sequence

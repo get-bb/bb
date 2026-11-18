@@ -5658,6 +5658,152 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     }
   });
 
+  const lostSessionErrors = [
+    {
+      agent: "an agent using the ACP resource-not-found code",
+      error: { code: -32002, message: "Resource not found" },
+    },
+    {
+      agent: "OpenCode",
+      error: {
+        code: -32602,
+        message: "Invalid params: session not found: ses_lost",
+        data: { sessionId: "ses_lost" },
+      },
+    },
+    {
+      agent: "Copilot",
+      error: { code: -32602, message: "Session ses_lost not found" },
+    },
+    {
+      agent: "Cursor",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: { details: "Session ses_lost not found" },
+      },
+    },
+    {
+      agent: "Copilot with a stuck session lock",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: {
+          details:
+            "session lock unavailable during is_session_generation_current: acquisition timed out",
+        },
+      },
+    },
+  ];
+
+  function lostSessionAgentEnv(error: object): {
+    envVars: Record<string, string>;
+    launchCount: () => number;
+    requestLog: string;
+  } {
+    const launchLog = join(workspaceDir, "launches.log");
+    const requestLog = join(workspaceDir, "requests.log");
+    return {
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_LOST_SESSION_ERROR: JSON.stringify(error),
+        FAKE_ACP_LOST_SESSION_FILE: join(workspaceDir, "lost-session"),
+        FAKE_ACP_LAUNCH_LOG: launchLog,
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+      launchCount: () =>
+        readFileSync(launchLog, "utf8").split("\n").filter(Boolean).length,
+      requestLog,
+    };
+  }
+
+  async function turnStatus(
+    providerThreadId: string,
+    input: unknown[],
+  ): Promise<unknown> {
+    const completedBefore = threadEventsOfType("turn/completed").length;
+    const turnId = sendTurnRequest("turn/start", providerThreadId, { input });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    const completed = await waitFor(
+      () => threadEventsOfType("turn/completed")[completedBefore],
+      "next turn/completed thread event",
+    );
+    return completed["status"];
+  }
+
+  it.each(lostSessionErrors)(
+    "rebuilds the session before the next turn after $agent reports it lost",
+    async ({ error }) => {
+      const agent = lostSessionAgentEnv(error);
+      const { providerThreadId } = await startThread({
+        envVars: agent.envVars,
+      });
+      const text = (value: string) => [
+        { type: "text", text: value, mentions: [] },
+      ];
+
+      expect(await turnStatus(providerThreadId, text("first"))).toBe("failed");
+      expect(await turnStatus(providerThreadId, text("second"))).toBe(
+        "completed",
+      );
+
+      expect(agentMessageTexts()).toEqual(["echo:second"]);
+      expect(agent.launchCount()).toBe(2);
+      expect(
+        loggedAcpRequests(agent.requestLog).filter(
+          (request) => request.method === "session/load",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          params: expect.objectContaining({ sessionId: providerThreadId }),
+        }),
+      ]);
+      expect(notifications("session/replaced")).toHaveLength(1);
+      expect(notifications("session/replaced")[0]?.params).toMatchObject({
+        providerThreadId,
+        reason:
+          "The ACP agent lost its session; the session was rebuilt before continuing.",
+        contextLost: false,
+      });
+    },
+  );
+
+  it("rebuilds the session before the next turn after a compaction finds it lost", async () => {
+    const agent = lostSessionAgentEnv(lostSessionErrors[1]!.error);
+    const { providerThreadId } = await startThread({ envVars: agent.envVars });
+
+    expect(await turnStatus(providerThreadId, compactCommandInput())).toBe(
+      "failed",
+    );
+    expect(
+      await turnStatus(providerThreadId, [
+        { type: "text", text: "after compaction", mentions: [] },
+      ]),
+    ).toBe("completed");
+
+    expect(agentMessageTexts()).toEqual(["echo:after compaction"]);
+    expect(agent.launchCount()).toBe(2);
+    expect(notifications("session/replaced")).toHaveLength(1);
+  });
+
+  it("keeps the session when a prompt fails for another reason", async () => {
+    const agent = lostSessionAgentEnv({
+      code: -32603,
+      message: "Internal error",
+      data: { details: "upstream model overloaded" },
+    });
+    const { providerThreadId } = await startThread({ envVars: agent.envVars });
+    const text = (value: string) => [
+      { type: "text", text: value, mentions: [] },
+    ];
+
+    expect(await turnStatus(providerThreadId, text("first"))).toBe("failed");
+    expect(await turnStatus(providerThreadId, text("second"))).toBe("failed");
+
+    expect(agent.launchCount()).toBe(1);
+    expect(notifications("session/replaced")).toEqual([]);
+  });
+
   it("restores a session with session/resume when the agent offers it, without replaying history", async () => {
     const requestLog = join(workspaceDir, "requests.log");
     const envVars = {

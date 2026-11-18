@@ -12,6 +12,7 @@ import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import {
   definePluginApp,
+  experimental_matchesShortcutKey as matchesShortcutKey,
   experimental_usePluginId,
   Markdown,
   useBbContext,
@@ -105,7 +106,7 @@ function formatAge(timestamp: number, now: number): string {
 
 function isStarShortcut(event: ReactKeyboardEvent): boolean {
   return (
-    event.key.toLowerCase() === "s" &&
+    matchesShortcutKey(event, "s") &&
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
     !event.shiftKey

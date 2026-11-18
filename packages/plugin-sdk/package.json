@@ -99,6 +99,12 @@
       "import": "./dist/internal/thread-status.js",
       "default": "./dist/internal/thread-status.js"
     },
+    "./internal/thread-event-gate": {
+      "source": "./src/internal/thread-event-gate.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-thread-event-gate.d.ts",
+      "import": "./dist/internal/thread-event-gate.js",
+      "default": "./dist/internal/thread-event-gate.js"
+    },
     "./internal/file-navigation-validation": {
       "source": "./src/internal/file-navigation-validation.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts",

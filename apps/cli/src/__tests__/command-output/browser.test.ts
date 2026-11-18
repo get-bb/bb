@@ -156,12 +156,12 @@ describe("browser cookie import output", () => {
           "Default",
         ],
         (program) => registerBrowserCommands(program, () => "http://server"),
+      ).catch((error: unknown) => error);
+      expect(collectLogLines(vi.mocked(console.log))).toEqual([]);
+      expect(console.error).toHaveBeenCalledWith(
+        "Error: Import failed: Quit the browser first so its cookie database can be read.",
       );
-      expect(collectLogLines(vi.mocked(console.log))).toEqual([
-        "Import failed: Quit the browser first so its cookie database can be read.",
-      ]);
-      expect(process.exitCode).toBe(1);
-      process.exitCode = undefined;
+      expect(process.exit).toHaveBeenCalledWith(1);
     },
   );
 });

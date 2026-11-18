@@ -42,7 +42,8 @@ export const promptAreaMocks = {
     getCurrent: vi.fn(),
     mentions: [] as PromptTextMention[],
     updateAttachments: vi.fn(),
-    restoreIfEmpty: vi.fn(),
+    restoreUnsent: vi.fn(),
+    seedIfEmpty: vi.fn(),
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),
     storageKey: "bb.promptbox.contents-proj_1-thr_1-3",
@@ -61,6 +62,7 @@ export const promptAreaMocks = {
   setServiceTier: vi.fn(),
   supportsServiceTier: false,
   toastError: vi.fn(),
+  toastWarning: vi.fn(),
   restoreThreadEnvironmentMutate: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
   updateThreadMutate: vi.fn(),
@@ -594,7 +596,10 @@ vi.mock(
 );
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: promptAreaMocks.toastError },
+  appToast: {
+    error: promptAreaMocks.toastError,
+    warning: promptAreaMocks.toastWarning,
+  },
 }));
 
 vi.mock("@/hooks/usePromptMentions", async () =>

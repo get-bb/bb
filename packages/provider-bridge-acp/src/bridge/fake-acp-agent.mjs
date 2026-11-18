@@ -79,6 +79,13 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_LOST_SESSION_ERROR
+ *                            → JSON-RPC error object; the first launched
+ *                              process rejects every session/prompt with it,
+ *                              as an agent that lost its session does
+ * - FAKE_ACP_LOST_SESSION_FILE
+ *                            → marker that limits the lost session to the
+ *                              first launch
  * - FAKE_ACP_GROK_CONTEXT=1  → advertise Grok model _meta.totalContextTokens
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
@@ -304,6 +311,16 @@ if (process.env.FAKE_ACP_READY_FILE) {
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {
   appendFileSync(process.env.FAKE_ACP_LAUNCH_LOG, `launch ${process.pid}\n`);
+}
+
+let lostSessionError = null;
+if (
+  process.env.FAKE_ACP_LOST_SESSION_ERROR &&
+  process.env.FAKE_ACP_LOST_SESSION_FILE &&
+  !existsSync(process.env.FAKE_ACP_LOST_SESSION_FILE)
+) {
+  writeFileSync(process.env.FAKE_ACP_LOST_SESSION_FILE, "");
+  lostSessionError = JSON.parse(process.env.FAKE_ACP_LOST_SESSION_ERROR);
 }
 
 function send(message) {
@@ -623,6 +640,12 @@ async function handlePrompt(message) {
         data: { reason: "session_busy" },
       },
     });
+    return;
+  }
+
+  if (lostSessionError !== null) {
+    activePromptId = null;
+    send({ jsonrpc: "2.0", id: message.id, error: lostSessionError });
     return;
   }
 
