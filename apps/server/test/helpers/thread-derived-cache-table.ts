@@ -6,16 +6,20 @@ import {
   THREAD_CONTEXT_CLEAR_OPERATION,
   threadScope,
   turnScope,
+  type ThreadStatus,
   type ThreadTimelineSubscriptionTarget,
 } from "@bb/domain";
 import {
   createConnection,
   getAppSettings,
   setAppSettings,
+  setExperiments,
   threadConversationOutlines,
+  threads,
   type DbConnection,
 } from "@bb/db";
 import { forgetThreadEventRewriteGenerations } from "@bb/db/testing";
+import { eq } from "drizzle-orm";
 import {
   applyThreadTimelineDelta,
   isThreadTimelineDelta,
@@ -38,9 +42,9 @@ export const PROVIDER_ID = "goals";
 const GOAL_KIND = `${PLUGIN_ID}/goal`;
 const PROVIDER_THREAD_ID = "provider-thread";
 export const RETENTION_DEADLINE = Date.now() + 60 * 60_000;
-export const GAP_SEQUENCE = 7;
-const SECOND_TURN_SEQUENCE = 9;
-export const NEXT_SEQUENCE = 16;
+const TURN_ONE_END = 9;
+const SECOND_TURN_SEQUENCE = 12;
+export const NEXT_SEQUENCE = 22;
 
 export interface Server {
   db: DbConnection;
@@ -76,7 +80,7 @@ export const LATEST_WINDOW: Surface = {
 export const TURN_DETAILS: Surface = {
   name: "turn details",
   path: ({ threadId }) =>
-    `/threads/${threadId}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=6`,
+    `/threads/${threadId}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=${TURN_ONE_END}`,
 };
 export const OUTLINE: Surface = {
   name: "conversation outline",
@@ -274,13 +278,13 @@ export const BASE_PROVIDER_DECLARATION: PluginProviderDeclaration = {
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none",
-    supportsManualCompaction: false,
+    supportsManualCompaction: true,
     supportsThreadArchive: false,
     supportsThreadRename: false,
     permissionModes: ["full"],
     reasoningLevels: ["medium"],
   },
-  composerActions: [],
+  composerActions: ["plan"],
   extensionKinds: {},
 };
 
@@ -301,6 +305,20 @@ export function registerGoalsProvider(
   });
 }
 
+const PLAN_MENTION = {
+  start: 0,
+  end: 5,
+  resource: {
+    kind: "command",
+    trigger: "/",
+    name: "plan",
+    source: "command",
+    origin: "builtin",
+    label: "plan",
+    argumentHint: null,
+  },
+} as const;
+
 export function seedUserMessage(
   harness: TestAppHarness,
   fixture: Fixture,
@@ -317,7 +335,13 @@ export function seedUserMessage(
     data: {
       direction: "outbound",
       requestId: encodeClientTurnRequestIdNumber({ value: sequence }),
-      input: [{ type: "text", text }],
+      input: [
+        {
+          type: "text",
+          text,
+          mentions: text.startsWith("/plan ") ? [PLAN_MENTION] : [],
+        },
+      ],
       target: { kind: "new-turn" },
       execution: {
         model: "gpt-5",
@@ -361,7 +385,7 @@ function seedRetainedCommand(
     type: "commandExecution",
     id: `${turnId}-command`,
     command: "cat big.log",
-    cwd: "/tmp",
+    cwd: "/tmp/test-environment/src",
     approvalStatus: null,
   } as const;
   seedTurnEvent(harness, fixture, turnId, firstSequence, {
@@ -389,27 +413,13 @@ function seedRetainedCommand(
   });
 }
 
-export function seedOpenSecondTurn(
+function seedProviderUnhandled(
   harness: TestAppHarness,
   fixture: Fixture,
-  question: string,
+  turnId: string,
+  sequence: number,
 ): void {
-  seedUserMessage(harness, fixture, SECOND_TURN_SEQUENCE, question);
-  seedTurnEvent(harness, fixture, "turn-2", 10, {
-    type: "turn/started",
-    data: {},
-  });
-  seedRetainedCommand(harness, fixture, "turn-2", 11);
-  seedEvent(harness.deps, {
-    threadId: fixture.threadId,
-    environmentId: fixture.environmentId,
-    providerThreadId: PROVIDER_THREAD_ID,
-    sequence: 13,
-    type: "thread/extensionState/updated",
-    scope: threadScope(),
-    data: { kind: GOAL_KIND, payload: { status: "active" } },
-  });
-  seedTurnEvent(harness, fixture, "turn-2", 14, {
+  seedTurnEvent(harness, fixture, turnId, sequence, {
     type: "provider/unhandled",
     data: {
       providerId: PROVIDER_ID,
@@ -417,15 +427,22 @@ export function seedOpenSecondTurn(
       rawEvent: { jsonrpc: "2.0", method: "goals/unknown" },
     },
   });
+}
+
+function seedOwnershipChange(
+  harness: TestAppHarness,
+  fixture: Fixture,
+  sequence: number,
+): void {
   seedEvent(harness.deps, {
     threadId: fixture.threadId,
     environmentId: fixture.environmentId,
     scope: threadScope(),
-    sequence: 15,
+    sequence,
     type: "system/operation",
     data: {
       operation: "ownership_change",
-      operationId: "op-assign",
+      operationId: `op-assign-${sequence}`,
       status: "completed",
       message: "",
       metadata: {
@@ -439,9 +456,87 @@ export function seedOpenSecondTurn(
   });
 }
 
-export function seedThreadHistory(harness: TestAppHarness): Fixture {
+export function seedOpenSecondTurn(
+  harness: TestAppHarness,
+  fixture: Fixture,
+  question: string,
+): void {
+  seedUserMessage(harness, fixture, SECOND_TURN_SEQUENCE, `/plan ${question}`);
+  seedTurnEvent(harness, fixture, "turn-2", 13, {
+    type: "turn/started",
+    data: {},
+  });
+  seedTurnEvent(harness, fixture, "turn-2", 14, {
+    type: "turn/input/accepted",
+    data: {
+      clientRequestId: encodeClientTurnRequestIdNumber({
+        value: SECOND_TURN_SEQUENCE,
+      }),
+    },
+  });
+  seedRetainedCommand(harness, fixture, "turn-2", 15);
+  seedEvent(harness.deps, {
+    threadId: fixture.threadId,
+    environmentId: fixture.environmentId,
+    providerThreadId: PROVIDER_THREAD_ID,
+    sequence: 17,
+    type: "thread/extensionState/updated",
+    scope: threadScope(),
+    data: { kind: GOAL_KIND, payload: { status: "active" } },
+  });
+  seedProviderUnhandled(harness, fixture, "turn-2", 18);
+  seedOwnershipChange(harness, fixture, 19);
+  seedTurnEvent(harness, fixture, "turn-2", 20, {
+    type: "thread/contextWindowUsage/updated",
+    data: {
+      contextWindowUsage: {
+        usedTokens: 150_000,
+        modelContextWindow: 200_000,
+        estimated: false,
+      },
+    },
+  });
+  const usage = {
+    totalTokens: 150_000,
+    inputTokens: 10,
+    cachedInputTokens: 149_990,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  };
+  seedTurnEvent(harness, fixture, "turn-2", 21, {
+    type: "thread/tokenUsage/updated",
+    data: {
+      tokenUsage: {
+        total: usage,
+        last: usage,
+        modelContextWindow: 200_000,
+        promptCacheTtlMs: 3_600_000,
+      },
+    },
+  });
+}
+
+export const REWIND_CUTOFF_SEQUENCE = SECOND_TURN_SEQUENCE;
+
+export function fillHistoryGaps(
+  harness: TestAppHarness,
+  fixture: Fixture,
+): void {
+  seedTurnEvent(harness, fixture, "turn-1", 7, {
+    type: "item/completed",
+    data: {
+      item: { type: "agentMessage", id: "inserted-1", text: "Inserted answer" },
+    },
+  });
+  seedUserMessage(harness, fixture, 10, "Inserted question");
+}
+
+export function seedThreadHistory(
+  harness: TestAppHarness,
+  options: { status: ThreadStatus } = { status: "active" },
+): Fixture {
   const { environment, host, project, thread } = seedThreadFixture(harness, {
-    thread: { providerId: PROVIDER_ID },
+    thread: { providerId: PROVIDER_ID, status: options.status },
   });
   const fixture = {
     environmentId: environment.id,
@@ -454,19 +549,22 @@ export function seedThreadHistory(harness: TestAppHarness): Fixture {
     keepHistoryAfterContextClear: true,
     showDiagnosticEvents: true,
   });
+  setExperiments(harness.db, { compactExpiredCache: true });
   seedUserMessage(harness, fixture, 1, "First question");
   seedTurnEvent(harness, fixture, "turn-1", 2, {
     type: "turn/started",
     data: {},
   });
   seedRetainedCommand(harness, fixture, "turn-1", 3);
-  seedTurnEvent(harness, fixture, "turn-1", 5, {
+  seedProviderUnhandled(harness, fixture, "turn-1", 5);
+  seedOwnershipChange(harness, fixture, 6);
+  seedTurnEvent(harness, fixture, "turn-1", 8, {
     type: "item/completed",
     data: {
       item: { type: "agentMessage", id: "answer-1", text: "First answer" },
     },
   });
-  seedTurnEvent(harness, fixture, "turn-1", 6, {
+  seedTurnEvent(harness, fixture, "turn-1", TURN_ONE_END, {
     type: "turn/completed",
     data: { status: "completed" },
   });
@@ -474,7 +572,7 @@ export function seedThreadHistory(harness: TestAppHarness): Fixture {
     threadId: fixture.threadId,
     environmentId: fixture.environmentId,
     scope: threadScope(),
-    sequence: 8,
+    sequence: 11,
     type: "system/operation",
     data: {
       operation: THREAD_CONTEXT_CLEAR_OPERATION,
@@ -535,6 +633,7 @@ async function subscribeToPushes(
 export interface ChangeContext {
   fixture: Fixture;
   harness: TestAppHarness;
+  readWarm(): Promise<void>;
   replaceProvider(declaration: PluginProviderDeclaration): void;
   restart(): void;
 }
@@ -596,6 +695,9 @@ export async function expectCachedReadsMatchUncachedBuilds(
         await change({
           fixture,
           harness,
+          readWarm: async () => {
+            await readAll(warm, paths);
+          },
           replaceProvider: (declaration) => {
             provider.dispose();
             provider = registerGoalsProvider(harness, declaration);
@@ -640,4 +742,16 @@ export async function expectCachedReadsMatchUncachedBuilds(
     vi.restoreAllMocks();
     forgetThreadEventRewriteGenerations();
   }
+}
+
+export function setThreadStatus(
+  harness: TestAppHarness,
+  threadId: string,
+  status: ThreadStatus,
+): void {
+  harness.db
+    .update(threads)
+    .set({ status })
+    .where(eq(threads.id, threadId))
+    .run();
 }

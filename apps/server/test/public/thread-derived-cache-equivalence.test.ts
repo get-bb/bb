@@ -7,7 +7,9 @@ import {
 } from "@bb/db";
 import {
   expectCachedReadsMatchUncachedBuilds,
-  GAP_SEQUENCE,
+  fillHistoryGaps,
+  REWIND_CUTOFF_SEQUENCE,
+  setThreadStatus,
   LATEST_WINDOW,
   listThreadDataGetRoutes,
   NEXT_SEQUENCE,
@@ -38,9 +40,8 @@ const HISTORY_AND_RUNTIME_CHANGES: readonly InvalidatingChange[] = [
       seedUserMessage(harness, fixture, NEXT_SEQUENCE, "Third question"),
   },
   {
-    name: "an event filled in below the head",
-    change: ({ harness, fixture }) =>
-      seedUserMessage(harness, fixture, GAP_SEQUENCE, "Inserted question"),
+    name: "events filled in below the head",
+    change: ({ harness, fixture }) => fillHistoryGaps(harness, fixture),
   },
   {
     name: "the clock passing a retained-output deadline",
@@ -50,11 +51,13 @@ const HISTORY_AND_RUNTIME_CHANGES: readonly InvalidatingChange[] = [
   },
   {
     name: "a server restart after a rewind that reuses sequences",
-    change: ({ harness, fixture, restart }) => {
+    change: async ({ harness, fixture, readWarm, restart }) => {
+      setThreadStatus(harness, fixture.threadId, "idle");
+      await readWarm();
       harness.db.transaction((tx) => {
         deleteThreadEventSuffixInTransaction(tx, {
           threadId: fixture.threadId,
-          cutoffSequence: 9,
+          cutoffSequence: REWIND_CUTOFF_SEQUENCE,
           oldMaxSequence: NEXT_SEQUENCE - 1,
         });
       });
@@ -63,9 +66,11 @@ const HISTORY_AND_RUNTIME_CHANGES: readonly InvalidatingChange[] = [
     },
   },
   {
-    name: "a server restart after an event filled in below the head",
-    change: ({ harness, fixture, restart }) => {
-      seedUserMessage(harness, fixture, GAP_SEQUENCE, "Inserted question");
+    name: "a server restart after events filled in below the head",
+    change: async ({ harness, fixture, readWarm, restart }) => {
+      setThreadStatus(harness, fixture.threadId, "idle");
+      await readWarm();
+      fillHistoryGaps(harness, fixture);
       restart();
     },
   },

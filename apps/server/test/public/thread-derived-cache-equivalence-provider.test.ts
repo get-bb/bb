@@ -35,7 +35,7 @@ const DECLARATION_CHANGES: {
   maintenance: () => ({
     maintenance: { health: true, usage: true, installation: true },
   }),
-  composerActions: () => ({ composerActions: ["plan", "goal"] }),
+  composerActions: () => ({ composerActions: ["goal"] }),
   completedTurnDisplay: () => ({ completedTurnDisplay: "flat" }),
   strings: () => ({
     strings: {
