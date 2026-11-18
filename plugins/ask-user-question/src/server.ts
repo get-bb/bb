@@ -106,9 +106,11 @@ export default function plugin(bb: BbPluginApi) {
 
       if (result.outcome === "cancelled") {
         return errorResult(
-          result.reason === "timeout"
-            ? buildTimeoutMessage(Date.now() - askedAt)
-            : "The user dismissed the question without answering. Proceed with your best judgement, or ask again in your reply.",
+          result.reason === "user"
+            ? "The user dismissed the question without answering. Proceed with your best judgement, or ask again in your reply."
+            : result.reason === "timeout"
+              ? buildTimeoutMessage(Date.now() - askedAt)
+              : `The question was interrupted (${result.reason}) before an answer was received. The user has not responded.`,
         );
       }
 

@@ -314,6 +314,22 @@ describe("asking a question", () => {
     expect(await resultText(result)).toContain("dismissed the question");
   });
 
+  it("reports plugin disposal as an interruption, not a user decision", async () => {
+    const host = createHost();
+    const call = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    await host.harness.dispose();
+
+    const result = await call;
+    expect(result).toMatchObject({ isError: true });
+    const text = await resultText(result);
+    expect(text).toContain("interrupted");
+    expect(text).toContain("user has not responded");
+    expect(text).not.toMatch(/dismissed|best judg/i);
+  });
+
   it("reports an empty submission as an error instead of a blank answer", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });
