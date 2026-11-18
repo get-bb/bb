@@ -828,13 +828,13 @@ export class NotificationHub implements DbNotifier {
   takeDaemonLeaseRenewal(
     sessionId: string,
     now: number,
-    leaseTimeoutMs: number,
+    renewalIntervalMs: number,
   ): boolean {
     const entry = this.daemonSessions.get(sessionId);
     if (
       entry === undefined ||
       (now >= entry.leaseRenewedAt &&
-        now - entry.leaseRenewedAt < leaseTimeoutMs)
+        now - entry.leaseRenewedAt < renewalIntervalMs)
     ) {
       return false;
     }

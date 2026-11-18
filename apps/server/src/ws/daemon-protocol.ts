@@ -224,6 +224,7 @@ export function createDaemonSocketEvents(
 }
 
 const HEARTBEAT_ACK_PAYLOAD = JSON.stringify({ type: "heartbeat-ack" });
+const LEASE_RENEWAL_INTERVAL_MS = LEASE_TIMEOUT_MS - 2 * HEARTBEAT_INTERVAL_MS;
 
 export const SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES: ReadonlySet<
   HostDaemonDaemonWsMessage["type"]
@@ -304,7 +305,7 @@ export function onDaemonSocketMessage(
   const leaseRenewalDue = deps.hub.takeDaemonLeaseRenewal(
     args.sessionId,
     Date.now(),
-    LEASE_TIMEOUT_MS,
+    LEASE_RENEWAL_INTERVAL_MS,
   );
   if (acknowledged && !leaseRenewalDue) {
     return;

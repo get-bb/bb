@@ -13,6 +13,8 @@ import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
+const LEASE_RENEWAL_INTERVAL_MS = LEASE_TIMEOUT_MS - 2 * HEARTBEAT_INTERVAL_MS;
+
 function connectDaemon(harness: TestAppHarness) {
   const { host, session } = seedHostSession(harness.deps);
   const socket = createMockHubSocket();
@@ -26,7 +28,7 @@ describe("daemon liveness checks", () => {
     vi.restoreAllMocks();
   });
 
-  it("acknowledges heartbeats without writing and persists the lease at most once per lease period", async () => {
+  it("acknowledges heartbeats without writing and persists the lease at most once per renewal interval", async () => {
     await withTestHarness(async (harness) => {
       const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
       const daemon = connectDaemon(harness);
@@ -61,23 +63,23 @@ describe("daemon liveness checks", () => {
 
       const before = changes();
       const leaseBefore = lease();
-      for (let index = 0; index < 50; index += 1) {
+      for (let index = 0; index < LEASE_RENEWAL_INTERVAL_MS / 500; index += 1) {
         now.mockReturnValue(1_000_000 + index * 500);
         send("heartbeat");
         send("host-rpc.response");
       }
       expect(changes() - before).toBe(0);
-      expect(acks()).toBe(50);
+      expect(acks()).toBe(LEASE_RENEWAL_INTERVAL_MS / 500);
       expect(lease()).toBe(leaseBefore);
 
-      now.mockReturnValue(1_000_000 + LEASE_TIMEOUT_MS);
+      now.mockReturnValue(1_000_000 + LEASE_RENEWAL_INTERVAL_MS);
       send("heartbeat");
       expect(lease()).toBe(Date.now() + LEASE_TIMEOUT_MS);
       const renewed = changes();
       send("heartbeat");
       send("host-rpc.response");
       expect(changes()).toBe(renewed);
-      expect(acks()).toBe(52);
+      expect(acks()).toBe(LEASE_RENEWAL_INTERVAL_MS / 500 + 2);
 
       const beforeClockChange = lease();
       now.mockReturnValue(Date.now() - 100);
@@ -92,6 +94,32 @@ describe("daemon liveness checks", () => {
       expect(daemon.socket.closed).toEqual([
         { code: 1008, reason: "inactive-session" },
       ]);
+    });
+  });
+
+  it("keeps the persisted lease valid while jittered heartbeats keep arriving", async () => {
+    await withTestHarness(async (harness) => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+      const daemon = connectDaemon(harness);
+      const lapses: number[] = [];
+      for (let index = 1; index <= 60; index += 1) {
+        now.mockReturnValue(
+          1_000_000 + index * HEARTBEAT_INTERVAL_MS + (index % 2 ? -20 : 20),
+        );
+        const session = getSessionById(harness.db, {
+          sessionId: daemon.sessionId,
+        })!;
+        if (session.leaseExpiresAt <= Date.now()) lapses.push(index);
+        feedRawDaemonWebSocketMessage({
+          harness,
+          hostId: daemon.hostId,
+          sessionId: daemon.sessionId,
+          socket: daemon.socket,
+          rawMessage: { type: "heartbeat" },
+        });
+      }
+      expect(lapses).toEqual([]);
+      expect(daemon.socket.closed).toEqual([]);
     });
   });
 
