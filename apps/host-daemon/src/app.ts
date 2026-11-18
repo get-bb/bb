@@ -986,8 +986,11 @@ export async function createHostDaemonApp(
     onInteractiveRequestsEnded: ({ reason, requests }) =>
       interactiveRequestRegistry.endRequests(requests, reason),
     onServerMoved: (notice) => serverMove.handleServerMoved(notice),
-    onMachineEnvironment: (environment) =>
-      machineEnvironment.replace(environment.entries),
+    onMachineEnvironment: (environment) => {
+      if (machineEnvironment.replace(environment.entries)) {
+        void runtimeManager.invalidateProviderMaintenanceRuntime();
+      }
+    },
     onIdleProviderSessionTimeout: (value) =>
       idleProviderSessionReaper.setTimeoutMinutes(value),
     onAgentCpuPriority: (enabled) => {

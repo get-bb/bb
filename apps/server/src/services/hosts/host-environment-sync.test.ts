@@ -9,7 +9,7 @@ import { NotificationHub } from "../../ws/hub.js";
 import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 import { HostEnvironmentSync } from "./host-environment-sync.js";
 
-it("synchronizes configured variables to every connected host", async () => {
+it("synchronizes configured variables to every connected host and reports real changes", async () => {
   const db = createMigratedConnection();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-machine-env-sync-"));
   const hub = new NotificationHub();
@@ -26,12 +26,16 @@ it("synchronizes configured variables to every connected host", async () => {
     await replaceMachineEnvironment(db, dataDir, {
       variables: [{ name: "MACHINE_VALUE", value: "first", note: null }],
     });
-    const sync = new HostEnvironmentSync({
-      db,
-      config: { dataDir },
-      hub,
-      logger: { warn: vi.fn() },
-    });
+    const changedHostIds: string[] = [];
+    const sync = new HostEnvironmentSync(
+      {
+        db,
+        config: { dataDir },
+        hub,
+        logger: { warn: vi.fn() },
+      },
+      (hostId) => changedHostIds.push(hostId),
+    );
     expect((await sync.snapshot("remote")).entries).toContainEqual(
       expect.objectContaining({ name: "MACHINE_VALUE", value: "first" }),
     );
@@ -46,6 +50,7 @@ it("synchronizes configured variables to every connected host", async () => {
       close: () => {},
     });
     await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(changedHostIds).toEqual([]);
     expect(JSON.parse(sent[0]!)).toMatchObject({
       type: "machine-environment.replace",
       environment: {
@@ -59,12 +64,14 @@ it("synchronizes configured variables to every connected host", async () => {
     });
     hub.notifySystem(["config-changed"]);
     await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(changedHostIds).toEqual(["remote"]);
     expect(JSON.parse(sent[1]!)).toMatchObject({
       environment: { entries: [expect.objectContaining({ value: "second" })] },
     });
     await replaceMachineEnvironment(db, dataDir, { variables: [] });
     hub.notifySystem(["config-changed"]);
     await vi.waitFor(() => expect(sent).toHaveLength(3));
+    expect(changedHostIds).toEqual(["remote", "remote"]);
     expect(JSON.parse(sent[2]!)).toMatchObject({
       environment: { entries: [] },
     });
@@ -76,6 +83,7 @@ it("synchronizes configured variables to every connected host", async () => {
       close: () => {},
     });
     await vi.waitFor(() => expect(sent).toHaveLength(4));
+    expect(changedHostIds).toEqual(["remote", "remote"]);
     expect(JSON.parse(sent[3]!)).toMatchObject({
       environment: { entries: [] },
     });
