@@ -77,6 +77,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
@@ -573,6 +574,11 @@ export function PluginPanelRightPanelHost({
     reveal: revealPanel,
   });
   const openBrowser = panelBrowser.open;
+  const openBrowserUrl = panelBrowser.openUrl;
+  const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => openBrowserUrl(href),
+    [openBrowserUrl],
+  );
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
@@ -648,7 +654,9 @@ export function PluginPanelRightPanelHost({
               isPanelPersistedOpen={panelState.secondary.isOpen}
               onAutoFocusHandled={terminals.handleAutoFocusHandled}
               onCloseStart={() => terminals.close(tab.terminalId)}
+              onOpenLink={handleOpenPanelLink}
               onRetryStart={() => terminals.retryStart(tab.terminalId)}
+              onSelectionAddToChat={null}
               target={tab.target}
               terminalId={tab.terminalId}
             />
@@ -723,6 +731,7 @@ export function PluginPanelRightPanelHost({
     },
     [
       activateTab,
+      handleOpenPanelLink,
       pluginActions,
       panel,
       panelPath,

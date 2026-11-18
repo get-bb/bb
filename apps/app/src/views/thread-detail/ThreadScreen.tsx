@@ -99,11 +99,11 @@ export type ThreadScreenPresentation =
   | { kind: "transcript"; layout: "contained" | "document" };
 
 export interface ThreadScreenTimelineHost {
-  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
   environmentHostName: string | null;
-  leadingContent?: ReactNode;
-  onForkMessage?: ThreadTimelineForkMessageHandler;
-  onTitleAction?: TimelineTitleActionResolver;
+  leadingContent: ReactNode;
+  onForkMessage: ThreadTimelineForkMessageHandler | null;
+  onTitleAction: TimelineTitleActionResolver | null;
   unreadDividerAutoScroll: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -112,9 +112,9 @@ export interface ThreadScreenComposerHost {
   environmentCheckout: WorkspaceCheckoutDisplay | undefined;
   environmentChrome: EnvironmentSummaryChrome | undefined;
   contextEnvironmentId: string | null;
-  focusRequest?: number;
-  onCreateNewThreadInEnvironment?: () => void;
-  onOpenThreadInfo?: () => void;
+  focusRequest: number | null;
+  onCreateNewThreadInEnvironment: (() => void) | null;
+  onOpenThreadInfo: (() => void) | null;
   permissionPolicy: ThreadComposerPermissionPolicy;
 }
 
@@ -552,7 +552,7 @@ export function ThreadScreen({
   );
   const composerFocusRequestKey = useComposerFocusRequestKey(
     draftStorageKey,
-    composer?.focusRequest,
+    composer?.focusRequest ?? undefined,
   );
   const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
     useState<string | null>(null);
@@ -603,13 +603,13 @@ export function ThreadScreen({
         }
         leadingContent={timelineHost.leadingContent}
         consumerMessageActions={timelineHost.consumerMessageActions}
-        onForkMessage={timelineHost.onForkMessage}
+        onForkMessage={timelineHost.onForkMessage ?? undefined}
         onEditMessage={handleEditSentMessage}
         inlineMessageEditor={inlineMessageEditor}
         onMessageAddToChat={selectionAddToChat}
         onSelectionAddToChat={selectionAddToChat}
         onLoadOlderRows={timeline.loadOlderTimelineRows}
-        onTitleAction={timelineHost.onTitleAction}
+        onTitleAction={timelineHost.onTitleAction ?? undefined}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         showOngoingIndicator={
@@ -651,8 +651,10 @@ export function ThreadScreen({
       canRestoreEnvironment={thread.canRestoreEnvironment}
       environmentGoneStatus={resolveEnvironmentGoneStatus(environment)}
       environmentHostId={environment?.hostId}
-      onCreateNewThreadInEnvironment={composer.onCreateNewThreadInEnvironment}
-      onOpenThreadInfo={composer.onOpenThreadInfo}
+      onCreateNewThreadInEnvironment={
+        composer.onCreateNewThreadInEnvironment ?? undefined
+      }
+      onOpenThreadInfo={composer.onOpenThreadInfo ?? undefined}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       composerFocusRequestKey={composerFocusRequestKey}

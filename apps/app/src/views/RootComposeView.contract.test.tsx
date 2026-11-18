@@ -253,7 +253,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "New thread screen",
-  { fixedTabs: false },
+  { fixedTabs: false, actionTabs: true, navigation: true },
   async () => {
     const sink: ContractStateSink = { current: null };
     const router = createMemoryRouter(
@@ -297,19 +297,21 @@ describePanelControllerContract(
     );
     return {
       panel: () => panel,
-      navigate: () => readContractNavigate(probe),
-      open: {
-        terminal: makeTerminalSession({
-          id: "term_contract",
-          threadId: null,
-          environmentId: null,
-          hostId: CONTRACT_HOST_ID,
-        }),
-        file: {
-          target: { kind: "host", hostId: CONTRACT_HOST_ID, path: "/a.md" },
-          location: null,
+      navigation: {
+        navigate: () => readContractNavigate(probe),
+        open: {
+          terminal: makeTerminalSession({
+            id: "term_contract",
+            threadId: null,
+            environmentId: null,
+            hostId: CONTRACT_HOST_ID,
+          }),
+          file: {
+            target: { kind: "host", hostId: CONTRACT_HOST_ID, path: "/a.md" },
+            location: null,
+          },
+          url: "https://example.com/contract",
         },
-        url: "https://example.com/contract",
       },
       snapshot: () => snapshotFromState(sink),
       tabs: () => getFocusedAppPanelController()?.getTabs() ?? NO_TABS,

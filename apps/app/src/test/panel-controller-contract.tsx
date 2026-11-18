@@ -49,10 +49,14 @@ export interface PanelContractOpenTargets {
   url: string;
 }
 
-export interface PanelContractSurface {
-  panel: () => ExperimentalPanelController;
+export interface PanelContractNavigation {
   navigate: () => BbNavigate;
   open: PanelContractOpenTargets;
+}
+
+export interface PanelContractSurface {
+  panel: () => ExperimentalPanelController;
+  navigation: PanelContractNavigation | null;
   tabs: () => ExperimentalPanelTabs;
   snapshot: () => PanelContractSnapshot;
   renderedTarget: () => string | null;
@@ -187,6 +191,8 @@ function actionOptions(
 
 export interface PanelContractSupport {
   fixedTabs: boolean;
+  actionTabs: boolean;
+  navigation: boolean;
 }
 
 function required<T>(value: T | null): T {
@@ -301,43 +307,53 @@ export function describePanelControllerContract(
       },
     );
 
-    it("focuses the action instance with the same params and opens siblings for different params", async () => {
-      const surface = await mount();
-      const one = surface.action.panelTabId({ n: 1 });
-      const two = surface.action.panelTabId({ n: 2 });
-      expect(
-        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 }))),
-      ).toBe(true);
-      expect(
-        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 }))),
-      ).toBe(true);
-      expect(
-        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 }))),
-      ).toBe(true);
-      const snapshot = surface.snapshot();
-      expect(snapshot).toMatchObject({ isOpen: true, activeTabId: one });
-      expect(snapshot.tabIds.filter((id) => id === one)).toHaveLength(1);
-      expect(snapshot.tabIds.filter((id) => id === two)).toHaveLength(1);
-    });
+    it.runIf(supports.actionTabs)(
+      "focuses the action instance with the same params and opens siblings for different params",
+      async () => {
+        const surface = await mount();
+        const one = surface.action.panelTabId({ n: 1 });
+        const two = surface.action.panelTabId({ n: 2 });
+        expect(
+          call(() => surface.panel().openTab(actionOptions(surface, { n: 1 }))),
+        ).toBe(true);
+        expect(
+          call(() => surface.panel().openTab(actionOptions(surface, { n: 2 }))),
+        ).toBe(true);
+        expect(
+          call(() => surface.panel().openTab(actionOptions(surface, { n: 1 }))),
+        ).toBe(true);
+        const snapshot = surface.snapshot();
+        expect(snapshot).toMatchObject({ isOpen: true, activeTabId: one });
+        expect(snapshot.tabIds.filter((id) => id === one)).toHaveLength(1);
+        expect(snapshot.tabIds.filter((id) => id === two)).toHaveLength(1);
+      },
+    );
 
-    it("toggles an action tab closed only when the instance with the same params is selected", async () => {
-      const surface = await mount();
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
-      expect(
-        call(() => surface.panel().toggleTab(actionOptions(surface, { n: 1 }))),
-      ).toBe(true);
-      expect(surface.snapshot()).toMatchObject({
-        isOpen: true,
-        activeTabId: surface.action.panelTabId({ n: 1 }),
-      });
-      expect(
-        call(() => surface.panel().toggleTab(actionOptions(surface, { n: 1 }))),
-      ).toBe(true);
-      expect(surface.snapshot().isOpen).toBe(false);
-    });
+    it.runIf(supports.actionTabs)(
+      "toggles an action tab closed only when the instance with the same params is selected",
+      async () => {
+        const surface = await mount();
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+        expect(
+          call(() =>
+            surface.panel().toggleTab(actionOptions(surface, { n: 1 })),
+          ),
+        ).toBe(true);
+        expect(surface.snapshot()).toMatchObject({
+          isOpen: true,
+          activeTabId: surface.action.panelTabId({ n: 1 }),
+        });
+        expect(
+          call(() =>
+            surface.panel().toggleTab(actionOptions(surface, { n: 1 })),
+          ),
+        ).toBe(true);
+        expect(surface.snapshot().isOpen).toBe(false);
+      },
+    );
 
-    it("closes the side panel", async () => {
+    it.runIf(supports.actionTabs)("closes the side panel", async () => {
       const surface = await mount();
       call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
       expect(surface.snapshot().isOpen).toBe(true);
@@ -347,7 +363,8 @@ export function describePanelControllerContract(
 
     it("declines unknown tabs, wrong contexts and wrong availability without changing state", async () => {
       const surface = await mount();
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+      if (supports.actionTabs)
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
       const before = surface.snapshot();
       const declined: ExperimentalOpenTabOptions[] = [
         {
@@ -373,44 +390,50 @@ export function describePanelControllerContract(
       expect(surface.snapshot()).toEqual(before);
     });
 
-    it("lists open tabs and selects or closes them by key, as the tab strip does", async () => {
-      const surface = await mount();
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
-      const first = surface.action.panelTabId({ n: 1 });
-      const second = surface.action.panelTabId({ n: 2 });
-      expect(surface.tabs().selectedKey).toBe(second);
-      expect(surface.panel().getTabs()).toEqual(surface.tabs());
-      expect(
-        surface.tabs().tabs.find((tab) => tab.key === first),
-      ).toMatchObject({
-        closable: true,
-        detail: {
-          kind: "plugin",
-          pluginId: CONTRACT_PLUGIN_ID,
-          tab: { ...surface.action.tab, availability: "action" },
-          params: { n: 1 },
-        },
-      });
+    it.runIf(supports.actionTabs)(
+      "lists open tabs and selects or closes them by key, as the tab strip does",
+      async () => {
+        const surface = await mount();
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+        const first = surface.action.panelTabId({ n: 1 });
+        const second = surface.action.panelTabId({ n: 2 });
+        expect(surface.tabs().selectedKey).toBe(second);
+        expect(surface.panel().getTabs()).toEqual(surface.tabs());
+        expect(
+          surface.tabs().tabs.find((tab) => tab.key === first),
+        ).toMatchObject({
+          closable: true,
+          detail: {
+            kind: "plugin",
+            pluginId: CONTRACT_PLUGIN_ID,
+            tab: { ...surface.action.tab, availability: "action" },
+            params: { n: 1 },
+          },
+        });
 
-      expect(call(() => surface.panel().selectTab(first))).toBe(true);
-      expect(surface.snapshot().activeTabId).toBe(first);
-      expect(surface.tabs().selectedKey).toBe(first);
-      expect(call(() => surface.panel().closeTab(first))).toBe(true);
-      expect(surface.snapshot().tabIds).not.toContain(first);
-      expect(surface.tabs().tabs.map((tab) => tab.key)).not.toContain(first);
-      expect(call(() => surface.panel().selectTab("missing"))).toBe(false);
-      expect(call(() => surface.panel().closeTab("missing"))).toBe(false);
+        expect(call(() => surface.panel().selectTab(first))).toBe(true);
+        expect(surface.snapshot().activeTabId).toBe(first);
+        expect(surface.tabs().selectedKey).toBe(first);
+        expect(call(() => surface.panel().closeTab(first))).toBe(true);
+        expect(surface.snapshot().tabIds).not.toContain(first);
+        expect(surface.tabs().tabs.map((tab) => tab.key)).not.toContain(first);
+        expect(call(() => surface.panel().selectTab("missing"))).toBe(false);
+        expect(call(() => surface.panel().closeTab("missing"))).toBe(false);
 
-      call(() => surface.panel().close());
-      expect(surface.snapshot().isOpen).toBe(false);
-      expect(call(() => surface.panel().selectTab(second))).toBe(true);
-      expect(surface.snapshot()).toMatchObject({
-        isOpen: true,
-        activeTabId: second,
-      });
-      expect(surface.tabs()).toMatchObject({ open: true, selectedKey: second });
-    });
+        call(() => surface.panel().close());
+        expect(surface.snapshot().isOpen).toBe(false);
+        expect(call(() => surface.panel().selectTab(second))).toBe(true);
+        expect(surface.snapshot()).toMatchObject({
+          isOpen: true,
+          activeTabId: second,
+        });
+        expect(surface.tabs()).toMatchObject({
+          open: true,
+          selectedKey: second,
+        });
+      },
+    );
 
     it.runIf(supports.fixedTabs)(
       "lists fixed tabs as selectable but not closable",
@@ -446,71 +469,79 @@ export function describePanelControllerContract(
       },
     );
 
-    it("opens a terminal, selects its tab and reveals the closed side panel", async () => {
-      const surface = await mount();
-      const session = surface.open.terminal;
-      vi.spyOn(sdk.terminals, "get").mockResolvedValue(session);
-      call(() => surface.panel().close());
-      expect(surface.snapshot().isOpen).toBe(false);
-      expect(
-        await callAsync(() =>
-          surface
-            .navigate()
-            .experimental_openTerminal({ terminalId: session.id }),
-        ),
-      ).toBe(true);
-      expect(surface.snapshot()).toMatchObject({
-        isOpen: true,
-        activeTabId: createTerminalFixedPanelTab({ terminalId: session.id }).id,
-      });
-    });
+    it.runIf(supports.navigation)(
+      "opens a terminal, selects its tab and reveals the closed side panel",
+      async () => {
+        const surface = await mount();
+        const { navigate, open } = required(surface.navigation);
+        const session = open.terminal;
+        vi.spyOn(sdk.terminals, "get").mockResolvedValue(session);
+        call(() => surface.panel().close());
+        expect(surface.snapshot().isOpen).toBe(false);
+        expect(
+          await callAsync(() =>
+            navigate().experimental_openTerminal({ terminalId: session.id }),
+          ),
+        ).toBe(true);
+        expect(surface.snapshot()).toMatchObject({
+          isOpen: true,
+          activeTabId: createTerminalFixedPanelTab({ terminalId: session.id })
+            .id,
+        });
+      },
+    );
 
-    it("opens a file preview, selects its tab and reveals the closed side panel, reusing the tab for the same file", async () => {
-      const surface = await mount();
-      call(() => surface.panel().close());
-      const before = surface.snapshot();
-      expect(
-        call(() =>
-          surface.navigate().experimental_openFilePreview(surface.open.file),
-        ),
-      ).toBe(true);
-      const opened = surface.snapshot();
-      expect(opened.isOpen).toBe(true);
-      expect(opened.activeTabId).not.toBeNull();
-      expect(before.tabIds).not.toContain(opened.activeTabId);
-      call(() => surface.panel().close());
-      expect(
-        call(() =>
-          surface.navigate().experimental_openFilePreview(surface.open.file),
-        ),
-      ).toBe(true);
-      expect(surface.snapshot()).toEqual(opened);
-    });
+    it.runIf(supports.navigation)(
+      "opens a file preview, selects its tab and reveals the closed side panel, reusing the tab for the same file",
+      async () => {
+        const surface = await mount();
+        const { navigate, open } = required(surface.navigation);
+        call(() => surface.panel().close());
+        const before = surface.snapshot();
+        expect(
+          call(() => navigate().experimental_openFilePreview(open.file)),
+        ).toBe(true);
+        const opened = surface.snapshot();
+        expect(opened.isOpen).toBe(true);
+        expect(opened.activeTabId).not.toBeNull();
+        expect(before.tabIds).not.toContain(opened.activeTabId);
+        call(() => surface.panel().close());
+        expect(
+          call(() => navigate().experimental_openFilePreview(open.file)),
+        ).toBe(true);
+        expect(surface.snapshot()).toEqual(opened);
+      },
+    );
 
-    it("opens a URL in the panel browser and reveals the closed side panel when the in-app browser is available", async () => {
-      const surface = await mount();
-      call(() => surface.panel().close());
-      const before = surface.snapshot();
-      expect(call(() => surface.navigate().openUrl(surface.open.url))).toBe(
-        true,
-      );
-      const opened = surface.snapshot();
-      expect(opened.isOpen).toBe(true);
-      expect(opened.activeTabId).not.toBeNull();
-      expect(before.tabIds).not.toContain(opened.activeTabId);
-    });
+    it.runIf(supports.navigation)(
+      "opens a URL in the panel browser and reveals the closed side panel when the in-app browser is available",
+      async () => {
+        const surface = await mount();
+        const { navigate, open } = required(surface.navigation);
+        call(() => surface.panel().close());
+        const before = surface.snapshot();
+        expect(call(() => navigate().openUrl(open.url))).toBe(true);
+        const opened = surface.snapshot();
+        expect(opened.isOpen).toBe(true);
+        expect(opened.activeTabId).not.toBeNull();
+        expect(before.tabIds).not.toContain(opened.activeTabId);
+      },
+    );
 
-    it("routes the panel.toggle command through the controller", async () => {
-      const surface = await mount();
-      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
-      const active = surface.snapshot().activeTabId;
-      expect(call(() => surface.command("panel.toggle"))).toBe(true);
-      expect(surface.snapshot().isOpen).toBe(false);
-      expect(call(() => surface.command("panel.toggle"))).toBe(true);
-      expect(surface.snapshot().isOpen).toBe(true);
-      if (surface.toggleRestoresActiveTab)
-        expect(surface.snapshot().activeTabId).toBe(active);
-    });
+    it.runIf(supports.actionTabs)(
+      "routes the panel.toggle command through the controller",
+      async () => {
+        const surface = await mount();
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        const active = surface.snapshot().activeTabId;
+        expect(call(() => surface.command("panel.toggle"))).toBe(true);
+        expect(surface.snapshot().isOpen).toBe(false);
+        expect(call(() => surface.command("panel.toggle"))).toBe(true);
+        expect(surface.snapshot().isOpen).toBe(true);
+        if (surface.toggleRestoresActiveTab)
+          expect(surface.snapshot().activeTabId).toBe(active);
+      },
+    );
   });
 }
 

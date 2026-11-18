@@ -177,7 +177,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "plugin nav-panel page",
-  { fixedTabs: true },
+  { fixedTabs: true, actionTabs: true, navigation: true },
   async () => {
     const probe: ContractPanelRef = { current: null };
     const sink: ContractStateSink = { current: null };
@@ -220,19 +220,21 @@ describePanelControllerContract(
     );
     return {
       panel: () => readContractPanel(probe),
-      navigate: () => readContractNavigate(probe),
-      open: {
-        terminal: makeTerminalSession({
-          id: "term_contract",
-          threadId: null,
-          environmentId: null,
-          hostId: "host_contract",
-        }),
-        file: {
-          target: { kind: "host", hostId: "host_contract", path: "/a.md" },
-          location: null,
+      navigation: {
+        navigate: () => readContractNavigate(probe),
+        open: {
+          terminal: makeTerminalSession({
+            id: "term_contract",
+            threadId: null,
+            environmentId: null,
+            hostId: "host_contract",
+          }),
+          file: {
+            target: { kind: "host", hostId: "host_contract", path: "/a.md" },
+            location: null,
+          },
+          url: "https://example.com/contract",
         },
-        url: "https://example.com/contract",
       },
       snapshot: () => snapshotFromState(sink),
       tabs: () => readContractTabs(probe),

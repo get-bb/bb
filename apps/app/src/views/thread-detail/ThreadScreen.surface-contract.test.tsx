@@ -1,12 +1,34 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { Provider } from "jotai";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import type { UseThreadTimelineControllerResult } from "@/components/thread/timeline";
 import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import {
+  AppNavigationHostProvider,
+  type AppFilePreviewIntent,
+} from "@/lib/app-navigation-host";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { markPluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import {
   resetPluginSlotStoreForTest,
@@ -15,9 +37,18 @@ import {
 import { sdk } from "@/lib/sdk";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
-import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  conversationRow,
+  fileChangeRow,
+} from "@/test/fixtures/thread-timeline-rows";
+import {
+  ContractStateProbe,
+  snapshotFromState,
+  type ContractStateSink,
+} from "@/test/panel-controller-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ThreadScreen } from "./ThreadScreen";
+import { DefaultPaneContextProvider } from "./PaneContext";
+import { ThreadDetailView } from "./ThreadDetailView";
 
 await LazyPluginThreadChat.preload();
 
@@ -25,10 +56,18 @@ const mocks = vi.hoisted(() => ({
   promptAreaProps: [] as Array<Record<string, unknown>>,
 }));
 
+const ENVIRONMENT = makeEnvironment({
+  id: "env_surface",
+  projectId: "proj_surface",
+  status: "ready",
+  isGitRepo: true,
+  path: "/workspace",
+});
+
 const THREAD = makeThreadResponse({
   id: "thr_surface",
   projectId: "proj_surface",
-  environmentId: null,
+  environmentId: ENVIRONMENT.id,
   status: "idle",
   runtime: { displayStatus: "idle" },
 });
@@ -62,24 +101,9 @@ const TIMELINE: UseThreadTimelineControllerResult = {
       text: "An assistant answer.",
       threadId: THREAD.id,
     }),
+    fileChangeRow({ id: "edit_row", path: "README.md", threadId: THREAD.id }),
   ],
 };
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: { get: vi.fn() },
-    environments: { get: vi.fn() },
-    hosts: { list: vi.fn(async () => []) },
-    providers: { list: vi.fn(async () => []) },
-  },
-  BbHttpError: class BbHttpError extends Error {
-    status: number;
-    constructor(status: number) {
-      super(`http ${status}`);
-      this.status = status;
-    }
-  },
-}));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useHostListRealtimeSubscription: vi.fn(),
@@ -104,6 +128,18 @@ vi.mock("@/hooks/queries/child-thread-pending-interactions", () => ({
   useChildThreadPendingAttention: () => [],
 }));
 
+vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/hooks/queries/environment-queries")
+  >()),
+  useEnvironment: () => ({
+    data: ENVIRONMENT,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("@/components/thread/timeline", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/thread/timeline")>()),
   useThreadTimelineController: () => TIMELINE,
@@ -116,18 +152,85 @@ vi.mock("./ThreadDetailPromptArea", () => ({
   },
 }));
 
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandHandler: () => undefined,
+  useAppCommandShortcut: () => null,
+}));
+
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@bb/shared-ui/hooks/use-compact-viewport")
+  >()),
+  useIsCompactViewport: () => false,
+}));
+
+vi.mock("./ThreadDetailHeader", () => ({
+  ThreadDetailHeader: () => <header data-testid="thread-header" />,
+}));
+
+vi.mock("./ThreadDetailSecondaryContent", () => ({
+  ThreadDetailSecondaryContent: ({
+    header,
+    main,
+  }: {
+    header: ReactNode;
+    main: ReactNode;
+  }) => (
+    <>
+      {header}
+      {main}
+    </>
+  ),
+}));
+
+vi.mock("./useThreadDetailThread", () => ({
+  useThreadDetailThread: () => ({
+    hasThreadDetailBootstrapSettled: true,
+    threadDetailBootstrapQuery: { isFetching: false },
+    threadQuery: {
+      data: THREAD,
+      isFetching: false,
+      isLoadingError: false,
+      error: null,
+    },
+    unreadDividerState: { ready: true, autoScroll: false, placement: null },
+  }),
+}));
+
 interface ThreadScreenSurface {
   name: string;
   hasComposer: boolean;
-  element: ReactNode;
+  render: (hosts: SurfaceHosts) => ReactNode;
+  openedReadme: (hosts: SurfaceHosts) => boolean;
+}
+
+interface SurfaceHosts {
+  openFilePreview: Mock<(intent: AppFilePreviewIntent) => boolean>;
+  sink: ContractStateSink;
 }
 
 function pluginThreadChat(variant: "full" | "compact" | "timeline") {
-  const ThreadChat = pluginSdkAppImplementation.ThreadChat;
-  return (
-    <PluginSlotMount pluginId="host" slotKind="navPanel" slotId="page">
-      <ThreadChat threadId={THREAD.id} variant={variant} />
-    </PluginSlotMount>
+  return ({ openFilePreview }: SurfaceHosts) => (
+    <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+      <PluginSlotMount pluginId="host" slotKind="navPanel" slotId="page">
+        <pluginSdkAppImplementation.ThreadChat
+          threadId={THREAD.id}
+          variant={variant}
+        />
+      </PluginSlotMount>
+    </AppNavigationHostProvider>
+  );
+}
+
+function pluginOpenedReadme({ openFilePreview }: SurfaceHosts) {
+  return openFilePreview.mock.calls.some(
+    ([intent]) =>
+      intent.target.kind === "workspace" &&
+      intent.target.environmentId === ENVIRONMENT.id &&
+      intent.target.path === "README.md",
   );
 }
 
@@ -135,48 +238,61 @@ const SURFACES: readonly ThreadScreenSurface[] = [
   {
     name: "thread page",
     hasComposer: true,
-    element: (
-      <ThreadScreen
-        composer={{
-          environmentCheckout: undefined,
-          environmentChrome: undefined,
-          contextEnvironmentId: null,
-          permissionPolicy: "editable",
-        }}
-        environment={null}
-        presentation={{ kind: "page" }}
-        projectId={THREAD.projectId}
-        resolveMentionLink={() => null}
-        thread={THREAD}
-        timelineEnabled
-        timelineHost={{
-          environmentHostName: null,
-          unreadDividerAutoScroll: false,
-          unreadDividerPlacement: null,
-        }}
-      />
+    render: ({ sink }) => (
+      <DefaultPaneContextProvider
+        paneId="main"
+        onRequestClose={null}
+        navigateInPane={() => {}}
+      >
+        <ContractStateProbe
+          panelStateId={THREAD.id}
+          syncThreadId={THREAD.id}
+          sink={sink}
+        />
+        <ThreadDetailView
+          surface="pane"
+          projectId={THREAD.projectId}
+          threadId={THREAD.id}
+          timelineEnabled
+        />
+      </DefaultPaneContextProvider>
     ),
+    openedReadme: ({ sink }) => {
+      const snapshot = snapshotFromState(sink);
+      return (
+        snapshot.isOpen &&
+        snapshot.activeTabId !== null &&
+        snapshot.activeTabId.includes("README.md")
+      );
+    },
   },
   {
     name: "plugin ThreadChat full",
     hasComposer: true,
-    element: pluginThreadChat("full"),
+    render: pluginThreadChat("full"),
+    openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat compact",
     hasComposer: true,
-    element: pluginThreadChat("compact"),
+    render: pluginThreadChat("compact"),
+    openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat timeline",
     hasComposer: false,
-    element: pluginThreadChat("timeline"),
+    render: pluginThreadChat("timeline"),
+    openedReadme: pluginOpenedReadme,
   },
 ];
 
 beforeEach(() => {
+  markPluginFrontendsSettled();
+  window.localStorage.clear();
+  resetFixedPanelTabsStateForTest();
   mocks.promptAreaProps = [];
-  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD as never);
+  vi.spyOn(sdk.threads, "get").mockResolvedValue(THREAD as never);
+  vi.spyOn(sdk.hosts, "list").mockResolvedValue([] as never);
   setPluginSlotRegistrations(
     "provider",
     makePluginRegistrationSet({
@@ -189,43 +305,66 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
   resetPluginSlotStoreForTest();
 });
 
 function renderSurface(surface: ThreadScreenSurface) {
+  const hosts: SurfaceHosts = {
+    openFilePreview: vi.fn((_intent: AppFilePreviewIntent) => true),
+    sink: { current: null },
+  };
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  return render(
+  const view = render(
     <Wrapper>
-      <MemoryRouter>{surface.element}</MemoryRouter>
+      <Provider>
+        <MemoryRouter>{surface.render(hosts)}</MemoryRouter>
+      </Provider>
     </Wrapper>,
   );
+  return { ...view, hosts };
+}
+
+async function findRow(container: HTMLElement, rowId: string) {
+  await waitFor(() =>
+    expect(
+      container.querySelector(`[data-timeline-row-id="${rowId}"]`),
+    ).not.toBeNull(),
+  );
+  return container.querySelector<HTMLElement>(
+    `[data-timeline-row-id="${rowId}"]`,
+  )!;
 }
 
 describe.each(SURFACES)("ThreadScreen surface contract: $name", (surface) => {
   it("shows every registered plugin message action on the thread's messages", async () => {
     const { container } = renderSurface(surface);
-    await waitFor(() =>
-      expect(
-        container.querySelector('[data-timeline-row-id="assistant_row"]'),
-      ).not.toBeNull(),
+    const row = await findRow(container, "assistant_row");
+    expect(row.querySelector('[aria-label="Summarize"]')).not.toBeNull();
+  });
+
+  it("opens a changed file from its timeline title", async () => {
+    const { container, hosts } = renderSurface(surface);
+    const row = await findRow(container, "edit_row");
+    const title = [...row.querySelectorAll('[role="link"]')].find((element) =>
+      element.textContent?.includes("README.md"),
     );
-    const row = container.querySelector(
-      '[data-timeline-row-id="assistant_row"]',
-    );
-    expect(row?.querySelector('[aria-label="Summarize"]')).not.toBeNull();
+    expect(title).toBeDefined();
+    fireEvent.click(title!);
+    await waitFor(() => expect(surface.openedReadme(hosts)).toBe(true));
   });
 
   it.runIf(surface.hasComposer)(
-    "gives the composer the thread's context window usage",
+    "gives the composer the thread's context usage, context environment and new-thread action",
     async () => {
       renderSurface(surface);
       await waitFor(() =>
         expect(screen.getByTestId("prompt-area")).toBeTruthy(),
       );
-      expect(mocks.promptAreaProps.at(-1)?.contextWindowUsage).toBe(
-        CONTEXT_WINDOW_USAGE,
-      );
+      const props = mocks.promptAreaProps.at(-1)!;
+      expect(props.contextWindowUsage).toBe(CONTEXT_WINDOW_USAGE);
+      expect(props.contextEnvironmentId).toBe(ENVIRONMENT.id);
+      expect(typeof props.onCreateNewThreadInEnvironment).toBe("function");
     },
   );
 });
