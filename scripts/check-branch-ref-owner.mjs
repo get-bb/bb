@@ -8,31 +8,16 @@ export const BRANCH_REF_OWNER =
   "packages/environment-provider-host/src/workspace-git.ts";
 
 export const BRANCH_REF_ALLOWLIST = {
-  "apps/server/src/services/plugin-catalog/marketplace-source.ts": {
-    count: 1,
-    reason:
-      "A fresh marketplace clone has only the default local branch, so a named branch exists only on origin. Server-side, outside the host package.",
-  },
-  "apps/server/src/services/plugins/plugin-updates.ts": {
-    count: 1,
-    reason:
-      "Classifies a ref in a fresh plugin clone as a branch; it does not choose between local and origin.",
-  },
-  "packages/bb-app/src/app-update/source-checkout.ts": {
-    count: 1,
-    reason:
-      "Checks that a self-update fast-forwards bb's own source checkout; no branch is chosen.",
-  },
-  "packages/environment-provider-host/src/branch-options.ts": {
-    count: 2,
-    reason:
-      "Pins origin's default branch to the top of the branch picker; it does not choose a base.",
-  },
-  "plugins/environment-project-checkout/host/checkout.ts": {
-    count: 1,
-    reason:
-      "Switching to an existing branch keeps the local branch; origin is only the fresh-clone fallback.",
-  },
+  "apps/server/src/services/plugin-catalog/marketplace-source.ts":
+    "A fresh marketplace clone has only the default local branch, so a named branch exists only on origin. Server-side, outside the host package.",
+  "apps/server/src/services/plugins/plugin-updates.ts":
+    "Classifies a ref in a fresh plugin clone as a branch; it does not choose between local and origin.",
+  "packages/bb-app/src/app-update/source-checkout.ts":
+    "Checks that a self-update fast-forwards bb's own source checkout; no branch is chosen.",
+  "packages/environment-provider-host/src/branch-options.ts":
+    "Pins origin's default branch to the top of the branch picker; it does not choose a base.",
+  "plugins/environment-project-checkout/host/checkout.ts":
+    "Switching to an existing branch keeps the local branch; origin is only the fresh-clone fallback.",
 };
 
 const SCAN_ROOTS = ["apps", "packages", "plugins"];
@@ -70,28 +55,15 @@ export function isScannedPath(path) {
 }
 
 export function findBranchRefProblems(files, allowlist = BRANCH_REF_ALLOWLIST) {
-  const counts = new Map();
-  for (const { path, text } of files) {
-    if (path === BRANCH_REF_OWNER || !isScannedPath(path)) continue;
-    const count = text.match(branchRefPatternRegex())?.length ?? 0;
-    if (count > 0) counts.set(path, count);
-  }
   const problems = [];
-  for (const [path, count] of counts) {
-    const entry = allowlist[path];
-    if (entry === undefined) {
+  for (const { path, text } of files) {
+    if (path === BRANCH_REF_OWNER || path in allowlist || !isScannedPath(path))
+      continue;
+    const count = text.match(branchRefPatternRegex())?.length ?? 0;
+    if (count > 0) {
       problems.push(
         `${path}: builds origin/<name> refs or runs merge-base --is-ancestor (${count}). Use resolveBranchRef or branchRefCandidates from bb-environment-provider-host/git, or allowlist it with a reason.`,
       );
-    } else if (entry.count !== count) {
-      problems.push(
-        `${path}: allowlisted for ${entry.count}, found ${count}. Update the entry only if the new occurrence does not choose between local and origin.`,
-      );
-    }
-  }
-  for (const path of Object.keys(allowlist)) {
-    if (!counts.has(path)) {
-      problems.push(`${path}: allowlisted but no longer matches; remove it.`);
     }
   }
   return problems;

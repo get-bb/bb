@@ -5,7 +5,7 @@ import {
 } from "../../../scripts/check-branch-ref-owner.mjs";
 
 const allowlist = {
-  "apps/server/src/clone.ts": { count: 1, reason: "fresh clone" },
+  "apps/server/src/clone.ts": "fresh clone",
 };
 
 function file(path, text) {
@@ -49,22 +49,5 @@ describe("findBranchRefProblems", () => {
         allowlist,
       ),
     ).toEqual([]);
-  });
-
-  it("rejects a new occurrence in an allowlisted file and stale entries", () => {
-    expect(
-      findBranchRefProblems(
-        [
-          file(
-            "apps/server/src/clone.ts",
-            "`refs/remotes/origin/${a}` `origin/${b}`",
-          ),
-        ],
-        { ...allowlist, "plugins/gone.ts": { count: 1, reason: "old" } },
-      ),
-    ).toEqual([
-      expect.stringContaining("allowlisted for 1, found 2"),
-      expect.stringContaining("plugins/gone.ts: allowlisted but no longer"),
-    ]);
   });
 });

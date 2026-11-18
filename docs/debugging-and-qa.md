@@ -962,7 +962,7 @@ branch and `origin/<name>` in one place:
 source outside that file builds `refs/remotes/origin/${…}` or `` `origin/${…}` ``
 refs, or runs `merge-base --is-ancestor`. Tests and fixtures are exempt.
 The few sites that do this for another reason are listed in the script's
-allowlist with a per-file count and the reason. Every caller of the resolver
+allowlist with the reason. Every caller of the resolver
 also runs the shared case table in
 `packages/environment-provider-host/src/testing/branch-ref-cases.ts`.
 
