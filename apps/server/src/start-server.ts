@@ -20,7 +20,6 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,
@@ -296,7 +295,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       : null;
   const countRunningThreads = (): number => listRunningThreads(db).length;
   const threadsResumeAfterRestart = (): boolean =>
-    getExperiments(db).resumeThreadsAfterRestart;
+    getAppSettings(db).resumeThreadsAfterRestart;
   const sendHoldDeps = {
     aiServices,
     config: runtimeConfig,
@@ -348,7 +347,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     autoCheckMs: AUTO_UPDATE_CHECK_MS,
     countRunningThreads,
     inner: appUpdateService,
-    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),

@@ -68,7 +68,12 @@ Each `agent()` call retries transient provider failures twice with bounded
 backoff before surfacing the error to `parallel()`/`pipeline()` or the script.
 Overload, rate-limit, provider 5xx, and recognized network failures retry;
 authentication, configuration, and schema failures do not. The retry count is
-persisted and visible in workflow history.
+persisted and visible in workflow history. When a worker's turn fails, the
+call first waits up to a minute for the provider retry plugin to decide. If
+provider retry, or core after a bb restart, queues or runs a retry in the
+worker's thread, the call keeps that worker and waits for its result instead
+of starting a replacement. Only a failure nobody else retries starts a new
+worker.
 
 The CLI equivalents are:
 

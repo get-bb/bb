@@ -997,12 +997,12 @@ describe("server move coordinator", () => {
         harness.deps,
         {
           hostId: NEW,
-          raw: JSON.stringify({
+          message: {
             type: "server_move.progress",
             moveId: started.moveId,
             step: "transfer",
             message: "Downloaded 40%",
-          }),
+          },
           sessionId: session.id,
           socket: { close() {}, send() {} },
         },

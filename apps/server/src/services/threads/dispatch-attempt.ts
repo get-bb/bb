@@ -9,7 +9,7 @@ import {
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
-  getExperiments,
+  getAppSettings,
   hasLiveQueuedRetry,
   isAppUpdateSendHoldSet,
   type EnvironmentRow,
@@ -474,7 +474,7 @@ async function runDispatchAttempt(
     deliveryMode: run.deliveryMode,
   };
 
-  const retriesGoFirst = getExperiments(deps.db).resumeThreadsAfterRestart;
+  const retriesGoFirst = getAppSettings(deps.db).resumeThreadsAfterRestart;
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,

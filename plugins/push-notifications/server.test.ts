@@ -106,7 +106,6 @@ function pendingQuestion(threadId: string, prompt: string): PendingInteraction {
 
 interface SetupOptions {
   appUrl?: string | null;
-  dismissReadNotifications?: boolean;
   expo?: FakeExpo;
   fetch?: PushSenderFetch;
   now?: () => number;
@@ -192,12 +191,6 @@ async function setup(options: SetupOptions = {}) {
       },
     },
   });
-  if (options.dismissReadNotifications !== undefined) {
-    const dismissReadNotifications = options.dismissReadNotifications;
-    fake.harness.sdk.stub("system.config", () => ({
-      experiments: { dismissReadNotifications },
-    }));
-  }
   await createPushNotificationsPlugin({
     coalesceMs: COALESCE_MS,
     createId: () => `subscription-${nextId++}`,
@@ -734,7 +727,6 @@ describe("push sender", () => {
   it("tells every device and client to remove a notified thread's notifications once it is read", async () => {
     const host = await setup({
       appUrl: "https://bb.example.com",
-      dismissReadNotifications: true,
     });
     try {
       await host.addSubscription();
@@ -799,7 +791,7 @@ describe("push sender", () => {
   });
 
   it("dismisses a thread notified only on web and desktop", async () => {
-    const host = await setup({ dismissReadNotifications: true });
+    const host = await setup();
     try {
       const thread = host.setThread();
       await host.harness.behavior.emitThreadEvent("thread.idle", {
@@ -819,32 +811,6 @@ describe("push sender", () => {
         ).toEqual([{ threadId: thread.id }]),
       );
       expect(host.expo.requests).toHaveLength(0);
-    } finally {
-      await host.cleanup();
-    }
-  });
-
-  it("sends no dismissal while the dismissReadNotifications experiment is off", async () => {
-    const host = await setup({ dismissReadNotifications: false });
-    try {
-      await host.addSubscription();
-      const thread = host.setThread();
-      await host.harness.behavior.emitThreadEvent("thread.idle", {
-        thread,
-        lastAssistantText: "Done",
-      });
-      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
-
-      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
-        thread: { ...thread, lastReadAt: 200 },
-      });
-      await waitForCoalesce();
-      expect(host.expo.requests).toHaveLength(1);
-      expect(
-        host.harness.realtimeSignals.filter(
-          (signal) => signal.channel === "notification-dismiss",
-        ),
-      ).toEqual([]);
     } finally {
       await host.cleanup();
     }

@@ -65,7 +65,6 @@ import {
   environments,
   events,
   promptHistoryEntries,
-  threadConversationOutlines,
   threadDynamicContextFileStates,
   threadSearchSegments,
   threads,
@@ -355,10 +354,7 @@ export function deleteThreadEventSuffixInTransaction(
     )
     .run();
   if (result.changes > 0) {
-    db.delete(threadConversationOutlines)
-      .where(eq(threadConversationOutlines.threadId, args.threadId))
-      .run();
-    bumpThreadEventRewriteGeneration(args.threadId);
+    bumpThreadEventRewriteGeneration(db, args.threadId);
     rewindResolvedItemPruning(db, {
       threadId: args.threadId,
       beforeSequence: args.cutoffSequence,
@@ -565,7 +561,7 @@ export function insertEvents(
           insertedInputIndexes.push(index);
           const highWaterMark = highWaterMarks[input.threadId];
           if (highWaterMark !== undefined && input.sequence <= highWaterMark) {
-            bumpThreadEventRewriteGeneration(input.threadId);
+            bumpThreadEventRewriteGeneration(tx, input.threadId);
             rewindResolvedItemPruning(tx, {
               threadId: input.threadId,
               beforeSequence: input.sequence,

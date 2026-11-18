@@ -32,7 +32,7 @@ import { createSlowThreadTimelineBuildLogger } from "./timeline-build-log.js";
 import {
   buildThreadTimelineCacheKey,
   buildThreadTimelineCacheRevision,
-  createThreadTimelineCache,
+  createThreadTimelineWindowCache,
 } from "./timeline-cache.js";
 import { forgetTimelineGroupingContexts } from "./timeline-context-order.js";
 import { forgetTimelineProjectionFolds } from "./timeline-projection-fold.js";
@@ -115,7 +115,7 @@ function latestWindowKey(
 export function createThreadTimelineWindows(
   deps: ThreadTimelineWindowDeps,
 ): ThreadTimelineWindows {
-  const timelineCache = createThreadTimelineCache();
+  const timelineCache = createThreadTimelineWindowCache();
   const servedWindows = createTimelineServedWindowsCache({
     subscriberTags: (threadId) => deps.hub.listThreadTimelineTags(threadId),
   });
@@ -156,15 +156,15 @@ export function createThreadTimelineWindows(
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };
-    return timelineCache.getOrBuild(
-      thread.id,
-      buildThreadTimelineCacheKey({
+    return timelineCache.getOrBuild({
+      threadId: thread.id,
+      slot: buildThreadTimelineCacheKey({
         threadId: thread.id,
         page: request.page,
         deferContent: request.deferContent,
         includeNestedRows: request.includeNestedRows,
       }),
-      buildThreadTimelineCacheRevision({
+      revision: buildThreadTimelineCacheRevision({
         maxSeq,
         page: request.page,
         rewriteGeneration: getThreadEventRewriteGeneration(thread.id),
@@ -172,7 +172,7 @@ export function createThreadTimelineWindows(
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
       }),
-      (previous) => {
+      build: (previous) => {
         const {
           cost,
           expiresAt,
@@ -194,10 +194,10 @@ export function createThreadTimelineWindows(
         );
         return {
           expiresAt,
-          response: { ...window, tag: timelineWindowTag(window) },
+          value: { ...window, tag: timelineWindowTag(window) },
         };
       },
-    );
+    });
   }
 
   function pushTarget(

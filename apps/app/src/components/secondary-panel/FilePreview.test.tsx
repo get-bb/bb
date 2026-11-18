@@ -1325,6 +1325,15 @@ describe("FilePreview", () => {
     });
   });
 
+  it("keeps the file icon still while the body skeleton covers a first load", () => {
+    vi.useFakeTimers();
+    render(<FilePreview path="open-prs.md" state={{ kind: "loading" }} />);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByText("Loading preview…")).toBeNull();
+  });
+
   it("tracks preview loading across view changes, document revisions, and URLs", () => {
     vi.useFakeTimers();
     const preview = (revision: string, url = "/gallery.html") => (

@@ -11,7 +11,6 @@ import {
   ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
-  getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
   setAutoAppUpdate,
@@ -315,7 +314,7 @@ export async function createTestAppHarness(
         mode: null,
         notifyChanged: notifyAppUpdateChanged,
         threadsResumeAfterRestart: () =>
-          getExperiments(db).resumeThreadsAfterRestart,
+          getAppSettings(db).resumeThreadsAfterRestart,
         sendHold: createAppUpdateSendHold({
           aiServices,
           config,
@@ -332,7 +331,6 @@ export async function createTestAppHarness(
           terminalSessions,
         }),
       }),
-    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),
@@ -420,7 +418,8 @@ export async function withTestHarness<T>(
 ): Promise<T>;
 export async function withTestHarness<T>(
   overridesOrRun:
-    TestAppHarnessConfigOverrides | ((harness: TestAppHarness) => Promise<T>),
+    | TestAppHarnessConfigOverrides
+    | ((harness: TestAppHarness) => Promise<T>),
   maybeRun?: (harness: TestAppHarness) => Promise<T>,
 ): Promise<T> {
   const overrides: TestAppHarnessConfigOverrides =

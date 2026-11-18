@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import type {
+  BrowserFixedPanelTab,
+  SecondaryFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import {
   LazyBrowserTabDeck,
   LazyThreadSecondaryPanel,
+  ThreadSecondaryPanelDrawerPlaceholder,
 } from "./lazySecondaryPanelComponents";
 
 vi.mock("./ThreadSecondaryPanel", () => new Promise(() => {}));
@@ -19,28 +24,39 @@ afterEach(cleanup);
 const noop = () => {};
 
 function renderLoadingPanel({
+  activeTab = null,
   isConversationCollapsed = false,
   isOpen = true,
+  metadataContent = null,
+  renderAsDrawer = false,
 }: {
+  activeTab?: SecondaryFixedPanelTab | null;
+  metadataContent?: ReactNode;
   isConversationCollapsed?: boolean;
   isOpen?: boolean;
+  renderAsDrawer?: boolean;
 } = {}) {
   return render(
     <PanelGroup direction="horizontal">
       <LazyThreadSecondaryPanel
-        activeTab={null}
-        drawerFallback={null}
+        drawerFallback={
+          <ThreadSecondaryPanelDrawerPlaceholder
+            activeTab={activeTab}
+            metadataContent={metadataContent}
+          />
+        }
+        activeTab={activeTab}
         fixedTabs={[]}
         isConversationCollapsed={isConversationCollapsed}
         isOpen={isOpen}
-        metadataContent={null}
+        metadataContent={metadataContent}
         onClose={noop}
         onCollapse={noop}
         onOpenNewTab={noop}
         onPanelFocus={noop}
         onTabReorder={noop}
         onToggleConversationCollapse={noop}
-        renderAsDrawer={false}
+        renderAsDrawer={renderAsDrawer}
         tabs={[]}
       />
     </PanelGroup>,
@@ -72,6 +88,57 @@ describe("LazyThreadSecondaryPanel", () => {
       screen.getByTestId("thread-secondary-panel-placeholder").className,
     ).not.toContain("border-l");
   });
+});
+
+describe("LazyThreadSecondaryPanel drawer", () => {
+  it("shows the active file's loading preview under the panel chrome while the panel loads", () => {
+    renderLoadingPanel({
+      renderAsDrawer: true,
+      activeTab: {
+        environmentId: "env-1",
+        id: "tab-file",
+        kind: "workspace-file-preview",
+        lineRange: null,
+        path: "notes/open-prs.md",
+        projectId: "project-1",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+
+    const placeholder = screen.getByTestId(
+      "thread-secondary-panel-drawer-placeholder",
+    );
+    expect(
+      within(placeholder).getByRole("status", {
+        name: "Loading file preview",
+      }),
+    ).not.toBeNull();
+    expect(placeholder.textContent).toContain("notes/open-prs.md");
+  });
+});
+
+describe("LazyThreadSecondaryPanel thread info placeholder", () => {
+  it.each([false, true])(
+    "shows thread details for the core info tab (drawer: %s)",
+    (renderAsDrawer) => {
+      renderLoadingPanel({
+        renderAsDrawer,
+        activeTab: {
+          id: "plugin-fixed:core:info",
+          kind: "plugin-fixed",
+          pluginId: "core",
+          tabId: "info",
+        },
+        metadataContent: <p>Thread details</p>,
+      });
+
+      expect(screen.getByText("Thread details")).not.toBeNull();
+      expect(
+        screen.queryByTestId("secondary-panel-content-skeleton"),
+      ).toBeNull();
+    },
+  );
 });
 
 describe("LazyBrowserTabDeck", () => {

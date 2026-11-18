@@ -1942,8 +1942,7 @@ export interface ExperimentalThreadRowMetadataDataInput {
 /**
  * A small item on a thread row's metadata line, under the title: a badge, not
  * a control. Items share one line, left to right, and the line clips at the
- * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
- * experiment is on and the user turns on Organize → Rows → Metadata, and only
+ * row's edge. bb's sidebar draws the line when the user turns on Organize → Rows → Metadata, and only
  * on rows where an item shows something.
  * Load the line's data in `useData`, a React hook bb calls once for the
  * whole app while any list draws a metadata line, never per row; it
