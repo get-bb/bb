@@ -1020,18 +1020,20 @@ function copyProjectionStateForFinish(
     shouldSettleStreamingText(options),
   );
   const { items, ...rest } = state;
-  const copy: ProjectionState =
+  if (
     !shouldPreservePendingMessages(options.threadStatus) ||
     interruptedTurnFinalizationChangesState(state, itemMessages)
-      ? { ...structuredClone(rest), items }
-      : {
-          ...state,
-          messages: state.messages.map((message) =>
-            message.kind === "workflow" ? { ...message } : message,
-          ),
-        };
-  copy.messages.push(...itemMessages);
-  return copy;
+  ) {
+    const copy: ProjectionState = { ...structuredClone(rest), items };
+    copy.messages.push(...itemMessages.map((message) => ({ ...message })));
+    return copy;
+  }
+  return {
+    ...state,
+    messages: [...state.messages, ...itemMessages].map((message) =>
+      message.kind === "workflow" ? { ...message } : message,
+    ),
+  };
 }
 
 export function finishEventProjectionFold(

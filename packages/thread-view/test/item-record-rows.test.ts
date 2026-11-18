@@ -215,9 +215,9 @@ describe("item rows across pushes", () => {
       event.turnCompleted({ status: "interrupted", turnId: "turn-1" }),
     ]);
 
-    const lastTurnStarted = events.findLastIndex(
-      ({ event }) => event.type === "turn/started",
-    );
+    const lastTurnStarted = events
+      .map((entry) => entry.event.type)
+      .lastIndexOf("turn/started");
     const fold = startThreadTimelineProjectionFold({
       acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
       events: events.slice(0, lastTurnStarted + 1),

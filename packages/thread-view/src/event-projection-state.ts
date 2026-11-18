@@ -137,6 +137,11 @@ function interruptPendingToolMessages(
         if (message.status === "pending") {
           message.status = "interrupted";
           message.completedAt = completedAt;
+          if (message.kind === "command") {
+            message.output =
+              state.items.currentByItemId.get(message.callId)?.output ??
+              message.output;
+          }
           message.output ||= "Tool execution interrupted";
         }
         break;

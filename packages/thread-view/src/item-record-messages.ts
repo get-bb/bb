@@ -271,13 +271,7 @@ export function collectItemRecordMessages(
       };
       record.formatted = formatted;
     }
-    for (const message of formatted.messages) {
-      messages.push(
-        message.kind === "delegation"
-          ? { ...message, childProjection: emptyEventProjection() }
-          : { ...message },
-      );
-    }
+    messages.push(...formatted.messages);
   }
   return messages;
 }
