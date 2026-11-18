@@ -40,7 +40,6 @@ import {
   type Db,
 } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
-import { answerRetryConsent } from "./retry-consent.js";
 import {
   computeInitialNextRunAt,
   computeNextScheduledTime,
@@ -888,6 +887,24 @@ describe("automation data access", () => {
               throw new Error("not expected");
             },
             spawn: async () => {
+              throw new Error("not expected");
+            },
+            queue: {
+              list: async () => {
+                throw new Error("not expected");
+              },
+            },
+            events: {
+              list: async () => {
+                throw new Error("not expected");
+              },
+            },
+          },
+          plugins: {
+            experimental_discoverRpc: async () => {
+              throw new Error("not expected");
+            },
+            callRpc: async () => {
               throw new Error("not expected");
             },
           },
@@ -2866,160 +2883,5 @@ describe("legacy import", () => {
         await rm(pluginDataDir, { recursive: true, force: true });
       }
     }
-  });
-});
-
-describe("answering provider retry consent", () => {
-  const REQUEST_ID = "creq_failedturn";
-
-  function runOnThread(
-    db: Db,
-    args: {
-      automationId: string;
-      threadId: string;
-      trigger: "schedule" | "manual";
-      now: number;
-    },
-  ) {
-    const automation = getAutomation(db, args.automationId);
-    if (automation === null) throw new Error("missing automation");
-    const run =
-      args.trigger === "manual"
-        ? createManualRun(db, {
-            automationId: automation.id,
-            runMode: "agent",
-            now: args.now,
-          }).run
-        : (() => {
-            const claim = claimAutomationScheduledRun(db, {
-              automationId: automation.id,
-              expectedNextRunAt: args.now,
-              newNextRunAt:
-                automation.triggerType === "once" ? null : args.now + 60_000,
-              now: args.now,
-            });
-            if (!claim.advanced) throw new Error("claim failed");
-            return claim.run;
-          })();
-    setAutomationRunThread(db, { runId: run.id, threadId: args.threadId });
-    closeAutomationRun(db, {
-      runId: run.id,
-      status: "failed",
-      error: "Provider unavailable",
-      now: args.now + 1,
-    });
-  }
-
-  function latestRequest(
-    target: "new-turn" | "thread-start" | "steer" | "auto",
-    requestId = REQUEST_ID,
-  ) {
-    return async () => ({
-      requestId,
-      target:
-        target === "steer" || target === "auto"
-          ? { kind: target, expectedTurnId: "turn_user" }
-          : { kind: target },
-    });
-  }
-
-  function ask(
-    db: Db,
-    threadId: string,
-    reader: () => Promise<unknown> = latestRequest("new-turn"),
-  ) {
-    return answerRetryConsent(db, reader, { threadId, requestId: REQUEST_ID });
-  }
-
-  it.each(["new-turn", "thread-start"] as const)(
-    "declines a scheduled run of a recurring automation that started its own turn (%s)",
-    async (target) => {
-      const db = createTestDb();
-      createScheduledAutomation(db, 1000);
-      runOnThread(db, {
-        automationId: "auto_test",
-        threadId: "thr_target",
-        trigger: "schedule",
-        now: 1000,
-      });
-
-      expect(await ask(db, "thr_target", latestRequest(target))).toEqual({
-        kind: "decline",
-        reason: 'automation "Test" runs again on its schedule',
-      });
-    },
-  );
-
-  it.each([
-    {
-      label: "it joined a turn someone else was running",
-      reader: latestRequest("steer"),
-    },
-    { label: "it joined a turn in auto mode", reader: latestRequest("auto") },
-    {
-      label: "the failed turn is not the latest request",
-      reader: latestRequest("new-turn", "creq_someoneelse"),
-    },
-    {
-      label: "the thread has no readable request",
-      reader: async () => undefined,
-    },
-  ])("allows a recurring run's retry when $label", async ({ reader }) => {
-    const db = createTestDb();
-    createScheduledAutomation(db, 1000);
-    runOnThread(db, {
-      automationId: "auto_test",
-      threadId: "thr_target",
-      trigger: "schedule",
-      now: 1000,
-    });
-
-    expect(await ask(db, "thr_target", reader)).toEqual({ kind: "allow" });
-  });
-
-  it.each([
-    {
-      label: "a manual run of a recurring automation",
-      once: false,
-      trigger: "manual",
-    },
-    { label: "a one-off automation", once: true, trigger: "schedule" },
-  ] as const)(
-    "allows $label, which nothing else re-runs",
-    async ({ once, trigger }) => {
-      const db = createTestDb();
-      const automation = once
-        ? createOnceAutomation(db, 1000)
-        : createScheduledAutomation(db, 1000);
-      runOnThread(db, {
-        automationId: automation.id,
-        threadId: "thr_target",
-        trigger,
-        now: 1000,
-      });
-
-      expect(await ask(db, "thr_target")).toEqual({ kind: "allow" });
-    },
-  );
-
-  it("answers for the latest run on a thread several automations target", async () => {
-    const db = createTestDb();
-    createScheduledAutomation(db, 1000, "auto_recurring");
-    createOnceAutomation(db, 2000, "auto_once");
-    runOnThread(db, {
-      automationId: "auto_recurring",
-      threadId: "thr_shared",
-      trigger: "schedule",
-      now: 1000,
-    });
-    runOnThread(db, {
-      automationId: "auto_once",
-      threadId: "thr_shared",
-      trigger: "schedule",
-      now: 2000,
-    });
-
-    expect(await ask(db, "thr_shared")).toEqual({ kind: "allow" });
-    expect(await ask(db, "thr_unknown")).toEqual({ kind: "allow" });
   });
 });

@@ -108,6 +108,8 @@ function setup(
             environmentId: "environment-1",
             providerId: "codex",
             status: worker?.status ?? "active",
+            archivedAt: null,
+            deletedAt: null,
           } as never;
         },
         list: async () => [],
@@ -130,6 +132,8 @@ function setup(
         },
         send: async () => ({ ok: true }),
         stop: async () => ({ ok: true }),
+        queue: { list: async () => [] },
+        events: { list: async () => [] },
         archive: async ({ threadId }) => {
           if (archiveFailures.has(threadId)) {
             throw new Error("Host unavailable");
@@ -138,6 +142,7 @@ function setup(
           return { ok: true } as never;
         },
       },
+      plugins: { experimental_discoverRpc: async () => [] },
       providers: {
         list: async () => [
           {
@@ -1702,6 +1707,222 @@ describe("workflow service policy integration", () => {
           .prepare(`SELECT thread_id FROM workflow_workers ORDER BY thread_id`)
           .all(),
       ).toEqual([{ thread_id: "child-1" }, { thread_id: "child-2" }]);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  function stubFailedWorker(
+    test: ReturnType<typeof setup>,
+    state: {
+      status: "error" | "active";
+      queuedRetryReason: string | null;
+      latestRequest: Record<string, unknown>;
+      providerRetry: "absent" | { decidedRequestId: string | null };
+      retryQueuedWithDecision?: boolean;
+    },
+  ) {
+    let decisionRead = false;
+    const worker = test.workers.get("child-1");
+    if (worker === undefined) throw new Error("missing worker child-1");
+    worker.status = state.status;
+    test.harness.sdk.stub(
+      "threads.queue.list",
+      async () =>
+        (state.queuedRetryReason === null &&
+        !(state.retryQueuedWithDecision === true && decisionRead)
+          ? []
+          : [
+              {
+                payload: {
+                  kind: "retry",
+                  retryOfTurnRequestId: "creq_failed",
+                  attempt: 2,
+                  reason: state.queuedRetryReason ?? "Provider unavailable",
+                },
+              },
+            ]) as never,
+    );
+    test.harness.sdk.stub(
+      "threads.events.list",
+      async () =>
+        [
+          {
+            type: "client/turn/requested",
+            data: { ...state.latestRequest, target: { kind: "thread-start" } },
+          },
+        ] as never,
+    );
+    const providerRetry = state.providerRetry;
+    test.harness.sdk.stub("plugins.experimental_discoverRpc", async () =>
+      providerRetry === "absent"
+        ? []
+        : [
+            {
+              pluginId: "provider-retry",
+              displayName: "Provider retry",
+              method: "decision.get",
+            },
+          ],
+    );
+    test.harness.sdk.stub("plugins.callRpc", async () => {
+      decisionRead = true;
+      return providerRetry === "absent" ||
+        providerRetry.decidedRequestId === null
+        ? null
+        : {
+            requestId: providerRetry.decidedRequestId,
+            decision:
+              state.retryQueuedWithDecision === true
+                ? { kind: "retry", reason: "Provider unavailable" }
+                : { kind: "decline", reason: "not-retryable" },
+          };
+    });
+  }
+
+  it.each([
+    {
+      name: "provider retry queued a retry",
+      thread: {
+        status: "error",
+        queuedRetryReason: "Provider unavailable",
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: { decidedRequestId: null },
+      },
+      reRuns: false,
+    },
+    {
+      name: "core queued a restart resume",
+      thread: {
+        status: "error",
+        queuedRetryReason: "bb restarted",
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: "absent",
+      },
+      reRuns: false,
+    },
+    {
+      name: "a retry already ran",
+      thread: {
+        status: "active",
+        queuedRetryReason: null,
+        latestRequest: {
+          requestId: "creq_retry",
+          retryOfRequestId: "creq_failed",
+          retryAttempt: 2,
+        },
+        providerRetry: { decidedRequestId: "creq_failed" },
+      },
+      reRuns: false,
+    },
+    {
+      name: "its retry lands mid-check",
+      thread: {
+        status: "error",
+        queuedRetryReason: null,
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: { decidedRequestId: "creq_failed" },
+        retryQueuedWithDecision: true,
+      },
+      reRuns: false,
+    },
+    {
+      name: "provider retry declined the failure",
+      thread: {
+        status: "error",
+        queuedRetryReason: null,
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: { decidedRequestId: "creq_failed" },
+      },
+      reRuns: true,
+    },
+    {
+      name: "provider retry is not installed",
+      thread: {
+        status: "error",
+        queuedRetryReason: null,
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: "absent",
+      },
+      reRuns: true,
+    },
+  ] as const)(
+    "hands a failed worker's retry over when $name",
+    async ({ thread, reRuns }) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      const run = await test.start(source(`return await agent("retry");`));
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() =>
+          expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+        );
+        stubFailedWorker(test, thread);
+        test.service.onThreadFailed("child-1", "HTTP 503: Service unavailable");
+
+        const finisher = reRuns ? "child-2" : "child-1";
+        await eventually(() =>
+          expect(getCall(test.db, run.id, 0)).toMatchObject({
+            status: "running",
+            childThreadId: finisher,
+          }),
+        );
+        test.service.onThreadIdle(finisher, "done");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+        expect(test.childCount()).toBe(reRuns ? 2 : 1);
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it("waits for provider retry to decide on a failed worker before replacing it", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("retry");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      const undecided = {
+        status: "error",
+        queuedRetryReason: null,
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: { decidedRequestId: null },
+      } as const;
+      stubFailedWorker(test, undecided);
+      test.service.onThreadFailed("child-1", "HTTP 503: Service unavailable");
+      await eventually(() =>
+        expect(
+          test.harness.sdk.callsTo("plugins.callRpc").length,
+        ).toBeGreaterThan(1),
+      );
+      expect(getCall(test.db, run.id, 0)?.status).toBe("failed");
+      expect(test.childCount()).toBe(1);
+      expect(test.archived).not.toContain("child-1");
+
+      stubFailedWorker(test, {
+        ...undecided,
+        queuedRetryReason: "Provider unavailable",
+      });
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "running",
+          childThreadId: "child-1",
+        }),
+      );
+      test.service.onThreadIdle("child-1", "done");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      );
+      expect(test.childCount()).toBe(1);
     } finally {
       controller.abort();
       await worker;
