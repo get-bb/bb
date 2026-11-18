@@ -642,49 +642,6 @@ importers:
         specifier: ^4.158.0
         version: 4.158.0(@cloudflare/workers-types@5.20261104.1)(@types/node@22.20.5)
 
-  apps/connect-next:
-    dependencies:
-      '@bb/connect-db':
-        specifier: workspace:*
-        version: link:../../packages/connect-db
-      '@bb/text-utils':
-        specifier: workspace:*
-        version: link:../../packages/text-utils
-      '@bb/tunnel-contract':
-        specifier: workspace:*
-        version: link:../../packages/tunnel-contract
-    devDependencies:
-      '@bb/connect-db-pg':
-        specifier: workspace:*
-        version: link:../../packages/connect-db-pg
-      '@bb/test-helpers':
-        specifier: workspace:*
-        version: link:../../packages/test-helpers
-      '@bb/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^22.20.5
-        version: 22.20.5
-      '@types/ws':
-        specifier: ^8.18.2
-        version: 8.18.2
-      esbuild:
-        specifier: ^0.28.2
-        version: 0.28.2
-      tsrs:
-        specifier: 0.18.0-ts7.1.0-dev.20260929
-        version: 0.18.0-ts7.1.0-dev.20260929
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: ^4.1.12
-        version: 4.1.12(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@22.20.5)(@typescript/typescript6@6.0.2))(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
-      ws:
-        specifier: ^8.22.1
-        version: 8.22.1
-
   apps/demo-server:
     dependencies:
       '@bb/domain':
@@ -848,9 +805,6 @@ importers:
       '@bb/file-transfer':
         specifier: workspace:*
         version: link:../../packages/file-transfer
-      '@bb/frp-client':
-        specifier: workspace:*
-        version: link:../../packages/frp-client
       '@bb/fuzzy-match':
         specifier: workspace:*
         version: link:../../packages/fuzzy-match
@@ -1298,9 +1252,6 @@ importers:
       '@bb/client-core':
         specifier: workspace:*
         version: link:../../packages/client-core
-      '@bb/frp-client':
-        specifier: workspace:*
-        version: link:../../packages/frp-client
       '@bb/scripts':
         specifier: workspace:*
         version: link:../../packages/scripts
@@ -1334,9 +1285,6 @@ importers:
       ajv:
         specifier: 8.20.0
         version: 8.20.0
-      bb-plugin-bb--connect-next:
-        specifier: workspace:*
-        version: link:../../plugins/connect-next
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929
@@ -1783,9 +1731,6 @@ importers:
       bb-plugin-bb--composer:
         specifier: workspace:*
         version: link:../../plugins/composer
-      bb-plugin-bb--connect-next:
-        specifier: workspace:*
-        version: link:../../plugins/connect-next
       bb-plugin-bb--git:
         specifier: workspace:*
         version: link:../../plugins/git
@@ -2209,34 +2154,6 @@ importers:
         version: 4.1.12(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@22.20.5)(@typescript/typescript6@6.0.2))(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/file-transfer:
-    devDependencies:
-      '@bb/test-helpers':
-        specifier: workspace:*
-        version: link:../test-helpers
-      '@bb/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@types/node':
-        specifier: ^22.20.5
-        version: 22.20.5
-      tsrs:
-        specifier: 0.18.0-ts7.1.0-dev.20260929
-        version: 0.18.0-ts7.1.0-dev.20260929
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: ^4.1.12
-        version: 4.1.12(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@22.20.5)(@typescript/typescript6@6.0.2))(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
-
-  packages/frp-client:
-    dependencies:
-      '@bb/process-utils':
-        specifier: workspace:*
-        version: link:../process-utils
-      '@bb/tunnel-contract':
-        specifier: workspace:*
-        version: link:../tunnel-contract
     devDependencies:
       '@bb/test-helpers':
         specifier: workspace:*
@@ -4186,61 +4103,6 @@ importers:
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1
-      jsdom:
-        specifier: ^29.1.1
-        version: 29.1.1(@noble/hashes@2.4.0)
-      react:
-        specifier: ^19.3.1
-        version: 19.3.1
-      react-dom:
-        specifier: ^19.3.1
-        version: 19.3.1(react@19.3.1)
-      tsrs:
-        specifier: 0.18.0-ts7.1.0-dev.20260929
-        version: 0.18.0-ts7.1.0-dev.20260929
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: ^4.1.12
-        version: 4.1.12(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@22.20.5)(@typescript/typescript6@6.0.2))(vite@8.3.6(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
-
-  plugins/connect-next:
-    dependencies:
-      '@bb/frp-client':
-        specifier: workspace:*
-        version: link:../../packages/frp-client
-      '@bb/shared-ui':
-        specifier: workspace:*
-        version: link:../../packages/shared-ui
-      '@bb/tunnel-contract':
-        specifier: workspace:*
-        version: link:../../packages/tunnel-contract
-      bb-plugin-bb-account:
-        specifier: workspace:*
-        version: link:../bb-account
-      zod:
-        specifier: 4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
-      '@bb/test-helpers':
-        specifier: workspace:*
-        version: link:../../packages/test-helpers
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
-      '@testing-library/react':
-        specifier: ^16.3.3
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@types/node':
-        specifier: ^22.20.5
-        version: 22.20.5
-      '@types/react':
-        specifier: ^19.3.0
-        version: 19.3.0
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@2.4.0)

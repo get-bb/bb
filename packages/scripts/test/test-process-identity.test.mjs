@@ -47,7 +47,7 @@ describe("isTestSource", () => {
     "apps/server/test/app/install-machine-script.test.ts",
     "packages/agent-runtime/src/runtime.process-lifecycle.test.ts",
     "plugins/provider-codex/src/bridge/bridge-process.test-support.ts",
-    "packages/frp-client/src/testing/frp-fixture.ts",
+    "packages/plugin-sdk/src/testing/fake-plugin-host.ts",
     "packages/test-helpers/src/process-sweep.ts",
     "apps/host-daemon/src/server-move/test-fixture.ts",
     "tests/integration/global-setup.ts",

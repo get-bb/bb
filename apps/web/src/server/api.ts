@@ -11,7 +11,6 @@ import {
   labelClaim,
   machine,
   machineRoutingKey,
-  nextTunnelConnected,
   profile,
   resolveServerCredential,
   rowsChanged,
@@ -203,13 +202,12 @@ export function toServerSummary(
     connected,
     online:
       connected &&
-      (nextTunnelConnected(srv, now) ||
-        isLive({
-          lastSeenMs,
-          now,
-          offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
-          tunnelConnected,
-        })),
+      isLive({
+        lastSeenMs,
+        now,
+        offlineAfterMs: SERVER_OFFLINE_AFTER_MS,
+        tunnelConnected,
+      }),
     lastSeenAt: lastSeenMs,
     version: srv.version,
     createdAt: srv.createdAt.getTime(),
@@ -336,8 +334,6 @@ async function listMachineSummaries(
       kind: machine.kind,
       subdomain: machine.subdomain,
       lastSeenAt: machine.lastSeenAt,
-      nextTunnelGate: machine.nextTunnelGate,
-      nextTunnelAt: machine.nextTunnelAt,
       createdAt: machine.createdAt,
     })
     .from(machine)
@@ -349,7 +345,6 @@ async function listMachineSummaries(
       const createdMs = row.createdAt.getTime();
       const online =
         machineTunnels.get(row.id) === true ||
-        nextTunnelConnected(row, now) ||
         isLive({
           lastSeenMs,
           now,

@@ -141,7 +141,6 @@ import {
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
 import {
   readPluginSettingsValues,
   writePluginSettingsUpdate,
@@ -512,7 +511,6 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
-  openTunnelIngress: (audience: string) => Promise<TunnelIngressLease>;
   /**
    * This load's rpc caller token, attached to the plugin's
    * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
@@ -557,9 +555,6 @@ export function createPluginApi(options: {
     ports: readonly number[],
   ) => readonly number[];
   declareSharedPorts: PluginHosts["declareSharedPorts"];
-  setNextTunnels: PluginHosts["internal_DO_NOT_USE_setNextTunnels"];
-  nextTunnelStatuses: PluginHosts["internal_DO_NOT_USE_nextTunnelStatuses"];
-  onNextTunnelStatusChange: PluginHosts["internal_DO_NOT_USE_onNextTunnelStatusChange"];
   replaceDeclaredSharedPorts: (
     declarations: readonly {
       hostId: string;
@@ -592,7 +587,6 @@ export function createPluginApi(options: {
     getSdk,
     getAppUrl,
     getLoopbackBaseUrl,
-    openTunnelIngress,
     rpcCaller,
     publishSignal,
     invalidateRpc: optionsInvalidate,
@@ -607,9 +601,6 @@ export function createPluginApi(options: {
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
     declareSharedPorts,
-    setNextTunnels,
-    nextTunnelStatuses,
-    onNextTunnelStatusChange,
     replaceDeclaredSharedPorts,
     callPluginHost,
     registerProvider,
@@ -624,7 +615,6 @@ export function createPluginApi(options: {
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
-  const openTunnelIngresses = new Set<() => Promise<void>>();
   const installHandlers: Array<() => void | Promise<void>> = [];
   const settingsRecord: PluginApiHandle["settings"] = {
     descriptors: {},
@@ -1096,32 +1086,6 @@ export function createPluginApi(options: {
       assertLive();
       return dataDir;
     },
-    async internal_DO_NOT_USE_openTunnelIngress(ingressOptions) {
-      assertLive();
-      const audience: unknown = ingressOptions?.audience;
-      if (typeof audience !== "string" || audience.length === 0) {
-        throw new Error(
-          "bb.server.internal_DO_NOT_USE_openTunnelIngress needs a non-empty audience",
-        );
-      }
-      const lease = await openTunnelIngress(audience);
-      let closed = false;
-      const close = async (): Promise<void> => {
-        if (closed) return;
-        closed = true;
-        openTunnelIngresses.delete(close);
-        const index = disposeHooks.indexOf(close);
-        if (index !== -1) disposeHooks.splice(index, 1);
-        await lease.close();
-      };
-      if (invalidated) {
-        await lease.close();
-        throw stale();
-      }
-      openTunnelIngresses.add(close);
-      disposeHooks.push(close);
-      return { baseUrl: lease.baseUrl, close };
-    },
   };
 
   const hosts: PluginHosts = {
@@ -1222,23 +1186,6 @@ export function createPluginApi(options: {
           validateSharedPortDeclaration(hostId, ports),
         );
       }
-    },
-    internal_DO_NOT_USE_setNextTunnels(config) {
-      assertLive();
-      setNextTunnels(config);
-    },
-    internal_DO_NOT_USE_nextTunnelStatuses() {
-      assertLive();
-      return nextTunnelStatuses();
-    },
-    internal_DO_NOT_USE_onNextTunnelStatusChange(listener) {
-      assertLive();
-      if (typeof listener !== "function") {
-        throw new Error("next tunnel status subscription requires a listener");
-      }
-      const unsubscribe = onNextTunnelStatusChange(listener);
-      disposeHooks.push(unsubscribe);
-      return unsubscribe;
     },
   };
   const events: PluginEvents = {
@@ -1570,7 +1517,6 @@ export function createPluginApi(options: {
     invalidate() {
       invalidated = true;
       rpcCaller.revoke();
-      for (const close of [...openTunnelIngresses]) void close();
     },
   };
 }
