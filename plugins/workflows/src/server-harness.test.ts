@@ -6,7 +6,12 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { getCall, getRunRequired, migrations } from "./data.js";
+import {
+  getCall,
+  getCallByChildThread,
+  getRunRequired,
+  migrations,
+} from "./data.js";
 import plugin from "./server.js";
 import { createWorkflowService } from "./service.js";
 
@@ -1038,6 +1043,9 @@ describe("workflow resume cache integration", () => {
     }
 
     async function finish(threadId: string, output: string): Promise<void> {
+      await eventually(() =>
+        expect(getCallByChildThread(db, threadId)).not.toBeNull(),
+      );
       service.onThreadIdle(threadId, output);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
