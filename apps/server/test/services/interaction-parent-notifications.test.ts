@@ -1,4 +1,7 @@
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { listQueuedThreadMessages } from "@bb/db";
 import type {
   PendingInteractionCreate,
@@ -30,6 +33,8 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const NOTICE_SETTLE_MS = 100;
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
+const INSERT_CALL = /(?<!function\s)\bcreatePendingInteraction\(/gu;
 
 type HookRegistry = {
   [K in PluginHookName]: PluginHookRegistration<K>[];
@@ -305,4 +310,37 @@ describe("every interaction creation path notifies the parent", () => {
       });
     },
   );
+});
+
+function* productionSources(dir: string): Generator<string> {
+  for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === "dist") continue;
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) {
+      yield* productionSources(path);
+    } else if (/\.tsx?$/u.test(entry) && !/\.test\.tsx?$/u.test(entry)) {
+      yield path;
+    }
+  }
+}
+
+describe("interaction creation ownership", () => {
+  it("inserts pending interactions only from the lifecycle's announcing create", () => {
+    const callers: string[] = [];
+    for (const workspace of ["apps", "packages", "plugins"]) {
+      for (const name of readdirSync(join(REPO_ROOT, workspace))) {
+        const src = join(REPO_ROOT, workspace, name, "src");
+        if (!existsSync(src)) continue;
+        for (const file of productionSources(src)) {
+          const calls = readFileSync(file, "utf8").match(INSERT_CALL) ?? [];
+          callers.push(
+            ...calls.map(() => relative(REPO_ROOT, file).split(sep).join("/")),
+          );
+        }
+      }
+    }
+    expect(callers).toEqual([
+      "apps/server/src/services/interactions/pending-interactions.ts",
+    ]);
+  });
 });
