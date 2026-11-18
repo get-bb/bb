@@ -10,6 +10,7 @@ import {
   type MarkdownThreadMentions,
 } from "@/components/ui/markdown-preview";
 import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
+import { WithoutCodeFenceRenderers } from "@/components/ui/markdown-code-fence-renderers";
 import type { MarkdownMessageDirectives } from "@/components/ui/markdown-message-directives";
 import {
   MessageCodeFences,
@@ -210,7 +211,11 @@ export function PluginMarkdown({
       ? null
       : parsePluginMarkdownMessage(experimental_message);
   if (message === null) {
-    return <PluginMarkdownBody {...props} messageDirectives={undefined} />;
+    return (
+      <WithoutCodeFenceRenderers>
+        <PluginMarkdownBody {...props} messageDirectives={undefined} />
+      </WithoutCodeFenceRenderers>
+    );
   }
   return (
     <MessageSlotRegistriesProvider>

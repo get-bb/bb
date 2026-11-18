@@ -134,6 +134,18 @@ interface CodeFenceHost {
 
 const CodeFenceHostContext = createContext<CodeFenceHost | null>(null);
 
+export function WithoutCodeFenceRenderers({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <CodeFenceHostContext.Provider value={null}>
+      {children}
+    </CodeFenceHostContext.Provider>
+  );
+}
+
 const CodeFenceOriginalContext = createContext<ReactNode>(null);
 
 function CodeFenceOriginal() {

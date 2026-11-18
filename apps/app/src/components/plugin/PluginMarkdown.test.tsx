@@ -126,6 +126,30 @@ describe("plugin SDK Markdown with experimental_message", () => {
     expect(view.container.textContent).toContain('::task{id="ptask_1"}');
   });
 
+  it("keeps a code example literal inside a rendered directive", () => {
+    const Markdown = pluginSdkAppImplementation.Markdown;
+    setPluginSlotRegistrations(
+      "examples",
+      makePluginRegistrationSet({
+        messageDirectives: [
+          {
+            id: "example",
+            component: () => <Markdown content={"```ui\nexample card\n```"} />,
+          },
+        ],
+      }),
+    );
+    const view = renderMarkdown({
+      content: '::example{id="1"}',
+      experimental_message: MESSAGE,
+    });
+
+    expect(screen.queryByTestId("ui-fence")).toBeNull();
+    expect(view.container.querySelector("pre code")?.textContent).toContain(
+      "example card",
+    );
+  });
+
   it("ignores a message without a thread id", () => {
     renderMarkdown({
       content: CONTENT,
