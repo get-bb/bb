@@ -1,7 +1,11 @@
 export * from "./app-settings.js";
 export * from "./app-theme.js";
 export * from "./environments.js";
-export * from "./event-rewrite-generation.js";
+export {
+  bumpThreadEventRewriteGeneration,
+  getDatabaseDataVersion,
+  getThreadEventRewriteGeneration,
+} from "./event-rewrite-generation.js";
 export * from "./events.js";
 export * from "./experiments.js";
 export * from "./hosts.js";
