@@ -36,6 +36,7 @@ export const sharedViteConfig = {
     assetsInlineLimit: (filePath) =>
       filePath.includes("/workspace-open-target-icons/") ? false : undefined,
     rolldownOptions: {
+      treeshake: { manualPureFunctions: ["z"] },
       output: {
         advancedChunks: {
           groups: [

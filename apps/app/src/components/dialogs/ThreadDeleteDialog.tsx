@@ -10,7 +10,9 @@ export interface ThreadDeleteDialogTarget {
   childThreadCount?: number;
 }
 
-interface ThreadDeleteDialogProps<Target extends ThreadDeleteDialogTarget> {
+export interface ThreadDeleteDialogProps<
+  Target extends ThreadDeleteDialogTarget,
+> {
   target: Target | null;
   pending: boolean;
   onOpenChange: (open: boolean) => void;

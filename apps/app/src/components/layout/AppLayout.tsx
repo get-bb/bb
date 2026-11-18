@@ -59,7 +59,7 @@ import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
   usePanelShelfState,
 } from "@/components/ui/secondary-panel-shelf-visibility";
-import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { LazyProjectPathDialog } from "@/components/dialogs/LazyProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import {
@@ -894,7 +894,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
               projectId={projectId ?? null}
             />
             <NotificationCenter />
-            <ProjectPathDialog
+            <LazyProjectPathDialog
               target={quickCreateProject.projectPathDialog.target}
               pending={quickCreateProject.isCreating}
               platform={quickCreateProject.platform}
