@@ -4,6 +4,7 @@ import {
   turnScope,
   type ThreadEventType,
 } from "@bb/domain";
+import { sql } from "drizzle-orm";
 import type { DbConnection } from "../../src/connection.js";
 import {
   isThreadAwaitingTurnStartPastDeadline,
@@ -22,6 +23,7 @@ import {
   appendStoredThreadEventsInTransaction,
   classifyStoredProviderThreadClaim,
   copyStoredThreadEventsInTransaction,
+  countTimelineTurnEventsBeforeCut,
   deleteThreadEventSuffixInTransaction,
   findLastCompletedRootStoredTurn,
   findLastRootStoredTurnStarted,
@@ -29,6 +31,7 @@ import {
   findStoredEventRow,
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
+  findTimelineWindowCut,
   getActiveStoredTurnId,
   getContextWindowUsagePruningBoundarySequence,
   getFirstParentedTimelineBoundarySequence,
@@ -88,7 +91,9 @@ import {
   listStoredItemLifecycleRowsByItems,
   listStoredRootConversationOutlineEventRows,
   listStoredTaskTurnRequestEvents,
+  listStoredTimelineItemEventRows,
   listStoredTimelineThreadWindowEventRows,
+  listStoredTimelineTurnContextRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
   listStoredTurnCompletedKeys,
@@ -114,6 +119,7 @@ import {
   type ScopedItemRef,
   type StoredEventRowMetadata,
 } from "../../src/data/events.js";
+import { queryRawRowsInSqliteVariableBatches } from "../../src/data/sqlite-variable-batches.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { QueryCostCase } from "./case.js";
 import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
@@ -459,6 +465,28 @@ function selectLiveWindowStart(db: DbConnection, fixture: HistoryFixture) {
     }) ?? 0;
 }
 
+function liveWindowGridSequence(): number {
+  const gridStep = Math.ceil(TIMELINE_WINDOW_EVENT_BUDGET / 2);
+  return liveWindowStart - (liveWindowStart % gridStep);
+}
+
+function liveWindowCut(db: DbConnection, fixture: HistoryFixture): number {
+  return (
+    findTimelineWindowCut(db, {
+      budgetFloorSequence: liveWindowStart,
+      sequence: liveWindowGridSequence(),
+      threadId: fixture.liveTurn.threadId,
+    })?.sequence ?? liveWindowGridSequence()
+  );
+}
+
+let liveCutSequence = 0;
+
+function selectLiveWindowCut(db: DbConnection, fixture: HistoryFixture) {
+  selectLiveWindowStart(db, fixture);
+  liveCutSequence = liveWindowCut(db, fixture);
+}
+
 function liveDeltaBatch(fixture: HistoryFixture): AppendDaemonEventInput[] {
   const { liveTurn } = fixture;
   const event = (
@@ -698,6 +726,65 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
         threadId: fixture.liveTurn.threadId,
         turnId: fixture.liveTurn.turnId,
       }),
+  },
+  {
+    name: `${EVENTS}#findTimelineWindowCut`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowStart,
+    run: liveWindowCut,
+  },
+  {
+    name: `${EVENTS}#countTimelineTurnEventsBeforeCut`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowCut,
+    run: (db, fixture) =>
+      countTimelineTurnEventsBeforeCut(db, {
+        cutSequence: liveCutSequence,
+        epochSequenceStart: 0,
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredTimelineTurnContextRows`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowCut,
+    run: (db, fixture) =>
+      listStoredTimelineTurnContextRows(db, {
+        ...liveTimelineArgs(fixture),
+        sequenceStart: 0,
+        turnIds: [fixture.liveTurn.turnId],
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredTimelineItemEventRows`,
+    variant: LIVE_TURN,
+    prepare: selectLiveWindowCut,
+    run: (db, fixture) =>
+      listStoredTimelineItemEventRows(db, {
+        ...liveTimelineArgs(fixture),
+        sequenceStart: 0,
+        items: liveItems(fixture),
+      }),
+  },
+  {
+    name: "packages/db/src/data/sqlite-variable-batches.ts#queryRawRowsInSqliteVariableBatches",
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      queryRawRowsInSqliteVariableBatches<{ sequence: number }>(
+        db,
+        fixture.liveTurn.commandItemIds,
+        (itemIds) => sql`
+          SELECT sequence FROM events
+          WHERE thread_id = ${fixture.liveTurn.threadId}
+            AND turn_id = ${fixture.liveTurn.turnId}
+            AND type = 'item/started'
+            AND item_id IN (${sql.join(
+              itemIds.map((itemId) => sql`${itemId}`),
+              sql`, `,
+            )})
+        `,
+      ),
   },
   {
     name: `${EVENTS}#appendDaemonEventsInTransaction`,

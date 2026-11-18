@@ -92,11 +92,22 @@ import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
 } from "./retained-event-outputs.js";
-import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
+import {
+  queryInSqliteVariableBatches,
+  queryRawRowsInSqliteVariableBatches,
+} from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
 const turnRequestIdSql = sql<string>`json_extract(${events.data}, '$.requestId')`;
+
+function sqlValueList(values: readonly string[]): SQL {
+  return sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  );
+}
+
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
 );
@@ -1376,16 +1387,6 @@ function storedEventRowAliasedSqlFields(
   };
 }
 
-function allStoredEventRowsUnmapped(
-  db: DbConnection,
-  query: { toSQL(): { sql: string; params: unknown[] } },
-): StoredEventRow[] {
-  const { sql: source, params } = query.toSQL();
-  return db.$client
-    .prepare<unknown[], StoredEventRow>(source)
-    .all(...params);
-}
-
 function allStoredEventRowsInVariableBatches(
   db: DbConnection,
   values: readonly string[],
@@ -1393,13 +1394,11 @@ function allStoredEventRowsInVariableBatches(
     toSQL(): { sql: string; params: unknown[] };
   },
 ): StoredEventRow[] {
-  return queryInSqliteVariableBatches({
-    dedupeKey: (value) => value,
-    fixedVariableCount: buildQuery([]).toSQL().params.length,
-    queryBatch: (batch) => allStoredEventRowsUnmapped(db, buildQuery(batch)),
+  return queryRawRowsInSqliteVariableBatches<StoredEventRow>(
+    db,
     values,
-    variableCountPerValue: 1,
-  }).sort((left, right) => left.sequence - right.sequence);
+    buildQuery,
+  ).sort((left, right) => left.sequence - right.sequence);
 }
 
 export interface ListStoredEventRowsArgs {
@@ -3505,6 +3504,90 @@ export function findTimelineWindowBudgetFloorSequence(
   return row?.sequence;
 }
 
+const TIMELINE_WINDOW_CUT_EVENT_TYPES = [
+  "client/turn/requested",
+  "turn/started",
+  "turn/input/accepted",
+  "turn/completed",
+  "item/started",
+  "item/completed",
+] as const satisfies readonly ThreadEventType[];
+
+export interface TimelineWindowCut {
+  sequence: number;
+  turnId: string;
+}
+
+export function findTimelineWindowCut(
+  db: DbConnection,
+  args: { budgetFloorSequence: number; sequence: number; threadId: string },
+): TimelineWindowCut | null {
+  const [row] = db.all<{
+    itemId: string | null;
+    itemKind: string | null;
+    scopeKind: string;
+    sequence: number;
+    turnId: string;
+  }>(sql`
+    SELECT sequence, item_id AS itemId, item_kind AS itemKind,
+      scope_kind AS scopeKind, turn_id AS turnId
+    FROM events INDEXED BY events_thread_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND sequence >= ${args.sequence}
+      AND sequence <= ${args.budgetFloorSequence}
+      AND turn_id IS NOT NULL
+      AND type IN (${sql.join(
+        TIMELINE_WINDOW_CUT_EVENT_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      )})
+    ORDER BY sequence
+    LIMIT 1
+  `);
+  if (row === undefined) return null;
+  if (
+    row.itemId === null ||
+    row.itemKind === "toolCall" ||
+    row.itemKind === "delegation" ||
+    row.itemKind === "backgroundTask"
+  ) {
+    return { sequence: row.sequence, turnId: row.turnId };
+  }
+  const [start] = db.all<{ sequence: number | null }>(sql`
+    SELECT MIN(sequence) AS sequence
+    FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND item_id = ${row.itemId}
+      AND type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND turn_id = ${row.turnId}
+      AND scope_kind = ${row.scopeKind}
+  `);
+  return { sequence: start?.sequence ?? row.sequence, turnId: row.turnId };
+}
+
+export function countTimelineTurnEventsBeforeCut(
+  db: DbConnection,
+  args: {
+    cutSequence: number;
+    epochSequenceStart: number;
+    threadId: string;
+    turnId: string;
+  },
+): number {
+  const [row] = db.all<{ count: number }>(sql`
+    SELECT COUNT(*) AS count
+    FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+    WHERE thread_id = ${args.threadId}
+      AND turn_id = ${args.turnId}
+      AND sequence >= ${args.epochSequenceStart}
+      AND sequence < ${args.cutSequence}
+  `);
+  return row?.count ?? 0;
+}
+
 export interface AdvanceTimelineWindowBudgetFloorSequenceArgs {
   appendedEventCount: number;
   excludeDiagnosticEvents?: boolean;
@@ -3983,6 +4066,272 @@ export function listStoredTimelineTurnEventRows(
           inArray(events.turnId, [...turnIds]),
         ),
       ),
+  );
+}
+
+const TIMELINE_TURN_CONTEXT_EVENT_TYPES = [
+  "turn/started",
+  "turn/input/accepted",
+  "turn/completed",
+  "thread/compacted",
+  "provider/error",
+  "provider/warning",
+  "provider/modelFallback",
+  "provider/unhandled",
+] as const satisfies readonly ThreadEventType[];
+
+export function listStoredTimelineTurnContextRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) return [];
+  return [
+    ...allStoredEventRowsInVariableBatches(db, args.turnIds, (turnIds) =>
+      db
+        .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+        .from(
+          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
+        )
+        .where(
+          and(
+            ...storedTimelineWindowConditions(args),
+            inArray(events.turnId, [...turnIds]),
+            inArray(events.type, [...TIMELINE_TURN_CONTEXT_EVENT_TYPES]),
+          ),
+        ),
+    ),
+    ...allStoredEventRowsInVariableBatches(db, args.turnIds, (turnIds) =>
+      db
+        .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+        .from(
+          sql`${events} INDEXED BY events_thread_type_item_kind_sequence_idx`,
+        )
+        .where(
+          and(
+            ...storedTimelineWindowConditions(args),
+            inArray(events.type, ["item/started", "item/completed"]),
+            eq(events.itemKind, "contextCompaction"),
+            inArray(events.turnId, [...turnIds]),
+          ),
+        ),
+    ),
+  ].sort((left, right) => left.sequence - right.sequence);
+}
+
+export function listStoredTimelineItemEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs & {
+    items: readonly ScopedItemRef[];
+  },
+): StoredEventRow[] {
+  const groups = new Map<string, ScopedItemRef[]>();
+  for (const item of dedupeScopedItemRefs(args.items)) {
+    const key = `${item.scopeKind}\u0000${item.turnId ?? ""}`;
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [item]);
+    else group.push(item);
+  }
+  return [...groups.values()]
+    .flatMap(([first, ...rest]) =>
+      allStoredEventRowsInVariableBatches(
+        db,
+        [first!, ...rest].map((item) => item.itemId),
+        (itemIds) =>
+          db
+            .select(storedEventRowAliasedSqlFields(args.maxInlineOutputChars))
+            .from(
+              sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
+            )
+            .where(
+              and(
+                ...storedTimelineWindowConditions(args),
+                first!.turnId === null
+                  ? isNull(events.turnId)
+                  : eq(events.turnId, first!.turnId),
+                eq(events.scopeKind, first!.scopeKind),
+                inArray(events.type, ITEM_EVENT_TYPES),
+                inArray(events.itemId, [...itemIds]),
+              ),
+            ),
+      ),
+    )
+    .sort((left, right) => left.sequence - right.sequence);
+}
+
+export function listTimelineTurnIdsWithEventsBefore(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    epochSequenceStart: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
+): Set<string> {
+  return new Set(
+    queryRawRowsInSqliteVariableBatches<{ turnId: string }>(
+      db,
+      args.turnIds,
+      (turnIds) => sql`
+        WITH requested(turn_id) AS (
+          VALUES ${sql.join(
+            turnIds.map((turnId) => sql`(${turnId})`),
+            sql`, `,
+          )}
+        )
+        SELECT requested.turn_id AS turnId
+        FROM requested
+        WHERE EXISTS (
+          SELECT 1 FROM events
+            INDEXED BY events_thread_turn_type_item_sequence_idx
+          WHERE events.thread_id = ${args.threadId}
+            AND events.turn_id = requested.turn_id
+            AND events.sequence >= ${args.epochSequenceStart}
+            AND events.sequence < ${args.beforeSequence}
+        )
+      `,
+    ).map((row) => row.turnId),
+  );
+}
+
+export function listTimelineCompletedTurnIds(
+  db: DbConnection,
+  args: {
+    epochSequenceStart: number;
+    maxSeq: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
+): Set<string> {
+  return new Set(
+    queryRawRowsInSqliteVariableBatches<{ turnId: string }>(
+      db,
+      args.turnIds,
+      (turnIds) => sql`
+        SELECT DISTINCT turn_id AS turnId
+        FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND turn_id IN (${sqlValueList(turnIds)})
+          AND type = 'turn/completed'
+          AND sequence >= ${args.epochSequenceStart}
+          AND sequence <= ${args.maxSeq}
+      `,
+    ).map((row) => row.turnId),
+  );
+}
+
+export function countTimelineTurnEventsOutsideWindow(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    epochSequenceStart: number;
+    maxSeq: number;
+    sequenceStart: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
+): Map<string, number> {
+  return new Map(
+    queryRawRowsInSqliteVariableBatches<{ count: number; turnId: string }>(
+      db,
+      args.turnIds,
+      (turnIds) => sql`
+        SELECT turn_id AS turnId, COUNT(*) AS count
+        FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND turn_id IN (${sqlValueList(turnIds)})
+          AND sequence >= ${args.epochSequenceStart}
+          AND sequence <= ${args.maxSeq}
+          AND (
+            sequence < ${args.sequenceStart}
+            OR sequence >= ${args.beforeSequence}
+          )
+        GROUP BY turn_id
+      `,
+    ).map((row) => [row.turnId, row.count]),
+  );
+}
+
+export interface StoredItemStartSequence extends ScopedItemRef {
+  sequence: number;
+}
+
+export function listStoredItemStartSequencesBefore(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    itemIds: readonly string[];
+    threadId: string;
+  },
+): StoredItemStartSequence[] {
+  return queryRawRowsInSqliteVariableBatches<StoredItemStartSequence>(
+    db,
+    args.itemIds,
+    (itemIds) => sql`
+      SELECT item_id AS itemId, scope_kind AS scopeKind, turn_id AS turnId,
+        sequence
+      FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+      WHERE thread_id = ${args.threadId}
+        AND item_id IN (${sqlValueList(itemIds)})
+        AND type IN (
+          'item/started',
+          'item/completed',
+          'item/backgroundTask/completed'
+        )
+        AND type = 'item/started'
+        AND sequence < ${args.beforeSequence}
+    `,
+  );
+}
+
+export function listTimelineTurnItemsOpenBefore(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    sequenceStart: number;
+    threadId: string;
+    turnIds: readonly string[];
+  },
+): ScopedItemRef[] {
+  return queryRawRowsInSqliteVariableBatches<ScopedItemRef>(
+    db,
+    args.turnIds,
+    (turnIds) => sql`
+      SELECT started.item_id AS itemId, started.scope_kind AS scopeKind,
+        started.turn_id AS turnId
+      FROM events AS started
+        INDEXED BY events_thread_turn_type_item_sequence_idx
+      WHERE started.thread_id = ${args.threadId}
+        AND started.turn_id IN (${sqlValueList(turnIds)})
+        AND started.type = 'item/started'
+        AND started.item_id IS NOT NULL
+        AND started.sequence >= ${args.sequenceStart}
+        AND started.sequence < ${args.beforeSequence}
+        AND NOT EXISTS (
+          SELECT 1 FROM events AS terminal
+            INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+          WHERE terminal.thread_id = started.thread_id
+            AND terminal.item_id = started.item_id
+            AND terminal.type IN (
+              'item/started',
+              'item/completed',
+              'item/backgroundTask/completed'
+            )
+            AND terminal.type <> 'item/started'
+            AND (
+              terminal.turn_id = started.turn_id OR terminal.turn_id IS NULL
+            )
+            AND terminal.sequence < ${args.beforeSequence}
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM events AS terminal
+            INDEXED BY events_thread_turn_type_item_sequence_idx
+          WHERE terminal.thread_id = started.thread_id
+            AND terminal.turn_id IS NULL
+            AND terminal.type = 'item/delegation/completed'
+            AND terminal.item_id = started.item_id
+            AND terminal.sequence < ${args.beforeSequence}
+        )
+    `,
   );
 }
 
