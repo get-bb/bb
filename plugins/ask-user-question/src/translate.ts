@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import {
   MAX_OPTION_PREVIEW_LENGTH,
   type InteractionAnswer,
@@ -43,7 +44,7 @@ function normalizePreview(preview: string | undefined): string | undefined {
   if (preview === undefined) return undefined;
   const trimmed = preview.trim();
   if (trimmed.length === 0) return undefined;
-  return trimmed.slice(0, MAX_OPTION_PREVIEW_LENGTH);
+  return sliceUtf16Head(trimmed, MAX_OPTION_PREVIEW_LENGTH);
 }
 
 export function buildInteractionPayload(input: ToolInput): InteractionPayload {

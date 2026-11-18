@@ -256,6 +256,9 @@ export const experimental_PromptMentionIcon = runtimeComponent(
 export const experimental_matchesShortcutKey = runtimeFunction(
   "experimental_matchesShortcutKey",
 );
+export const experimental_sliceUtf16Head = runtimeFunction(
+  "experimental_sliceUtf16Head",
+);
 export const experimental_describePromptMention = runtimeFunction(
   "experimental_describePromptMention",
 );

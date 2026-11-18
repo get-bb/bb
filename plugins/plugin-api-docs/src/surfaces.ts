@@ -847,6 +847,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalPluginProviderEnvHealth",
           "experimental_spawnPortableProcess",
           "experimental_killPortableProcess",
+          "experimental_serializeJsonRpcLine",
           "PluginProviders",
         ],
         firstParty: [
@@ -1651,6 +1652,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Recognize drive roots (including C:) and UNC paths with either Windows separator, regardless of the server OS; reject rootless backslashes and drive-relative paths such as C:foo during resolution",
           "Join relative paths, obtain dirname/basename, derive a slash-separated relative path within a root, and create case-insensitive Windows comparison keys with the experimental host-path helpers; invalid absolute inputs return null",
           "Check lexical containment separately with experimental_isHostPathWithin({ rootPath, candidatePath }): resolution allows .. escapes, and neither helper resolves symlinks",
+          "Cap text with experimental_sliceUtf16Head(value, maxChars) from @get-bb/plugin-sdk, @get-bb/plugin-sdk/app or @get-bb/plugin-sdk/host (and experimental_sliceUtf16Tail from @get-bb/plugin-sdk/host) so a cut never leaves half an emoji, which strict agent providers such as Codex reject",
         ],
         apiSymbols: [
           "BbPluginApi",
@@ -1663,6 +1665,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_getHostPathBasename",
           "experimental_getRelativeHostPath",
           "experimental_getHostPathComparisonKey",
+          "experimental_sliceUtf16Head",
+          "experimental_sliceUtf16Tail",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",

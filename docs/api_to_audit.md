@@ -45,6 +45,32 @@ Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
 Before stabilization, audit drive/UNC ambiguity, separator and case rules,
 relative escapes, and whether more callers need resolution rather than joining.
 
+## UTF-16-safe cuts (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`, `@get-bb/plugin-sdk/host`)
+
+`experimental_sliceUtf16Head(value, maxChars)` keeps at most `maxChars` UTF-16
+code units from the start of `value`, and `experimental_sliceUtf16Tail(value,
+maxChars)` (`@get-bb/plugin-sdk/host` only) keeps them from the end. When the
+cut would land inside a surrogate pair, the whole pair is dropped, so the
+result never holds a lone surrogate (half an emoji). A negative `maxChars`
+returns an empty string. The root and `/app` exports serve server and app
+code; `/host` serves host workers and provider bridges, whose root SDK runtime
+is a stub.
+
+These re-export `sliceUtf16Head` / `sliceUtf16Tail` from `@bb/text-utils`,
+the helpers core uses to cap child-thread output, plugin instructions,
+restart-resume notes, timeline output, terminal titles and queued-message
+failure reasons; the `/app` export is that function, installed by
+`plugin-sdk-app-impl.tsx`. Plugin callers: Account Pool, Ask User Question,
+Automations, Browser Automation, Concurrency Limit, Docs, GitHub, MCP, Push
+Notifications, Secrets, and the Claude Code and Codex providers. Agent
+Annotations keeps an inline copy because its page script is stringified into
+the browser. Docs: Plugin Guide, The bb SDK
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether callers need grapheme-safe cuts (joined
+emoji, combining marks) rather than surrogate-safe ones, and whether
+`/app` and the root need the tail variant.
+
 ## Application link approvals (`@get-bb/plugin-sdk/app`)
 
 `experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
@@ -1516,6 +1542,26 @@ process handle (an awaited stop that reports whether the tree is confirmed
 gone) instead of a raw `ChildProcess` plus a fire-and-forget kill. Confirm
 argument quoting for `.cmd` targets with untrusted arguments, and whether
 `detached` belongs in the public shape.
+
+## `experimental_serializeJsonRpcLine` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_serializeJsonRpcLine(message)` returns `JSON.stringify(message)`
+unless the line holds an escaped lone surrogate; then it serializes again with
+every lone surrogate in a string replaced by U+FFFD. A lone surrogate is
+valid in JavaScript but not in UTF-8, and Codex's serde-based app-server
+rejects its `\ud83d` escape and drops the whole message without answering,
+so a bridge writing to a provider's stdin uses this instead of
+`JSON.stringify`. The result has no trailing newline.
+
+Core callers: `bridge-kit/runtime-json-rpc.ts` serializes every request,
+result and error the daemon sends to a bridge with it, and the ACP message
+stream writes to ACP agents with it. Plugin callers: the Codex provider's
+app-server writer. Docs: Plugin Guide, Agent providers
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether bridges should get a whole stdin writer
+(newline, closed-stdin handling) instead of a serializer, and whether the
+Claude Code bridge's SDK transport needs the same guard.
 
 ## `experimental_BridgeRecoveryError`
 

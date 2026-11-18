@@ -1,4 +1,5 @@
 import { hostDaemonEnrollResponseSchema } from "@bb/host-daemon-contract";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface EnrollHostArgs {
   fetchFn?: typeof fetch;
@@ -23,7 +24,7 @@ function summarizeErrorDetail(detail: string): string {
   if (compact.length <= 200) {
     return compact;
   }
-  return `${compact.slice(0, 197)}...`;
+  return `${sliceUtf16Head(compact, 197)}...`;
 }
 
 export async function enrollDaemonHost(

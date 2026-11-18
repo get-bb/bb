@@ -4,6 +4,7 @@ import type {
   RegistrySkillDetail,
   RegistrySkillFile,
 } from "@bb/server-contract";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const SKILLS_BASE_URL = "https://www.skills.sh";
 const DEFAULT_PAGE_SIZE = 24;
@@ -178,7 +179,8 @@ export function parsePublicDetail(
           .trim();
   return {
     topic: topic === null ? null : decodeHtml(topic),
-    summary: summary && summary.length > 0 ? summary.slice(0, 280) : null,
+    summary:
+      summary && summary.length > 0 ? sliceUtf16Head(summary, 280) : null,
   };
 }
 
@@ -222,7 +224,7 @@ export function parsePublicDetailSkill(
       summary:
         detail.summary ??
         (typeof body.description === "string"
-          ? body.description.slice(0, 280)
+          ? sliceUtf16Head(body.description, 280)
           : null),
     };
   }

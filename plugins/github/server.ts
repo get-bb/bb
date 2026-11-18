@@ -10,6 +10,7 @@ import {
   defineCli,
   type BbPluginApi,
   type PluginCliResult,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
@@ -1009,7 +1010,7 @@ export default async function plugin(bb: BbPluginApi) {
     const thread = await bb.sdk.threads.spawn({
       projectId,
       environment: { type: "project-default" },
-      title: `${ref}: ${title}`.slice(0, 120),
+      title: sliceUtf16Head(`${ref}: ${title}`, 120),
       prompt,
     });
     await addLink({

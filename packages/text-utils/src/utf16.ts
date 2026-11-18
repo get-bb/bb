@@ -39,3 +39,9 @@ export function sliceUtf16HeadAndTail(
     tail: sliceUtf16Tail(value, tailChars),
   };
 }
+
+const LONE_SURROGATE = /[\uD800-\uDFFF]/gu;
+
+export function toWellFormedUtf16(value: string): string {
+  return value.replace(LONE_SURROGATE, "�");
+}

@@ -38,6 +38,7 @@ import {
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, end the current turn; bb starts the next turn in the updated environment automatically so you can continue there.";
@@ -248,9 +249,7 @@ export async function resolveThreadRuntimeCommandConfig(
       continue;
     }
     if (text === null || text.trim().length === 0) continue;
-    if (text.length > PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS) {
-      text = text.slice(0, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS);
-    }
+    text = sliceUtf16Head(text, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS);
     instructionSections.push(
       `The following instructions come from the BB plugin "${contribution.pluginId}":`,
       text,

@@ -1,4 +1,5 @@
 import { isRawThreadId } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const USER_MESSAGE_CHAR_CAP = 4096;
 
@@ -66,10 +67,9 @@ export function boundedMarkdownPreview(
     return { parseAsMarkdown: true, text, wasCapped: false };
   }
 
-  const previewWindow = text.slice(0, cap + 1);
-  const cappedText = previewWindow.slice(0, cap);
+  const cappedText = sliceUtf16Head(text, cap);
   const capSplitsToken =
-    !isWhitespace(cappedText.at(-1)) && !isWhitespace(previewWindow[cap]);
+    !isWhitespace(cappedText.at(-1)) && !isWhitespace(text[cappedText.length]);
   if (!capSplitsToken) {
     return cappedMarkdownPreview(cappedText);
   }

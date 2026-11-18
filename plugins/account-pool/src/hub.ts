@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import {
   retryAvailabilitySchema,
   type RetryAvailability,
@@ -1451,7 +1452,7 @@ export class AccountPoolHub {
 
   private setError(accountId: string, message: string | null): void {
     const quota = this.options.quotas.get(accountId);
-    const error = message?.slice(0, 1_000) ?? null;
+    const error = message === null ? null : sliceUtf16Head(message, 1_000);
     if (quota.error === error) return;
     this.options.quotas.put({ ...quota, error });
     this.options.onAccountsChanged();

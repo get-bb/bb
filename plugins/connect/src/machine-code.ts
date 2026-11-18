@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { deriveConnectBaseUrl } from "@bb/connect-client";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface MachineCode {
   code: string;
@@ -31,7 +32,7 @@ export async function redeemMachineCode(args: {
         code: args.code,
         ...(args.deviceName === null
           ? {}
-          : { deviceName: args.deviceName.slice(0, 128) }),
+          : { deviceName: sliceUtf16Head(args.deviceName, 128) }),
         kind: "host",
       }),
       signal: AbortSignal.any([args.signal, AbortSignal.timeout(10_000)]),

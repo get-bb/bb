@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import {
   experimental_hostToolchain as hostToolchain,
   experimental_execHostFile,
@@ -152,7 +153,7 @@ function firstStderrLine(stderr: string): string | null {
         .trim();
       if (trimmed.length > 0) {
         return trimmed.length > SCRIPT_FAILURE_DETAIL_MAX_CHARS
-          ? `${trimmed.slice(0, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+          ? `${sliceUtf16Head(trimmed, SCRIPT_FAILURE_DETAIL_MAX_CHARS - 1)}…`
           : trimmed;
       }
     }

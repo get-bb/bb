@@ -32,6 +32,7 @@ import {
   first,
 } from "@bb/connect-db";
 import type { Env } from "./env.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const OAUTH_CLIENT_METADATA_MAX_BYTES = 5 * 1024;
 export const OAUTH_CLIENT_METADATA_TIMEOUT_MS = 5_000;
@@ -296,11 +297,10 @@ function parseClientMetadataDocument(
   }
   const clientName =
     typeof document.client_name === "string"
-      ? document.client_name
-          .replace(INVISIBLE_CONTROL_CHARACTERS, "")
-          .trim()
-          .slice(0, OAUTH_CLIENT_NAME_MAX_LENGTH)
-          .trim()
+      ? sliceUtf16Head(
+          document.client_name.replace(INVISIBLE_CONTROL_CHARACTERS, "").trim(),
+          OAUTH_CLIENT_NAME_MAX_LENGTH,
+        ).trim()
       : "";
   if (!clientName) {
     return { ok: false, message: "client metadata has no client_name" };

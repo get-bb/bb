@@ -39,3 +39,10 @@ export {
   getRelativeHostPath as experimental_getRelativeHostPath,
   getHostPathComparisonKey as experimental_getHostPathComparisonKey,
 } from "@bb/domain";
+
+/**
+ * Cuts `value` to at most `maxChars` UTF-16 code units without splitting a
+ * surrogate pair, so an emoji at the cut is dropped whole instead of leaving
+ * half of it. Experimental: see docs/api_to_audit.md.
+ */
+export { sliceUtf16Head as experimental_sliceUtf16Head } from "@bb/text-utils";
