@@ -470,16 +470,21 @@ function CommandResults({
                   icon={getCommandIcon(item, trigger)}
                   primary={item.name}
                   trailing={
-                    <>
-                      {item.description !== null ? (
-                        <MutedTrailing>{item.description}</MutedTrailing>
-                      ) : null}
-                      {item.argumentHint !== null ? (
-                        <span className="shrink-0 text-subtle-foreground">
-                          {item.argumentHint}
-                        </span>
-                      ) : null}
-                    </>
+                    item.description === null &&
+                    item.argumentHint === null ? null : (
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        {item.description !== null ? (
+                          <span className="max-w-max flex-1 truncate text-subtle-foreground">
+                            {item.description}
+                          </span>
+                        ) : null}
+                        {item.argumentHint !== null ? (
+                          <span className="truncate text-subtle-foreground">
+                            {item.argumentHint}
+                          </span>
+                        ) : null}
+                      </span>
+                    )
                   }
                   title={item.description ?? item.name}
                   onApply={() => onApply(item)}

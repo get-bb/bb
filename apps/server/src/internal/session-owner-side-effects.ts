@@ -52,6 +52,7 @@ interface HandleHostSessionOpenedArgs {
   hostId: string;
   openedSession: HostDaemonSessionRow;
   previousSession: HostDaemonSessionRow | null;
+  turnCommandThreadIds: string[];
   undeliveredEventThreadIds: string[];
 }
 
@@ -149,6 +150,7 @@ export async function handleHostSessionOpened(
     activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
     hostId: args.hostId,
     sameDaemonInstance,
+    turnCommandThreadIds: args.turnCommandThreadIds,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,
   });
 
@@ -190,6 +192,21 @@ export function handleDaemonSessionSilent(
     "Daemon sent nothing within its lease; closing its socket",
   );
   deps.hub.closeDaemonSession(args.sessionId, "expired");
+  handleDaemonSessionLost(deps, {
+    reason: "expired",
+    sessionId: args.sessionId,
+  });
+}
+
+export function handleDaemonSessionResumeExpired(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSocketClosedArgs,
+): void {
+  deps.logger.warn(
+    { reconnectGraceMs: HOST_RECONNECT_GRACE_MS, sessionId: args.sessionId },
+    "Daemon did not reconnect within the grace period; ending its session",
+  );
+  deps.hub.closeDaemonSessionSocket(args.sessionId, "expired");
   handleDaemonSessionLost(deps, {
     reason: "expired",
     sessionId: args.sessionId,

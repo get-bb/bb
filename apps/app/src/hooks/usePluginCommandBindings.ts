@@ -6,7 +6,7 @@ import {
   type AppKeybindingOverrides,
 } from "@bb/domain";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { useBuiltinPluginIds, usePluginSlots } from "@/lib/plugin-slots";
+import { useBuiltinPluginIds, usePluginSlotKind } from "@/lib/plugin-slots";
 import { browserPlatform } from "@/lib/app-keybindings";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { resolvePluginCommandDefaults } from "@/lib/plugin-command-keybindings";
@@ -16,7 +16,7 @@ const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 
 export function usePluginCommandBindings() {
   const { data } = useSystemConfig();
-  const { commandPaletteActions } = usePluginSlots();
+  const commandPaletteActions = usePluginSlotKind("commandPaletteActions");
   const builtinPluginIds = useBuiltinPluginIds();
   const builtInDefaults = data?.defaultKeybindings ?? EMPTY_DEFAULTS;
   const overrides = data?.keybindingOverrides ?? EMPTY_OVERRIDES;

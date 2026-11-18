@@ -5,11 +5,10 @@ import {
   type ComponentType,
 } from "react";
 
-export interface VoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface VoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   onValueChange: (value: string) => void;
   onVoiceInputActiveChange?: (active: boolean) => void;
@@ -20,16 +19,26 @@ const VoiceInputTextareaContext =
 
 export const VoiceInputTextareaProvider = VoiceInputTextareaContext.Provider;
 
+function HostedVoiceInputTextarea({
+  host: Host,
+  ...props
+}: VoiceInputTextareaProps & {
+  host: ComponentType<VoiceInputTextareaProps>;
+}) {
+  return <Host {...props} />;
+}
+
 export function VoiceInputTextarea({
   onValueChange,
   onVoiceInputActiveChange,
   ...props
 }: VoiceInputTextareaProps) {
-  const HostTextarea = useContext(VoiceInputTextareaContext);
-  if (HostTextarea) {
+  const hostTextarea = useContext(VoiceInputTextareaContext);
+  if (hostTextarea) {
     return (
-      <HostTextarea
+      <HostedVoiceInputTextarea
         {...props}
+        host={hostTextarea}
         onValueChange={onValueChange}
         onVoiceInputActiveChange={onVoiceInputActiveChange}
       />

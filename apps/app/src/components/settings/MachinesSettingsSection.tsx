@@ -195,6 +195,7 @@ export function MachineRowContent({
 
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
+  const [openedAt] = useState(Date.now);
   const hostsQuery = useHosts({ includeCreating: true });
   const { providers: machineProviders } = useSystemMachineProviders();
   const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
@@ -230,7 +231,7 @@ export function MachinesSettingsSection() {
     return counts;
   }, [projects]);
 
-  const now = Date.now();
+  const now = Math.max(openedAt, hostsQuery.dataUpdatedAt);
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
   const persistentHosts = hosts?.filter((host) => host.type === "persistent");
   const attentionHosts = (hosts ?? []).flatMap((host) => {

@@ -62,20 +62,18 @@ describe("experiments settings", () => {
   it("changes only the experiments a PUT names", async () => {
     await withTestHarness(async (harness) => {
       await putExperiments(harness, { serverMove: true });
-      const put = await putExperiments(harness, { updateWhenIdle: true });
+      const put = await putExperiments(harness, { threadContextCard: true });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         agentCpuPriority: false,
         compactExpiredCache: false,
-        dismissReadNotifications: false,
+        keyedPluginCss: false,
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
-        resumeThreadsAfterRestart: false,
+        resumeDaemonSessions: false,
         skipFocusedThreadNotifications: false,
-        threadContextCard: false,
-        threadRowMetadata: false,
-        updateWhenIdle: true,
+        threadContextCard: true,
         walCheckpointWorker: false,
       });
       expect(
@@ -85,7 +83,7 @@ describe("experiments settings", () => {
           )
           .all()
           .map((row) => row.key),
-      ).toEqual(["serverMove", "updateWhenIdle"]);
+      ).toEqual(["serverMove", "threadContextCard"]);
     });
   });
 

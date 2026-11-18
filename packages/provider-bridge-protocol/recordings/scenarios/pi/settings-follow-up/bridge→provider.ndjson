@@ -1,0 +1,21 @@
+{"ts":1794633016652,"run":1794633015507,"seq":26,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633016902,"run":1794633015507,"seq":34,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with exactly: settings-1\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1794633018144,"run":1794633015507,"seq":62,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1794633019906,"run":1794633015507,"seq":79,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1794633019906,"run":1794633015507,"seq":81,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1794633019694,"run":1794633015507,"seq":83,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633019906,"run":1794633015507,"seq":90,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with exactly: settings-2\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1794633021829,"run":1794633015507,"seq":114,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1794633023575,"run":1794633015507,"seq":127,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1794633023575,"run":1794633015507,"seq":129,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1794633023356,"run":1794633015507,"seq":131,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633023575,"run":1794633015507,"seq":138,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `printf '%s' \\\"$BB_CONFORMANCE_PROBE\\\"`. Then reply with exactly its output and nothing else.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1794633025944,"run":1794633015507,"seq":182,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1794633027452,"run":1794633015507,"seq":197,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1794633029317,"run":1794633015507,"seq":211,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-5\"}"}
+{"ts":1794633029318,"run":1794633015507,"seq":213,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1794633028994,"run":1794633015507,"seq":215,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1794633029317,"run":1794633015507,"seq":222,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with exactly: settings-5\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1794633031022,"run":1794633015507,"seq":246,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1794633032532,"run":1794633015507,"seq":254,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1794633032533,"run":1794633015507,"seq":256,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

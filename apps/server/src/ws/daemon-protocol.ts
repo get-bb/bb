@@ -1,9 +1,12 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
-import { heartbeatSession } from "@bb/db";
+import { getExperiments, heartbeatSession } from "@bb/db";
 import {
+  HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
+  HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON,
   hasHostDaemonWebSocketProtocol,
   hostDaemonDaemonWsMessageSchema,
+  hostDaemonWsResumeFromSchema,
   type HostDaemonDaemonWsMessage,
 } from "@bb/host-daemon-contract";
 import { ApiError } from "../errors.js";
@@ -19,11 +22,16 @@ import {
   requireAuthorizedOpenSession,
 } from "../internal/session-state.js";
 import {
+  handleDaemonSessionResumeExpired,
   handleDaemonSessionSilent,
   handleDaemonSocketClosed,
   handleDaemonSocketOpened,
 } from "../internal/session-owner-side-effects.js";
-import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
+import {
+  HEARTBEAT_INTERVAL_MS,
+  HOST_RECONNECT_GRACE_MS,
+  LEASE_TIMEOUT_MS,
+} from "../constants.js";
 import {
   notifyDaemonEnvironmentChange,
   notifyDaemonThreadStorageChange,
@@ -31,14 +39,15 @@ import {
 } from "../internal/environment-changes.js";
 import { requestQueuedMessageDispatch } from "../services/threads/queued-message-dispatch.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
-import { parseSocketMessage } from "./decode-payload.js";
+import { parseSocketValue } from "./decode-payload.js";
+import { DaemonChannel, type RawDaemonSocket } from "./daemon-channel.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import type { ServerMoveCoordinator } from "../services/server-move/coordinator.js";
 import {
   isServerMoveFrozen,
   isServerMoveSnapshotFenced,
 } from "../services/server-move/freeze-state.js";
-import { resumeEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
+import { resumeEnvironmentProvisioningForReconnectedDaemon } from "../services/environments/environment-engine.js";
 
 interface DaemonSocket {
   close(code?: number, reason?: string): void;
@@ -47,19 +56,34 @@ interface DaemonSocket {
 
 interface DaemonSocketMessageArgs {
   hostId: string;
-  raw: unknown;
+  message: unknown;
   sessionId: string;
   socket: DaemonSocket;
 }
 
+interface DaemonSocketSessionTarget {
+  hostId: string;
+  sessionId: string;
+}
+
+export type DaemonSocketTarget =
+  | (DaemonSocketSessionTarget & { kind: "open" })
+  | (DaemonSocketSessionTarget & {
+      channel: DaemonChannel;
+      kind: "resume";
+      resumeFrom: number;
+    })
+  | (DaemonSocketSessionTarget & { kind: "resume-rejected" });
+
 export async function validateDaemonWebSocket(
-  deps: Pick<AppDeps, "db" | "machineAuth">,
+  deps: Pick<AppDeps, "db" | "hub" | "machineAuth">,
   args: {
     authorizationHeader: string | undefined;
     protocolHeader: string | undefined;
+    resumeFrom: string | null;
     sessionId: string | null;
   },
-): Promise<{ hostId: string; sessionId: string }> {
+): Promise<DaemonSocketTarget> {
   const sessionId = args.sessionId;
   if (!sessionId) {
     throw new ApiError(401, "unauthorized", "Unauthorized");
@@ -71,19 +95,131 @@ export async function validateDaemonWebSocket(
       "Unsupported host daemon websocket protocol",
     );
   }
+  const resumeFrom =
+    args.resumeFrom === null
+      ? null
+      : hostDaemonWsResumeFromSchema.safeParse(args.resumeFrom);
+  if (resumeFrom !== null && !resumeFrom.success) {
+    throw new ApiError(400, "invalid_request", "Invalid resume sequence");
+  }
 
   const verified = await verifyAuthenticatedDaemon(
     deps,
     args.authorizationHeader,
   );
-  const session = requireAuthorizedOpenSession(deps.db, {
-    hostId: verified.hostId,
-    sessionId,
-  });
+  if (resumeFrom === null) {
+    const session = requireAuthorizedOpenSession(deps.db, {
+      hostId: verified.hostId,
+      sessionId,
+    });
+    return { hostId: session.hostId, kind: "open", sessionId: session.id };
+  }
 
+  const target = { hostId: verified.hostId, sessionId };
+  const channel = deps.hub.getDaemonSessionSocket(sessionId);
+  if (
+    !(channel instanceof DaemonChannel) ||
+    !channel.canResumeFrom(resumeFrom.data) ||
+    !isOpenSessionForHost(deps, target)
+  ) {
+    return { ...target, kind: "resume-rejected" };
+  }
+  return { ...target, channel, kind: "resume", resumeFrom: resumeFrom.data };
+}
+
+function isOpenSessionForHost(
+  deps: Pick<AppDeps, "db">,
+  target: DaemonSocketSessionTarget,
+): boolean {
+  try {
+    requireAuthorizedOpenSession(deps.db, target);
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.body.code === "inactive_session") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export interface DaemonSocketEvents {
+  onClose(socket: RawDaemonSocket, reason: string): void;
+  onMessage(socket: RawDaemonSocket, raw: unknown): void;
+  onOpen(socket: RawDaemonSocket): void;
+}
+
+export function createDaemonSocketEvents(
+  deps: WorkSessionDeps &
+    Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions"> &
+    LoggedPendingInteractionWorkSessionDeps,
+  target: DaemonSocketTarget,
+  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
+): DaemonSocketEvents {
+  let channel: DaemonChannel | null = null;
   return {
-    sessionId: session.id,
-    hostId: session.hostId,
+    onOpen: (socket) => {
+      if (target.kind === "open") {
+        channel = new DaemonChannel(socket);
+        onDaemonSocketOpen(deps, { ...target, socket: channel });
+        return;
+      }
+      if (
+        target.kind === "resume-rejected" ||
+        deps.hub.getDaemonSessionSocket(target.sessionId) !== target.channel ||
+        !target.channel.canResumeFrom(target.resumeFrom)
+      ) {
+        deps.logger.info(
+          { hostId: target.hostId, sessionId: target.sessionId },
+          "Refusing to resume a daemon session the server no longer holds",
+        );
+        socket.close(
+          HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
+          "resume-rejected",
+        );
+        return;
+      }
+      channel = target.channel;
+      channel.resume(socket, target.resumeFrom);
+      onDaemonSocketResumed(deps, target);
+    },
+    onMessage: (socket, raw) => {
+      const received = channel?.receive(socket, raw);
+      if (!channel || !received) {
+        return;
+      }
+      onDaemonSocketMessage(
+        deps,
+        {
+          hostId: target.hostId,
+          message: received.message,
+          sessionId: target.sessionId,
+          socket: channel,
+        },
+        plugins,
+        serverMove,
+      );
+    },
+    onClose: (socket, reason) => {
+      if (channel === null) {
+        return;
+      }
+      const detached = channel.detach(socket);
+      if (detached === "stale") {
+        return;
+      }
+      if (
+        detached === "detached" &&
+        reason !== HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON &&
+        deps.hub.getDaemonSessionSocket(target.sessionId) === channel &&
+        getExperiments(deps.db).resumeDaemonSessions
+      ) {
+        onDaemonSocketDetached(deps, target);
+        return;
+      }
+      channel.close();
+      onDaemonSocketClose(deps, target.sessionId);
+    },
   };
 }
 
@@ -128,7 +264,7 @@ export function onDaemonSocketOpen(
     hostId: args.hostId,
     kind: "host-connected",
   });
-  void resumeEnvironmentProvisioningForHost(deps, {
+  void resumeEnvironmentProvisioningForReconnectedDaemon(deps, {
     hostId: args.hostId,
   }).catch((error) => {
     deps.logger.warn(
@@ -149,9 +285,9 @@ export function onDaemonSocketMessage(
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
   deps.hub.recordDaemonActivity(args.sessionId);
-  const message = parseSocketMessage(
+  const message = parseSocketValue(
     args.socket,
-    args.raw,
+    args.message,
     hostDaemonDaemonWsMessageSchema,
   );
   if (message === null) {
@@ -377,6 +513,26 @@ export function startDaemonLivenessChecks(
   return () => clearInterval(interval);
 }
 
+export function endDaemonSessionChannels(
+  hub: Pick<
+    AppDeps["hub"],
+    | "getDaemonSessionIdForHost"
+    | "getDaemonSessionSocket"
+    | "listConnectedHostIds"
+  >,
+  code: number,
+  reason: string,
+): void {
+  for (const hostId of hub.listConnectedHostIds()) {
+    const sessionId = hub.getDaemonSessionIdForHost(hostId);
+    const socket =
+      sessionId === null ? null : hub.getDaemonSessionSocket(sessionId);
+    if (socket instanceof DaemonChannel) {
+      socket.close(code, reason);
+    }
+  }
+}
+
 export function onDaemonSocketClose(
   deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
   sessionId: string,
@@ -384,4 +540,30 @@ export function onDaemonSocketClose(
   handleDaemonSocketClosed(deps, {
     sessionId,
   });
+}
+
+function onDaemonSocketDetached(
+  deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
+  target: DaemonSocketSessionTarget,
+): void {
+  deps.logger.info(
+    { ...target, reconnectGraceMs: HOST_RECONNECT_GRACE_MS },
+    "Daemon WebSocket closed; holding its session for a reconnect",
+  );
+  deps.hub.scheduleDaemonDisconnect(
+    target.sessionId,
+    HOST_RECONNECT_GRACE_MS,
+    () => {
+      handleDaemonSessionResumeExpired(deps, { sessionId: target.sessionId });
+    },
+  );
+}
+
+function onDaemonSocketResumed(
+  deps: Pick<AppDeps, "hub" | "logger">,
+  target: DaemonSocketSessionTarget,
+): void {
+  deps.hub.cancelPendingDaemonDisconnect(target.sessionId);
+  deps.hub.recordDaemonActivity(target.sessionId);
+  deps.logger.info(target, "Daemon WebSocket resumed its session");
 }

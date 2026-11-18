@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   matchPath,
   useLocation,
@@ -86,9 +86,12 @@ function SkillDetailPage({
 }) {
   const providerRoster = useProviderRoster();
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
-  useEffect(() => {
+  const skillId = skill?.id;
+  const [selectedPathSkillId, setSelectedPathSkillId] = useState(skillId);
+  if (selectedPathSkillId !== skillId) {
+    setSelectedPathSkillId(skillId);
     setSelectedPath("SKILL.md");
-  }, [skill?.id]);
+  }
   const filesQuery = useSkillFiles(projectId, skill);
   const contentQuery = useSkillContent(projectId, skill, selectedPath);
   const primaryHost = usePrimaryHost({ enabled: skill !== null });
@@ -205,24 +208,38 @@ export function SkillsLibrary() {
     skills: [],
     hasMore: false,
   });
-  useEffect(() => {
-    const data = registryQuery.data;
-    if (data === undefined) return;
-    setLoadedRegistry((current) => {
-      const matches =
-        current.ranking === data.ranking &&
-        current.search === trimmedRegistrySearch;
-      const base = matches ? current.skills : [];
-      const seen = new Set(base.map((skill) => skill.id));
-      const fresh = data.skills.filter((skill) => !seen.has(skill.id));
-      return {
-        ranking: data.ranking,
-        search: trimmedRegistrySearch,
-        skills: fresh.length === 0 && matches ? base : [...base, ...fresh],
-        hasMore: data.pagination.hasMore,
-      };
+  const registryData = registryQuery.data;
+  const [mergedRegistryInputs, setMergedRegistryInputs] = useState<{
+    data: typeof registryData;
+    search: string;
+  }>({ data: undefined, search: trimmedRegistrySearch });
+  if (
+    mergedRegistryInputs.data !== registryData ||
+    mergedRegistryInputs.search !== trimmedRegistrySearch
+  ) {
+    setMergedRegistryInputs({
+      data: registryData,
+      search: trimmedRegistrySearch,
     });
-  }, [registryQuery.data, trimmedRegistrySearch]);
+    if (registryData !== undefined) {
+      setLoadedRegistry((current) => {
+        const matches =
+          current.ranking === registryData.ranking &&
+          current.search === trimmedRegistrySearch;
+        const base = matches ? current.skills : [];
+        const seen = new Set(base.map((skill) => skill.id));
+        const fresh = registryData.skills.filter(
+          (skill) => !seen.has(skill.id),
+        );
+        return {
+          ranking: registryData.ranking,
+          search: trimmedRegistrySearch,
+          skills: fresh.length === 0 && matches ? base : [...base, ...fresh],
+          hasMore: registryData.pagination.hasMore,
+        };
+      });
+    }
+  }
   const loadedRegistrySkills = useMemo(
     () =>
       loadedRegistry.search === trimmedRegistrySearch

@@ -2,12 +2,12 @@ import { useMemo, type ReactNode } from "react";
 import type { ExperimentalThreadHeaderTitleProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadHeaderTitleSlot,
 } from "@/lib/plugin-slots";
 
 export function usePluginThreadHeaderTitleSlot(): PluginThreadHeaderTitleSlot | null {
-  return usePluginSlots().threadHeaderTitles[0] ?? null;
+  return usePluginSlotKind("threadHeaderTitles")[0] ?? null;
 }
 
 interface PluginThreadHeaderTitleProps {

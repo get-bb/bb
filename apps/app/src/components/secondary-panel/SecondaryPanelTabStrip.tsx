@@ -44,6 +44,7 @@ import {
 } from "@bb/shared-ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@bb/shared-ui/use-drag-click-suppression";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -222,17 +223,15 @@ export function SecondaryPanelTabStrip({
       });
     };
     viewport.addEventListener("scroll", handleScroll, { passive: true });
-    const resizeObserver = new ResizeObserver(measureCapacity);
-    if (stripRef.current !== null) {
-      resizeObserver.observe(stripRef.current);
-    }
-    resizeObserver.observe(viewport);
-    if (contentRef.current !== null) {
-      resizeObserver.observe(contentRef.current);
-    }
+    const unobserve = observeSharedResize(
+      [stripRef.current, viewport, contentRef.current].filter(
+        (target) => target !== null,
+      ),
+      { read: () => undefined, write: measureCapacity },
+    );
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
-      resizeObserver.disconnect();
+      unobserve();
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;

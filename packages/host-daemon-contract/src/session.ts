@@ -188,6 +188,7 @@ export const hostDaemonSessionOpenRequestSchema = z
     dataDir: z.string().min(1),
     localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
     protocolVersion: z.number().int().positive(),
+    turnCommandThreadIds: z.array(z.string().min(1)).default([]),
     activeThreads: z.array(hostDaemonActiveThreadSchema),
     openThreadWork: z.array(hostDaemonOpenThreadWorkSchema),
     undeliveredEventThreadIds: z.array(z.string().min(1)).default([]),
@@ -251,6 +252,7 @@ export const hostDaemonSessionOpenResponseSchema = z
     agentCpuPriority: z.boolean(),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
+    reconnectGraceMs: z.number().int().nonnegative(),
     watchSet: hostDaemonWatchSetSchema.default({
       generation: 0,
       workspaceTargets: [],

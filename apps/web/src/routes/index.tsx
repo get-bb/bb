@@ -2,22 +2,12 @@ import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
 import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode, Ref } from "react";
+import { useEffect, useRef, useState } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
+import type { CSSProperties } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
-import type { ExperimentVariant } from "../experiments/flags";
-import {
-  NO_EXPERIMENTS,
-  experimentVariant,
-  type ExperimentBootstrap,
-} from "../experiments/flags";
-import {
-  useExperiment,
-  useExperimentExposer,
-  useExperimentExposure,
-} from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
 import { useSectionViews } from "../landing/section-views";
 import adobeLogo from "../assets/company-logos/adobe.svg";
@@ -50,40 +40,9 @@ import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
 import tencentLogo from "../assets/company-logos/tencent.png";
 import vercelLogo from "../assets/company-logos/vercel.svg";
 import zooxLogo from "../assets/company-logos/zoox.png";
-import hermesAvatar from "../assets/hermes-avatar.jpg";
 import { parseChangelog } from "../../../../changelog-parser";
-import {
-  CheckIcon,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ClockIcon,
-  ComposerBox,
-  ContextRow,
-  EditorButton,
-  Ellipsis,
-  FileDiffIcon,
-  FolderGitIcon,
-  GearIcon,
-  GitBranchIcon,
-  GitMergeIcon,
-  LaptopGlyph,
-  Maximize2,
-  MockBar,
-  NewThreadIcon,
-  PanelRightIcon,
-  PaperPlane,
-  Paperclip,
-  Spinner,
-  ThreadStatus,
-  useFitMock,
-} from "../landing/app-mock-parts";
-import {
-  DiscordLink,
-  GitHubLink,
-  MarketplaceLink,
-  SubscribeSection,
-} from "../landing/cta";
+import { ChevronRight } from "../landing/app-mock-parts";
+import { MarketplaceLink, SubscribeSection } from "../landing/cta";
 import { HeroWindowSlot } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
@@ -93,13 +52,9 @@ import {
   AgentRow,
   Band,
   InstallOptions,
-  ProviderChips,
-  CustomizeBuild,
   DelegationTree,
   PluginMorph,
-  SpawnSidebar,
   StartAnywhere,
-  useCycle,
   useScrollReveal,
 } from "../landing/landing-visuals";
 import {
@@ -191,16 +146,19 @@ function CompanyProofMarquee({
     const firstCopy = marquee?.querySelector(".company-proof-logos");
     if (!marquee || !firstCopy) return;
 
-    const measure = () => {
+    const readCopies = () => {
       const copyWidth = firstCopy.getBoundingClientRect().width;
-      if (copyWidth === 0) return;
-      setCopies(Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1));
+      if (copyWidth === 0) return null;
+      return Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1);
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(marquee);
-    observer.observe(firstCopy);
-    return () => observer.disconnect();
+    const applyCopies = (next: number | null) => {
+      if (next !== null) setCopies(next);
+    };
+    applyCopies(readCopies());
+    return observeSharedResize([marquee, firstCopy], {
+      read: readCopies,
+      write: applyCopies,
+    });
   }, []);
 
   return (
@@ -235,25 +193,14 @@ if (!LATEST_RELEASE_META) {
 }
 const LATEST_RELEASE_URL = `/changelog#${LATEST_RELEASE.version.replaceAll(".", "-")}`;
 
-function heroWindowStylesheets(context: {
-  experiments?: ExperimentBootstrap;
-}): string[] {
-  return experimentVariant(
-    context.experiments ?? NO_EXPERIMENTS,
-    "homepage-hero",
-  ) === "test"
-    ? [heroWindowCss]
-    : [];
-}
-
 export const Route = createFileRoute("/")({
-  head: ({ match }) => ({
+  head: () => ({
     meta: [
       { title: "bb: agentic IDE · The IDE that builds itself" },
       { name: "description", content: SITE_DESCRIPTION },
       ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
     ],
-    links: siteHeadLinks(...heroWindowStylesheets(match.context)),
+    links: siteHeadLinks(heroWindowCss),
     scripts: [
       {
         type: "application/ld+json",
@@ -294,897 +241,17 @@ function LandingRoute() {
   return <LandingPage />;
 }
 
-function useConstructMock() {
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const mock = document.querySelector("[data-construct]");
-    if (!mock || mock.classList.contains("constructed")) {
-      return;
-    }
-    let timer = 0;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            el.classList.add("constructing");
-            observer.unobserve(el);
-            timer = window.setTimeout(() => {
-              el.classList.remove("constructing");
-              el.classList.add("constructed");
-            }, 1800);
-          }
-        }
-      },
-      { threshold: 0, rootMargin: "0px 0px -20% 0px" },
-    );
-    observer.observe(mock);
-    return () => {
-      observer.disconnect();
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, []);
-}
-
-type Status = "running" | "done" | "waiting";
-type Step =
-  | { kind: "user"; text: string }
-  | { kind: "step"; text: ReactNode }
-  | { kind: "say"; text: ReactNode }
-  | { kind: "spawn"; text: ReactNode; child: MockThread };
-type Ask = {
-  question: string;
-  options: { label: string; description: string }[];
-  selected: number;
-};
-type MockThread = {
-  id: string;
-  title: string;
-  status: Status;
-  branch: string;
-  pr?: number;
-  change: { files: number; add: number; del: number };
-  transcript: Step[];
-  stream?: Step[];
-  ask?: Ask;
-};
-
-const SENTRY_SUBAGENT: MockThread = {
-  id: "sentry-sub",
-  title: "Reproduce the null cart",
-  status: "running",
-  branch: "bb/triage-sentry-spike",
-  change: { files: 1, add: 14, del: 0 },
-  transcript: [
-    { kind: "user", text: "Reproduce the null cart in applyPromo." },
-    { kind: "step", text: "Read src/checkout/applyPromo.ts" },
-  ],
-  stream: [
-    { kind: "step", text: "Built an empty-cart fixture" },
-    {
-      kind: "say",
-      text: (
-        <>
-          An active promo on an empty <code>cart</code> throws. Reproduced.
-        </>
-      ),
-    },
-    { kind: "step", text: "Wrote a failing test" },
-    { kind: "say", text: "Handed the repro back to the parent thread." },
-    { kind: "step", text: "Re-checked the stack trace" },
-  ],
-};
-
-const SENTRY_STREAM: Step[] = [
-  { kind: "step", text: "Ran 48 tests" },
-  {
-    kind: "say",
-    text: (
-      <>
-        All green. The null <code>cart</code> path is covered now.
-      </>
-    ),
-  },
-  {
-    kind: "spawn",
-    text: (
-      <>
-        Spawned a subagent: <strong>Reproduce the null cart</strong>
-      </>
-    ),
-    child: SENTRY_SUBAGENT,
-  },
-  { kind: "step", text: "Edited promo.test.ts" },
-  { kind: "say", text: "Added a case for an empty cart with an active promo." },
-  { kind: "step", text: "Checked Sentry for new events" },
-  { kind: "say", text: "No new occurrences in the last 10 minutes." },
-  { kind: "step", text: "Read applyPromo.ts" },
-  {
-    kind: "say",
-    text: (
-      <>
-        Tightening the type so <code>cart</code> can't be null at the call site.
-      </>
-    ),
-  },
-  { kind: "step", text: "Edited 2 files" },
-  {
-    kind: "say",
-    text: "Pushed the guard and a follow-up. Re-running the suite.",
-  },
-];
-
-const LIN482_STREAM: Step[] = [
-  { kind: "step", text: "Ran 12 tests" },
-  { kind: "say", text: "Debounce holds for 200ms. One call, asserted." },
-  {
-    kind: "step",
-    text: (
-      <>
-        Edited <code>SearchBar.tsx</code>
-      </>
-    ),
-  },
-  { kind: "say", text: "Cancelling the timer on unmount so there's no leak." },
-  { kind: "step", text: "Checked the other call sites" },
-  {
-    kind: "say",
-    text: "Two more inputs could reuse this. Noted it on LIN-482.",
-  },
-  { kind: "step", text: "Edited 1 file" },
-  { kind: "say", text: "Verifying the debounce once more." },
-];
-
-const CHIEF_STREAM: Step[] = [
-  { kind: "step", text: "Swept 4 active threads" },
-  {
-    kind: "say",
-    text: "Sentry triage is re-running tests; LIN-482 is verifying.",
-  },
-  { kind: "step", text: "Checked for blockers" },
-  {
-    kind: "say",
-    text: (
-      <>
-        One thread is waiting on you: <code>Refactor the timeline cache</code>.
-      </>
-    ),
-  },
-  { kind: "step", text: "Spawned 1 worker" },
-  {
-    kind: "say",
-    text: "Dispatched the changelog follow-up. Nothing else needs you.",
-  },
-];
-
-const HERO_THREADS: MockThread[] = [
-  {
-    id: "sentry",
-    title: "Triage the Sentry spike",
-    status: "running",
-    branch: "bb/triage-sentry-spike",
-    change: { files: 6, add: 124, del: 18 },
-    stream: SENTRY_STREAM,
-    transcript: [
-      { kind: "user", text: "Triage the Sentry spike on checkout." },
-      { kind: "step", text: "Explored 4 files" },
-      {
-        kind: "say",
-        text: (
-          <>
-            The spike is one error. 92% of volume: a null <code>cart</code> in{" "}
-            <code>applyPromo</code>.
-          </>
-        ),
-      },
-      { kind: "step", text: "Edited 2 files" },
-      {
-        kind: "say",
-        text: (
-          <>
-            Guarded the null case and added a regression test in{" "}
-            <code>promo.test.ts</code>. Re-running the suite.
-          </>
-        ),
-      },
-    ],
-  },
-  {
-    id: "changelog",
-    title: "Nightly changelog",
-    status: "done",
-    branch: "bb/nightly-changelog",
-    pr: 418,
-    change: { files: 1, add: 96, del: 4 },
-    transcript: [
-      { kind: "step", text: "Explored 14 commits" },
-      {
-        kind: "say",
-        text: "14 user-facing commits since yesterday. Grouped them by area.",
-      },
-      { kind: "step", text: "Edited 1 file" },
-      {
-        kind: "say",
-        text: (
-          <>
-            Wrote <code>CHANGELOG.md</code> and opened PR #418.
-          </>
-        ),
-      },
-    ],
-  },
-  {
-    id: "timeline",
-    title: "Refactor the timeline cache",
-    status: "waiting",
-    branch: "bb/timeline-cache",
-    change: { files: 3, add: 41, del: 67 },
-    transcript: [
-      {
-        kind: "user",
-        text: "Refactor the timeline cache to drop the duplicate fetch.",
-      },
-      { kind: "step", text: "Explored 3 files" },
-      { kind: "say", text: "Found the duplicate fetch. Two ways to fix it." },
-    ],
-    ask: {
-      question: "How should I dedupe the timeline fetch?",
-      options: [
-        {
-          label: "Shared in-flight promise",
-          description: "One request in flight; everyone awaits it. Simplest.",
-        },
-        {
-          label: "Short TTL cache",
-          description: "Cache the result for a few seconds, then refetch.",
-        },
-      ],
-      selected: 0,
-    },
-  },
-  {
-    id: "lin482",
-    title: "Start on LIN-482",
-    status: "running",
-    branch: "bb/lin-482-debounce-search",
-    change: { files: 2, add: 33, del: 5 },
-    stream: LIN482_STREAM,
-    transcript: [
-      { kind: "step", text: "Read LIN-482" },
-      {
-        kind: "say",
-        text: (
-          <>
-            “Debounce the search input.” Adding a 200ms debounce in{" "}
-            <code>SearchBar</code>.
-          </>
-        ),
-      },
-      { kind: "step", text: "Edited 1 file" },
-      { kind: "say", text: "Added the debounce and a test. Verifying." },
-    ],
-  },
-];
-
-const CHIEF: MockThread = {
-  id: "chief",
-  title: "Chief",
-  status: "running",
-  branch: "bb/chief",
-  change: { files: 1, add: 12, del: 0 },
-  stream: CHIEF_STREAM,
-  transcript: [
-    { kind: "user", text: "Anything need me?" },
-    { kind: "step", text: "Swept 4 active threads" },
-    {
-      kind: "say",
-      text: (
-        <>
-          One thread is waiting on you: <code>Refactor the timeline cache</code>
-          . Sentry triage and LIN-482 are running; the nightly changelog merged.
-        </>
-      ),
-    },
-    { kind: "step", text: "Spawned 2 workers" },
-    {
-      kind: "say",
-      text: "I'll keep dispatching and ping you when something needs a call.",
-    },
-  ],
-};
-
-const STREAM_INTERVAL_MS = 1600;
-const STREAM_WINDOW = 16;
-
-type FeedItem = { id: string; step: Step; live: boolean };
-
-function ThreadFeed({
-  thread,
-  onSpawn,
-}: {
-  thread: MockThread;
-  onSpawn: (parentId: string, child: MockThread) => void;
-}) {
-  const isLive =
-    thread.status === "running" && (thread.stream?.length ?? 0) > 0;
-  const seedItems = useMemo<FeedItem[]>(
-    () =>
-      thread.transcript.map((step, i) => ({
-        id: `seed-${i}`,
-        step,
-        live: false,
-      })),
-    [thread.transcript],
-  );
-  const [items, setItems] = useState<FeedItem[]>(seedItems);
-
-  useEffect(() => {
-    if (!isLive) {
-      return;
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const pool = thread.stream ?? [];
-    let cursor = 0;
-    let serial = 0;
-    const id = window.setInterval(() => {
-      const step = pool[cursor % pool.length];
-      cursor += 1;
-      serial += 1;
-      if (step.kind === "spawn") {
-        onSpawn(thread.id, step.child);
-      }
-      setItems((prev) => {
-        const next = [...prev, { id: `live-${serial}`, step, live: true }];
-        return next.length > STREAM_WINDOW
-          ? next.slice(next.length - STREAM_WINDOW)
-          : next;
-      });
-    }, STREAM_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [thread.id, isLive, thread.stream, onSpawn]);
-
-  return (
-    <div className={isLive ? "feed feed-live" : "feed"}>
-      {items.map(({ id, step, live }, index) => {
-        const style: CSSProperties = live
-          ? { animation: "c-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both" }
-          : { animationDelay: `${0.66 + index * 0.09}s` };
-        if (step.kind === "user") {
-          return (
-            <div key={id} className="msg-user" style={style}>
-              {step.text}
-            </div>
-          );
-        }
-        if (step.kind === "step") {
-          return (
-            <div key={id} className="msg-step" style={style}>
-              <ChevronRight className="step-chev" />
-              {step.text}
-            </div>
-          );
-        }
-        if (step.kind === "spawn") {
-          return (
-            <div key={id} className="msg-step msg-spawn" style={style}>
-              <GitBranchIcon className="step-chev" />
-              {step.text}
-            </div>
-          );
-        }
-        return (
-          <div key={id} className="msg-say" style={style}>
-            {step.text}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function AskQuestion({ ask }: { ask: Ask }) {
-  const [selected, setSelected] = useState(ask.selected);
-  return (
-    <div className="composer">
-      <div className="askq">
-        <div className="askq-q">{ask.question}</div>
-        <div className="askq-opts">
-          {ask.options.map((opt, i) => (
-            <button
-              key={opt.label}
-              type="button"
-              className={i === selected ? "askq-opt on" : "askq-opt"}
-              aria-pressed={i === selected}
-              onClick={() => setSelected(i)}
-            >
-              <span className="askq-radio">
-                {i === selected ? <CheckIcon className="askq-check" /> : null}
-              </span>
-              <span className="askq-text">
-                <span className="askq-label">{opt.label}</span>
-                <span className="askq-desc">{opt.description}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="askq-actions">
-          <span className="askq-cancel">Cancel</span>
-          <span className="askq-submit">Submit answer</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type DiffLine = { t: "ctx" | "add" | "del"; text: string };
-const DIFF_LINES: DiffLine[] = [
-  { t: "ctx", text: 'it("applies a valid promo", () => {' },
-  { t: "ctx", text: "  const cart = makeCart([item]);" },
-  { t: "del", text: '  expect(applyPromo(cart, "SAVE10"))' },
-  { t: "add", text: '  expect(applyPromo(cart, "SAVE10").total)' },
-  { t: "add", text: "    .toBeCloseTo(8.99);" },
-  { t: "ctx", text: "});" },
-  { t: "ctx", text: "" },
-  { t: "add", text: 'it("ignores a null cart", () => {' },
-  { t: "add", text: '  expect(() => applyPromo(null, "SAVE10"))' },
-  { t: "add", text: "    .not.toThrow();" },
-  { t: "add", text: "});" },
-];
-
-function Composer({ thread }: { thread?: MockThread }) {
-  const isNew = !thread;
-  return (
-    <div className={isNew ? "composer composer-new" : "composer"}>
-      {thread ? (
-        <div className="pr-bar">
-          <GitMergeIcon className="pr-ic" />
-          <span className="pr-strong">
-            {thread.pr ? `PR #${thread.pr}` : "Working tree"}
-          </span>
-          <span className="pr-dim">
-            · {thread.pr ? "Merged" : "Uncommitted"} · {thread.change.files}{" "}
-            {thread.change.files === 1 ? "file" : "files"},
-          </span>
-          <span className="pr-add">+{thread.change.add}</span>
-          <span className="pr-del">-{thread.change.del}</span>
-          <ChevronDown className="pr-ic pr-chev" />
-        </div>
-      ) : null}
-      <ComposerBox model="Opus 4.8 1M">
-        <textarea
-          className="composer-input"
-          rows={1}
-          placeholder={
-            isNew
-              ? "Ask anything. @ to mention files or folders"
-              : "Ask for a follow-up. @ to mention files, folders, sections, or threads"
-          }
-          aria-label={isNew ? "Start a new thread" : "Message this thread"}
-        />
-        <Maximize2 className="cb-expand" />
-      </ComposerBox>
-      <ContextRow
-        project={isNew ? "paper-ultra-slop" : "bb"}
-        place={
-          isNew
-            ? { icon: LaptopGlyph, label: "Work locally" }
-            : { icon: FolderGitIcon, label: "Worktree" }
-        }
-        branch={isNew ? "Current (main)" : thread.branch}
-        running={thread?.status === "running"}
-      />
-    </div>
-  );
-}
-
-function DiffPanel({
-  thread,
-  onClose,
-}: {
-  thread: MockThread;
-  onClose: () => void;
-}) {
-  return (
-    <aside className="diff-panel" aria-label="Changes">
-      <div className="diff-head">
-        <FileDiffIcon className="diff-ic" />
-        <span className="diff-title">Changes</span>
-        <span className="diff-stat pr-add">+{thread.change.add}</span>
-        <span className="diff-stat pr-del">-{thread.change.del}</span>
-        <button
-          type="button"
-          className="diff-close"
-          aria-label="Hide changes"
-          onClick={onClose}
-        >
-          <PanelRightIcon className="ri" />
-        </button>
-      </div>
-      <div className="diff-file">
-        <FolderGitIcon className="diff-file-ic" />
-        promo.test.ts
-      </div>
-      <div className="diff-body">
-        {DIFF_LINES.map((line, i) => (
-          <div key={i} className={`dl dl-${line.t}`}>
-            <span className="dl-sign">
-              {line.t === "add" ? "+" : line.t === "del" ? "-" : " "}
-            </span>
-            <span className="dl-text">{line.text || " "}</span>
-          </div>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-function HeroAppMock({ ref }: { ref: Ref<HTMLElement> }) {
-  const [activeId, setActiveId] = useState(HERO_THREADS[0].id);
-  const [view, setView] = useState<"thread" | "new">("thread");
-  const [diffOpen, setDiffOpen] = useState(false);
-  const [spawned, setSpawned] = useState<Record<string, MockThread[]>>({});
-  const spawnedChildren = useMemo(
-    () => Object.values(spawned).flat(),
-    [spawned],
-  );
-  const thread =
-    [CHIEF, ...HERO_THREADS, ...spawnedChildren].find(
-      (candidate) => candidate.id === activeId,
-    ) ?? HERO_THREADS[0];
-
-  const openThread = (id: string) => {
-    setActiveId(id);
-    setView("thread");
-  };
-
-  const handleSpawn = useCallback((parentId: string, child: MockThread) => {
-    setSpawned((prev) => {
-      const kids = prev[parentId] ?? [];
-      if (kids.some((existing) => existing.id === child.id)) {
-        return prev;
-      }
-      return { ...prev, [parentId]: [...kids, child] };
-    });
-  }, []);
-  const mockRef = useRef<HTMLDivElement>(null);
-  useFitMock(mockRef);
-
-  return (
-    <section ref={ref} className="mockup-wrap">
-      <div
-        ref={mockRef}
-        className="mock"
-        data-construct
-        aria-label="Interactive preview of the bb app"
-      >
-        <MockBar>
-          {view === "thread" ? (
-            <>
-              <span className="bar-title">{thread.title}</span>
-              <Ellipsis className="ri bar-kebab" />
-              <span className="bar-actions">
-                <EditorButton />
-                <span className="commit-btn" aria-hidden>
-                  Commit
-                </span>
-                <button
-                  type="button"
-                  className={diffOpen ? "bar-toggle active" : "bar-toggle"}
-                  aria-label={diffOpen ? "Hide changes" : "Show changes"}
-                  aria-pressed={diffOpen}
-                  onClick={() => setDiffOpen((open) => !open)}
-                >
-                  <PanelRightIcon className="ri" />
-                </button>
-              </span>
-            </>
-          ) : null}
-        </MockBar>
-        <div className="mock-body">
-          <aside className="side">
-            <button
-              type="button"
-              className={view === "new" ? "side-act active-act" : "side-act"}
-              aria-pressed={view === "new"}
-              onClick={() => setView("new")}
-            >
-              <NewThreadIcon className="sa-ic" />
-              New thread
-            </button>
-            <div className="side-act">
-              <ClockIcon className="sa-ic" />
-              Automations
-            </div>
-            <div className="side-label">Pinned</div>
-            <button
-              type="button"
-              className={
-                view === "thread" && activeId === "chief"
-                  ? "trow trow-pin active"
-                  : "trow trow-pin"
-              }
-              aria-pressed={view === "thread" && activeId === "chief"}
-              onClick={() => openThread("chief")}
-            >
-              <span className="trow-title">Chief</span>
-            </button>
-            <div className="side-label">All Threads</div>
-            <ul className="threads">
-              {HERO_THREADS.map((candidate, index) => {
-                const isActive = view === "thread" && candidate.id === activeId;
-                const kids = spawned[candidate.id] ?? [];
-                return (
-                  <li
-                    key={candidate.id}
-                    style={{ animationDelay: `${0.6 + index * 0.06}s` }}
-                  >
-                    <button
-                      type="button"
-                      className={isActive ? "trow active" : "trow"}
-                      aria-pressed={isActive}
-                      onClick={() => openThread(candidate.id)}
-                    >
-                      <span className="trow-title">{candidate.title}</span>
-                      <ThreadStatus status={candidate.status} />
-                    </button>
-                    {kids.length > 0 ? (
-                      <ul className="threads thread-kids">
-                        {kids.map((kid) => {
-                          const kidActive =
-                            view === "thread" && kid.id === activeId;
-                          return (
-                            <li key={kid.id} className="kid-li">
-                              <button
-                                type="button"
-                                className={
-                                  kidActive
-                                    ? "trow trow-kid active"
-                                    : "trow trow-kid"
-                                }
-                                aria-pressed={kidActive}
-                                onClick={() => openThread(kid.id)}
-                              >
-                                <span className="trow-title">{kid.title}</span>
-                                <ThreadStatus status={kid.status} />
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="side-foot" aria-hidden>
-              <GearIcon className="sa-ic" />
-            </div>
-          </aside>
-
-          {view === "thread" ? (
-            <div className="main">
-              <ThreadFeed
-                key={thread.id}
-                thread={thread}
-                onSpawn={handleSpawn}
-              />
-              {thread.ask ? (
-                <AskQuestion ask={thread.ask} />
-              ) : (
-                <Composer thread={thread} />
-              )}
-            </div>
-          ) : (
-            <div className="main main-new">
-              <Composer />
-            </div>
-          )}
-
-          {view === "thread" && diffOpen ? (
-            <DiffPanel thread={thread} onClose={() => setDiffOpen(false)} />
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AgentChat() {
-  const { cycle, leaving } = useCycle(6000, 600);
-  return (
-    <div
-      className="tg"
-      aria-label="Texting the Crunch bot, which spawns a bb thread"
-    >
-      <div className="tg-bar">
-        <ChevronLeft className="tg-back" />
-        <span className="tg-contact">
-          <span className="tg-name">Sawyer&rsquo;s Hermes</span>
-          <span className="tg-sub">bot</span>
-        </span>
-        <span className="tg-av" aria-hidden>
-          <img src={hermesAvatar} alt="" />
-        </span>
-      </div>
-      <div className="tg-feed">
-        <div className={leaving ? "tg-msgs leaving" : "tg-msgs"} key={cycle}>
-          <div className="tg-msg tg-out" style={{ animationDelay: "0.3s" }}>
-            <span className="tg-bubble">
-              spawn a thread to fix the failing CI on main
-              <span className="tg-time">9:41</span>
-            </span>
-          </div>
-          <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
-            <span className="tg-bubble">
-              On it. Spawning a worker thread.
-              <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
-            </span>
-          </div>
-          <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
-            <div className="tg-thread">
-              <div className="tg-thread-top">
-                <span aria-hidden="true" className="bb-mark tg-thread-mark" />
-                <span className="tg-thread-eyebrow">Worker thread</span>
-                <span className="tg-stat" aria-hidden>
-                  <span
-                    className="tg-stat-spawn"
-                    style={{ animationDelay: "3.5s" }}
-                  >
-                    <Spinner className="tg-spin" />
-                    spawning
-                  </span>
-                  <span
-                    className="tg-stat-run"
-                    style={{ animationDelay: "3.5s" }}
-                  >
-                    <span className="tg-rdot" />
-                    running
-                  </span>
-                </span>
-              </div>
-              <div className="tg-thread-title">Fix CI on main</div>
-              <div className="tg-thread-branch mono">bb/fix-ci-on-main</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="tg-input">
-        <Paperclip className="tg-attach" />
-        <span className="tg-field">Message</span>
-        <span className="tg-send" aria-hidden>
-          <PaperPlane className="tg-send-ic" />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
-  control: ["customizable", "kick-off", "gang", "fork-it", "closer"],
-  test: [
-    "make-it-yours",
-    "hand-off",
-    "start-anywhere",
-    "testimonials",
-    "closer",
-  ],
-};
-
-function Closer({
-  title,
-  lede,
-  children,
-}: {
-  title: string;
-  lede: string;
-  children?: ReactNode;
-}) {
+function Closer({ title, lede }: { title: string; lede: string }) {
   return (
     <section className="closer" data-reveal data-section="closer">
       <h2 className="sec-title">{title}</h2>
       <p>{lede}</p>
       <InstallOptions placement="closer" />
-      {children}
     </section>
   );
 }
 
-function TodayBelowFold() {
-  return (
-    <>
-      <Band
-        title="Fully customizable."
-        flip
-        section="customizable"
-        visual={<CustomizeBuild />}
-      >
-        <p>
-          Almost anything in bb can be changed in a single prompt. Ask for your
-          Linear issues and they appear: a panel in your sidebar, a{" "}
-          <code>bb linear</code> command, and a skill that teaches every agent
-          to use it.
-        </p>
-        <p>
-          Many of bb&rsquo;s own features are built with the same tools you
-          have. The GitHub integration, agent memory, scheduled jobs, and even
-          remote access are all plugins.
-        </p>
-        <p>Nothing is stopping you from building your ideal workbench.</p>
-      </Band>
-
-      <Band
-        title="Anything can kick off work."
-        section="kick-off"
-        visual={<AgentChat />}
-      >
-        <p>
-          The same CLI your agents use is open to any program you write: a shell
-          script, a cron job, or your own Hermes Agent or OpenClaw bot in
-          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
-          waiting in your sidebar when you are.
-        </p>
-        <p>
-          It runs on your machine, and is waiting for you when you&rsquo;re
-          back.
-        </p>
-      </Band>
-
-      <Band
-        title="The gang's all here"
-        flip
-        section="gang"
-        visual={<SpawnSidebar />}
-      >
-        <p>
-          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
-          live in bb. Give a task to whichever fits, and have one agent spawn
-          and manage another, each in its own thread.
-        </p>
-        <p>
-          Each runs on your own subscription: the provider plan you already pay
-          for, billed by them, not bb.
-        </p>
-        <div className="providers">
-          <ProviderChips />
-        </div>
-      </Band>
-
-      <section className="statement" data-reveal data-section="fork-it">
-        <h2 className="sec-title">Fork it. Make it your own.</h2>
-        <p>
-          bb is MIT-licensed end to end. Fork the repo, customize the agents,
-          tools, and UI, and deploy your own build across your whole
-          organization. It still runs local-first on your machines, on the
-          provider subscriptions you already pay for.
-        </p>
-        <div className="cta-row">
-          <GitHubLink placement="local" className="btn btn-ghost">
-            View the source →
-          </GitHubLink>
-        </div>
-      </section>
-
-      <Closer
-        title="Put your agents to work."
-        lede="Free, open source, and local-first. Install in under a minute."
-      >
-        <div className="cta-row cta-row-secondary">
-          <GitHubLink placement="closer" className="btn btn-ghost">
-            View on GitHub
-          </GitHubLink>
-        </div>
-      </Closer>
-    </>
-  );
-}
-
-function RefreshedBelowFold() {
+function BelowFold() {
   return (
     <>
       <Band
@@ -1239,30 +306,12 @@ function RefreshedBelowFold() {
   );
 }
 
-const SUBHEAD_COPY = {
-  control:
-    "bb can control, customize, and automate itself, laying the groundwork for your own software factory.",
-  test: "Run all your coding agents in one programmable workspace. Change almost anything with a plugin or a prompt.",
-} as const satisfies Record<ExperimentVariant<"homepage-hero">, string>;
-
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
   const companyProofRef = useRef<HTMLElement>(null);
-  const qaCheck = useExperiment("homepage-qa-check");
-  useExperimentExposure("homepage-qa-check", "all");
-  const subhead = useExperiment("homepage-hero");
-  useExperimentExposure("homepage-hero", "desktop");
-  const belowFold = useExperiment("homepage-below-fold");
-  const exposeBelowFold = useExperimentExposer(
-    "homepage-below-fold",
-    "desktop",
-  );
   useScrollReveal();
-  useSectionViews((section) => {
-    if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
-  });
-  useConstructMock();
+  useSectionViews();
 
   useEffect(() => {
     const companyProof = companyProofRef.current;
@@ -1276,10 +325,7 @@ function LandingPage() {
   }, []);
 
   return (
-    <div
-      className="wrap"
-      data-qa-check={qaCheck === "test" ? qaCheck : undefined}
-    >
+    <div className="wrap">
       <SiteNav />
 
       <header className="hero">
@@ -1289,23 +335,17 @@ function LandingPage() {
           <ChevronRight className="updates-arrow" />
         </a>
         <h1>The IDE that builds itself</h1>
-        <p className={subhead === "test" ? "sub sub-wide" : "sub"}>
-          {SUBHEAD_COPY[subhead]}
+        <p className="sub sub-wide">
+          Run all your coding agents in one programmable workspace. Change
+          almost anything with a plugin or a prompt.
         </p>
 
         <InstallOptions placement="hero" />
 
-        {subhead === "test" ? (
-          <AgentRow />
-        ) : (
-          <div className="providers">
-            <span className="label">Works with</span>
-            <ProviderChips />
-          </div>
-        )}
+        <AgentRow />
       </header>
 
-      <HeroWindowSlot control={(ref) => <HeroAppMock ref={ref} />} />
+      <HeroWindowSlot />
 
       <section
         ref={companyProofRef}
@@ -1342,7 +382,7 @@ function LandingPage() {
         </div>
       </section>
 
-      {belowFold === "test" ? <RefreshedBelowFold /> : <TodayBelowFold />}
+      <BelowFold />
 
       <SubscribeSection
         reveal

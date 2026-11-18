@@ -170,6 +170,7 @@ function createRuntime(): FakeDispatchRuntime {
     }),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    getActiveTurnRequestIds: () => [],
     waitForActiveTurn: vi.fn(
       async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
     ),
@@ -611,6 +612,7 @@ describe("dispatchCommand", () => {
     const flush = vi.fn(async () => flushDeferred.promise);
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      aimedAt: null,
       intent: "interrupt",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -941,6 +943,7 @@ describe("dispatchCommand", () => {
 
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      aimedAt: null,
       intent: "interrupt",
       environmentId: "env-new",
       threadId: "thread-1",
@@ -995,6 +998,7 @@ describe("dispatchCommand", () => {
     await dispatchCommand(
       {
         type: "thread.stop",
+        aimedAt: null,
         intent: "release",
         environmentId: "env-release",
         threadId: "thread-1",
@@ -1008,6 +1012,7 @@ describe("dispatchCommand", () => {
     await dispatchCommand(
       {
         type: "thread.stop",
+        aimedAt: null,
         intent: "interrupt",
         environmentId: "env-release",
         threadId: "thread-1",
@@ -1046,6 +1051,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchCommand(
       {
         type: "thread.stop",
+        aimedAt: null,
         intent: "release",
         environmentId: "env-release-race",
         threadId: "thread-1",
@@ -1063,6 +1069,7 @@ describe("dispatchCommand", () => {
     const interrupted = await dispatchCommand(
       {
         type: "thread.stop",
+        aimedAt: null,
         intent: "interrupt",
         environmentId: "env-release-race",
         threadId: "thread-1",
@@ -1082,6 +1089,7 @@ describe("dispatchCommand", () => {
     });
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      aimedAt: null,
       intent: "interrupt",
       environmentId: "env-missing-runtime",
       threadId: "thread-1",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@bb/domain";
@@ -232,9 +232,11 @@ export function ProjectsSettingsSection() {
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
   const serverProjects = sidebarNavigationQuery.data?.projects;
-  useEffect(() => {
+  const [orderedProjects, setOrderedProjects] = useState(serverProjects);
+  if (orderedProjects !== serverProjects) {
+    setOrderedProjects(serverProjects);
     setOptimisticOrder(null);
-  }, [serverProjects]);
+  }
   const projects = useMemo(() => {
     if (!serverProjects) return undefined;
     if (!optimisticOrder) return serverProjects;

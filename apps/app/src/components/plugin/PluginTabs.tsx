@@ -3,14 +3,17 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   isNavTab,
   isThreadTab,
-  usePluginSlots,
+  usePluginSlotKind,
+  type PluginNavTabSlot,
   type PluginTabSlot,
+  type PluginThreadTabSlot,
 } from "@/lib/plugin-slots";
 import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -73,25 +76,90 @@ function VisibilityResult({
   return null;
 }
 
+type HostProps = Omit<VisibilityResultProps, "visible" | "slot">;
+type ThreadTabHostProps = HostProps & {
+  threadId: string;
+  environment: ExperimentalThreadEnvironment | null;
+};
+type NavTabHostProps = HostProps & { subPath: string };
+
+const threadTabVisibilityHosts = new WeakMap<
+  PluginThreadTabSlot,
+  { Visibility: ComponentType<ThreadTabHostProps> }
+>();
+const navTabVisibilityHosts = new WeakMap<
+  PluginNavTabSlot,
+  { Visibility: ComponentType<NavTabHostProps> }
+>();
+
+function threadTabVisibilityHost(
+  slot: PluginThreadTabSlot & {
+    useVisible: NonNullable<PluginThreadTabSlot["useVisible"]>;
+  },
+) {
+  const existing = threadTabVisibilityHosts.get(slot);
+  if (existing !== undefined) return existing;
+  function ThreadTabVisibility({
+    threadId,
+    environment,
+    ...props
+  }: ThreadTabHostProps) {
+    const visible = slot.useVisible({ threadId, environment }) ?? true;
+    return <VisibilityResult {...props} slot={slot} visible={visible} />;
+  }
+  const host = { Visibility: ThreadTabVisibility };
+  threadTabVisibilityHosts.set(slot, host);
+  return host;
+}
+
+function navTabVisibilityHost(
+  slot: PluginNavTabSlot & {
+    useVisible: NonNullable<PluginNavTabSlot["useVisible"]>;
+  },
+) {
+  const existing = navTabVisibilityHosts.get(slot);
+  if (existing !== undefined) return existing;
+  function NavTabVisibility({ subPath, ...props }: NavTabHostProps) {
+    const visible = slot.useVisible({ subPath }) ?? true;
+    return <VisibilityResult {...props} slot={slot} visible={visible} />;
+  }
+  const host = { Visibility: NavTabVisibility };
+  navTabVisibilityHosts.set(slot, host);
+  return host;
+}
+
+function hasUseVisible<Slot extends PluginTabSlot>(
+  slot: Slot,
+): slot is Slot & { useVisible: NonNullable<Slot["useVisible"]> } {
+  return slot.useVisible !== undefined;
+}
+
 function Visibility({
   context,
   ...props
 }: Omit<VisibilityResultProps, "visible"> & { context: PluginTabContext }) {
-  const { slot } = props;
-  const visible =
-    isThreadTab(slot) && context.kind === "thread"
-      ? (slot.useVisible?.({
-          threadId: context.threadId,
-          environment: context.environment,
-        }) ?? true)
-      : isNavTab(slot) && context.kind === "nav-panel"
-        ? (slot.useVisible?.({ subPath: context.subPath }) ?? true)
-        : false;
-  return <VisibilityResult {...props} visible={visible} />;
+  const { slot, ...hostProps } = props;
+  if (isThreadTab(slot) && context.kind === "thread") {
+    if (!hasUseVisible(slot)) return <VisibilityResult {...props} visible />;
+    const host = threadTabVisibilityHost(slot);
+    return (
+      <host.Visibility
+        {...hostProps}
+        threadId={context.threadId}
+        environment={context.environment}
+      />
+    );
+  }
+  if (isNavTab(slot) && context.kind === "nav-panel") {
+    if (!hasUseVisible(slot)) return <VisibilityResult {...props} visible />;
+    const host = navTabVisibilityHost(slot);
+    return <host.Visibility {...hostProps} subPath={context.subPath} />;
+  }
+  return <VisibilityResult {...props} visible={false} />;
 }
 
 export function usePluginTabs(context: PluginTabContext | null) {
-  const { tabs } = usePluginSlots();
+  const tabs = usePluginSlotKind("tabs");
   const contextKey =
     context === null
       ? ""

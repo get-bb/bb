@@ -46,6 +46,39 @@ interface DestinationHealthReading {
   url: string;
 }
 
+function pollServerMoveDestinationHealth(
+  url: string,
+  intervalMs: number,
+  onReading: (reading: DestinationHealthReading) => void,
+): () => void {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const poll = async (): Promise<void> => {
+    const health = await fetchServerHealth({
+      url,
+      init: {
+        cache: "no-store",
+        credentials: "omit",
+        signal: controller.signal,
+      },
+    });
+    if (controller.signal.aborted) {
+      return;
+    }
+    onReading({ health: health?.serverMove ?? null, url });
+    timer = setTimeout(() => {
+      void poll();
+    }, intervalMs);
+  };
+  void poll();
+  return () => {
+    controller.abort();
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  };
+}
+
 function useServerMoveDestinationHealth(
   url: string | null,
   intervalMs: number,
@@ -55,32 +88,7 @@ function useServerMoveDestinationHealth(
     if (url === null) {
       return;
     }
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async (): Promise<void> => {
-      const health = await fetchServerHealth({
-        url,
-        init: {
-          cache: "no-store",
-          credentials: "omit",
-          signal: controller.signal,
-        },
-      });
-      if (controller.signal.aborted) {
-        return;
-      }
-      setReading({ health: health?.serverMove ?? null, url });
-      timer = setTimeout(() => {
-        void poll();
-      }, intervalMs);
-    };
-    void poll();
-    return () => {
-      controller.abort();
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
-    };
+    return pollServerMoveDestinationHealth(url, intervalMs, setReading);
   }, [intervalMs, url]);
   return reading !== null && reading.url === url ? reading.health : null;
 }

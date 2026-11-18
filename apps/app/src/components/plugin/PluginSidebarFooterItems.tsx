@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
@@ -20,7 +21,7 @@ import {
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -60,7 +61,7 @@ function footerTriggerId(item: PluginSidebarFooterItemSlot): string {
 }
 
 export function usePluginSidebarFooterDisclosure() {
-  const { sidebarFooterItems } = usePluginSlots();
+  const sidebarFooterItems = usePluginSlotKind("sidebarFooterItems");
   const disclosures = useMemo(
     () => sidebarFooterItems.filter((item) => item.kind === "disclosure"),
     [sidebarFooterItems],
@@ -149,13 +150,13 @@ export function PluginSidebarFooterDisclosure({
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (content === null) return;
-    const measure = () =>
-      setContentHeight(content.getBoundingClientRect().height);
-    measure();
+    const measure = () => content.getBoundingClientRect().height;
+    setContentHeight(measure());
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
+    return observeSharedResize(content, {
+      read: measure,
+      write: setContentHeight,
+    });
   }, [item]);
 
   if (item === null || item.kind !== "disclosure") return null;
@@ -165,10 +166,13 @@ export function PluginSidebarFooterDisclosure({
       id={footerDisclosureId(item)}
       aria-label={item.label}
       data-testid={`plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}`}
-      className="overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/50 transition-[height] duration-200 ease-out motion-reduce:transition-none"
+      className="box-content overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/50 transition-[height] duration-200 ease-out motion-reduce:transition-none"
       style={{ height: contentHeight ?? undefined }}
     >
-      <div ref={contentRef} className="max-h-80 overflow-auto">
+      <div
+        ref={contentRef}
+        className="flex max-h-[50svh] flex-col overflow-auto"
+      >
         <PluginSlotMount
           pluginId={item.pluginId}
           slotKind="experimental_sidebarFooter"

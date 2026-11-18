@@ -13,6 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
 import { surfaceIcon } from "./plugin-icons";
@@ -301,7 +302,7 @@ function SpatialFixture({
     if (!frame || !fixture) return;
     const viewport = frame.closest<HTMLElement>("[data-guide-stage-viewport]");
 
-    const measure = () => {
+    const readGeometry = () => {
       const authoredWidth = fixture.scrollWidth;
       const authoredHeight = fixture.scrollHeight;
       const flowCard = frame
@@ -355,42 +356,48 @@ function SpatialFixture({
       const height = authoredHeight * scale;
       const width = scaled ? authoredWidth : null;
       const offsetX = scaled ? (frame.clientWidth - authoredWidth) / 2 : 0;
-      setGeometry((current) =>
-        Math.abs(current.scale - scale) < 0.0001 &&
-        current.height === height &&
-        current.width === width &&
-        Math.abs(current.offsetX - offsetX) < 0.5
-          ? current
-          : { scale, height, width, offsetX },
-      );
+      return { scale, height, width, offsetX };
     };
+    const applyGeometry = (next: ReturnType<typeof readGeometry>) =>
+      setGeometry((current) =>
+        Math.abs(current.scale - next.scale) < 0.0001 &&
+        current.height === next.height &&
+        current.width === next.width &&
+        Math.abs(current.offsetX - next.offsetX) < 0.5
+          ? current
+          : next,
+      );
+    const measure = () => applyGeometry(readGeometry());
+    const observe = (target: Element | readonly Element[]) =>
+      observeSharedResize(target, { read: readGeometry, write: applyGeometry });
 
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(frame);
-    observer.observe(fixture);
-    if (viewport) observer.observe(viewport);
-    const probeRoot = frame
-      .closest("[data-map-section]")
-      ?.querySelector("[data-guide-card-probe]");
-    if (probeRoot?.firstElementChild) {
-      observer.observe(probeRoot.firstElementChild);
-    }
+    const probeTarget =
+      frame
+        .closest("[data-map-section]")
+        ?.querySelector("[data-guide-card-probe]")?.firstElementChild ?? null;
+    const unobserveTargets = observe(
+      [frame, fixture, viewport, probeTarget].filter(
+        (target): target is Element => target !== null,
+      ),
+    );
     const section = frame.closest("section");
     let observedCard: Element | null = null;
+    let unobserveCard: (() => void) | null = null;
     const watchCard = () => {
       const card = section?.querySelector("[data-guide-card-flow]") ?? null;
       if (card === observedCard) return;
-      if (observedCard) observer.unobserve(observedCard);
+      unobserveCard?.();
       observedCard = card;
-      if (card) observer.observe(card);
+      unobserveCard = card ? observe(card) : null;
       measure();
     };
     watchCard();
     const cardObserver = section ? new MutationObserver(watchCard) : null;
     cardObserver?.observe(section as Node, { childList: true });
     return () => {
-      observer.disconnect();
+      unobserveTargets();
+      unobserveCard?.();
       cardObserver?.disconnect();
     };
   }, [maxScale]);
@@ -447,14 +454,14 @@ function PhoneFixture({ children }: { children: ReactNode }) {
     const outer = outerRef.current;
     const inner = innerRef.current;
     if (!outer || !inner) return;
-    const measure = () => {
+    const readFit = () => {
       const viewport = outer.closest<HTMLElement>(
         "[data-guide-stage-viewport]",
       );
       const viewportHeight =
         viewport?.clientHeight ?? document.documentElement.clientHeight;
       const naturalHeight = inner.offsetHeight;
-      if (naturalHeight === 0 || outer.clientWidth === 0) return;
+      if (naturalHeight === 0 || outer.clientWidth === 0) return null;
       const scale = Math.min(
         1,
         outer.clientWidth / PHONE_COLUMN_WIDTH,
@@ -465,21 +472,27 @@ function PhoneFixture({ children }: { children: ReactNode }) {
         0,
         (outer.clientWidth - PHONE_COLUMN_WIDTH * scale) / 2,
       );
+      return { scale, height, offsetX };
+    };
+    const applyFit = (next: ReturnType<typeof readFit>) => {
+      if (next === null) return;
       setFit((current) =>
-        Math.abs(current.scale - scale) < 0.001 &&
-        current.height === height &&
-        Math.abs(current.offsetX - offsetX) < 0.5
+        Math.abs(current.scale - next.scale) < 0.001 &&
+        current.height === next.height &&
+        Math.abs(current.offsetX - next.offsetX) < 0.5
           ? current
-          : { scale, height, offsetX },
+          : next,
       );
     };
+    const measure = () => applyFit(readFit());
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(outer);
-    observer.observe(inner);
+    const unobserve = observeSharedResize([outer, inner], {
+      read: readFit,
+      write: applyFit,
+    });
     window.addEventListener("resize", measure);
     return () => {
-      observer.disconnect();
+      unobserve();
       window.removeEventListener("resize", measure);
     };
   }, []);
@@ -692,11 +705,9 @@ function useStageHeight(
     if (!slide) {
       return;
     }
-    const measure = () => setHeight(slide.getBoundingClientRect().height);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(slide);
-    return () => observer.disconnect();
+    const readHeight = () => slide.getBoundingClientRect().height;
+    setHeight(readHeight());
+    return observeSharedResize(slide, { read: readHeight, write: setHeight });
   }, [index, slideRefs]);
   return { height, animate };
 }
@@ -709,13 +720,15 @@ function MobileCardFlow({ children }: { children: ReactNode }) {
     const frame = frameRef.current;
     const content = contentRef.current;
     if (!frame || !content) return;
-    const measure = () => {
-      frame.style.height = `${content.getBoundingClientRect().height}px`;
+    const readHeight = () => content.getBoundingClientRect().height;
+    const writeHeight = (height: number) => {
+      frame.style.height = `${height}px`;
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
+    writeHeight(readHeight());
+    return observeSharedResize(content, {
+      read: readHeight,
+      write: writeHeight,
+    });
   }, []);
 
   return (
@@ -769,14 +782,15 @@ export function ProductMap({
   useBrowserLayoutEffect(() => {
     const container = containerRef.current;
     if (container === null) return;
-    const measure = () => {
-      const width = container.getBoundingClientRect().width;
+    const readWidth = () => container.getBoundingClientRect().width;
+    const applyWidth = (width: number) => {
       if (width > 0) setCompactContainer(width < 768);
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
+    applyWidth(readWidth());
+    return observeSharedResize(container, {
+      read: readWidth,
+      write: applyWidth,
+    });
   }, []);
   const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
     null,

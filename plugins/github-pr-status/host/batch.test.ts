@@ -1,5 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -52,6 +52,24 @@ function raw(number: number) {
   };
 }
 afterEach(() => vi.unstubAllEnvs());
+
+async function installRateLimitedGh() {
+  const binPath = await makeTempDir("bb-rate-limited-gh-");
+  const logPath = join(binPath, "calls.log");
+  await writeFile(logPath, "");
+  await writeFile(
+    join(binPath, process.platform === "win32" ? "gh.cmd" : "gh"),
+    process.platform === "win32"
+      ? '@echo off\r\n>>"%TEST_GH_LOG%" echo called\r\nif not "%~1"=="api" exit /b 2\r\nif not "%~2"=="graphql" exit /b 2\r\n>&2 echo API rate limit exceeded\r\nexit /b 1\r\n'
+      : '#!/bin/sh\nprintf "called\\n" >> "$TEST_GH_LOG"\n[ "$1" = api ] && [ "$2" = graphql ] || exit 2\nprintf "API rate limit exceeded\\n" >&2\nexit 1\n',
+    { mode: 0o755 },
+  );
+  vi.stubEnv("GH_CONFIG_DIR", binPath);
+  vi.stubEnv("TEST_GH_LOG", logPath);
+  vi.stubEnv("PATH", `${binPath}${delimiter}${process.env.PATH ?? ""}`);
+  return async () =>
+    (await readFile(logPath, "utf8")).split("\n").filter(Boolean).length;
+}
 
 function withChecks(
   number: number,
@@ -134,9 +152,7 @@ describe("host GraphQL batching", () => {
   });
 
   it("separates credentials and pauses only the credential that hit a rate limit", async () => {
-    const gh = await installFakeGh({
-      "api graphql": { stderr: "API rate limit exceeded", exit: 1 },
-    });
+    const readCallCount = await installRateLimitedGh();
     const cwd = await makeTempDir("bb-pr-rate-");
     vi.stubEnv("GH_TOKEN", "credential-one");
     await expect(getPullRequestByUrl(raw(1).url, cwd)).resolves.toMatchObject({
@@ -146,28 +162,26 @@ describe("host GraphQL batching", () => {
       outcome: "unavailable",
       message: expect.stringContaining("rate limit"),
     });
-    expect(await gh.readCalls()).toHaveLength(1);
+    expect(await readCallCount()).toBe(1);
     vi.stubEnv("GH_TOKEN", "credential-two");
     await getPullRequestByUrl(raw(1).url, cwd);
-    expect(await gh.readCalls()).toHaveLength(2);
+    expect(await readCallCount()).toBe(2);
   });
 
   it("releases a gh profile's rate-limit pause after its active account changes", async () => {
-    const gh = await installFakeGh({
-      "api graphql": { stderr: "API rate limit exceeded", exit: 1 },
-    });
+    const readCallCount = await installRateLimitedGh();
     vi.stubEnv("GH_TOKEN", undefined);
     vi.stubEnv("GITHUB_TOKEN", undefined);
     const cwd = await makeTempDir("bb-pr-account-");
     await getPullRequestByUrl(raw(1).url, cwd);
     await getPullRequestByUrl(raw(2).url, cwd);
-    expect(await gh.readCalls()).toHaveLength(1);
+    expect(await readCallCount()).toBe(1);
     await writeFile(
       join(process.env.GH_CONFIG_DIR!, "hosts.yml"),
       "github.com:\n    user: another-account\n",
     );
     await getPullRequestByUrl(raw(2).url, cwd);
-    expect(await gh.readCalls()).toHaveLength(2);
+    expect(await readCallCount()).toBe(2);
   });
 
   it.each([

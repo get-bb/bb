@@ -207,7 +207,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
             hostId: host.id,
             sessionId: session.id,
             socket,
-            raw: JSON.stringify(raw),
+            message: raw,
           },
           plugins,
         );
@@ -483,7 +483,7 @@ describe("writes while a server move is frozen", () => {
             hostId: host.id,
             sessionId: session.id,
             socket,
-            raw: JSON.stringify(raw),
+            message: raw,
           },
           undefined,
           serverMove,
@@ -563,7 +563,7 @@ describe("writes while a server move is frozen", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "terminal.opened",
             requestId: open.requestId,
             terminalId: open.terminalId,
@@ -572,7 +572,7 @@ describe("writes while a server move is frozen", () => {
             initialCwd: "/tmp/frozen-terminal",
             cols: 100,
             rows: 30,
-          }),
+          },
         });
 
         const refused = await response;
@@ -617,13 +617,13 @@ describe("writes while a server move is frozen", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "terminal.error",
             requestId: open.requestId,
             terminalId: open.terminalId,
             code: "spawn_failed",
             message: "No shell",
-          }),
+          },
         });
 
         const failed = await response;

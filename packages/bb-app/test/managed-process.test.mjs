@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { killProcessGroup } from "@bb/process-utils";
+import { createProcessLifeline, hasExited } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import { createManagedProcessStop } from "../scripts/managed-process.mjs";
 
@@ -11,6 +13,7 @@ const describeProcessGroups =
 describeProcessGroups("managed process cleanup", () => {
   it("waits for descendants after the process-group leader exits", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "bb-managed-process-test-"));
+    const lifeline = await createProcessLifeline();
     const markerPath = join(tempRoot, "descendant-finished");
     const descendantScript = [
       'const { writeFileSync } = require("node:fs");',
@@ -21,6 +24,7 @@ describeProcessGroups("managed process cleanup", () => {
       "    process.exit(0);",
       "  }, 200);",
       "});",
+      lifeline.holdSource("descendant"),
       'process.stdout.write("ready\\n");',
       "setInterval(() => {}, 1_000);",
     ].join("\n");
@@ -45,19 +49,9 @@ describeProcessGroups("managed process cleanup", () => {
       await stopManagedProcess({ childProcess: leader, detached: true });
       await expect(readFile(markerPath, "utf8")).resolves.toBe("finished");
     } finally {
-      try {
-        process.kill(-leader.pid, "SIGKILL");
-      } catch (error) {
-        if (
-          !(
-            error instanceof Error &&
-            "code" in error &&
-            (error.code === "ESRCH" || error.code === "EPERM")
-          )
-        ) {
-          throw error;
-        }
-      }
+      if (!hasExited(leader))
+        killProcessGroup({ child: leader, signal: "SIGKILL" });
+      await lifeline.close();
       await rm(tempRoot, { force: true, recursive: true });
     }
   });

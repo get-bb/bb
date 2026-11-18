@@ -24,6 +24,7 @@ import {
   ResourceToolbar,
   type ResourceOption,
 } from "@bb/shared-ui/resource-list";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
@@ -250,6 +251,7 @@ function usePluginSearchDraft(
   query: string,
   changeSearchParams: (change: (next: URLSearchParams) => void) => void,
 ) {
+  const changeSearchParamsRef = useLatestRef(changeSearchParams);
   const [draft, setDraft] = useState(query);
   const [synced, setSynced] = useState<{
     query: string;
@@ -276,7 +278,7 @@ function usePluginSearchDraft(
       ...current,
       pending: [...current.pending, value],
     }));
-    changeSearchParams((next) => {
+    changeSearchParamsRef.current((next) => {
       if (value === "") next.delete("query");
       else next.set("query", value);
     });

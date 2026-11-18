@@ -1,10 +1,9 @@
-import { ChildProcess } from "node:child_process";
-import { channel } from "node:diagnostics_channel";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { threadEventSchema, type ThreadEvent } from "@bb/domain";
+import { trackChildProcesses } from "@bb/test-helpers/child-processes";
 import { replayRecording } from "./parity.js";
 
 function writeLane(
@@ -206,18 +205,6 @@ function createStartupFixture() {
   const bridgePath = join(dir, "startup-bridge.mjs");
   const initializeGate = join(dir, "initialize");
   const turnGate = join(dir, "turn");
-  const children: ChildProcess[] = [];
-  const childProcessChannel = channel("child_process");
-  const onChild = (message: unknown): void => {
-    if (
-      typeof message === "object" &&
-      message !== null &&
-      "process" in message &&
-      message.process instanceof ChildProcess
-    ) {
-      children.push(message.process);
-    }
-  };
   writeLane(dir, "runtime→bridge", [
     {
       seq: 1,
@@ -252,10 +239,10 @@ function createStartupFixture() {
       "}).on('close', () => process.exit(0));",
     ].join("\n"),
   );
-  childProcessChannel.subscribe(onChild);
+  const tracker = trackChildProcesses();
   return {
     children: () =>
-      children.filter((child) =>
+      tracker.children.filter((child) =>
         child.spawnargs.join(" ").includes(bridgePath),
       ),
     releaseInitialize: () => writeFileSync(initializeGate, ""),
@@ -283,7 +270,7 @@ function createStartupFixture() {
         timeoutMs,
       }),
     cleanup: () => {
-      childProcessChannel.unsubscribe(onChild);
+      tracker.dispose();
       rmSync(dir, { recursive: true, force: true });
     },
   };

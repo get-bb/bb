@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, expect, it, vi } from "vitest";
 import { VoiceInputButton } from "./VoiceInputButton";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 afterEach(() => {
   cleanup();
@@ -42,9 +43,8 @@ it.each(["warning", "context menu", "keyboard"])(
     expect(
       await screen.findByRole("dialog", { name: "Voice preferences" }),
     ).toBeTruthy();
-    expect(
-      await screen.findByRole("button", { name: "System default" }),
-    ).toBeTruthy();
+    await settleLazyModules();
+    expect(screen.getByRole("button", { name: "System default" })).toBeTruthy();
     expect(record).not.toHaveBeenCalled();
     expect(container.closest('[inert], [aria-hidden="true"]')).toBeNull();
     fireEvent.click(
@@ -65,12 +65,10 @@ it("shows a recurring capture error after preview recovery and another recording
         .mockResolvedValue([
           { kind: "audioinput", deviceId: "mic", label: "Microphone" },
         ]),
-      getUserMedia: vi
-        .fn()
-        .mockResolvedValue({
-          getTracks: () => [{ stop }],
-          getAudioTracks: () => [{ label: "Microphone" }],
-        }),
+      getUserMedia: vi.fn().mockResolvedValue({
+        getTracks: () => [{ stop }],
+        getAudioTracks: () => [{ label: "Microphone" }],
+      }),
     }),
   });
   const record = vi.fn();

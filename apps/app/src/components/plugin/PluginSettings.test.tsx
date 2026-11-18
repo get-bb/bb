@@ -8,10 +8,14 @@ import {
   screen,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { defaultScheduler, notifyManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { systemMachineProvidersQueryKey } from "@/hooks/queries/query-keys";
+import {
+  systemMachineProvidersQueryKey,
+  pluginSettingsViewQueryKey,
+} from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -67,7 +71,9 @@ afterEach(() => {
 });
 
 describe("PluginSettingsForm", () => {
-  it("autosaves the latest text value on blur", async () => {
+  it("autosaves the latest text without reverting it between notifications", async ({
+    onTestFinished,
+  }) => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(
       "fetch",
@@ -86,7 +92,7 @@ describe("PluginSettingsForm", () => {
       }),
     );
 
-    const { wrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper } = createQueryClientTestHarness();
     render(<PluginSettingsForm pluginId="demo" />, { wrapper });
 
     const greeting = (await screen.findByLabelText(
@@ -100,6 +106,26 @@ describe("PluginSettingsForm", () => {
     expect(screen.queryByRole("button", { name: /save settings/i })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
 
+    const notifications: (() => void)[] = [];
+    const completed = createDeferredPromise<void>();
+    const unsubscribe = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type === "updated" && event.mutation.state.status === "success")
+        completed.resolve();
+    });
+    notifyManager.setScheduler((notify) => notifications.push(notify));
+    onTestFinished(() => {
+      notifyManager.setScheduler(defaultScheduler);
+      unsubscribe();
+      queryClient.clear();
+    });
+    const flushNotifications = async (expectedValue: string) => {
+      while (notifications.length > 0) {
+        const notify = notifications.shift();
+        await act(async () => notify?.());
+        expect(greeting.value).toBe(expectedValue);
+      }
+    };
+
     fireEvent.change(greeting, { target: { value: "hi" } });
     fireEvent.change(greeting, { target: { value: "hi there" } });
     expect(screen.queryByRole("status")).toBeNull();
@@ -108,13 +134,10 @@ describe("PluginSettingsForm", () => {
     );
 
     fireEvent.blur(greeting);
-    const put = await vi.waitFor(() => {
-      const request = requests.find(
-        (candidate) => candidate.init?.method === "PUT",
-      );
-      expect(request).toBeDefined();
-      return request;
-    });
+    await completed.promise;
+    const put = requests.find((candidate) => candidate.init?.method === "PUT");
+    expect(put).toBeDefined();
+    await flushNotifications("hi there");
     expect(put?.url).toBe("/api/v1/plugins/demo/settings");
     expect(JSON.parse(String(put?.init?.body))).toEqual({
       values: { greeting: "hi there" },
@@ -123,6 +146,19 @@ describe("PluginSettingsForm", () => {
     expect((screen.getByLabelText("Greeting") as HTMLInputElement).value).toBe(
       "hi there",
     );
+    queryClient.setQueryData(pluginSettingsViewQueryKey("demo"), {
+      schema: SETTINGS_VIEW.schema,
+      values: { ...SETTINGS_VIEW.values, greeting: "external update" },
+    });
+    await flushNotifications("external update");
+    expect(greeting.value).toBe("external update");
+    fireEvent.change(greeting, { target: { value: "unsaved draft" } });
+    queryClient.setQueryData(pluginSettingsViewQueryKey("demo"), {
+      schema: SETTINGS_VIEW.schema,
+      values: { ...SETTINGS_VIEW.values, greeting: "another external update" },
+    });
+    await flushNotifications("unsaved draft");
+    expect(greeting.value).toBe("unsaved draft");
   });
 
   it("refreshes machine providers after a save, so availability catches up", async () => {
@@ -854,7 +890,7 @@ describe("PluginSettingsPage", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the recessed unavailable hint for a section-only plugin", async () => {
+  it("keeps the unavailable hint in a settings card for a section-only plugin", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -889,9 +925,7 @@ describe("PluginSettingsPage", () => {
     const hint = await screen.findByText(
       "Settings are unavailable while the plugin is error.",
     );
-    expect(hint.closest(".overflow-hidden")?.className).toContain(
-      "bg-surface-recessed/70",
-    );
+    expect(hint.parentElement?.className).toContain("bg-card");
     expect(screen.queryByText("Custom connect settings")).toBeNull();
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
   });

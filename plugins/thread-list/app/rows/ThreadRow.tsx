@@ -4,7 +4,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -35,17 +34,14 @@ import {
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_ThreadRowMetadata as ThreadRowMetadata,
   experimental_THREAD_ACTION_GROUPS,
-  experimental_useExperiment,
   experimental_useThreadActions,
   experimental_useSidebarThreadSplit,
   experimental_ProviderIcon as ProviderIcon,
   ThreadTitle,
-  useSidebarSplitLayout,
   useSidebarThreadDraft,
   useSidebarThreadRowStatus,
   useSidebarThreadShortcut,
   useSdk,
-  type PluginSidebarSplitPane,
   type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsInlineItem,
   type PluginThreadActionsTriggerProps,
@@ -59,7 +55,6 @@ import { useSidebarProjectName } from "../model/use-sidebar-data.js";
 import {
   sidebarShowProviderIconsAtom,
   sidebarShowRowMetadataAtom,
-  THREAD_ROW_METADATA_EXPERIMENT,
   threadRowActionsAtom,
 } from "../preferences/atoms.js";
 import { ShortcutPill } from "@/components/ui/shortcut-pill";
@@ -314,22 +309,6 @@ function renderThreadActionsTrigger(props: PluginThreadActionsTriggerProps) {
   );
 }
 
-function useThreadSplitMiniMap(
-  threadId: string,
-): readonly PluginSidebarSplitPane[] | null {
-  const layout = useSidebarSplitLayout();
-  return useMemo(() => {
-    if (layout === null) return null;
-    const slots = layout.panes.map<PluginSidebarSplitPane>((pane) => ({
-      paneId: pane.paneId,
-      rect: pane.rect,
-      isMe: pane.threadId === threadId,
-      isFocused: pane.isFocused,
-    }));
-    return slots.some((slot) => slot.isMe) ? slots : null;
-  }, [layout, threadId]);
-}
-
 function ThreadRowComponent({
   thread,
   crossProjectId,
@@ -347,11 +326,7 @@ function ThreadRowComponent({
   const multiSelection = useMultiSelectionContaining(thread.id);
   const selectionMenu = useThreadSelectionMenu(multiSelection);
   const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
-  const rowMetadataEnabled = experimental_useExperiment(
-    THREAD_ROW_METADATA_EXPERIMENT,
-  );
-  const showRowMetadata =
-    useAtomValue(sidebarShowRowMetadataAtom) && rowMetadataEnabled;
+  const showRowMetadata = useAtomValue(sidebarShowRowMetadataAtom);
   const providers = useContext(SidebarProvidersContext);
   const provider = showProviderIcons
     ? providers.find((candidate) => candidate.id === thread.providerId)
@@ -395,12 +370,12 @@ function ThreadRowComponent({
     },
     [startEditingFromDoubleClick],
   );
-  const miniMap = useThreadSplitMiniMap(thread.id);
-  const isOpenInSplit = miniMap !== null;
   const split = experimental_useSidebarThreadSplit(
     thread.id,
     multiSelection === null ? undefined : { dragThreadIds: multiSelection },
   );
+  const miniMap = split.layout?.panes ?? null;
+  const isOpenInSplit = miniMap !== null;
   const onSplitDragPointerDown = split.splitProps.onPointerDown;
   const splitAvailable = split.isAvailable;
   const openInSplit = useCallback(() => {

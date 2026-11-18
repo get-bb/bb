@@ -1,11 +1,5 @@
 import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { PanelGroup } from "react-resizable-panels";
 import {
   ThreadSecondaryPanel,
@@ -36,9 +30,7 @@ import {
   ThreadMetadataContent,
   type ThreadMetadataContentProps,
 } from "./ThreadMetadataContent";
-import {
-  baseProps as baseMetadataProps,
-} from "./ThreadMetadataContent.fixtures";
+import { baseProps as baseMetadataProps } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileIconName } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { FilePreview } from "./FilePreview";
@@ -134,9 +126,11 @@ interface PanelHarnessProps {
 
 function PanelHarness({ initialPanel, children }: PanelHarnessProps) {
   const [panel, setPanel] = useState(initialPanel);
-  useEffect(() => {
+  const [appliedInitialPanel, setAppliedInitialPanel] = useState(initialPanel);
+  if (appliedInitialPanel !== initialPanel) {
+    setAppliedInitialPanel(initialPanel);
     setPanel(initialPanel);
-  }, [initialPanel]);
+  }
   return children(panel, setPanel);
 }
 
@@ -191,10 +185,7 @@ interface ShellArgs {
   includeGitDiffTab?: boolean;
 }
 
-function ShellRow({
-  initialPanel,
-  includeGitDiffTab = true,
-}: ShellArgs) {
+function ShellRow({ initialPanel, includeGitDiffTab = true }: ShellArgs) {
   return (
     <PanelHarness initialPanel={initialPanel}>
       {(panel, setPanel) => (
@@ -402,10 +393,18 @@ function TerminalTabsShellInner({
   const [activeTerminalId, setActiveTerminalId] = useState(
     initialActiveTerminalId,
   );
-  useEffect(() => {
+  const [appliedTerminals, setAppliedTerminals] = useState(terminals);
+  const [appliedInitialActiveTerminalId, setAppliedInitialActiveTerminalId] =
+    useState(initialActiveTerminalId);
+  if (
+    appliedTerminals !== terminals ||
+    appliedInitialActiveTerminalId !== initialActiveTerminalId
+  ) {
+    setAppliedTerminals(terminals);
+    setAppliedInitialActiveTerminalId(initialActiveTerminalId);
     setOpenTerminals(terminals);
     setActiveTerminalId(initialActiveTerminalId);
-  }, [initialActiveTerminalId, terminals]);
+  }
   const activeTerminal =
     openTerminals.find(
       (terminal) => terminal.terminalId === activeTerminalId,

@@ -44,7 +44,7 @@ import {
   sidebarShowProviderIconsAtom,
   sidebarShowRowMetadataAtom,
 } from "../preferences/atoms.js";
-import { SidebarProjectsContext } from "../model/use-sidebar-data.js";
+import { SidebarProjectNamesContext } from "../model/use-sidebar-data.js";
 import type { ThreadRowOptions } from "./ThreadRow.js";
 import {
   preferenceValueAtom,
@@ -128,7 +128,9 @@ function ThreadRowHarness({
     />
   );
   const content = (
-    <SidebarProjectsContext.Provider value={projects}>
+    <SidebarProjectNamesContext.Provider
+      value={new Map(projects.map((project) => [project.id, project.name]))}
+    >
       <SidebarProvidersContext.Provider value={providers}>
         <TooltipProvider>
           <SidebarDraftPresenceSync />
@@ -171,7 +173,7 @@ function ThreadRowHarness({
           </ThreadRowNavigationProvider>
         </TooltipProvider>
       </SidebarProvidersContext.Provider>
-    </SidebarProjectsContext.Provider>
+    </SidebarProjectNamesContext.Provider>
   );
   return isCompactViewport === undefined ? (
     content
@@ -194,7 +196,6 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   sdk?: PluginSdkTestFakes;
   threadActions?: TestThreadActionsResolver;
   threadBulkActions?: TestThreadBulkActionsResolver;
-  experiments?: string[];
 }
 
 function renderThreadRow({
@@ -209,7 +210,6 @@ function renderThreadRow({
   sdk,
   threadActions = hostThreadActions(),
   threadBulkActions,
-  experiments,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
@@ -240,7 +240,6 @@ function renderThreadRow({
       sdk,
       threadActions,
       threadBulkActions,
-      experiments,
     },
   );
   return Object.assign(slot, {
@@ -1312,7 +1311,7 @@ describe("ThreadRow", () => {
   });
 
   it("draws other plugins' metadata only while Metadata is on", () => {
-    const slot = renderThreadRow({ experiments: ["threadRowMetadata"] });
+    const slot = renderThreadRow();
     expect(
       slot.container.querySelector("[data-thread-row-metadata]"),
     ).toBeNull();
@@ -1323,19 +1322,9 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
   });
 
-  it("ignores the Metadata preference while its experiment is off", () => {
-    getDefaultStore().set(sidebarShowRowMetadataAtom, true);
-    const slot = renderThreadRow();
-    expect(
-      slot.container.querySelector("[data-thread-row-metadata]"),
-    ).toBeNull();
-  });
-
   it("routes a click on other plugins' metadata like the rest of the row", () => {
     getDefaultStore().set(sidebarShowRowMetadataAtom, true);
-    const slot = renderThreadRow({
-      experiments: ["threadRowMetadata"],
-    });
+    const slot = renderThreadRow({});
     const link = screen.getByRole("link", { name: "Open Thread" });
     const row = link.closest("[data-sidebar-rename-row]");
     const items = row?.querySelector("[data-thread-row-metadata]");

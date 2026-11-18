@@ -79,36 +79,53 @@ values. Native questions have no ACP interaction handler in BB; agents use the
 ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
 custom agents with `dialect: "opencode"` and does not change OpenCode config files.
 
-BB also sets `OPENCODE_PERMISSION` from the thread's permission mode, which
-OpenCode merges over the `permission` keys of its own config. In `accept-edits`
-OpenCode edits files without asking and asks before shell commands, web fetches
-and paths outside the workspace; BB shows those requests as approvals. In `full`
-all four are allowed. Changing a thread's permission mode restarts the OpenCode
-session with the new policy; the conversation is restored.
+BB applies the thread's permission mode to OpenCode. OpenCode 1.x reads it
+from `OPENCODE_PERMISSION`, which BB sets and OpenCode merges over the
+`permission` keys of its own config. OpenCode 2.x ignores that variable, so BB
+writes the same rules (`edit`, `shell`, `webfetch` and `external_directory`, each
+on `*`) to the session itself with `opencode api PATCH /api/session/<id>` before
+the first prompt, ahead of the session's other rules such as allowed additional
+directories. In `accept-edits` OpenCode edits files without asking and asks
+before shell commands, web fetches and paths outside the workspace; BB shows
+those requests as approvals. In `full` all four are allowed. Changing a thread's
+permission mode restarts the OpenCode session with the new policy; the
+conversation is restored. In `accept-edits`, if the launch command does not
+end in `acp` or OpenCode 2.x rejects the rules, the session fails to start
+instead of running without them. In `full` there is nothing to enforce, so a
+launch command that does not end in `acp` only logs a warning once.
+
+Approving a request "for session" is remembered by BB for that thread's ACP
+session: the agent is answered with its allow-once option, and later requests
+with the same subject (the same command, write scope, or tool) are approved
+without asking. BB sends an agent's allow-always option only when the agent
+offers no allow-once option, so agents such as Cursor do not write the grant to
+their global config, and a new thread asks again.
 
 OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
 before attempting provider-specific recovery.
 
-BB reuses the initial model's advertised reasoning choices and probes other
-models within a five-second budget, trying configured priority models first.
-Selecting an unprobed model starts a separate discovery session that probes only
-that model, with a five-second timeout. Results are cached by model. While
+Listing models reads only the reasoning choices the agent reports for its
+current model; it never switches the agent's model. Selecting an unprobed model
+starts a separate discovery session that switches to only that model, with a
+five-second timeout, then sets the session's starting model and other changed
+options, such as the reasoning level and Fast, back before closing it, including
+after a failed or timed-out probe. This matters for agents that save every model
+change as their default. Results are cached by model. While
 loading, or after failure or an unrecognized response, BB shows no reasoning
 selector. Sending never waits for discovery: when a model's catalog entry does
 not list the thread's reasoning level, BB leaves reasoning out of the request and
 the agent keeps its own setting. CLI and SDK reasoning preferences stay stored.
 Failed probes have a 30-second server retry cooldown; a probe the agent answers
 without levels is not repeated until the catalog is refreshed. Discovered levels
-survive later catalog refreshes. Individual probe failures do not stop bulk
-discovery of other models. In `bb provider models
+survive later catalog refreshes. In `bb provider models
 <provider-id> --json`, `reasoningDiscovery: "unknown"` means BB has not
 discovered the model's levels yet; `"known"` with an empty
 `supportedReasoningEfforts` means the model has no selectable levels, not that
 it cannot reason. Use `bb provider models <provider-id> --selected-model <model-id>
 --json` (SDK: `providers.models({ providerId, selectedModel })`) to request
 the same discovery without the picker. Refresh the catalog after changing the
-agent's default or priority models. This does not require omp's proposed `_meta.thoughtLevels` extension.
+agent's default model. This does not require omp's proposed `_meta.thoughtLevels` extension.
 
 OpenCode Go subscription usage is available in Provider usage when the selected
 machine has OpenCode installed and a Go subscription. Sign in to Go in OpenCode

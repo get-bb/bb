@@ -75,47 +75,48 @@ function stubSidebarBootstrapFetch(
 ): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          sections: [],
-          projects: projects.map((project) => ({
-            id: project.id,
-            kind: "standard",
-            name: project.name,
-            gitRemoteUrl: project.gitRemoteUrl,
-            createdAt: NOW,
-            updatedAt: NOW,
-            sources: project.hostIds.map((hostId, index) => ({
-              id: `src_${project.id}_${index}`,
-              projectId: project.id,
-              type: "local_path",
-              hostId,
-              path: `/repos/${project.name}`,
-              isDefault: index === 0,
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            sections: [],
+            projects: projects.map((project) => ({
+              id: project.id,
+              kind: "standard",
+              name: project.name,
+              gitRemoteUrl: project.gitRemoteUrl,
               createdAt: NOW,
               updatedAt: NOW,
+              sources: project.hostIds.map((hostId, index) => ({
+                id: `src_${project.id}_${index}`,
+                projectId: project.id,
+                type: "local_path",
+                hostId,
+                path: `/repos/${project.name}`,
+                isDefault: index === 0,
+                createdAt: NOW,
+                updatedAt: NOW,
+              })),
+              defaultExecutionOptions: null,
+              threads: Array.from({ length: project.threadCount }, (_, i) => ({
+                id: `thr_${project.id}_${i}`,
+                projectId: project.id,
+              })),
             })),
-            defaultExecutionOptions: null,
-            threads: Array.from({ length: project.threadCount }, (_, i) => ({
-              id: `thr_${project.id}_${i}`,
-              projectId: project.id,
-            })),
-          })),
-          personalProject: {
-            id: "proj_personal",
-            kind: "personal",
-            name: "Personal",
-            gitRemoteUrl: null,
-            createdAt: NOW,
-            updatedAt: NOW,
-            sources: [],
-            defaultExecutionOptions: null,
-            threads: [],
-          },
-        }),
-        { status, headers: { "content-type": "application/json" } },
-      ),
+            personalProject: {
+              id: "proj_personal",
+              kind: "personal",
+              name: "Personal",
+              gitRemoteUrl: null,
+              createdAt: NOW,
+              updatedAt: NOW,
+              sources: [],
+              defaultExecutionOptions: null,
+              threads: [],
+            },
+          }),
+          { status, headers: { "content-type": "application/json" } },
+        ),
     ),
   );
 }

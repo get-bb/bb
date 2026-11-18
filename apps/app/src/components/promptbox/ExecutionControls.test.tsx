@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   ExecutionControls,
@@ -35,6 +35,7 @@ function makeExecutionControlsProps(
     reasoning: {
       value: "medium",
       options: [{ value: "medium", label: "Medium" }],
+      isLoading: false,
       onChange: vi.fn(),
     },
   };
@@ -45,7 +46,7 @@ function renderExecutionControls(props: ExecutionControlsProps) {
   return render(<ExecutionControls {...props} />, { wrapper });
 }
 
-beforeAll(() => ModelReasoningMenu.preload());
+await ModelReasoningMenu.preload();
 
 afterEach(() => {
   cleanup();

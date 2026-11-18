@@ -673,8 +673,9 @@ every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
 `turn.failed` carries ids and failure facts after a thread lands in `error`,
 including `originPluginId`, the plugin that sent the failed message. Provider
-retry uses it to ask only that plugin whether to re-run the turn
-(`provider-retry.v1.consent`); Automations is the one sender that answers.
+retry uses it to decide and queue retries, then publishes the decision through
+its `decision.get` RPC; Automations and Workflows wait for that decision before
+re-running failed work.
 
 Docs: `backend-events.md`.
 
@@ -1085,8 +1086,7 @@ Docs: `backend-sdk.md`.
 `experimental_useExperiment(key)` returns whether the bb experiment `key` is
 on, from the same live system config core reads (Settings → Experiments,
 `bb settings experiment`). It is false while config loads and for unknown
-keys. Callers: the built-in thread list, which gates row metadata on
-`threadRowMetadata`, and push notifications, which reads
+keys. Caller: push notifications, which reads
 `skipFocusedThreadNotifications`.
 
 **Audit before stabilizing.**
@@ -1378,35 +1378,33 @@ own the row chrome instead of the plugin rendering `SetupOptionRow`.
 
 Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
-`internal_DO_NOT_USE_onSetupStarted` is set only when the setup guide renders a
-plugin's settings section inline (the current guide's Devices step expands the
-bb connect settings under Set up). The section calls it when the user actually
-starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
-code is submitted, or Turn on is pressed, so the current guide records
-`remote_access` `started` at the same moment as the redesigned guide's
-`onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
-counterpart, called with the same `InternalDoNotUseSetupFailureStage` and
-optional `InternalDoNotUseSetupFailureDetail` the redesigned guide's
+`internal_DO_NOT_USE_onSetupStarted` is meant to be set only when a setup
+guide renders a plugin's settings section inline. The section calls it when the
+user actually starts setting up: bb connect calls it when getbb.app sign-in
+starts, a pairing code is submitted, or Turn on is pressed, matching when the
+setup guide section's `onSetupStarted` fires.
+`internal_DO_NOT_USE_onSetupFailed(stage)` is its failure counterpart, called
+with the same `InternalDoNotUseSetupFailureStage` and optional
+`InternalDoNotUseSetupFailureDetail` the setup guide section's
 `onSetupFailed` receives (`sign_in` when getbb.app sign-in
 can't start or ends denied, expired, or failed; `pairing` when a pairing code
 is rejected; `turn_on` when turning remote access on fails). Core's
 `PluginSettingsSections` passes them through its `onSetupStarted` and
 `onSetupFailed` props; Settings never sets them.
 
-Callers: the bundled `connect` plugin only. Core caller: the onboarding
-Devices step (current guide), which renders `PluginSettingsSections` for
-`connect`.
+Callers: the bundled `connect` plugin only. Core caller: none. The setup
+guide's Devices step renders `PluginSetupGuideSections` instead, and Settings
+never sets these props.
 
-**Audit before stabilizing.** Decide whether the setup guide should render
-setup guide rows in both variants instead, which would make this prop
-unnecessary.
+**Audit before stabilizing.** Remove both members, `PluginSettingsSections`'
+`onSetupStarted` and `onSetupFailed` props, and connect's handling of them.
 
 ## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 
 Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
 A provider declaration sets `internal_DO_NOT_USE_guidedSignIn: true` when the
-redesigned first-run setup guide should run its sign-in in the guided panel:
+first-run setup guide should run its sign-in in the guided panel:
 the guide runs the provider's login command, keeps its terminal behind Show
 terminal, reads the sign-in link and code from the output, and shows them in
 the row. Every other provider is terminal-first: the guide opens the login
@@ -1414,7 +1412,7 @@ terminal in the row. The validator fills `false` when the field is absent and
 refuses a non-boolean. The server keeps it on the provider registration and
 projects it onto every provider-states row (`GET /system/provider-states`) as
 a required boolean, so the Agent step's row and its sign-in mode come from the
-same response. It is not part of `ProviderInfo`. Today's guide ignores it.
+same response. It is not part of `ProviderInfo`.
 
 Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
 Cursor agent only. Core caller: the onboarding Agent step
@@ -1430,11 +1428,11 @@ Pi's terminal `/login` flow belongs in the same declaration.
 
 Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
-A provider bridge's health result may set `internal_DO_NOT_USE_setupGuidePlanLabel` to a plan name (for example "Plus") that only the redesigned first-run setup guide shows next to the account on a ready agent row. `planLabel` keeps its existing meaning, so today's guide and every other surface show what they showed before. The field is optional on the bridge result and passes through older daemons unchanged; the server fills `null` when it is absent, so provider-states rows always carry it.
+A provider bridge's health result may set `internal_DO_NOT_USE_setupGuidePlanLabel` to a plan name (for example "Plus") that only the first-run setup guide shows next to the account on a ready agent row. `planLabel` keeps its existing meaning, so every other surface shows what it showed before. The field is optional on the bridge result and passes through older daemons unchanged; the server fills `null` when it is absent, so provider-states rows always carry it.
 
-Callers: `provider-codex` only (its ChatGPT plan). Core caller: the new guide's Agent step (`OnboardingFlow`), which prefers it over `planLabel`.
+Callers: `provider-codex` only (its ChatGPT plan). Core caller: the setup guide's Agent step (`OnboardingFlow`), which prefers it over `planLabel`.
 
-**Audit before stabilizing.** Decide whether the plan should become part of `planLabel` everywhere (Settings, today's guide) and the field be removed.
+**Audit before stabilizing.** Decide whether the plan should become part of `planLabel` everywhere (such as Settings) and the field be removed.
 
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
@@ -2269,24 +2267,66 @@ Docs: `testing.md`.
    falls back when no closing tag matches. Decide whether a full parser is
    owed before the scan is a promise.
 
+## `experimental_trackChildProcesses`, `experimental_createProcessLifeline` and `experimental_createDescendantPipe` (`@get-bb/plugin-sdk/testing`)
+
+Test fixtures for observing processes by handle instead of by PID. A PID check
+answers for whichever process holds the number now, and Windows reuses PIDs
+quickly.
+
+- `experimental_trackChildProcesses()` records each `ChildProcess` spawned in
+  the test process through Node's `child_process` diagnostics channel. It
+  offers `children`, `running()`, `waitForExit()`, `killRunning()` and
+  `dispose()`.
+- `experimental_createProcessLifeline()` opens a local socket (a named pipe on
+  Windows). A descendant joins by running `holdSource(label)`. Each holder's
+  `exited` and `alive()` follow its connection, and `kill()` signals only while
+  that connection is open. `close()` kills the holders still connected.
+- `experimental_createDescendantPipe()` makes a POSIX named pipe for shell
+  descendants that cannot run Node. A descendant redirects into it, which
+  costs no startup time. `opened` and `closed` follow that write end.
+
+Both are wrappers over `@bb/test-helpers/child-processes`, the module core tests
+use. The repository rule `scripts/check-test-process-identity.mjs`, run in CI's
+plan job, rejects signal-0 probes, PID-argument liveness helpers and PID
+inequality assertions in test code. Forkable first-party plugins (Codex,
+Automations, Browser Automation, MCP, Personal Workspace) call these exports.
+
+Docs: `testing.md`.
+
+**Audit before stabilizing.**
+
+1. **Holder kinds.** A lifeline holder must be a Node process, because
+   `holdSource` is a JavaScript statement. A descendant pipe is POSIX-only,
+   and nothing can signal its writer. Decide whether one primitive should
+   cover both, and how Windows shell descendants are observed.
+2. **Connection lifetime versus process lifetime.** A holder that closes its
+   socket early reads as exited, and one that hands the socket to a child stays
+   alive through that child. Confirm no caller needs exact process lifetime.
+3. **Diagnostics channel coverage.** The tracker sees only `child_process`
+   spawns made in this process, not `worker_threads` or processes from native
+   addons. Confirm that matches what plugin tests need.
+
 ## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** The hook returns `ProviderInfo`, which
 carries the unresolved `icon` / `logoUrl` pair and `maintenance`. Stabilizing
 the hook freezes that shape.
 
-Returns `{ status, providers }`, the host's `ProviderInfo[]` roster in picker
-order with shared cache and realtime invalidation.
+Returns `{ status, providers }`: every registered provider's `ProviderInfo`
+in picker order, whichever machine has it installed, read from the provider
+catalog with shared cache, last-known replay and realtime invalidation. Core's
+home Recents list reads the same directory (`useProviderDirectory`).
 
 Docs: `frontend-registration.md`,
 [provider-plugin-api.md](provider-plugin-api.md) §5.
 
 **Audit before stabilizing.**
 
-1. **Routing.** The hook reads the primary-host roster (no `environmentId` /
-   `hostId` argument), so installed-only providers of another machine are not
-   listed. Decide whether plugins need host-scoped listing before freezing the
-   signature.
+1. **Routing.** The hook lists every registered provider, including
+   installed-only providers no connected machine has installed and providers
+   the user disabled; `available` is the registry's flag, not a per-machine
+   check. Decide whether plugins also need a host-scoped roster before
+   freezing the signature.
 2. **Icons.** A provider's SVG asset arrives as `logoUrl` (drawn as a
    `currentColor` mask) and a named glyph as `icon: { glyph }`; at most one is
    set. Decide whether `icon` and `logoUrl` fold into one `{ glyph } | { url }`
@@ -3430,8 +3470,7 @@ draw without waiting.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
-plugin-built list makes, only while the `threadRowMetadata` experiment is on
-and the user turns on Organize → Rows → Metadata (`showRowMetadata`); both are
+plugin-built list makes, when the user turns on Organize → Rows → Metadata (`showRowMetadata`); the preference is
 off by default. The row grows to two lines only
 while an item draws something, the line is hidden while the row is renamed or
 customized, and clicks on it go through the row's own click handling. The
@@ -4023,8 +4062,7 @@ opened it or marked it read, or the user sent it a turn. Marking a thread
 unread does not fire it. Core's own read path is the trigger: every
 `lastReadAt` write raises the `read-state-changed` thread change, and the hub
 emits the event from there, so the payload is the same read state the
-sidebar's unread dot uses. Push-notifications uses it, behind the
-`dismissReadNotifications` experiment, to remove the thread's delivered
+sidebar's unread dot uses. Push-notifications uses it to remove the thread's delivered
 notifications from phones and from open web and desktop clients.
 
 Docs: `backend-sdk.md`, `backend-events.md`.
@@ -4411,10 +4449,7 @@ the same fixed set.
 `unhandled_rejection`) with the guide's step, from `OnboardingErrorTelemetry`
 around the guide in `OnboardingGate`, which reports and rethrows render errors
 and listens for window errors only while the guide is open.
-`onboarding_exposed` (`entry`) marks the guide being shown; the server saves
-the assignment, adds `setup_guide_variant` and `setup_guide_source`, and sends
-`$feature_flag_called` when the variant came from the PostHog flag. Every
-setup-guide event gets `setup_guide_variant` from the server.
+`onboarding_exposed` (`entry`) marks the guide being shown.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -4449,9 +4484,7 @@ launcher a `defer` decision, and the desktop service hands the download back.
 downloading by `activity.phase`. Scheduling again while one is pending returns
 it unchanged. Both refuse like `applyAppUpdate` when the update is unsupported,
 blocked, unavailable, or already running, and 403 for machine credentials.
-Both return 403 `update_when_idle_experiment_disabled` while the
-`updateWhenIdle` experiment is off, and turning it off drops a waiting update.
-While it is on, the server sends `app-update-changed` whenever the running
+The server sends `app-update-changed` whenever the running
 thread count changes, so `runningThreadCount` stays current for clients.
 `experimental_cancelScheduledAppUpdate()` clears the schedule, and a scheduled
 update that is already downloading defers instead of restarting; it is a no-op
@@ -4476,7 +4509,7 @@ automatically" switch, and Skip this version on a waiting update) and
 Stabilize after deciding whether the schedule should persist across server
 restarts, whether threads waiting on a user decision should count as running,
 and whether the settle window should be configurable, and once the
-`updateWhenIdle` experiment ships on for everyone; then rename project-wide and
+update scheduling API has completed its audit; then rename project-wide and
 remove this entry.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`

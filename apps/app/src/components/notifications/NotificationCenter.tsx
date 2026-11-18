@@ -154,7 +154,20 @@ function HeaderAction({ disabled, icon, label, onClick }: HeaderActionProps) {
 export function NotificationCenter() {
   const { open, focusedId } = useNotificationCenterState();
   const notifications = useNotifications();
-  const now = Date.now();
+  const [renderClock, setRenderClock] = useState(() => ({
+    open,
+    focusedId,
+    notifications,
+    now: Date.now(),
+  }));
+  if (
+    renderClock.open !== open ||
+    renderClock.focusedId !== focusedId ||
+    renderClock.notifications !== notifications
+  ) {
+    setRenderClock(() => ({ open, focusedId, notifications, now: Date.now() }));
+  }
+  const now = renderClock.now;
 
   useAppCommandHandler("notifications.open", () => {
     toggleNotificationCenter();

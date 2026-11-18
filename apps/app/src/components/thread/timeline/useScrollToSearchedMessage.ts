@@ -1,7 +1,6 @@
 import {
   createContext,
   createElement,
-  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -264,17 +263,32 @@ function searchTargetAppliesToThread(
   );
 }
 
+function createLocationKeyReader(initialLocationKey: string): {
+  read: () => string;
+  write: (locationKey: string) => void;
+} {
+  let current = initialLocationKey;
+  return {
+    read: () => current,
+    write: (locationKey) => {
+      current = locationKey;
+    },
+  };
+}
+
 export function SearchMessageLocationProvider({
   threadId,
   children,
 }: SearchMessageLocationProviderProps) {
   const location = useLocation();
   const locationKey = `${location.key}:${location.pathname}${location.search}${location.hash}`;
-  const locationKeyRef = useRef(locationKey);
+  const [locationKeyReader] = useState(() =>
+    createLocationKeyReader(locationKey),
+  );
   useLayoutEffect(() => {
-    locationKeyRef.current = locationKey;
-  }, [locationKey]);
-  const readLocationKey = useCallback(() => locationKeyRef.current, []);
+    locationKeyReader.write(locationKey);
+  }, [locationKey, locationKeyReader]);
+  const readLocationKey = locationKeyReader.read;
   const searchTarget = readSearchMessageTarget(location.state);
   const messageLinkTarget = parseMessageLink(
     `${location.pathname}${location.search}${location.hash}`,
@@ -434,7 +448,7 @@ export function useScrollToSearchedMessage(
     if (renderedTarget === null) {
       return;
     }
-    let frame: number;
+    const scheduled = { frame: 0 };
     let frameCount = 0;
     let stableFrameCount = 0;
     let previousGeometry: string | null = null;
@@ -467,12 +481,12 @@ export function useScrollToSearchedMessage(
         revealTimelineRow(element, bottomAnchor);
         return;
       }
-      frame = requestAnimationFrame(revealTarget);
+      scheduled.frame = requestAnimationFrame(revealTarget);
     };
 
-    frame = requestAnimationFrame(revealTarget);
+    scheduled.frame = requestAnimationFrame(revealTarget);
     return () => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(scheduled.frame);
     };
   }, [
     bottomAnchor,

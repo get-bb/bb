@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type {
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
@@ -68,15 +68,19 @@ export function useThreadSecondaryPanelDrawerVisibility({
     null,
   );
 
-  useEffect(() => {
-    setOpenDrawerThreadId(null);
-  }, [threadId]);
-
-  useEffect(() => {
-    if (!isCompactViewport) {
+  const [drawerResetInputs, setDrawerResetInputs] = useState({
+    isCompactViewport,
+    threadId,
+  });
+  if (
+    drawerResetInputs.threadId !== threadId ||
+    drawerResetInputs.isCompactViewport !== isCompactViewport
+  ) {
+    setDrawerResetInputs({ isCompactViewport, threadId });
+    if (drawerResetInputs.threadId !== threadId || !isCompactViewport) {
       setOpenDrawerThreadId(null);
     }
-  }, [isCompactViewport]);
+  }
 
   const openDrawerForCurrentThread = useCallback(() => {
     if (!hasThreadId(threadId)) {

@@ -32,6 +32,7 @@ import {
 import { holdSplitPreloads, startSplitPreloading } from "@/lib/split-prefetch";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { useCodeRendererPreloads } from "./useCodeRendererPreloads";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const imports = vi.hoisted(() => ({ diff: vi.fn(), source: vi.fn() }));
 
@@ -110,10 +111,8 @@ it("warms selected implementations after startup and idle, skips replacements, a
   });
   expect(imports.diff).not.toHaveBeenCalled();
   expect(imports.source).not.toHaveBeenCalled();
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(2000);
-    await vi.dynamicImportSettled();
-  });
+  await act(async () => vi.advanceTimersByTimeAsync(2000));
+  await settleLazyModules();
   expect(imports.diff).toHaveBeenCalledTimes(1);
   expect(imports.source).toHaveBeenCalledTimes(1);
 

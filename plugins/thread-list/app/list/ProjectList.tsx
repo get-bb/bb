@@ -35,6 +35,7 @@ import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import { SidebarProvidersContext } from "../rows/ThreadRow.js";
 import {
   buildProjectThreadGroups,
+  buildSectionGroupItem,
   getProjectThreadItemDescendants,
   type ProjectThreadNode,
 } from "../model/project-thread-groups.js";
@@ -124,7 +125,7 @@ import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
 import { useReadStatusGrouping } from "./useReadStatusGrouping.js";
 import { haveSameOrder } from "../model/stored-order.js";
 import {
-  SidebarProjectsContext,
+  SidebarProjectNamesContext,
   useSidebarData,
   useSidebarMachineHosts,
   type SidebarProject,
@@ -432,17 +433,14 @@ function buildGroupSectionItem(
     groupThreadsByEnvironment,
   );
   const hiddenThreads = getProjectThreadItemDescendants(items);
-  return {
-    kind: "section",
-    group: {
-      id,
-      key,
-      name,
-      items,
-      threadCount: hiddenThreads.length,
-      hiddenThreads,
-    },
-  };
+  return buildSectionGroupItem({
+    id,
+    key,
+    name,
+    items,
+    threadCount: hiddenThreads.length,
+    hiddenThreads,
+  });
 }
 
 function useGroupedModeThreadDnd({
@@ -1314,8 +1312,14 @@ function ProjectListComponent({
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const { providers } = experimental_useProviders();
-  const { status, sections, projects, personalProject, archived } =
-    useSidebarData();
+  const {
+    status,
+    sections,
+    projects,
+    personalProject,
+    archived,
+    projectNamesById,
+  } = useSidebarData();
   const personalProjectId = personalProject?.id ?? null;
   const threads = useMemo<SidebarThread[]>(
     () => projects.flatMap((project) => project.threads),
@@ -1833,11 +1837,11 @@ function ProjectListComponent({
     </SidebarHeaderActionsProvider>
   );
   return (
-    <SidebarProjectsContext.Provider value={projects}>
+    <SidebarProjectNamesContext.Provider value={projectNamesById}>
       <SidebarProvidersContext.Provider value={providers}>
         {content}
       </SidebarProvidersContext.Provider>
-    </SidebarProjectsContext.Provider>
+    </SidebarProjectNamesContext.Provider>
   );
 }
 

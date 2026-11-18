@@ -3,7 +3,7 @@ import {
   PageTitleHookHost,
   PageTitleProvider,
 } from "@/components/layout/page-title";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { PluginSlotMount } from "./PluginSlotMount";
 
@@ -20,7 +20,7 @@ export function PluginPageTitleHost({
   children: ReactNode;
   focused?: boolean;
 }) {
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginSlotKind("navPanels");
   const pane = useOptionalPaneContext();
   const panel = navPanels.find(
     (candidate) =>

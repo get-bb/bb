@@ -1,5 +1,4 @@
 import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
@@ -19,7 +18,6 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import { useExperiment } from "../experiments/use-experiment";
 import FilesEditorIcon from "../assets/plugin-icons/files-editor.svg";
 import TaskboardIcon from "../assets/plugin-icons/taskboard.svg";
 import {
@@ -82,7 +80,6 @@ import {
 } from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DesktopInstallChoice } from "./install-choice";
 import {
@@ -98,94 +95,31 @@ import {
   OpencodeIcon,
   PiIcon,
 } from "./icons";
-import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
+import type { CtaPlacement } from "./site";
+import { CLI_COMMAND } from "./site";
 import { useActiveWhileVisible, usePageHidden } from "./visibility";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
-  const simple = useExperiment("homepage-download-path") === "test";
   const platform = useDesktopPlatform();
-  const download = DESKTOP_DOWNLOADS[platform];
-  const otherPlatform: DesktopPlatform =
-    platform === "macos" ? "linux" : "macos";
-  const simpleLinks = (
-    <>
-      <OpenSourceLink placement={placement} />
-      {" · "}
-      <a className="install-note-link" href={DOWNLOAD_PAGE_PATH}>
-        Other platforms
-      </a>
-    </>
-  );
   return (
     <div className="install-options">
       <div className="install-actions">
-        <DesktopInstallChoice
-          placement={placement}
-          platform={platform}
-          note={
-            simple ? (
-              <>
-                {download.shortNote ? `${download.shortNote} · ` : null}
-                {simpleLinks}
-              </>
-            ) : (
-              <>
-                {download.note}
-                {" · "}
-                <DownloadLink
-                  placement={placement}
-                  platform={otherPlatform}
-                  className="install-note-link"
-                >
-                  Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
-                </DownloadLink>
-              </>
-            )
-          }
-          touchNote={simple ? simpleLinks : undefined}
-        />
-        {simple ? null : (
-          <span className="install-choice">
-            <CommandButton
-              command={CLI_COMMAND}
-              label={`Copy browser install command: ${CLI_COMMAND}`}
-              size="hero"
-              onCopy={() =>
-                trackLandingEvent({
-                  name: "landing_cli_command_copied",
-                  properties: { placement, command: CLI_COMMAND },
-                })
-              }
-            />
-            <span className="install-note">
-              {platform !== "windows" && (
-                <>
-                  <DownloadLink
-                    placement={placement}
-                    platform="windows"
-                    className="install-note-link"
-                  >
-                    {DESKTOP_DOWNLOADS.windows.label}
-                  </DownloadLink>
-                  ,{" "}
-                </>
-              )}
-              Intel Macs &amp; remote machines
-            </span>
-          </span>
-        )}
+        <DesktopInstallChoice placement={placement} platform={platform} />
+        <span className="install-choice">
+          <CommandButton
+            command={CLI_COMMAND}
+            label={`Copy browser install command: ${CLI_COMMAND}`}
+            size="hero"
+            onCopy={() =>
+              trackLandingEvent({
+                name: "landing_cli_command_copied",
+                properties: { placement, command: CLI_COMMAND },
+              })
+            }
+          />
+        </span>
       </div>
     </div>
-  );
-}
-
-function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
-  return (
-    <GitHubLink placement={placement} className="install-note-link oss-link">
-      <HugeiconsIcon icon={GithubIcon} className="oss-ic" aria-hidden />
-      Open source
-    </GitHubLink>
   );
 }
 
@@ -418,67 +352,6 @@ export function SpawnRow({
           done
         </span>
       </span>
-    </div>
-  );
-}
-
-export function SpawnSidebar() {
-  const { cycle, leaving } = useCycle(5600, 500);
-  return (
-    <div
-      className="spawnbar"
-      aria-label="bb spawns and manages a worker thread for each provider"
-    >
-      <div className="sb-head">
-        <span aria-hidden="true" className="bb-mark sb-mark" />
-        <span className="sb-title">Threads</span>
-        <span className="sb-active">5 active</span>
-      </div>
-      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
-        <SpawnRow
-          parent
-          icon={<ClaudeIcon className="sb-ic" />}
-          name="Claude Code"
-          task="Ship the release"
-          status="managing"
-          at={0.1}
-          doneAt={4}
-        />
-        <div className="sb-kids">
-          <SpawnRow
-            icon={<OpenAiIcon className="sb-ic" />}
-            name="Codex"
-            task="Port module to TS"
-            status="running"
-            at={0.6}
-            doneAt={2.3}
-          />
-          <SpawnRow
-            icon={<CursorIcon className="sb-ic" />}
-            name="Cursor"
-            task="Refactor the auth flow"
-            status="running"
-            at={1}
-            doneAt={3}
-          />
-          <SpawnRow
-            icon={<PiIcon className="sb-ic" />}
-            name="Pi"
-            task="Write release notes"
-            status="running"
-            at={1.4}
-            doneAt={3.7}
-          />
-          <SpawnRow
-            icon={<OpencodeIcon className="sb-ic" />}
-            name="OpenCode"
-            task="Add integration tests"
-            status="running"
-            at={1.8}
-            doneAt={3.4}
-          />
-        </div>
-      </div>
     </div>
   );
 }

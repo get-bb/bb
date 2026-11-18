@@ -67,22 +67,26 @@ export function useHoverPopover({
     toggleTimeoutRef.current = null;
   }, []);
 
+  const isFocused = isFocusOverTrigger || isFocusOverContent;
+  const isPointerOver = isPointerOverTrigger || isPointerOverContent;
+  if (
+    supportsHover &&
+    !open &&
+    (isFocused || (isPointerOver && openDelayMs <= 0))
+  ) {
+    setOpen(true);
+  }
+
   useEffect(() => {
     clearToggleTimeout();
     if (!supportsHover) return;
 
-    if (isFocusOverTrigger || isFocusOverContent) {
-      if (!open) setOpen(true);
+    if (isFocused) {
       return;
     }
 
-    if (isPointerOverTrigger || isPointerOverContent) {
+    if (isPointerOver) {
       if (open) return;
-
-      if (openDelayMs <= 0) {
-        setOpen(true);
-        return;
-      }
 
       toggleTimeoutRef.current = window.setTimeout(() => {
         setOpen(true);
@@ -103,11 +107,9 @@ export function useHoverPopover({
   }, [
     clearToggleTimeout,
     closeDelayMs,
-    isFocusOverContent,
-    isFocusOverTrigger,
+    isFocused,
     supportsHover,
-    isPointerOverContent,
-    isPointerOverTrigger,
+    isPointerOver,
     open,
     openDelayMs,
   ]);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -18,8 +18,9 @@ import {
   resetNotificationStore,
 } from "./notification-store";
 
-beforeEach(() => {
+afterEach(() => {
   cleanup();
+  appToast.dismiss();
   vi.restoreAllMocks();
   resetNotificationStore();
 });
@@ -73,6 +74,9 @@ describe("toast history", () => {
     await waitFor(() => expect(screen.getByText("Deployed v2")).toBeDefined());
     act(() => {
       toast.dismiss();
+    });
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("app-toast-title")).toHaveLength(0);
     });
   });
 });

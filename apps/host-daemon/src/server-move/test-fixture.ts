@@ -20,6 +20,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ServerMoveProgressMessage } from "@bb/host-daemon-contract";
+import { killProcessGroup } from "@bb/process-utils";
+import { hasExited, trackChildProcesses } from "@bb/test-helpers";
 import { writeServerArchive, writeServerMovedFile } from "@bb/server-archive";
 import { afterEach, vi } from "vitest";
 import type { CommandOf } from "../command-dispatch-support.js";
@@ -32,7 +34,7 @@ import {
 
 const roots: string[] = [];
 const httpServers: Server[] = [];
-const spawnedPids: number[] = [];
+const detachedChildren: ChildProcess[] = [];
 const spawnedChildren: ChildProcess[] = [];
 const pendingServerExits = new Map<number, Promise<void>>();
 const PENDING_SERVER_EXIT_GRACE_MS = 2_000;
@@ -116,10 +118,8 @@ export function registerServerMoveFixtureCleanup(): void {
         });
       }),
     );
-    for (const pid of spawnedPids.splice(0)) {
-      try {
-        process.kill(-pid, "SIGKILL");
-      } catch {}
+    for (const child of detachedChildren.splice(0)) {
+      if (!hasExited(child)) killProcessGroup({ child, signal: "SIGKILL" });
     }
     await Promise.all(
       httpServers
@@ -501,14 +501,21 @@ export async function createFixture(args: FixtureArgs = {}) {
         pendingChildren.set(child.pid, child);
         return child.pid;
       }
-      const pid = await defaultDetachedProcessSpawner({
-        command: process.execPath,
-        args: [stubPath, request.dataDir, String(request.serverPort)],
-        env: { PATH: process.env.PATH },
-        logPath: request.logPath,
-      });
-      spawnedPids.push(pid);
-      return pid;
+      const spawned = trackChildProcesses();
+      try {
+        const pid = await defaultDetachedProcessSpawner({
+          command: process.execPath,
+          args: [stubPath, request.dataDir, String(request.serverPort)],
+          env: { PATH: process.env.PATH },
+          logPath: request.logPath,
+        });
+        detachedChildren.push(
+          ...spawned.children.filter((child) => child.pid === pid),
+        );
+        return pid;
+      } finally {
+        spawned.dispose();
+      }
     },
     installBbApp: args.installBbApp ?? (async () => undefined),
     checkGhAuthenticated: async () => null,
@@ -545,12 +552,12 @@ export async function createFixture(args: FixtureArgs = {}) {
     commands,
     launches,
     reserveServerPort,
-    isPendingServerRunning(pid: number): boolean {
+    pendingServer(pid: number): ChildProcess {
       const child = pendingChildren.get(pid);
       if (child === undefined) {
         throw new Error(`No retained pending server child for pid ${pid}`);
       }
-      return child.kill(0);
+      return child;
     },
     logger,
   };

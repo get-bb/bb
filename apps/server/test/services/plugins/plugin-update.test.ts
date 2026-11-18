@@ -192,6 +192,7 @@ async function createPluginUpdateFixture(
     repo,
     service,
     app,
+    updateJobs,
     async taggedRepo() {
       const tagged = join(workDir, "tagged");
       cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
@@ -487,6 +488,7 @@ describe("plugin update service and routes", () => {
   let repo: string;
   let service: PluginService;
   let app: Hono;
+  let updateJobs: ReturnType<typeof createPluginUpdateJobs>;
   let materializationCount: number;
   let afterArtifactPromoted:
     | ((args: {
@@ -499,15 +501,17 @@ describe("plugin update service and routes", () => {
   beforeEach(async () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
-    ({ db, workDir, repo, service, app } = await createPluginUpdateFixture({
-      afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
-      onArtifactMaterialize: () => {
-        materializationCount += 1;
-      },
-    }));
+    ({ db, workDir, repo, service, app, updateJobs } =
+      await createPluginUpdateFixture({
+        afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
+        onArtifactMaterialize: () => {
+          materializationCount += 1;
+        },
+      }));
   });
 
   afterEach(async () => {
+    for (const job of updateJobs.list()) await updateJobs.settled(job.id);
     vi.unstubAllGlobals();
     await service.stop();
     db.$client.close();
@@ -787,50 +791,51 @@ describe("plugin update service and routes", () => {
     expect(fetched.filter((url) => url.includes("api.github.com"))).toEqual([]);
   });
 
-  it("accepts an update before activation finishes and exposes its result after reconnect", async () => {
+  it("accepts an update before activation finishes and exposes its result after reconnect", async ({
+    signal,
+  }) => {
     await installUpdater();
     const nextCommit = await commitPlugin(repo, "1.1.0");
     let release = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    signal.throwIfAborted();
+    signal.addEventListener("abort", release, { once: true });
     afterArtifactPromoted = async () => gate;
     const pending = app.request("/plugins/updater/update", {
       method: "POST",
       headers: { "content-type": "application/json", prefer: "respond-async" },
       body: "{}",
     });
-    let response: Response | undefined;
     try {
-      response = await Promise.race([
-        pending,
-        new Promise<undefined>((resolve) => setTimeout(resolve, 250)),
-      ]);
-      expect(response?.status).toBe(202);
+      const response = await pending;
+      signal.throwIfAborted();
+      expect(response.status).toBe(202);
+      const { job } = pluginUpdateJobResponseSchema.parse(
+        await response.json(),
+      );
+      release();
+      await updateJobs.settled(job.id);
+      const got = await app.request(`/plugins/update-jobs/${job.id}`);
+      expect(await got.json()).toMatchObject({
+        job: {
+          state: "completed",
+          pluginId: "updater",
+          result: {
+            applied: true,
+            outcome: "updated",
+            to: { version: nextCommit },
+          },
+        },
+      });
+      expect(getInstalledPlugin(db, "updater")?.version).toBe("1.1.0");
     } finally {
       release();
       await pending;
+      for (const job of updateJobs.list()) await updateJobs.settled(job.id);
+      signal.removeEventListener("abort", release);
     }
-    if (response === undefined) return;
-    const { job } = pluginUpdateJobResponseSchema.parse(await response.json());
-    await vi.waitFor(
-      async () => {
-        const got = await app.request(`/plugins/update-jobs/${job.id}`);
-        expect(await got.json()).toMatchObject({
-          job: {
-            state: "completed",
-            pluginId: "updater",
-            result: {
-              applied: true,
-              outcome: "updated",
-              to: { version: nextCommit },
-            },
-          },
-        });
-      },
-      { timeout: 10_000 },
-    );
-    expect(getInstalledPlugin(db, "updater")?.version).toBe("1.1.0");
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {

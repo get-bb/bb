@@ -672,7 +672,8 @@ describe("Docs nav panel", () => {
       slot.rpcCalls.filter(
         (call) =>
           call.method === "listNotes" &&
-          (call.input as { vaultId?: string }).vaultId === "personal",
+          ((call.input as { vaultId?: string }).vaultId ?? "personal") ===
+            "personal",
       ),
     ).toHaveLength(1);
     expect(slot.navigateCalls).not.toContainEqual({
@@ -733,7 +734,8 @@ describe("Docs nav panel", () => {
       slot.rpcCalls.filter(
         (call) =>
           call.method === "listNotes" &&
-          (call.input as { vaultId?: string }).vaultId === "personal",
+          ((call.input as { vaultId?: string }).vaultId ?? "personal") ===
+            "personal",
       ),
     ).toHaveLength(1);
     expect(slot.navigateCalls).not.toContainEqual({
@@ -1347,8 +1349,8 @@ describe("Docs nav panel", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        constructor(callback: () => void) {
-          resize = callback;
+        constructor(callback: (entries: ResizeObserverEntry[]) => void) {
+          resize = () => callback([]);
         }
         observe() {}
         disconnect() {}

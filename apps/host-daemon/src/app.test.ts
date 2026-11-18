@@ -152,6 +152,7 @@ function createFetchRecorder(
           },
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
+          reconnectGraceMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
           endedInteractiveRequests:
             sessionOpenCount > 1
@@ -315,6 +316,9 @@ function createFakeRuntime(): AgentRuntime {
     },
     getActiveTurnId() {
       return null;
+    },
+    getActiveTurnRequestIds() {
+      return [];
     },
     async waitForActiveTurn() {
       return null;
@@ -485,8 +489,12 @@ describe("createHostDaemonApp", () => {
       if (!socket) throw new Error("Expected daemon socket");
       socket.onmessage?.({
         data: JSON.stringify({
-          type: "machine-environment.replace",
-          environment: { revision: 1, entries: [] },
+          seq: 1,
+          ack: 0,
+          message: {
+            type: "machine-environment.replace",
+            environment: { revision: 1, entries: [] },
+          },
         }),
       });
       expect(process.env.MACHINE_DAEMON_TEST).toBe("original");
@@ -539,9 +547,13 @@ describe("createHostDaemonApp", () => {
       if (!socket) throw new Error("Expected daemon socket");
       socket.onmessage?.({
         data: JSON.stringify({
-          type: "provider-session-policy.replace",
-          idleProviderSessionTimeoutMinutes: 30,
-          agentCpuPriority: false,
+          seq: 1,
+          ack: 0,
+          message: {
+            type: "provider-session-policy.replace",
+            idleProviderSessionTimeoutMinutes: 30,
+            agentCpuPriority: false,
+          },
         }),
       });
       expect(readAgentCpuPriority(dataDir)).toBe(false);
@@ -577,15 +589,23 @@ describe("createHostDaemonApp", () => {
     await app.daemon.start();
     if (socket === undefined) throw new Error("Expected daemon socket");
 
-    socket.onmessage?.({ data: JSON.stringify({ type: "machine.shutdown" }) });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        seq: 1,
+        ack: 0,
+        message: { type: "machine.shutdown" },
+      }),
+    });
     await app.daemon.waitUntilStopped();
 
     await expect(
       fs.access(path.join(dataDir, MACHINE_SUSPENSION_MARKER)),
     ).resolves.toBeUndefined();
-    expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "machine.shutdown-ack" }),
-    );
+    expect(
+      vi
+        .mocked(socket.send)
+        .mock.calls.map(([frame]) => JSON.parse(frame).message),
+    ).toContainEqual({ type: "machine.shutdown-ack" });
     expect(exitProcess).toHaveBeenCalledWith(0);
   });
 

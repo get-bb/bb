@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { InfoSectionCollapseIdContext } from "./useInfoSectionCollapse";
 
 export interface CoreThreadInfoRegistration {
@@ -54,7 +54,7 @@ interface ThreadInfoSlotsProps extends ExperimentalThreadInfoProps {
 }
 
 export function ThreadInfoRows({ core, ...props }: ThreadInfoSlotsProps) {
-  const { threadInfoRows } = usePluginSlots();
+  const threadInfoRows = usePluginSlotKind("threadInfoRows");
   return sortThreadInfoEntries(core, threadInfoRows).map((entry) => {
     const Component = entry.registration.component;
     if (entry.owner === "core") {
@@ -77,7 +77,7 @@ export function ThreadInfoRows({ core, ...props }: ThreadInfoSlotsProps) {
 }
 
 export function ThreadInfoSections({ core, ...props }: ThreadInfoSlotsProps) {
-  const { threadInfoSections } = usePluginSlots();
+  const threadInfoSections = usePluginSlotKind("threadInfoSections");
   return sortThreadInfoEntries(core, threadInfoSections).map((entry) => {
     const Component = entry.registration.component;
     if (entry.owner === "core") {

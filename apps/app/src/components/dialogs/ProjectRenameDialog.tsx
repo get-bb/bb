@@ -7,7 +7,7 @@ export interface ProjectRenameDialogTarget {
   currentName: string;
 }
 
-interface ProjectRenameDialogProps {
+export interface ProjectRenameDialogProps {
   target: ProjectRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;

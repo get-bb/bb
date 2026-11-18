@@ -25,13 +25,22 @@ import {
 } from "./plugin-thread-row-status";
 import { useEnvironmentProviders } from "./plugin-sdk-hooks";
 import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarThreadShortcuts";
-import { SidebarThreadEntriesTestProvider } from "@/test/sidebarThreadEntriesTestProvider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 
-const renderHook: typeof renderHookBase = (callback, options) =>
-  renderHookBase(callback, {
-    wrapper: SidebarThreadEntriesTestProvider,
+const renderHook: typeof renderHookBase = (callback, options) => {
+  const queryClient = new QueryClient();
+  if (state.data !== undefined) {
+    queryClient.setQueryData(sidebarNavigationQueryKey(), state.data);
+  }
+  return renderHookBase(callback, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
     ...options,
   });
+};
 
 const actions = vi.hoisted(() => ({
   navigate: vi.fn(),

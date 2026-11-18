@@ -14,7 +14,7 @@ import {
   getFileBasename,
   getExperimentalFileLocationStart,
 } from "@/lib/live-file-navigation";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 
 function getFileExtension(path: string): string | null {
   const name = getFileBasename(path);
@@ -35,7 +35,7 @@ export function ExperimentalFileLinkMenu({
     localTargets.root.status === "available"
       ? resolveLiveFilePath(localTargets.root, intent.target.path)
       : null;
-  const { fileOpeners } = usePluginSlots();
+  const fileOpeners = usePluginSlotKind("fileOpeners");
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
     extension === null ||

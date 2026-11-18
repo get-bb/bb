@@ -2433,7 +2433,9 @@ function ConnectSetupGuideSection({
             type="button"
             size="sm"
             variant="outline"
-            disabled={starting || turningOn}
+            disabled={
+              starting || turningOn || (status === null && loadError === null)
+            }
             onClick={setUp}
           >
             {starting || turningOn ? (

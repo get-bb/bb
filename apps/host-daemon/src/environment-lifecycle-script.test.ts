@@ -3,6 +3,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readProcessIdentity, type ProcessIdentity } from "@bb/process-utils";
 import {
   assertScriptProcessTreeStopped,
   buildLifecycleScriptCommand,
@@ -173,6 +174,7 @@ describe("core environment scripts", () => {
       );
       const controller = new AbortController();
       let pids: number[] = [];
+      let started: Promise<(ProcessIdentity | null)[]> = Promise.resolve([]);
       await expect(
         runSetupScript({
           workspacePath,
@@ -181,18 +183,27 @@ describe("core environment scripts", () => {
           onProgress: (entry) => {
             if (!entry.text.startsWith("pids ")) return;
             pids = entry.text.split(" ").slice(1).map(Number);
-            controller.abort();
+            started = Promise.all(pids.map(readProcessIdentity)).finally(() =>
+              controller.abort(),
+            );
           },
         }),
       ).rejects.toThrow("cancelled");
       expect(pids).toHaveLength(2);
-      const alive = pids.filter((pid) => {
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          return false;
-        }
+      const identities = await started;
+      expect(identities.map((identity) => identity?.startedAt ?? null)).not.toContain(
+        null,
+      );
+      const current = await Promise.all(pids.map(readProcessIdentity));
+      const alive = pids.filter((_, index) => {
+        const now = current[index];
+        const then = identities[index];
+        return (
+          now !== null &&
+          now !== undefined &&
+          now.startedAt === then?.startedAt &&
+          now.command === then?.command
+        );
       });
       if (alive.length > 0) {
         const observedAt = new Date().toISOString();

@@ -21,7 +21,6 @@ export interface AcpAgentDefinition {
   dialect?: string;
   parameterizedModelPicker?: boolean;
   primaryModels?: readonly string[];
-  reasoningProbePriorityModelIds?: readonly string[];
   visibility?: "always" | "installed";
   signInCommand?: string;
   guidedSignIn?: boolean;

@@ -437,6 +437,26 @@ function createAuthenticationErrorMessage(sessionId: string): SDKMessage {
   };
 }
 
+function createSystemInitMessage(sessionId: string): SDKMessage {
+  return {
+    type: "system",
+    subtype: "init",
+    apiKeySource: "none",
+    claude_code_version: "2.1.322",
+    cwd: "/tmp/worktree",
+    tools: [],
+    mcp_servers: [],
+    model: "claude-opus-5-5",
+    permissionMode: "default",
+    slash_commands: [],
+    output_style: "default",
+    skills: [],
+    plugins: [],
+    uuid: "00000000-0000-4000-8000-000000000003",
+    session_id: sessionId,
+  };
+}
+
 function createSuccessfulResultMessage(sessionId: string): SDKMessage {
   return {
     type: "result",
@@ -972,11 +992,13 @@ describe("bridge", () => {
       );
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
+      live.emit(createSystemInitMessage(threadId));
       live.emit(createSuccessfulResultMessage(threadId));
       await bridge.flushWork();
-      expect(reports).toHaveLength(1);
-      expect(reports[0].getContextUsage).toHaveBeenCalledOnce();
-      const reportOptions = contextQueryMock.mock.calls[0][0].options;
+      expect(reports).toHaveLength(2);
+      expect(reports[0].close).toHaveBeenCalledOnce();
+      expect(reports[1].getContextUsage).toHaveBeenCalledOnce();
+      const reportOptions = contextQueryMock.mock.calls[1][0].options;
       expect(reportOptions).toMatchObject({
         resume: threadId,
         forkSession: true,
@@ -1006,8 +1028,8 @@ describe("bridge", () => {
 
       live.emit(createSuccessfulResultMessage(threadId));
       await bridge.flushWork();
-      expect(reports[0].close).toHaveBeenCalledOnce();
-      expect(reports).toHaveLength(2);
+      expect(reports[1].close).toHaveBeenCalledOnce();
+      expect(reports).toHaveLength(3);
       expect(
         assembleCapturedThreadEvents(bridge.messages, "claude-code").filter(
           (event) => event.type === "turn/completed",
@@ -1853,6 +1875,21 @@ describe("bridge", () => {
         input: {
           command: "echo hi",
           dangerouslyDisableSandbox: true,
+          description: "Permission boundary test",
+        },
+        expected: {
+          behavior: "deny",
+          messageIncludes: "bb's workspace sandbox allows work inside",
+        },
+      },
+      {
+        id: "hook-ask-empty-reason",
+        name: "auto-deny with an empty hook reason keeps a non-empty message",
+        policy: WORKSPACE_AUTO_DENY_POLICY,
+        toolName: "Bash",
+        decisionReason: "",
+        input: {
+          command: "echo hi",
           description: "Permission boundary test",
         },
         expected: {
@@ -3020,7 +3057,7 @@ describe("bridge", () => {
           mentions: [skillMention(4, "$", "review")],
         },
       ],
-      expected: "/review Use  but keep $PATH and $review",
+      expected: "/review Use review but keep $PATH and $review",
     },
     {
       name: "an embedded slash skill",
@@ -3031,7 +3068,18 @@ describe("bridge", () => {
           mentions: [skillMention(11, "/", "review")],
         },
       ],
-      expected: "/review Please use  on this",
+      expected: "/review Please use review on this",
+    },
+    {
+      name: "a trailing dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "use the $review",
+          mentions: [skillMention(8, "$", "review")],
+        },
+      ],
+      expected: "/review use the review",
     },
     {
       name: "a leading dollar skill",
@@ -3054,7 +3102,7 @@ describe("bridge", () => {
           mentions: [skillMention(0, "$", "review")],
         },
       ],
-      expected: "/review Inspect this fixture.\n",
+      expected: "/review Inspect this fixture.\nreview",
     },
     {
       name: "several selected skills",
@@ -4314,6 +4362,70 @@ describe("bridge", () => {
     }
   });
 
+  it("keeps the resumed session id when Claude fails before announcing a session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-failed-startup";
+    const savedSessionId = "saved-session";
+    try {
+      sendResumeThread({
+        bridge,
+        requestId: 1,
+        threadId,
+        providerThreadId: savedSessionId,
+      });
+      await bridge.waitForResponse(1);
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: savedSessionId,
+          input: [{ type: "text", text: "first" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      queries[0]?.emit({
+        type: "result",
+        subtype: "error_during_execution",
+        duration_ms: 0,
+        duration_api_ms: 0,
+        is_error: true,
+        num_turns: 0,
+        stop_reason: null,
+        total_cost_usd: 0,
+        usage: createResultUsage(),
+        modelUsage: {},
+        permission_denials: [],
+        errors: ["organization settings unavailable"],
+        uuid: "00000000-0000-4000-8000-000000000005",
+        session_id: "unsaved-session",
+      });
+      await bridge.flushWork();
+      expect(
+        bridge.messages.filter(
+          (message) => message.method === "thread/identity",
+        ),
+      ).not.toContainEqual(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            providerThreadId: "unsaved-session",
+          }),
+        }),
+      );
+      expect(contextQueryMock).not.toHaveBeenCalled();
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   it.each(["chromeEnabled", "disable1MContext", "artifactsEnabled"])(
     "restarts the Claude process before the next turn when %s changes",
     async (setting) => {
@@ -4367,6 +4479,7 @@ describe("bridge", () => {
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
         expect(queries).toHaveLength(1);
+        queries[0]?.emit(createSystemInitMessage(threadId));
         queries[0]?.emit(createSuccessfulResultMessage(threadId));
         await bridge.flushWork();
 
@@ -4473,6 +4586,7 @@ describe("bridge", () => {
         await readNextPrompt(getLatestQueryCall());
         await bridge.waitForResponse(2);
         if (method === "turn/start") {
+          queries[0]?.emit(createSystemInitMessage(providerThreadId));
           queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
           await bridge.flushWork();
         }
@@ -4948,6 +5062,7 @@ describe("bridge", () => {
             if (hookEnabled) expect(outputs).not.toContainEqual(denial);
             else expect(outputs).toContainEqual(denial);
           }
+          queries[index]?.emit(createSystemInitMessage(providerThreadId));
           queries[index]?.emit(createSuccessfulResultMessage(providerThreadId));
           await bridge.flushWork();
         }

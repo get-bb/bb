@@ -3,7 +3,8 @@ import {
   getLatestThreadSequence,
   getThread,
   listQueuedThreadMessages,
-  setExperiments,
+  getAppSettings,
+  setAppSettings,
   threads,
 } from "@bb/db";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
@@ -17,7 +18,7 @@ import {
   createAppUpdateSendHold,
   releaseSendsHeldAcrossRestart,
 } from "../../src/services/system/app-update-send-hold.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
@@ -49,7 +50,10 @@ const WORKSPACE_PATH = "/tmp/restart-resume-project";
 afterEach(() => vi.useRealTimers());
 
 function continueAfterRestarts(harness: TestAppHarness, enabled: boolean) {
-  setExperiments(harness.db, { resumeThreadsAfterRestart: enabled });
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    resumeThreadsAfterRestart: enabled,
+  });
 }
 
 function seedHostWithProject(harness: TestAppHarness) {
@@ -230,10 +234,7 @@ function settleBackgroundCommand(
 }
 
 function finishTurn(harness: TestAppHarness, threadId: string) {
-  applyLoggedThreadLifecycleEvent(harness.deps, {
-    event: { type: "run.succeeded" },
-    threadId,
-  });
+  moveThreadStatus(harness.deps, { move: "run.succeeded", threadId });
 }
 
 let instanceCounter = 0;
@@ -335,10 +336,7 @@ async function finishTurnAndDrain(
   harness: TestAppHarness,
   threadId: string,
 ): Promise<void> {
-  applyLoggedThreadLifecycleEvent(harness.deps, {
-    event: { type: "run.succeeded" },
-    threadId,
-  });
+  moveThreadStatus(harness.deps, { move: "run.succeeded", threadId });
   await runQueuedMessageDispatch(harness.deps, {
     kind: "thread-ready",
     threadId,
@@ -373,10 +371,7 @@ function requireRetryPayload(
 async function failWithScheduledRetryBehindAMessage(harness: TestAppHarness) {
   const fixture = seedHostWithProject(harness);
   const { requestId, thread } = seedRunningThread(harness, fixture);
-  applyLoggedThreadLifecycleEvent(harness.deps, {
-    event: { type: "run.failed" },
-    threadId: thread.id,
-  });
+  moveThreadStatus(harness.deps, { move: "run.failed", threadId: thread.id });
   const failed = getThread(harness.db, thread.id);
   if (failed === null) throw new Error("expected a thread");
   await acceptThreadSendRequest(harness.deps, {
@@ -570,8 +565,8 @@ describe("resuming threads after a restart", () => {
       const fixture = seedHostWithProject(harness);
       const running = seedRunningThread(harness, fixture);
       const stopped = seedRunningThread(harness, fixture);
-      applyLoggedThreadLifecycleEvent(harness.deps, {
-        event: { type: "stop.requested" },
+      moveThreadStatus(harness.deps, {
+        move: "stop.requested",
         threadId: stopped.thread.id,
       });
       const asking = seedRunningThread(harness, fixture);
@@ -961,14 +956,10 @@ describe("resuming threads after a restart", () => {
 });
 
 describe("holding sends while bb restarts to update", () => {
-  function updateWhenIdle(harness: TestAppHarness, enabled: boolean) {
-    setExperiments(harness.db, { updateWhenIdle: enabled });
-  }
-
   function seedIdleThread(harness: TestAppHarness, fixture: HostFixture) {
     const seeded = seedRunningThread(harness, fixture);
-    applyLoggedThreadLifecycleEvent(harness.deps, {
-      event: { type: "run.succeeded" },
+    moveThreadStatus(harness.deps, {
+      move: "run.succeeded",
       threadId: seeded.thread.id,
     });
     return seeded;
@@ -980,7 +971,6 @@ describe("holding sends while bb restarts to update", () => {
 
   it("holds a send while the restart is pending and sends it at once when the update is called off", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       const fixture = seedHostWithProject(harness);
       const { thread } = seedIdleThread(harness, fixture);
       const sendHold = createAppUpdateSendHold(harness.deps);
@@ -1007,28 +997,8 @@ describe("holding sends while bb restarts to update", () => {
     });
   });
 
-  it("does not hold sends while the updateWhenIdle experiment is off", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedHostWithProject(harness);
-      const { thread } = seedIdleThread(harness, fixture);
-
-      createAppUpdateSendHold(harness.deps).hold();
-      await sendMessage(harness, {
-        mode: "auto",
-        text: "Not held",
-        threadId: thread.id,
-      });
-
-      expect(requestTexts(harness, thread.id)).toEqual([
-        "Do the thing",
-        "Not held",
-      ]);
-    });
-  });
-
   it("sends held messages after the restart, behind the resume, in order", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       continueAfterRestarts(harness, true);
       const fixture = seedHostWithProject(harness);
       const running = seedRunningThread(harness, fixture);

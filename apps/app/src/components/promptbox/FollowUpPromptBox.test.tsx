@@ -19,6 +19,7 @@ import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
+import { composerDraftStore } from "@/test/fixtures/composer-draft";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
@@ -269,7 +270,6 @@ function createFollowUpPromptBoxProps(
 ): Parameters<typeof FollowUpPromptBox>[0] {
   return {
     attachments: {
-      items: [],
       projectId: "proj_test",
       isAttaching: false,
       error: null,
@@ -279,14 +279,11 @@ function createFollowUpPromptBoxProps(
     stack: null,
     composer: {
       history: {
-        currentDraft: { text: "Follow up", mentions: [], attachments: [] },
         entries: [],
         onSelectEntry: vi.fn(),
       },
       isFollowUpSubmitting: false,
-      message: "Follow up",
-      mentionRanges: [],
-      onChangeMessage: vi.fn(),
+      draft: composerDraftStore("Follow up"),
       onModifierSubmit: vi.fn(),
       onSubmit: vi.fn(),
       compactPromptPlaceholder: "Ask a follow-up",
@@ -314,6 +311,7 @@ function createFollowUpPromptBoxProps(
       reasoning: {
         value: "medium",
         options: [],
+        isLoading: false,
         onChange: vi.fn(),
       },
     },

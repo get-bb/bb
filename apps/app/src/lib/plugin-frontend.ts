@@ -54,7 +54,8 @@ import {
 } from "./plugin-app-definition";
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
-import { createRetryingModuleLoader } from "./plugin-frontend-lazy";
+import { pluginRuntimeGroupsFor } from "./plugin-runtime-groups";
+import { whenScreenPainted } from "./screen-paint";
 import {
   pluginSdkAppImplementation,
   retiredPluginSdkAppMembers,
@@ -159,9 +160,7 @@ export async function loadPluginFrontend(
     };
   }
   try {
-    const runtimeGroups = lazyRuntimeGroups.filter((group) =>
-      group.slots.some((slot) => bundle.runtimeSlots.includes(slot)),
-    );
+    const runtimeGroups = pluginRuntimeGroupsFor(bundle.runtimeSlots);
     if (runtimeGroups.length > 0) {
       const slotsProvided = Promise.all(
         runtimeGroups.map(async (group) => {
@@ -190,7 +189,7 @@ export async function loadPluginFrontend(
   }
 }
 
-interface BbPluginRuntime {
+export interface BbPluginRuntime {
   react: unknown;
   reactDom: unknown;
   reactDomClient: unknown;
@@ -256,32 +255,18 @@ export function installPluginRuntime(): BbPluginRuntime {
   return host.__bbPluginRuntime;
 }
 
-const lazyRuntimeGroups = [
-  {
-    slots: ["pierreDiffs", "pierreDiffsReact"],
-    load: createRetryingModuleLoader(async () => {
-      const { pierreRuntimeSlots } = await import("./plugin-pierre-runtime");
-      return pierreRuntimeSlots;
-    }),
-  },
-  {
-    slots: ["zod"],
-    load: createRetryingModuleLoader(async () => {
-      const { zodRuntimeSlots } = await import("./plugin-zod-runtime");
-      return zodRuntimeSlots;
-    }),
-  },
-] satisfies {
-  slots: (keyof BbPluginRuntime)[];
-  load: () => Promise<Partial<BbPluginRuntime>>;
-}[];
+type PluginListFreshness = "await-refresh" | "reuse-cached";
 
-async function fetchEnabledPluginList(queryClient: QueryClient) {
+async function fetchEnabledPluginList(
+  queryClient: QueryClient,
+  freshness: PluginListFreshness,
+) {
+  const options = pluginListQueryOptions({ enabled: true });
   for (;;) {
     try {
-      return await queryClient.fetchQuery(
-        pluginListQueryOptions({ enabled: true }),
-      );
+      return freshness === "reuse-cached"
+        ? await queryClient.ensureQueryData(options)
+        : await queryClient.fetchQuery(options);
     } catch (error) {
       if (!isCancelledError(error)) throw error;
     }
@@ -289,11 +274,12 @@ async function fetchEnabledPluginList(queryClient: QueryClient) {
 }
 
 export async function fetchFrontendCandidates(
-  queryClient: QueryClient = appQueryClient,
+  queryClient: QueryClient,
+  freshness: PluginListFreshness,
 ): Promise<PluginFrontendCandidate[]> {
   let plugins;
   try {
-    plugins = await fetchEnabledPluginList(queryClient);
+    plugins = await fetchEnabledPluginList(queryClient, freshness);
   } catch (error) {
     setServerPluginsStarting(false);
     if (
@@ -397,7 +383,7 @@ interface PluginFrontendReconcileState {
   pendingControllers: Map<string, AbortController>;
   pendingStatusOwners: Map<string, symbol>;
   diagnostics: Map<string, PluginFrontendDiagnostic>;
-  tornDown: boolean;
+  discarded: boolean;
 }
 
 export function createPluginFrontendReconcileState(): PluginFrontendReconcileState {
@@ -410,7 +396,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
     pendingControllers: new Map(),
     pendingStatusOwners: new Map(),
     diagnostics: new Map(),
-    tornDown: false,
+    discarded: false,
   };
 }
 
@@ -432,6 +418,7 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
+  whenScreenPainted: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -496,12 +483,11 @@ async function callDisposer(
   }
 }
 
-async function disposeGeneration(
+async function runContentScriptDisposers(
   pluginId: string,
   activation: ActivePluginFrontendGeneration,
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginFrontendFailure[]> {
-  if (activation.disposed) return [];
   activation.disposed = true;
   activation.controller.abort();
   const failures: PluginFrontendFailure[] = [];
@@ -515,6 +501,16 @@ async function disposeGeneration(
     );
     if (failure !== null) failures.push(failure);
   }
+  return failures;
+}
+
+async function disposeGeneration(
+  pluginId: string,
+  activation: ActivePluginFrontendGeneration,
+  deps: PluginFrontendReconcileDeps,
+): Promise<PluginFrontendFailure[]> {
+  if (activation.disposed) return [];
+  const failures = await runContentScriptDisposers(pluginId, activation, deps);
   activation.cssRelease?.();
   activation.cssRelease = null;
   clearPluginThreadRowStatusesByOwner(activation.statusOwner);
@@ -718,9 +714,9 @@ export async function reconcilePluginFrontends(
   deps: PluginFrontendReconcileDeps,
   onChanges?: () => void,
 ): Promise<void> {
-  if (state.tornDown) return;
+  if (state.discarded) return;
   const candidates = await deps.fetchCandidates();
-  if (state.tornDown) return;
+  if (state.discarded) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
   if (
     [...state.records.keys()].some((pluginId) => !candidateIds.has(pluginId)) ||
@@ -784,6 +780,9 @@ async function reconcileCandidates(
     ordered,
     PLUGIN_FRONTEND_LOAD_CONCURRENCY,
     async (candidate, index) => {
+      if (!priorityPluginIds.includes(candidate.pluginId)) {
+        await deps.whenScreenPainted();
+      }
       untaken = index + 1;
       prefetchAhead();
       try {
@@ -847,7 +846,7 @@ async function reconcileCandidate(
     deps.prefetchCss(candidate.bundle.cssUrl);
   let record = await importAttempt();
   for (const delayMs of deps.importRetryDelaysMs) {
-    if (record.status !== "failed" || state.tornDown) break;
+    if (record.status !== "failed" || state.discarded) break;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     retryCount += 1;
     record = await importAttempt();
@@ -946,12 +945,14 @@ async function reconcileCandidate(
   );
   state.pendingControllers.delete(pluginId);
   state.pendingStatusOwners.delete(pluginId);
-  if (state.tornDown) {
+  if (state.discarded) {
     if (activationResult.ok) {
-      await disposeGeneration(pluginId, activationResult.activation, deps);
+      await runContentScriptDisposers(
+        pluginId,
+        activationResult.activation,
+        deps,
+      );
     }
-    deps.removeRegistrations(pluginId);
-    void deps.applyCss(pluginId, null);
     return;
   }
   if (!activationResult.ok) {
@@ -989,41 +990,19 @@ async function reconcileCandidate(
   });
 }
 
-export async function disposePluginFrontends(
+export function discardPluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
-): Promise<void> {
-  state.tornDown = true;
-  const pendingPluginIds = [...state.pendingControllers.keys()];
-  for (const [pluginId, controller] of state.pendingControllers) {
+): void {
+  if (state.discarded) return;
+  state.discarded = true;
+  for (const controller of state.pendingControllers.values()) {
     controller.abort();
-    const statusOwner = state.pendingStatusOwners.get(pluginId);
-    if (statusOwner !== undefined) {
-      clearPluginThreadRowStatusesByOwner(statusOwner);
-    }
   }
-  state.pendingControllers.clear();
-  state.pendingStatusOwners.clear();
-  const pluginIds = new Set([
-    ...pendingPluginIds,
-    ...state.records.keys(),
-    ...state.activeGenerations.keys(),
-  ]);
-  for (const pluginId of pluginIds) {
-    const active = state.activeGenerations.get(pluginId);
-    if (active !== undefined) {
-      await disposeGeneration(pluginId, active, deps);
-    }
-    clearPluginThreadRowStatuses(pluginId);
-    deps.removeRegistrations(pluginId);
-    void deps.applyCss(pluginId, null);
+  for (const [pluginId, activation] of state.activeGenerations) {
+    if (activation.disposed) continue;
+    void runContentScriptDisposers(pluginId, activation, deps);
   }
-  state.records.clear();
-  state.appliedHashes.clear();
-  state.failedImportAttempts.clear();
-  state.activeGenerations.clear();
-  state.diagnostics.clear();
-  deps.diagnosticsChanged?.();
 }
 
 export function createPluginFrontendReconcileScheduler(args: {
@@ -1080,7 +1059,8 @@ const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 const PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS = [500, 2_000];
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
-  fetchCandidates: fetchFrontendCandidates,
+  fetchCandidates: () =>
+    fetchFrontendCandidates(appQueryClient, "await-refresh"),
   importModule: (url) => import(/* @vite-ignore */ url),
   importRetryDelaysMs: PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS,
   applyCss: applyPluginCss,
@@ -1088,6 +1068,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
   priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
+  whenScreenPainted: whenScreenPainted,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
@@ -1116,7 +1097,7 @@ export function subscribePluginFrontendDiagnostics(
 
 interface PluginFrontendPageLifecycleDeps {
   restore: () => void;
-  teardown: () => void;
+  discard: () => void;
 }
 
 export function createPluginFrontendPageLifecycle(
@@ -1128,7 +1109,7 @@ export function createPluginFrontendPageLifecycle(
   return {
     onPageHide(event) {
       if (event.persisted) return;
-      deps.teardown();
+      deps.discard();
     },
     onPageShow(event) {
       if (!event.persisted) return;
@@ -1144,10 +1125,7 @@ function installPluginFrontendPageLifecycle(): void {
   pageLifecycleListenersInstalled = true;
   const lifecycle = createPluginFrontendPageLifecycle({
     restore: () => schedulePluginFrontendReconcile(),
-    teardown: () => {
-      setPluginFrontendReconcilePending(true);
-      void disposePluginFrontends(state, browserReconcileDeps);
-    },
+    discard: () => discardPluginFrontends(state, browserReconcileDeps),
   });
   window.addEventListener("pagehide", (event) => lifecycle.onPageHide(event));
   window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
@@ -1157,7 +1135,11 @@ export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
-    await reconcilePluginFrontends(state, browserReconcileDeps);
+    await reconcilePluginFrontends(state, {
+      ...browserReconcileDeps,
+      fetchCandidates: () =>
+        fetchFrontendCandidates(appQueryClient, "reuse-cached"),
+    });
     publishLoadFailed();
   })().catch((error: unknown) => {
     setPluginFrontendLoadFailed(true);
@@ -1171,14 +1153,8 @@ export function bootPluginFrontends(): Promise<void> {
 async function runLiveReconcile(): Promise<void> {
   try {
     await bootPromise;
+    if (state.discarded) return;
     await markEnabledPluginListStale({ queryClient: appQueryClient });
-    if (state.tornDown) {
-      setPluginFrontendReconcilePending(true);
-      state.tornDown = false;
-      bootPromise = null;
-      await bootPluginFrontends();
-      return;
-    }
     await reconcilePluginFrontends(state, browserReconcileDeps, () =>
       setPluginFrontendReconcilePending(true),
     );

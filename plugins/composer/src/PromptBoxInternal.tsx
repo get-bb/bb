@@ -81,6 +81,7 @@ import {
   REDUCED_MOTION_QUERY,
 } from "@/components/ui/hooks/use-media-query";
 import { blurActiveKeyboardInputWithin } from "@/components/ui/overlay-trigger";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { areDraftsEqual, isDraftEmpty } from "./composer-draft";
@@ -1081,12 +1082,12 @@ export function PromptBoxInternal({
   useEffect(() => {
     const formElement = formRef.current;
     if (!formElement || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      lastObservedHeightRef.current =
-        formElement.getBoundingClientRect().height;
+    return observeSharedResize(formElement, {
+      read: () => formElement.getBoundingClientRect().height,
+      write: (height) => {
+        lastObservedHeightRef.current = height;
+      },
     });
-    observer.observe(formElement);
-    return () => observer.disconnect();
   }, []);
   useLayoutEffect(() => {
     const formElement = formRef.current;
@@ -1098,19 +1099,20 @@ export function PromptBoxInternal({
       );
       return;
     }
-    const capEditor = () => {
-      const chromeHeight =
-        formElement.offsetHeight - scrollElement.offsetHeight;
+    const readChromeHeight = () =>
+      formElement.offsetHeight - scrollElement.offsetHeight;
+    const capEditor = (chromeHeight: number) => {
       formElement.style.setProperty(
         COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
         `${maxHeight - chromeHeight}px`,
       );
     };
-    capEditor();
+    capEditor(readChromeHeight());
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(capEditor);
-    observer.observe(formElement);
-    return () => observer.disconnect();
+    return observeSharedResize(formElement, {
+      read: readChromeHeight,
+      write: capEditor,
+    });
   }, [maxHeight]);
   useLayoutEffect(() => {
     const formElement = formRef.current;
@@ -3031,6 +3033,16 @@ export function PromptBoxInternal({
     submitPrompt();
   }, [pendingCommandSubmit, submitPrompt]);
 
+  const chooseSuggestion = useCallback(
+    (item: TypeaheadSuggestion) => {
+      applyTrigger(item);
+      if (item.kind === "command" && item.origin === "builtin") {
+        setPendingCommandSubmit(true);
+      }
+    },
+    [applyTrigger],
+  );
+
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
@@ -3173,13 +3185,10 @@ export function PromptBoxInternal({
           const selected =
             activeSuggestions[selectedIndex] ?? activeSuggestions[0];
           if (selected) {
-            applyTrigger(selected);
-            if (
-              event.key === "Enter" &&
-              selected.kind === "command" &&
-              selected.origin === "builtin"
-            ) {
-              setPendingCommandSubmit(true);
+            if (event.key === "Enter") {
+              chooseSuggestion(selected);
+            } else {
+              applyTrigger(selected);
             }
           }
           return true;
@@ -3290,6 +3299,7 @@ export function PromptBoxInternal({
       activeSuggestions,
       applyHistoryDraft,
       applyTrigger,
+      chooseSuggestion,
       dispatchAppCommandKey,
       handleComposerMenuKeyDown,
       history,
@@ -3299,7 +3309,6 @@ export function PromptBoxInternal({
       postCompositionKeyDownEvents,
       resetHistorySession,
       selectedIndex,
-      setPendingCommandSubmit,
       showTypeaheadMenu,
       submitModifierPrompt,
       submitPrompt,
@@ -3488,7 +3497,7 @@ export function PromptBoxInternal({
                 <MentionMenu
                   state={typeaheadMenuState}
                   selectedIndex={selectedIndex}
-                  onApply={applyTrigger}
+                  onApply={chooseSuggestion}
                   onDismiss={isPointerCoarse ? dismissComposerMenu : undefined}
                 />
               )}

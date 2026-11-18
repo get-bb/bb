@@ -632,7 +632,6 @@ function createScheduledService(args: {
   runningThreads: number;
 }) {
   const running = { count: args.runningThreads };
-  const experiment = { enabled: true };
   const latest = { version: "1.1.0" };
   const skipped = { key: null as string | null };
   const auto = { enabled: args.autoCheck === true };
@@ -670,7 +669,6 @@ function createScheduledService(args: {
     },
     countRunningThreads,
     inner,
-    isEnabled: () => experiment.enabled,
     logger: testLogger,
     notifyChanged,
     now: () => new Date("2026-10-23T00:00:00.000Z"),
@@ -707,16 +705,6 @@ function createScheduledService(args: {
       });
     }
   };
-  const setExperimentEnabled = (enabled: boolean): void => {
-    experiment.enabled = enabled;
-    for (const listener of listeners) {
-      listener({
-        changes: ["config-changed"],
-        entity: "system",
-        type: "changed",
-      });
-    }
-  };
   const applyRequests = () =>
     launcher.requests.filter((request) => request.type === "apply");
   return {
@@ -728,7 +716,6 @@ function createScheduledService(args: {
     launcher,
     notifyChanged,
     service,
-    setExperimentEnabled,
     setRunningThreads,
     skipped,
   };
@@ -847,17 +834,6 @@ describe("checking for bb updates automatically", () => {
     setRunningThreads(0);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(applyRequests()).toHaveLength(1);
-  });
-
-  it("does not check while the experiment is off", async () => {
-    const { applyRequests, service, setExperimentEnabled } =
-      createScheduledService({ autoCheck: true, runningThreads: 0 });
-    setExperimentEnabled(false);
-
-    await vi.advanceTimersByTimeAsync(first + interval);
-
-    expect(applyRequests()).toEqual([]);
-    expect(await scheduledAt(service)).toBeNull();
   });
 
   it("checks only while automatic updates are on, and turning them off drops the waiting update", async () => {
@@ -1010,21 +986,6 @@ describe("app update scheduled for when threads finish", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(countRunningThreads).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops a waiting update when the experiment is turned off", async () => {
-    const { applyRequests, service, setExperimentEnabled, setRunningThreads } =
-      createScheduledService({ runningThreads: 1 });
-    await service.schedule();
-
-    setExperimentEnabled(false);
-    setRunningThreads(0);
-    await vi.advanceTimersByTimeAsync(5_000);
-
-    expect(applyRequests()).toEqual([]);
-    expect(
-      (await service.getStatus({ forceRefresh: false })).scheduled,
-    ).toBeNull();
   });
 
   it("starts at once when no thread is running", async () => {

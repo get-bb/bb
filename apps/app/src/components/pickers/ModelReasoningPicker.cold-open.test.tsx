@@ -6,18 +6,15 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ModelReasoningPicker } from "./ModelReasoningPicker";
+import { settleLazyModules } from "@/test/lazy-modules";
 
-const menu = vi.hoisted(() => ({ imports: 0, release: () => {} }));
+const menu = vi.hoisted(() => ({ imports: 0 }));
 vi.mock("./ModelReasoningMenu", async (importOriginal) => {
   menu.imports += 1;
-  await new Promise<void>((resolve) => {
-    menu.release = resolve;
-  });
   return importOriginal();
 });
 
@@ -49,6 +46,7 @@ it("keeps search typing and keyboard selection across the first menu download", 
       onModelChange={onModelChange}
       reasoningValue="medium"
       reasoningOptions={[{ value: "medium", label: "Medium" }]}
+      reasoningIsLoading={false}
       onReasoningChange={() => {}}
       serviceTierValue={undefined}
       serviceTierOptions={[]}
@@ -63,17 +61,17 @@ it("keeps search typing and keyboard selection across the first menu download", 
   fireEvent.click(
     screen.getByRole("button", { name: "Provider, model and reasoning" }),
   );
-  await waitFor(() => expect(menu.imports).toBe(1));
+  await vi.waitFor(() => expect(menu.imports).toBe(1));
   const search = screen.getByPlaceholderText("Search models");
-  await waitFor(() => expect(document.activeElement).toBe(search));
+  await vi.waitFor(() => expect(document.activeElement).toBe(search));
   expect(
     screen.getByRole("status", { name: "Loading model picker" }),
   ).toBeTruthy();
   fireEvent.change(search, { target: { value: "o4m" } });
   fireEvent.keyDown(search, { key: "ArrowDown" });
   expect(menu.imports).toBe(1);
-  await act(async () => menu.release());
-  expect(await screen.findByText("o4-mini")).toBeTruthy();
+  await settleLazyModules();
+  expect(screen.getByText("o4-mini")).toBeTruthy();
   expect(screen.queryByText("Sonnet")).toBeNull();
   expect(search).toHaveProperty("value", "o4m");
   expect(document.activeElement).toBe(search);

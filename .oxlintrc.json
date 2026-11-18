@@ -57,6 +57,19 @@
       }
     },
     {
+      "files": ["apps/app/**/*.{ts,tsx}", "packages/shared-ui/**/*.{ts,tsx}"],
+      "plugins": ["react"],
+      "rules": {
+        "react/preserve-manual-memoization": "error",
+        "react/incompatible-library": "error",
+        "react/immutability": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/purity": "error",
+        "react/unsupported-syntax": "error"
+      }
+    },
+    {
       "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
@@ -223,6 +236,29 @@
       "files": ["plugins/**/*.{ts,tsx,mts,cts,js,mjs,cjs}"],
       "rules": {
         "bb/forkable-plugin-imports": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/**/*.{ts,tsx}",
+        "packages/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/shared-ui/src/lib/shared-resize-observer.ts",
+        "apps/app/src/components/ui/scroll-position-keeper.ts",
+        "apps/web/src/landing/hero-window-stage.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/no-raw-resize-observer": "off"
       }
     }
   ]

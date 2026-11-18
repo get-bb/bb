@@ -103,9 +103,11 @@ function useStreamingTickLoop(
   isPaused: boolean,
 ): { step: number; cycle: number } {
   const [counter, setCounter] = useState(0);
-  useEffect(() => {
+  const [counterRestartKey, setCounterRestartKey] = useState(restartKey);
+  if (counterRestartKey !== restartKey) {
+    setCounterRestartKey(restartKey);
     setCounter(0);
-  }, [restartKey]);
+  }
   useEffect(() => {
     if (isPaused) return;
     const cycleLength = totalSteps + pauseTicks;
@@ -622,9 +624,11 @@ function WorkingIndicatorToggling({
   isPaused: boolean;
 }) {
   const [phaseIndex, setPhaseIndex] = useState(0);
-  useEffect(() => {
+  const [phaseRestartKey, setPhaseRestartKey] = useState(restartKey);
+  if (phaseRestartKey !== restartKey) {
+    setPhaseRestartKey(restartKey);
     setPhaseIndex(0);
-  }, [restartKey]);
+  }
   useEffect(() => {
     if (isPaused) return;
     const id = window.setInterval(() => {

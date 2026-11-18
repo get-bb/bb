@@ -91,10 +91,16 @@ export interface GitTimeoutOptions extends GitProcessOptions {
   timeoutMs?: number;
 }
 
+export interface ResolvedBranchRef {
+  ref: string;
+  source: "local" | "origin" | "as-given";
+}
+
 export interface DefaultBranchRefs {
   defaultBranch: string | undefined;
   defaultBranchRelation: DefaultBranchRelation | undefined;
   originDefaultBranch: string | undefined;
+  baseBranch: ResolvedBranchRef | undefined;
 }
 
 export interface GitCommandResult {
@@ -328,10 +334,15 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   for (let attempt = 1; ; attempt += 1) {
-    const run = await runVcsProcess("git", args, () => spawnGit(args, options), {
-      priority: options.priority,
-      signal: options.signal,
-    }).catch((error: unknown) => {
+    const run = await runVcsProcess(
+      "git",
+      args,
+      () => spawnGit(args, options),
+      {
+        priority: options.priority,
+        signal: options.signal,
+      },
+    ).catch((error: unknown) => {
       if (options.signal?.aborted) {
         throw createGitCommandCancelledError(args, error);
       }
@@ -546,6 +557,33 @@ type GitQueryRunner = (
 const ORIGIN_HEAD_REF = "refs/remotes/origin/HEAD";
 
 const FALLBACK_DEFAULT_BRANCHES: readonly string[] = ["main", "master"];
+
+export function branchRefCandidates(name: string): string[] {
+  if (name.startsWith("refs/")) return [name];
+  return [
+    `refs/heads/${name}`,
+    `refs/remotes/${name}`,
+    `refs/remotes/origin/${name}`,
+  ];
+}
+
+function chooseBranchRef(
+  local: string | undefined,
+  origin: string | undefined,
+  relation: DefaultBranchRelation | undefined,
+): ResolvedBranchRef | undefined {
+  if (origin === undefined) {
+    return local === undefined ? undefined : { ref: local, source: "local" };
+  }
+  if (
+    local === undefined ||
+    relation === "equal" ||
+    relation === "local-behind"
+  ) {
+    return { ref: origin, source: "origin" };
+  }
+  return { ref: local, source: "local" };
+}
 
 export function createGitQueries(run: GitQueryRunner) {
   async function readGitRepo(
@@ -784,22 +822,6 @@ export function createGitQueries(run: GitQueryRunner) {
     return result.exitCode === 0;
   }
 
-  async function revParseRef(
-    cwd: string,
-    ref: string,
-    options: GitTimeoutOptions = {},
-  ): Promise<string | undefined> {
-    const result = await run(["rev-parse", "--verify", `${ref}^{commit}`], {
-      cwd,
-      ...options,
-      allowFailure: true,
-    });
-    if (result.exitCode !== 0) {
-      return undefined;
-    }
-    return trimOutput(result.stdout) || undefined;
-  }
-
   async function isAncestorRef(
     cwd: string,
     ancestorRef: string,
@@ -904,27 +926,34 @@ export function createGitQueries(run: GitQueryRunner) {
     return refs;
   }
 
-  async function readBranchRelation(
+  async function resolveBranchRef(
     cwd: string,
-    localDefaultBranch: string | undefined,
-    originDefaultBranch: string | undefined,
+    name: string,
     options: GitTimeoutOptions = {},
-  ): Promise<DefaultBranchRelation | undefined> {
-    if (!localDefaultBranch || !originDefaultBranch) {
-      return undefined;
-    }
-
-    const localRef = `refs/heads/${localDefaultBranch}`;
-    const originRef = `refs/remotes/${originDefaultBranch}`;
-    const [localSha, originSha] = await Promise.all([
-      revParseRef(cwd, localRef, options),
-      revParseRef(cwd, originRef, options),
-    ]);
-    return compareBranchOids(
-      cwd,
-      { ref: localRef, oid: localSha },
-      { ref: originRef, oid: originSha },
-      options,
+  ): Promise<ResolvedBranchRef> {
+    const asGiven: ResolvedBranchRef = { ref: name, source: "as-given" };
+    const candidates = branchRefCandidates(name);
+    if (candidates.length === 1) return asGiven;
+    const [localRef = "", remoteRef = "", originRef = ""] = candidates;
+    const refs = await readRefs(cwd, candidates, options);
+    if (refs.has(remoteRef)) return asGiven;
+    const local = refs.get(localRef);
+    const origin = refs.get(originRef);
+    const relation =
+      local === undefined || origin === undefined
+        ? undefined
+        : await compareBranchOids(
+            cwd,
+            { ref: localRef, oid: local.oid },
+            { ref: originRef, oid: origin.oid },
+            options,
+          );
+    return (
+      chooseBranchRef(
+        local === undefined ? undefined : name,
+        origin === undefined ? undefined : `origin/${name}`,
+        relation,
+      ) ?? asGiven
     );
   }
 
@@ -1028,28 +1057,36 @@ export function createGitQueries(run: GitQueryRunner) {
       (name): name is string =>
         name !== undefined && refs.has(`refs/remotes/origin/${name}`),
     );
+    const originDefaultRef =
+      originDefaultBranch === undefined
+        ? undefined
+        : `origin/${originDefaultBranch}`;
     if (defaultBranch === undefined || originDefaultBranch === undefined) {
       return {
         defaultBranch,
         defaultBranchRelation: undefined,
-        originDefaultBranch:
-          originDefaultBranch === undefined
-            ? undefined
-            : `origin/${originDefaultBranch}`,
+        originDefaultBranch: originDefaultRef,
+        baseBranch: chooseBranchRef(defaultBranch, originDefaultRef, undefined),
       };
     }
 
     const localRef = `refs/heads/${defaultBranch}`;
     const originRef = `refs/remotes/origin/${originDefaultBranch}`;
+    const defaultBranchRelation = await compareBranchOids(
+      cwd,
+      { ref: localRef, oid: refs.get(localRef)?.oid },
+      { ref: originRef, oid: refs.get(originRef)?.oid },
+      options,
+    );
     return {
       defaultBranch,
-      defaultBranchRelation: await compareBranchOids(
-        cwd,
-        { ref: localRef, oid: refs.get(localRef)?.oid },
-        { ref: originRef, oid: refs.get(originRef)?.oid },
-        options,
+      defaultBranchRelation,
+      originDefaultBranch: originDefaultRef,
+      baseBranch: chooseBranchRef(
+        defaultBranch,
+        originDefaultRef,
+        defaultBranchRelation,
       ),
-      originDefaultBranch: `origin/${originDefaultBranch}`,
     };
   }
 
@@ -1086,7 +1123,7 @@ export function createGitQueries(run: GitQueryRunner) {
     getWorkspaceGitOperation,
     hasUncommittedChanges,
     hasRef,
-    readBranchRelation,
+    resolveBranchRef,
     readOriginHeadBranchName,
     readLocalBranches,
     readDefaultBranchRefs,
@@ -1110,7 +1147,7 @@ export const {
   getWorkspaceGitOperation,
   hasUncommittedChanges,
   hasRef,
-  readBranchRelation,
+  resolveBranchRef,
   readOriginHeadBranchName,
   readLocalBranches,
   readDefaultBranchRefs,

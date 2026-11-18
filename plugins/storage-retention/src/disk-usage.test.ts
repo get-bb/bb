@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { DiskUsageInput } from "./host-contract.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { experimental_trackChildProcesses } from "@get-bb/plugin-sdk/testing";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { DiskUsageError } from "./fs-errors.js";
 import { measureDiskUsage, type DiskUsageOptions } from "./disk-usage.js";
 
@@ -64,15 +65,6 @@ function measure(
   largeFileMinBytes: number | null = null,
 ) {
   return measureDiskUsage({ targets, timeoutMs, largeFileMinBytes }, options);
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 afterEach(async () => {
@@ -654,11 +646,12 @@ describe("measureDiskUsage", () => {
           recursive: true,
         });
       }
-      const pidFile = path.join(root, "du.pid");
-      const duCommand = await writeFakeDu(
-        root,
-        `echo $$ >> '${pidFile}'\nexec sleep 30`,
-      );
+      const duCommand = await writeFakeDu(root, "exec sleep 30");
+      const children = experimental_trackChildProcesses();
+      onTestFinished(() => {
+        children.killRunning();
+        children.dispose();
+      });
 
       const startedAt = Date.now();
       await expect(
@@ -674,14 +667,13 @@ describe("measureDiskUsage", () => {
       });
       expect(Date.now() - startedAt).toBeLessThan(10_000);
 
-      const pids = (await fs.readFile(pidFile, "utf8"))
-        .trim()
-        .split("\n")
-        .map(Number);
-      expect(pids).toHaveLength(1);
-      await expect
-        .poll(() => pids.some(isProcessAlive), { timeout: 2_000 })
-        .toBe(false);
+      const duRuns = children.children.filter(
+        (child) =>
+          child.spawnfile === duCommand || child.spawnargs.includes(duCommand),
+      );
+      expect(duRuns).toHaveLength(1);
+      await children.waitForExit();
+      expect(children.running()).toEqual([]);
     },
   );
 });

@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM,
+  HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
+  HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON,
+  HostDaemonWsSequencer,
   buildHostDaemonWebSocketAuthorizationHeader,
   buildHostDaemonWebSocketProtocols,
   hostDaemonDaemonWsMessageSchema,
@@ -74,9 +78,20 @@ const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
 const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
 const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 
-interface PendingTerminalSocketPayload {
+interface RecoverableMessage {
+  key: string;
+  message: HostDaemonDaemonWsMessage;
+}
+
+interface PendingSocketPayload {
   bytes: number;
   payload: string;
+  recoverable: RecoverableMessage | null;
+}
+
+interface SentRecoverableMessage {
+  message: HostDaemonDaemonWsMessage;
+  seq: number;
 }
 
 function recoverableMessageKey(
@@ -134,6 +149,11 @@ export class ServerConnection {
   private readonly startupTimeoutMs: number;
 
   private session: HostDaemonSessionOpenResponse | null = null;
+  private sequencer: HostDaemonWsSequencer | null = null;
+  private sessionSocketOpened = false;
+  private socketReady = false;
+  private dialingResume = false;
+  private resumeDeadline: ReturnType<typeof setTimeout> | null = null;
   private machineEnvironmentRevision = -1;
   private websocket: ReconnectingWebSocketLike | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -144,14 +164,16 @@ export class ServerConnection {
   private fatalConnectError: ServerResponseError | null = null;
   private protocolMismatchObserved = false;
   private sessionInvalidationInProgress = false;
-  private pendingTerminalSocketBytes = 0;
-  private readonly pendingTerminalSocketPayloads: PendingTerminalSocketPayload[] =
-    [];
-  private terminalSocketDrainTimeout: ReturnType<typeof setTimeout> | null =
-    null;
+  private pendingSocketBytes = 0;
+  private readonly pendingSocketPayloads: PendingSocketPayload[] = [];
+  private socketDrainTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly pendingRecoverableMessages = new Map<
     string,
     HostDaemonDaemonWsMessage
+  >();
+  private readonly sentRecoverableMessages = new Map<
+    string,
+    SentRecoverableMessage
   >();
 
   constructor(private readonly options: ServerConnectionOptions) {
@@ -167,7 +189,7 @@ export class ServerConnection {
 
   async start(): Promise<HostDaemonSessionOpenResponse> {
     this.stopped = false;
-    return this.connectWebSocket(null);
+    return this.connectWebSocket();
   }
 
   async shutdown(): Promise<void> {
@@ -175,140 +197,163 @@ export class ServerConnection {
     this.pendingRecoverableMessages.clear();
     this.sessionInvalidationInProgress = false;
     this.clearHeartbeat();
-    this.clearSession();
+    this.abandonSession();
 
     if (this.websocket) {
       const websocket = this.websocket;
       this.websocket = null;
       websocket.onmessage = null;
       websocket.onclose = null;
-      websocket.close();
+      websocket.close(1000, HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON);
     }
   }
 
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
     const parsed = hostDaemonDaemonWsMessageSchema.parse(message);
     const recoverableKey = recoverableMessageKey(parsed);
-    const websocket = this.websocket;
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      if (recoverableKey !== null) {
-        this.pendingRecoverableMessages.set(recoverableKey, parsed);
-      }
+    const recoverable =
+      recoverableKey === null ? null : { key: recoverableKey, message: parsed };
+    if (recoverable !== null) {
+      this.pendingRecoverableMessages.set(recoverable.key, parsed);
+    }
+    if (this.sequencer === null) {
       return false;
     }
 
     const payload = JSON.stringify(parsed);
+    const websocket = this.connectedWebSocket();
     if (
-      isTerminalDaemonOutputMessage(parsed) &&
-      (this.pendingTerminalSocketPayloads.length > 0 ||
-        (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES)
+      websocket === null ||
+      (isTerminalDaemonOutputMessage(parsed) &&
+        (this.pendingSocketPayloads.length > 0 ||
+          (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES))
     ) {
-      return this.enqueueTerminalSocketPayload(payload);
+      return this.enqueueSocketPayload(payload, recoverable);
     }
     if (
       isTerminalDaemonLifecycleMessage(parsed) &&
-      this.pendingTerminalSocketPayloads.length > 0
+      this.pendingSocketPayloads.length > 0
     ) {
-      this.flushTerminalSocketPayloads(true);
-      if (
-        this.pendingTerminalSocketPayloads.length > 0 ||
-        websocket.readyState !== OPEN_READY_STATE
-      ) {
-        return false;
-      }
+      const queued = this.enqueueSocketPayload(payload, recoverable);
+      this.flushSocketPayloads(true);
+      return queued;
     }
-    try {
-      websocket.send(payload);
-    } catch (error) {
-      this.options.logger.warn(
-        { ...runtimeErrorLogFields(error), type: parsed.type },
-        "Failed to send websocket message",
-      );
-      websocket.close(1013, "send-failed");
+    return this.writeSocketPayload(websocket, payload, recoverable);
+  }
+
+  private connectedWebSocket(): ReconnectingWebSocketLike | null {
+    const websocket = this.websocket;
+    if (
+      !this.socketReady ||
+      !websocket ||
+      websocket.readyState !== OPEN_READY_STATE
+    ) {
+      return null;
+    }
+    return websocket;
+  }
+
+  private writeSocketPayload(
+    websocket: ReconnectingWebSocketLike,
+    payload: string,
+    recoverable: RecoverableMessage | null,
+  ): boolean {
+    const sequencer = this.sequencer;
+    if (sequencer === null) {
       return false;
     }
-    if (recoverableKey !== null) {
-      this.pendingRecoverableMessages.delete(recoverableKey);
+    const frame = sequencer.encode(payload);
+    if (recoverable !== null) {
+      this.sentRecoverableMessages.set(recoverable.key, {
+        message: recoverable.message,
+        seq: sequencer.sentSeq,
+      });
     }
+    this.sendFrame(websocket, frame);
     return true;
   }
 
-  private enqueueTerminalSocketPayload(payload: string): boolean {
+  private sendFrame(
+    websocket: ReconnectingWebSocketLike,
+    frame: string,
+  ): boolean {
+    try {
+      websocket.send(frame);
+      return true;
+    } catch (error) {
+      this.options.logger.warn(
+        { ...runtimeErrorLogFields(error) },
+        "Failed to send websocket message",
+      );
+      this.socketReady = false;
+      websocket.reconnect(1013, "send-failed");
+      return false;
+    }
+  }
+
+  private enqueueSocketPayload(
+    payload: string,
+    recoverable: RecoverableMessage | null,
+  ): boolean {
     const bytes = Buffer.byteLength(payload, "utf8");
-    if (
-      this.pendingTerminalSocketBytes + bytes >
-      TERMINAL_SOCKET_MAX_QUEUE_BYTES
-    ) {
+    if (this.pendingSocketBytes + bytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
       this.options.logger.warn(
         {
           maxQueueBytes: TERMINAL_SOCKET_MAX_QUEUE_BYTES,
-          pendingBytes: this.pendingTerminalSocketBytes,
+          pendingBytes: this.pendingSocketBytes,
         },
         "Terminal websocket output queue exceeded its limit",
       );
-      this.clearTerminalSocketPayloads();
-      this.websocket?.close(1013, "terminal-backpressure");
+      this.abandonSession();
+      this.websocket?.reconnect(1013, "terminal-backpressure");
       return false;
     }
-    this.pendingTerminalSocketPayloads.push({ bytes, payload });
-    this.pendingTerminalSocketBytes += bytes;
-    this.scheduleTerminalSocketDrain();
+    this.pendingSocketPayloads.push({ bytes, payload, recoverable });
+    this.pendingSocketBytes += bytes;
+    if (this.connectedWebSocket() !== null) {
+      this.scheduleSocketDrain();
+    }
     return true;
   }
 
-  private scheduleTerminalSocketDrain(): void {
-    if (this.terminalSocketDrainTimeout !== null) {
+  private scheduleSocketDrain(): void {
+    if (this.socketDrainTimeout !== null) {
       return;
     }
-    this.terminalSocketDrainTimeout = setTimeout(() => {
-      this.terminalSocketDrainTimeout = null;
-      this.flushTerminalSocketPayloads(false);
+    this.socketDrainTimeout = setTimeout(() => {
+      this.socketDrainTimeout = null;
+      this.flushSocketPayloads(false);
     }, TERMINAL_SOCKET_DRAIN_POLL_MS);
   }
 
-  private flushTerminalSocketPayloads(ignoreHighWater: boolean): void {
-    const websocket = this.websocket;
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      this.clearTerminalSocketPayloads();
-      return;
-    }
+  private flushSocketPayloads(ignoreHighWater: boolean): void {
+    let websocket = this.connectedWebSocket();
     while (
-      this.pendingTerminalSocketPayloads.length > 0 &&
+      websocket !== null &&
+      this.pendingSocketPayloads.length > 0 &&
       (ignoreHighWater ||
         (websocket.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES)
     ) {
-      const pending = this.pendingTerminalSocketPayloads[0];
+      const pending = this.pendingSocketPayloads.shift();
       if (!pending) {
         break;
       }
-      try {
-        websocket.send(pending.payload);
-      } catch (error) {
-        this.options.logger.warn(
-          { ...runtimeErrorLogFields(error) },
-          "Failed to drain terminal websocket output",
-        );
-        websocket.close(1013, "send-failed");
-        this.clearTerminalSocketPayloads();
-        return;
-      }
-      this.pendingTerminalSocketPayloads.shift();
-      this.pendingTerminalSocketBytes -= pending.bytes;
+      this.pendingSocketBytes -= pending.bytes;
+      this.writeSocketPayload(websocket, pending.payload, pending.recoverable);
+      websocket = this.connectedWebSocket();
     }
-    if (this.pendingTerminalSocketPayloads.length === 0) {
-      this.clearTerminalSocketPayloads();
-      return;
+    if (websocket !== null && this.pendingSocketPayloads.length > 0) {
+      this.scheduleSocketDrain();
     }
-    this.scheduleTerminalSocketDrain();
   }
 
-  private clearTerminalSocketPayloads(): void {
-    if (this.terminalSocketDrainTimeout !== null) {
-      clearTimeout(this.terminalSocketDrainTimeout);
-      this.terminalSocketDrainTimeout = null;
+  private clearSocketPayloads(): void {
+    if (this.socketDrainTimeout !== null) {
+      clearTimeout(this.socketDrainTimeout);
+      this.socketDrainTimeout = null;
     }
-    this.pendingTerminalSocketPayloads.length = 0;
-    this.pendingTerminalSocketBytes = 0;
+    this.pendingSocketPayloads.length = 0;
+    this.pendingSocketBytes = 0;
   }
 
   setSessionCloseHandler(handler: SessionCloseHandler | undefined): void {
@@ -334,7 +379,7 @@ export class ServerConnection {
       "Server reported inactive daemon session; reconnecting",
     );
     this.clearHeartbeat();
-    this.clearSession();
+    this.abandonSession();
     this.websocket?.reconnect(1000, "inactive-session");
   }
 
@@ -347,6 +392,7 @@ export class ServerConnection {
         hostName: this.options.hostName,
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
+        turnCommandThreadIds: this.options.getTurnCommandThreadIds?.() ?? [],
         activeThreads: this.options.getActiveThreads?.() ?? [],
         openThreadWork: this.options.getOpenThreadWork?.() ?? [],
         undeliveredEventThreadIds:
@@ -354,6 +400,8 @@ export class ServerConnection {
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;
+      this.sequencer = new HostDaemonWsSequencer();
+      this.sessionSocketOpened = false;
       this.machineEnvironmentRevision = session.machineEnvironment.revision;
       this.options.onMachineEnvironment?.(session.machineEnvironment);
       this.options.onIdleProviderSessionTimeout?.(
@@ -440,18 +488,21 @@ export class ServerConnection {
     );
   }
 
-  private async connectWebSocket(
-    initialSessionId: string | null,
-  ): Promise<HostDaemonSessionOpenResponse> {
-    let nextSessionId: string | null = initialSessionId;
+  private async connectWebSocket(): Promise<HostDaemonSessionOpenResponse> {
     const websocket = this.createWebSocket(
       async () => {
-        if (!nextSessionId) {
-          nextSessionId = (await this.openSession()).sessionId;
+        const resumable = this.resumableSession();
+        if (resumable !== null) {
+          this.dialingResume = true;
+          return this.buildWebSocketUrl(
+            resumable.session.sessionId,
+            resumable.sequencer.receivedSeq,
+          );
         }
-        const sessionId = nextSessionId;
-        nextSessionId = null;
-        return this.buildWebSocketUrl(sessionId);
+        this.dialingResume = false;
+        this.abandonSession();
+        const session = await this.openSession();
+        return this.buildWebSocketUrl(session.sessionId, null);
       },
       {
         minReconnectionDelay: DEFAULT_MIN_RECONNECTION_DELAY,
@@ -498,6 +549,15 @@ export class ServerConnection {
       websocket.onopen = () => {
         this.protocolMismatchObserved = false;
         const session = this.session;
+        const sequencer = this.sequencer;
+        if (this.dialingResume) {
+          if (!session || !sequencer) {
+            websocket.reconnect(1000, "session-abandoned");
+            return;
+          }
+          this.resumeSession(websocket, session, sequencer);
+          return;
+        }
         if (!session) {
           fail(new Error("WebSocket opened before session was available"));
           return;
@@ -505,6 +565,8 @@ export class ServerConnection {
 
         const handleOpen = async () => {
           hasOpened = true;
+          this.sessionSocketOpened = true;
+          this.socketReady = true;
           this.sessionInvalidationInProgress = false;
           clearTimeout(startupTimer);
           this.resetHeartbeat();
@@ -513,6 +575,7 @@ export class ServerConnection {
             { sessionId: session.sessionId },
             "Connected to server",
           );
+          this.flushSocketPayloads(true);
           await this.options.onSessionOpened?.(session);
           this.flushPendingRecoverableMessages();
           if (!settled) {
@@ -539,21 +602,48 @@ export class ServerConnection {
 
       websocket.onclose = (event) => {
         this.clearHeartbeat();
-        this.clearSession();
+        this.socketReady = false;
         if (!hasOpened) {
+          this.abandonSession();
           this.options.logger.warn(
             { code: event.code, reason: event.reason },
             "Waiting for server connection...",
           );
           return;
         }
-        this.options.logger.info(
-          { code: event.code, reason: event.reason },
-          "Disconnected from server",
-        );
+        if (event.code === HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE) {
+          this.options.logger.info(
+            { code: event.code, reason: event.reason },
+            "Server could not resume the daemon session; opening a new one",
+          );
+          this.abandonSession();
+          return;
+        }
         if (this.stopped) {
           return;
         }
+        const resumable = this.resumableSession();
+        if (resumable === null) {
+          this.abandonSession();
+          this.options.logger.info(
+            { code: event.code, reason: event.reason },
+            "Disconnected from server",
+          );
+          return;
+        }
+        if (this.resumeDeadline !== null) {
+          return;
+        }
+        this.options.logger.info(
+          {
+            code: event.code,
+            reason: event.reason,
+            reconnectGraceMs: resumable.session.reconnectGraceMs,
+            sessionId: resumable.session.sessionId,
+          },
+          "Disconnected from server; resuming the session",
+        );
+        this.startResumeDeadline(resumable.session);
       };
 
       websocket.onerror = (error) => {
@@ -573,29 +663,139 @@ export class ServerConnection {
     });
   }
 
+  private resumableSession(): {
+    sequencer: HostDaemonWsSequencer;
+    session: HostDaemonSessionOpenResponse;
+  } | null {
+    const session = this.session;
+    const sequencer = this.sequencer;
+    if (
+      session === null ||
+      sequencer === null ||
+      session.reconnectGraceMs === 0 ||
+      !this.sessionSocketOpened ||
+      !sequencer.replayable
+    ) {
+      return null;
+    }
+    return { sequencer, session };
+  }
+
+  private resumeSession(
+    websocket: ReconnectingWebSocketLike,
+    session: HostDaemonSessionOpenResponse,
+    sequencer: HostDaemonWsSequencer,
+  ): void {
+    this.clearResumeDeadline();
+    this.sessionInvalidationInProgress = false;
+    this.socketReady = true;
+    for (const frame of sequencer.replayFrom(0)) {
+      if (!this.sendFrame(websocket, frame)) {
+        return;
+      }
+    }
+    this.resetHeartbeat();
+    this.options.logger.info(
+      { sessionId: session.sessionId },
+      "Reconnected; resuming the server session",
+    );
+    this.flushSocketPayloads(true);
+  }
+
+  private startResumeDeadline(session: HostDaemonSessionOpenResponse): void {
+    this.resumeDeadline = setTimeout(() => {
+      this.resumeDeadline = null;
+      if (this.socketReady || this.session !== session) {
+        return;
+      }
+      this.options.logger.info(
+        {
+          reconnectGraceMs: session.reconnectGraceMs,
+          sessionId: session.sessionId,
+        },
+        "Could not resume the server session within its grace period",
+      );
+      this.abandonSession();
+    }, session.reconnectGraceMs);
+  }
+
+  private clearResumeDeadline(): void {
+    if (this.resumeDeadline !== null) {
+      clearTimeout(this.resumeDeadline);
+      this.resumeDeadline = null;
+    }
+  }
+
+  private abandonSession(): void {
+    this.clearResumeDeadline();
+    this.clearSocketPayloads();
+    this.sentRecoverableMessages.clear();
+    this.sequencer = null;
+    this.sessionSocketOpened = false;
+    this.socketReady = false;
+    this.clearSession();
+  }
+
   private flushPendingRecoverableMessages(): void {
-    for (const message of Array.from(
-      this.pendingRecoverableMessages.values(),
+    for (const [key, message] of Array.from(
+      this.pendingRecoverableMessages.entries(),
     )) {
+      if (this.sentRecoverableMessages.get(key)?.message === message) {
+        continue;
+      }
       if (!this.sendMessage(message)) {
         return;
       }
     }
   }
 
+  private pruneAcknowledgedRecoverableMessages(acknowledgedSeq: number): void {
+    for (const [key, sent] of this.sentRecoverableMessages) {
+      if (sent.seq > acknowledgedSeq) {
+        continue;
+      }
+      this.sentRecoverableMessages.delete(key);
+      if (this.pendingRecoverableMessages.get(key) === sent.message) {
+        this.pendingRecoverableMessages.delete(key);
+      }
+    }
+  }
+
   private handleWebSocketMessage(data: unknown): void {
-    const text = decodeWebSocketMessageData(data);
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(text);
-    } catch (error) {
+    const sequencer = this.sequencer;
+    if (sequencer === null) {
+      return;
+    }
+    const received = sequencer.receive(decodeWebSocketMessageData(data));
+    this.pruneAcknowledgedRecoverableMessages(sequencer.acknowledgedSeq);
+    if (received.kind === "invalid") {
       this.handleInvalidServerMessage({
         data,
-        error: normalizeCaughtError(error),
+        error: new Error("Invalid server websocket frame"),
       });
       return;
     }
+    if (received.kind === "gap") {
+      this.options.logger.warn(
+        { sessionId: this.session?.sessionId ?? null },
+        "Server websocket messages arrived out of sequence; opening a new session",
+      );
+      this.clearHeartbeat();
+      this.abandonSession();
+      this.websocket?.reconnect(1000, "sequence-gap");
+      return;
+    }
+    if (received.kind === "ignored") {
+      return;
+    }
+    const websocket = this.connectedWebSocket();
+    if (websocket !== null && sequencer.ackDue) {
+      this.sendFrame(websocket, sequencer.encodeAck());
+    }
+    this.handleServerMessage(received.message, data);
+  }
 
+  private handleServerMessage(decoded: unknown, data: unknown): void {
     const message = hostDaemonServerWsMessageSchema.safeParse(decoded);
     if (!message.success) {
       const invalidRpcRequest =
@@ -779,7 +979,7 @@ export class ServerConnection {
         "Server expired host daemon session; reconnecting",
       );
       this.clearHeartbeat();
-      this.clearSession();
+      this.abandonSession();
       this.websocket?.reconnect(1000, "expired");
       return;
     }
@@ -873,7 +1073,8 @@ export class ServerConnection {
       }
       this.lastHeartbeatTickAt = now;
 
-      if (!this.websocket || this.websocket.readyState !== OPEN_READY_STATE) {
+      const websocket = this.connectedWebSocket();
+      if (websocket === null) {
         return;
       }
 
@@ -891,7 +1092,7 @@ export class ServerConnection {
           "Server heartbeat acknowledgements stopped; reconnecting",
         );
         this.clearHeartbeat();
-        this.websocket.reconnect(1013, "heartbeat-ack-timeout");
+        websocket.reconnect(1013, "heartbeat-ack-timeout");
         return;
       }
 
@@ -909,7 +1110,6 @@ export class ServerConnection {
   }
 
   private clearSession(): void {
-    this.clearTerminalSocketPayloads();
     if (!this.session) {
       return;
     }
@@ -918,11 +1118,20 @@ export class ServerConnection {
     this.options.setSession?.(null);
   }
 
-  private buildWebSocketUrl(sessionId: string): string {
+  private buildWebSocketUrl(
+    sessionId: string,
+    resumeFrom: number | null,
+  ): string {
     const serverUrl = new URL(this.options.serverUrl);
     serverUrl.protocol = serverUrl.protocol === "https:" ? "wss:" : "ws:";
     serverUrl.pathname = "/internal/ws";
     serverUrl.searchParams.set("sessionId", sessionId);
+    if (resumeFrom !== null) {
+      serverUrl.searchParams.set(
+        HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM,
+        String(resumeFrom),
+      );
+    }
     return serverUrl.toString();
   }
 }

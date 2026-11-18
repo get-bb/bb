@@ -296,32 +296,36 @@ describe("KeyboardSettingsSection", () => {
     testState.mutate.mockImplementation((overrides) => {
       testState.keybindingOverrides = overrides;
     });
-    const { rerender } = render(<KeyboardSettingsSection />);
+    render(<KeyboardSettingsSection />);
     fireEvent.click(
       screen.getByRole("button", { name: "Reset shortcut for New thread" }),
     );
-    rerender(<KeyboardSettingsSection />);
-    expect(
-      screen.getByRole("button", {
-        name: "Record shortcut for New thread, current shortcut ⇧ ⌘ O",
-      }),
-    ).toBeTruthy();
+    const macWebShortcut = {
+      name: "Record shortcut for New thread, current shortcut ⇧ ⌘ O",
+    };
+    expect(screen.getByRole("button", macWebShortcut)).toBeTruthy();
+    cleanup();
+    render(<KeyboardSettingsSection />);
+    expect(screen.getByRole("button", macWebShortcut)).toBeTruthy();
+    cleanup();
     testState.isDesktop = true;
-    rerender(<KeyboardSettingsSection />);
+    render(<KeyboardSettingsSection />);
     expect(
       screen.getByRole("button", {
         name: "Record shortcut for New thread, current shortcut ⌘ N",
       }),
     ).toBeTruthy();
+    cleanup();
     platform.mockReturnValue("Linux");
-    rerender(<KeyboardSettingsSection />);
+    render(<KeyboardSettingsSection />);
     expect(
       screen.getByRole("button", {
         name: "Record shortcut for New thread, current shortcut Ctrl + G",
       }),
     ).toBeTruthy();
+    cleanup();
     platform.mockReturnValue("Win32");
-    rerender(<KeyboardSettingsSection />);
+    render(<KeyboardSettingsSection />);
     expect(
       screen.getByRole("button", {
         name: "Record shortcut for New thread, current shortcut unassigned",

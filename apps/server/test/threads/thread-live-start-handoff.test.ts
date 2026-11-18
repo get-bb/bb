@@ -1,4 +1,9 @@
-import { getThread } from "@bb/db";
+import {
+  getHost,
+  getLatestSessionForHost,
+  getThread,
+  hasThreadStartTurnRequest,
+} from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -10,10 +15,11 @@ import {
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
-  hasLiveThreadStartInFlight,
+  recoverThreadLifecyclesAfterRestart,
   requestThreadStart,
   requestThreadStopForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
+import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   createTestDaemonEventEnvelope,
   internalAuthHeaders,
@@ -102,7 +108,7 @@ async function startLiveThreadStartRpc(
     ({ command }) =>
       command.type === "thread.start" && command.threadId === thread.id,
   );
-  expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
+  expect(hasThreadStartTurnRequest(args.harness.db, thread.id)).toBe(true);
   return { environment, startCommand, thread, owner };
 }
 
@@ -213,11 +219,7 @@ describe("live thread start handoff", () => {
         requestIdValue: 4,
       });
 
-      requestThreadStopForCurrentState(
-        harness.deps,
-        fixture.thread,
-        fixture.environment,
-      );
+      requestThreadStopForCurrentState(harness.deps, fixture.thread);
       const stopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -249,11 +251,7 @@ describe("live thread start handoff", () => {
         requestIdValue: 7,
       });
 
-      requestThreadStopForCurrentState(
-        harness.deps,
-        fixture.thread,
-        fixture.environment,
-      );
+      requestThreadStopForCurrentState(harness.deps, fixture.thread);
       const stopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -285,6 +283,57 @@ describe("live thread start handoff", () => {
       });
     });
   });
+
+  it.each([
+    { running: true, status: "active" },
+    { running: false, status: "error" },
+  ] as const)(
+    "settles a thread start whose answer a server restart lost from the daemon's report (running: $running)",
+    async ({ running, status }) => {
+      await withTestHarness(async (harness) => {
+        const fixture = await startLiveThreadStartRpc({
+          harness,
+          requestIdValue: running ? 7 : 8,
+        });
+        await recoverThreadLifecyclesAfterRestart(harness.deps);
+        await advanceThreadProvisioning(harness.deps, {
+          threadId: fixture.thread.id,
+        });
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe(
+          "starting",
+        );
+
+        const host = getHost(harness.db, fixture.environment.hostId);
+        const session = getLatestSessionForHost(harness.db, {
+          hostId: fixture.environment.hostId,
+        });
+        if (host === null || session === null) {
+          throw new Error("Expected the fixture's host session");
+        }
+        const response = await harness.app.request("/internal/session/open", {
+          method: "POST",
+          headers: internalAuthHeaders(harness, { hostId: host.id }),
+          body: JSON.stringify({
+            hostId: host.id,
+            instanceId: session.instanceId,
+            hostName: host.name,
+            hasMachineCredential: false,
+            platform: "darwin",
+            dataDir: session.dataDir,
+            localApiPort: null,
+            protocolVersion: session.protocolVersion,
+            activeThreads: running ? [{ threadId: fixture.thread.id }] : [],
+            openThreadWork: [],
+          }),
+        });
+        expect(response.status).toBe(201);
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe(status);
+        expect(hasThreadStartTurnRequest(harness.db, fixture.thread.id)).toBe(
+          false,
+        );
+      });
+    },
+  );
 
   it("does not reactivate an idle thread when a completed start turn settled first", async () => {
     await withTestHarness(async (harness) => {

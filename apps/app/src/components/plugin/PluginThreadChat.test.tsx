@@ -3,15 +3,7 @@
 import { LazyPluginThreadChat } from "./LazyPluginThreadChat";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import {
-  beforeAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
@@ -20,7 +12,7 @@ import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/tim
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-beforeAll(() => LazyPluginThreadChat.preload());
+await LazyPluginThreadChat.preload();
 
 const mocks = vi.hoisted(() => ({
   threadScreenProps: [] as Array<Record<string, unknown>>,

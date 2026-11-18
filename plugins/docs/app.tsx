@@ -8,6 +8,7 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import {
   experimental_useAppPanel,
   definePluginApp,
@@ -1022,12 +1023,12 @@ function InlineDocument({
   useEffect(() => {
     const content = contentRef.current;
     if (!openInTab || !content) return;
-    const measure = () =>
-      setTruncated(content.getBoundingClientRect().height > 400);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(content);
-    return () => observer.disconnect();
+    const measure = () => content.getBoundingClientRect().height > 400;
+    setTruncated(measure());
+    return observeSharedResize(content, {
+      read: measure,
+      write: setTruncated,
+    });
   }, [state.loaded, openInTab]);
   const proposal = state.base?.proposal ?? null;
   const sha256 = state.base?.sha256 ?? "";

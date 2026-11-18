@@ -31,7 +31,9 @@ export async function listHostBranchOptions(
 
   return listBranchOptions({
     ...command,
-    ...userExecutableProcessOptions(options?.runtimeManager.getShellEnv() ?? {}),
+    ...userExecutableProcessOptions(
+      options?.runtimeManager.getShellEnv() ?? {},
+    ),
   });
 }
 
@@ -72,6 +74,7 @@ export async function inspectHostGitSource(
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
       defaultBranchRelation: null,
+      defaultWorktreeBaseBranch: null,
       isWorktree: false,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
@@ -102,6 +105,7 @@ export async function inspectHostGitSource(
     checkout,
     defaultBranch: defaultBranch ?? null,
     defaultBranchRelation: defaultRefs.defaultBranchRelation ?? null,
+    defaultWorktreeBaseBranch: defaultRefs.baseBranch?.ref ?? null,
     isWorktree: isWorkTree && repo.isLinkedWorktree,
     hasUncommittedChanges: dirty,
     operation,

@@ -1,8 +1,17 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { fetchRemoteBranches } from "../src/branch-options.js";
 import { runGit } from "../src/workspace-git.js";
 
@@ -128,17 +137,50 @@ describe("background Git authentication", () => {
 });
 
 describe("remote branch refresh", () => {
-  async function repoWithRemotes(names: string[]) {
-    const repo = await initRepo(await makeTempDir("bb-git-fetch-remotes-"));
-    for (const name of names) {
-      const remote = await makeTempDir(`bb-git-fetch-${name}-`);
-      await runGit(["init", "--bare", "-q"], { cwd: remote });
-      await runGit(["remote", "add", name, remote], { cwd: repo });
-      await runGit(["push", "-q", name, "main", "main:stale"], { cwd: repo });
-      await runGit(["fetch", "-q", name], { cwd: repo });
-      await runGit(["push", "-q", remote, "main:fresh", ":stale"], {
-        cwd: repo,
+  let templateRoot: string;
+  let commit: string;
+
+  beforeAll(async () => {
+    templateRoot = await fs.mkdtemp(
+      path.join(tmpdir(), "bb-git-fetch-template-"),
+    );
+    const repo = path.join(templateRoot, "repo");
+    const remote = path.join(templateRoot, "remote");
+    await fs.mkdir(repo);
+    await fs.mkdir(remote);
+    await initRepo(repo);
+    await runGit(["init", "--bare", "-q"], { cwd: remote });
+    await runGit(["push", "-q", remote, "main", "main:fresh"], { cwd: repo });
+    commit = (await runGit(["rev-parse", "main"], { cwd: repo })).stdout.trim();
+  });
+
+  afterAll(async () => {
+    if (templateRoot)
+      await fs.rm(templateRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 100,
       });
+  });
+
+  async function repoWithRemotes(names: string[]) {
+    const root = await makeTempDir("bb-git-fetch-remotes-");
+    const repo = path.join(root, "repo");
+    await fs.cp(path.join(templateRoot, "repo"), repo, { recursive: true });
+    for (const name of names) {
+      await fs.cp(path.join(templateRoot, "remote"), path.join(root, name), {
+        recursive: true,
+      });
+      await fs.appendFile(
+        path.join(repo, ".git", "config"),
+        `[remote "${name}"]\n\turl = ../${name}\n\tfetch = +refs/heads/*:refs/remotes/${name}/*\n`,
+      );
+      const trackingRefs = path.join(repo, ".git", "refs", "remotes", name);
+      await fs.mkdir(trackingRefs, { recursive: true });
+      for (const branch of ["main", "stale"]) {
+        await fs.writeFile(path.join(trackingRefs, branch), `${commit}\n`);
+      }
     }
     return repo;
   }

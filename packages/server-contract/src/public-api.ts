@@ -20,6 +20,7 @@ import {
   type SystemProviderEnabledRequest,
   type TestAiServiceRequest,
   type TestAiServiceResponse,
+  type SystemSetupGuideResponse,
 } from "./api/system.js";
 import {
   desktopBrowserBrokerProofRequestSchema,
@@ -198,7 +199,6 @@ import {
   type SendQueuedMessageResponse,
   type SidebarBootstrapResponse,
   type SystemAttentionResponse,
-  type SystemSetupGuideResponse,
   type SystemConfigReloadResponse,
   type SystemConfigResponse,
   type SystemMobileAppReleasesResponse,

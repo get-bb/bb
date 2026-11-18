@@ -22,7 +22,11 @@ import { writeAgentCpuPriority } from "@bb/process-utils";
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppDeps } from "../types.js";
-import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
+import {
+  HEARTBEAT_INTERVAL_MS,
+  HOST_RECONNECT_GRACE_MS,
+  LEASE_TIMEOUT_MS,
+} from "../constants.js";
 import { ApiError } from "../errors.js";
 import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
 import {
@@ -214,6 +218,7 @@ export function registerInternalSessionRoutes(
       activeThreads: payload.activeThreads,
       openThreadWork: payload.openThreadWork,
       hostId: daemon.hostId,
+      turnCommandThreadIds: payload.turnCommandThreadIds,
       undeliveredEventThreadIds: payload.undeliveredEventThreadIds,
       openedSession: session,
       previousSession,
@@ -235,6 +240,9 @@ export function registerInternalSessionRoutes(
         sessionId: session.id,
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
+        reconnectGraceMs: getExperiments(deps.db).resumeDaemonSessions
+          ? HOST_RECONNECT_GRACE_MS
+          : 0,
         watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,

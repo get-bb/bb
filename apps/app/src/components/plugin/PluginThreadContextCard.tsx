@@ -17,6 +17,7 @@ import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -26,7 +27,7 @@ import {
   type GroupedPlacement,
 } from "@/lib/grouped-placement";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginThreadContextCardRowSlot,
   type PluginThreadContextCardSectionSlot,
 } from "@/lib/plugin-slots";
@@ -125,7 +126,10 @@ export function ThreadContextCardProvider({
   coreSections: readonly CoreThreadContextCardSection[];
   children: ReactNode;
 }) {
-  const { threadContextCardRows, threadContextCardSections } = usePluginSlots();
+  const threadContextCardRows = usePluginSlotKind("threadContextCardRows");
+  const threadContextCardSections = usePluginSlotKind(
+    "threadContextCardSections",
+  );
   const [layout, setLayout] = useState<ThreadContextCardLayout>("banner");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [cardHasContent, setCardHasContent] = useState(false);
@@ -365,12 +369,9 @@ export function ThreadContextCard() {
       "[data-scroll-overlay]",
     );
     if (!overlay || !setLayout) return;
-    const measure = () =>
-      setLayout(resolveThreadContextCardLayout(overlay.clientWidth));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(overlay);
-    return () => observer.disconnect();
+    const measure = () => resolveThreadContextCardLayout(overlay.clientWidth);
+    setLayout(measure());
+    return observeSharedResize(overlay, { read: measure, write: setLayout });
   }, [setLayout]);
 
   if (state === null) return null;

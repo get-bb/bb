@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   afterEach,
   beforeEach,
@@ -18,6 +19,13 @@ import {
   vi,
 } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import {
+  createProcessLifeline,
+  hasExited,
+  trackChildProcesses,
+  type ChildProcessTracker,
+  type ProcessLifeline,
+} from "@bb/test-helpers";
 import { createAgentRuntime } from "./runtime.js";
 import { createProviderForId } from "./provider-registry.js";
 import { RuntimeProviderProcessManager } from "./runtime-provider-process.js";
@@ -29,6 +37,7 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   createScriptedEchoLaunch,
+  scriptedEchoBridgeModulePath,
   createScriptedEchoProcessLog,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
@@ -59,20 +68,20 @@ interface CreateProviderProcessManagerArgs {
   workspacePath: string;
 }
 
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function stoppedProcessPids(log: string[]): number[] {
-  return log
-    .filter((line) => line.startsWith("spawn:"))
-    .map((line) => Number(line.slice("spawn:".length)))
-    .filter((pid) => !processIsAlive(pid));
+function stoppedProcessPids(
+  tracker: ChildProcessTracker,
+  log: string[],
+): number[] {
+  const loggedPids = new Set(
+    log
+      .filter((line) => line.startsWith("spawn:"))
+      .map((line) => Number(line.slice("spawn:".length))),
+  );
+  return tracker.children.flatMap((child) =>
+    child.pid !== undefined && loggedPids.has(child.pid) && hasExited(child)
+      ? [child.pid]
+      : [],
+  );
 }
 
 const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
@@ -96,23 +105,18 @@ const MANAGER_PROVIDER = {
 
 describe("createAgentRuntime process lifecycle", () => {
   let tmpDir: string;
-  let fixturePidFile: string | undefined;
+  let tracker: ChildProcessTracker;
+  let lifeline: ProcessLifeline;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    tracker = trackChildProcesses();
+    lifeline = await createProcessLifeline();
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
   });
 
   afterEach(async () => {
-    if (fixturePidFile && existsSync(fixturePidFile)) {
-      const pid = Number(readFileSync(fixturePidFile, "utf8"));
-      if (processIsAlive(pid)) process.kill(pid, "SIGKILL");
-      await waitForRuntimeState({
-        label: "fixture writer exit",
-        predicate: () => !processIsAlive(pid),
-        timeoutMs: 5_000,
-      });
-    }
-    fixturePidFile = undefined;
+    tracker.dispose();
+    await lifeline.close();
     vi.unstubAllEnvs();
     rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -254,20 +258,35 @@ describe("createAgentRuntime process lifecycle", () => {
   it.runIf(process.platform === "linux")(
     "ranks provider processes ahead of bb for the out-of-memory killer",
     async () => {
+      const reportPath = join(tmpDir, "provider-oom-score-adj");
+      const reportingBridgePath = join(tmpDir, "oom-reporting-bridge.mjs");
+      writeFileSync(
+        reportingBridgePath,
+        [
+          'import { readFileSync, writeFileSync } from "node:fs";',
+          `export * from ${JSON.stringify(pathToFileURL(scriptedEchoBridgeModulePath).href)};`,
+          `writeFileSync(${JSON.stringify(reportPath)}, readFileSync("/proc/self/oom_score_adj", "utf8"));`,
+        ].join("\n"),
+      );
+      const adapter = createProviderForId("fake", {
+        additionalWorkspaceWriteRoots: [],
+        bridgeLaunch: createScriptedEchoLaunch({
+          modulePath: reportingBridgePath,
+        }),
+      });
       const manager = createProviderProcessManager({
+        createAdapter: () => adapter,
         onProcessExit: vi.fn(),
         workspacePath: tmpDir,
       });
       onTestFinished(() => manager.shutdown());
 
       await manager.ensureProvider(MANAGER_PROVIDER);
-      const providerPid =
-        manager.requireProviderProcess(MANAGER_PROVIDER).child.pid;
 
       const ownScore = Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
-      expect(
-        Number(readFileSync(`/proc/${providerPid}/oom_score_adj`, "utf8")),
-      ).toBe(Math.min(1_000, ownScore + 500));
+      expect(Number(readFileSync(reportPath, "utf8"))).toBe(
+        Math.min(1_000, ownScore + 500),
+      );
     },
   );
 
@@ -295,7 +314,10 @@ describe("createAgentRuntime process lifecycle", () => {
       providerId: "fake",
     });
 
-    expect(processIsAlive(staleProcess.child.pid ?? 0)).toBe(false);
+    expect(
+      staleProcess.child.exitCode !== null ||
+        staleProcess.child.signalCode !== null,
+    ).toBe(true);
     expect(() =>
       manager.requireProviderProcess({
         processKey: staleKey,
@@ -522,14 +544,10 @@ describe("createAgentRuntime process lifecycle", () => {
 
   function writeExitWhileStderrHeldScript(args: {
     exitFile: string;
-    pidFile: string;
     scriptPath: string;
     startsLog: string;
   }): void {
-    const holder = `const fs = require("node:fs");
-      const pidFile = ${JSON.stringify(args.pidFile)};
-      fs.writeFileSync(pidFile + ".tmp", String(process.pid));
-      fs.renameSync(pidFile + ".tmp", pidFile);
+    const holder = `${lifeline.holdSource("stderr-holder")}
       setTimeout(() => {}, 30_000);`;
     writeCrashOnceScript({
       scriptPath: args.scriptPath,
@@ -565,12 +583,9 @@ describe("createAgentRuntime process lifecycle", () => {
   }> {
     const scriptPath = join(tmpDir, `${name}.cjs`);
     const startsLog = join(tmpDir, `${name}.starts`);
-    const pidFile = join(tmpDir, `${name}.holder.pid`);
     const exitFile = join(tmpDir, `${name}.exit`);
-    fixturePidFile = pidFile;
     writeExitWhileStderrHeldScript({
       exitFile,
-      pidFile,
       scriptPath,
       startsLog,
     });
@@ -582,11 +597,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     await manager.ensureProvider(MANAGER_PROVIDER);
     const { child } = manager.requireProviderProcess(MANAGER_PROVIDER);
-    await waitForRuntimeState({
-      label: "the stderr holder started",
-      predicate: () => existsSync(pidFile),
-      timeoutMs: 5_000,
-    });
+    await lifeline.waitForHolders(1);
     const exited = new Promise((resolve) => child.once("exit", resolve));
     writeFileSync(exitFile, "exit");
     await exited;
@@ -652,10 +663,9 @@ describe("createAgentRuntime process lifecycle", () => {
     const crashScript = join(tmpDir, "stale-descendant-output-provider.cjs");
     const startMarker = join(tmpDir, "stale-descendant-output.started");
     const startsLog = join(tmpDir, "stale-descendant-output.starts");
-    const childPidFile = join(tmpDir, "writer.pid");
-    fixturePidFile = childPidFile;
     const writeMarker = join(tmpDir, "stale-descendant-output.wrote");
-    const delayedWriter = `const fs = require("node:fs");
+    const delayedWriter = `${lifeline.holdSource("delayed-writer")}
+      const fs = require("node:fs");
       const writeMarker = ${JSON.stringify(writeMarker)};
       process.on("SIGTERM", () => {});
       setTimeout(() => {
@@ -671,7 +681,6 @@ describe("createAgentRuntime process lifecycle", () => {
           detached: process.platform === "win32",
           stdio: ["ignore", "inherit", "inherit"],
         });
-        writeFileSync(${JSON.stringify(childPidFile)}, String(writer.pid));
         writer.unref();
         setTimeout(() => process.exit(42), 50);`,
     });
@@ -898,7 +907,7 @@ describe("createAgentRuntime process lifecycle", () => {
       text: "still alive",
       threadId: "t2",
     });
-    expect(stoppedProcessPids(processLog.read())).toHaveLength(0);
+    expect(stoppedProcessPids(tracker, processLog.read())).toHaveLength(0);
     await runtime.shutdown();
   });
 
@@ -923,7 +932,7 @@ describe("createAgentRuntime process lifecycle", () => {
     ).rejects.toThrow("no rollout found");
     expect(runtime.getProviderSession("t1")).toBeNull();
     expect(runtime.listRunningProviders()).toEqual([]);
-    expect(stoppedProcessPids(processLog.read())).toHaveLength(1);
+    expect(stoppedProcessPids(tracker, processLog.read())).toHaveLength(1);
     await runtime.shutdown();
   });
 
@@ -1062,7 +1071,7 @@ describe("createAgentRuntime process lifecycle", () => {
       ]);
       expect(runtime.getProviderSession("t1")).toBeNull();
       expect(runtime.listRunningProviders()).toEqual([]);
-      expect(stoppedProcessPids(processLog.read())).toHaveLength(1);
+      expect(stoppedProcessPids(tracker, processLog.read())).toHaveLength(1);
     } finally {
       await runtime.shutdown();
     }
@@ -1202,7 +1211,7 @@ describe("createAgentRuntime process lifecycle", () => {
       expect(firstResult.reapedSessions).toEqual([]);
       expect(secondResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
-      expect(stoppedProcessPids(processLog.read())).toHaveLength(0);
+      expect(stoppedProcessPids(tracker, processLog.read())).toHaveLength(0);
     } finally {
       await runtime.shutdown();
     }
@@ -1650,7 +1659,10 @@ describe("createAgentRuntime process lifecycle", () => {
       throw new Error("The scripted bridge logged no spawn");
     }
 
-    process.kill(bridgePid, "SIGKILL");
+    const bridge = tracker.running().find((child) => child.pid === bridgePid);
+    if (bridge === undefined)
+      throw new Error("The scripted bridge is not running");
+    bridge.kill("SIGKILL");
     await waitForRuntimeState({
       label: "the dead bridge's background task settled",
       predicate: () => backgroundTaskCompletions(events).length > 0,

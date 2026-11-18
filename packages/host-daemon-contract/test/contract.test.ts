@@ -305,6 +305,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "none",
     },
     originDefaultBranch: "origin/main",
+    defaultWorktreeBaseBranch: "origin/main",
   },
   "host.list_branch_options": {
     branches: ["main"],
@@ -535,6 +536,7 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
         originDefaultBranch: "origin/main",
+        defaultWorktreeBaseBranch: "origin/main",
       },
     },
   ];
@@ -1068,7 +1070,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(265);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(268);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1093,7 +1095,10 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(265)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(265)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(266)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(267)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(268)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -1198,7 +1203,7 @@ describe("host-daemon command schemas", () => {
     ).toBe(false);
   });
 
-  it("requires an explicit intent on a thread stop command", () => {
+  it("requires an explicit intent and aim on a thread stop command", () => {
     const base = {
       environmentId: "env_1",
       threadId: "thr_1",
@@ -1207,9 +1212,27 @@ describe("host-daemon command schemas", () => {
     expect(threadStopCommandSchema.safeParse(base).success).toBe(false);
     expect(
       threadStopCommandSchema.safeParse({ ...base, intent: "release" }).success,
+    ).toBe(false);
+    expect(
+      threadStopCommandSchema.safeParse({
+        ...base,
+        intent: "release",
+        aimedAt: null,
+      }).success,
     ).toBe(true);
     expect(
-      threadStopCommandSchema.safeParse({ ...base, intent: "pause" }).success,
+      threadStopCommandSchema.safeParse({
+        ...base,
+        intent: "interrupt",
+        aimedAt: { turnId: null, requestIds: ["creq_2222222222"] },
+      }).success,
+    ).toBe(true);
+    expect(
+      threadStopCommandSchema.safeParse({
+        ...base,
+        intent: "pause",
+        aimedAt: null,
+      }).success,
     ).toBe(false);
   });
 
@@ -2924,6 +2947,7 @@ describe("host-daemon session schemas", () => {
         agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        reconnectGraceMs: 30_000,
         connectShares: {
           generation: 2,
           ports: [3000, 8080],
@@ -2952,6 +2976,7 @@ describe("host-daemon session schemas", () => {
         agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        reconnectGraceMs: 30_000,
         endedInteractiveRequests: [],
       }).connectShares,
     ).toEqual({ generation: 0, ports: [] });
@@ -2964,6 +2989,7 @@ describe("host-daemon session schemas", () => {
         agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        reconnectGraceMs: 30_000,
         endedInteractiveRequests: [],
       }).connectNext,
     ).toEqual({ generation: 0, config: null });

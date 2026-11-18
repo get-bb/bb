@@ -43,7 +43,6 @@ export interface AcpModelListParams {
   agent?: AcpAgentCommandParam;
   optionsAgent?: AcpAgentCommandParam;
   primaryModels: string[];
-  reasoningProbePriorityModelIds: string[];
   parameterizedModelPicker: boolean;
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
@@ -172,7 +171,6 @@ function buildAcpModelDiscoveryAgentCommand(
 interface AcpModelListOptions {
   parameterizedModelPicker: boolean;
   primaryModels?: readonly string[];
-  reasoningProbePriorityModelIds: readonly string[];
 }
 
 export function buildAcpModelListParams(
@@ -182,13 +180,9 @@ export function buildAcpModelListParams(
   const primaryModels = [
     ...(options.primaryModels ?? launchSpec?.modelCli?.primaryModels ?? []),
   ];
-  const reasoningProbePriorityModelIds = [
-    ...options.reasoningProbePriorityModelIds,
-  ];
   if (launchSpec === null) {
     return {
       primaryModels,
-      reasoningProbePriorityModelIds,
       parameterizedModelPicker: options.parameterizedModelPicker,
     };
   }
@@ -199,7 +193,6 @@ export function buildAcpModelListParams(
     ...(agent !== undefined ? { agent } : {}),
     optionsAgent: buildAcpAgentCommand(launchSpec),
     primaryModels,
-    reasoningProbePriorityModelIds,
     parameterizedModelPicker: options.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }

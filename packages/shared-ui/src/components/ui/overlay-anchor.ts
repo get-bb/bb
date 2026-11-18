@@ -12,6 +12,56 @@ function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
   }
 }
 
+function watchAnchorDetachment(
+  anchor: Element,
+  isCurrentAnchor: () => boolean,
+  onDetach: () => void,
+): () => void {
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    if (!isCurrentAnchor()) return;
+    closed = true;
+    onDetach();
+  };
+
+  let wasInteractive = isAnchorInteractive(anchor);
+  const mutationObserver = new MutationObserver(() => {
+    if (isAnchorInteractive(anchor)) {
+      wasInteractive = true;
+    } else if (wasInteractive) {
+      close();
+    }
+  });
+  mutationObserver.observe(anchor.ownerDocument.documentElement, {
+    attributes: true,
+    attributeFilter: ["inert"],
+    childList: true,
+    subtree: true,
+  });
+
+  if (typeof IntersectionObserver !== "function") {
+    return () => mutationObserver.disconnect();
+  }
+
+  let wasVisible = false;
+  const intersectionObserver = new IntersectionObserver((entries) => {
+    const entry = entries.at(-1);
+    if (entry === undefined) return;
+    if (entry.isIntersecting) {
+      wasVisible = true;
+    } else if (wasVisible) {
+      close();
+    }
+  });
+  intersectionObserver.observe(anchor);
+
+  return () => {
+    mutationObserver.disconnect();
+    intersectionObserver.disconnect();
+  };
+}
+
 export function useCloseWhenAnchorDetaches<T extends Element>(
   forwardedRef: React.ForwardedRef<T>,
   open: boolean,
@@ -26,50 +76,11 @@ export function useCloseWhenAnchorDetaches<T extends Element>(
   React.useEffect(() => {
     const anchor = anchorRef.current;
     if (!open || anchor === null) return;
-
-    let closed = false;
-    const close = () => {
-      if (closed) return;
-      if (anchorRef.current !== null && anchorRef.current !== anchor) return;
-      closed = true;
-      onOpenChangeRef.current(false);
-    };
-
-    let wasInteractive = isAnchorInteractive(anchor);
-    const mutationObserver = new MutationObserver(() => {
-      if (isAnchorInteractive(anchor)) {
-        wasInteractive = true;
-      } else if (wasInteractive) {
-        close();
-      }
-    });
-    mutationObserver.observe(anchor.ownerDocument.documentElement, {
-      attributes: true,
-      attributeFilter: ["inert"],
-      childList: true,
-      subtree: true,
-    });
-
-    if (typeof IntersectionObserver !== "function") {
-      return () => mutationObserver.disconnect();
-    }
-
-    let wasVisible = false;
-    const intersectionObserver = new IntersectionObserver((entries) => {
-      const entry = entries.at(-1);
-      if (entry === undefined) return;
-      if (entry.isIntersecting) {
-        wasVisible = true;
-      } else if (wasVisible) {
-        close();
-      }
-    });
-    intersectionObserver.observe(anchor);
-
-    return () => {
-      mutationObserver.disconnect();
-      intersectionObserver.disconnect();
-    };
+    return watchAnchorDetachment(
+      anchor,
+      () => anchorRef.current === null || anchorRef.current === anchor,
+      () => onOpenChangeRef.current(false),
+    );
   }, [open]);
 
   return React.useCallback(

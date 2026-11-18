@@ -57,7 +57,7 @@ Lifecycle:
   `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
-  With the `resumeThreadsAfterRestart` experiment, a
+  With the `resumeThreadsAfterRestart` general setting, a
   turn cut off because a machine's daemon came back as a new process (bb quit,
   crashed, updated, or the machine restarted) gets a retry with reason "bb
   restarted", sent a few seconds later. So does an idle thread whose
@@ -130,3 +130,5 @@ Lifecycle:
   destroyed. Deleting thread
   storage first stops processes whose working directory is inside it,
   including dev servers in nested checkouts (macOS and Linux only).
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

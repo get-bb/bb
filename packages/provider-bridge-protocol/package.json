@@ -33,6 +33,11 @@
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
     },
+    "./scenarios": {
+      "source": "./src/testing/scenario-replay.ts",
+      "types": "./src/testing/scenario-replay.ts",
+      "default": "./src/testing/scenario-replay.ts"
+    },
     "./bridge-worker-entry": {
       "source": "./src/bridge-worker-entry.ts",
       "types": "./src/bridge-worker-entry.ts",
@@ -55,6 +60,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.20.5",
     "@types/semver": "^7.8.0",

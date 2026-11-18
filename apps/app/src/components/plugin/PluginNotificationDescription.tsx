@@ -5,11 +5,11 @@ import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
 } from "@/lib/route-paths";
-import { getPluginSlotSnapshot, usePluginSlots } from "@/lib/plugin-slots";
+import { getPluginSlotSnapshot, usePluginSlotKind } from "@/lib/plugin-slots";
 
 function PluginOpenActionLabel({ pluginId }: { pluginId: string }) {
-  const slots = usePluginSlots();
-  return slots.navPanels.some((panel) => panel.pluginId === pluginId)
+  const navPanels = usePluginSlotKind("navPanels");
+  return navPanels.some((panel) => panel.pluginId === pluginId)
     ? "Open plugin"
     : "View details";
 }

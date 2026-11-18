@@ -2,7 +2,10 @@ import { useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import type { LocalHostDaemonAccessState } from "@/lib/local-host-daemon-access";
-import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
+import {
+  usePluginSlotKind,
+  type PluginFileOpenerSlot,
+} from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
@@ -105,7 +108,8 @@ export function useSettingsNavSections(
 
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
-  const { fileOpeners, settingsSections } = usePluginSlots();
+  const fileOpeners = usePluginSlotKind("fileOpeners");
+  const settingsSections = usePluginSlotKind("settingsSections");
   const sections = useSettingsNavSections(fileOpeners);
   const pluginListQuery = usePluginList({ enabled: true });
 

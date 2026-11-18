@@ -11,6 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   restoreDiffViewedFilesTable,
   dropQueuedMessageEditHeldUntilColumn,
@@ -757,6 +758,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -807,6 +809,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -889,6 +892,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropThreadParentNotificationsColumn(db);
   dropQueuedMessageDeliveryColumns(db);
   dropThreadStatusChangedAtColumn(db);
+  dropThreadRunStateTables(db);
   dropPluginFailureLabelColumns(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
@@ -1792,6 +1796,63 @@ describe("migrate", () => {
     }
   });
 
+  it.each([
+    { name: "opt-in", experiment: 1, existing: null, expected: "true" },
+    { name: "opt-out", experiment: 0, existing: null, expected: "false" },
+    { name: "no experiment", experiment: null, existing: null, expected: null },
+    {
+      name: "existing general setting",
+      experiment: 1,
+      existing: "false",
+      expected: "false",
+    },
+  ])(
+    "migrates restart recovery: $name",
+    ({ experiment, existing, expected }) => {
+      const db = createMigratedConnection();
+      try {
+        if (experiment !== null) {
+          db.$client
+            .prepare(
+              "INSERT INTO system_experiments (key, value, updated_at) VALUES ('resumeThreadsAfterRestart', ?, 1234)",
+            )
+            .run(experiment);
+        }
+        if (existing !== null) {
+          db.$client
+            .prepare(
+              "INSERT INTO app_settings_values (key, value, updated_at) VALUES ('resumeThreadsAfterRestart', ?, 5678)",
+            )
+            .run(existing);
+        }
+        runMigrationFile({
+          db,
+          migrationPath: resolve(
+            __dirname,
+            "..",
+            "drizzle",
+            "0158_resume_threads_general_setting.sql",
+          ),
+        });
+        const row = db.$client
+          .prepare<[], { value: string; updatedAt: number }>(
+            "SELECT value, updated_at AS updatedAt FROM app_settings_values WHERE key = 'resumeThreadsAfterRestart'",
+          )
+          .get();
+        expect(row ?? null).toEqual(
+          expected === null
+            ? null
+            : { value: expected, updatedAt: existing === null ? 1234 : 5678 },
+        );
+        expect(getAppSettings(db).resumeThreadsAfterRestart).toBe(
+          expected === "true",
+        );
+      } finally {
+        closeConnection(db);
+      }
+    },
+  );
+
   it("moves app settings columns into key/value rows without losing values", () => {
     const db = createConnection(":memory:");
 
@@ -1830,6 +1891,7 @@ describe("migrate", () => {
         showDiagnosticEvents: true,
         keepHistoryAfterContextClear: false,
         summarizeShellCommands: true,
+        resumeThreadsAfterRestart: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},
@@ -2633,6 +2695,7 @@ describe("migrate", () => {
         providerId: "codex",
       });
       dropThreadStatusChangedAtColumn(db);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
       restoreDiffViewedFilesTable(db);
       db.$client
@@ -3469,6 +3532,7 @@ describe("migrate", () => {
       dropThreadParentNotificationsColumn(db);
       dropQueuedMessageDeliveryColumns(db);
       dropThreadStatusChangedAtColumn(db);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
@@ -3886,6 +3950,7 @@ describe("migrate", () => {
           `,
         )
         .run(projectSourcesDefaultIndexMigrationWhen);
+      dropThreadRunStateTables(db);
       dropPluginFailureLabelColumns(db);
 
       expect(() => migrate(db)).not.toThrow();

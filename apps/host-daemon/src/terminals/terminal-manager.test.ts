@@ -240,6 +240,7 @@ function createFakeRuntime(): AgentRuntime {
     }),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
+    getActiveTurnRequestIds: vi.fn(() => []),
     waitForActiveTurn: vi.fn(async () => null),
     getProviderSession: vi.fn(() => null),
     reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),

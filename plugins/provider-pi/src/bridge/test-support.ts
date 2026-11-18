@@ -1,5 +1,3 @@
-import { ChildProcess } from "node:child_process";
-import { channel } from "node:diagnostics_channel";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import { z } from "zod";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { experimental_trackChildProcesses } from "@get-bb/plugin-sdk/testing";
 import type {
   BridgeJsonRpcId,
   BridgeJsonRpcObject,
@@ -91,18 +90,7 @@ export async function startFakePiBridge(
     vi.stubEnv("FAKE_PI_PROCESS_LOG", processLogPath);
   }
   const harness = createBridgeJsonRpcTestHarness(handleLine);
-  const children: ChildProcess[] = [];
-  const childProcessChannel = channel("child_process");
-  const onChildProcess = (message: unknown): void => {
-    if (
-      typeof message === "object" &&
-      message !== null &&
-      "process" in message &&
-      message.process instanceof ChildProcess
-    ) {
-      children.push(message.process);
-    }
-  };
+  const children = experimental_trackChildProcesses();
   let nextHarnessRequestId = FIRST_HARNESS_REQUEST_ID;
   const bridge: FakePiBridgeHarness = {
     workspaceDir,
@@ -180,14 +168,13 @@ export async function startFakePiBridge(
       return { spawned, exited };
     },
     runningChildPids() {
-      return children.flatMap((child) =>
-        child.spawnargs.includes(fakePiPath) &&
-        child.pid !== undefined &&
-        child.exitCode === null &&
-        child.signalCode === null
-          ? [child.pid]
-          : [],
-      );
+      return children
+        .running()
+        .flatMap((child) =>
+          child.spawnargs.includes(fakePiPath) && child.pid !== undefined
+            ? [child.pid]
+            : [],
+        );
     },
     async teardown() {
       try {
@@ -197,7 +184,7 @@ export async function startFakePiBridge(
           "fake Pi processes to exit",
         );
       } finally {
-        childProcessChannel.unsubscribe(onChildProcess);
+        children.dispose();
         harness.restore();
         vi.unstubAllEnvs();
         await rm(workspaceDir, {
@@ -209,7 +196,6 @@ export async function startFakePiBridge(
       }
     },
   };
-  childProcessChannel.subscribe(onChildProcess);
   if (options.initialize) {
     try {
       await bridge.request(INITIALIZE_ID, "initialize", {

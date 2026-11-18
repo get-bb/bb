@@ -2,9 +2,39 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
-const LOGGER_IMPORT_SPECIFIER = "@bb/logger";
+const PACKAGE_DIR = path.resolve(import.meta.dirname, "..");
+let bundleDir: string;
+let loggerBundleUrl: string;
+
+beforeAll(async () => {
+  bundleDir = fs.mkdtempSync(
+    path.join(PACKAGE_DIR, "node_modules", ".logger-subprocess-"),
+  );
+  const outfile = path.join(bundleDir, "logger.mjs");
+  await build({
+    entryPoints: [path.join(PACKAGE_DIR, "src", "index.ts")],
+    outfile,
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    conditions: ["source"],
+    external: ["pino", "pino-pretty", "pino-roll"],
+    logLevel: "silent",
+  });
+  loggerBundleUrl = pathToFileURL(outfile).href;
+});
 
 const tempDirs: string[] = [];
 
@@ -36,7 +66,7 @@ async function runLoggerInSubprocess(args: {
   const script = `
     (async () => {
       Date.now = () => ${JSON.stringify(args.timestampMs)};
-      const { createLogger } = await import(${JSON.stringify(LOGGER_IMPORT_SPECIFIER)});
+      const { createLogger } = await import(${JSON.stringify(loggerBundleUrl)});
       const logger = createLogger({ component: ${JSON.stringify(args.component)} });
       logger.info({ marker: ${JSON.stringify(args.message)} }, ${JSON.stringify(args.message)});
       // Worker transport is async. Pino's flush callback only waits for the
@@ -57,14 +87,10 @@ async function runLoggerInSubprocess(args: {
   delete childEnv.VITEST;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--conditions=source", "--import", "tsx", "-e", script],
-      {
-        env: childEnv,
-        stdio: ["ignore", args.stdoutFd ?? "pipe", "pipe"],
-      },
-    );
+    const child = spawn(process.execPath, ["-e", script], {
+      env: childEnv,
+      stdio: ["ignore", args.stdoutFd ?? "pipe", "pipe"],
+    });
 
     let stdout = "";
     let stderr = "";
@@ -147,6 +173,7 @@ afterAll(async () => {
   for (const tempDir of tempDirs.splice(0)) {
     fs.rmSync(tempDir, { force: true, recursive: true });
   }
+  fs.rmSync(bundleDir, { force: true, recursive: true });
 });
 
 describe("createLogger", () => {

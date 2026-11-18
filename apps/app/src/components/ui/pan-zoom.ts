@@ -139,10 +139,7 @@ function createInitialPanZoomView(): PanZoomView {
   return { offset: { x: 0, y: 0 }, scale: 1 };
 }
 
-function clampPanZoomScale(
-  scale: number,
-  limits: PanZoomScaleLimits,
-): number {
+function clampPanZoomScale(scale: number, limits: PanZoomScaleLimits): number {
   return Math.min(limits.max, Math.max(limits.min, scale));
 }
 
@@ -394,11 +391,21 @@ export function usePanZoom({
     gestureStateRef.current = null;
   }, []);
 
+  const [viewEnabled, setViewEnabled] = useState(enabled);
+  if (viewEnabled !== enabled) {
+    setViewEnabled(enabled);
+    if (!enabled) {
+      setRawView(createInitialPanZoomView());
+      setDragState(null);
+    }
+  }
+
   useEffect(() => {
     if (!enabled) {
-      resetView();
+      pinchStateRef.current = null;
+      gestureStateRef.current = null;
     }
-  }, [enabled, resetView]);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled || viewportElement === null) {

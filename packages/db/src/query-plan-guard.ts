@@ -187,10 +187,76 @@ function locateFrame(
 ): FrameLocation | null {
   const match = STACK_FRAME.exec(line.trim());
   if (match === null) return null;
-  const framePath = match[2].startsWith("file://")
-    ? fileURLToPath(match[2])
-    : match[2];
-  const path = originalPath(framePath, Number(match[3]), bundle);
+  return locateSourceFrame(
+    match[2],
+    Number(match[3]),
+    match[1] ?? "<anonymous>",
+    bundle,
+  );
+}
+
+type FrameLocationCache = Map<
+  string,
+  Map<number, Map<string, FrameLocation | null>>
+>;
+
+const unbundledFrameLocations: FrameLocationCache = new Map();
+const bundledFrameLocations = new WeakMap<
+  QueryPlanBundle,
+  FrameLocationCache
+>();
+
+function frameLocationsFor(bundle: QueryPlanBundle | null): FrameLocationCache {
+  if (bundle === null) return unbundledFrameLocations;
+  const known = bundledFrameLocations.get(bundle);
+  if (known !== undefined) return known;
+  const created: FrameLocationCache = new Map();
+  bundledFrameLocations.set(bundle, created);
+  return created;
+}
+
+function locateSourceFrame(
+  scriptName: string,
+  lineNumber: number,
+  functionName: string,
+  bundle: QueryPlanBundle | null,
+): FrameLocation | null {
+  const scripts = frameLocationsFor(bundle);
+  let lines = scripts.get(scriptName);
+  if (lines === undefined) {
+    lines = new Map();
+    scripts.set(scriptName, lines);
+  }
+  let names = lines.get(lineNumber);
+  if (names === undefined) {
+    names = new Map();
+    lines.set(lineNumber, names);
+  }
+  const known = names.get(functionName);
+  if (known !== undefined) return known;
+  const location = resolveSourceFrame(
+    scriptName,
+    lineNumber,
+    functionName,
+    bundle,
+  );
+  names.set(functionName, location);
+  return location;
+}
+
+function resolveSourceFrame(
+  scriptName: string,
+  lineNumber: number,
+  functionName: string | undefined,
+  bundle: QueryPlanBundle | null,
+): FrameLocation | null {
+  if (!scriptName.startsWith("/") && !scriptName.startsWith("file:///")) {
+    return null;
+  }
+  const framePath = scriptName.startsWith("file://")
+    ? fileURLToPath(scriptName)
+    : scriptName;
+  const path = originalPath(framePath, lineNumber, bundle);
   if (path === null || path.includes("/node_modules/")) {
     return { kind: "dependency" };
   }
@@ -198,7 +264,11 @@ function locateFrame(
   if (source === null || TEST_FILE.test(source[1])) return { kind: "other" };
   return {
     kind: "source",
-    frame: { path, file: source[1], functionName: functionNameOf(match[1]) },
+    frame: {
+      path,
+      file: source[1],
+      functionName: functionNameOf(functionName),
+    },
   };
 }
 
@@ -212,15 +282,17 @@ function captureStack(stackDepth: number): string {
   }
 }
 
-function captureTestStack(stackDepth: number): string {
-  return (
-    "Error\n" +
-    getCallSites(stackDepth, { sourceMap: false })
-      .map(
-        (frame) =>
-          `at ${frame.functionName || "<anonymous>"} (${frame.scriptName}:${frame.lineNumber}:${frame.columnNumber})`,
-      )
-      .join("\n")
+function captureTestFrames(
+  stackDepth: number,
+  bundle: QueryPlanBundle | null,
+): (FrameLocation | null)[] {
+  return getCallSites(stackDepth, { sourceMap: false }).map((frame) =>
+    locateSourceFrame(
+      frame.scriptName,
+      frame.lineNumber,
+      frame.functionName || "<anonymous>",
+      bundle,
+    ),
   );
 }
 
@@ -228,14 +300,29 @@ export function captureQueryCallSite(
   stackDepth: number,
   scope: QueryCallSiteScope,
 ): QueryCallSite {
-  return sourceFrames(captureTestStack(stackDepth), scope);
+  return collectSourceFrames(
+    captureTestFrames(stackDepth, scope.bundle),
+    scope,
+  );
 }
 
 function sourceFrames(stack: string, scope: QueryCallSiteScope): QueryCallSite {
+  return collectSourceFrames(
+    stack
+      .split("\n")
+      .slice(1)
+      .map((line) => locateFrame(line, scope.bundle)),
+    scope,
+  );
+}
+
+function collectSourceFrames(
+  locations: readonly (FrameLocation | null)[],
+  scope: QueryCallSiteScope,
+): QueryCallSite {
   const frames: SourceFrame[] = [];
   let caller: string | null | undefined;
-  for (const line of stack.split("\n").slice(1)) {
-    const location = locateFrame(line, scope.bundle);
+  for (const location of locations) {
     if (location === null || location.kind === "dependency") continue;
     if (
       location.kind === "other" ||
@@ -315,7 +402,27 @@ export function createQueryPlanAuditor(
 ): QueryPlanAuditor {
   const allowed = new Set(QUERY_PLAN_ALLOWLIST.map(allowlistKey));
   const literals = partialIndexLiterals(options.auditDatabase);
-  const audited = new Set<string>();
+  const audited = new Map<string, Map<string, Set<string>>>();
+  function firstAudit(
+    caller: string,
+    source: string,
+    params: readonly unknown[],
+  ): boolean {
+    let sources = audited.get(caller);
+    if (sources === undefined) {
+      sources = new Map();
+      audited.set(caller, sources);
+    }
+    let signatures = sources.get(source);
+    if (signatures === undefined) {
+      signatures = new Set();
+      sources.set(source, signatures);
+    }
+    const signature = planSignature(params, literals);
+    if (signatures.has(signature)) return false;
+    signatures.add(signature);
+    return true;
+  }
 
   function audit(sql: string, caller: string, params: readonly unknown[]) {
     const result = auditQueryPlan(options.auditDatabase, sql, {
@@ -353,16 +460,12 @@ export function createQueryPlanAuditor(
   return {
     observe(source, params, caller) {
       if (!isExplainableStatement(source)) return;
-      const key = `${caller}\u0000${source}\u0000${planSignature(params, literals)}`;
-      if (audited.has(key)) return;
-      audited.add(key);
+      if (!firstAudit(caller, source, params)) return;
       enqueue(source, () => caller, params);
     },
     observeFirstExecution(source, params) {
       if (!isExplainableStatement(source)) return;
-      const key = `\u0000${source}\u0000${planSignature(params, literals)}`;
-      if (audited.has(key)) return;
-      audited.add(key);
+      if (!firstAudit("", source, params)) return;
       const stack = captureStack(FIRST_EXECUTION_STACK_DEPTH);
       enqueue(
         source,

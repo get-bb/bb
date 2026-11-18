@@ -30,6 +30,18 @@ export function applyPluginSettingsView(args: {
   );
 }
 
+export function applyAppShellPluginList(args: {
+  queryClient: QueryClient;
+  plugins: InstalledPlugin[];
+  servedAt: number;
+}): void {
+  args.queryClient.setQueryData<InstalledPlugin[]>(
+    pluginListQueryKey(true),
+    args.plugins,
+    { updatedAt: args.servedAt },
+  );
+}
+
 export function applyInstalledPlugin(args: {
   queryClient: QueryClient;
   plugin: InstalledPlugin;

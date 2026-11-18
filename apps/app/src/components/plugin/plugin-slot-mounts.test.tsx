@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import {
   startTransition,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -36,7 +37,7 @@ import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginNavPanelSlot,
 } from "@/lib/plugin-slots";
 import { PLUGIN_PANEL_ROUTE_PATH } from "@/lib/route-paths";
@@ -259,17 +260,17 @@ describe("useComposer", () => {
     function ComposerProbe() {
       const composer = useComposer();
       onRender?.(composer);
-      const initialMethods = useRef({
+      const [initialMethods] = useState(() => ({
         setText: composer.setText,
         updateText: composer.updateText,
         clear: composer.clear,
         setTextEffect: composer.setTextEffect,
-      });
+      }));
       const methodsAreStable =
-        initialMethods.current.setText === composer.setText &&
-        initialMethods.current.updateText === composer.updateText &&
-        initialMethods.current.clear === composer.clear &&
-        initialMethods.current.setTextEffect === composer.setTextEffect;
+        initialMethods.setText === composer.setText &&
+        initialMethods.updateText === composer.updateText &&
+        initialMethods.clear === composer.clear &&
+        initialMethods.setTextEffect === composer.setTextEffect;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
@@ -716,7 +717,9 @@ describe("useComposer", () => {
         ],
       });
       const draftRef = useRef(draft);
-      draftRef.current = draft;
+      useInsertionEffect(() => {
+        draftRef.current = draft;
+      });
       const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
@@ -930,7 +933,9 @@ describe("useComposer", () => {
         ],
       });
       const draftRef = useRef(draft);
-      draftRef.current = draft;
+      useInsertionEffect(() => {
+        draftRef.current = draft;
+      });
       const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
@@ -2188,7 +2193,7 @@ describe("plugin thread panel actions", () => {
         threadId: "thr_one",
         environmentId: null,
       });
-      const { newThreadPanelActions } = usePluginSlots();
+      const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const threadEntries = usePluginPanelActions({
         actions,
         panel: usePanelFor(actions, recordOpen),
@@ -2269,7 +2274,7 @@ describe("plugin thread panel actions", () => {
       const [tab, setTab] = useState<ReturnType<
         typeof createPluginPanelFixedPanelTab
       > | null>(null);
-      const { newThreadPanelActions } = usePluginSlots();
+      const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const entries = usePluginNewThreadPanelActions({
         panel: usePanelFor(newThreadPanelActions, (args) =>
           setTab(createPluginPanelFixedPanelTab(args)),

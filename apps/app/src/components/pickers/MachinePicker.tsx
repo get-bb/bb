@@ -36,9 +36,7 @@ import {
   MACHINE_SEARCH_MIN_OPTIONS,
   searchMachineHosts,
 } from "./machine-picker-search";
-import {
-  useResetPickerScroll,
-} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 export const MACHINE_BADGE_CLASS_NAME =
   "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
@@ -76,7 +74,7 @@ export function MachinePickerUI({
   muted,
   disabled = false,
   className,
-  modal = true,
+  modal = false,
   machineProviders = [],
 }: MachinePickerUIProps) {
   const [open, setOpen] = useState(false);
@@ -101,7 +99,15 @@ export function MachinePickerUI({
       showSearch ? searchMachineHosts(orderedHosts, searchQuery) : orderedHosts,
     [orderedHosts, searchQuery, showSearch],
   );
-  const now = Date.now();
+  const [hostClock, setHostClock] = useState(() => ({
+    open,
+    hosts: availableHosts,
+    now: Date.now(),
+  }));
+  if (hostClock.open !== open || hostClock.hosts !== availableHosts) {
+    setHostClock(() => ({ open, hosts: availableHosts, now: Date.now() }));
+  }
+  const now = hostClock.now;
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {

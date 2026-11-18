@@ -4,10 +4,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
-import { supervise } from "./process.js";
+import { experimental_createProcessLifeline } from "@get-bb/plugin-sdk/testing";
+import { describe, expect, it } from "vitest";
+import { execute, supervise } from "./process.js";
 
 const describeOnPosix = process.platform === "win32" ? describe.skip : describe;
+
+describeOnPosix("execute", () => {
+  it("gives the runtime a regular file for stdout and returns a large result whole", async () => {
+    const value = "z".repeat(400_000);
+    const output = await execute(
+      process.execPath,
+      [
+        "-e",
+        `const fs = require("node:fs");
+fs.writeSync(1, String(fs.fstatSync(1).isFile()) + "\\n");
+fs.writeSync(1, JSON.stringify({ type: "result", value: "z".repeat(400000) }) + "\\n");`,
+      ],
+      process.env,
+      AbortSignal.timeout(10_000),
+    );
+    const [isFile, result] = output.split("\n");
+    expect(isFile).toBe("true");
+    expect(JSON.parse(result ?? "")).toEqual({ type: "result", value });
+  });
+
+  it("kills a runtime whose output passes 512 KB", async () => {
+    await expect(
+      execute(
+        process.execPath,
+        [
+          "-e",
+          `const fs = require("node:fs");
+setInterval(() => fs.writeSync(1, "x".repeat(64000)), 10);`,
+        ],
+        process.env,
+        AbortSignal.timeout(10_000),
+      ),
+    ).rejects.toThrow("DevBrowser output exceeded 512 KB");
+  });
+});
 
 describeOnPosix("process ownership", () => {
   it.each([false, true])(
@@ -98,75 +134,44 @@ try {
     12_000,
   );
   it("worker death closes the supervisor pipe and kills its child", async () => {
-    const root = await mkdtemp(join(tmpdir(), "db-worker-death-"));
-    const file = join(root, "pid");
-    const childCode =
-      'process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);';
-    const code = `import { supervise } from ${JSON.stringify(new URL("./process.ts", import.meta.url).href)}; supervise(process.execPath, ["-e", ${JSON.stringify(childCode)}, ${JSON.stringify(file)}], process.env); setInterval(() => {}, 1000);`;
+    const lifeline = await experimental_createProcessLifeline();
+    const childCode = `process.on("SIGTERM", () => {}); ${lifeline.holdSource("child")} setInterval(() => {}, 1000);`;
+    const code = `import { supervise } from ${JSON.stringify(new URL("./process.ts", import.meta.url).href)}; supervise(process.execPath, ["-e", ${JSON.stringify(childCode)}], process.env); setInterval(() => {}, 1000);`;
     const worker = spawn(
       process.execPath,
       ["--import", "tsx", "--input-type=module", "-e", code],
       { stdio: "ignore" },
     );
     try {
-      let pid = 0;
-      await vi.waitFor(
-        async () => {
-          pid = Number(await readFile(file, "utf8"));
-          expect(pid).toBeGreaterThan(0);
-        },
-        { timeout: 5000 },
-      );
+      const [child] = await lifeline.waitForHolders(1);
       worker.kill("SIGKILL");
-      await vi.waitFor(
-        () => {
-          expect(() => process.kill(pid, 0)).toThrow();
-        },
-        { timeout: 5000 },
-      );
+      await child?.exited;
+      expect(child?.alive()).toBe(false);
     } finally {
       worker.kill("SIGKILL");
-      await rm(root, { recursive: true, force: true });
+      await lifeline.close();
     }
   }, 12_000);
   it("kills a TERM-resistant child group without touching another session", async () => {
-    const root = await mkdtemp(join(tmpdir(), "db-supervisor-"));
-    const code =
-      'process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);';
-    const a = supervise(
-      process.execPath,
-      ["-e", code, join(root, "a")],
-      process.env,
-    );
-    const b = supervise(
-      process.execPath,
-      ["-e", code, join(root, "b")],
-      process.env,
-    );
+    const lifeline = await experimental_createProcessLifeline();
+    const code = (label: string) =>
+      `process.on("SIGTERM", () => {}); ${lifeline.holdSource(label)} setInterval(() => {}, 1000);`;
+    const a = supervise(process.execPath, ["-e", code("a")], process.env);
+    const b = supervise(process.execPath, ["-e", code("b")], process.env);
     try {
-      let pidA = 0,
-        pidB = 0;
-      await vi.waitFor(
-        async () => {
-          pidA = Number(await readFile(join(root, "a"), "utf8"));
-          pidB = Number(await readFile(join(root, "b"), "utf8"));
-          expect(pidA).toBeGreaterThan(0);
-          expect(pidB).toBeGreaterThan(0);
-        },
-        { timeout: 5000 },
-      );
+      const holders = await lifeline.waitForHolders(2);
+      const holderA = holders.find((holder) => holder.label === "a");
+      const holderB = holders.find((holder) => holder.label === "b");
       await a.close();
-      await vi.waitFor(() => {
-        expect(() => process.kill(pidA, 0)).toThrow();
-      });
-      expect(() => process.kill(pidB, 0)).not.toThrow();
+      await holderA?.exited;
+      expect(holderA?.alive()).toBe(false);
+      expect(holderB?.alive()).toBe(true);
       await b.close();
-      await vi.waitFor(() => {
-        expect(() => process.kill(pidB, 0)).toThrow();
-      });
+      await holderB?.exited;
+      expect(holderB?.alive()).toBe(false);
     } finally {
       await Promise.all([a.close(), b.close()]);
-      await rm(root, { recursive: true, force: true });
+      await lifeline.close();
     }
   }, 10_000);
 });

@@ -320,13 +320,20 @@ describe("experimental_threadHeaderRow", () => {
     };
   }
 
+  const {
+    experimental_useAppPanel: useAppPanel,
+    experimental_usePanelTabs: usePanelTabs,
+    experimental_useSidebarThreads: useSidebarThreads,
+    useBbNavigate,
+    useSdk,
+  } = pluginSdkAppImplementation;
+
   function HooksRow() {
-    const app = pluginSdkAppImplementation;
-    const panel = app.experimental_useAppPanel();
-    const tabs = app.experimental_usePanelTabs();
-    const sdk = app.useSdk();
-    const sidebar = app.experimental_useSidebarThreads();
-    const navigate = app.useBbNavigate();
+    const panel = useAppPanel();
+    const tabs = usePanelTabs();
+    const sdk = useSdk();
+    const sidebar = useSidebarThreads();
+    const navigate = useBbNavigate();
     return (
       <div
         data-testid="header-row"

@@ -8,7 +8,7 @@ export interface ProjectDeleteDialogTarget {
   name: string;
 }
 
-interface ProjectDeleteDialogProps {
+export interface ProjectDeleteDialogProps {
   target: ProjectDeleteDialogTarget | null;
   pending: boolean;
   onOpenChange: (open: boolean) => void;

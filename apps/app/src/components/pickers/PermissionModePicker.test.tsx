@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PermissionModePicker } from "./PermissionModePicker";
+import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 
 const permissionOptions = [
   { value: "accept-edits", label: "Accept Edits" },
@@ -16,6 +17,23 @@ afterEach(() => {
 });
 
 describe("PermissionModePicker", () => {
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    render(
+      <PermissionModePicker
+        value="auto"
+        options={permissionOptions}
+        onChange={vi.fn()}
+        supported
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Permission mode" });
+    await expectNonmodalPicker({
+      trigger,
+      open: () => fireEvent.keyDown(trigger, { key: "Enter" }),
+      content: () => screen.queryByRole("menu"),
+    });
+  });
+
   it("can show an effective display override without changing the selected value", () => {
     const onChange = vi.fn();
     render(

@@ -35,7 +35,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ComposerBox } from "./ComposerBox";
+import { ControlledComposerBox } from "@/test/fixtures/controlled-composer-box";
 import {
   setComposerSearchResults,
   testTypeaheadConfig,
@@ -97,7 +97,7 @@ describe("ComposerBox on a real iPadOS ProseMirror build", () => {
         [],
       );
       return (
-        <ComposerBox
+        <ControlledComposerBox
           surface="thread"
           value={value}
           mentionRanges={mentionRanges}
@@ -153,7 +153,7 @@ describe("ComposerBox on a real iPadOS ProseMirror build", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
-      <ComposerBox
+      <ControlledComposerBox
         surface="thread"
         value="Run this"
         mentionRanges={[]}
@@ -183,7 +183,7 @@ describe("ComposerBox on a real iPadOS ProseMirror build", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
-      <ComposerBox
+      <ControlledComposerBox
         surface="thread"
         value="First line"
         mentionRanges={[]}

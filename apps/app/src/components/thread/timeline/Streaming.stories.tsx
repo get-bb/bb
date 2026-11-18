@@ -50,8 +50,20 @@ function useStreamingTick(
   restartKey: number,
 ): number {
   const [step, setStep] = useState(0);
-  useEffect(() => {
+  const [tickKey, setTickKey] = useState({
+    intervalMs,
+    restartKey,
+    totalSteps,
+  });
+  if (
+    tickKey.totalSteps !== totalSteps ||
+    tickKey.intervalMs !== intervalMs ||
+    tickKey.restartKey !== restartKey
+  ) {
+    setTickKey({ intervalMs, restartKey, totalSteps });
     setStep(0);
+  }
+  useEffect(() => {
     if (totalSteps === 0) return;
     const id = window.setInterval(() => {
       setStep((current) => {

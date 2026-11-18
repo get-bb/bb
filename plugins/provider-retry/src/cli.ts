@@ -151,10 +151,10 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
                 exitCode: 0,
                 stdout: `No automatic retry decision recorded for ${threadId}.\n`,
               };
-            const { decision, availability, consent } = diagnostic;
+            const { decision, availability } = diagnostic;
             return {
               exitCode: 0,
-              stdout: `${threadId}: ${decision.kind === "retry" ? `Scheduled for ${new Date(decision.sendAt).toISOString()}` : "Skipped"}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}${consent?.answer.kind === "decline" ? ` (${consent.pluginId}: ${consent.answer.reason})` : ""}.\n`,
+              stdout: `${threadId}: ${decision.kind === "retry" ? `Scheduled for ${new Date(decision.sendAt).toISOString()}` : "Skipped"}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}.\n`,
             };
           },
         }),

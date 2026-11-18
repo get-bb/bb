@@ -5,7 +5,7 @@ import {
   usePreferredReplacement,
 } from "@/lib/plugin-replacement-preference";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
-import { usePluginSlots, type PluginComposerSlot } from "@/lib/plugin-slots";
+import { usePluginSlotKind, type PluginComposerSlot } from "@/lib/plugin-slots";
 import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
@@ -13,7 +13,7 @@ export const composerRendererProviderAtom =
   createSyncedPreferenceAtom("composer.provider");
 
 export function useComposerReplacement(): ResolvedReplacement<PluginComposerSlot> {
-  const { composers } = usePluginSlots();
+  const composers = usePluginSlotKind("composers");
   const preference = useAtomValue(composerRendererProviderAtom);
   const resolved = usePreferredReplacement(
     composers,

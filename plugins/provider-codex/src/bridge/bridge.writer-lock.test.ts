@@ -9,6 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import {
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
 import * as appServer from "./app-server-connection.js";
 import { handleLine } from "./bridge.js";
 import {
@@ -38,6 +42,7 @@ const changedSessionOptions = {
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let processLogPath = "";
+let children: ExperimentalChildProcessTracker | undefined;
 let writerLockPath = "";
 let releaseHeldWriter: (() => void) | null = null;
 
@@ -54,6 +59,7 @@ beforeEach(() => {
       stdinCloseDelayMs: 500,
     }),
   );
+  children = experimental_trackChildProcesses();
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -67,7 +73,7 @@ afterEach(async () => {
     cleanupId: 995_001,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
-    processLogPath,
+    children,
     workspaceDir,
     unstubEnvs: vi.unstubAllEnvs,
   });

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -119,11 +120,20 @@ export function CompactLongPressMenu({
     [dragging, onOpenChange],
   );
 
+  const [closedForDrag, setClosedForDrag] = useState(false);
+  if (dragging && open) {
+    setOpen(false);
+    setClosedForDrag(true);
+  }
+  if (!dragging && closedForDrag) {
+    setClosedForDrag(false);
+  }
+  const notifyClosedForDrag = useEffectEvent(() => {
+    onOpenChange?.(false);
+  });
   useEffect(() => {
-    if (!dragging) return;
-    clearPress();
-    if (open) handleOpenChange(false);
-  }, [clearPress, dragging, handleOpenChange, open]);
+    if (closedForDrag) notifyClosedForDrag();
+  }, [closedForDrag]);
 
   const openMenu = useCallback(() => {
     clearPress();

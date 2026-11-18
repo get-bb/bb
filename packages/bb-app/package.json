@@ -1,6 +1,7 @@
 {
   "name": "bb-app",
-  "version": "0.49.0",
+  "version": "0.50.1",
+  "license": "MIT",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -90,6 +91,7 @@
     "@bb/process-utils": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-archive": "workspace:*",
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.20.5",
     "@types/semver": "^7.8.0",

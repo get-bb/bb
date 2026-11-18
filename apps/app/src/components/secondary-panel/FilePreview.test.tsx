@@ -24,6 +24,7 @@ import {
   PierreWorkerPoolGateContext,
   type PierreWorkerPoolGate,
 } from "@/lib/pierre-worker-pool-gate";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 interface MockPierreFileProps {
   file: {
@@ -263,11 +264,8 @@ describe("FilePreview", () => {
       />,
     );
 
-    await act(async () => {
-      await import("@/components/code/BbSourceCode");
-    });
-
-    await waitFor(() => expect(pierreMock.state.statsCallback).not.toBeNull());
+    await settleLazyModules();
+    expect(pierreMock.state.statsCallback).not.toBeNull();
     const renderCountBeforeStatsChange = Number(
       screen.getByTestId("pierre-file").dataset.renderCount,
     );
@@ -1076,7 +1074,7 @@ describe("FilePreview", () => {
     expect(screen.getByRole("alert").textContent).toBe("Failed to load file");
   });
 
-  it("renders .htm files with the existing Preview and Raw controls", () => {
+  it("renders .htm files with the existing Preview and Raw controls", async () => {
     const path = "reports/report.HTM";
     const url = "/preview/reports/report.HTM";
     const view = render(
@@ -1106,6 +1104,7 @@ describe("FilePreview", () => {
     expect(
       screen.getByRole("button", { name: "Raw" }).getAttribute("aria-pressed"),
     ).toBe("true");
+    await settleLazyModules();
     expect(
       view.container.querySelector("diffs-container")?.shadowRoot?.textContent,
     ).toBe("<!doctype html><h1>Report</h1>");
@@ -1324,6 +1323,15 @@ describe("FilePreview", () => {
       expect(pierreMock.state.lastFile?.cacheKey).toBeTruthy();
       expect(pierreMock.state.lastFile?.cacheKey).not.toBe(firstCacheKey);
     });
+  });
+
+  it("keeps the file icon still while the body skeleton covers a first load", () => {
+    vi.useFakeTimers();
+    render(<FilePreview path="open-prs.md" state={{ kind: "loading" }} />);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.queryByText("Loading preview…")).toBeNull();
   });
 
   it("tracks preview loading across view changes, document revisions, and URLs", () => {

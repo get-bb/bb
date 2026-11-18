@@ -1,3 +1,4 @@
+import { EventEmitter, once } from "node:events";
 import { and, eq } from "drizzle-orm";
 import {
   type TestConnectDb,
@@ -406,7 +407,10 @@ describe("POST /api/ai/v1/complete", () => {
     expect((await usageRow("u1", utcDay(NOON)))?.reservedMicros).toBe(0);
   });
 
-  it("never overshoots the budget with concurrent requests at the limit", async () => {
+  it("never overshoots the budget with concurrent requests at the limit", async ({
+    signal,
+    onTestFinished,
+  }) => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -414,27 +418,41 @@ describe("POST /api/ai/v1/complete", () => {
     const { deps, calls } = harness({
       config: { dailyBudgetMicros: 5 * RESERVE_MICROS },
       upstream: async () => {
+        notify();
         await gate;
         return okCompletion(0.004);
       },
     });
     const statuses: number[] = [];
+    const progress = new EventEmitter();
+    const ready = once(progress, "ready", { signal });
+    const notify = () => {
+      if (calls.length === 5 && statuses.length === 7) progress.emit("ready");
+    };
     const pending = Array.from({ length: 12 }, () =>
       complete(deps, { prompt: "title please" }).then((response) => {
         statuses.push(response.status);
+        notify();
         return response;
       }),
     );
-    await vi.waitFor(() => {
-      expect(calls).toHaveLength(5);
-      expect(statuses).toHaveLength(7);
+    onTestFinished(async () => {
+      release();
+      await Promise.allSettled(pending);
     });
     const day = utcDay(NOON);
-    expect(statuses.every((status) => status === 402)).toBe(true);
-    expect((await usageRow("u1", day))?.reservedMicros).toBe(
-      5 * RESERVE_MICROS,
-    );
-    release();
+    try {
+      await ready;
+      expect(calls).toHaveLength(5);
+      expect(statuses).toHaveLength(7);
+      expect(statuses.every((status) => status === 402)).toBe(true);
+      expect((await usageRow("u1", day))?.reservedMicros).toBe(
+        5 * RESERVE_MICROS,
+      );
+    } finally {
+      release();
+      await Promise.allSettled(pending);
+    }
     await Promise.all(pending);
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
     expect(statuses.filter((status) => status === 402)).toHaveLength(7);

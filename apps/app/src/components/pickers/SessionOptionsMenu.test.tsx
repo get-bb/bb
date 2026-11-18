@@ -12,6 +12,7 @@ import {
   sessionOptionsTriggerLabel,
   splitSessionOptionsByPlacement,
 } from "./SessionOptionsMenu";
+import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 
 const mode: ThreadTimelineSessionOption = {
   type: "select",
@@ -147,6 +148,22 @@ describe("SessionOptionsMenu", () => {
       <SessionOptionsMenu options={[]} choices={{}} onChange={vi.fn()} />,
     );
     expect(container.innerHTML).toBe("");
+  });
+
+  it("keeps the page interactive and closes when focus leaves", async () => {
+    render(
+      <SessionOptionsMenu
+        options={[mode, web]}
+        choices={{}}
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Agent options" });
+    await expectNonmodalPicker({
+      trigger,
+      open: () => fireEvent.keyDown(trigger, { key: "Enter" }),
+      content: () => screen.queryByRole("menu"),
+    });
   });
 
   it("reports a select choice by value id and a boolean choice as a boolean", async () => {

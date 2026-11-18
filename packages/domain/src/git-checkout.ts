@@ -119,6 +119,7 @@ export const gitSourceInspectionSchema = z.object({
   defaultBranch: z.string().min(1).nullable(),
   isWorktree: z.boolean(),
   defaultBranchRelation: defaultBranchRelationSchema.nullable(),
+  defaultWorktreeBaseBranch: z.string().min(1).nullable(),
   hasUncommittedChanges: z.boolean(),
   operation: workspaceGitOperationSchema,
   originDefaultBranch: z.string().min(1).nullable(),

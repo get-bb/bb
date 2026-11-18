@@ -15,15 +15,18 @@ import type {
 interface CreateServerClientFixtureArgs {
   heartbeatIntervalMs?: number;
   leaseTimeoutMs?: number;
+  reconnectGraceMs?: number;
   sessionIds?: string[];
   openSessionError?: Error;
 }
 
 interface CreateWebSocketFixtureArgs {
   autoReconnect?: boolean;
+  rejectResume?: boolean;
 }
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
+  rejectResume?: boolean;
   onIdleProviderSessionTimeout?: (minutes: number) => void;
   onAgentCpuPriority?: (enabled: boolean) => void;
   autoReconnect?: boolean;
@@ -43,6 +46,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
 interface CreateSessionArgs {
   heartbeatIntervalMs: number;
   leaseTimeoutMs: number;
+  reconnectGraceMs: number;
   sessionId: string;
 }
 
@@ -62,6 +66,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     idleProviderSessionTimeoutMinutes: 30,
     agentCpuPriority: true,
     leaseTimeoutMs: args.leaseTimeoutMs,
+    reconnectGraceMs: args.reconnectGraceMs,
     retiredEnvironmentIds: [],
     endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
@@ -91,6 +96,7 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
     return createSession({
       heartbeatIntervalMs: args.heartbeatIntervalMs ?? 5_000,
       leaseTimeoutMs: args.leaseTimeoutMs ?? 30_000,
+      reconnectGraceMs: args.reconnectGraceMs ?? args.leaseTimeoutMs ?? 30_000,
       sessionId,
     });
   });
@@ -115,16 +121,28 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   };
 }
 
+function parseSentFrames(socket: ReconnectingWebSocketLike): unknown[] {
+  return vi
+    .mocked(socket.send)
+    .mock.calls.map(([frame]) => JSON.parse(frame) as unknown);
+}
+
 function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
   const sockets: ReconnectingWebSocketLike[] = [];
   const bufferedAmounts = new Map<ReconnectingWebSocketLike, number>();
+  const deliverers = new Map<
+    ReconnectingWebSocketLike,
+    (message: object, ack: number) => void
+  >();
   const headers: Array<Record<string, string> | undefined> = [];
+  const urls: string[] = [];
   const createWebSocket: CreateReconnectingWebSocket = (
     urlProvider,
     options,
   ) => {
     headers.push(options.headers);
     let readyState = 0;
+    let serverSeq = 0;
     const socket: ReconnectingWebSocketLike = {
       get bufferedAmount() {
         return bufferedAmounts.get(socket) ?? 0;
@@ -140,24 +158,46 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
       close: vi.fn(() => {
         readyState = 3;
       }),
-      reconnect: vi.fn(() => {
+      reconnect: vi.fn((code?: number, reason?: string) => {
         if (args.autoReconnect === false) {
           return;
         }
         readyState = 3;
-        socket.onclose?.({ code: 1000, reason: "test-reconnect" });
+        socket.onclose?.({
+          code: code ?? 1000,
+          reason: reason ?? "test-reconnect",
+        });
         void openSocket().catch((error) => socket.onerror?.(error));
       }),
     };
 
     async function openSocket(): Promise<void> {
-      await urlProvider();
+      const url = await urlProvider();
+      urls.push(url);
+      const resuming = new URL(url).searchParams.has("resumeFrom");
+      if (resuming && args.rejectResume) {
+        queueMicrotask(() => {
+          readyState = 3;
+          socket.onclose?.({ code: 4409, reason: "resume-rejected" });
+          void openSocket().catch((error) => socket.onerror?.(error));
+        });
+        return;
+      }
+      if (!resuming) {
+        serverSeq = 0;
+      }
       queueMicrotask(() => {
         readyState = 1;
         socket.onopen?.({ type: "open" });
       });
     }
 
+    deliverers.set(socket, (message, ack) => {
+      serverSeq += 1;
+      socket.onmessage?.({
+        data: JSON.stringify({ seq: serverSeq, ack, message }),
+      });
+    });
     bufferedAmounts.set(socket, 0);
     sockets.push(socket);
     void openSocket().catch((error) => socket.onerror?.(error));
@@ -166,11 +206,22 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
 
   return {
     createWebSocket,
+    deliver(socket: ReconnectingWebSocketLike, message: object, ack = 0) {
+      deliverers.get(socket)?.(message, ack);
+    },
     headers,
+    sentMessages(socket: ReconnectingWebSocketLike): unknown[] {
+      return parseSentFrames(socket).flatMap((frame) =>
+        typeof frame === "object" && frame !== null && "message" in frame
+          ? [frame.message]
+          : [],
+      );
+    },
     setBufferedAmount(socket: ReconnectingWebSocketLike, bytes: number) {
       bufferedAmounts.set(socket, bytes);
     },
     sockets,
+    urls,
   };
 }
 
@@ -179,6 +230,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
   const serverClient = createServerClientFixture(args);
   const webSocket = createWebSocketFixture({
     autoReconnect: args.autoReconnect,
+    rejectResume: args.rejectResume,
   });
   const setSession = vi.fn();
   const connection = new ServerConnection({
@@ -223,11 +275,174 @@ afterEach(() => {
 });
 
 describe("ServerConnection", () => {
+  it("resumes the same session for three hosts after a 32 s server acknowledgement blackout", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const fixtures = Array.from({ length: 3 }, () =>
+      createConnectionFixture({
+        heartbeatIntervalMs: 5_000,
+        leaseTimeoutMs: 30_000,
+      }),
+    );
+    try {
+      for (const fixture of fixtures) {
+        await fixture.connection.start();
+        const socket = fixture.webSocket.sockets[0];
+        if (!socket) throw new Error("Expected test socket");
+        fixture.webSocket.deliver(socket, { type: "heartbeat-ack" });
+      }
+
+      await vi.advanceTimersByTimeAsync(4_999 + 32_000);
+
+      for (const fixture of fixtures) {
+        const socket = fixture.webSocket.sockets[0];
+        if (!socket) throw new Error("Expected test socket");
+        expect(socket.reconnect).toHaveBeenCalledWith(
+          1013,
+          "heartbeat-ack-timeout",
+        );
+        expect(fixture.openSession).toHaveBeenCalledTimes(1);
+        expect(fixture.setSession).not.toHaveBeenCalledWith(null);
+        expect(fixture.connection.sessionId).toBe("session-1");
+        expect(fixture.webSocket.urls.at(-1)).toContain("resumeFrom=1");
+        const heartbeats = fixture.webSocket
+          .sentMessages(socket)
+          .filter(
+            (message) => JSON.stringify(message) === '{"type":"heartbeat"}',
+          );
+        expect(heartbeats.length).toBeGreaterThan(6);
+
+        fixture.webSocket.deliver(socket, { type: "heartbeat-ack" });
+      }
+      await vi.advanceTimersByTimeAsync(25_000);
+      for (const fixture of fixtures) {
+        expect(fixture.webSocket.sockets[0]?.reconnect).toHaveBeenCalledTimes(
+          1,
+        );
+      }
+    } finally {
+      for (const fixture of fixtures) await fixture.connection.shutdown();
+    }
+  });
+
+  it("opens a new session instead of resuming when the server offers no reconnect grace", async () => {
+    const { connection, openSession, setSession, webSocket } =
+      createConnectionFixture({
+        reconnectGraceMs: 0,
+        sessionIds: ["first", "second"],
+      });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+
+      socket.reconnect();
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      expect(openSession).toHaveBeenCalledTimes(2);
+      expect(setSession).toHaveBeenCalledWith(null);
+      expect(webSocket.urls.some((url) => url.includes("resumeFrom"))).toBe(
+        false,
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("ignores server messages replayed after a resume", async () => {
+    const onHostRpcCancel = vi.fn();
+    const { connection, webSocket } = createConnectionFixture({
+      onHostRpcCancel,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const frame = JSON.stringify({
+        seq: 1,
+        ack: 0,
+        message: { type: "host-rpc.cancel", requestId: "rpc-1" },
+      });
+      socket.onmessage?.({ data: frame });
+      socket.onmessage?.({ data: frame });
+      expect(onHostRpcCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("re-sends an unacknowledged recoverable message in the next session but not an acknowledged one", async () => {
+    const { connection, webSocket } = createConnectionFixture({
+      sessionIds: ["first", "second"],
+      rejectResume: true,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const identity = {
+        type: "connect-tunnel.identity" as const,
+        identity: { label: "laptop", baseDomain: "getbb.app" },
+      };
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      };
+      connection.sendMessage(identity);
+      webSocket.deliver(socket, { type: "heartbeat-ack" }, 1);
+      connection.sendMessage(exited);
+      vi.mocked(socket.send).mockClear();
+
+      socket.reconnect();
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      await vi.waitFor(() =>
+        expect(webSocket.sentMessages(socket)).toEqual([exited]),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("ends the session locally when it cannot resume within the grace period", async () => {
+    vi.useFakeTimers();
+    const { connection, setSession, webSocket } = createConnectionFixture({
+      autoReconnect: false,
+      leaseTimeoutMs: 30_000,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+
+      socket.onclose?.({ code: 1001, reason: "tunnel disconnected" });
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(connection.sessionId).toBe("session-1");
+      expect(setSession).not.toHaveBeenCalledWith(null);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(connection.sessionId).toBeNull();
+      expect(setSession).toHaveBeenLastCalledWith(null);
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("tells the server it is shutting down so the session ends at once", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    await connection.start();
+    const socket = webSocket.sockets[0];
+    if (!socket) throw new Error("Expected test socket");
+    await connection.shutdown();
+    expect(socket.close).toHaveBeenCalledWith(1000, "daemon-shutdown");
+  });
+
   it("applies the idle timeout on connection, live changes and reconnect", async () => {
     const onIdleProviderSessionTimeout = vi.fn();
     const { connection, webSocket } = createConnectionFixture({
       onIdleProviderSessionTimeout,
       sessionIds: ["first", "second"],
+      rejectResume: true,
     });
     try {
       await connection.start();
@@ -235,12 +450,10 @@ describe("ServerConnection", () => {
       const socket = webSocket.sockets[0];
       if (!socket) throw new Error("Expected test socket");
       for (const minutes of [5, 0, 60]) {
-        socket.onmessage?.({
-          data: JSON.stringify({
-            type: "provider-session-policy.replace",
-            idleProviderSessionTimeoutMinutes: minutes,
-            agentCpuPriority: true,
-          }),
+        webSocket.deliver(socket, {
+          type: "provider-session-policy.replace",
+          idleProviderSessionTimeoutMinutes: minutes,
+          agentCpuPriority: true,
         });
         expect(onIdleProviderSessionTimeout).toHaveBeenLastCalledWith(minutes);
       }
@@ -257,26 +470,23 @@ describe("ServerConnection", () => {
     const { connection, webSocket } = createConnectionFixture({
       onAgentCpuPriority,
       sessionIds: ["first", "second"],
+      rejectResume: true,
     });
     try {
       await connection.start();
       expect(onAgentCpuPriority).toHaveBeenLastCalledWith(true);
       const socket = webSocket.sockets[0];
       if (!socket) throw new Error("Expected test socket");
-      socket.onmessage?.({
-        data: JSON.stringify({
-          type: "provider-session-policy.replace",
-          idleProviderSessionTimeoutMinutes: 30,
-          agentCpuPriority: false,
-        }),
+      webSocket.deliver(socket, {
+        type: "provider-session-policy.replace",
+        idleProviderSessionTimeoutMinutes: 30,
+        agentCpuPriority: false,
       });
       expect(onAgentCpuPriority).toHaveBeenLastCalledWith(false);
       onAgentCpuPriority.mockClear();
-      socket.onmessage?.({
-        data: JSON.stringify({
-          type: "provider-session-policy.replace",
-          idleProviderSessionTimeoutMinutes: 30,
-        }),
+      webSocket.deliver(socket, {
+        type: "provider-session-policy.replace",
+        idleProviderSessionTimeoutMinutes: 30,
       });
       expect(onAgentCpuPriority).not.toHaveBeenCalled();
       socket.reconnect();
@@ -292,6 +502,7 @@ describe("ServerConnection", () => {
     const { connection, webSocket } = createConnectionFixture({
       onMachineEnvironment,
       sessionIds: ["first", "second"],
+      rejectResume: true,
     });
     try {
       await connection.start();
@@ -302,11 +513,9 @@ describe("ServerConnection", () => {
       const socket = webSocket.sockets[0];
       if (!socket) throw new Error("Expected test socket");
       const send = (revision: number) =>
-        socket.onmessage?.({
-          data: JSON.stringify({
-            type: "machine-environment.replace",
-            environment: { revision, entries: [] },
-          }),
+        webSocket.deliver(socket, {
+          type: "machine-environment.replace",
+          environment: { revision, entries: [] },
         });
       send(3);
       send(2);
@@ -336,10 +545,8 @@ describe("ServerConnection", () => {
     const socket = webSocket.sockets[0];
     if (!socket) throw new Error("Expected test socket");
 
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: "machine.shutdown",
-      }),
+    webSocket.deliver(socket, {
+      type: "machine.shutdown",
     });
 
     await vi.waitFor(() => {
@@ -363,12 +570,10 @@ describe("ServerConnection", () => {
       providerRequestId: "request-ended",
     };
 
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: "interactive-requests.end",
-        requests: [request],
-        reason: "closed on the server",
-      }),
+    webSocket.deliver(socket, {
+      type: "interactive-requests.end",
+      requests: [request],
+      reason: "closed on the server",
     });
 
     await vi.waitFor(() => {
@@ -389,12 +594,10 @@ describe("ServerConnection", () => {
     const socket = webSocket.sockets[0];
     if (!socket) throw new Error("Expected test socket");
 
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: "server.moved",
-        serverUrl: "https://new-server.example.test",
-        headers: { "x-bb-connect-machine": "bbcm_new" },
-      }),
+    webSocket.deliver(socket, {
+      type: "server.moved",
+      serverUrl: "https://new-server.example.test",
+      headers: { "x-bb-connect-machine": "bbcm_new" },
     });
 
     await vi.waitFor(() => {
@@ -587,9 +790,9 @@ describe("ServerConnection", () => {
       }
 
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(socket.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: "heartbeat" }),
-      );
+      expect(webSocket.sentMessages(socket)).toContainEqual({
+        type: "heartbeat",
+      });
       expect(logger.warn).not.toHaveBeenCalled();
 
       vi.setSystemTime(25_000);
@@ -688,7 +891,7 @@ describe("ServerConnection", () => {
       }
 
       await vi.advanceTimersByTimeAsync(25_000);
-      socket.onmessage?.({ data: JSON.stringify({ type: "heartbeat-ack" }) });
+      webSocket.deliver(socket, { type: "heartbeat-ack" });
       await vi.advanceTimersByTimeAsync(30_000);
       expect(socket.reconnect).not.toHaveBeenCalled();
 
@@ -739,16 +942,139 @@ describe("ServerConnection", () => {
       expect(socket.send).not.toHaveBeenCalled();
 
       expect(connection.sendMessage(exited)).toBe(true);
-      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(output));
-      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(exited));
+      expect(webSocket.sentMessages(socket)).toEqual([output, exited]);
     } finally {
       await connection.shutdown();
     }
   });
 
-  it("delivers a terminal exit that happened while disconnected once the socket reopens", async () => {
+  it("delivers a terminal exit that happened while disconnected once the session resumes", async () => {
+    const { connection, openSession, webSocket } = createConnectionFixture({
+      autoReconnect: false,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      };
+
+      socket.onclose?.({ code: 1006, reason: "" });
+      expect(connection.sendMessage(exited)).toBe(true);
+      expect(webSocket.sentMessages(socket)).toEqual([]);
+
+      socket.onopen?.({ type: "open" });
+      expect(webSocket.sentMessages(socket)).toEqual([exited]);
+      expect(openSession).toHaveBeenCalledTimes(1);
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("delivers messages queued while disconnected before newer ones once the session resumes", async () => {
+    const { connection, logger, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const identity = (label: string) => ({
+        type: "connect-tunnel.identity" as const,
+        identity: { label, baseDomain: "getbb.app" },
+      });
+
+      socket.reconnect();
+      connection.sendMessage(identity("queued-while-away"));
+      webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
+      await vi.waitFor(() =>
+        expect(logger.info).toHaveBeenCalledWith(
+          { sessionId: "session-1" },
+          "Reconnected; resuming the server session",
+        ),
+      );
+      connection.sendMessage(identity("sent-after-resume"));
+      webSocket.setBufferedAmount(socket, 0);
+
+      await vi.waitFor(() =>
+        expect(
+          webSocket
+            .sentMessages(socket)
+            .filter((message) =>
+              JSON.stringify(message).includes("connect-tunnel.identity"),
+            ),
+        ).toEqual([
+          identity("queued-while-away"),
+          identity("sent-after-resume"),
+        ]),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("re-sends the newest recoverable message in the next session when only an older one with its key was acknowledged", async () => {
+    const { connection, logger, webSocket } = createConnectionFixture({
+      sessionIds: ["first", "second"],
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const identity = (label: string) => ({
+        type: "connect-tunnel.identity" as const,
+        identity: { label, baseDomain: "getbb.app" },
+      });
+      vi.mocked(socket.send).mockImplementation((frame: string) => {
+        if (frame.includes('"label":"older"')) {
+          webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
+        }
+      });
+
+      socket.reconnect();
+      connection.sendMessage(identity("older"));
+      connection.sendMessage(identity("newer"));
+      await vi.waitFor(() =>
+        expect(logger.info).toHaveBeenCalledWith(
+          { sessionId: "first" },
+          "Reconnected; resuming the server session",
+        ),
+      );
+      const olderFrame = parseSentFrames(socket).find((frame) =>
+        JSON.stringify(frame).includes('"label":"older"'),
+      );
+      if (
+        typeof olderFrame !== "object" ||
+        olderFrame === null ||
+        !("seq" in olderFrame) ||
+        typeof olderFrame.seq !== "number"
+      ) {
+        throw new Error("Expected the older identity frame");
+      }
+      webSocket.deliver(socket, { type: "heartbeat-ack" }, olderFrame.seq);
+      vi.mocked(socket.send).mockClear();
+      webSocket.setBufferedAmount(socket, 0);
+
+      webSocket.deliver(socket, { type: "session-close", reason: "expired" });
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      await vi.waitFor(() =>
+        expect(webSocket.sentMessages(socket)).toContainEqual(
+          identity("newer"),
+        ),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("delivers a terminal exit that happened while disconnected in the next session when the server cannot resume", async () => {
     const { connection, webSocket } = createConnectionFixture({
       sessionIds: ["first", "second"],
+      rejectResume: true,
     });
     try {
       await connection.start();
@@ -764,41 +1090,50 @@ describe("ServerConnection", () => {
       };
 
       socket.reconnect();
-      expect(connection.sendMessage(exited)).toBe(false);
-      expect(socket.send).not.toHaveBeenCalled();
+      connection.sendMessage(exited);
 
       await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
       await vi.waitFor(() =>
-        expect(socket.send).toHaveBeenCalledWith(JSON.stringify(exited)),
+        expect(webSocket.sentMessages(socket)).toContainEqual(exited),
       );
+      expect(
+        webSocket
+          .sentMessages(socket)
+          .filter((message) =>
+            JSON.stringify(message).includes("terminal.exited"),
+          ),
+      ).toHaveLength(1);
     } finally {
       await connection.shutdown();
     }
   });
 
-  it("closes the connection when a terminal websocket send throws", async () => {
-    const { connection, webSocket } = createConnectionFixture();
+  it("reconnects and keeps a message for replay when a websocket send throws", async () => {
+    const { connection, openSession, webSocket } = createConnectionFixture();
     try {
       await connection.start();
       const socket = webSocket.sockets[0];
       if (!socket) {
         throw new Error("Expected test socket");
       }
-      vi.mocked(socket.send).mockImplementation(() => {
+      const output = {
+        type: "terminal.output" as const,
+        terminalId: "term-1",
+        chunk: {
+          seq: 0,
+          dataBase64: Buffer.from("hello").toString("base64"),
+        },
+      };
+      vi.mocked(socket.send).mockImplementationOnce(() => {
         throw new Error("send failed");
       });
 
-      expect(
-        connection.sendMessage({
-          type: "terminal.output",
-          terminalId: "term-1",
-          chunk: {
-            seq: 0,
-            dataBase64: Buffer.from("hello").toString("base64"),
-          },
-        }),
-      ).toBe(false);
-      expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
+      expect(connection.sendMessage(output)).toBe(true);
+      expect(socket.reconnect).toHaveBeenCalledWith(1013, "send-failed");
+      await vi.waitFor(() =>
+        expect(webSocket.sentMessages(socket)).toEqual([output, output]),
+      );
+      expect(openSession).toHaveBeenCalledTimes(1);
     } finally {
       await connection.shutdown();
     }
@@ -816,11 +1151,9 @@ describe("ServerConnection", () => {
         throw new Error("Expected test socket");
       }
 
-      socket.onmessage?.({
-        data: JSON.stringify({
-          type: "host-rpc.cancel",
-          requestId: "rpc-cancelled",
-        }),
+      webSocket.deliver(socket, {
+        type: "host-rpc.cancel",
+        requestId: "rpc-cancelled",
       });
 
       expect(onHostRpcCancel).toHaveBeenCalledWith({
@@ -842,29 +1175,26 @@ describe("ServerConnection", () => {
         throw new Error("Expected test socket");
       }
 
-      socket.onmessage?.({
-        data: JSON.stringify({
-          type: "host-rpc.request",
-          requestId: "invalid-transcription",
-          command: {
-            type: "thread.stop",
-            intent: "interrupt",
-            environmentId: "",
-            threadId: "",
-          },
-        }),
+      webSocket.deliver(socket, {
+        type: "host-rpc.request",
+        requestId: "invalid-transcription",
+        command: {
+          type: "thread.stop",
+          aimedAt: null,
+          intent: "interrupt",
+          environmentId: "",
+          threadId: "",
+        },
       });
 
-      expect(socket.send).toHaveBeenCalledWith(
-        JSON.stringify({
-          type: "host-rpc.response",
-          requestId: "invalid-transcription",
-          commandType: "thread.stop",
-          ok: false,
-          errorCode: "invalid_command",
-          errorMessage: "Invalid host RPC command",
-        }),
-      );
+      expect(webSocket.sentMessages(socket)).toContainEqual({
+        type: "host-rpc.response",
+        requestId: "invalid-transcription",
+        commandType: "thread.stop",
+        ok: false,
+        errorCode: "invalid_command",
+        errorMessage: "Invalid host RPC command",
+      });
       expect(socket.close).not.toHaveBeenCalled();
       expect(setSession).not.toHaveBeenLastCalledWith(null);
       expect(logger.warn).toHaveBeenCalledWith(

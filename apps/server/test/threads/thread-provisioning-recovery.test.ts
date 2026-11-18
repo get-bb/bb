@@ -871,7 +871,6 @@ it.each(["success", "failure"])(
       requestThreadStopForCurrentState(
         harness.deps,
         getThread(harness.db, thread.id)!,
-        environment,
       );
       const cancel = await waitForQueuedCommand(
         harness,
