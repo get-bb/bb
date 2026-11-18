@@ -1,8 +1,10 @@
-import type {
-  ThreadProviderCommandsState,
-  ThreadSessionOption,
-  ThreadSessionOptionValue,
-  ThreadSessionOptionsState,
+import {
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  type ThreadProviderCommand,
+  type ThreadProviderCommandsState,
+  type ThreadSessionOption,
+  type ThreadSessionOptionValue,
+  type ThreadSessionOptionsState,
 } from "@bb/domain";
 import type {
   AcpAvailableCommand,
@@ -15,10 +17,32 @@ const MAX_COMMANDS = 500;
 const MAX_OPTIONS = 64;
 const MAX_OPTION_VALUES = 1000;
 
+function commandsStateBytes(state: ThreadProviderCommandsState): number {
+  return Buffer.byteLength(JSON.stringify(state));
+}
+
+function withDescriptionsCut(
+  commands: readonly ThreadProviderCommand[],
+  maxChars: number,
+): ThreadProviderCommandsState {
+  return {
+    commands: commands.map((command) => {
+      const chars = Array.from(command.description);
+      return chars.length <= maxChars
+        ? command
+        : {
+            ...command,
+            description:
+              maxChars === 0 ? "" : `${chars.slice(0, maxChars - 1).join("")}…`,
+          };
+    }),
+  };
+}
+
 export function toThreadProviderCommandsState(
   commands: readonly AcpAvailableCommand[],
 ): ThreadProviderCommandsState {
-  return {
+  const state: ThreadProviderCommandsState = {
     commands: commands
       .filter((command) => command.name.trim() !== "")
       .slice(0, MAX_COMMANDS)
@@ -28,6 +52,29 @@ export function toThreadProviderCommandsState(
         ...(command.inputHint ? { inputHint: command.inputHint } : {}),
       })),
   };
+  if (commandsStateBytes(state) <= EXTENSION_PAYLOAD_MAX_BYTES) {
+    return state;
+  }
+  let fitting = 0;
+  let tooLong = Math.max(
+    ...state.commands.map((command) => Array.from(command.description).length),
+  );
+  while (tooLong - fitting > 1) {
+    const middle = Math.floor((fitting + tooLong) / 2);
+    if (
+      commandsStateBytes(withDescriptionsCut(state.commands, middle)) <=
+      EXTENSION_PAYLOAD_MAX_BYTES
+    ) {
+      fitting = middle;
+    } else {
+      tooLong = middle;
+    }
+  }
+  const cut = withDescriptionsCut(state.commands, fitting);
+  while (commandsStateBytes(cut) > EXTENSION_PAYLOAD_MAX_BYTES) {
+    cut.commands.pop();
+  }
+  return cut;
 }
 
 function selectValues(

@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { events } from "@bb/db";
-import { threadScope, turnScope, type ExtensionKind } from "@bb/domain";
+import {
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  threadScope,
+  turnScope,
+  type ExtensionKind,
+} from "@bb/domain";
 import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
@@ -8,10 +13,7 @@ import {
 import { threadTimelineResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  EXTENSION_PAYLOAD_MAX_BYTES,
-  EXTENSION_REJECTION_REASON_MAX_CHARS,
-} from "../../src/internal/extension-payloads.js";
+import { EXTENSION_REJECTION_REASON_MAX_CHARS } from "../../src/internal/extension-payloads.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";

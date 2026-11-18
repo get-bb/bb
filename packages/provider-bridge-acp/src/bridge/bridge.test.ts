@@ -33,6 +33,8 @@ import { z } from "zod";
 import {
   availableModelSchema,
   createStandaloneBuiltinCompactCommandInput,
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  threadProviderCommandsStateSchema,
 } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
@@ -5995,6 +5997,26 @@ describe("acp bridge: live session state", () => {
         ],
       },
     ]);
+  });
+
+  it("publishes every advertised command within the extension payload limit", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_COMMAND_COUNT: "300" },
+    });
+    await completeTurnWith(
+      providerThreadId,
+      "advertise-commands",
+      executionOptions({}),
+    );
+    const states = threadStates("bb/provider-commands");
+    expect(states).toHaveLength(1);
+    const state = threadProviderCommandsStateSchema.parse(states[0]);
+    expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(
+      EXTENSION_PAYLOAD_MAX_BYTES,
+    );
+    expect(state.commands.map((command) => command.name)).toEqual(
+      Array.from({ length: 300 }, (_, index) => `skill-${index}`),
+    );
   });
 
   function setConfigRequests(requestLog: string): unknown[] {
