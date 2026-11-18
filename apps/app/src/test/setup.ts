@@ -1,6 +1,46 @@
 /// <reference types="vitest/jsdom" />
 
 import "@bb/shared-ui/icon-extended";
+import type { ComponentType } from "react";
+import { vi } from "vitest";
+import { installLazyModuleHold } from "./lazy-modules";
+
+installLazyModuleHold();
+
+vi.mock("react", async (importOriginal) => {
+  const { gateReactLazy } = await import("./lazy-modules");
+  return gateReactLazy(await importOriginal<typeof import("react")>());
+});
+
+vi.mock("@/lib/define-split", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/define-split")>();
+  const { gateLoadedComponent, prepareLazyModuleForFile } =
+    await import("./lazy-modules");
+  const defineSplit: typeof actual.defineSplit = (options) => {
+    const key = `split:${options.id}`;
+    const split = actual.defineSplit({
+      ...options,
+      load: () =>
+        options
+          .load()
+          .then(
+            (View) =>
+              gateLoadedComponent(
+                key,
+                View as ComponentType<object>,
+              ) as typeof View,
+          ),
+    });
+    const preload = split.preload;
+    return Object.assign(split, {
+      preload: async () => {
+        await preload();
+        prepareLazyModuleForFile(key);
+      },
+    });
+  };
+  return { ...actual, defineSplit };
+});
 
 if (typeof globalThis.navigator === "undefined") {
   Object.defineProperty(globalThis, "navigator", {

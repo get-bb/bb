@@ -28,6 +28,7 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ServerMoveOverlay } from "./ServerMoveOverlay";
 import { fetchServerHealth } from "@bb/host-daemon-contract";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 vi.mock("@bb/host-daemon-contract", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@bb/host-daemon-contract")>()),
@@ -59,8 +60,6 @@ vi.mock("@/lib/ws", () => ({
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: { success: vi.fn(), error: vi.fn() },
 }));
-
-await import("./ServerMoveOverlayView");
 
 function steps(
   statuses: Partial<Record<ServerMoveStepId, ServerMoveStepStatus>> = {},
@@ -120,7 +119,7 @@ function LocationDisplay() {
   );
 }
 
-function renderOverlay(path = "/") {
+async function renderOverlay(path = "/") {
   const navigateTo = vi.fn();
   const { queryClient, wrapper } = createQueryClientTestHarness();
   render(
@@ -130,6 +129,10 @@ function renderOverlay(path = "/") {
     </MemoryRouter>,
     { wrapper },
   );
+  await waitFor(() => {
+    expect(queryClient.getQueryData(serverMoveStatusQueryKey())).toBeDefined();
+  });
+  await settleLazyModules();
   return { navigateTo, queryClient };
 }
 
@@ -157,7 +160,7 @@ describe("ServerMoveOverlay", () => {
       move: null,
       lastMove: lastMove(),
     });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await waitFor(() => {
       expect(
@@ -194,7 +197,7 @@ describe("ServerMoveOverlay", () => {
         return cancelled;
       },
     );
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Moving server to desk",
@@ -276,7 +279,7 @@ describe("ServerMoveOverlay", () => {
         return abandoned;
       },
     );
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Couldn't confirm the switch to desk",
@@ -348,7 +351,7 @@ describe("ServerMoveOverlay", () => {
       }),
       lastMove: null,
     });
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Moving server to desk",
@@ -382,7 +385,7 @@ describe("ServerMoveOverlay", () => {
         ok: true,
         serverMove: { moveId: "move_1", state: "pending" },
       });
-    const { navigateTo } = renderOverlay(
+    const { navigateTo } = await renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
     );
 
@@ -443,7 +446,7 @@ describe("ServerMoveOverlay", () => {
       lastMove: null,
     });
     realtime.state = "reconnecting";
-    const { navigateTo, queryClient } = renderOverlay();
+    const { navigateTo, queryClient } = await renderOverlay();
 
     expect(
       await screen.findByRole("dialog", { name: "Reconnecting to desk…" }),
@@ -498,7 +501,7 @@ describe("ServerMoveOverlay", () => {
         }),
         lastMove: null,
       });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await screen.findByRole("dialog", { name: "Moving server to desk" });
     await queryClient.invalidateQueries({
@@ -536,7 +539,7 @@ describe("ServerMoveOverlay", () => {
       }),
       lastMove: null,
     });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await waitFor(() => {
       expect(
@@ -552,7 +555,7 @@ describe("ServerMoveOverlay", () => {
       lastMove: null,
     });
     realtime.state = "reconnecting";
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await screen.findByRole("dialog", { name: "Moving server to desk" });
     const interrupted = new TypeError("Failed to fetch");
@@ -612,7 +615,7 @@ describe("ServerMoveOverlay", () => {
           },
         }),
       );
-    const { navigateTo } = renderOverlay("/settings/machines?tab=all");
+    const { navigateTo } = await renderOverlay("/settings/machines?tab=all");
 
     await waitFor(() => {
       expect(navigateTo).toHaveBeenCalledWith(
@@ -626,7 +629,7 @@ describe("ServerMoveOverlay", () => {
       move: null,
       lastMove: lastMove(),
     });
-    renderOverlay("/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3");
+    await renderOverlay("/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3");
 
     await waitFor(() => {
       expect(vi.mocked(appToast.success)).toHaveBeenCalledWith(

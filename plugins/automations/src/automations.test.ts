@@ -15,6 +15,9 @@ import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
+  experimental_createDescendantPipe,
+  experimental_createProcessLifeline,
+  experimental_trackChildProcesses,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import {
@@ -2096,47 +2099,27 @@ describe("bb CLI injection for script runs", () => {
   });
 });
 
-async function isProcessRunning(pid: number): Promise<boolean> {
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-    throw error;
-  }
-
-  if (process.platform !== "linux") return true;
-  try {
-    const stat = await readFile(`/proc/${pid}/stat`, "utf8");
-    const closingParen = stat.lastIndexOf(")");
-    const state = stat.slice(closingParen + 2, closingParen + 3);
-    return state !== "Z" && state !== "X";
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ESRCH") return false;
-    throw error;
-  }
-}
-
 describe("script process containment", () => {
   it.skipIf(process.platform === "win32").each([0, 7])(
     "terminates an unreferenced worker after the script exits with code %i",
     async (exitCode) => {
       const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-worker-"));
       const scriptDir = automationScriptDir(pluginDataDir, "auto_worker");
-      let workerPid: number | undefined;
+      const release = join(pluginDataDir, "release");
+      const lifeline = await experimental_createProcessLifeline();
       try {
         await mkdir(scriptDir, { recursive: true });
         await writeFile(
           join(scriptDir, "worker.mjs"),
           [
             'import { spawn } from "node:child_process";',
-            'const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });',
+            'import { existsSync } from "node:fs";',
+            `const worker = spawn(process.execPath, ["-e", ${JSON.stringify(`${lifeline.holdSource("worker")}setInterval(() => {}, 1000);`)}], { stdio: "ignore" });`,
             "worker.unref();",
-            "console.log(JSON.stringify({ worker: worker.pid }));",
-            `process.exit(${exitCode});`,
+            `const gate = setInterval(() => { if (!existsSync(${JSON.stringify(release)})) return; clearInterval(gate); console.log(JSON.stringify({ worker: worker.pid })); process.exit(${exitCode}); }, 10);`,
           ].join("\n"),
         );
-        const result = await executeStoredScript({
+        const run = executeStoredScript({
           pluginDataDir,
           automationId: "auto_worker",
           runId: "run_worker",
@@ -2148,24 +2131,18 @@ describe("script process containment", () => {
           workingDir: scriptsRoot(pluginDataDir),
           signal: new AbortController().signal,
         });
+        const [worker] = await lifeline.waitForHolders(1);
+        await writeFile(release, "");
+        const result = await run;
         const workerMatch = result.output.match(/"worker":(\d+)/u);
         expect(workerMatch).not.toBeNull();
-        const parsedWorkerPid = Number(workerMatch?.[1]);
-        workerPid = parsedWorkerPid;
-        expect(Number.isSafeInteger(parsedWorkerPid)).toBe(true);
+        expect(Number(workerMatch?.[1])).toBe(worker?.pid);
         expect(result.exitCode).toBe(exitCode);
         expect(result.timedOut).toBe(false);
-        await expect
-          .poll(() => isProcessRunning(parsedWorkerPid), { timeout: 2_000 })
-          .toBe(false);
+        await worker?.exited;
+        expect(worker?.alive()).toBe(false);
       } finally {
-        if (workerPid !== undefined && Number.isSafeInteger(workerPid)) {
-          try {
-            process.kill(workerPid, "SIGKILL");
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-          }
-        }
+        await lifeline.close();
         await rm(pluginDataDir, { recursive: true, force: true });
       }
     },
@@ -2175,8 +2152,8 @@ describe("script process containment", () => {
     skip,
   }) => {
     skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
-    const pidDir = await mkdtemp(join(tmpdir(), "bb-auto-unload-"));
-    const pidFile = join(pidDir, "pids");
+    const lifeline = await experimental_createProcessLifeline();
+    const children = experimental_trackChildProcesses();
     const host = createFakePluginHost({
       pluginId: "automations",
       sdk: {
@@ -2198,7 +2175,6 @@ describe("script process containment", () => {
       },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
-    let pids: number[] = [];
     try {
       const automation = automationDetailResponseSchema.parse(
         await host.harness.callRpc("automations_create", {
@@ -2208,11 +2184,9 @@ describe("script process containment", () => {
           trigger: { triggerType: "once", runAt: Date.now() + 60_000 },
           execution: {
             mode: "script",
-            script:
-              'sleep 300 >/dev/null 2>&1 &\necho "$$ $!" > "$PID_FILE"\nwait\n',
+            script: `"${process.execPath}" -e '${lifeline.holdSource("descendant")}setInterval(() => {}, 1000);' >/dev/null 2>&1 &\nwait\n`,
             interpreter: "bash",
             workingDirectory: { type: "automation-storage" },
-            env: { PID_FILE: pidFile },
           },
           origin: "human",
         }),
@@ -2223,17 +2197,8 @@ describe("script process containment", () => {
           automationId: automation.id,
         }),
       );
-      await vi.waitFor(
-        async () => {
-          pids = (await readFile(pidFile, "utf8"))
-            .trim()
-            .split(" ")
-            .map(Number)
-            .filter(Number.isSafeInteger);
-          expect(pids).toHaveLength(2);
-        },
-        { timeout: 5_000 },
-      );
+      const [descendant] = await lifeline.waitForHolders(1);
+      expect(children.running()).not.toEqual([]);
 
       const reloaded = await host.harness.reload(
         plugin as unknown as Parameters<typeof host.harness.reload>[0],
@@ -2250,21 +2215,13 @@ describe("script process containment", () => {
         skipReason:
           "interrupted: the automations plugin stopped before the script finished",
       });
-      for (const pid of pids) {
-        await expect
-          .poll(() => isProcessRunning(pid), { timeout: 2_000 })
-          .toBe(false);
-      }
+      await descendant?.exited;
+      await children.waitForExit();
+      expect(children.running()).toEqual([]);
       await reloaded.harness.dispose();
     } finally {
-      for (const pid of pids) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-        }
-      }
-      await rm(pidDir, { recursive: true, force: true });
+      children.dispose();
+      await lifeline.close();
     }
   });
 
@@ -2313,9 +2270,10 @@ describe("script process containment", () => {
     );
     const scriptDir = automationScriptDir(pluginDataDir, "auto_timeout");
     await mkdir(scriptDir, { recursive: true });
+    const descendant = await experimental_createDescendantPipe();
     await writeFile(
       join(scriptDir, "script.sh"),
-      "sleep 30 &\nchild_pid=$!\nprintf 'child_pid=%s\\n' \"$child_pid\"\nwait $child_pid\n",
+      `sleep 30 > "${descendant.path}" &\nchild_pid=$!\nwait $child_pid\n`,
     );
 
     try {
@@ -2331,19 +2289,11 @@ describe("script process containment", () => {
         workingDir: scriptsRoot(pluginDataDir),
         signal: new AbortController().signal,
       });
-      const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
-      const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
       expect(result.timedOut).toBe(true);
-      expect(Number.isSafeInteger(childPid)).toBe(true);
-
-      let childRunning = true;
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        childRunning = await isProcessRunning(childPid);
-        if (!childRunning) break;
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      expect(childRunning).toBe(false);
+      await descendant.opened;
+      await descendant.closed;
     } finally {
+      await descendant.dispose();
       await rm(pluginDataDir, { recursive: true, force: true });
     }
   });
@@ -3001,13 +2951,19 @@ describe("answering provider retry consent", () => {
   );
 
   it.each([
-    { label: "it joined a turn someone else was running", reader: latestRequest("steer") },
+    {
+      label: "it joined a turn someone else was running",
+      reader: latestRequest("steer"),
+    },
     { label: "it joined a turn in auto mode", reader: latestRequest("auto") },
     {
       label: "the failed turn is not the latest request",
       reader: latestRequest("new-turn", "creq_someoneelse"),
     },
-    { label: "the thread has no readable request", reader: async () => undefined },
+    {
+      label: "the thread has no readable request",
+      reader: async () => undefined,
+    },
   ])("allows a recurring run's retry when $label", async ({ reader }) => {
     const db = createTestDb();
     createScheduledAutomation(db, 1000);

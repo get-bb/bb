@@ -137,3 +137,43 @@ it("uses the shipped npm and Node runtime when PATH contains no executables", as
 
   expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
 }, 60_000);
+
+it("skips npm when the plugin declares nothing npm would install", async () => {
+  const original = JSON.stringify({
+    name: "bb-plugin-no-runtime-dependencies",
+    version: "1.0.0",
+    dependencies: {},
+    devDependencies: { "never-installed": "file:./missing.tgz" },
+    optionalDependencies: { "never-installed-either": "file:./missing.tgz" },
+  });
+  await writeFile(join(rootDir, "package.json"), original);
+  await writeFile(
+    join(rootDir, ".npmrc"),
+    "registry=https://example.invalid\n",
+  );
+
+  await installGitDependencies(rootDir);
+
+  expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
+  await expect(readFile(join(rootDir, ".npmrc"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await expect(
+    readFile(join(rootDir, "package-lock.json")),
+  ).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("still runs npm for a plugin whose only runtime requirement is a peer dependency", async () => {
+  await writeFile(
+    join(rootDir, "package.json"),
+    JSON.stringify({
+      name: "bb-plugin-peer-only",
+      version: "1.0.0",
+      peerDependencies: { "missing-peer": "file:./missing-peer.tgz" },
+    }),
+  );
+
+  await expect(installGitDependencies(rootDir)).rejects.toThrow(
+    /npm install failed/,
+  );
+}, 60_000);

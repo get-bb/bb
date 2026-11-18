@@ -92,7 +92,7 @@ describe("ProjectPathDialog machine selection", () => {
     );
   });
 
-  it("preserves the direct single-machine folder flow", () => {
+  it("preserves the direct single-machine folder flow", async () => {
     const onSubmit = vi.fn();
     render(
       <ProjectPathDialog
@@ -108,7 +108,7 @@ describe("ProjectPathDialog machine selection", () => {
 
     expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Choose folder on host_atum" }),
+      await screen.findByRole("button", { name: "Choose folder on host_atum" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Add project" }));
 

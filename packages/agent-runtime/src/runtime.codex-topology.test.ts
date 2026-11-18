@@ -2,9 +2,22 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import {
+  createProcessLifeline,
+  trackChildProcesses,
+  type ProcessLifeline,
+} from "@bb/test-helpers";
 import { createAgentRuntime } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -37,21 +50,24 @@ interface CodexTopologyRuntime {
   spawned(): number;
   exited(): number;
   bridges(): number;
-  childPids(): number[];
+  appServersExited(): Promise<void>;
   bridgeExits: { expected: boolean }[];
   launch(digest: string): AgentRuntimeBridgeLaunch;
 }
 
 describe("codex process topology", () => {
   let workspaceDir: string;
+  let lifeline: ProcessLifeline;
   const runtimes: AgentRuntime[] = [];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-topology-"));
+    lifeline = await createProcessLifeline();
   });
 
   afterEach(async () => {
     await Promise.all(runtimes.splice(0).map((runtime) => runtime.shutdown()));
+    await lifeline.close();
     await rm(workspaceDir, {
       recursive: true,
       force: true,
@@ -68,6 +84,8 @@ describe("codex process topology", () => {
   ): CodexTopologyRuntime {
     const processLogPath = join(workspaceDir, "app-server-processes.log");
     const scriptPath = join(workspaceDir, "fake-codex-script.json");
+    const lifelinePreloadPath = join(workspaceDir, "app-server-lifeline.mjs");
+    writeFileSync(lifelinePreloadPath, lifeline.holdSource("app-server"));
     writeFileSync(
       scriptPath,
       JSON.stringify({
@@ -90,6 +108,8 @@ describe("codex process topology", () => {
         env: {
           BB_CODEX_BRIDGE_APP_SERVER_COMMAND: process.execPath,
           BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify([
+            "--import",
+            pathToFileURL(lifelinePreloadPath).href,
             fakeAppServerPath,
             scriptPath,
           ]),
@@ -122,7 +142,10 @@ describe("codex process topology", () => {
     return {
       events,
       runtime,
-      childPids: () => spawnLines().map((line) => Number(line.split(":")[1])),
+      async appServersExited() {
+        const holders = await lifeline.waitForHolders(spawnLines().length);
+        await Promise.all(holders.map((holder) => holder.exited));
+      },
       spawned: () => spawnLines().length,
       exited: () => readLog().filter((line) => line.startsWith("exit:")).length,
       bridges: () =>
@@ -366,15 +389,12 @@ describe("codex process topology", () => {
     }
 
     expect(runtime.hasThread("t1")).toBe(false);
-    const [childPid] = topology.childPids();
-    if (childPid === undefined) {
-      throw new Error("Expected the stalled construction to spawn a child");
-    }
     await waitForRuntimeState({
       label: "the stalled construction child exited gracefully",
-      predicate: () => topology.exited() === 1 && !isAlive(childPid),
+      predicate: () => topology.exited() === 1,
       timeoutMs: 10_000,
     });
+    await topology.appServersExited();
     expect(topology.spawned()).toBe(1);
     expect(topology.exited()).toBe(1);
     expect(runtime.listRunningProviders()).toEqual([]);
@@ -407,43 +427,30 @@ describe("codex process topology", () => {
   }, 30_000);
 
   it("sweeps every app-server child when the bridge dies unexpectedly", async () => {
+    const children = trackChildProcesses();
+    onTestFinished(() => children.dispose());
     const topology = createCodexTopologyRuntime();
     const { runtime } = topology;
     await startCodexThread(runtime, "t1");
     await startCodexThread(runtime, "t2");
     expect(topology.spawned()).toBe(2);
-    const [child1, child2] = topology.childPids();
-    if (child1 === undefined || child2 === undefined) {
-      throw new Error("expected two app-server children");
-    }
     const bridgePid = Number(
       readFileSync(join(workspaceDir, "app-server-processes.log"), "utf8")
         .split("\n")[0]
         ?.split(":")[2],
     );
 
-    process.kill(bridgePid, "SIGKILL");
+    const bridge = children.running().find((child) => child.pid === bridgePid);
+    if (bridge === undefined) throw new Error("The bridge is not running");
+    bridge.kill("SIGKILL");
     await waitForRuntimeState({
       label: "the runtime reported the unexpected bridge exit",
       predicate: () => topology.bridgeExits.length === 1,
       timeoutMs: 10_000,
     });
     expect(topology.bridgeExits).toEqual([{ expected: false }]);
-    await waitForRuntimeState({
-      label: "both app-server children exited",
-      predicate: () => !isAlive(child1) && !isAlive(child2),
-      timeoutMs: 10_000,
-    });
+    await topology.appServersExited();
     expect(runtime.hasThread("t1")).toBe(false);
     expect(runtime.hasThread("t2")).toBe(false);
   }, 30_000);
 });
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}

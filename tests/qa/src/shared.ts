@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import { hostSchema } from "@bb/domain";
+import { readProcessIdentity } from "@bb/process-utils";
 import type { Host } from "@bb/domain";
 import {
   type CreateProjectRequest,
@@ -128,6 +130,7 @@ interface StandaloneProcessInfo {
 
 interface ShouldCleanupStandaloneParentArgs {
   parentPid: number;
+  recordedAt: number;
   source: string;
 }
 
@@ -157,8 +160,6 @@ interface WaitForOptions {
   description: string;
   timeoutMs: number;
 }
-
-type ProcessSignalStatus = "missing" | "permission-denied" | "running";
 
 const standaloneStateSchema = z.object({
   daemon: z
@@ -210,7 +211,7 @@ function warnStandaloneParentSkipped(
   args: ShouldCleanupStandaloneParentArgs,
 ): void {
   console.warn(
-    `Warning: skipped standalone QA cleanup for ${args.source} because parent process ${String(args.parentPid)} is not signalable; root may belong to another user or session.`,
+    `Warning: skipped standalone QA cleanup for ${args.source} because parent process ${String(args.parentPid)} could not be inspected; root may belong to another user or session.`,
   );
 }
 
@@ -335,23 +336,23 @@ export async function killProcess(
     return;
   }
 
-  if (!(await isProcessRunning(pid))) {
+  const identity = await readProcessIdentity(pid);
+  if (identity?.command == null || identity.startedAt === null) {
     return;
   }
-
-  process.kill(pid, "SIGTERM");
-  await waitFor(async () => !(await isProcessRunning(pid)), {
+  const result = await stopVerifiedProcess({
+    pid,
+    startedAt: new Date(identity.startedAt).toISOString(),
+    verifyTokens: [identity.command],
+    signal: "SIGTERM",
     timeoutMs: 5_000,
-    description: `process ${pid} to exit`,
-  }).catch(async () => {
-    if (await isProcessRunning(pid)) {
-      process.kill(pid, "SIGKILL");
-      await waitFor(async () => !(await isProcessRunning(pid)), {
-        timeoutMs: 5_000,
-        description: `process ${pid} to exit after SIGKILL`,
-      });
-    }
+    killTimeoutMs: 5_000,
   });
+  if (result.kind === "still-running") {
+    throw new Error(
+      `Timed out waiting for process ${pid} to exit after SIGKILL`,
+    );
+  }
 }
 
 export async function loadDotEnv(): Promise<LoadDotEnvResult> {
@@ -581,32 +582,37 @@ async function listStandaloneProcesses(): Promise<StandaloneProcessInfo[]> {
     });
 }
 
-function getProcessSignalStatus(pid: number): ProcessSignalStatus {
+async function readProcessStartedAt(pid: number): Promise<number | null> {
   try {
-    process.kill(pid, 0);
-    return "running";
+    const { stdout } = await execFile(
+      "ps",
+      ["-p", String(pid), "-o", "lstart="],
+      {
+        encoding: "utf8",
+        env: { ...process.env, LC_ALL: "C" },
+      },
+    );
+    const startedAt = Date.parse(stdout.trim());
+    return Number.isFinite(startedAt) ? startedAt : null;
   } catch (error) {
-    if (isNodeError(error) && error.code === "ESRCH") {
-      return "missing";
-    }
-    if (isNodeError(error) && error.code === "EPERM") {
-      return "permission-denied";
+    if (isNodeError(error) && error.code === 1) {
+      return null;
     }
     throw error;
   }
 }
 
-function shouldCleanupStandaloneParent(
+async function shouldCleanupStandaloneParent(
   args: ShouldCleanupStandaloneParentArgs,
-): boolean {
-  const status = getProcessSignalStatus(args.parentPid);
-  if (status === "missing") {
-    return true;
-  }
-  if (status === "permission-denied") {
+): Promise<boolean> {
+  let parentStartedAt: number | null;
+  try {
+    parentStartedAt = await readProcessStartedAt(args.parentPid);
+  } catch {
     warnStandaloneParentSkipped(args);
+    return false;
   }
-  return false;
+  return parentStartedAt === null || parentStartedAt > args.recordedAt;
 }
 
 export async function cleanupStandaloneInstance(
@@ -655,12 +661,18 @@ export async function cleanupStandaloneOrphans(): Promise<CleanupStandaloneResul
       path.join(tmpRoot, "standalone-state.json"),
     );
     const runtime = readStandaloneStateRuntime(state);
+    const recordedAt = await fs
+      .stat(path.join(tmpRoot, "standalone-state.json"))
+      .then((metadata) => metadata.mtimeMs)
+      .catch(() => null);
     if (
       !runtime.parentPid ||
-      !shouldCleanupStandaloneParent({
+      recordedAt === null ||
+      !(await shouldCleanupStandaloneParent({
         parentPid: runtime.parentPid,
+        recordedAt,
         source: tmpRoot,
-      })
+      }))
     ) {
       continue;
     }
@@ -683,13 +695,17 @@ export async function cleanupStandaloneOrphans(): Promise<CleanupStandaloneResul
   }
 
   for (const processInfo of await listStandaloneProcesses()) {
+    if (!processInfo.parentPid || killedPids.has(processInfo.pid)) {
+      continue;
+    }
+    const recordedAt = await readProcessStartedAt(processInfo.pid);
     if (
-      !processInfo.parentPid ||
-      killedPids.has(processInfo.pid) ||
-      !shouldCleanupStandaloneParent({
+      recordedAt === null ||
+      !(await shouldCleanupStandaloneParent({
         parentPid: processInfo.parentPid,
+        recordedAt,
         source: `process ${String(processInfo.pid)}`,
-      })
+      }))
     ) {
       continue;
     }
@@ -717,8 +733,9 @@ export function buildDaemonRestartCommand(
     `case "$daemon_pid" in '' ) ;; *[!0-9]*) echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0 ;; *) if ! [ "$daemon_pid" -gt 0 ]; then echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0; fi ;; esac`,
   ].join("; ");
   const shutdownCommand = [
+    `daemon_started=$(ps -o lstart= -p "$daemon_pid" 2>/dev/null)`,
     `(kill "$daemon_pid" >/dev/null 2>&1 || true)`,
-    `while kill -0 "$daemon_pid" 2>/dev/null; do sleep 1; done`,
+    `while [ -n "$daemon_started" ] && [ "$(ps -o lstart= -p "$daemon_pid" 2>/dev/null)" = "$daemon_started" ]; do sleep 1; done`,
   ].join("; ");
 
   const envFileCommand = args.envFilePath
@@ -818,8 +835,4 @@ async function waitForServerReady(serverUrl: string): Promise<boolean> {
       description: "server health check",
     },
   );
-}
-
-async function isProcessRunning(pid: number): Promise<boolean> {
-  return getProcessSignalStatus(pid) !== "missing";
 }

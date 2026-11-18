@@ -17,24 +17,14 @@ import {
 } from "@bb/domain";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import { CommandPalette } from "./CommandPalette";
+import { settleLazyModules } from "@/test/lazy-modules";
 
-const body = vi.hoisted(() => {
-  let loaded = () => {};
-  const ready = new Promise<void>((resolve) => {
-    loaded = resolve;
-  });
-  return { imports: 0, release: () => {}, ready, loaded };
-});
+const body = vi.hoisted(() => ({ imports: 0 }));
 const calls = vi.hoisted(() => [] as AppCommandId[]);
 
 vi.mock("./CommandPaletteBody", async (importOriginal) => {
   body.imports += 1;
-  await new Promise<void>((resolve) => {
-    body.release = resolve;
-  });
-  const module = await importOriginal();
-  body.loaded();
-  return module;
+  return importOriginal();
 });
 
 function binding(
@@ -108,7 +98,7 @@ function press(key: string) {
 }
 
 const loadingInput = () =>
-  screen.findByRole("textbox", { name: "Search commands" });
+  vi.waitFor(() => screen.getByRole("textbox", { name: "Search commands" }));
 
 it("stays usable before its body downloads on first open and keeps typed text", async () => {
   render(
@@ -127,15 +117,19 @@ it("stays usable before its body downloads on first open and keeps typed text", 
 
   press("p");
   fireEvent.keyDown(await loadingInput(), { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(document.activeElement).toBe(origin);
+  await vi.waitFor(() => {
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(origin);
+  });
 
   press("p");
   await loadingInput();
   press("o");
-  await waitFor(() => expect(calls).toEqual(["thread.new"]));
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(document.activeElement).toBe(origin);
+  await vi.waitFor(() => {
+    expect(calls).toEqual(["thread.new"]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(origin);
+  });
 
   press("p");
   const input = await loadingInput();
@@ -144,11 +138,8 @@ it("stays usable before its body downloads on first open and keeps typed text", 
   fireEvent.change(input, { target: { value: "new thr" } });
   expect(body.imports).toBe(1);
 
-  await act(async () => {
-    body.release();
-    await body.ready;
-  });
-  const combobox = await screen.findByRole("combobox", {
+  await settleLazyModules();
+  const combobox = screen.getByRole("combobox", {
     name: "Search commands",
   });
   expect(combobox).toHaveProperty("value", "new thr");

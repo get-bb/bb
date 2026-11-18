@@ -18,7 +18,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MemoryRouter, useNavigate } from "react-router-dom";
@@ -85,9 +84,9 @@ it("starts destination code before the workspace settles and keeps thread code o
       <AppRoutes />
     </MemoryRouter>,
   );
-  await waitFor(() => expect(downloads.compose).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(downloads.compose).toHaveBeenCalledTimes(1));
   expect(downloads.thread).not.toHaveBeenCalled();
-  await waitFor(() => expect(environments).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(environments).toHaveBeenCalledTimes(1));
   expect(machines).toHaveBeenCalledTimes(1);
   await appQueryClient.ensureQueryData(environmentProvidersQueryOptions({}));
   await appQueryClient.ensureQueryData(machineProvidersQueryOptions());
@@ -109,7 +108,7 @@ it("starts destination code before the workspace settles and keeps thread code o
   expect(machines).toHaveBeenCalledTimes(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Open personal thread" }));
-  await waitFor(() => expect(downloads.thread).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(downloads.thread).toHaveBeenCalledTimes(1));
 
   fireEvent.click(screen.getByRole("button", { name: "Open project thread" }));
   expect(downloads.thread).toHaveBeenCalledTimes(1);

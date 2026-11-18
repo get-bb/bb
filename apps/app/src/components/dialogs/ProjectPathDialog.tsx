@@ -53,7 +53,7 @@ export type ProjectPathDialogSubmitHandler = (
   hostId: string | null,
 ) => Promise<void> | void;
 
-interface ProjectPathDialogProps {
+export interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;

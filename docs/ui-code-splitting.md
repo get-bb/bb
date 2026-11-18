@@ -242,6 +242,39 @@ reveal another loading state while the feature fetches data. Keep focus and
 close controls usable, preserve panel geometry, and check the transition to
 real content. Do not add artificial production delays for screenshots.
 
+## Test lazy boundaries
+
+In `@bb/app` tests, every dynamic `import()` in app source stays pending until
+the test settles it. `vite-test-lazy-imports.ts` wraps each call and
+`src/test/setup.ts` holds the result for the duration of each test. A module
+already loaded before the current test is held too: the setup mocks
+`defineSplit` and React's `lazy` so that a split or lazy component an earlier
+test or file loaded renders its loading state on its first render in each later
+test. A module loaded earlier in the same test renders at once. A test therefore
+never depends on how fast a chunk transforms on the runner or on a sibling test
+having loaded it first:
+
+- Testing Library `findBy*` and `waitFor` settle pending imports before they
+  poll, let imports flow while polling, and settle again before returning.
+- Before a synchronous assertion on lazy content, `await settleLazyModules()`
+  from `@/test/lazy-modules`. It resolves once every import has loaded,
+  including imports that loading starts, and React has committed.
+- `await settleLazyModules(operation)` awaits a promise whose chain loads code,
+  such as booting plugin frontends, and lets its imports load meanwhile.
+- To assert a loading state, render and assert synchronously or poll with
+  `vi.waitFor`, which does not settle. The hold replaces deferred promises in
+  `vi.mock` factories. Keep a factory gate only to make an import fail.
+- Collection-time `await Split.preload()` keeps a heavy module's first
+  transform out of every test in a suite and marks the split as prepared for
+  that file, so its tests render it at once.
+- A test of Suspense or `defineSplit` mechanics itself calls
+  `vi.unmock("react")` and `vi.unmock("@/lib/define-split")`, as
+  `define-split.test.tsx` does.
+
+A test that fails while an import or gated module is pending reports the held
+or loading specifiers in its error, for example `split:remote-path-browser
+(held)`.
+
 ## Choosing a policy
 
 - Startup: common UI on the owning page, such as the right-panel shell and the

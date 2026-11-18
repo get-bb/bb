@@ -42,23 +42,30 @@ describe("deprioritizeAgentWorkload", () => {
       args: [
         "-e",
         `process.stdin.once("data", () => {
-           const { execFileSync } = require("node:child_process");
-           process.stdout.write(execFileSync(process.execPath, ["-e", "process.stdout.write(String(require('node:os').getPriority()))"]));
-           process.exit(0);
+           const grandchild = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+           process.stdout.write(String(grandchild.pid) + "\\n");
+           process.stdin.once("data", () => {
+             grandchild.kill();
+             process.exit(0);
+           });
          });`,
       ],
     });
     try {
       deprioritizeAgentWorkload(child.pid);
       expect(getPriority(child.pid)).toBe(AGENT_WORKLOAD_NICE);
-      let output = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        output += chunk.toString();
+      const grandchildPid = new Promise<number>((resolve) => {
+        let output = "";
+        child.stdout.on("data", (chunk: Buffer) => {
+          output += chunk.toString();
+          if (output.includes("\n")) resolve(Number(output.trim()));
+        });
       });
-      const exited = new Promise((resolve) => child.once("exit", resolve));
       child.stdin.write("go\n");
+      expect(getPriority(await grandchildPid)).toBe(AGENT_WORKLOAD_NICE);
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.stdin.write("done\n");
       await exited;
-      expect(Number(output)).toBe(AGENT_WORKLOAD_NICE);
     } finally {
       await stop();
     }

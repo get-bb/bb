@@ -14,6 +14,7 @@ import {
   pluginSdkAppImplementation,
   retiredPluginSdkAppMembers,
 } from "./plugin-sdk-app-impl";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 function candidate(
   pluginId: string,
@@ -164,9 +165,11 @@ describe("installPluginRuntime", () => {
       prefetchModule,
       warn: vi.fn(),
     });
-    await loadPluginFrontend(
-      candidate("differ", { runtimeSlots: ["pierreDiffsReact", "react"] }),
-      { importModule, prefetchModule, warn: vi.fn() },
+    await settleLazyModules(
+      loadPluginFrontend(
+        candidate("differ", { runtimeSlots: ["pierreDiffsReact", "react"] }),
+        { importModule, prefetchModule, warn: vi.fn() },
+      ),
     );
 
     expect(slotsAtImport).toEqual([

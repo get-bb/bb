@@ -1,8 +1,17 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import { createProcessLifeline } from "@bb/test-helpers";
 import { createAgentRuntime } from "./runtime.js";
 import {
   createScriptedEchoLaunch,
@@ -38,6 +47,10 @@ describe("acp process topology", () => {
   it("reaps the agent under construction when the runtime times out thread construction", async () => {
     const setTimeoutReal = setTimeout;
     const readyFile = join(workspaceDir, "agent-ready");
+    const lifeline = await createProcessLifeline();
+    onTestFinished(() => lifeline.close());
+    const lifelinePreloadPath = join(workspaceDir, "agent-lifeline.mjs");
+    writeFileSync(lifelinePreloadPath, lifeline.holdSource("agent"));
     const runtime = withBridgeLaunch(
       createAgentRuntime({
         workspacePath: workspaceDir,
@@ -56,7 +69,11 @@ describe("acp process topology", () => {
           acpLaunchSpec: {
             displayName: "Fake ACP",
             command: process.execPath,
-            args: [fakeAgentPath],
+            args: [
+              "--import",
+              pathToFileURL(lifelinePreloadPath).href,
+              fakeAgentPath,
+            ],
             env: {
               FAKE_ACP_SESSION_NEW_DELAY_MS: "60000",
               FAKE_ACP_READY_FILE: readyFile,
@@ -112,19 +129,8 @@ describe("acp process topology", () => {
       vi.unstubAllGlobals();
     }
     expect(runtime.hasThread("t1")).toBe(false);
-    await waitForRuntimeState({
-      label: "the agent under construction was released",
-      predicate: () => {
-        const pid = Number(readFileSync(readyFile, "utf8"));
-        try {
-          process.kill(pid, 0);
-          return false;
-        } catch {
-          return true;
-        }
-      },
-      timeoutMs: 10_000,
-    });
+    const [agent] = await lifeline.waitForHolders(1);
+    await agent?.exited;
     expect(runtime.listRunningProviders()).toEqual([]);
   }, 30_000);
 });

@@ -10,6 +10,7 @@ import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
 } from "./plugin-slots";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 const renderRecorder = await vi.hoisted(async () => {
   const { installRenderRecorder } = await import("@/test/render-recorder");
@@ -36,7 +37,7 @@ afterAll(() => {
 });
 
 describe("per-kind plugin slot subscriptions", () => {
-  it("leaves row consumers alone when a plugin registers another slot kind", () => {
+  it("leaves row consumers alone when a plugin registers another slot kind", async () => {
     render(
       <>
         {THREADS.map((thread) => (
@@ -66,6 +67,7 @@ describe("per-kind plugin slot subscriptions", () => {
         }),
       );
     });
+    await settleLazyModules();
     expect(renderRecorder.propsOf("ThreadRowMetadata")).toHaveLength(
       THREADS.length,
     );

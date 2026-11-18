@@ -31,10 +31,17 @@ async function initReadGitBlobRepo() {
   return populateReadGitBlobRepo(repoPath);
 }
 
+async function writeTestIdentity(repoPath: string) {
+  await fs.appendFile(
+    path.join(repoPath, ".git", "config"),
+    "[user]\n\tname = BB Tests\n\temail = bb@example.com\n",
+    "utf8",
+  );
+}
+
 async function populateReadGitBlobRepo(repoPath: string) {
   await runGit(["init", "-b", "main"], { cwd: repoPath });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
-  await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
+  await writeTestIdentity(repoPath);
   await fs.mkdir(path.join(repoPath, "docs"));
   await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
   await fs.writeFile(path.join(repoPath, "docs", "index.md"), "docs\n", "utf8");
@@ -55,8 +62,7 @@ async function initConflictRepo() {
   const repoPath = await fs.mkdtemp(path.join(os.tmpdir(), "bb-git-conflict-"));
   tempDirs.push(repoPath);
   await runGit(["init", "-b", "main"], { cwd: repoPath });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
-  await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
+  await writeTestIdentity(repoPath);
   await fs.writeFile(path.join(repoPath, "README.md"), "base\n", "utf8");
   await runGit(["add", "."], { cwd: repoPath });
   await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
@@ -78,10 +84,7 @@ async function pushRemoteMainCommit(remotePath: string) {
   await runGit(["clone", "--branch", "main", remotePath, clonePath], {
     cwd: cloneParent,
   });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: clonePath });
-  await runGit(["config", "user.email", "bb@example.com"], {
-    cwd: clonePath,
-  });
+  await writeTestIdentity(clonePath);
   await fs.writeFile(path.join(clonePath, "remote.txt"), "remote\n", "utf8");
   await runGit(["add", "."], { cwd: clonePath });
   await runGit(["commit", "-m", "Remote edit"], { cwd: clonePath });
@@ -141,7 +144,9 @@ describe("runGit", () => {
     const repoPath = await initEmptyRepo();
 
     await expect(
-      runGit(["config", "--local", "--get", "bb.missing-setting"], { cwd: repoPath }),
+      runGit(["config", "--local", "--get", "bb.missing-setting"], {
+        cwd: repoPath,
+      }),
     ).rejects.toMatchObject({
       name: "WorkspaceError",
       code: "git_command_failed",
@@ -222,9 +227,12 @@ describe("readDefaultBranchRefs", () => {
     await fs.mkdir(remotePath);
     await populateReadGitBlobRepo(repoPath);
     await runGit(["init", "--bare"], { cwd: remotePath });
-    await runGit(["remote", "add", "origin", "../remote"], { cwd: repoPath });
+    await fs.appendFile(
+      path.join(repoPath, ".git", "config"),
+      '[remote "origin"]\n\turl = ../remote\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n',
+      "utf8",
+    );
     await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
-    await runGit(["fetch", "origin"], { cwd: repoPath });
   });
 
   afterAll(async () => {

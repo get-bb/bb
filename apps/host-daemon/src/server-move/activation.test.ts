@@ -7,7 +7,7 @@ import {
   writeServerConnectHoldFile,
 } from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
-import { createDeferredPromise } from "@bb/test-helpers";
+import { createDeferredPromise, hasExited } from "@bb/test-helpers";
 import { readIncomingMoveState, writeIncomingMoveState } from "./move-state.js";
 import {
   activateCommand,
@@ -120,7 +120,7 @@ describe("server_move.activate pre-validation", () => {
       expect(await exists(join(fixture.dataDir, "server-import.json"))).toBe(
         true,
       );
-      expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
+      expect(hasExited(fixture.pendingServer(prepared.pid))).toBe(false);
       expect(fixture.shutdownRequests).toEqual([]);
     },
   );
@@ -200,7 +200,7 @@ describe("server_move.activate sequencing", () => {
         code: "server_move_already_activated",
       });
       await waitingForSessionClose.promise;
-      expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
+      expect(hasExited(fixture.pendingServer(prepared.pid))).toBe(false);
       expect(fixture.commands).toEqual([]);
       expect(await exists(join(fixture.dataDir, "server-import.json"))).toBe(
         true,
@@ -527,7 +527,7 @@ describe("server move redirects during a move", () => {
     expect(
       (await readIncomingMoveState(fixture.dataDir, MOVE_ID))?.activation,
     ).toBeNull();
-    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
+    expect(hasExited(fixture.pendingServer(prepared.pid))).toBe(false);
     expect(fixture.shutdownRequests).toEqual([]);
     expect(fixture.detachedRequests).toEqual([]);
     expect(fixture.commands).toEqual([]);
