@@ -348,7 +348,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     autoCheckMs: AUTO_UPDATE_CHECK_MS,
     countRunningThreads,
     inner: appUpdateService,
-    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),

@@ -316,7 +316,6 @@ async function startIntegrationServer(
         terminalSessions,
       }),
     }),
-    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger: testLogger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),

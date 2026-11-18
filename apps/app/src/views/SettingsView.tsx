@@ -1157,11 +1157,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
-  dismissReadNotifications: {
-    label: "Clear notifications once a thread is read",
-    description:
-      "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
-  },
   keyedPluginCss: {
     label: "Faster styles inside plugins",
     description:
@@ -1197,16 +1192,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     label: "Thread context card",
     description:
       "Show a thread's changes, pull request, and parent and child threads in a card at the upper-right of each thread pane instead of above the composer. A header button opens or pins it; wide panes keep it beside the transcript.",
-  },
-  threadRowMetadata: {
-    label: "Thread row metadata",
-    description:
-      "Add Metadata to the built-in thread list's Organize → Rows menu. When it is checked, plugins can show details such as a thread's pull request on a second line under its title.",
-  },
-  updateWhenIdle: {
-    label: "Update when idle",
-    description:
-      "Adds a Restart and update bb automatically switch to the Updates page. While it is on, bb checks for updates every hour and restarts into a new version once no thread is running, waiting again if a thread starts before it restarts. Skip this version keeps a version from installing until a newer one appears. bb updates app apply --when-idle waits for threads once from the CLI.",
   },
   walCheckpointWorker: {
     label: "Background database checkpoints",

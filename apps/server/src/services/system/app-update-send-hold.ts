@@ -1,4 +1,4 @@
-import { getExperiments, setAppUpdateSendHold } from "@bb/db";
+import { setAppUpdateSendHold } from "@bb/db";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requestQueuedMessageDispatch } from "../threads/queued-message-dispatch.js";
 
@@ -12,7 +12,6 @@ export function createAppUpdateSendHold(
 ): AppUpdateSendHold {
   return {
     hold() {
-      if (!getExperiments(deps.db).updateWhenIdle) return;
       setAppUpdateSendHold(deps.db, true);
       deps.logger.info("Holding new sends until bb restarts to update");
     },

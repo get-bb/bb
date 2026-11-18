@@ -957,10 +957,6 @@ describe("resuming threads after a restart", () => {
 });
 
 describe("holding sends while bb restarts to update", () => {
-  function updateWhenIdle(harness: TestAppHarness, enabled: boolean) {
-    setExperiments(harness.db, { updateWhenIdle: enabled });
-  }
-
   function seedIdleThread(harness: TestAppHarness, fixture: HostFixture) {
     const seeded = seedRunningThread(harness, fixture);
     moveThreadStatus(harness.deps, {
@@ -976,7 +972,6 @@ describe("holding sends while bb restarts to update", () => {
 
   it("holds a send while the restart is pending and sends it at once when the update is called off", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       const fixture = seedHostWithProject(harness);
       const { thread } = seedIdleThread(harness, fixture);
       const sendHold = createAppUpdateSendHold(harness.deps);
@@ -1003,28 +998,8 @@ describe("holding sends while bb restarts to update", () => {
     });
   });
 
-  it("does not hold sends while the updateWhenIdle experiment is off", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedHostWithProject(harness);
-      const { thread } = seedIdleThread(harness, fixture);
-
-      createAppUpdateSendHold(harness.deps).hold();
-      await sendMessage(harness, {
-        mode: "auto",
-        text: "Not held",
-        threadId: thread.id,
-      });
-
-      expect(requestTexts(harness, thread.id)).toEqual([
-        "Do the thing",
-        "Not held",
-      ]);
-    });
-  });
-
   it("sends held messages after the restart, behind the resume, in order", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       continueAfterRestarts(harness, true);
       const fixture = seedHostWithProject(harness);
       const running = seedRunningThread(harness, fixture);
