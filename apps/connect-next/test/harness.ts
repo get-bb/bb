@@ -386,6 +386,8 @@ export async function startOrigin(options: OriginOptions) {
         response.writeHead(304, {
           etag: '"shell-1"',
           "cache-control": "no-cache",
+          "content-security-policy": "frame-ancestors 'none'",
+          "x-frame-options": "DENY",
         });
         response.end();
         return;
@@ -394,6 +396,8 @@ export async function startOrigin(options: OriginOptions) {
         "content-type": "text/html",
         "cache-control": "no-cache",
         etag: '"shell-1"',
+        "content-security-policy": "frame-ancestors 'none'",
+        "x-frame-options": "DENY",
       });
       response.end("<!doctype html><title>shell</title>");
       return;
