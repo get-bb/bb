@@ -7679,6 +7679,43 @@ describe("acp bridge: questions the agent asks", () => {
     });
   }
 
+  it("closes a background spawn completed on the first tool call", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_SPAWN_RESULT_ON_TOOL_CALL: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "running" },
+        {
+          childRef: "child-beta",
+          status: "completed",
+          result: "BETA_DONE",
+        },
+      ],
+    });
+    expect(
+      threadEventsOfType("item/delegation/completed").filter((event) =>
+        JSON.stringify(event).includes('"childRef":"child-beta"'),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        item: expect.objectContaining({
+          childRef: "child-beta",
+          status: "completed",
+        }),
+      }),
+    ]);
+    expect(
+      threadEventsOfType("item/delegation/completed").some((event) =>
+        JSON.stringify(event).includes('"childRef":"child-alpha"'),
+      ),
+    ).toBe(false);
+  });
+
   it("grok_subagent_spawn_notification_before_tool_result_still_registers", async () => {
     const { providerThreadId } = await startGrokSubagentThread({
       FAKE_ACP_GROK_SUBAGENT_NOTIFY_BEFORE_RESULT: "1",

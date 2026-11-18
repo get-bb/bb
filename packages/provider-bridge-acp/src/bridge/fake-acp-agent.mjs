@@ -676,6 +676,8 @@ function spawnGrokSubagent(args) {
   const { childRef, description, toolCallId, result } = args;
   const notifyBeforeResult =
     process.env.FAKE_ACP_GROK_SUBAGENT_NOTIFY_BEFORE_RESULT === "1";
+  const resultOnToolCall =
+    process.env.FAKE_ACP_GROK_SUBAGENT_SPAWN_RESULT_ON_TOOL_CALL === "1";
   const meta = {
     "x.ai/tool": {
       version: 1,
@@ -686,7 +688,28 @@ function spawnGrokSubagent(args) {
       read_only: false,
     },
   };
-  if (notifyBeforeResult) announceGrokSubagent(args);
+  if (notifyBeforeResult || resultOnToolCall) announceGrokSubagent(args);
+  if (resultOnToolCall) {
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: description,
+      status: "completed",
+      rawInput: {
+        variant: "Task",
+        ...(result === null ? {} : { prompt: result }),
+        description,
+        run_in_background: true,
+        task_id: null,
+      },
+      rawOutput: {
+        type: "Text",
+        text: `Subagent started in background.\nsubagent_id: ${childRef}\ndescription: ${description}`,
+      },
+      _meta: meta,
+    });
+    return;
+  }
   notifyUpdate({
     sessionUpdate: "tool_call",
     toolCallId,

@@ -4583,20 +4583,53 @@ function noteGrokSubagentToolCall(
     rawInput?: unknown;
     rawOutput?: unknown;
   },
+): string | undefined {
+  if (update.toolCallId === undefined) {
+    return undefined;
+  }
+  const spawnedSubagentId = bindGrokSpawnedSubagent(session, update);
+  noteGrokSubagentActionResult(session, update);
+  return spawnedSubagentId;
+}
+
+function bindGrokSpawnedSubagent(
+  session: AcpThreadSession,
+  update: {
+    toolCallId?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  },
+): string | undefined {
+  if (
+    update.toolCallId === undefined ||
+    update.rawOutput === undefined ||
+    !isJsonObject(update.rawInput) ||
+    update.rawInput["variant"] !== "Task"
+  ) {
+    return undefined;
+  }
+  try {
+    const subagentId = decodeGrokSpawnToolResult(update.rawOutput);
+    session.subagentIdsByToolCall.set(subagentId, update.toolCallId);
+    return subagentId;
+  } catch {
+    return undefined;
+  }
+}
+
+function noteGrokSubagentActionResult(
+  session: AcpThreadSession,
+  update: {
+    sessionUpdate: string;
+    toolCallId?: string;
+    title?: string;
+    status?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  },
 ): void {
   if (update.toolCallId === undefined) {
     return;
-  }
-  if (
-    update.rawOutput !== undefined &&
-    isJsonObject(update.rawInput) &&
-    update.rawInput["variant"] === "Task"
-  ) {
-    try {
-      const subagentId = decodeGrokSpawnToolResult(update.rawOutput);
-      session.subagentIdsByToolCall.set(subagentId, update.toolCallId);
-      flushEarlyGrokSubagentNotifications(session, subagentId);
-    } catch {}
   }
   let action = Array.from(session.pendingSubagentActions.values()).find(
     (candidate) => candidate.toolCallId === update.toolCallId,
@@ -4728,11 +4761,12 @@ function handleAgentNotification(
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
   }
+  let spawnedSubagentId: string | undefined;
   if (
     parsed.data.update.sessionUpdate === "tool_call" ||
     parsed.data.update.sessionUpdate === "tool_call_update"
   ) {
-    noteGrokSubagentToolCall(session, parsed.data.update);
+    spawnedSubagentId = noteGrokSubagentToolCall(session, parsed.data.update);
   }
   if (parsed.data.update.sessionUpdate === "config_option_update") {
     const configState = acpConfigStateResultSchema.safeParse(
@@ -4787,6 +4821,9 @@ function handleAgentNotification(
     trackAgentCompaction(session, parsedCompaction.data);
   }
   emitSessionUpdate(session, update, rawUpdate);
+  if (spawnedSubagentId !== undefined) {
+    flushEarlyGrokSubagentNotifications(session, spawnedSubagentId);
+  }
 }
 
 type AcpCompactionUpdateOutcome =
