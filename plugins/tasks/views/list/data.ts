@@ -65,41 +65,16 @@ export function matchesSearch(task: Task, search: string): boolean {
   );
 }
 
-export function keyColumnWidth(
-  tasks: readonly Task[],
-  measure?: (text: string) => number | null,
-): string {
-  const longest = tasks.reduce(
-    (max, task) => Math.max(max, task.key.length),
-    0,
-  );
-  const fallback = `${Math.max(longest, 5) + 2}ch`;
-  if (measure === undefined || tasks.length === 0) return fallback;
-  let widest = 0;
+export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
+  const widest = new Map<string, string>();
   for (const task of tasks) {
-    const width = measure(task.key);
-    if (width === null) return fallback;
-    widest = Math.max(widest, width);
-  }
-  return `${Math.ceil(widest) + 12}px`;
-}
-
-let keyMeasureContext: CanvasRenderingContext2D | null | undefined;
-
-export function measureKeyText(text: string): number | null {
-  if (typeof document === "undefined") return null;
-  if (keyMeasureContext === undefined) {
-    try {
-      keyMeasureContext = document.createElement("canvas").getContext("2d");
-    } catch {
-      keyMeasureContext = null;
-    }
-    if (keyMeasureContext !== null) {
-      const family = getComputedStyle(document.body).fontFamily;
-      keyMeasureContext.font = `12px ${family}`;
+    const prefix = task.key.slice(0, task.key.lastIndexOf("-"));
+    const current = widest.get(prefix);
+    if (current === undefined || task.key.length > current.length) {
+      widest.set(prefix, task.key);
     }
   }
-  return keyMeasureContext?.measureText(text).width ?? null;
+  return [...widest.values()];
 }
 
 export function listTasksQuery(

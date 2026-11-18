@@ -11,13 +11,12 @@ import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  keyColumnWidth,
-  measureKeyText,
   matchesFilters,
   matchesSearch,
   useLabels,
   useListTaskEdit,
   useListTasks,
+  widestKeysByPrefix,
   useTaskListMeta,
   type TaskEdit,
 } from "./data.js";
@@ -46,7 +45,7 @@ import {
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
-import { TaskRow } from "./row.js";
+import { KeyColumnScope, TaskRow } from "./row.js";
 import { rowWindows, useRowWindowViewport } from "./row-window.js";
 
 const NO_LABELS: readonly Label[] = [];
@@ -204,8 +203,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         ) && matchesSearch(task, search),
     );
   }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
-  const keyWidth = useMemo(
-    () => keyColumnWidth(tasksQuery.data ?? [], measureKeyText),
+  const widestKeys = useMemo(
+    () => widestKeysByPrefix(tasksQuery.data ?? []),
     [tasksQuery.data],
   );
   const groups = useMemo(
@@ -221,8 +220,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     projectId,
     activeOnly,
     filters,
-    sort,
     search,
+    sort,
   });
   const settledScope = useRef(scopeKey);
   const scopeChanged = settledScope.current !== scopeKey;
@@ -333,7 +332,6 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               onEdit={editTask}
               onOpen={openTask}
               pending={pendingTaskIds.has(task.id)}
-              keyWidth={keyWidth}
             />
           ))}
           {hiddenBelow > 0 ? (
@@ -357,7 +355,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         taskCount={displayTasks?.length}
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="@container flex min-h-full flex-col">{body}</div>
+        <KeyColumnScope
+          keys={widestKeys}
+          className="@container flex min-h-full flex-col"
+        >
+          {body}
+        </KeyColumnScope>
       </div>
       <NewTaskDialog
         open={newTaskOpen}

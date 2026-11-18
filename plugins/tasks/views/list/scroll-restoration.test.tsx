@@ -16,6 +16,7 @@ describe("listScrollScopeKey", () => {
     projectId: null,
     activeOnly: false,
     filters: EMPTY_FILTERS,
+    search: "",
     sort: "manual" as const,
   };
 

@@ -137,7 +137,7 @@ function SearchInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative min-w-24 max-w-56 flex-1">
+    <div className="relative w-56 min-w-24">
       <Icon
         name="Search"
         className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
@@ -145,7 +145,7 @@ function SearchInput({
       <Input
         type="search"
         aria-label="Search tasks"
-        placeholder="Search key or title"
+        placeholder="Search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -185,7 +185,7 @@ export function ListFilterBar({
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border-hairline px-3.5 py-1.5">
       <SearchInput value={search} onChange={onSearchChange} />
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+      <div className="flex min-w-32 flex-1 items-center gap-1.5 overflow-x-auto">
         <FilterChip
           icon="Circle"
           label="Status"

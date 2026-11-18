@@ -297,16 +297,28 @@ describe("list search and key column", () => {
     expect(slot.getByText("TSK-2")).toBeTruthy();
   });
 
-  it("sizes the key column to the longest visible key", async () => {
+  it("sizes the key column from the widest key per prefix across all loaded tasks", async () => {
     const slot = renderList([
       task({
         id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
         number: 223,
         key: "AGENTS-223",
       }),
+      task({ id: "01HZT2ZZZZZZZZZZZZZZZZZZT2", number: 9, key: "AGENTS-9" }),
+      task({ id: "01HZT3ZZZZZZZZZZZZZZZZZZT3", number: 1, key: "OPS-1" }),
     ]);
-    const key = await slot.findByText("AGENTS-223");
-    expect(key.style.getPropertyValue("--key-w")).toBe("12ch");
-    expect(key.title).toBe("AGENTS-223");
+    const sizedKeys = () =>
+      Array.from(
+        slot.container.querySelectorAll<HTMLElement>("[data-key-sizer]"),
+        (element) => element.dataset.keySizer,
+      ).sort();
+    const keyCell = await slot.findByText("AGENTS-223");
+    expect(keyCell.title).toBe("AGENTS-223");
+    expect(sizedKeys()).toEqual(["AGENTS-223", "OPS-1"]);
+
+    const search = slot.getByRole("searchbox", { name: "Search tasks" });
+    fireEvent.change(search, { target: { value: "ops" } });
+    await waitFor(() => expect(slot.queryByText("AGENTS-223")).toBeNull());
+    expect(sizedKeys()).toEqual(["AGENTS-223", "OPS-1"]);
   });
 });
