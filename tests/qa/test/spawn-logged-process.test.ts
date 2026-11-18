@@ -200,6 +200,27 @@ vi.mock("node:child_process", async (importOriginal) => {
       queueMicrotask(() => callbackArg?.(error, started ?? "", ""));
       return child;
     }
+    const windowsProcessQuery = /ProcessId = (\d+)/u.exec(
+      commandArgs?.join(" ") ?? "",
+    );
+    if (/^powershell(?:\.exe)?$/iu.test(tool) && windowsProcessQuery) {
+      const startErrorCode = spawnMockState.processStartErrorCode;
+      const startedAt = spawnMockState.processStarts.get(
+        Number(windowsProcessQuery[1]),
+      );
+      const error =
+        startErrorCode === null
+          ? null
+          : Object.assign(new Error(`spawn ${startErrorCode}`), {
+              code: startErrorCode,
+            });
+      const stdout =
+        startedAt === undefined
+          ? ""
+          : JSON.stringify({ command: "node standalone-process", startedAt });
+      queueMicrotask(() => callbackArg?.(error, stdout, ""));
+      return child;
+    }
     const stdout = command === "lsof" ? spawnMockState.openFilePidsStdout : "";
     queueMicrotask(() => callbackArg?.(null, stdout, ""));
     return child;
