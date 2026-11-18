@@ -132,11 +132,9 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
 
 The server calls the resolver for every matching start, resume, fork, and turn
 command, and when it lists the provider's models or commands, checks its
-health, usage, or installation, or runs an install or update on a host. Its `ExperimentalPluginProviderEnvContext` has
+health or installation, or runs an install or update on a host. Its `ExperimentalPluginProviderEnvContext` has
 `threadId`, `projectId`, and `hostId`; `threadId` and `projectId` are `null`
-for these host-scoped requests, which serve no thread. A `bb.host` call that
-starts or inspects a provider's CLI can pass `providerEnv: providerId` in its
-call options to run with that provider's contributed env too.
+for these host-scoped requests, which serve no thread.
 First-party bridges start their CLI with these values, so a contributed
 executable path or home directory (`BB_CLAUDE_CODE_EXECUTABLE`,
 `BB_CODEX_BRIDGE_APP_SERVER_COMMAND`, `CODEX_HOME`, `BB_PI_BRIDGE_COMMAND`)
@@ -237,7 +235,10 @@ without bridge-only runtime variables, plus the request's `envVars` (thread
 identity, `BB_*`, and plugin contributions). Pass the same env to the launch
 lookup and to the maintenance probes (`experimental_resolveExecutablePath`,
 `experimental_readCliVersion`, `experimental_commandOutput`, which take it as
-an optional last argument and otherwise use the bridge's own environment). Launch the provider CLI by name with
+an optional last argument and otherwise use the bridge's own environment).
+A process that serves many threads, such as a model catalog, should drop the
+per-thread names first with `experimental_withoutThreadIdentityEnv(envVars)`
+so threads with the same environment share it. Launch the provider CLI by name with
 `experimental_spawnPortableProcess` (it resolves `PATH`/`PATHEXT` and npm
 `.cmd` shims on Windows) and end it with `experimental_killPortableProcess`
 (it terminates the whole process tree on Windows). Read

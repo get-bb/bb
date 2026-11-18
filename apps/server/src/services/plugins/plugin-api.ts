@@ -556,7 +556,6 @@ export function createPluginApi(options: {
     hostId: string;
     signal?: AbortSignal;
     timeoutMs?: number;
-    providerEnv?: string;
   }) => Promise<unknown>;
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
@@ -1136,9 +1135,6 @@ export function createPluginApi(options: {
             ...(callOptions.signal === undefined
               ? {}
               : { signal: callOptions.signal }),
-            ...(callOptions.providerEnv === undefined
-              ? {}
-              : { providerEnv: callOptions.providerEnv }),
             ...(callOptions.timeoutMs === undefined
               ? {}
               : {

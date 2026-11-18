@@ -51,11 +51,7 @@ export type AdapterCommand =
       cwd?: string;
       envVars: Record<string, string>;
     }
-  | {
-      type: "provider/usage";
-      cwd?: string;
-      envVars: Record<string, string>;
-    }
+  | { type: "provider/usage"; cwd?: string }
   | {
       type: "provider/installation/status";
       cwd?: string;

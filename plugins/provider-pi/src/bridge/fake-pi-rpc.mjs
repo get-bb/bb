@@ -47,17 +47,17 @@ if (failNextStartFile && existsSync(failNextStartFile)) {
 const sessionFile = args.includes("--no-session")
   ? undefined
   : flag("--session");
-const extensionPath = flag("--extension");
-const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
-const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
-const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
-const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
-if (process.env.FAKE_PI_ENV_LOG) {
+if (process.env.FAKE_PI_ENV_LOG && sessionFile !== undefined) {
   appendFileSync(
     process.env.FAKE_PI_ENV_LOG,
     `${process.env.FAKE_PI_ENV_MARKER ?? ""}\n`,
   );
 }
+const extensionPath = flag("--extension");
+const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
+const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
+const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
+const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
 if (sessionFile !== undefined) {
   mkdirSync(dirname(sessionFile), { recursive: true });
   if (!existsSync(sessionFile)) {

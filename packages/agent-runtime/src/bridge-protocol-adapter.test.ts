@@ -161,12 +161,10 @@ describe("handshake gating", () => {
         envVars: { CONTRIBUTED: "1" },
       },
     });
-    expect(
-      adapter.buildCommandPlan({ type: "provider/usage", envVars: {} }),
-    ).toEqual({
+    expect(adapter.buildCommandPlan({ type: "provider/usage" })).toEqual({
       kind: "request",
       method: "provider/usage",
-      params: { providerId: "fake-bridge", envVars: {} },
+      params: { providerId: "fake-bridge" },
     });
     expect(
       adapter.buildCommandPlan({

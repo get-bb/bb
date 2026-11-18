@@ -692,8 +692,9 @@ async function handleProviderHealth(
 async function resolvePiModel(
   modelStr: string,
   cwd: string,
+  envVars: Readonly<Record<string, string>>,
 ): Promise<{ provider: string; id: string }> {
-  const catalog = await getPiCatalog(cwd, requireExtensionPath(), {});
+  const catalog = await getPiCatalog(cwd, requireExtensionPath(), envVars);
   const models = await catalog.rawModels();
   const canonical = models.find(
     (model) => `${model.provider}/${model.id}` === modelStr,
@@ -725,7 +726,13 @@ async function buildSessionOptions(args: {
   return {
     cwd: args.params.cwd,
     ...(args.params.model
-      ? { model: await resolvePiModel(args.params.model, args.params.cwd) }
+      ? {
+          model: await resolvePiModel(
+            args.params.model,
+            args.params.cwd,
+            args.params.shellEnvOverrides,
+          ),
+        }
       : {}),
     sessionFilePath: resolvePiSessionFilePath({
       ...piSessionPaths(),
@@ -1037,7 +1044,11 @@ async function reconcileTurnOptions(
   const nextModel =
     changedModelRequest === undefined
       ? undefined
-      : await resolvePiModel(changedModelRequest, construction.cwd);
+      : await resolvePiModel(
+          changedModelRequest,
+          construction.cwd,
+          shellEnvOverrides ?? construction.shellEnvOverrides,
+        );
   const modelChanged =
     nextModel !== undefined &&
     (threadSession.constructionModel === undefined ||

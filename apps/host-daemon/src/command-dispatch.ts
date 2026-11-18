@@ -681,7 +681,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         command.bridgeLaunch,
         options,
       ),
-      contributedEnv: command.contributedEnv,
     }),
   "host.discover_repos": (command) =>
     discoverRepos({

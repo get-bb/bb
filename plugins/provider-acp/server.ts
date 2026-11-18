@@ -189,7 +189,7 @@ export default async function acpProvidersPlugin(
             args: agent.launch.args,
             env: agent.launch.env,
           },
-          { hostId, signal, providerEnv: shipped.id },
+          { hostId, signal },
         );
       } catch (error) {
         bb.log.debug(

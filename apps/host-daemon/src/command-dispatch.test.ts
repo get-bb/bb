@@ -2468,7 +2468,6 @@ describe("dispatchCommand", () => {
       dispatchOnlineRpcCommand(
         {
           type: "provider.usage",
-          contributedEnv: [],
           providerId: "pi",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         },
@@ -2493,7 +2492,6 @@ describe("dispatchCommand", () => {
     expect(providerUsage).toHaveBeenCalledWith({
       providerId: "pi",
       bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
-      contributedEnv: [],
     });
   });
 });

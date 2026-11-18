@@ -2525,7 +2525,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async providerUsage({ providerId, bridgeLaunch, cwd, contributedEnv }) {
+    async providerUsage({ providerId, bridgeLaunch, cwd }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2534,10 +2534,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       const plan = proc.adapter.buildCommandPlan({
         type: "provider/usage",
         ...(cwd !== undefined ? { cwd } : {}),
-        envVars: resolveContributedEnvironment(
-          contributedEnv,
-          options.shellEnv,
-        ),
       });
       if (plan.kind === "noop") {
         return { supported: false };

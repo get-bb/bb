@@ -1529,6 +1529,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_planStepsPresentation",
           "experimental_readBoundedLines",
           "experimental_buildProviderCliEnv",
+          "experimental_withoutThreadIdentityEnv",
           "experimental_resolveExecutablePath",
           "experimental_readCliVersion",
           "experimental_commandOutput",

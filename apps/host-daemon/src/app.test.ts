@@ -829,7 +829,6 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.usage",
-        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       },

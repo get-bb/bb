@@ -184,6 +184,7 @@ export {
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
   buildProviderCliEnv as experimental_buildProviderCliEnv,
+  withoutThreadIdentityEnv as experimental_withoutThreadIdentityEnv,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,

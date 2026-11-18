@@ -304,10 +304,13 @@ export interface ListCommandsArgs {
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
-interface ProviderMaintenanceArgs {
+interface ProviderUsageArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
+}
+
+interface ProviderMaintenanceArgs extends ProviderUsageArgs {
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
@@ -352,7 +355,7 @@ export interface AgentRuntime {
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
-  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
+  providerUsage(args: ProviderUsageArgs): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,

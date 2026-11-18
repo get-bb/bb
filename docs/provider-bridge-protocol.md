@@ -622,10 +622,11 @@ without bridge-only runtime variables (`ELECTRON_RUN_AS_NODE`,
 `BB_PROVIDER_BRIDGE_RECORD_DIR`), plus the request's `envVars`. Launch
 settings such as an executable override are read from that same env, so a
 plugin-contributed value changes the CLI that runs, not just the variable its
-shell sees. Every sessionless request (`model/list`, `commands/list`, `provider/health`,
-`provider/usage`, and `provider/installation/*`) carries a required `envVars`:
-the provider env plugins contribute for that host, resolved with no thread or
-project. The contract test `contract-tests/provider-cli-env.test.ts` runs this
+shell sees. The sessionless `model/list`, `commands/list`, `provider/health`,
+and `provider/installation/*` requests carry a required `envVars`: the provider
+env plugins contribute for that host, resolved with no thread or project.
+`provider/usage` carries none and probes with the bridge's own environment, so
+it reports the machine's own sign-in rather than a routed account's. The contract test `contract-tests/provider-cli-env.test.ts` runs this
 rule against every first-party bridge.
 
 ## Record mode

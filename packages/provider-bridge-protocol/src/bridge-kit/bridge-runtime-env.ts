@@ -25,3 +25,18 @@ export function buildProviderCliEnv(
   }
   return { ...inherited, ...overrides };
 }
+
+const THREAD_IDENTITY_ENV_NAMES = [
+  "BB_THREAD_ID",
+  "BB_THREAD_STORAGE",
+  "BB_PROJECT_ID",
+  "BB_ENVIRONMENT_ID",
+] as const;
+
+export function withoutThreadIdentityEnv(
+  envVars: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const shared = { ...envVars };
+  for (const name of THREAD_IDENTITY_ENV_NAMES) delete shared[name];
+  return shared;
+}

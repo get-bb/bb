@@ -1225,7 +1225,6 @@ const providerUsageCommandSchema = z
     type: z.literal("provider.usage"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
-    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 

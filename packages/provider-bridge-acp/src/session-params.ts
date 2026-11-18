@@ -4,6 +4,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
+import { withoutThreadIdentityEnv } from "@bb/provider-bridge-protocol/bridge-kit";
 import path from "node:path";
 
 import {
@@ -247,7 +248,7 @@ function buildAcpModelSelection(
   const model = options.model;
   const listCommand = buildAcpModelListCommand(
     launchSpec,
-    options.envVars ?? {},
+    withoutThreadIdentityEnv(options.envVars ?? {}),
   );
   if (!model || model === ACP_DEFAULT_MODEL_ID) {
     return undefined;

@@ -1471,6 +1471,19 @@ runtime's bridge allowlist, and whether the result should carry the
 HostToolchain PATH merge so callers that do not spawn through
 `experimental_spawnPortableProcess` get the same PATH.
 
+## Thread-independent provider env (`experimental_withoutThreadIdentityEnv`) (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_withoutThreadIdentityEnv(envVars)` returns `envVars` without the
+names bb sets per thread (`BB_THREAD_ID`, `BB_THREAD_STORAGE`, `BB_PROJECT_ID`,
+`BB_ENVIRONMENT_ID`). A bridge uses it for a process or cache that serves many
+threads, so threads with otherwise equal environments share one. Core callers:
+the Pi model catalog, which resolves a thread's model with the thread's env,
+and the ACP bridge's thread-start model-list command.
+
+**Audit before stabilizing.** Decide whether the runtime should send the
+host-scoped contributed env alongside the thread env instead, so a shared
+catalog does not depend on bridges knowing the per-thread names.
+
 ## Portable provider spawn (`experimental_spawnPortableProcess`, `experimental_killPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 `experimental_spawnPortableProcess({ command, args, cwd?, env?, stdio?, detached? })`
@@ -1739,10 +1752,6 @@ Docs: `backend-foundation.md`, `testing.md`.
 2. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` defaults to 30 s
    and is capped at 30 minutes. Confirm the cap, and whether the default should
    be declared per method on the contract instead.
-   `ExperimentalHostCallOptions.providerEnv` names a provider whose
-   host-scoped contributed env joins the host environment for the call. Core's
-   native-roots lookup and the ACP agent probe use it. Confirm one provider per
-   call is enough and whether it belongs on the method declaration instead.
 3. **Contract shape.** Confirm Standard Schema values remain the right runtime
    boundary and decide whether method-specific typed errors are necessary.
 4. **Targeting.** Confirm explicit host ids are enough for V1 and add an

@@ -114,6 +114,10 @@ const noRawChildProcess = {
       ImportExpression(node) {
         check(node.source, false);
       },
+      TSImportEqualsDeclaration(node) {
+        if (node.moduleReference.type !== "TSExternalModuleReference") return;
+        check(node.moduleReference.expression, node.importKind === "type");
+      },
       CallExpression(node) {
         const callee = calleeName(node.callee);
         if (callee === "require" || callee === "process.getBuiltinModule") {

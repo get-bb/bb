@@ -82,7 +82,6 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
-    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderUsageResult>;
   providerInstallationStatus: (args: {
     providerId: string;

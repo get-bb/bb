@@ -250,7 +250,6 @@ export function createBridgeProtocolAdapter(
             params: {
               providerId: options.id,
               ...cwdAndStaticProviderOptions(command.cwd),
-              envVars: command.envVars,
             },
           };
         case "provider/installation/status":

@@ -102,7 +102,6 @@ interface ProviderCliEnvCase {
   cliLaunches(ctx: CaseContext): z.infer<typeof recordedLaunchSchema>[];
   probeEnv(ctx: CaseContext): Record<string, string>;
   probeParams(ctx: CaseContext): BridgeJsonRpcObject;
-  reportsUsage: boolean;
   listsCommands: boolean;
   runsInstallation: boolean;
   cleanup(
@@ -251,7 +250,6 @@ const cases: ProviderCliEnvCase[] = [
       };
     },
     probeParams: () => ({}),
-    reportsUsage: true,
     listsCommands: false,
     runsInstallation: true,
     cleanup: (send) =>
@@ -295,7 +293,6 @@ const cases: ProviderCliEnvCase[] = [
       ),
     }),
     probeParams: () => ({}),
-    reportsUsage: true,
     listsCommands: true,
     runsInstallation: true,
     cleanup: (send) =>
@@ -332,7 +329,6 @@ const cases: ProviderCliEnvCase[] = [
       FAKE_PI_VERSION: PROBED_VERSION,
     }),
     probeParams: () => ({}),
-    reportsUsage: false,
     listsCommands: false,
     runsInstallation: true,
     cleanup: async () => {
@@ -378,7 +374,6 @@ const cases: ProviderCliEnvCase[] = [
         },
       },
     }),
-    reportsUsage: false,
     listsCommands: false,
     runsInstallation: false,
     cleanup: (send) =>
@@ -536,22 +531,6 @@ describe.each(cases)("provider CLI env contract: $provider", (testCase) => {
       expect(health.result).toMatchObject({
         supported: true,
         health: { installedVersion: PROBED_VERSION },
-      });
-    },
-    30_000,
-  );
-
-  it.skipIf(process.platform === "win32" || !testCase.reportsUsage)(
-    "usage probes the CLI the contributed env selects",
-    async () => {
-      const usage = await send("provider/usage", {
-        providerId: testCase.provider,
-        envVars: testCase.probeEnv(ctx),
-        ...testCase.probeParams(ctx),
-      });
-      expect(usage.result).toMatchObject({ supported: true });
-      expect(usage.result).not.toMatchObject({
-        usage: { status: "not_installed" },
       });
     },
     30_000,
