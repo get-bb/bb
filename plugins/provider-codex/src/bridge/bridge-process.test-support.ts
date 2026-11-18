@@ -1,7 +1,6 @@
-import { ChildProcess } from "node:child_process";
-import { channel } from "node:diagnostics_channel";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { ExperimentalChildProcessTracker } from "@get-bb/plugin-sdk/testing";
 
 type BridgeJsonRpcTestHarness = ReturnType<
   typeof createBridgeJsonRpcTestHarness
@@ -31,54 +30,6 @@ export function spawnedAppServerPids(processLogPath: string): number[] {
     .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
 }
 
-export function trackAppServerChildren(scriptPath: string) {
-  const children: ChildProcess[] = [];
-  const childProcessChannel = channel("child_process");
-  const onChildProcess = (message: unknown): void => {
-    if (
-      typeof message === "object" &&
-      message !== null &&
-      "process" in message &&
-      message.process instanceof ChildProcess
-    ) {
-      children.push(message.process);
-    }
-  };
-  childProcessChannel.subscribe(onChildProcess);
-  return {
-    runningPids(): number[] {
-      return children.flatMap((child) =>
-        child.spawnargs.includes(scriptPath) &&
-        child.pid !== undefined &&
-        child.exitCode === null &&
-        child.signalCode === null
-          ? [child.pid]
-          : [],
-      );
-    },
-    restore(): void {
-      childProcessChannel.unsubscribe(onChildProcess);
-    },
-  };
-}
-
-async function waitForAppServerChildrenToExit(
-  children: ReturnType<typeof trackAppServerChildren>,
-  timeoutMs = 8_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (children.runningPids().length > 0) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `Timed out waiting for app-server children to exit: ${JSON.stringify(children.runningPids())}`,
-      );
-    }
-    await new Promise((resolveTick) =>
-      setTimeout(resolveTick, PROCESS_POLL_INTERVAL_MS),
-    );
-  }
-}
-
 export async function waitForAppServerProcessStep(
   processLogPath: string,
   step: string,
@@ -101,7 +52,7 @@ export async function cleanupBridgeProcessTest(args: {
   cleanupId: number;
   threadId: string;
   providerThreadId: string;
-  children: ReturnType<typeof trackAppServerChildren> | undefined;
+  children: ExperimentalChildProcessTracker | undefined;
   workspaceDir: string;
   unstubEnvs: () => void;
 }): Promise<void> {
@@ -120,13 +71,11 @@ export async function cleanupBridgeProcessTest(args: {
     }
   }
   try {
-    if (args.children !== undefined) {
-      await waitForAppServerChildrenToExit(args.children);
-    }
+    await args.children?.waitForExit();
   } catch (error) {
     errors.push(error);
   }
-  args.children?.restore();
+  args.children?.dispose();
   try {
     args.harness?.restore();
   } catch (error) {

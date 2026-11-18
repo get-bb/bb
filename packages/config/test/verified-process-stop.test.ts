@@ -1,10 +1,8 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { hasExited, waitForExit } from "@bb/test-helpers";
 import { expect, it, onTestFinished } from "vitest";
-import {
-  isProcessRunning,
-  stopVerifiedProcess,
-} from "../src/verified-process-stop.js";
+import { stopVerifiedProcess } from "../src/verified-process-stop.js";
 
 it("verifies a real process's command and start time before stopping it", async () => {
   const token = `bb-process-identity-${crypto.randomUUID()}`;
@@ -44,12 +42,12 @@ it("verifies a real process's command and start time before stopping it", async 
       await expect(
         stopVerifiedProcess({ ...args, ...overrides }),
       ).resolves.toMatchObject({ kind: "unverified", reason });
-      expect(isProcessRunning(args.pid)).toBe(true);
+      expect(hasExited(child)).toBe(false);
     }),
   );
   await expect(stopVerifiedProcess(args)).resolves.toEqual({
     kind: "stopped",
     usedKill: false,
   });
-  expect(isProcessRunning(child.pid)).toBe(false);
+  await expect(waitForExit(child)).resolves.toBeUndefined();
 }, 90_000);

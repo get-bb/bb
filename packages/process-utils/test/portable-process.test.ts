@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { expect, it, onTestFinished, vi } from "vitest";
+import { createProcessLifeline } from "@bb/test-helpers";
+import { expect, it, onTestFinished } from "vitest";
 import {
   execPortableFile,
   killPortableProcess,
@@ -222,15 +223,6 @@ it.runIf(process.platform === "win32")(
   },
 );
 
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 it.runIf(process.platform === "win32")(
   "ends the process behind a Windows .cmd shim when the portable child is killed",
   async () => {
@@ -238,10 +230,11 @@ it.runIf(process.platform === "win32")(
       mkdtempSync(join(tmpdir(), "bb-portable-kill-")),
     );
     onTestFinished(() => rmSync(directory, { force: true, recursive: true }));
-    const pidFile = join(directory, "pid.txt");
+    const lifeline = await createProcessLifeline();
+    onTestFinished(() => lifeline.close());
     writeFileSync(
       join(directory, "sleeper.cjs"),
-      'require("node:fs").writeFileSync(process.argv[2], String(process.pid)); setInterval(() => {}, 1000);',
+      `${lifeline.holdSource("sleeper")}setInterval(() => {}, 1000);`,
     );
     writeFileSync(
       join(directory, "sleeper.cmd"),
@@ -249,24 +242,16 @@ it.runIf(process.platform === "win32")(
     );
     const child = spawnPortableProcess({
       command: join(directory, "sleeper.cmd"),
-      args: [pidFile],
+      args: [],
       stdio: "ignore",
     });
-    const sleeperPid = await vi.waitFor(
-      () => Number.parseInt(readFileSync(pidFile, "utf8"), 10),
-      { timeout: 10_000 },
-    );
-    onTestFinished(() => {
-      if (isProcessRunning(sleeperPid)) process.kill(sleeperPid);
-    });
-    expect(sleeperPid).not.toBe(child.pid);
-    expect(isProcessRunning(sleeperPid)).toBe(true);
+    const [sleeper] = await lifeline.waitForHolders(1);
+    expect(sleeper?.alive()).toBe(true);
 
     killPortableProcess(child, "SIGTERM");
 
-    await vi.waitFor(() => expect(isProcessRunning(sleeperPid)).toBe(false), {
-      timeout: 10_000,
-    });
+    await sleeper?.exited;
+    expect(sleeper?.alive()).toBe(false);
   },
 );
 

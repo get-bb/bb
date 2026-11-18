@@ -1723,6 +1723,9 @@ importers:
       '@bb/server-archive':
         specifier: workspace:*
         version: link:../server-archive
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -1959,6 +1962,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2220,6 +2226,9 @@ importers:
         specifier: workspace:*
         version: link:../tunnel-contract
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2668,6 +2677,9 @@ importers:
       '@bb/skill-index':
         specifier: workspace:*
         version: link:../skill-index
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2735,6 +2747,9 @@ importers:
         specifier: 0.1.0
         version: 0.1.0
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -2812,6 +2827,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
@@ -4184,6 +4202,9 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -6425,6 +6446,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -6471,12 +6495,18 @@ importers:
 
   tests/qa:
     dependencies:
+      '@bb/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract

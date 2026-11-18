@@ -9,6 +9,7 @@ import {
   writeServerMovedFile,
 } from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
+import { hasExited } from "@bb/test-helpers";
 import { writeIncomingMoveState } from "./move-state.js";
 import {
   ACTIVATION_TOKEN,
@@ -68,7 +69,7 @@ describe("ServerMoveService.prepare", () => {
       localServerUrl: `http://127.0.0.1:${command.serverPort}`,
       pid: expect.any(Number),
     });
-    expect(fixture.isPendingServerRunning(result.pid)).toBe(true);
+    expect(hasExited(fixture.pendingServer(result.pid))).toBe(false);
     expect(installed.map((bytes) => bytes.toString("utf8"))).toEqual([
       "full bb-app package",
     ]);

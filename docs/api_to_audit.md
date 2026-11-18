@@ -2269,6 +2269,45 @@ Docs: `testing.md`.
    falls back when no closing tag matches. Decide whether a full parser is
    owed before the scan is a promise.
 
+## `experimental_trackChildProcesses`, `experimental_createProcessLifeline` and `experimental_createDescendantPipe` (`@get-bb/plugin-sdk/testing`)
+
+Test fixtures for observing processes by handle instead of by PID. A PID check
+answers for whichever process holds the number now, and Windows reuses PIDs
+quickly.
+
+- `experimental_trackChildProcesses()` records each `ChildProcess` spawned in
+  the test process through Node's `child_process` diagnostics channel. It
+  offers `children`, `running()`, `waitForExit()`, `killRunning()` and
+  `dispose()`.
+- `experimental_createProcessLifeline()` opens a local socket (a named pipe on
+  Windows). A descendant joins by running `holdSource(label)`. Each holder's
+  `exited` and `alive()` follow its connection, and `kill()` signals only while
+  that connection is open. `close()` kills the holders still connected.
+- `experimental_createDescendantPipe()` makes a POSIX named pipe for shell
+  descendants that cannot run Node. A descendant redirects into it, which
+  costs no startup time. `opened` and `closed` follow that write end.
+
+Both are wrappers over `@bb/test-helpers/child-processes`, the module core tests
+use. The repository rule `scripts/check-test-process-identity.mjs`, run in CI's
+plan job, rejects signal-0 probes, PID-argument liveness helpers and PID
+inequality assertions in test code. Forkable first-party plugins (Codex,
+Automations, Browser Automation, MCP, Personal Workspace) call these exports.
+
+Docs: `testing.md`.
+
+**Audit before stabilizing.**
+
+1. **Holder kinds.** A lifeline holder must be a Node process, because
+   `holdSource` is a JavaScript statement. A descendant pipe is POSIX-only,
+   and nothing can signal its writer. Decide whether one primitive should
+   cover both, and how Windows shell descendants are observed.
+2. **Connection lifetime versus process lifetime.** A holder that closes its
+   socket early reads as exited, and one that hands the socket to a child stays
+   alive through that child. Confirm no caller needs exact process lifetime.
+3. **Diagnostics channel coverage.** The tracker sees only `child_process`
+   spawns made in this process, not `worker_threads` or processes from native
+   addons. Confirm that matches what plugin tests need.
+
 ## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** The hook returns `ProviderInfo`, which

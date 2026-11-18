@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createProcessLifeline } from "@bb/test-helpers";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   createBbAppProcessLaunch,
   createBbAppProcessEnv,
@@ -26,24 +27,10 @@ interface CreateTempScriptArgs {
   contents: string;
 }
 
-interface LinuxProcessStat {
-  processGroupId: number;
-  state: string;
-}
-
 const tempScripts: TempScript[] = [];
 const processes: BbAppProcess[] = [];
 const execFileAsync = promisify(execFile);
 const posixIt = process.platform === "win32" ? it.skip : it;
-
-async function readLinuxProcessStat(pid: number): Promise<LinuxProcessStat> {
-  const stat = await readFile(`/proc/${String(pid)}/stat`, "utf8");
-  const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-  return {
-    processGroupId: Number(fields[2]),
-    state: fields[0] ?? "",
-  };
-}
 
 async function createTempScript(
   args: CreateTempScriptArgs,
@@ -217,15 +204,20 @@ describe("bb app process", () => {
   it.skipIf(process.platform !== "linux")(
     "anchors the process group while supervising descendants after the bridge exits",
     async () => {
+      const lifeline = await createProcessLifeline();
+      onTestFinished(() => lifeline.close());
+      const grandchildSource = [
+        'const stat = require("node:fs").readFileSync("/proc/self/stat", "utf8");',
+        'process.stdout.write(`grandchild-pgid=${stat.slice(stat.lastIndexOf(")") + 2).split(" ")[2]}\\n`);',
+        lifeline.holdSource("grandchild"),
+        "setInterval(() => undefined, 1000);",
+      ].join(" ");
       const script = await createTempScript({
         contents: `
 import { spawn } from "node:child_process";
-const grandchild = spawn(
-  process.execPath,
-  ["--eval", "setInterval(() => undefined, 1000)"],
-  { stdio: "inherit" },
-);
-process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
+spawn(process.execPath, ["--eval", ${JSON.stringify(grandchildSource)}], {
+  stdio: "inherit",
+});
 `,
       });
       const processEntry = startBbAppProcess({
@@ -244,24 +236,19 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
         },
       });
       processes.push(processEntry);
+      const [grandchild] = await lifeline.waitForHolders(1);
       await waitForLog({
         process: processEntry,
-        text: "grandchild=",
+        text: "grandchild-pgid=",
       });
-      const grandchildPid = Number(
-        processEntry.logs.text().match(/grandchild=(\d+)/u)?.[1],
-      );
-      expect(grandchildPid).toBeGreaterThan(0);
-      const supervisorStat = await readLinuxProcessStat(processEntry.pid);
-      const grandchildStat = await readLinuxProcessStat(grandchildPid);
-      expect(supervisorStat.processGroupId).toBe(processEntry.pid);
-      expect(supervisorStat.state).not.toBe("Z");
-      expect(grandchildStat.processGroupId).toBe(processEntry.pid);
-      expect(grandchildStat.state).not.toBe("Z");
+      expect(
+        Number(processEntry.logs.text().match(/grandchild-pgid=(\d+)/u)?.[1]),
+      ).toBe(processEntry.pid);
       await new Promise<void>((resolvePromise) => {
         setTimeout(resolvePromise, 50);
       });
       expect(processEntry.childProcess.exitCode).toBeNull();
+      expect(grandchild?.alive()).toBe(true);
 
       await processEntry.stop({
         killSignal: "SIGKILL",
@@ -270,21 +257,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
         timeoutMs: 5_000,
       });
 
-      const stoppedGrandchild = await readLinuxProcessStat(grandchildPid).catch(
-        (error: unknown) => {
-          if (
-            error instanceof Error &&
-            "code" in error &&
-            (error.code === "ENOENT" || error.code === "ESRCH")
-          ) {
-            return null;
-          }
-          throw error;
-        },
-      );
-      expect(
-        stoppedGrandchild === null || stoppedGrandchild.state === "Z",
-      ).toBe(true);
+      await grandchild?.exited;
     },
   );
 
