@@ -32,6 +32,7 @@ function trackedThreadFixture(
             title: "Lifecycle worker",
             status: sdkStatus,
           }),
+        queuedMessages: { list: async () => [] },
       },
     },
   });
@@ -118,6 +119,26 @@ describe("task thread lifecycle", () => {
       await fixture.harness.dispose();
     },
   );
+
+  it("keeps a pending task thread starting when another queued message is deleted", async () => {
+    const fixture = trackedThreadFixture("starting", "starting");
+    await registerLifecycle(fixture.bb, fixture.store);
+    const thread = makeThreadResponse({ id: "thr_worker", status: "pending" });
+    fixture.harness.sdk.stub("threads.queuedMessages.list", async () => [
+      makeQueueEntry({ threadId: thread.id, originPluginId: "tasks" }),
+    ]);
+
+    await fixture.harness.emitThreadEvent("experimental_thread.settled", {
+      outcome: "cancelled",
+      thread,
+      entry: makeQueueEntry({ threadId: thread.id, originPluginId: null }),
+    });
+
+    expect(
+      fixture.store.tasks.getTaskThread(fixture.taskThreadId)?.liveStatus,
+    ).toBe("starting");
+    await fixture.harness.dispose();
+  });
 
   it("reconciles each non-terminal task thread once during startup", async () => {
     const fixture = trackedThreadFixture("working", "active");

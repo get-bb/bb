@@ -28,22 +28,46 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   }
 }
 
-function liveStatusFromSettled(
+async function liveStatusFromSettled(
+  bb: BbPluginApi,
+  store: TasksApiStore,
   event: PluginThreadSettledEvent,
-): TaskThreadLiveStatus {
+): Promise<TaskThreadLiveStatus | null> {
   switch (event.outcome) {
     case "completed":
       return "idle";
     case "failed":
       return "failed";
     case "cancelled":
-      return event.thread.status === "pending"
-        ? "idle"
-        : liveStatusFromThread(event.thread);
+      return liveStatusAfterCancelledMessage(bb, store, event.thread);
     case "archived":
       return "idle";
     case "deleted":
       return "completed";
+  }
+}
+
+async function liveStatusAfterCancelledMessage(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  thread: SdkThread,
+): Promise<TaskThreadLiveStatus | null> {
+  if (thread.status !== "pending") return liveStatusFromThread(thread);
+  if (store.tasks.listTaskThreadsByThreadId(thread.id).length === 0) {
+    return null;
+  }
+  try {
+    const queued = await bb.sdk.threads.queuedMessages.list({
+      threadId: thread.id,
+    });
+    return queued.length === 0 ? "idle" : null;
+  } catch (error) {
+    bb.log.warn(
+      `Could not list queued messages of task thread ${thread.id}: ${errorMessage(
+        error,
+      )}`,
+    );
+    return null;
   }
 }
 
@@ -159,13 +183,10 @@ export async function registerLifecycle(
   bb.events.on("thread.active", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "working");
   });
-  bb.events.on("experimental_thread.settled", (event) => {
-    transitionTrackedThread(
-      bb,
-      store,
-      event.thread.id,
-      liveStatusFromSettled(event),
-    );
+  bb.events.on("experimental_thread.settled", async (event) => {
+    const liveStatus = await liveStatusFromSettled(bb, store, event);
+    if (liveStatus === null) return;
+    transitionTrackedThread(bb, store, event.thread.id, liveStatus);
   });
 
   await reconcileTrackedThreads(bb, store);
