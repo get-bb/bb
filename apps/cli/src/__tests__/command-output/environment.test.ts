@@ -240,7 +240,7 @@ describe("bb environment command output", () => {
         lifecycle: {
           phase: "teardown",
           retireAt: null,
-          teardown: { status: "running", attempt: 1 },
+          teardown: { status: "running", attempt: 1, needsRecovery: false },
         },
       }),
     );

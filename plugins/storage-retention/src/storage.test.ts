@@ -1317,6 +1317,7 @@ it("counts distinct live managed worktrees for machine projects, including empty
         teardown: {
           status: "failed",
           attempt: 1,
+          needsRecovery: false,
           message: "Permission denied",
         },
       },
@@ -1334,7 +1335,7 @@ it("counts distinct live managed worktrees for machine projects, including empty
       lifecycle: {
         phase: "destroyed",
         retireAt: 1,
-        teardown: { status: "removed", attempt: 1 },
+        teardown: { status: "removed", attempt: 1, needsRecovery: false },
       },
     },
     { ...base, id: "env_checkout", path: "/work/checkout", isWorktree: false },
@@ -3139,9 +3140,15 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
   type Environment = Awaited<
     ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
   >[number];
-  const interrupted =
-    "Needs recovery: Environment hook outcome is unknown after interruption.";
-  const leftover = (id: string, message: string): Environment => ({
+  const interrupted = {
+    needsRecovery: true,
+    message:
+      "Needs recovery: Environment hook outcome is unknown after interruption.",
+  };
+  const leftover = (
+    id: string,
+    teardown: { needsRecovery: boolean; message: string },
+  ): Environment => ({
     id,
     name: null,
     projectId: "proj_work",
@@ -3160,7 +3167,11 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
     lifecycle: {
       phase: "teardown",
       retireAt: 1,
-      teardown: { status: "failed", attempt: 5, message },
+      teardown: {
+        status: "failed",
+        attempt: teardown.needsRecovery ? 5 : 1,
+        ...teardown,
+      },
     },
     hostLifecycle: "active",
     managed: true,
@@ -3196,13 +3207,27 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
           leftover("env_clean", interrupted),
           leftover("env_dirty", interrupted),
           leftover("env_old_daemon", interrupted),
-          leftover("env_failed", "git worktree remove failed"),
+          leftover("env_failed", {
+            needsRecovery: false,
+            message: "git worktree remove failed",
+          }),
+          leftover("env_raced", {
+            needsRecovery: false,
+            message: "git worktree remove failed",
+          }),
         ],
         experimental_cleanup: async ({ environmentId, recover }) => {
           cleaned.push({ environmentId, recover });
           if (environmentId === "env_old_daemon")
             throw new Error(
               "HTTP 409: Recovery refused: process inspection is unavailable on this host",
+            );
+          if (environmentId === "env_raced")
+            throw Object.assign(
+              new Error(
+                "HTTP 409: Needs recovery. Inspect the workspace, then run bb environment cleanup env_raced --recover.",
+              ),
+              { code: "environment_needs_recovery" },
             );
           return null;
         },
@@ -3230,12 +3255,18 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
           message:
             "Kept because this machine’s BB can’t check for running programs yet; update BB on this machine",
         },
+        {
+          environmentId: "env_raced",
+          message:
+            "Cleanup was interrupted. BB removes it once nothing is running in it and it has no uncommitted changes",
+        },
       ],
     });
     expect(cleaned).toEqual([
       { environmentId: "env_clean", recover: true },
       { environmentId: "env_old_daemon", recover: true },
       { environmentId: "env_failed", recover: false },
+      { environmentId: "env_raced", recover: false },
     ]);
     cleaned.length = 0;
     await host.harness.callRpc("retryWorktreeCleanup", {

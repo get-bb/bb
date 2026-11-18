@@ -42,6 +42,10 @@ export {
   RETAINED_EVENT_OUTPUT_TARGETS,
 } from "./retained-event-output.js";
 export { noopNotifier } from "./notifier.js";
+export {
+  nextPersistedRetryAt,
+  persistedRetryExhausted,
+} from "./persisted-retry.js";
 export type { DbNotifier } from "./notifier.js";
 
 export * from "./data/index.js";

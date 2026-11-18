@@ -378,3 +378,60 @@ it("skips cleanup for a stranded machine that was suspended without resuming it"
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
   }));
+
+it("names the environment whose cleanup needs recovery as the machine's blocker", async () =>
+  withTestHarness(async (harness) => {
+    const { target, environment } = seedMachineWithWorkspace(harness);
+    const teardown = async () => {
+      const response = await harness.app.request(
+        `${API}/hosts/${target.host.id}`,
+      );
+      return z
+        .object({
+          lifecycle: z.object({
+            teardown: z
+              .object({
+                needsRecovery: z.boolean(),
+                blockedByEnvironmentId: z.string().nullable(),
+              })
+              .nullable(),
+          }),
+        })
+        .parse(await readJson(response)).lifecycle.teardown;
+    };
+    const retryEnvironment = async (attempt: number) => {
+      harness.db
+        .update(environments)
+        .set({ teardownAttempt: attempt, retireAt: Date.now() })
+        .where(eq(environments.id, environment.id))
+        .run();
+      updateHost(harness.db, harness.hub, target.host.id, {
+        removeRetryAt: Date.now(),
+      });
+      await sweepProviderMachine(harness.deps, target.host.id);
+    };
+    await strandRemoval(harness, target.host.id, target.session.id);
+    expect(await teardown()).toMatchObject({
+      needsRecovery: false,
+      blockedByEnvironmentId: null,
+    });
+
+    await retryEnvironment(4);
+
+    expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+      teardownAttempt: 5,
+      teardownStatus: "failed",
+      retireAt: null,
+    });
+    expect(await teardown()).toMatchObject({
+      needsRecovery: true,
+      blockedByEnvironmentId: environment.id,
+    });
+
+    await retryEnvironment(0);
+
+    expect(await teardown()).toMatchObject({
+      needsRecovery: false,
+      blockedByEnvironmentId: null,
+    });
+  }));

@@ -607,6 +607,59 @@ export function registerServerCommands(
       }),
     );
 
+  const sweeps = server
+    .command("sweeps")
+    .description(
+      "List background sweep items that keep failing, including those that need recovery",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonCommandOptions) => {
+        const response =
+          await createCliBbSdk(getUrl()).experimental_server.sweepFailures();
+        if (outputJson(opts, response)) return;
+        if (response.failures.length === 0) {
+          console.log("No sweep items are failing.");
+          return;
+        }
+        for (const failure of response.failures) {
+          const next = new Date(failure.retryAt).toISOString();
+          const state = failure.needsRecovery
+            ? `needs recovery, retrying hourly (next at ${next})`
+            : `retrying at ${next}`;
+          console.log(
+            `${failure.sweep} ${failure.itemKey}: ${state} after ${String(failure.attempts)} attempts - ${failure.lastError}`,
+          );
+        }
+        if (response.failures.some((failure) => failure.needsRecovery)) {
+          console.log(
+            "Fix the cause, then run bb server sweeps retry to run the items that need recovery on the next sweep with a fresh retry budget.",
+          );
+        }
+      }),
+    );
+
+  sweeps
+    .command("retry")
+    .description(
+      "Give every sweep item that needs recovery a fresh retry budget; they run on the next sweep",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonCommandOptions) => {
+        const response =
+          await createCliBbSdk(
+            getUrl(),
+          ).experimental_server.retrySweepFailures();
+        if (outputJson(opts, response)) return;
+        console.log(
+          response.retried === 0
+            ? "No sweep items need recovery."
+            : `${String(response.retried)} sweep item(s) will run on the next sweep.`,
+        );
+      }),
+    );
+
   server
     .command("delete-old-copy")
     .description(

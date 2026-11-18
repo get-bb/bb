@@ -393,6 +393,7 @@ export function registerMachineCommands(
         }
         const { primaryHostId } = await sdk.system.config();
         printMachineTable(hosts, primaryHostId);
+        printMachineRecoveryHints(hosts);
       }),
     );
 
@@ -698,4 +699,17 @@ function printMachineTable(hosts: Host[], serverHostId: string | null): void {
     },
     rows,
   );
+}
+
+function printMachineRecoveryHints(hosts: readonly Host[]): void {
+  for (const host of hosts) {
+    const teardown = host.lifecycle.teardown;
+    if (teardown?.needsRecovery !== true) continue;
+    const blocker = teardown.blockedByEnvironmentId;
+    console.log(
+      blocker === null
+        ? `\n${host.name} (${host.id}): ${host.lifecycle.message ?? "Needs recovery."} Inspect the machine, then run bb machine retry-cleanup ${host.id}.`
+        : `\n${host.name} (${host.id}): waiting on environment ${blocker}, whose cleanup needs recovery. Inspect the workspace, then run bb environment cleanup ${blocker} --recover.`,
+    );
+  }
 }

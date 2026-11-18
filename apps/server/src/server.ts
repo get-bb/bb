@@ -143,6 +143,7 @@ import { apiJsonCompression } from "./api-response-compression.js";
 import { APP_SURFACE_WEB, type AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { registerServerMoveRoutes } from "./routes/server-move.js";
+import { registerServerSweepRoutes } from "./routes/server-sweeps.js";
 import {
   INTERNAL_SERVER_MOVE_PENDING_PATH,
   registerInternalServerMoveRoutes,
@@ -945,6 +946,7 @@ export function createApp(
   );
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
+  registerServerSweepRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");

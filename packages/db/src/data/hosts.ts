@@ -50,9 +50,9 @@ export interface UpdateHostInput {
   resource?: JsonValue | null;
   removeRetryAt?: number | null;
   statusMessage?: string | null;
-  suspendRetryAt?: number | null;
   suspendedAt?: number | null;
   teardownAttempt?: number;
+  teardownBlockedByEnvironmentId?: string | null;
   teardownStatus?: "running" | "failed" | "removed" | null;
 }
 
@@ -146,9 +146,9 @@ export function upsertHost(
         phase: "active",
         suspendedAt: null,
         statusMessage: null,
-        suspendRetryAt: null,
         removeRetryAt: null,
         teardownAttempt: 0,
+        teardownBlockedByEnvironmentId: null,
         teardownStatus: null,
         destroyedAt: input.destroyedAt ?? null,
         lastSeenAt: null,
@@ -300,11 +300,14 @@ export function updateHost(
       ...(input.statusMessage !== undefined
         ? { statusMessage: input.statusMessage }
         : {}),
-      ...(input.suspendRetryAt !== undefined
-        ? { suspendRetryAt: input.suspendRetryAt }
-        : {}),
       ...(input.teardownAttempt !== undefined
         ? { teardownAttempt: input.teardownAttempt }
+        : {}),
+      ...(input.teardownBlockedByEnvironmentId !== undefined
+        ? {
+            teardownBlockedByEnvironmentId:
+              input.teardownBlockedByEnvironmentId,
+          }
         : {}),
       ...(input.teardownStatus !== undefined
         ? { teardownStatus: input.teardownStatus }
