@@ -55,6 +55,7 @@ import {
   resolveGitRef,
   selectGitSemverTag,
 } from "../plugins/update-resolver.js";
+import { normalizePluginSubdirectory } from "../plugins/install-sources.js";
 import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
   fetchMarketplaceStats,
@@ -504,6 +505,10 @@ export function createPluginCatalogService(deps: {
       base: marketplaceRowIconBase(row),
     });
     const overview = entryOverview(entry, deps.warn);
+    const publisherLabel = marketplacePublisherLabel({
+      marketplaceName: row.name,
+      displayName: catalog.displayName,
+    });
     const installedPlugin = getInstalledPlugin(deps.db, pluginId);
     const installed =
       args.installedEntryIds.has(catalogEntryKey(row.name, entryId)) ||
@@ -524,11 +529,18 @@ export function createPluginCatalogService(deps: {
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
       publisherKey: row.name,
-      publisherLabel: marketplacePublisherLabel({
-        marketplaceName: row.name,
-        displayName: catalog.displayName,
-      }),
+      publisherLabel,
       official,
+      listings: [
+        {
+          marketplace: row.name,
+          marketplaceDisplayName: catalog.displayName,
+          publisherLabel,
+          entryId,
+          official,
+          source: entrySourceDisplay(entry),
+        },
+      ],
       author: entryAuthor(entry),
       installed,
       installedByDefault: bundled?.autoInstall ?? false,
@@ -796,6 +808,13 @@ export function createPluginCatalogService(deps: {
       );
       if (entry !== undefined) matches.push({ row, entry });
     }
+    const [first, ...rest] = matches;
+    if (
+      first !== undefined &&
+      rest.every((match) => entriesShareSource(first.entry, match.entry))
+    ) {
+      return first;
+    }
     if (matches.length > 1) {
       const choices = matches
         .map((match) => `${entryId}@${match.row.name}`)
@@ -804,8 +823,6 @@ export function createPluginCatalogService(deps: {
         `"${entryId}" is listed by several marketplaces; install one of: ${choices}`,
       );
     }
-    const only = matches[0];
-    if (only !== undefined) return only;
     throw new Error(`unknown plugin catalog entry "${entryId}"`);
   }
 
@@ -1162,6 +1179,7 @@ export function createPluginCatalogService(deps: {
               ? null
               : {
                   pluginId,
+                  entry,
                   tags: entry.tags ?? [],
                   marketplaceRank: index,
                   result,
@@ -1169,8 +1187,10 @@ export function createPluginCatalogService(deps: {
           });
         },
       );
-      const catalogEntries = (await Promise.all(catalogEntryPromises)).filter(
-        (entry) => entry !== null,
+      const catalogEntries = mergeSharedSourceListings(
+        (await Promise.all(catalogEntryPromises)).filter(
+          (entry) => entry !== null,
+        ),
       );
       return catalogEntries
         .filter(
@@ -1182,7 +1202,9 @@ export function createPluginCatalogService(deps: {
               entry.result.displayName,
               entry.result.description,
               entry.result.category ?? "",
-              entry.result.marketplaceDisplayName,
+              ...entry.result.listings.map(
+                (listing) => listing.marketplaceDisplayName,
+              ),
               ...entry.tags,
             ]
               .join("\n")
@@ -1323,6 +1345,76 @@ function npmSourceView(
     ...(npm.tag === undefined ? {} : { tag: npm.tag }),
     ...(npm.registry === undefined ? {} : { registry: npm.registry }),
   };
+}
+
+interface CatalogSearchCandidate {
+  pluginId: string;
+  entry: MarketplaceEntry;
+  tags: readonly string[];
+  marketplaceRank: number;
+  result: PluginCatalogSearchResult;
+}
+
+function mergeSharedSourceListings(
+  candidates: readonly CatalogSearchCandidate[],
+): CatalogSearchCandidate[] {
+  const merged: CatalogSearchCandidate[] = [];
+  const groupIndexes = new Map<string, number>();
+  for (const candidate of candidates) {
+    const sourceKey = entrySourceKey(candidate.entry);
+    const groupKey =
+      sourceKey === null ? null : `${candidate.pluginId}\u0000${sourceKey}`;
+    const groupIndex =
+      groupKey === null ? undefined : groupIndexes.get(groupKey);
+    const group = groupIndex === undefined ? undefined : merged[groupIndex];
+    if (groupIndex === undefined || group === undefined) {
+      if (groupKey !== null) groupIndexes.set(groupKey, merged.length);
+      merged.push(candidate);
+      continue;
+    }
+    const installed = group.result.installed || candidate.result.installed;
+    merged[groupIndex] = {
+      ...group,
+      tags: [...new Set([...group.tags, ...candidate.tags])],
+      result: {
+        ...group.result,
+        listings: [...group.result.listings, ...candidate.result.listings],
+        collections: [
+          ...group.result.collections,
+          ...candidate.result.collections,
+        ],
+        installed,
+        conflictingInstallSource: installed
+          ? null
+          : group.result.conflictingInstallSource,
+        installs: group.result.installs ?? candidate.result.installs,
+      },
+    };
+  }
+  return merged;
+}
+
+function entriesShareSource(
+  left: MarketplaceEntry,
+  right: MarketplaceEntry,
+): boolean {
+  if (left.id !== right.id) return false;
+  const leftKey = entrySourceKey(left);
+  return leftKey !== null && leftKey === entrySourceKey(right);
+}
+
+function entrySourceKey(entry: MarketplaceEntry): string | null {
+  if ("bundled" in entry.source) return null;
+  if ("npm" in entry.source) {
+    const { npm } = entry.source;
+    return ["npm", npm.registry ?? "", npm.package].join("\u0000");
+  }
+  const { git } = entry.source;
+  return [
+    "git",
+    gitRepositoryKey(git.url),
+    git.subdir === undefined ? "" : normalizePluginSubdirectory(git.subdir),
+  ].join("\u0000");
 }
 
 function installedPluginMayComeFromEntry(

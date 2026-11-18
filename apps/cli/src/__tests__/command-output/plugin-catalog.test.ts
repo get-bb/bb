@@ -28,6 +28,7 @@ const searchResult = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: null,
   installed: false,
   installedByDefault: false,
@@ -177,6 +178,44 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("Marketplace");
     expect(output).toContain("Acme Plugins");
     expect(output).toContain("BB Official");
+  });
+
+  it("names every marketplace that lists the same plugin source", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          {
+            ...searchResult,
+            marketplace: "bb-community",
+            marketplaceDisplayName: "BB Community",
+            listings: [
+              {
+                marketplace: "bb-community",
+                marketplaceDisplayName: "BB Community",
+                publisherLabel: "BB Community",
+                entryId: "linear",
+                official: true,
+                source: "npm:bb-plugin-linear",
+              },
+              {
+                marketplace: "acme-plugins",
+                marketplaceDisplayName: "Acme Plugins",
+                publisherLabel: "Acme Plugins",
+                entryId: "linear",
+                official: false,
+                source: "npm:bb-plugin-linear",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "search", "lin"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Marketplace");
+    expect(output).toContain("BB Community, Acme");
   });
 
   it("adds an Installs column only once a listing reports counts", async () => {

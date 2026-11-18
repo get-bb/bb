@@ -140,6 +140,7 @@ const GITHUB_CATALOG_ENTRY = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: null,
   installed: false,
   conflictingInstallSource: null,
@@ -744,6 +745,58 @@ describe("PluginDetail official catalog lifecycle", () => {
         "Included with BB; disable this plugin instead.",
       ),
     ).not.toHaveLength(0);
+  });
+
+  it("installs a plugin listed by two marketplaces from the one the user picks", () => {
+    const onInstall = vi.fn();
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: "acme-github",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherLabel: "BB Community",
+      official: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+          official: false,
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    renderWithQueryClient(
+      <CatalogPluginDetail
+        entry={entry}
+        onInstall={onInstall}
+        catalogEntries={[entry]}
+        onOpenPlugin={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Acme Plugins/u }));
+    fireEvent.click(screen.getByRole("button", { name: /^Install/u }));
+
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplace: "acme",
+        publisherLabel: "Acme Plugins",
+        official: false,
+      }),
+    );
   });
 
   it("copies the public marketplace link for a BB Community catalog entry", async () => {

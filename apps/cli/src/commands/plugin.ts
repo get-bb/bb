@@ -1090,7 +1090,11 @@ export function registerPluginCommands(
           outputJson(opts, results);
           return;
         }
-        const showMarketplace = results.some((result) => !result.official);
+        const showMarketplace = results.some(
+          (result) =>
+            !result.official ||
+            result.listings.some((listing) => !listing.official),
+        );
         const now = Date.now();
         const badges = results.map((result) =>
           pluginInstallBadgeLabel(pluginInstallBadge(result, now)),
@@ -1100,7 +1104,15 @@ export function registerPluginCommands(
           result.displayName,
           result.description,
           result.category ?? "Uncategorized",
-          ...(showMarketplace ? [result.marketplaceDisplayName] : []),
+          ...(showMarketplace
+            ? [
+                result.listings.length === 0
+                  ? result.marketplaceDisplayName
+                  : result.listings
+                      .map((listing) => listing.marketplaceDisplayName)
+                      .join(", "),
+              ]
+            : []),
           ...(showInstalls ? [badges[index]] : []),
           result.installed
             ? "✓ installed"

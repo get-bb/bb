@@ -20,6 +20,7 @@ export function PluginCardGrid({ children }: { children: ReactNode }) {
 
 interface PluginCardProps {
   title: string;
+  titleMeta?: ReactNode;
   description: ReactNode;
   descriptionLines?: 2 | 3 | "expandable";
   density?: "default" | "compact";
@@ -34,6 +35,7 @@ interface PluginCardProps {
 export function PluginCard({
   byline,
   footerAction,
+  titleMeta,
   density = "default",
   ...props
 }: PluginCardProps) {
@@ -54,10 +56,20 @@ export function PluginCard({
         </span>
       }
       title={
-        <PluginDisplayName
-          displayName={props.title}
-          nameClassName="line-clamp-2 whitespace-normal"
-        />
+        titleMeta === undefined ? (
+          <PluginDisplayName
+            displayName={props.title}
+            nameClassName="line-clamp-2 whitespace-normal"
+          />
+        ) : (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <PluginDisplayName
+              displayName={props.title}
+              nameClassName="line-clamp-2 whitespace-normal"
+            />
+            {titleMeta}
+          </span>
+        )
       }
       footer={
         <div

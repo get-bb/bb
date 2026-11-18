@@ -2,7 +2,8 @@ import { PluginNameTag } from "@/components/plugin/management/PluginNameTag";
 import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
 import {
   ResourceActionButton,
   ResourceActivitySection,
@@ -198,6 +199,72 @@ function PluginLocalSource({
   );
 }
 
+function PluginListingPicker({
+  entry,
+  selectedMarketplace,
+  onSelect,
+}: {
+  entry: PluginCatalogSearchEntry;
+  selectedMarketplace: string;
+  onSelect: (marketplace: string) => void;
+}) {
+  return (
+    <ResourceDefinitionSection label="Install from">
+      <RadioGroup
+        value={selectedMarketplace}
+        onValueChange={onSelect}
+        aria-label={`Marketplace to install ${entry.displayName} from`}
+      >
+        {entry.listings.map((listing) => {
+          const id = `plugin-listing-${listing.marketplace}`;
+          return (
+            <label
+              key={listing.marketplace}
+              htmlFor={id}
+              className="flex min-w-0 cursor-pointer items-start gap-2.5"
+            >
+              <RadioGroupItem
+                id={id}
+                value={listing.marketplace}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 space-y-0.5">
+                <span className="block text-sm text-foreground">
+                  {listing.marketplaceDisplayName}
+                </span>
+                <span className="block break-all font-mono text-2xs text-subtle-foreground">
+                  {listing.source}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </RadioGroup>
+    </ResourceDefinitionSection>
+  );
+}
+
+function selectedListingEntry(
+  entry: PluginCatalogSearchEntry,
+  marketplace: string,
+): PluginCatalogSearchEntry {
+  const listing = entry.listings.find(
+    (candidate) => candidate.marketplace === marketplace,
+  );
+  if (listing === undefined || listing.marketplace === entry.marketplace) {
+    return entry;
+  }
+  return {
+    ...entry,
+    entryId: listing.entryId,
+    marketplace: listing.marketplace,
+    marketplaceDisplayName: listing.marketplaceDisplayName,
+    publisherLabel: listing.publisherLabel,
+    official: listing.official,
+    source: listing.source,
+  };
+}
+
 const OFFICIAL_BYLINE_ENTRY = {
   author: null,
   marketplace: "bb-official",
@@ -220,6 +287,9 @@ export function CatalogPluginDetail({
   const installBlocker = catalogEntryInstallBlocker(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const { mutate: cancelInstall } = useCancelPluginInstallJob();
+  const [selectedMarketplace, setSelectedMarketplace] = useState(
+    entry.marketplace,
+  );
   const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   const entryTitle = splitPluginDisplayName(entry.displayName);
   return (
@@ -241,7 +311,9 @@ export function CatalogPluginDetail({
           disabled={installBlocker !== null}
           unavailableReason={installBlocker}
           count={count}
-          onInstall={() => onInstall(entry)}
+          onInstall={() =>
+            onInstall(selectedListingEntry(entry, selectedMarketplace))
+          }
           installJob={installJob}
           onCancelInstall={cancelInstall}
         />
@@ -257,6 +329,13 @@ export function CatalogPluginDetail({
     >
       <ResourceDetailStack>
         <PluginMarketplaceListingSections entry={entry} />
+        {entry.listings.length > 1 ? (
+          <PluginListingPicker
+            entry={entry}
+            selectedMarketplace={selectedMarketplace}
+            onSelect={setSelectedMarketplace}
+          />
+        ) : null}
         <PluginMoreFromAuthorSection
           entry={entry}
           catalogEntries={catalogEntries}
