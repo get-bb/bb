@@ -2073,8 +2073,6 @@ export function UpdatesSettingsSection() {
   );
 
   const startPluginUpdates = useStartPluginUpdates(inventory.plugins);
-  const experiments = useSystemConfig().data?.experiments;
-  const updateWhenIdleEnabled = experiments?.updateWhenIdle === true;
 
   const connectedHostIds = inventory.machines
     .filter((machine) => machine.host.status === "connected")
@@ -2286,8 +2284,7 @@ export function UpdatesSettingsSection() {
         ) : null}
         {serverAppRow}
         {releaseNotesPanel("server")}
-        {updateWhenIdleEnabled &&
-        appUpdate !== undefined &&
+        {appUpdate !== undefined &&
         (appUpdate.support.kind === "supported" ||
           appUpdate.desktopUpdateSupported === true) ? (
           <AutoAppUpdateSetting

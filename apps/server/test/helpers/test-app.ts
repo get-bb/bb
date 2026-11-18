@@ -332,7 +332,6 @@ export async function createTestAppHarness(
           terminalSessions,
         }),
       }),
-    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),
@@ -420,7 +419,8 @@ export async function withTestHarness<T>(
 ): Promise<T>;
 export async function withTestHarness<T>(
   overridesOrRun:
-    TestAppHarnessConfigOverrides | ((harness: TestAppHarness) => Promise<T>),
+    | TestAppHarnessConfigOverrides
+    | ((harness: TestAppHarness) => Promise<T>),
   maybeRun?: (harness: TestAppHarness) => Promise<T>,
 ): Promise<T> {
   const overrides: TestAppHarnessConfigOverrides =

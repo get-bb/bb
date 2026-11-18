@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { experimental_useExperiment } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import {
   DropdownMenuGroup,
@@ -26,7 +25,6 @@ import {
   sidebarShowProviderIconsAtom,
   sidebarShowRowMetadataAtom,
   sidebarShowEmptyProjectsAtom,
-  THREAD_ROW_METADATA_EXPERIMENT,
 } from "../preferences/atoms.js";
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -153,9 +151,6 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [showRowMetadata, setShowRowMetadata] = useAtom(
     sidebarShowRowMetadataAtom,
   );
-  const rowMetadataEnabled = experimental_useExperiment(
-    THREAD_ROW_METADATA_EXPERIMENT,
-  );
   const [showEmptyProjects, setShowEmptyProjects] = useAtom(
     sidebarShowEmptyProjectsAtom,
   );
@@ -278,21 +273,20 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
               {showProviderIcons && <Icon name="Check" className="size-4" />}
             </span>
           </DropdownMenuItem>
-          {rowMetadataEnabled ? (
-            <DropdownMenuItem
-              role="menuitemcheckbox"
-              aria-checked={showRowMetadata}
-              onSelect={(event) => {
-                event.preventDefault();
-                setShowRowMetadata(!showRowMetadata);
-              }}
-            >
-              Metadata
-              <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
-                {showRowMetadata && <Icon name="Check" className="size-4" />}
-              </span>
-            </DropdownMenuItem>
-          ) : null}
+
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showRowMetadata}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowRowMetadata(!showRowMetadata);
+            }}
+          >
+            Metadata
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {showRowMetadata && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
         </DropdownMenuGroup>
       </>
     );

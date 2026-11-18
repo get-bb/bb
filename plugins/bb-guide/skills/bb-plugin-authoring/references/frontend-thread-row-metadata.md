@@ -2,7 +2,7 @@
 
 `app.slots.experimental_threadRowMetadata` adds a small item to the metadata
 line under each thread row's title in bb's sidebar. The sidebar draws that line
-only while the `threadRowMetadata` experiment is on and the user turns on
+when the user turns on
 Organize → Rows → Metadata (both off by default), and only on rows where an
 item shows something. Plugin-built lists draw the same
 items with `experimental_ThreadRowMetadata` (see "bb's row metadata on your
@@ -31,7 +31,9 @@ function DeployBadge({
   thread,
   data,
 }: ExperimentalThreadRowMetadataProps<Deploys>) {
-  const deploy = thread.environment?.id ? data?.[thread.environment.id] : undefined;
+  const deploy = thread.environment?.id
+    ? data?.[thread.environment.id]
+    : undefined;
   return deploy ? <DeployGlyph deploy={deploy} /> : null;
 }
 ```
