@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -11,6 +12,8 @@ import { defaultAppSettings, type Environment } from "@bb/domain";
 import type { ThreadResponse, TimelineRow } from "@bb/server-contract";
 import {
   appendQuoteAndAttachmentsToDraft,
+  arePromptDraftStatesEqual,
+  isPromptDraftEmpty,
   promptInputToDraft,
   type PromptDraftAttachment,
   type PromptDraftState,
@@ -258,13 +261,35 @@ function useChildThreadsSection(
 
 interface UseSentMessageEditingArgs {
   canStartEdit: boolean;
+  projectId: string;
   threadId: string;
   timelineLoading: boolean;
   timelineRows: readonly TimelineRow[];
 }
 
+interface DiscardedSentMessageEdit {
+  operationId: string;
+  unsavedDraft: PromptDraftState | null;
+}
+
+function unsavedSentMessageEditDraft(
+  session: SentMessageEditSession,
+): PromptDraftState | null {
+  if (
+    isPromptDraftEmpty(session.draft) ||
+    arePromptDraftStatesEqual(
+      session.draft,
+      promptInputToDraft(session.target.input),
+    )
+  ) {
+    return null;
+  }
+  return session.draft;
+}
+
 function useSentMessageEditing({
   canStartEdit,
+  projectId,
   threadId,
   timelineLoading,
   timelineRows,
@@ -310,20 +335,39 @@ function useSentMessageEditing({
     sentMessageEditSession?.submitting === false &&
     !timelineLoading &&
     !sentMessageEditTargetStillPresent;
-  const [discardedSentMessageEditId, setDiscardedSentMessageEditId] = useState<
-    string | null
-  >(null);
+  const [discardedSentMessageEdit, setDiscardedSentMessageEdit] =
+    useState<DiscardedSentMessageEdit | null>(null);
+  const handledDiscardOperationIdRef = useRef<string | null>(null);
   if (shouldDiscardMissingSentMessageEdit && sentMessageEditSession !== null) {
     setSentMessageEditHostElement(null);
     setSentMessageEditSession(null);
-    setDiscardedSentMessageEditId(sentMessageEditSession.operationId);
+    setDiscardedSentMessageEdit({
+      operationId: sentMessageEditSession.operationId,
+      unsavedDraft: unsavedSentMessageEditDraft(sentMessageEditSession),
+    });
   }
   useEffect(() => {
-    if (discardedSentMessageEditId === null) {
+    if (
+      discardedSentMessageEdit === null ||
+      handledDiscardOperationIdRef.current ===
+        discardedSentMessageEdit.operationId
+    ) {
       return;
     }
-    appToast.warning("The message being edited is no longer available.");
-  }, [discardedSentMessageEditId]);
+    handledDiscardOperationIdRef.current = discardedSentMessageEdit.operationId;
+    if (discardedSentMessageEdit.unsavedDraft === null) {
+      appToast.warning("The message being edited is no longer available.");
+      return;
+    }
+    getPromptDraftAccessor({
+      kind: "thread",
+      projectId,
+      threadId,
+    }).restoreUnsent(discardedSentMessageEdit.unsavedDraft);
+    appToast.warning("Your message edit is in the composer", {
+      description: "The message being edited is no longer available.",
+    });
+  }, [discardedSentMessageEdit, projectId, threadId]);
   const activeSentMessageEditOperationId =
     activeSentMessageEditSession?.operationId ?? null;
   const updateSentMessageEditDraft = useCallback(
@@ -524,6 +568,7 @@ export function ThreadScreen({
         !hasPendingInteraction &&
         !sendMessage.isPending &&
         !isThreadTimelinePending,
+      projectId: thread.projectId,
       threadId: thread.id,
       timelineLoading,
       timelineRows,
