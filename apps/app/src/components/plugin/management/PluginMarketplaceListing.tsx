@@ -116,14 +116,7 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      {entry.marketplace === "bb-official" ? null : entry.listings.length >
-        1 ? (
-        <PluginDetailMetadataItem label="Marketplaces">
-          {entry.listings
-            .map((listing) => listing.marketplaceDisplayName)
-            .join(", ")}
-        </PluginDetailMetadataItem>
-      ) : (
+      {entry.marketplace === "bb-official" ? null : (
         <PluginDetailMetadataItem label="Marketplace">
           {entry.marketplaceDisplayName}
         </PluginDetailMetadataItem>

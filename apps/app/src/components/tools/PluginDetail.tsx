@@ -408,11 +408,13 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
 export function PluginDetailBanners({
   plugin,
   configurationPath,
+  catalogEntry,
   catalogEntries,
   onOpenPlugin,
 }: {
   plugin: PluginListItem;
   configurationPath?: string;
+  catalogEntry: PluginCatalogSearchEntry | null;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
 }) {
@@ -427,6 +429,12 @@ export function PluginDetailBanners({
     (entry) =>
       entry.pluginId === plugin.id && entry.conflictingInstallSource !== null,
   );
+  const otherListings =
+    catalogEntry === null
+      ? []
+      : catalogEntry.listings.filter(
+          (listing) => listing.marketplace !== catalogEntry.marketplace,
+        );
   return (
     <>
       {banner === null ? null : (
@@ -434,6 +442,15 @@ export function PluginDetailBanners({
           plugin={banner.plugin}
           configurationPath={configurationPath}
           runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
+        />
+      )}
+      {otherListings.length === 0 ? null : (
+        <PluginBannerBar
+          tone="muted"
+          icon="Info"
+          title={`Also listed in ${otherListings
+            .map((listing) => listing.marketplaceDisplayName)
+            .join(", ")}`}
         />
       )}
       {publishedListing === undefined ? null : (

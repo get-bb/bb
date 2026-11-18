@@ -747,7 +747,16 @@ describe("third-party marketplaces", () => {
       enabledFollowsDefault: false,
     });
     expect(await catalog.search("notes")).toMatchObject([
-      { installed: true, conflictingInstallSource: null },
+      {
+        marketplace: "acme-plugins",
+        displayName: "Acme Notes (vendored listing)",
+        installed: true,
+        conflictingInstallSource: null,
+        listings: [
+          { marketplace: "bb-community" },
+          { marketplace: "acme-plugins" },
+        ],
+      },
     ]);
 
     await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(

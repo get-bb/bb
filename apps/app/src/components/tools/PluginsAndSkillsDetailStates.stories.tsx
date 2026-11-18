@@ -600,6 +600,7 @@ function Plugin({
         <div className="-mx-4 md:-mx-5">
           <PluginDetailBanners
             plugin={plugin}
+            catalogEntry={null}
             catalogEntries={[]}
             onOpenPlugin={noop}
           />

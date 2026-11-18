@@ -1180,6 +1180,9 @@ export function createPluginCatalogService(deps: {
               : {
                   pluginId,
                   entry,
+                  installedFromListing: installedEntryIds.has(
+                    catalogEntryKey(row.name, result.entryId),
+                  ),
                   tags: entry.tags ?? [],
                   marketplaceRank: index,
                   result,
@@ -1350,6 +1353,7 @@ function npmSourceView(
 interface CatalogSearchCandidate {
   pluginId: string;
   entry: MarketplaceEntry;
+  installedFromListing: boolean;
   tags: readonly string[];
   marketplaceRank: number;
   result: PluginCatalogSearchResult;
@@ -1358,7 +1362,7 @@ interface CatalogSearchCandidate {
 function mergeSharedSourceListings(
   candidates: readonly CatalogSearchCandidate[],
 ): CatalogSearchCandidate[] {
-  const merged: CatalogSearchCandidate[] = [];
+  const groups: CatalogSearchCandidate[][] = [];
   const groupIndexes = new Map<string, number>();
   for (const candidate of candidates) {
     const sourceKey = entrySourceKey(candidate.entry);
@@ -1366,32 +1370,43 @@ function mergeSharedSourceListings(
       sourceKey === null ? null : `${candidate.pluginId}\u0000${sourceKey}`;
     const groupIndex =
       groupKey === null ? undefined : groupIndexes.get(groupKey);
-    const group = groupIndex === undefined ? undefined : merged[groupIndex];
-    if (groupIndex === undefined || group === undefined) {
-      if (groupKey !== null) groupIndexes.set(groupKey, merged.length);
-      merged.push(candidate);
+    const group = groupIndex === undefined ? undefined : groups[groupIndex];
+    if (group !== undefined) {
+      group.push(candidate);
       continue;
     }
-    const installed = group.result.installed || candidate.result.installed;
-    merged[groupIndex] = {
-      ...group,
-      tags: [...new Set([...group.tags, ...candidate.tags])],
-      result: {
-        ...group.result,
-        listings: [...group.result.listings, ...candidate.result.listings],
-        collections: [
-          ...group.result.collections,
-          ...candidate.result.collections,
-        ],
-        installed,
-        conflictingInstallSource: installed
-          ? null
-          : group.result.conflictingInstallSource,
-        installs: group.result.installs ?? candidate.result.installs,
-      },
-    };
+    if (groupKey !== null) groupIndexes.set(groupKey, groups.length);
+    groups.push([candidate]);
   }
-  return merged;
+  return groups.map(mergeListingGroup);
+}
+
+function mergeListingGroup(
+  group: readonly CatalogSearchCandidate[],
+): CatalogSearchCandidate {
+  const [top] = group;
+  if (top === undefined) throw new Error("empty catalog listing group");
+  if (group.length === 1) return top;
+  const primary =
+    group.find((candidate) => candidate.installedFromListing) ?? top;
+  const installed = group.some((candidate) => candidate.result.installed);
+  return {
+    ...primary,
+    marketplaceRank: top.marketplaceRank,
+    tags: [...new Set(group.flatMap((candidate) => candidate.tags))],
+    result: {
+      ...primary.result,
+      listings: group.flatMap((candidate) => candidate.result.listings),
+      collections: group.flatMap((candidate) => candidate.result.collections),
+      installed,
+      conflictingInstallSource: installed
+        ? null
+        : primary.result.conflictingInstallSource,
+      installs:
+        group.find((candidate) => candidate.result.installs !== null)?.result
+          .installs ?? null,
+    },
+  };
 }
 
 function entriesShareSource(

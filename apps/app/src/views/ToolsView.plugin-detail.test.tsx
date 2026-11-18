@@ -205,6 +205,7 @@ function renderPluginDetail(
         {options.withBanners ? (
           <PluginDetailBanners
             plugin={plugin}
+            catalogEntry={null}
             catalogEntries={[]}
             onOpenPlugin={vi.fn()}
           />
@@ -1935,6 +1936,7 @@ describe("PluginDetail banner precedence", () => {
     render(
       <PluginDetailBanners
         plugin={collision}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
@@ -1953,6 +1955,50 @@ describe("PluginDetail banner precedence", () => {
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
   });
 
+  it("names the other marketplaces that list an installed plugin's source", () => {
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+      official: false,
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: managedPlugin.id,
+      marketplace: "acme",
+      marketplaceDisplayName: "Acme Plugins",
+      installed: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailBanners
+        plugin={managedPlugin}
+        catalogEntry={entry}
+        catalogEntries={[entry]}
+        onOpenPlugin={vi.fn()}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Also listed in BB Community")).toBeTruthy();
+    expect(screen.queryByText(/Acme Plugins/u)).toBeNull();
+  });
+
   it("does not promote cumulative handler diagnostics into a page banner", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -1961,6 +2007,7 @@ describe("PluginDetail banner precedence", () => {
           ...managedPlugin,
           handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
         }}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
