@@ -1528,6 +1528,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_webFetchPresentation",
           "experimental_planStepsPresentation",
           "experimental_unansweredInteractionWarning",
+          "experimental_unansweredInteractionErrorMessage",
           "UnansweredInteractionCause",
           "UnansweredInteractionAnswer",
           "UnansweredInteractionWarningArgs",

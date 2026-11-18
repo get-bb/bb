@@ -38,28 +38,33 @@ const checkout = resolve(
 const CASES = [
   {
     id: "unshowable-request",
-    userAnswered: false,
+    turnStopped: false,
     what: "the agent asks something bb cannot show",
   },
   {
     id: "runtime-error",
-    userAnswered: false,
+    turnStopped: false,
     what: "bb stops waiting and the runtime answers the question with an error",
   },
   {
     id: "unreadable-resolution",
-    userAnswered: false,
+    turnStopped: false,
     what: "the runtime returns a resolution the bridge cannot read",
   },
   {
     id: "unmappable-answer",
-    userAnswered: false,
+    turnStopped: false,
     what: "the answer does not fit the agent's question",
   },
   {
-    id: "user-stop",
-    userAnswered: true,
-    what: "the user stops the turn while the question is open",
+    id: "withdrawn",
+    turnStopped: false,
+    what: "the bridge withdraws an open question",
+  },
+  {
+    id: "turn-stopped",
+    turnStopped: true,
+    what: "the turn is stopped while the question is open",
   },
 ] as const;
 
@@ -81,35 +86,47 @@ function problemsWith(
   scenario: (typeof CASES)[number],
   observation: Observation,
 ): string[] {
-  if (scenario.userAnswered) {
+  if (scenario.turnStopped) {
     return observation.warnings.length === 0
       ? []
       : [
-          `warned after the user's own answer: ${observation.warnings.join(" | ")}`,
+          `warned after the turn was stopped: ${observation.warnings.join(" | ")}`,
         ];
   }
-  if (observation.answer.kind === "error" || observation.warnings.length > 0) {
-    return [];
-  }
-  return [
-    `answered the agent with ${JSON.stringify(observation.answer.value)} as if the user had, with no warning and no error`,
-  ];
+  return observation.warnings.length > 0
+    ? []
+    : [
+        `answered the agent with ${JSON.stringify(observation.answer)} without the user and without a warning`,
+      ];
 }
 
-function describeSurface(name: string, surface: Surface): void {
-  describe(`unanswered interactions: ${name}`, () => {
-    it.sequential.each(CASES)(
-      "$id: $what",
-      async (scenario) => {
-        const driver = surface[scenario.id];
-        if (typeof driver !== "function") {
-          expect(driver.unreachable).not.toBe("");
-          return;
-        }
-        expect(problemsWith(scenario, await driver())).toEqual([]);
-      },
-      60_000,
-    );
+function describeBridge(
+  bridge: string,
+  kinds: readonly string[],
+  surfaces: Record<string, Surface>,
+): void {
+  describe(`unanswered interactions: ${bridge}`, () => {
+    it("has a surface for every question kind the bridge routes", () => {
+      expect(Object.keys(surfaces).sort()).toEqual([...kinds].sort());
+    });
+    for (const kind of kinds) {
+      const surface = surfaces[kind];
+      if (surface === undefined) continue;
+      describe(kind, () => {
+        it.sequential.each(CASES)(
+          "$id: $what",
+          async (scenario) => {
+            const driver = surface[scenario.id];
+            if (typeof driver !== "function") {
+              expect(driver.unreachable).not.toBe("");
+              return;
+            }
+            expect(problemsWith(scenario, await driver())).toEqual([]);
+          },
+          60_000,
+        );
+      });
+    }
   });
 }
 
@@ -162,27 +179,57 @@ async function waitForInteractionRequest(
   );
 }
 
+type ReplyBody =
+  | { result: unknown }
+  | { error: { code: number; message: string } };
+
+type Reply =
+  | {
+      kind: "runtime";
+      body: (request: BridgeJsonRpcOutputMessage) => ReplyBody;
+    }
+  | { kind: "stop" }
+  | { kind: "new-prompt" }
+  | { kind: "none" };
+
 function answerRuntimeRequest(
   handleLine: (line: string) => void,
   request: BridgeJsonRpcOutputMessage,
-  reply: { result: unknown } | { error: { code: number; message: string } },
+  body: ReplyBody,
 ): void {
-  handleLine(JSON.stringify({ jsonrpc: "2.0", id: request.id, ...reply }));
+  handleLine(JSON.stringify({ jsonrpc: "2.0", id: request.id, ...body }));
 }
 
-const RUNTIME_ERROR = {
-  error: { code: -32000, message: "The server closed the question" },
+const STOPPED_REPLY: ReplyBody = {
+  error: { code: -32000, message: "Thread stopped by user request" },
 };
-const UNREADABLE_RESULT = { result: { kind: "not-a-resolution" } };
+const RUNTIME_ERROR: Reply = {
+  kind: "runtime",
+  body: () => ({
+    error: { code: -32000, message: "The server closed the question" },
+  }),
+};
+const UNREADABLE: Reply = {
+  kind: "runtime",
+  body: () => ({ result: { kind: "not-a-resolution" } }),
+};
+const STOP: Reply = { kind: "stop" };
+const NONE: Reply = { kind: "none" };
+
+function runtimeResult(result: unknown): Reply {
+  return { kind: "runtime", body: () => ({ result }) };
+}
+
 const handleLineModuleSchema = z.object({
   handleLine: z.function({ input: [z.string()], output: z.void() }),
 });
 
+async function importModule(path: string): Promise<unknown> {
+  return import(pathToFileURL(join(checkout, path)).href);
+}
+
 async function loadHandleLine(path: string) {
-  const module: unknown = await import(
-    pathToFileURL(join(checkout, path)).href
-  );
-  return handleLineModuleSchema.parse(module).handleLine;
+  return handleLineModuleSchema.parse(await importModule(path)).handleLine;
 }
 
 async function removeWorkspace(path: string): Promise<void> {
@@ -216,16 +263,20 @@ const ACCEPT_EDITS_OPTIONS = {
   permissionEscalation: "ask",
 } as const;
 
-type AcpAsk =
-  | { kind: "elicitation"; prompt: string }
-  | { kind: "permission"; prompt: string };
+const methodListSchema = z.array(z.string().min(1)).min(1);
 
-type AcpReply =
-  | { kind: "runtime"; reply: Parameters<typeof answerRuntimeRequest>[2] }
-  | { kind: "stop" }
-  | { kind: "none" };
+const acpModule = z
+  .object({ ACP_QUESTION_REQUEST_METHODS: methodListSchema })
+  .parse(
+    await importModule("packages/provider-bridge-acp/src/bridge/bridge.ts"),
+  );
 
-async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
+interface AcpAsk {
+  resultKey: "elicitationResult" | "permissionResult";
+  prompt: string;
+}
+
+async function runAcp(ask: AcpAsk, reply: Reply): Promise<Observation> {
   const handleLine = await loadHandleLine(
     "packages/provider-bridge-acp/src/bridge/bridge.ts",
   );
@@ -234,7 +285,7 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
   const harness = createBridgeJsonRpcTestHarness(handleLine);
   const threadId = `thr_unanswered_acp_${Date.now()}`;
   const options =
-    ask.kind === "permission" ? ACCEPT_EDITS_OPTIONS : FULL_OPTIONS;
+    ask.resultKey === "permissionResult" ? ACCEPT_EDITS_OPTIONS : FULL_OPTIONS;
   const providerOptions = {
     acpLaunchSpec: {
       displayName: "Fake ACP",
@@ -248,6 +299,15 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
       env: { FAKE_ACP_REQUEST_LOG: requestLog },
     },
   };
+  const turn = (id: number, text: string): void => {
+    harness.sendRequest(id, "turn/start", {
+      threadId,
+      providerThreadId,
+      clientRequestId: `creq_abcdefgh${id}k`,
+      options: { ...options, providerOptions },
+      input: [{ type: "text", text, mentions: [] }],
+    });
+  };
   let providerThreadId = "";
   try {
     harness.sendRequest(1, "thread/start", {
@@ -259,13 +319,7 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
     providerThreadId = z
       .object({ providerThreadId: z.string() })
       .parse((await harness.waitForResponse(1)).result).providerThreadId;
-    harness.sendRequest(2, "turn/start", {
-      threadId,
-      providerThreadId,
-      clientRequestId: "creq_abcdefghjk",
-      options: { ...options, providerOptions },
-      input: [{ type: "text", text: ask.prompt, mentions: [] }],
-    });
+    turn(2, ask.prompt);
     await harness.waitForResponse(2);
     if (reply.kind !== "none") {
       const request = await waitForInteractionRequest(harness);
@@ -277,30 +331,33 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
           activeTurnId: null,
         });
         await harness.waitForResponse(3);
-        answerRuntimeRequest(handleLine, request, {
-          error: { code: -32000, message: "Thread stopped by user request" },
-        });
+        answerRuntimeRequest(handleLine, request, STOPPED_REPLY);
+      } else if (reply.kind === "new-prompt") {
+        turn(4, "echo a new prompt");
+        await harness.waitForResponse(4);
       } else {
-        answerRuntimeRequest(handleLine, request, reply.reply);
+        answerRuntimeRequest(handleLine, request, reply.body(request));
       }
     }
-    const key =
-      ask.kind === "elicitation" ? "elicitationResult" : "permissionResult";
     const result = await waitUntil(
-      () => readJsonLines(requestLog).find((line) => key in line)?.[key],
-      `the agent's ${key}`,
+      () =>
+        readJsonLines(requestLog).find((line) => ask.resultKey in line)?.[
+          ask.resultKey
+        ],
+      `the agent's ${ask.resultKey}`,
       harness,
     );
     await harness.flushWork();
-    const answer: ProviderAnswer =
-      ask.kind === "elicitation"
+    const failed =
+      ask.resultKey === "elicitationResult"
         ? z.object({ error: z.string() }).safeParse(result).success
-          ? { kind: "error", message: JSON.stringify(result) }
-          : { kind: "answer", value: result }
-        : result === "error"
-          ? { kind: "error", message: "permission request failed" }
-          : { kind: "answer", value: result };
-    return { answer, warnings: warningsFor(harness.messages, threadId) };
+        : result === "error";
+    return {
+      answer: failed
+        ? { kind: "error", message: JSON.stringify(result) }
+        : { kind: "answer", value: result },
+      warnings: warningsFor(harness.messages, threadId),
+    };
   } finally {
     if (providerThreadId !== "") {
       harness.sendRequest(99, "thread/stop", {
@@ -316,87 +373,62 @@ async function runAcp(ask: AcpAsk, reply: AcpReply): Promise<Observation> {
   }
 }
 
-describeSurface("ACP form questions", {
-  "unshowable-request": () =>
-    runAcp(
-      { kind: "elicitation", prompt: "ask-form-too-large" },
-      {
-        kind: "none",
-      },
-    ),
-  "runtime-error": () =>
-    runAcp(
-      { kind: "elicitation", prompt: "ask-form" },
-      {
-        kind: "runtime",
-        reply: RUNTIME_ERROR,
-      },
-    ),
-  "unreadable-resolution": () =>
-    runAcp(
-      { kind: "elicitation", prompt: "ask-form" },
-      {
-        kind: "runtime",
-        reply: UNREADABLE_RESULT,
-      },
-    ),
-  "unmappable-answer": () =>
-    runAcp(
-      { kind: "elicitation", prompt: "ask-form" },
-      {
-        kind: "runtime",
-        reply: {
-          result: {
-            kind: "user_answer",
-            answers: {
-              strategy: { selected: ["reckless"] },
-              dryRun: { selected: ["true"] },
-            },
+const ACP_FORM: AcpAsk = { resultKey: "elicitationResult", prompt: "ask-form" };
+const ACP_PERMISSION: AcpAsk = {
+  resultKey: "permissionResult",
+  prompt: "request-permission",
+};
+
+describeBridge("ACP", acpModule.ACP_QUESTION_REQUEST_METHODS, {
+  "elicitation/create": {
+    "unshowable-request": () =>
+      runAcp({ ...ACP_FORM, prompt: "ask-form-too-large" }, NONE),
+    "runtime-error": () => runAcp(ACP_FORM, RUNTIME_ERROR),
+    "unreadable-resolution": () => runAcp(ACP_FORM, UNREADABLE),
+    "unmappable-answer": () =>
+      runAcp(
+        ACP_FORM,
+        runtimeResult({
+          kind: "user_answer",
+          answers: {
+            strategy: { selected: ["reckless"] },
+            dryRun: { selected: ["true"] },
           },
-        },
-      },
-    ),
-  "user-stop": () =>
-    runAcp({ kind: "elicitation", prompt: "ask-form" }, { kind: "stop" }),
+        }),
+      ),
+    withdrawn: () =>
+      runAcp(
+        { ...ACP_FORM, prompt: "then-unprompted-ask-form" },
+        { kind: "new-prompt" },
+      ),
+    "turn-stopped": () => runAcp(ACP_FORM, STOP),
+  },
+  "session/request_permission": {
+    "unshowable-request": {
+      unreachable:
+        "bb shows every well-formed ACP permission request; malformed ones get a JSON-RPC error before any question exists",
+    },
+    "runtime-error": () => runAcp(ACP_PERMISSION, RUNTIME_ERROR),
+    "unreadable-resolution": () => runAcp(ACP_PERMISSION, UNREADABLE),
+    "unmappable-answer": () =>
+      runAcp(
+        { ...ACP_PERMISSION, prompt: "request-permission-reject-only" },
+        runtimeResult({ decision: "allow_once", grantedPermissions: null }),
+      ),
+    withdrawn: () =>
+      runAcp(
+        { ...ACP_PERMISSION, prompt: "then-unprompted-permission" },
+        { kind: "new-prompt" },
+      ),
+    "turn-stopped": () => runAcp(ACP_PERMISSION, STOP),
+  },
 });
 
-describeSurface("ACP permission requests", {
-  "unshowable-request": {
-    unreachable:
-      "bb shows every well-formed ACP permission request; malformed ones get a JSON-RPC error before any answer",
-  },
-  "runtime-error": () =>
-    runAcp(
-      { kind: "permission", prompt: "request-permission" },
-      {
-        kind: "runtime",
-        reply: RUNTIME_ERROR,
-      },
-    ),
-  "unreadable-resolution": () =>
-    runAcp(
-      { kind: "permission", prompt: "request-permission" },
-      {
-        kind: "runtime",
-        reply: UNREADABLE_RESULT,
-      },
-    ),
-  "unmappable-answer": () =>
-    runAcp(
-      { kind: "permission", prompt: "request-permission-reject-only" },
-      {
-        kind: "runtime",
-        reply: { result: { decision: "allow_once", grantedPermissions: null } },
-      },
-    ),
-  "user-stop": () =>
-    runAcp(
-      { kind: "permission", prompt: "request-permission" },
-      {
-        kind: "stop",
-      },
-    ),
-});
+const piContract = z
+  .object({ PI_EXTENSION_DIALOG_METHODS: methodListSchema })
+  .parse(
+    await importModule("plugins/provider-pi/src/extension-ui-contract.ts"),
+  );
 
 const piBridgeModuleSchema = z.object({
   handleLine: z.function({ input: [z.string()], output: z.void() }),
@@ -406,17 +438,9 @@ const piBridgeModuleSchema = z.object({
   }),
 });
 
-type PiReply =
-  | { kind: "runtime"; reply: Parameters<typeof answerRuntimeRequest>[2] }
-  | { kind: "stop" }
-  | { kind: "none" };
-
-async function runPi(dialog: object, reply: PiReply): Promise<Observation> {
+async function runPi(dialog: object, reply: Reply): Promise<Observation> {
   const module = piBridgeModuleSchema.parse(
-    await import(
-      pathToFileURL(join(checkout, "plugins/provider-pi/src/bridge/bridge.ts"))
-        .href
-    ),
+    await importModule("plugins/provider-pi/src/bridge/bridge.ts"),
   );
   const workspaceDir = mkdtempSync(join(tmpdir(), "bb-unanswered-pi-"));
   const uiLog = join(workspaceDir, "ui.log");
@@ -456,22 +480,19 @@ async function runPi(dialog: object, reply: PiReply): Promise<Observation> {
       ],
       options: FULL_OPTIONS,
     });
-    if (reply.kind !== "none") {
+    if (reply.kind === "stop") {
       const request = await waitForInteractionRequest(harness);
-      if (reply.kind === "stop") {
-        harness.sendRequest(4, "thread/stop", {
-          threadId,
-          providerThreadId,
-          intent: "interrupt",
-          activeTurnId: null,
-        });
-        await harness.waitForResponse(4);
-        answerRuntimeRequest(module.handleLine, request, {
-          error: { code: -32000, message: "Thread stopped by user request" },
-        });
-      } else {
-        answerRuntimeRequest(module.handleLine, request, reply.reply);
-      }
+      harness.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await harness.waitForResponse(4);
+      answerRuntimeRequest(module.handleLine, request, STOPPED_REPLY);
+    } else if (reply.kind === "runtime") {
+      const request = await waitForInteractionRequest(harness);
+      answerRuntimeRequest(module.handleLine, request, reply.body(request));
     }
     const response = await waitUntil(
       () => readJsonLines(uiLog).at(-1),
@@ -492,58 +513,56 @@ async function runPi(dialog: object, reply: PiReply): Promise<Observation> {
   }
 }
 
-const PI_SELECT = { method: "select", title: "Pick", options: ["A", "B"] };
-
-describeSurface("Pi extension dialogs", {
-  "unshowable-request": () =>
-    runPi(
-      { method: "select", title: "x".repeat(9_000), options: ["A", "B"] },
-      { kind: "none" },
-    ),
-  "runtime-error": () =>
-    runPi(PI_SELECT, { kind: "runtime", reply: RUNTIME_ERROR }),
-  "unreadable-resolution": () =>
-    runPi(PI_SELECT, { kind: "runtime", reply: UNREADABLE_RESULT }),
-  "unmappable-answer": () =>
-    runPi(PI_SELECT, {
-      kind: "runtime",
-      reply: { result: { kind: "request_answer", value: "not-an-option" } },
-    }),
-  "user-stop": () => runPi(PI_SELECT, { kind: "stop" }),
-});
-
-const CODEX_FORM_ELICITATION = {
-  method: "mcpServer/elicitation/request",
-  id: 0,
-  params: {
-    threadId: "form-native-thread",
-    turnId: null,
-    serverName: "deployment-survey",
-    mode: "form",
-    message: "Configure the deployment",
-    requestedSchema: {
-      type: "object",
-      properties: {
-        retries: { type: "integer", title: "Retries", minimum: 1, maximum: 5 },
-      },
-      required: ["retries"],
-    },
+const PI_DIALOGS: Record<string, { dialog: object; misfit: unknown }> = {
+  select: {
+    dialog: { method: "select", title: "Pick", options: ["A", "B"] },
+    misfit: "not-an-option",
   },
+  confirm: { dialog: { method: "confirm", title: "Proceed?" }, misfit: "yes" },
+  input: { dialog: { method: "input", title: "Name?" }, misfit: 42 },
+  editor: { dialog: { method: "editor", title: "Edit the note" }, misfit: 42 },
 };
+
+describeBridge(
+  "Pi",
+  piContract.PI_EXTENSION_DIALOG_METHODS,
+  Object.fromEntries(
+    Object.entries(PI_DIALOGS).map(([method, { dialog, misfit }]) => [
+      method,
+      {
+        "unshowable-request": () =>
+          runPi({ ...dialog, title: "x".repeat(9_000) }, NONE),
+        "runtime-error": () => runPi(dialog, RUNTIME_ERROR),
+        "unreadable-resolution": () => runPi(dialog, UNREADABLE),
+        "unmappable-answer": () =>
+          runPi(
+            dialog,
+            runtimeResult({ kind: "request_answer", value: misfit }),
+          ),
+        withdrawn: {
+          unreachable:
+            "the Pi bridge never withdraws an open dialog; bb queues a new prompt until the turn ends",
+        },
+        "turn-stopped": () => runPi(dialog, STOP),
+      } satisfies Surface,
+    ]),
+  ),
+);
+
+const codexContract = z
+  .object({ CODEX_QUESTION_REQUEST_METHODS: methodListSchema })
+  .parse(
+    await importModule("plugins/provider-codex/src/interactive-requests.ts"),
+  );
 
 const codexNativeResponseSchema = z.union([
   z.object({ result: z.unknown() }),
   z.object({ error: z.object({ message: z.string() }) }),
 ]);
 
-type CodexReply =
-  | { kind: "runtime"; reply: Parameters<typeof answerRuntimeRequest>[2] }
-  | { kind: "stop" }
-  | { kind: "none" };
-
 async function runCodex(
-  request: object,
-  reply: CodexReply,
+  request: { method: string; params: object },
+  reply: Reply,
 ): Promise<Observation> {
   const handleLine = await loadHandleLine(
     "plugins/provider-codex/src/bridge/bridge.ts",
@@ -555,7 +574,7 @@ async function runCodex(
     scriptPath,
     JSON.stringify({
       responseLogPath: responseLog,
-      turns: [[{ kind: "request", ...request }]],
+      turns: [[{ kind: "request", id: 0, ...request }]],
     }),
   );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
@@ -589,37 +608,19 @@ async function runCodex(
       clientRequestId: "creq_23456789ab",
       options: FULL_OPTIONS,
     });
-    if (reply.kind !== "none") {
-      const forwarded = await waitForInteractionRequest(harness);
-      if (reply.kind === "stop") {
-        harness.sendRequest(3, "thread/stop", {
-          threadId,
-          providerThreadId,
-          intent: "interrupt",
-          activeTurnId: null,
-        });
-        await harness.waitForResponse(3);
-        answerRuntimeRequest(handleLine, forwarded, {
-          error: { code: -32000, message: "Thread stopped by user request" },
-        });
-      } else {
-        answerRuntimeRequest(handleLine, forwarded, reply.reply);
-      }
-    }
     if (reply.kind === "stop") {
-      await waitUntil(
-        () => (harness.hasResponse(2) ? true : undefined),
-        "the stopped turn to settle",
-        harness,
-      );
-      await harness.flushWork();
-      return {
-        answer: {
-          kind: "answer",
-          value: readJsonLines(responseLog).at(-1) ?? "nothing",
-        },
-        warnings: warningsFor(harness.messages, threadId),
-      };
+      const forwarded = await waitForInteractionRequest(harness);
+      harness.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await harness.waitForResponse(3);
+      answerRuntimeRequest(handleLine, forwarded, STOPPED_REPLY);
+    } else if (reply.kind === "runtime") {
+      const forwarded = await waitForInteractionRequest(harness);
+      answerRuntimeRequest(handleLine, forwarded, reply.body(forwarded));
     }
     const native = await waitUntil(
       () => readJsonLines(responseLog).at(-1),
@@ -651,35 +652,113 @@ async function runCodex(
   }
 }
 
-describeSurface("Codex MCP elicitations", {
-  "unshowable-request": () =>
-    runCodex(
-      {
-        method: CODEX_FORM_ELICITATION.method,
-        id: 0,
-        params: { threadId: "form-native-thread", turnId: null },
-      },
-      { kind: "none" },
-    ),
-  "runtime-error": () =>
-    runCodex(CODEX_FORM_ELICITATION, { kind: "runtime", reply: RUNTIME_ERROR }),
-  "unreadable-resolution": () =>
-    runCodex(CODEX_FORM_ELICITATION, {
-      kind: "runtime",
-      reply: UNREADABLE_RESULT,
-    }),
-  "unmappable-answer": () =>
-    runCodex(CODEX_FORM_ELICITATION, {
-      kind: "runtime",
-      reply: {
-        result: {
-          kind: "request_answer",
-          value: { action: "accept", content: { retries: 99 } },
+const CODEX_ITEM = {
+  threadId: "codex-thread",
+  turnId: "turn-fx-1",
+  itemId: "item-1",
+};
+
+const CODEX_REQUESTS: Record<
+  string,
+  { params: object; misfit: unknown | null }
+> = {
+  "mcpServer/elicitation/request": {
+    params: {
+      threadId: "codex-thread",
+      turnId: null,
+      serverName: "deployment-survey",
+      mode: "form",
+      message: "Configure the deployment",
+      requestedSchema: {
+        type: "object",
+        properties: {
+          retries: {
+            type: "integer",
+            title: "Retries",
+            minimum: 1,
+            maximum: 5,
+          },
         },
+        required: ["retries"],
       },
-    }),
-  "user-stop": () => runCodex(CODEX_FORM_ELICITATION, { kind: "stop" }),
-});
+    },
+    misfit: {
+      kind: "request_answer",
+      value: { action: "accept", content: { retries: 99 } },
+    },
+  },
+  "item/commandExecution/requestApproval": {
+    params: {
+      ...CODEX_ITEM,
+      reason: "Needs approval",
+      command: "git push",
+      cwd: "/tmp/project",
+      commandActions: [],
+      availableDecisions: ["accept", "decline"],
+    },
+    misfit: null,
+  },
+  "item/fileChange/requestApproval": {
+    params: { ...CODEX_ITEM, reason: null, grantRoot: null },
+    misfit: null,
+  },
+  "item/permissions/requestApproval": {
+    params: {
+      ...CODEX_ITEM,
+      reason: null,
+      permissions: { network: null, fileSystem: null },
+    },
+    misfit: { decision: "allow_once", grantedPermissions: null },
+  },
+  "item/tool/requestUserInput": {
+    params: {
+      ...CODEX_ITEM,
+      questions: [
+        {
+          id: "target",
+          header: "Target",
+          question: "Which environment?",
+          options: [{ label: "Staging", description: "Test first" }],
+        },
+      ],
+    },
+    misfit: {
+      kind: "user_answer",
+      answers: { target: { selected: [] } },
+    },
+  },
+};
+
+describeBridge(
+  "Codex",
+  codexContract.CODEX_QUESTION_REQUEST_METHODS,
+  Object.fromEntries(
+    Object.entries(CODEX_REQUESTS).map(([method, { params, misfit }]) => [
+      method,
+      {
+        "unshowable-request": () =>
+          runCodex(
+            { method, params: { threadId: "codex-thread", turnId: null } },
+            NONE,
+          ),
+        "runtime-error": () => runCodex({ method, params }, RUNTIME_ERROR),
+        "unreadable-resolution": () => runCodex({ method, params }, UNREADABLE),
+        "unmappable-answer":
+          misfit === null
+            ? {
+                unreachable:
+                  "every bb approval decision maps to a Codex decision for this request",
+              }
+            : () => runCodex({ method, params }, runtimeResult(misfit)),
+        withdrawn: {
+          unreachable:
+            "the Codex bridge never withdraws an open question; the app-server owns its pending requests",
+        },
+        "turn-stopped": () => runCodex({ method, params }, STOP),
+      } satisfies Surface,
+    ]),
+  ),
+);
 
 const claudeCanUseToolSchema = z.object({
   options: z.object({
@@ -719,14 +798,9 @@ function controlledClaudeQuery() {
   };
 }
 
-type ClaudeReply =
-  | { kind: "runtime"; reply: Parameters<typeof answerRuntimeRequest>[2] }
-  | { kind: "stop" }
-  | { kind: "none" };
-
 async function runClaude(
-  input: unknown,
-  reply: ClaudeReply,
+  tool: { name: string; input: unknown },
+  reply: Reply,
 ): Promise<Observation> {
   const handleLine = await loadHandleLine(
     "plugins/provider-claude-code/src/bridge/bridge.ts",
@@ -745,27 +819,24 @@ async function runClaude(
       threadId,
       cwd: "/tmp/worktree",
       instructionMode: "append",
-      options: FULL_OPTIONS,
+      options: ACCEPT_EDITS_OPTIONS,
     });
     await harness.waitForResponse(1);
     const { canUseTool } = claudeCanUseToolSchema.parse(
       queryMock.mock.calls.at(-1)?.[0],
     ).options;
-    const resultPromise = canUseTool("AskUserQuestion", input, {
+    const resultPromise = canUseTool(tool.name, tool.input, {
       requestId: "control-request",
       signal: abort.signal,
       toolUseID: "tool-question",
     });
-    if (reply.kind !== "none") {
+    if (reply.kind === "stop") {
       const request = await waitForInteractionRequest(harness);
-      if (reply.kind === "stop") {
-        abort.abort();
-        answerRuntimeRequest(handleLine, request, {
-          error: { code: -32000, message: "Thread stopped by user request" },
-        });
-      } else {
-        answerRuntimeRequest(handleLine, request, reply.reply);
-      }
+      abort.abort();
+      answerRuntimeRequest(handleLine, request, STOPPED_REPLY);
+    } else if (reply.kind === "runtime") {
+      const request = await waitForInteractionRequest(harness);
+      answerRuntimeRequest(handleLine, request, reply.body(request));
     }
     const result = claudePermissionResultSchema.parse(await resultPromise);
     await harness.flushWork();
@@ -791,36 +862,89 @@ async function runClaude(
   }
 }
 
-const CLAUDE_QUESTION = {
-  questions: [
-    {
-      question: "Which deployment target should I use?",
-      header: "Target",
-      options: [
-        { label: "Staging", description: "Deploy to staging." },
-        { label: "Production", description: "Deploy to production." },
+const questionIdSchema = z.object({
+  params: z.object({
+    payload: z.object({ questions: z.array(z.object({ id: z.string() })) }),
+  }),
+});
+
+const CLAUDE_SESSION_GRANT_WITHOUT_PERMISSIONS = runtimeResult({
+  decision: "allow_for_session",
+  grantedPermissions: null,
+});
+
+const CLAUDE_TOOLS: Record<
+  string,
+  { input: unknown; invalidInput: unknown | null; misfit: Reply }
+> = {
+  AskUserQuestion: {
+    input: {
+      questions: [
+        {
+          question: "Which deployment target should I use?",
+          header: "Target",
+          options: [
+            { label: "Staging", description: "Deploy to staging." },
+            { label: "Production", description: "Deploy to production." },
+          ],
+          multiSelect: false,
+        },
       ],
-      multiSelect: false,
     },
-  ],
+    invalidInput: { questions: "not a list" },
+    misfit: {
+      kind: "runtime",
+      body: (request) => {
+        const [question] =
+          questionIdSchema.parse(request).params.payload.questions;
+        return {
+          result: {
+            kind: "user_answer",
+            answers: {
+              [question?.id ?? "q"]: { selected: ["no-such-option"] },
+            },
+          },
+        };
+      },
+    },
+  },
+  ExitPlanMode: {
+    input: { plan: "Ship the fix" },
+    invalidInput: { plan: 42 },
+    misfit: CLAUDE_SESSION_GRANT_WITHOUT_PERMISSIONS,
+  },
+  WebFetch: {
+    input: { url: "https://example.com", prompt: "Summarize" },
+    invalidInput: null,
+    misfit: CLAUDE_SESSION_GRANT_WITHOUT_PERMISSIONS,
+  },
 };
 
-describeSurface("Claude Code questions", {
-  "unshowable-request": () =>
-    runClaude({ questions: "not a list" }, { kind: "none" }),
-  "runtime-error": () =>
-    runClaude(CLAUDE_QUESTION, { kind: "runtime", reply: RUNTIME_ERROR }),
-  "unreadable-resolution": () =>
-    runClaude(CLAUDE_QUESTION, { kind: "runtime", reply: UNREADABLE_RESULT }),
-  "unmappable-answer": () =>
-    runClaude(CLAUDE_QUESTION, {
-      kind: "runtime",
-      reply: {
-        result: {
-          kind: "user_answer",
-          answers: { "an-unknown-question": { selected: ["Staging"] } },
-        },
-      },
-    }),
-  "user-stop": () => runClaude(CLAUDE_QUESTION, { kind: "stop" }),
-});
+describeBridge(
+  "Claude Code",
+  ["AskUserQuestion", "ExitPlanMode", "WebFetch"],
+  Object.fromEntries(
+    Object.entries(CLAUDE_TOOLS).map(
+      ([name, { input, invalidInput, misfit }]) => [
+        name,
+        {
+          "unshowable-request":
+            invalidInput === null
+              ? {
+                  unreachable:
+                    "bb shows any tool's permission request with its raw input",
+                }
+              : () => runClaude({ name, input: invalidInput }, NONE),
+          "runtime-error": () => runClaude({ name, input }, RUNTIME_ERROR),
+          "unreadable-resolution": () => runClaude({ name, input }, UNREADABLE),
+          "unmappable-answer": () => runClaude({ name, input }, misfit),
+          withdrawn: {
+            unreachable:
+              "the Claude Code bridge never withdraws an open question; Claude's canUseTool waits for it",
+          },
+          "turn-stopped": () => runClaude({ name, input }, STOP),
+        } satisfies Surface,
+      ],
+    ),
+  ),
+);

@@ -103,8 +103,9 @@ describe("buildCodexInteractiveResult", () => {
         reason: new Error("Thread interrupted"),
       }),
     ).toEqual({
+      kind: "unanswered",
+      cause: { kind: "runtime-error", message: "Thread interrupted" },
       response: cancel,
-      unanswered: { kind: "runtime-error", message: "Thread interrupted" },
     });
   });
 
@@ -122,8 +123,9 @@ describe("buildCodexInteractiveResult", () => {
           value,
         }),
       ).toEqual({
+        kind: "unanswered",
+        cause: { kind: "unreadable-resolution" },
         response: cancel,
-        unanswered: { kind: "unreadable-resolution" },
       });
     },
   );
@@ -138,18 +140,17 @@ describe("buildCodexInteractiveResult", () => {
         },
       }),
     ).toEqual({
+      kind: "answered",
       response: {
         action: "accept",
         content: {},
         _meta: { persist: "session" },
       },
-      unanswered: null,
     });
   });
 
-  it("still surfaces runtime failures for approvals", () => {
-    const error = new Error("Thread interrupted");
-    expect(() =>
+  it("answers an approval with an error, naming the cause, when bb stops waiting", () => {
+    expect(
       buildCodexInteractiveResult(
         {
           kind: "approval",
@@ -162,9 +163,13 @@ describe("buildCodexInteractiveResult", () => {
           reason: null,
           availableDecisions: ["allow_once", "deny"],
         },
-        { status: "rejected", reason: error },
+        { status: "rejected", reason: new Error("Thread interrupted") },
       ),
-    ).toThrow(error);
+    ).toEqual({
+      kind: "unanswered",
+      cause: { kind: "runtime-error", message: "Thread interrupted" },
+      response: null,
+    });
   });
 });
 

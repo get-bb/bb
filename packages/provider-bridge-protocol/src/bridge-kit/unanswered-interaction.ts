@@ -4,7 +4,8 @@ export type UnansweredInteractionCause =
   | { kind: "unshowable-request"; detail: string }
   | { kind: "runtime-error"; message: string }
   | { kind: "unreadable-resolution" }
-  | { kind: "unmappable-answer"; detail: string };
+  | { kind: "unmappable-answer"; detail: string }
+  | { kind: "withdrawn"; detail: string };
 
 export type UnansweredInteractionAnswer =
   | { kind: "error" }
@@ -32,6 +33,8 @@ function causeText(cause: UnansweredInteractionCause): string {
       return "it could not read the answer it received";
     case "unmappable-answer":
       return `your answer did not fit the question: ${sentence(cause.detail)}`;
+    case "withdrawn":
+      return `it withdrew the question: ${sentence(cause.detail)}`;
   }
 }
 
@@ -45,6 +48,8 @@ function agentCauseText(cause: UnansweredInteractionCause): string {
       return "bb could not read the answer it received";
     case "unmappable-answer":
       return `the answer did not fit the question (${sentence(cause.detail)})`;
+    case "withdrawn":
+      return `bb withdrew the question (${sentence(cause.detail)})`;
   }
 }
 

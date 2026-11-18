@@ -1951,6 +1951,21 @@ function respondPermission(
   pending.responder.result({ outcome: { outcome: "selected", optionId } });
 }
 
+function withdrawPendingQuestions(
+  session: AcpThreadSession,
+  detail: string,
+): void {
+  const cause: UnansweredInteractionCause = { kind: "withdrawn", detail };
+  for (const pending of session.pendingPermissions) {
+    answerWithoutUser(session, pending.responder, cause);
+  }
+  session.pendingPermissions.clear();
+  for (const responder of session.pendingElicitations) {
+    answerWithoutUser(session, responder, cause);
+  }
+  session.pendingElicitations.clear();
+}
+
 function cancelPendingPermissions(session: AcpThreadSession): void {
   for (const pending of session.pendingPermissions) {
     pending.responder.result({ outcome: { outcome: "cancelled" } });
@@ -3430,7 +3445,7 @@ function reconcileExecutionSettings(
     session.restartAfterCancelError ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
-  cancelPendingPermissions(session);
+  withdrawPendingQuestions(session, "a new prompt started before you answered");
   session.policy = {
     permissionMode: options.permissionMode,
     workspaceWriteRoots,
@@ -3628,24 +3643,37 @@ function finishCompaction(
   session.turnSettled = undefined;
 }
 
+const ACP_QUESTION_HANDLERS = new Map<
+  string,
+  (
+    session: AcpThreadSession,
+    params: unknown,
+    responder: AcpAgentRequestResponder,
+  ) => void
+>([
+  ["session/request_permission", handlePermissionRequest],
+  ["elicitation/create", handleElicitationRequest],
+]);
+
+export const ACP_QUESTION_REQUEST_METHODS = [...ACP_QUESTION_HANDLERS.keys()];
+
 function handleAgentRequest(
   session: AcpThreadSession,
   method: string,
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
+  const question = ACP_QUESTION_HANDLERS.get(method);
+  if (question !== undefined) {
+    question(session, params, responder);
+    return;
+  }
   switch (method) {
-    case "session/request_permission":
-      handlePermissionRequest(session, params, responder);
-      return;
     case "fs/read_text_file":
       void handleFsReadTextFile(params, responder);
       return;
     case "fs/write_text_file":
       void handleFsWriteTextFile(session, params, responder);
-      return;
-    case "elicitation/create":
-      handleElicitationRequest(session, params, responder);
       return;
     default:
       handleDialectRequest(session, method, params, responder);

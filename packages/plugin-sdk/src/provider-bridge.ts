@@ -227,6 +227,7 @@ export {
   toOptionalRecord,
   toOptionalString,
   toolPresentation as experimental_toolPresentation,
+  unansweredInteractionErrorMessage as experimental_unansweredInteractionErrorMessage,
   unansweredInteractionWarning as experimental_unansweredInteractionWarning,
   versionFrom as experimental_versionFrom,
   webFetchPresentation as experimental_webFetchPresentation,

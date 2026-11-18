@@ -45,7 +45,7 @@ import type {
   CodexSimpleCommandApprovalDecision,
 } from "./schemas.js";
 
-type CodexInteractiveResponse =
+export type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
   | PermissionsRequestApprovalResponse
@@ -171,14 +171,37 @@ function buildCodexUserQuestionResponse(args: UserQuestionInteractionOutcome): {
   return { answers };
 }
 
+export const CODEX_QUESTION_REQUEST_METHODS = [
+  "mcpServer/elicitation/request",
+  "item/commandExecution/requestApproval",
+  "item/fileChange/requestApproval",
+  "item/permissions/requestApproval",
+  "item/tool/requestUserInput",
+] as const;
+
+type CodexQuestionRequestMethod =
+  (typeof CODEX_QUESTION_REQUEST_METHODS)[number];
+
+export function isCodexQuestionRequestMethod(
+  method: string,
+): method is CodexQuestionRequestMethod {
+  return CODEX_QUESTION_REQUEST_METHODS.some(
+    (questionMethod) => questionMethod === method,
+  );
+}
+
 export function decodeCodexInteractiveRequest(
   request: ProviderInboundRequest,
 ): DecodedInteractiveRequest | null {
   if (typeof request.id !== "string" && typeof request.id !== "number") {
     return null;
   }
+  const method = request.method;
+  if (!isCodexQuestionRequestMethod(method)) {
+    return null;
+  }
 
-  switch (request.method) {
+  switch (method) {
     case "mcpServer/elicitation/request": {
       try {
         const { threadId, turnId, elicitation } = normalizeCodexMcpElicitation(
@@ -332,8 +355,6 @@ export function decodeCodexInteractiveRequest(
         payload: buildCodexUserQuestionPayload(parsed.data),
       };
     }
-    default:
-      return null;
   }
 }
 
@@ -341,47 +362,63 @@ const requestAnswerResolutionSchema = z.object({
   kind: z.literal("request_answer"),
 });
 
-export interface CodexInteractiveResult {
-  response: CodexInteractiveResponse;
-  unanswered: UnansweredInteractionCause | null;
-}
+export type CodexInteractiveResult =
+  | { kind: "answered"; response: CodexInteractiveResponse }
+  | {
+      kind: "unanswered";
+      cause: UnansweredInteractionCause;
+      response: CodexInteractiveResponse | null;
+    };
 
 export function buildCodexInteractiveResult(
   payload: DecodedInteractiveRequest["payload"],
   runtimeResult: PromiseSettledResult<unknown>,
 ): CodexInteractiveResult {
-  if (payload.kind === CODEX_MCP_ELICITATION_KIND) {
-    if (runtimeResult.status === "rejected") {
-      return {
-        response: CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
-        unanswered: {
-          kind: "runtime-error",
-          message:
-            runtimeResult.reason instanceof Error
-              ? runtimeResult.reason.message
-              : String(runtimeResult.reason),
-        },
-      };
-    }
-    if (!requestAnswerResolutionSchema.safeParse(runtimeResult.value).success) {
-      return {
-        response: CODEX_MCP_ELICITATION_CANCEL_RESPONSE,
-        unanswered: { kind: "unreadable-resolution" },
-      };
-    }
-  }
+  const response =
+    payload.kind === CODEX_MCP_ELICITATION_KIND
+      ? CODEX_MCP_ELICITATION_CANCEL_RESPONSE
+      : null;
   if (runtimeResult.status === "rejected") {
-    throw runtimeResult.reason;
+    return {
+      kind: "unanswered",
+      cause: {
+        kind: "runtime-error",
+        message:
+          runtimeResult.reason instanceof Error
+            ? runtimeResult.reason.message
+            : String(runtimeResult.reason),
+      },
+      response,
+    };
   }
-  return {
-    response: buildCodexInteractiveResponse(
-      providerInteractionOutcomeSchema.parse({
-        payload,
-        resolution: runtimeResult.value,
-      }),
-    ),
-    unanswered: null,
-  };
+  const outcome = providerInteractionOutcomeSchema.safeParse({
+    payload,
+    resolution: runtimeResult.value,
+  });
+  if (
+    !outcome.success ||
+    (payload.kind === CODEX_MCP_ELICITATION_KIND &&
+      !requestAnswerResolutionSchema.safeParse(runtimeResult.value).success)
+  ) {
+    return {
+      kind: "unanswered",
+      cause: { kind: "unreadable-resolution" },
+      response,
+    };
+  }
+  try {
+    return {
+      kind: "answered",
+      response: buildCodexInteractiveResponse(outcome.data),
+    };
+  } catch (error) {
+    if (!(error instanceof ProviderResponseEncodeError)) throw error;
+    return {
+      kind: "unanswered",
+      cause: { kind: "unmappable-answer", detail: error.message },
+      response: null,
+    };
+  }
 }
 
 export function buildCodexInteractiveResponse(

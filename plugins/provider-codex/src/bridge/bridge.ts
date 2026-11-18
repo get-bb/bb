@@ -46,8 +46,10 @@ import {
   type PreparedProviderCommandDispatch,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
+  experimental_unansweredInteractionErrorMessage,
   experimental_unansweredInteractionWarning,
   experimental_compareVersions as compareVersions,
+  type UnansweredInteractionCause,
   experimental_versionFrom as versionFrom,
   type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -65,6 +67,8 @@ import {
   buildCodexInteractiveResult,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
+  isCodexQuestionRequestMethod,
+  type CodexInteractiveResponse,
   type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
 import {
@@ -874,28 +878,76 @@ function handleChildRequest(
     sendThreadDeltas(session, [buildMacOsPermissionItemDelta(macOsPermission)]);
   }
 
+  const stopsAtRequest = session.stopsRequested;
+  const answerWithoutUser = (
+    cause: UnansweredInteractionCause,
+    response: CodexInteractiveResponse | null,
+    errorCode: number = BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+  ): void => {
+    if (
+      currentSession(bbThreadId, serial) === session &&
+      session.stopsRequested === stopsAtRequest
+    ) {
+      sendThreadDeltas(session, [
+        experimental_unansweredInteractionWarning({
+          cause,
+          answer:
+            response === null
+              ? { kind: "error" }
+              : { kind: "value", value: "cancel" },
+        }),
+      ]);
+    }
+    if (response === null) {
+      responder.error(
+        errorCode,
+        experimental_unansweredInteractionErrorMessage(cause),
+      );
+      return;
+    }
+    responder.result(response);
+  };
+
   let decoded: DecodedInteractiveRequest | null;
   try {
     decoded = decodeCodexInteractiveRequest({ id: 0, method, params });
   } catch (error) {
-    responder.error(
+    answerWithoutUser(
+      {
+        kind: "unshowable-request",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      null,
       BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
-      error instanceof Error ? error.message : String(error),
     );
     return;
   }
   if (decoded === null) {
+    if (isCodexQuestionRequestMethod(method)) {
+      answerWithoutUser(
+        {
+          kind: "unshowable-request",
+          detail: `bb could not read the ${method} request`,
+        },
+        null,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      );
+      return;
+    }
     responder.error(
       BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
       `Unhandled codex request "${method}"`,
     );
     return;
   }
-  const stopsAtRequest = session.stopsRequested;
   void resolveCodexMcpElicitationAppIcon(decoded)
     .then(async (request) => {
       if (currentSession(bbThreadId, serial) !== session) {
-        throw new Error("codex session is no longer current");
+        responder.error(
+          BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+          "codex session is no longer current",
+        );
+        return;
       }
       const [runtimeResult] = await Promise.allSettled([
         sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
@@ -909,24 +961,19 @@ function handleChildRequest(
         request.payload,
         runtimeResult,
       );
-      if (
-        result.unanswered !== null &&
-        currentSession(bbThreadId, serial) === session &&
-        session.stopsRequested === stopsAtRequest
-      ) {
-        sendThreadDeltas(session, [
-          experimental_unansweredInteractionWarning({
-            cause: result.unanswered,
-            answer: { kind: "value", value: "cancel" },
-          }),
-        ]);
+      if (result.kind === "unanswered") {
+        answerWithoutUser(result.cause, result.response);
+        return;
       }
       responder.result(result.response);
     })
     .catch((error: unknown) => {
-      responder.error(
-        BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-        error instanceof Error ? error.message : String(error),
+      answerWithoutUser(
+        {
+          kind: "runtime-error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        null,
       );
     });
 }

@@ -6,7 +6,14 @@ export const PI_EXTENSION_UI_KIND = `${PI_PLUGIN_ID}/extension-ui`;
 
 export const PI_EXTENSION_UI_RENDERER_ID = "extension-ui";
 
-const dialogMethodSchema = z.enum(["select", "confirm", "input", "editor"]);
+export const PI_EXTENSION_DIALOG_METHODS = [
+  "select",
+  "confirm",
+  "input",
+  "editor",
+] as const;
+
+const dialogMethodSchema = z.enum(PI_EXTENSION_DIALOG_METHODS);
 
 const boundedText = (max: number) => z.string().max(max);
 

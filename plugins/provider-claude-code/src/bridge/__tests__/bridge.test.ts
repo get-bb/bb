@@ -3567,7 +3567,8 @@ describe("bridge", () => {
         ),
       ).resolves.toMatchObject({
         behavior: "deny",
-        message: "Invalid AskUserQuestion input",
+        message:
+          "The user did not answer: bb could not show the question (the AskUserQuestion input is invalid).",
       });
       expect(
         bridge.messages.some((message) => isUserQuestionInteraction(message)),
@@ -3610,7 +3611,8 @@ describe("bridge", () => {
 
       await expect(resultPromise).resolves.toMatchObject({
         behavior: "deny",
-        message: "No interactive request handler is configured",
+        message:
+          "The user did not answer: bb stopped waiting for the answer (No interactive request handler is configured).",
         toolUseID,
       });
 
@@ -3648,7 +3650,9 @@ describe("bridge", () => {
 
       await expect(resultPromise).resolves.toMatchObject({
         behavior: "deny",
-        message: "Invalid interactive response payload",
+        message: expect.stringContaining(
+          "The user did not answer: the answer did not fit the question (Missing answer",
+        ),
         toolUseID,
       });
 
@@ -3689,7 +3693,8 @@ describe("bridge", () => {
 
       await expect(resultPromise).resolves.toMatchObject({
         behavior: "deny",
-        message: "Invalid interactive response payload",
+        message:
+          "The user did not answer: bb could not read the answer it received.",
         toolUseID,
       });
 

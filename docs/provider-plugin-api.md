@@ -430,15 +430,18 @@ bridge parses it as it would any client-supplied JSON.
 **Answering without the user.** Sometimes a bridge must answer the provider
 with something the user did not choose: it cannot show the request, the
 runtime answers `interaction/request` with an error (bb stopped waiting), the
-resolution does not parse, or the answer does not fit the provider's
-question. The bridge then sends the `provider.warning` delta that
-`experimental_unansweredInteractionWarning({ cause, answer })` builds, so the
-user sees that bb answered for them. It answers the provider with a JSON-RPC
-error where the protocol allows one, and with the protocol's cancel
-otherwise. A stop the user requested is the user's answer and gets no
-warning. `src/contract-tests/unanswered-interactions.test.ts` in
-`@bb/provider-bridge-protocol` runs every first-party bridge through each of
-these cases.
+resolution does not parse, the answer does not fit the provider's question,
+or the bridge withdraws a question it can no longer deliver. Every such answer
+sends the `provider.warning` delta that
+`experimental_unansweredInteractionWarning({ cause, answer })` builds, whatever
+the provider receives. A JSON-RPC error alone is not enough, because some
+providers report an error to the model as the user declining. Answer with the
+protocol's error where it has one, carrying
+`experimental_unansweredInteractionErrorMessage(cause)`, and with its cancel
+otherwise. A stopped turn needs no warning: the server marks the open question
+interrupted with the stop's reason. `src/contract-tests/unanswered-interactions.test.ts`
+in `@bb/provider-bridge-protocol` runs every first-party bridge through each
+case, one row per question kind the bridge routes.
 
 ## 5. Projection and rendering
 

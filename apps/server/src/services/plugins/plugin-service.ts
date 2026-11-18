@@ -226,6 +226,10 @@ export type PluginReloadOutcome =
   | { ok: true; plugins: InstalledPlugin[] }
   | { ok: false; error: string; plugins: InstalledPlugin[] };
 
+export type PluginSettingsUpdateOutcome =
+  | { ok: true; view: PluginSettingsView }
+  | { ok: false; error: string; view: PluginSettingsView };
+
 export type PluginEnabledOutcome =
   | { ok: true; plugin: InstalledPlugin }
   | { ok: false; error: string; plugin: InstalledPlugin };
@@ -396,7 +400,7 @@ export interface PluginService {
   updateSettings(
     id: string,
     values: Record<string, unknown>,
-  ): Promise<PluginSettingsView | undefined>;
+  ): Promise<PluginSettingsUpdateOutcome | undefined>;
   getHttpRoute(
     id: string,
     method: string,
@@ -2112,6 +2116,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
       const prev = await readPluginSettingsValues(storeArgs);
       await writePluginSettingsUpdate({ ...storeArgs, values });
+      let problem: string | null = null;
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {
@@ -2128,15 +2133,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (statuses.get(id)?.status === "needs-configuration") {
           const row = getInstalledPlugin(deps.db, id);
           if (row) {
-            await withLifecycleLock(id, async () => {
+            problem = await withLifecycleLock(id, async () => {
               await disposeOne(id);
-              await loadOne(row);
+              return loadOne(row);
             });
             notifyPluginsChanged();
           }
         }
       }
-      return buildPluginSettingsView(storeArgs);
+      const view = await buildPluginSettingsView(storeArgs);
+      return problem === null
+        ? { ok: true, view }
+        : {
+            ok: false,
+            error: `plugin "${id}" did not start: ${problem}`,
+            view,
+          };
     },
 
     getHttpRoute(id, method, path) {

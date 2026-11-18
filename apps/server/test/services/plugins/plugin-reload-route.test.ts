@@ -83,6 +83,19 @@ describe("POST /plugins/reload outcome", () => {
   });
 });
 
+const NEEDS_KEY_THEN_BROKEN_SOURCE = `export default async function plugin(bb: any) {
+  const settings = bb.settings.define({
+    apiKey: { type: "string", label: "API key", secret: true },
+  });
+  const values = await settings.get();
+  if (!values.apiKey) {
+    bb.status.needsConfiguration("set apiKey first");
+    return;
+  }
+  throw new Error("boom on load");
+}
+`;
+
 describe("plugin lifecycle routes report a plugin that did not load", () => {
   let harness: TestAppHarness;
   let rootDir: string;
@@ -106,26 +119,59 @@ describe("plugin lifecycle routes report a plugin that did not load", () => {
     );
     await writeFile(join(rootDir, "server.ts"), HEALTHY_SOURCE);
     await harness.pluginService.installPath(rootDir);
-    await harness.pluginService.setEnabled("keeper", false);
-    await writeFile(join(rootDir, "server.ts"), BROKEN_SOURCE);
   });
 
   afterEach(async () => {
     await harness.cleanup();
   });
 
+  async function brokenWhileDisabled(): Promise<void> {
+    await harness.pluginService.setEnabled("keeper", false);
+    await writeFile(join(rootDir, "server.ts"), BROKEN_SOURCE);
+  }
+
   it.each([
-    { route: "/api/v1/plugins/reload?id=keeper", enabledFirst: true },
-    { route: "/api/v1/plugins/keeper/enable", enabledFirst: false },
-  ])(
-    "$route answers 422 when the plugin ends in error (#5534)",
-    async ({ route, enabledFirst }) => {
-      if (enabledFirst) {
+    {
+      name: "reload",
+      async prepare(): Promise<Request> {
+        await brokenWhileDisabled();
         await harness.pluginService.setEnabled("keeper", true);
-      }
-      const response = await harness.app.request(`${BASE}${route}`, {
-        method: "POST",
-      });
+        return new Request(`${BASE}/api/v1/plugins/reload?id=keeper`, {
+          method: "POST",
+        });
+      },
+    },
+    {
+      name: "enable",
+      async prepare(): Promise<Request> {
+        await brokenWhileDisabled();
+        return new Request(`${BASE}/api/v1/plugins/keeper/enable`, {
+          method: "POST",
+        });
+      },
+    },
+    {
+      name: "settings save",
+      async prepare(): Promise<Request> {
+        await writeFile(
+          join(rootDir, "server.ts"),
+          NEEDS_KEY_THEN_BROKEN_SOURCE,
+        );
+        await harness.pluginService.reload("keeper");
+        expect(
+          harness.pluginService.list().find((p) => p.id === "keeper")?.status,
+        ).toBe("needs-configuration");
+        return new Request(`${BASE}/api/v1/plugins/keeper/settings`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ values: { apiKey: "shhh" } }),
+        });
+      },
+    },
+  ])(
+    "$name answers 422 when the plugin ends in error (#5534)",
+    async ({ prepare }) => {
+      const response = await harness.app.request(await prepare());
       const body: unknown = await response.json();
       const listed = await harness.app.request(`${BASE}/api/v1/plugins`);
       expect(await listed.json()).toMatchObject({
