@@ -976,6 +976,10 @@ describe("ComposerBox composer popups", () => {
       ).not.toBeNull(),
     );
     expect(document.contains(search)).toBe(true);
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Open popup" }));
     await waitFor(() =>
       expect(
