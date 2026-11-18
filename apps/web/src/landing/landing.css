@@ -693,8 +693,6 @@ html:has(.nav-sticky) {
   border-top-color: var(--ink);
 }
 
-/* Each button carries its own caption, directly beneath it, so the platform
-   note clearly targets its option rather than the pair. */
 .install-choice {
   display: flex;
   flex-direction: column;
@@ -730,7 +728,7 @@ html:has(.nav-sticky) {
 }
 
 .install-choice .install-send,
-.install-choice .install-note-touch {
+.install-note-touch {
   display: none;
 }
 
@@ -741,7 +739,7 @@ html:has(.nav-sticky) {
 
 @media (hover: none) and (pointer: coarse) {
   .install-choice .install-download,
-  .install-choice .install-note-desktop {
+  .install-note-desktop {
     display: none;
   }
 
@@ -749,7 +747,7 @@ html:has(.nav-sticky) {
     display: inline-flex;
   }
 
-  .install-choice .install-note-touch {
+  .install-note-touch {
     display: inline;
   }
 }

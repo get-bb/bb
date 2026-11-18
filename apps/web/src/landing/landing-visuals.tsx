@@ -116,17 +116,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   return (
     <div className="install-options">
       <div className="install-actions">
-        <DesktopInstallChoice
-          placement={placement}
-          platform={platform}
-          note={
-            <>
-              {download.shortNote ? `${download.shortNote} · ` : null}
-              {links}
-            </>
-          }
-          touchNote={links}
-        />
+        <DesktopInstallChoice placement={placement} platform={platform} />
         <span className="install-choice">
           <CommandButton
             command={CLI_COMMAND}
@@ -141,6 +131,11 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           />
         </span>
       </div>
+      <span className="install-note install-note-desktop">
+        {download.shortNote ? `${download.shortNote} · ` : null}
+        {links}
+      </span>
+      <span className="install-note install-note-touch">{links}</span>
     </div>
   );
 }
