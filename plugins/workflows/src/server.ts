@@ -230,19 +230,29 @@ export default async function plugin(bb: BbPluginApi) {
     };
   });
 
-  bb.events.on("thread.idle", ({ thread, lastAssistantText }) => {
-    service.onThreadIdle(thread.id, lastAssistantText);
-  });
-  bb.events.on("thread.failed", ({ thread, error }) => {
-    service.onThreadFailed(thread.id, error);
-  });
-  bb.events.on("thread.archived", ({ thread }) => {
-    service.onThreadArchived(thread.id);
-    return service.onOriginUnavailable(thread.id);
-  });
-  bb.events.on("thread.deleted", async ({ thread }) => {
-    service.onThreadDeleted(thread.id);
-    await service.onOriginUnavailable(thread.id);
+  bb.events.on("experimental_thread.settled", async (event) => {
+    const threadId = event.thread.id;
+    switch (event.outcome) {
+      case "completed":
+        service.onThreadIdle(threadId, event.lastAssistantText);
+        return;
+      case "failed":
+        service.onThreadFailed(threadId, event.error);
+        return;
+      case "cancelled":
+        if (event.entry.originPluginId === bb.pluginId) {
+          service.onWorkerMessageCancelled(threadId);
+        }
+        return;
+      case "archived":
+        service.onThreadArchived(threadId);
+        await service.onOriginUnavailable(threadId);
+        return;
+      case "deleted":
+        service.onThreadDeleted(threadId);
+        await service.onOriginUnavailable(threadId);
+        return;
+    }
   });
 
   bb.background.service("workflow-worker", {

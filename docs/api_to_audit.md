@@ -4147,6 +4147,30 @@ Docs: `backend-sdk.md`, `backend-events.md`.
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
 
+## Thread settled outcomes
+
+`experimental_thread.settled` delivers one `PluginThreadSettledEvent`, a union
+over every way a thread's work ends: `completed` (with `lastAssistantText`),
+`failed` (with `error`), `cancelled` (with the removed queued `entry`, so
+`entry.originPluginId` names whose message it was), `archived` and `deleted`.
+Core emits it from the same seams as `thread.idle`, `thread.failed`,
+`thread.archived`, `thread.deleted` and `message.cancelled`
+(`apps/server/src/services/plugins/plugin-service.ts`), so it is never a
+second, drifting source. Like every thread event it reaches the spawning
+plugin only after that plugin's `threads.spawn` / `threads.fork` returns.
+Automations (agent runs), Workflows (worker calls) and Tasks (delegated
+thread status) close their records from it with one exhaustive `switch`; each
+has a test table typed `Record<outcome, …>`, so a new outcome fails their
+typecheck until handled. The fake plugin host follows the four thread events
+with it; tests emit the `cancelled` outcome directly.
+
+Docs: `backend-events.md`.
+
+Stabilization requires deciding whether it replaces `thread.idle` /
+`thread.failed` for record keeping, whether `cancelled` should also cover rows
+dropped by other paths (a failed drain), and per-message correlation for
+plugins that send several messages to one thread.
+
 ## Host deletion notifications
 
 `experimental_host.deleted` delivers the removed host's public DTO once,

@@ -1,13 +1,12 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { migrations } from "./data.js";
+import { listRunningAutomationRuns, migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
 import { pluginDataDirFromDb } from "./path.js";
 import { automationRpcContract, createRpcHandlers } from "./rpc.js";
 import {
-  closeAutomationRunForSettledThread,
-  disableAutomationsForDeletedThreadEvent,
   errorMessage,
   reconcileRunningAutomationRuns,
+  settleAutomationRunsForThread,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
 import { createScriptRunScope } from "./script-runner.js";
@@ -32,36 +31,25 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
-  bb.events.on("thread.idle", ({ thread }) => {
-    closeAutomationRunForSettledThread(bb, db, {
-      threadId: thread.id,
-      status: "idle",
-    });
-  });
-  bb.events.on("thread.failed", ({ thread, error }) => {
-    closeAutomationRunForSettledThread(bb, db, {
-      threadId: thread.id,
-      status: "failed",
-      error,
-    });
-  });
-
-  bb.events.on("thread.deleted", ({ thread }) => {
-    disableAutomationsForDeletedThreadEvent(bb, db, thread.id);
+  bb.events.on("experimental_thread.settled", (event) => {
+    settleAutomationRunsForThread(bb, db, event);
   });
 
   bb.background.service("automation-sweep", {
     async start(signal) {
-      try {
-        await reconcileRunningAutomationRuns(bb, db);
-      } catch (error) {
-        bb.log.error(
-          `Automation startup reconciliation failed: ${errorMessage(error)}`,
-        );
-      }
+      let uncheckedRuns: ReadonlySet<string> = new Set(
+        listRunningAutomationRuns(db).map((run) => run.id),
+      );
       let serverHostId: string | null = null;
       while (!signal.aborted) {
         try {
+          if (uncheckedRuns.size > 0) {
+            uncheckedRuns = await reconcileRunningAutomationRuns(
+              bb,
+              db,
+              uncheckedRuns,
+            );
+          }
           serverHostId ??= (await bb.sdk.system.config()).primaryHostId;
           await sweepDueAutomations(bb, db, {
             pluginDataDir,
