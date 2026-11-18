@@ -182,6 +182,18 @@ across devices or server addresses. The Plugin SDK can list and revoke the
 viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
 
+Reading a thread removes a thread's push, web, and desktop
+notifications once the thread is read on any client.
+
+Thread row metadata adds Organize → Rows → Metadata to the built-in thread list,
+a line under each thread title where plugins show details such as the pull
+request number.
+
+Updating when idle adds a "Restart and update bb automatically" switch to
+Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
+every hour and restart into a new version once no thread is running, and
+enables `bb updates app apply --when-idle`; see `bb guide machines`.
+
 Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
@@ -189,7 +201,7 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `agentCpuPriority` runs agent processes and setup and teardown scripts at a
 lower CPU priority (and, on macOS, the bb server and daemon with application
 scheduling) so bb stays responsive under heavy agent load; it takes full effect
-after restarting bb, and terminals keep normal priority.
+after restarting bb, and terminals keep normal priority. It defaults on for early adopters.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
@@ -201,9 +213,7 @@ early adopters and applies from the next disconnect.
 machine restart cut off, and wakes idle threads whose background work it
 stopped, a few seconds after the machine's daemon comes back; see `bb guide
 thread-lifecycle`.
-`dismissReadNotifications` removes a thread's push, web, and desktop
-notifications once the thread is read on any client. It defaults on for early
-adopters.
+
 `keyedPluginCss` loads plugin stylesheets so that style updates inside other
 plugins' UI, such as the sidebar and composer, skip them; it applies after a
 reload and defaults on for early adopters.
@@ -214,22 +224,16 @@ for a thread open in a visible, focused bb window or tab. It defaults on for
 early adopters.
 `threadContextCard` moves a running thread's changes, pull request, and parent
 and child threads into a card at the upper-right of its pane, opened or pinned from
-the header.
-`threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
-a line under each thread title where plugins show details such as the pull
-request number. It defaults on for early adopters.
-`updateWhenIdle` adds a "Restart and update bb automatically" switch to
-Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
-every hour and restart into a new version once no thread is running, and
-enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
+the header. It defaults on for early adopters.
+
 `walCheckpointWorker` copies recent writes into bb's SQLite database files on a
 background thread instead of during a commit, so heavy writing does not stall
-the server. It applies live.
+the server. It applies live and defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`compactExpiredCache`, `dismissReadNotifications`, `keyedPluginCss`,
-`pluginUpdates`, `resumeDaemonSessions`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
-`updateWhenIdle`; an
+`agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`, `pluginUpdates`,
+`resumeDaemonSessions`, `skipFocusedThreadNotifications`, `threadContextCard`,
+and `walCheckpointWorker`; an
 experiment you set yourself keeps your value.
 
 Launcher settings

@@ -22,10 +22,7 @@ import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
 import { usePluginUpdateJobs } from "@/hooks/queries/plugin-update-job-queries";
-import {
-  useSystemConfig,
-  useSystemProviders,
-} from "@/hooks/queries/system-queries";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import { useMachineAttention } from "@/hooks/useMachineAttention";
 import { useStartPluginUpdates } from "@/hooks/useStartPluginUpdates";
@@ -47,8 +44,6 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
   const providers = useSystemProviders().data;
   const appUpdate = useAppUpdateStatus().data;
-  const updateWhenIdle =
-    useSystemConfig().data?.experiments.updateWhenIdle === true;
   const { desktopApi, isDesktop } = useDesktopUpdateInfo();
   const providerJobs = useProviderCliInstallRunner();
   const pluginJobs = usePluginUpdateJobs().data ?? [];
@@ -87,8 +82,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               : (inventory.desktopInfo?.version ??
                 inventory.systemVersion?.currentVersion ??
                 null),
-          installsWhenIdle:
-            serverCanApply && updateWhenIdle && appUpdate.autoUpdate,
+          installsWhenIdle: serverCanApply && appUpdate.autoUpdate,
           restarting:
             appUpdate !== undefined && appUpdate.activity.phase !== "idle",
           restartLabel:

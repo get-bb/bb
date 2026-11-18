@@ -32,7 +32,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     agentCpuPriority: false,
     compactExpiredCache: false,
-    dismissReadNotifications: false,
     keyedPluginCss: false,
     serverMove: false,
     performanceDiagnostics: false,
@@ -41,8 +40,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     resumeThreadsAfterRestart: false,
     skipFocusedThreadNotifications: false,
     threadContextCard: false,
-    threadRowMetadata: false,
-    updateWhenIdle: false,
     walCheckpointWorker: false,
   },
   appearance: defaultAppTheme,

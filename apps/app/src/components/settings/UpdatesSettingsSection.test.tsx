@@ -395,15 +395,6 @@ beforeEach(() => {
   });
 });
 
-function useUpdateWhenIdleExperiment(enabled: boolean): void {
-  vi.mocked(sdk.system.config).mockResolvedValue(
-    makeSystemConfig({
-      primaryHostId: "host_primary",
-      experiments: { ...defaultExperiments, updateWhenIdle: enabled },
-    }),
-  );
-}
-
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
@@ -2406,38 +2397,30 @@ The published lede.
     ).toBeDefined();
   });
 
-  it.each([
-    { experiment: false, running: 2 },
-    { experiment: true, running: 2 },
-  ])(
-    "updates with a single Update button while $running threads run (updateWhenIdle $experiment)",
-    async ({ experiment, running }) => {
-      useWebApp();
-      useUpdateWhenIdleExperiment(experiment);
-      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
-        makeAppUpdateStatus({ runningThreadCount: running }),
-      );
+  it("updates with a single Update button while threads run", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
 
-      renderSection();
+    renderSection();
 
-      expect(await screen.findByText("2 threads running")).toBeDefined();
-      expect(
-        screen
-          .getAllByRole("button")
-          .map((button) => button.textContent)
-          .filter((label) => label !== null && /^Update/.test(label)),
-      ).toEqual(["Update"]);
-      expect(
-        screen.queryByRole("switch", {
-          name: "Restart and update bb automatically",
-        }) !== null,
-      ).toBe(experiment);
-    },
-  );
+    expect(await screen.findByText("2 threads running")).toBeDefined();
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+        .filter((label) => label !== null && /^Update/.test(label)),
+    ).toEqual(["Update"]);
+    expect(
+      screen.queryByRole("switch", {
+        name: "Restart and update bb automatically",
+      }) !== null,
+    ).toBe(true);
+  });
 
   it("turns on automatic updates and shows the update waiting for threads", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({ runningThreadCount: 2 }),
     );
@@ -2470,7 +2453,6 @@ The published lede.
 
   it("skips a waiting update and says why it is not installing", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({
         autoUpdate: true,
@@ -2515,7 +2497,6 @@ The published lede.
 
   it("updates now from a waiting update after confirming the interruption", async () => {
     useWebApp();
-    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({
         autoUpdate: true,
@@ -2963,7 +2944,6 @@ The published lede.
       desktopInfo,
       isDesktop: true,
     });
-    useUpdateWhenIdleExperiment(true);
     useUpdateInventoryMock.mockReturnValue(desktopFleet());
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
 

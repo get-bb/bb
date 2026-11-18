@@ -47,7 +47,6 @@ const live = vi.hoisted(() => ({
 const startInstallMock = vi.hoisted(() => vi.fn());
 const appUpdateState = vi.hoisted(() => ({
   status: undefined as SystemAppUpdateStatus | undefined,
-  updateWhenIdle: true,
 }));
 const applyAppUpdateMock = vi.hoisted(() => vi.fn());
 const startPluginUpdateMock = vi.hoisted(() => vi.fn());
@@ -125,7 +124,6 @@ vi.mock("@/hooks/queries/system-queries", async (original) => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        updateWhenIdle: appUpdateState.updateWhenIdle,
         resumeThreadsAfterRestart: true,
       },
     },
@@ -163,7 +161,6 @@ afterEach(() => {
   live.pluginJobs = [];
   startInstallMock.mockReset();
   appUpdateState.status = undefined;
-  appUpdateState.updateWhenIdle = true;
   applyAppUpdateMock.mockReset();
   startPluginUpdateMock.mockReset();
   desktopState.isDesktop = false;

@@ -435,7 +435,6 @@ const SETTINGS_CASES: readonly Case[] = [
       setExperiments(db, {
         agentCpuPriority: false,
         compactExpiredCache: true,
-        dismissReadNotifications: true,
         keyedPluginCss: true,
         serverMove: false,
         performanceDiagnostics: true,
@@ -444,8 +443,6 @@ const SETTINGS_CASES: readonly Case[] = [
         resumeThreadsAfterRestart: true,
         skipFocusedThreadNotifications: true,
         threadContextCard: true,
-        threadRowMetadata: true,
-        updateWhenIdle: true,
         walCheckpointWorker: true,
       }),
   },
