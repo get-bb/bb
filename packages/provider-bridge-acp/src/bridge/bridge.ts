@@ -132,6 +132,7 @@ import {
   decodeGrokSpawnToolResult,
   decodeGrokSubagentActionResult,
   decodeGrokSubagentNotification,
+  type GrokSubagentNotification,
 } from "../grok-subagents.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
@@ -314,6 +315,7 @@ interface AcpThreadSession {
   turnSettled: Promise<void> | undefined;
   subagents: Map<string, ThreadSubagent>;
   subagentIdsByToolCall: Map<string, string>;
+  earlyGrokSubagentNotifications: Map<string, GrokSubagentNotification[]>;
   pendingSubagentActions: Map<string, PendingGrokSubagentAction>;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
@@ -2839,6 +2841,7 @@ async function startAgentSession(
     turnSettled: undefined,
     subagents: new Map(),
     subagentIdsByToolCall: new Map(),
+    earlyGrokSubagentNotifications: new Map(),
     pendingSubagentActions: new Map(),
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
@@ -3185,6 +3188,7 @@ async function stopSession(
   if (session.stopping) {
     return;
   }
+  settleOpenSessionDelegations(session);
   session.stopping = true;
   dropQueuedTurnInputs(
     session,
@@ -3499,10 +3503,18 @@ function emitSessionUpdate(
   });
 }
 
+function settleOpenSessionDelegations(session: AcpThreadSession): void {
+  sendThreadDeltas(
+    session.bbThreadId,
+    session.translator.settleOpenDelegations(session.bbThreadId),
+  );
+}
+
 async function releaseSession(session: AcpThreadSession): Promise<void> {
   if (session.stopping) {
     return;
   }
+  settleOpenSessionDelegations(session);
   session.stopping = true;
   clearAgentTurnQuietTimer(session);
   dropQueuedTurnInputs(
@@ -4194,16 +4206,76 @@ function cancelPendingSubagentActions(
   session.pendingSubagentActions.clear();
 }
 
+function buffersEarlyGrokSubagentNotification(
+  session: AcpThreadSession,
+  notification: GrokSubagentNotification,
+): boolean {
+  if (notification.kind === "spawned") {
+    if (notification.parentSessionId !== session.providerThreadId) {
+      return false;
+    }
+    const existing = session.subagents.get(notification.subagentId);
+    if (existing !== undefined && existing.status !== "running") {
+      return false;
+    }
+    return (
+      session.subagentIdsByToolCall.get(notification.subagentId) === undefined
+    );
+  }
+  return session.subagents.get(notification.subagentId) === undefined;
+}
+
+function flushEarlyGrokSubagentNotifications(
+  session: AcpThreadSession,
+  subagentId: string,
+): void {
+  const queued = session.earlyGrokSubagentNotifications.get(subagentId);
+  if (queued === undefined) {
+    return;
+  }
+  session.earlyGrokSubagentNotifications.delete(subagentId);
+  const spawned = queued.filter(
+    (notification) => notification.kind === "spawned",
+  );
+  const rest = queued.filter((notification) => notification.kind !== "spawned");
+  for (const notification of spawned) {
+    applyGrokSubagentNotification(session, notification);
+  }
+  if (session.subagents.get(subagentId) === undefined) {
+    if (rest.length > 0) {
+      session.earlyGrokSubagentNotifications.set(subagentId, rest);
+    }
+    return;
+  }
+  for (const notification of rest) {
+    applyGrokSubagentNotification(session, notification);
+  }
+}
+
 function handleGrokSubagentNotification(
   session: AcpThreadSession,
   update: unknown,
 ): void {
-  let notification: ReturnType<typeof decodeGrokSubagentNotification>;
+  let notification: GrokSubagentNotification;
   try {
     notification = decodeGrokSubagentNotification(update);
   } catch {
     return;
   }
+  if (buffersEarlyGrokSubagentNotification(session, notification)) {
+    const queued =
+      session.earlyGrokSubagentNotifications.get(notification.subagentId) ?? [];
+    queued.push(notification);
+    session.earlyGrokSubagentNotifications.set(notification.subagentId, queued);
+    return;
+  }
+  applyGrokSubagentNotification(session, notification);
+}
+
+function applyGrokSubagentNotification(
+  session: AcpThreadSession,
+  notification: GrokSubagentNotification,
+): void {
   if (notification.kind === "spawned") {
     if (
       notification.parentSessionId !== session.providerThreadId ||
@@ -4241,6 +4313,7 @@ function handleGrokSubagentNotification(
         detail: notification.subagentType,
       }),
     );
+    flushEarlyGrokSubagentNotifications(session, notification.subagentId);
     return;
   }
   const existing = session.subagents.get(notification.subagentId);
@@ -4352,6 +4425,7 @@ function noteGrokSubagentToolCall(
     try {
       const subagentId = decodeGrokSpawnToolResult(update.rawOutput);
       session.subagentIdsByToolCall.set(subagentId, update.toolCallId);
+      flushEarlyGrokSubagentNotifications(session, subagentId);
     } catch {}
   }
   const action = Array.from(session.pendingSubagentActions.values()).find(
@@ -4724,14 +4798,14 @@ function maintenanceTarget(
   };
 }
 
-function startGrokSubagentAction(
+async function startGrokSubagentAction(
   session: AcpThreadSession,
   kind: "tell" | "cancel",
   request: Extract<
     AcpBridgeCommand,
     { method: "subagent/tell" | "subagent/cancel" }
   > & { id: AcpBridgeRequestId },
-): void {
+): Promise<void> {
   const { childRef, clientRequestId, options } = request.params;
   if (session.activePromptKind !== null) {
     sendError(
@@ -4759,6 +4833,20 @@ function startGrokSubagentAction(
       request.id,
       -32000,
       `Subagent "${childRef}" is cancelled and cannot receive messages`,
+    );
+    return;
+  }
+  if (options.sessionOptions !== undefined) {
+    await applySessionOptionSelections(session, options.sessionOptions);
+  }
+  if (
+    session.stopping ||
+    sessionsByBbThreadId.get(session.bbThreadId) !== session
+  ) {
+    sendError(
+      request.id,
+      -32000,
+      "The parent session was replaced before the subagent action started",
     );
     return;
   }
@@ -4997,7 +5085,7 @@ async function handleRequest(
         sendError(request.id, -32000, "No active ACP session");
         return;
       }
-      startGrokSubagentAction(
+      await startGrokSubagentAction(
         session,
         request.method === "subagent/tell" ? "tell" : "cancel",
         request,
