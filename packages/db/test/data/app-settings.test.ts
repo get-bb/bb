@@ -22,6 +22,19 @@ describe("app settings data", () => {
     db.$client.close();
   });
 
+  it("preserves restart resume opt-ins and lets the setting override them", () => {
+    expect(getAppSettings(db).resumeThreadsAfterRestart).toBe(false);
+    db.$client.exec(
+      "INSERT INTO system_experiments (key, value, updated_at) VALUES ('resumeThreadsAfterRestart', 1, 1)",
+    );
+    expect(getAppSettings(db).resumeThreadsAfterRestart).toBe(true);
+    setAppSettings(db, {
+      ...getAppSettings(db),
+      resumeThreadsAfterRestart: false,
+    });
+    expect(getAppSettings(db).resumeThreadsAfterRestart).toBe(false);
+  });
+
   it("defaults archive confirmation to enabled and persists opting out", () => {
     expect(getAppSettings(db).confirmThreadArchive).toBe(true);
     setAppSettings(db, { ...defaultAppSettings, confirmThreadArchive: false });

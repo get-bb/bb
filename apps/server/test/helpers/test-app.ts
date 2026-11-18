@@ -315,7 +315,7 @@ export async function createTestAppHarness(
         mode: null,
         notifyChanged: notifyAppUpdateChanged,
         threadsResumeAfterRestart: () =>
-          getExperiments(db).resumeThreadsAfterRestart,
+          getAppSettings(db).resumeThreadsAfterRestart,
         sendHold: createAppUpdateSendHold({
           aiServices,
           config,

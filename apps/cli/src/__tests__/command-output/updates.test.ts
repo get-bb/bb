@@ -292,7 +292,10 @@ function systemConfig(experiments: {
   updateWhenIdle: boolean;
 }) {
   return vi.fn(async () => ({
-    experiments: { resumeThreadsAfterRestart: false, ...experiments },
+    generalSettings: {
+      resumeThreadsAfterRestart: experiments.resumeThreadsAfterRestart ?? false,
+    },
+    experiments: { updateWhenIdle: experiments.updateWhenIdle },
   }));
 }
 

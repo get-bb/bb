@@ -197,10 +197,6 @@ see `bb guide thread-messaging` for `--compact-first`.
 under 30 seconds: its daemon resumes the same server session, so terminals and
 running requests carry on, instead of opening a new one. It defaults on for
 early adopters and applies from the next disconnect.
-`resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
-machine restart cut off, and wakes idle threads whose background work it
-stopped, a few seconds after the machine's daemon comes back; see `bb guide
-thread-lifecycle`.
 `dismissReadNotifications` removes a thread's push, web, and desktop
 notifications once the thread is read on any client. It defaults on for early
 adopters.
@@ -487,3 +483,5 @@ bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the default
 Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
 daemon WebSockets follow it, but other custom socket/agent libraries can still
 bypass it.
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

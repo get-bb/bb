@@ -124,9 +124,9 @@ vi.mock("@/hooks/queries/system-queries", async (original) => ({
   ...(await original<typeof import("@/hooks/queries/system-queries")>()),
   useSystemConfig: () => ({
     data: {
+      generalSettings: { resumeThreadsAfterRestart: true },
       experiments: {
         updateWhenIdle: appUpdateState.updateWhenIdle,
-        resumeThreadsAfterRestart: true,
       },
     },
   }),

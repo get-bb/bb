@@ -164,7 +164,7 @@ until a newer one appears; you can still update to it by hand. Without
 `--when-idle` or `--yes`,
 apply asks before interrupting running threads and fails without a terminal.
 Updating restarts bb, which interrupts running threads; with the
-`resumeThreadsAfterRestart` experiment on they resume after the update, and
+`resumeThreadsAfterRestart` general setting on they resume after the update, and
 the prompt and the `threads_running` error say so.
 
 With `updateWhenIdle` on, once bb decides to restart into an update, new sends
@@ -431,3 +431,5 @@ Git config. `bb settings general machineGitCredentialsEnabled false` (the
 automatic GH_TOKEN switch in Settings → Environment variables) stops forwarding
 the server's gh credentials; `true` enables it again. This does not log the
 server out or suppress an explicit custom GH_TOKEN.
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

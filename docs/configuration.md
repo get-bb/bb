@@ -469,6 +469,50 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.
+
+- `resumeThreadsAfterRestart` resumes threads a
+  restart cut off. When a machine's daemon comes back as a new process (bb
+  quit, crashed, or updated, or the machine restarted), the server marks the
+  turns it was running as interrupted (`host-daemon-restarted`) and the
+  background tasks it was tracking as stopped, as before, and then queues a
+  retry with reason "bb restarted", scheduled 5 seconds out (the queue sweep
+  sends it on its next pass after that), for:
+  - each running turn it cut off;
+  - each idle thread with background work the restart stopped, such as a
+    background command its agent was waiting on (the retry re-runs the
+    thread's latest turn).
+
+  The retry is the same row as `bb thread retry`, titled "Resume after bb
+  restarted" in the app's queue and in `bb thread queue list`. When the provider had
+  accepted the turn's input, it sends an agent-only message instead of
+  "Please continue.": it says bb restarted, names the command the turn was
+  running and any background work the restart stopped (command and
+  description, one per line when there are several, up to ten), says the
+  restart, not the user, cut them off, and asks the agent to check their
+  effects before continuing or rerunning them. Otherwise it sends the original input. A message you send
+  (or Send now) before it goes out overtakes it. Turns stopped by the user,
+  threads waiting on a question or approval, and archived threads are not
+  resumed, and a turn is not retried again once its retry chain reaches
+  attempt 4 (three restarts in a row). A child thread that resumes does not notify its parent
+  that it was interrupted; the parent hears when the child finishes.
+  `bb thread wait` keeps waiting on a thread whose resume is queued.
+  Updating bb counts as a restart, so threads that Update now (or
+  `bb updates app apply --yes`) cuts resume after the update. With the
+  setting on, the Update now dialog, the CLI prompt, and the
+  `threads_running` error say "Updating restarts bb, and they resume after
+  the update" instead of "interrupts them".
+  The setting also makes every queued retry, including `bb thread retry` and
+  provider-retry ones, go first: a new retry row is placed at the front of the
+  thread's queue, and while a live retry (not Not sent, not exhausted) is
+  queued, the queue does not automatically send the thread's other rows; one
+  that comes up is re-queued as `thread-busy` and sends after the retry's turn
+  ends. That is what keeps messages queued or steered while the daemon was down
+  behind the resume. Without the experiment, a `--send-at` message or a row a
+  plugin releases can go out ahead of a retry scheduled for later (for example
+  a provider-retry row waiting hours for a subscription window) and overtake
+  it; with it, those rows wait for the retry.
+
 ## AI services
 
 Thread titles (and the branch names built from them), commit messages, and
@@ -1057,47 +1101,6 @@ either way.
   server ends the session as soon as the socket closes, and session open
   returns `reconnectGraceMs: 0`, so the daemon opens a new session after every
   drop. It applies from the next disconnect.
-- `resumeThreadsAfterRestart` resumes threads a
-  restart cut off. When a machine's daemon comes back as a new process (bb
-  quit, crashed, or updated, or the machine restarted), the server marks the
-  turns it was running as interrupted (`host-daemon-restarted`) and the
-  background tasks it was tracking as stopped, as before, and then queues a
-  retry with reason "bb restarted", scheduled 5 seconds out (the queue sweep
-  sends it on its next pass after that), for:
-  - each running turn it cut off;
-  - each idle thread with background work the restart stopped, such as a
-    background command its agent was waiting on (the retry re-runs the
-    thread's latest turn).
-
-  The retry is the same row as `bb thread retry`, titled "Resume after bb
-  restarted" in the app's queue and in `bb thread queue list`. When the provider had
-  accepted the turn's input, it sends an agent-only message instead of
-  "Please continue.": it says bb restarted, names the command the turn was
-  running and any background work the restart stopped (command and
-  description, one per line when there are several, up to ten), says the
-  restart, not the user, cut them off, and asks the agent to check their
-  effects before continuing or rerunning them. Otherwise it sends the original input. A message you send
-  (or Send now) before it goes out overtakes it. Turns stopped by the user,
-  threads waiting on a question or approval, and archived threads are not
-  resumed, and a turn is not retried again once its retry chain reaches
-  attempt 4 (three restarts in a row). A child thread that resumes does not notify its parent
-  that it was interrupted; the parent hears when the child finishes.
-  `bb thread wait` keeps waiting on a thread whose resume is queued.
-  Updating bb counts as a restart, so threads that Update now (or
-  `bb updates app apply --yes`) cuts resume after the update. With the
-  experiment on, the Update now dialog, the CLI prompt, and the
-  `threads_running` error say "Updating restarts bb, and they resume after
-  the update" instead of "interrupts them".
-  The experiment also makes every queued retry, including `bb thread retry` and
-  provider-retry ones, go first: a new retry row is placed at the front of the
-  thread's queue, and while a live retry (not Not sent, not exhausted) is
-  queued, the queue does not automatically send the thread's other rows; one
-  that comes up is re-queued as `thread-busy` and sends after the retry's turn
-  ends. That is what keeps messages queued or steered while the daemon was down
-  behind the resume. Without the experiment, a `--send-at` message or a row a
-  plugin releases can go out ahead of a retry scheduled for later (for example
-  a provider-retry row waiting hours for a subscription window) and overtake
-  it; with it, those rows wait for the retry.
 
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
   ensurePersonalProject,
+  getAppSettings,
   getExperiments,
   getAutoAppUpdate,
   getSkippedAppUpdate,
@@ -298,7 +299,7 @@ async function startIntegrationServer(
       mode: null,
       notifyChanged: notifyAppUpdateChanged,
       threadsResumeAfterRestart: () =>
-        getExperiments(db).resumeThreadsAfterRestart,
+        getAppSettings(db).resumeThreadsAfterRestart,
       sendHold: createAppUpdateSendHold({
         aiServices,
         config,
