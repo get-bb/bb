@@ -4948,15 +4948,6 @@ export interface ThreadChatProps {
    * {@link ThreadChatMessageAction}).
    */
   messageActions?: readonly ThreadChatMessageAction[];
-  /**
-   * Gives the context row above the composer the thread's environment, so
-   * segments that read it (changed files, pull request) show as they do in
-   * bb's thread view. Defaults to false, which leaves only segments that need
-   * no environment, such as the parent thread. Ignored by
-   * `variant: "timeline"` (no composer). Experimental: see
-   * docs/api_to_audit.md.
-   */
-  experimental_environmentContext?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -205,6 +205,7 @@ interface ThreadScreenSurface {
   name: string;
   messageActionSurface: ExperimentalMessageActionSurface;
   hasComposer: boolean;
+  contextEnvironmentId: string | null;
   render: (hosts: SurfaceHosts) => ReactNode;
   openedReadme: (hosts: SurfaceHosts) => boolean;
 }
@@ -214,17 +215,13 @@ interface SurfaceHosts {
   sink: ContractStateSink;
 }
 
-function pluginThreadChat(
-  variant: "full" | "compact" | "timeline",
-  environmentContext = true,
-) {
+function pluginThreadChat(variant: "full" | "compact" | "timeline") {
   return ({ openFilePreview }: SurfaceHosts) => (
     <AppNavigationHostProvider capabilities={{ openFilePreview }}>
       <PluginSlotMount pluginId="host" slotKind="navPanel" slotId="page">
         <pluginSdkAppImplementation.ThreadChat
           threadId={THREAD.id}
           variant={variant}
-          experimental_environmentContext={environmentContext}
         />
       </PluginSlotMount>
     </AppNavigationHostProvider>
@@ -245,6 +242,7 @@ const SURFACES: readonly ThreadScreenSurface[] = [
     name: "thread page",
     messageActionSurface: "thread-view",
     hasComposer: true,
+    contextEnvironmentId: ENVIRONMENT.id,
     render: ({ sink }) => (
       <DefaultPaneContextProvider
         paneId="main"
@@ -277,6 +275,7 @@ const SURFACES: readonly ThreadScreenSurface[] = [
     name: "plugin ThreadChat full",
     messageActionSurface: "embedded-chat",
     hasComposer: true,
+    contextEnvironmentId: null,
     render: pluginThreadChat("full"),
     openedReadme: pluginOpenedReadme,
   },
@@ -284,6 +283,7 @@ const SURFACES: readonly ThreadScreenSurface[] = [
     name: "plugin ThreadChat compact",
     messageActionSurface: "embedded-chat",
     hasComposer: true,
+    contextEnvironmentId: null,
     render: pluginThreadChat("compact"),
     openedReadme: pluginOpenedReadme,
   },
@@ -291,6 +291,7 @@ const SURFACES: readonly ThreadScreenSurface[] = [
     name: "plugin ThreadChat timeline",
     messageActionSurface: "embedded-chat",
     hasComposer: false,
+    contextEnvironmentId: null,
     render: pluginThreadChat("timeline"),
     openedReadme: pluginOpenedReadme,
   },
@@ -407,19 +408,8 @@ describe.each(SURFACES)("ThreadScreen surface contract: $name", (surface) => {
       );
       const props = mocks.promptAreaProps.at(-1)!;
       expect(props.contextWindowUsage).toBe(CONTEXT_WINDOW_USAGE);
-      expect(props.contextEnvironmentId).toBe(ENVIRONMENT.id);
+      expect(props.contextEnvironmentId).toBe(surface.contextEnvironmentId);
       expect(typeof props.onCreateNewThreadInEnvironment).toBe("function");
     },
   );
-});
-
-it("keeps the thread's environment out of an embedded chat's context row unless the chat opts in", async () => {
-  renderSurface({
-    ...SURFACES[1]!,
-    render: pluginThreadChat("compact", false),
-  });
-  await waitFor(() => expect(screen.getByTestId("prompt-area")).toBeTruthy());
-  const props = mocks.promptAreaProps.at(-1)!;
-  expect(props.contextEnvironmentId).toBeNull();
-  expect(typeof props.onCreateNewThreadInEnvironment).toBe("function");
 });
