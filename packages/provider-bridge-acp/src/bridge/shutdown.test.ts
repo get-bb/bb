@@ -1,16 +1,11 @@
 import { spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { expect, it } from "vitest";
+import { createProcessLifeline } from "@bb/test-helpers";
+import { expect, it, onTestFinished } from "vitest";
 
 const workerEntry = fileURLToPath(
   new URL(
@@ -20,15 +15,6 @@ const workerEntry = fileURLToPath(
 );
 const bridgeModule = fileURLToPath(new URL("./bridge.ts", import.meta.url));
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (!predicate()) {
@@ -36,21 +22,6 @@ async function waitFor(predicate: () => boolean): Promise<void> {
       throw new Error("Timed out waiting for process state");
     await delay(25);
   }
-}
-
-function readPid(file: string): number | null {
-  if (!existsSync(file)) return null;
-  const pid = Number(readFileSync(file, "utf8"));
-  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
-}
-
-async function waitForPid(file: string): Promise<number> {
-  let pid = 0;
-  await waitFor(() => {
-    pid = readPid(file) ?? 0;
-    return pid > 0;
-  });
-  return pid;
 }
 
 const shutdowns = (["SIGTERM", "SIGINT", "stdin"] as const).filter(
@@ -70,11 +41,14 @@ it.each(
     const stoppingFile = join(dir, "stopping");
     const lateFile = join(dir, "late");
     const agentFile = join(dir, "agent.mjs");
+    const lifeline = await createProcessLifeline();
+    onTestFinished(() => lifeline.close());
     writeFileSync(
       agentFile,
       `
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+${lifeline.holdSource("agent")}
 setInterval(() => {}, 1000);
 process.on("SIGTERM", () => writeFileSync(process.env.STOPPING_FILE, "stopping"));
 const input = createInterface({ input: process.stdin });
@@ -162,8 +136,9 @@ input.on("line", (line) => {
           1,
         );
       }
-      const pid = await waitForPid(readyFile);
-      expect(isAlive(pid)).toBe(true);
+      await waitFor(() => existsSync(readyFile));
+      const [agent] = await lifeline.waitForHolders(1);
+      expect(agent?.alive()).toBe(true);
       if (shutdown === "stdin") worker.stdin.end();
       else worker.kill(shutdown);
       await waitFor(
@@ -189,9 +164,7 @@ input.on("line", (line) => {
           throw new Error("Bridge did not exit");
         }),
       ]);
-      expect(isAlive(pid), "agent remains alive after bridge exits").toBe(
-        false,
-      );
+      await agent?.exited;
       expect(existsSync(lateFile), "shutdown admitted a new agent").toBe(false);
       expect(worker.exitCode, stderr).toBe(0);
     } finally {
@@ -199,10 +172,6 @@ input.on("line", (line) => {
       if (worker.exitCode === null && worker.signalCode === null)
         worker.kill("SIGKILL");
       await exited;
-      for (const file of [readyFile, lateFile]) {
-        const pid = readPid(file);
-        if (pid !== null && isAlive(pid)) process.kill(pid, "SIGKILL");
-      }
       worker.stdout.destroy();
       worker.stderr.destroy();
       rmSync(dir, { recursive: true, force: true });
@@ -215,13 +184,13 @@ it.each(shutdowns)(
   "cancels an active turn on %s so the agent ends the commands it started",
   async (shutdown) => {
     const dir = mkdtempSync(join(tmpdir(), "bb-acp-shutdown-turn-"));
-    const childFile = join(dir, "child");
     const agentFile = join(dir, "agent.mjs");
+    const lifeline = await createProcessLifeline();
+    onTestFinished(() => lifeline.close());
     writeFileSync(
       agentFile,
       `
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 let child;
 let promptId;
@@ -237,11 +206,10 @@ input.on("line", (line) => {
   }
   if (message.method === "session/prompt") {
     promptId = message.id;
-    child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    child = spawn(process.execPath, ["-e", ${JSON.stringify(`${lifeline.holdSource("command")}setInterval(() => {}, 1000)`)}], {
       detached: process.platform !== "win32",
       stdio: "ignore",
     });
-    writeFileSync(process.env.CHILD_FILE, String(child.pid));
   }
   if (message.method === "session/cancel") {
     child?.kill("SIGKILL");
@@ -300,7 +268,7 @@ input.on("line", (line) => {
                 displayName: "Shutdown turn fixture",
                 command: process.execPath,
                 args: [agentFile],
-                env: { CHILD_FILE: childFile },
+                env: {},
               },
             },
           },
@@ -320,8 +288,8 @@ input.on("line", (line) => {
         },
         2,
       );
-      const childPid = await waitForPid(childFile);
-      expect(isAlive(childPid)).toBe(true);
+      const [command] = await lifeline.waitForHolders(1);
+      expect(command?.alive()).toBe(true);
       if (shutdown === "stdin") worker.stdin.end();
       else worker.kill(shutdown);
       await Promise.race([
@@ -330,17 +298,13 @@ input.on("line", (line) => {
           throw new Error("Bridge did not exit");
         }),
       ]);
-      expect(isAlive(childPid), "the agent's command outlived the bridge").toBe(
-        false,
-      );
+      await command?.exited;
       expect(worker.exitCode, stderr).toBe(0);
     } finally {
       worker.stdin.destroy();
       if (worker.exitCode === null && worker.signalCode === null)
         worker.kill("SIGKILL");
       await exited;
-      const pid = readPid(childFile);
-      if (pid !== null && isAlive(pid)) process.kill(pid, "SIGKILL");
       worker.stdout.destroy();
       worker.stderr.destroy();
       rmSync(dir, { recursive: true, force: true });

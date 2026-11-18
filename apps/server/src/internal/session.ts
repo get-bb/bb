@@ -214,6 +214,7 @@ export function registerInternalSessionRoutes(
       activeThreads: payload.activeThreads,
       openThreadWork: payload.openThreadWork,
       hostId: daemon.hostId,
+      turnCommandThreadIds: payload.turnCommandThreadIds,
       undeliveredEventThreadIds: payload.undeliveredEventThreadIds,
       openedSession: session,
       previousSession,

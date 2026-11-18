@@ -170,6 +170,46 @@ for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM
 bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp
 DESC`.
 
+## Observing Processes in Tests
+
+A test must not learn about a process from its PID alone. The operating system
+reuses PIDs (Windows quickly), so a remembered PID can name an unrelated
+process. `node scripts/check-test-process-identity.mjs`, run in CI's plan job,
+rejects these in test code:
+
+- signal 0 (`kill(pid, 0)`, shell `kill -0`);
+- liveness helpers given a PID (`…Alive(pid)`, `…Running(pid)`, `…Exists(pid)`);
+- `/proc/<pid>` reads and `ps -p <pid>` probes;
+- PID comparisons (`.not.toBe(oldPid)`, `a.pid === b.pid`, `.not.toContain(oldPid)`);
+- `process.kill(<remembered pid>, signal)`, including group signals. A failed
+  spawn's `child.pid ?? 0` would signal the runner's whole process group.
+
+The process's own `process.pid` is allowed, and so is a `ps` call that reads a
+start time (`lstart`, `etime`) to compare a recorded identity. Use the fixtures
+in `@bb/test-helpers/child-processes`, the module that owns guarded signalling;
+forkable plugins get the same ones as `experimental_` exports of
+`@get-bb/plugin-sdk/testing`.
+
+- **Direct children:** `trackChildProcesses()` records every `ChildProcess`
+  spawned in the test process, including ones production code spawns
+  internally. Use `running()`, `waitForExit()`, `waitForClose()` and
+  `killRunning()`. Signal an owned child with `child.kill()` or
+  `killProcessGroup({ child })` from `@bb/process-utils`.
+- **Node descendants and fake daemons:** `createProcessLifeline()` gives a
+  socket they join with `holdSource(label, onHeld?)`. Await `holder.exited`;
+  `holder.kill()` never signals a reused PID.
+- **Shell descendants on POSIX:** redirect into `createDescendantPipe()`'s
+  `path` and await `opened`, then `closed`. Shell code that must wait for a
+  process compares its recorded `ps -o lstart= -p` start time.
+- **Real processes found through PID files or listings:** compare
+  `readProcessIdentity()` from `@bb/process-utils`, or stop them with
+  `stopVerifiedProcess()` from `@bb/config`.
+- **Restarted processes:** compare an identity the process reports itself, such
+  as a boot id.
+
+Waits are event-driven and bounded by the test's own timeout, not by a separate
+deadline.
+
 ## Reproducing Test Order Failures
 
 CI's test shards shuffle test files and tests within each file. Vitest prints the seed for
@@ -850,6 +890,30 @@ size is within 15%. Compare mode refuses a baseline written with different gate
 settings. Run the gate on a machine whose load average is below its core count;
 the table header warns when the machine is oversubscribed.
 
+## Timeline History Walk
+
+`apps/server/test/timeline-history/paged-walk.test.ts` checks the paging
+contract in `docs/timeline-pagination.md` against a whole real database. It
+copies the database named by `BB_TIMELINE_HISTORY_DB` with `VACUUM INTO`
+(opening the source read-only, so a running server is unaffected), migrates the
+copy, and for every thread compares a paged walk at the default window budget
+and at 120 events with one full build. It fails with the threads and budgets
+that differ and deletes the copy afterwards. It starts no server, so it cannot
+take over the bb Connect tunnel. Without the variable the suite skips.
+
+```bash
+BB_TIMELINE_HISTORY_DB=~/.bb/bb.db pnpm exec turbo run test:timeline-history --filter=@bb/server
+BB_TIMELINE_HISTORY_DB=~/.bb/bb.db BB_TIMELINE_HISTORY_THREADS=thr_a,thr_b \
+  pnpm exec turbo run test:timeline-history --filter=@bb/server
+```
+
+Run it on changes to timeline selection, ownership, or projection. A full run
+over about 4,500 threads takes about ten minutes, most of it the copy and the
+full builds. The synthetic equivalence tests in
+`apps/server/test/services/threads/timeline-read-equivalence-*.test.ts` cover
+only the event kinds the generator produces;
+`timeline-guard-coverage.test.ts` lists the kinds it does not.
+
 ## Desktop Browser Smoke Tests
 
 ```bash
@@ -887,6 +951,20 @@ only go down, so adding a provider-id branch to core fails CI. After removing
 literals, regenerate the baseline with `--write` and commit it. `--list` prints
 every hit. When the baseline reaches zero, delete it and the guard. See
 [provider-plugin-api.md](provider-plugin-api.md).
+
+## Branch ref owner
+
+`node scripts/check-branch-ref-owner.mjs` keeps the choice between a local
+branch and `origin/<name>` in one place:
+`resolveBranchRef`, `readDefaultBranchRefs().baseBranch` and
+`branchRefCandidates` in
+`packages/environment-provider-host/src/workspace-git.ts`. It fails CI when
+source outside that file builds `refs/remotes/origin/${…}` or `` `origin/${…}` ``
+refs, or runs `merge-base --is-ancestor`. Tests and fixtures are exempt.
+The few sites that do this for another reason are listed in the script's
+allowlist with the reason. Every caller of the resolver
+also runs the shared case table in
+`packages/environment-provider-host/src/testing/branch-ref-cases.ts`.
 
 ## File Content Routes
 
@@ -1146,6 +1224,13 @@ applied chunk.
    in the profile worker when available, otherwise coordinates refer to the
    generated code. Profile scanning and stack formatting run in that worker;
    the main thread only collects and transfers bounded timing windows.
+   `clockCalibration` reports the profiler-to-stall clock offset bounds in
+   milliseconds. Status `calibrated` includes the applied `offsetUs`;
+   `disjoint` means the start and end bounds disagree, and `uncertain` means
+   their intersection exceeds 10 ms. Rejected calibration leaves attribution
+   empty rather than assigning samples to the wrong window. The saved raw
+   profile retains its samples and original V8 timestamps; its save record
+   includes the same calibration diagnostic.
    `sampledMs` is elapsed sampling coverage, not CPU time; native frames can
    include waiting. Each sample contributes at most 20 ms so a long sampling
    gap cannot be blamed on one frame. `unobservedMs` reports missing coverage,
@@ -1270,13 +1355,26 @@ values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
 
-The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never sets
-`data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
-drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
-plugin's utility selectors, so its rules cannot match outside its own roots and
-restyles of the rest of the page stay cheap. The server checks the bundle when
-it loads the plugin; any id-less root keeps that plugin on the original CSS, and
-`bb plugin build` warns about it. Authored CSS is never rewritten.
+The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never
+sets `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes drop
+the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
+plugin's utility selectors; otherwise the plugin keeps the original CSS, and
+`bb plugin build` warns. Authored CSS is never rewritten.
+
+With the `keyedPluginCss` experiment on, the app sends
+`css-scope=plugin-attribute-v1` instead. For the same bundles, the routes also
+key utility selectors on `[data-bb-plugin-scope-<id>]` instead of
+`[data-bb-plugin=<id>]`. Browsers' ancestor filters hash attribute names but
+not values, so only a per-plugin attribute name lets the browser skip another
+plugin's copy of `.flex` without walking every ancestor of each element inside
+the sidebar, composer, or any other plugin root. Plugin roots the host renders
+(slot mounts, panel header content, and portaled overlays) carry
+`data-bb-plugin-scope-<id>=""` next to `data-bb-plugin`. For elements a plugin
+labels itself, including old `portal-scope` copies and
+`element.dataset.bbPlugin = id`, the app watches the document
+(`apps/app/src/lib/plugin-scope-attributes.ts`) and adds the attribute before
+the element is styled. Tabs that send `owned-root-v1` or no scope get the
+variants above.
 
 To reproduce version skew, load the production main app in Chrome, restart
 the same isolated server on the branch without reloading the tab, and open

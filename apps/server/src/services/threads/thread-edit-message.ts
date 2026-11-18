@@ -137,7 +137,7 @@ async function stopThreadBeforeMessageEdit(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
-  requestThreadStopForCurrentState(deps, thread, args.environment);
+  requestThreadStopForCurrentState(deps, thread);
 
   const deadline = Date.now() + EDIT_MESSAGE_STOP_TIMEOUT_MS;
   while (true) {

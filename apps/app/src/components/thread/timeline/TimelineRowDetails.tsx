@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   assertNever,
   fileNameFromPath,
@@ -86,10 +86,20 @@ function ImageWorkRowBody({ resolveImageViewSrc, row }: ImageWorkRowBodyProps) {
   const imageName = row.path ? fileNameFromPath(row.path) : "";
   const imageAlt = `${row.workKind === "image-generation" ? "Generated" : "Viewed"} image: ${imageName}`;
 
-  useEffect(() => {
+  const [resetKey, setResetKey] = useState({
+    completedAt: row.completedAt,
+    imageSrc,
+    status: row.status,
+  });
+  if (
+    resetKey.imageSrc !== imageSrc ||
+    resetKey.completedAt !== row.completedAt ||
+    resetKey.status !== row.status
+  ) {
+    setResetKey({ completedAt: row.completedAt, imageSrc, status: row.status });
     setLoadError(false);
     setLightboxOpen(false);
-  }, [imageSrc, row.completedAt, row.status]);
+  }
 
   if (loadError || !imageSrc) {
     return (

@@ -46,7 +46,7 @@ function renderFindBarView(): string {
       background: Canvas;
       border: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
       border-radius: 10px;
-      box-shadow: 0 8px 24px color-mix(in srgb, CanvasText 22%, transparent);
+      box-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
       display: flex;
       gap: 2px;
       height: ${FIND_BAR_VIEW_HEIGHT - FIND_BAR_VIEW_INSET * 2}px;

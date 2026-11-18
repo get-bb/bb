@@ -21,6 +21,7 @@ export interface JourneyChunkGroup {
 }
 
 const EVERY_NAME = "*";
+const PRELOAD_HELPER_ID = "\0vite/preload-helper.js";
 const ALL_NAMES: ReadonlySet<string> = new Set([EVERY_NAME]);
 
 type SourceEdge =
@@ -102,26 +103,30 @@ function specifierNamesModule(specifier: string, moduleId: string): boolean {
 }
 
 function moduleEdges(info: ModuleGraphInfo): Edge[] {
-  const conservative = info.importedIds.map(
-    (target): Edge => ({ kind: "import", target, names: ALL_NAMES }),
-  );
+  const importedIds = info.importedIds.filter((id) => id !== PRELOAD_HELPER_ID);
+  const conservative = importedIds.map((target): Edge => ({
+    kind: "import",
+    target,
+    names: ALL_NAMES,
+  }));
   if (info.code === null) return conservative;
   const bySource = sourceEdges(info.code);
   if (bySource === null) return conservative;
   const sources = [...bySource.keys()];
   if (
-    sources.length !== info.importedIds.length ||
+    sources.length !== importedIds.length ||
     !sources.every((source, index) =>
-      specifierNamesModule(source, info.importedIds[index] ?? ""),
+      specifierNamesModule(source, importedIds[index] ?? ""),
     )
   ) {
     return conservative;
   }
   return sources.flatMap((source, index) => {
-    const target = info.importedIds[index] ?? "";
-    return (bySource.get(source) ?? []).map(
-      (edge): Edge => ({ ...edge, target }),
-    );
+    const target = importedIds[index] ?? "";
+    return (bySource.get(source) ?? []).map((edge): Edge => ({
+      ...edge,
+      target,
+    }));
   });
 }
 

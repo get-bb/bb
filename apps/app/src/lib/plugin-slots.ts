@@ -1,7 +1,7 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
 import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import type {
   ExperimentalTabRegistration,
   ComposerCustomization,
@@ -279,7 +279,8 @@ const generationByPluginId = new Map<string, number>();
 const listeners = new Set<() => void>();
 let snapshot: PluginSlotSnapshot = EMPTY_PLUGIN_SLOT_SNAPSHOT;
 
-type SlotKind = keyof PluginSlotSnapshot;
+export type PluginSlotKind = keyof PluginSlotSnapshot;
+type SlotKind = PluginSlotKind;
 
 const SLOT_KINDS: readonly SlotKind[] = [
   "homepageSections",
@@ -633,6 +634,13 @@ export function getPluginSlotSnapshot(): PluginSlotSnapshot {
 
 export function usePluginSlots(): PluginSlotSnapshot {
   return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);
+}
+
+export function usePluginSlotKind<K extends PluginSlotKind>(
+  kind: K,
+): PluginSlotSnapshot[K] {
+  const getKind = useCallback(() => getPluginSlotSnapshot()[kind], [kind]);
+  return useSyncExternalStore(subscribePluginSlots, getKind, getKind);
 }
 
 export function usePluginFrontendRegistered(pluginId: string): boolean {

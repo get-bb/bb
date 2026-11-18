@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { ChildProcess, execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { stopWindowsProcessTree } from "../src/windows-process-tree.js";
@@ -78,4 +78,32 @@ it("does not target a recycled PID after the root has exited", async () => {
     treeTermination: "unverified",
   });
   expect(execFile).not.toHaveBeenCalled();
+});
+
+it("keeps the root's process handle open until taskkill finishes, so its PID cannot be reused", async () => {
+  const child = await startChild();
+  const handle: unknown = Reflect.get(child, "_handle");
+  if (typeof handle !== "object" || handle === null) {
+    throw new Error("child has no process handle");
+  }
+  const close = vi.spyOn(Object.getPrototypeOf(handle), "close");
+  let finishTaskkill: ((error: Error | null) => void) | undefined;
+  vi.mocked(execFile).mockImplementationOnce((...args: unknown[]) => {
+    const callback = args.at(-1);
+    if (typeof callback === "function") {
+      finishTaskkill = (error) => callback(error, "", "");
+    }
+    return new ChildProcess();
+  });
+  const stopped = stopWindowsProcessTree(child);
+  const exited = once(child, "exit");
+  child.kill("SIGKILL");
+  await exited;
+  expect(close.mock.contexts).not.toContain(handle);
+
+  finishTaskkill?.(null);
+  await expect(stopped).resolves.toEqual({ treeTermination: "confirmed" });
+  expect(
+    close.mock.contexts.filter((context) => context === handle),
+  ).toHaveLength(1);
 });

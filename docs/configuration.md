@@ -52,10 +52,11 @@ children inherit those entries. Restart bb after changing these settings;
 existing sockets and workers keep their startup configuration.
 
 Built-in proxy support requires Node 22.21+ or 24.5+ (or Node 26); on older
-supported Node releases the launcher omits `--use-env-proxy`. Libraries that create their own agents
-or sockets can also bypass Node's global proxy support, including daemon
-WebSockets; these launch defaults do not configure those libraries or the OS
-proxy settings.
+supported Node releases the launcher omits `--use-env-proxy`. The daemon's
+server WebSocket and bb connect tunnel use Node's global agents, so they follow
+the same proxy and `NO_PROXY` settings. Libraries that create their own agents
+or sockets can still bypass Node's global proxy support; these launch defaults
+do not configure those libraries or the OS proxy settings.
 
 ## Host executable discovery
 
@@ -252,7 +253,6 @@ change the host-daemon protocol.
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                                                                                                                                                                                                                                              |
 | `BB_TELEMETRY`                 | `bb-app env`, or environment                       | Startup-only            | `false` always disables anonymous usage telemetry, overriding the `telemetryEnabled` setting.                                                                                                                                                                                                                                       |
 | `BB_SKIP_ONBOARDING`           | Environment                                        | Startup-only            | Default false. `1` marks first-run setup completed at startup when it is not yet, so the setup screen is skipped. Settings → General can still replay it. `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`; an explicit `0` retains setup.                                                          |
-| `BB_SETUP_GUIDE_VARIANT`       | Environment                                        | Startup-only QA         | `control` or `new` forces the first-run setup guide variant, ignoring telemetry and the `setup-guide-redesign` experiment. Unset by default. See [General settings](#general-settings).                                                                                                                                             |
 | `BB_PERF_DIAGNOSTICS`          | `bb-app env`, environment, or `--perf-diagnostics` | Startup-only            | Default false. Permits the `performanceDiagnostics` experiment; see [Experiments](#experiments).                                                                                                                                                                                                                                    |
 | `BB_QUERY_PLAN_AUDIT`          | Environment                                        | Startup-only debugging  | Default false. `1` logs `Slow SQLite query plan` for each query whose plan walks a large table or picks a weaker index; see [diagnostics](debugging-and-qa.md#slow-sqlite-query-plans). `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`. The `performanceDiagnostics` experiment also turns it on. |
 | `BB_CLI_ERROR_LOG`             | Environment of the `bb` process                    | Optional                | `0` stops the CLI recording failed invocations (command path, error code, no argument values) to `<dataDir>/logs/cli-errors.jsonl`. See `bb guide overview`.                                                                                                                                                                        |
@@ -340,14 +340,8 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings �
 General → Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
-The guide shown is `control` (current) or `new` (redesign), from the app's
-`GET /api/v1/system/setup-guide` request (`{ variant }`). The server resolves
-it once per run on the first request from the `setup-guide-redesign` PostHog
-flag, evaluated for the anonymous install id (3-second timeout). It is
-`control` when telemetry is off or unavailable, or when the evaluation fails,
-the flag is missing or disabled, or its variant is unknown. The assignment
-saved in `<dataDir>/setup-guide-assignment.json` is reused.
-`BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
+Every install gets the same guide. `GET /api/v1/system/setup-guide` stays for
+older apps and always returns `{ "variant": "new" }`.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -370,20 +364,14 @@ notes open under the bb row, `web` for the full notes on getbb.app).
 that isn't listed", with `item_count` 1), `remote_access` (`started` when
 getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
 not when the bb connect panel is merely opened), and `add_machine` (`started`
-when the machine setup command is shown). In both guides, Continue on the projects
+when the machine setup command is shown). Continue on the projects
 step counts as completed only when a project was selected or added during the
 guide (by either route), and Continue on the plugins step only when a featured
 plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
-being shown: the server saves the flag assignment, adds `setup_guide_variant`
-and `setup_guide_source` (`override`, `flag`, or `default`), and sends PostHog's
-`$feature_flag_called` when the flag decided the variant. The server adds
-`setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
-`recommendation`), and once the flag assignment is known every event carries
-`$feature/setup-guide-redesign`.
+being shown.
 `onboarding_operation` records a setup-guide action's `started`,
-`succeeded`, or `failed` outcome with counts only, the same way in both
-guides. A Projects step `scan` records nothing after the guide's first
+`succeeded`, or `failed` outcome with counts only. A Projects step `scan` records nothing after the guide's first
 successful scan, such as the rescan after an import, and adds `timed_out`
 (true when the repo scan ran
 out of time and the list may be partial) and `unreadable_count` (how many
@@ -398,9 +386,11 @@ no outcome. `load` records `succeeded` the first time the Agent step's agent
 states or the Plugins step's catalog load, with `duration_ms` (time from the
 step first opening to the data arriving), and `failed` the first time they
 fail to load before any data arrives, each at most once per step per guide (a
-failed background refresh after the data loaded is not a load failure); in the new guide the Agent
-step also fails with `timed_out` when its agent states haven't loaded after 10
-seconds and it offers Retry. `finish` records only `failed`,
+failed background refresh after the data loaded is not a load failure); the Agent
+step also fails with `timed_out` when no agent's own check has answered after 10
+seconds. An agent whose check fails shows its own Retry, which rechecks only
+that agent; when every check fails, one Retry rechecks just those agents.
+`finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
 `no_host` (no computer was available: once per guide for `scan` and agent
@@ -989,8 +979,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `agentCpuPriority`, `compactExpiredCache`, `dismissReadNotifications`,
-`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
-`updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+`keyedPluginCss`, `pluginUpdates`, `skipFocusedThreadNotifications`,
+`threadRowMetadata`, and `updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -1022,6 +1012,15 @@ either way.
   the background task; an older Android app in the foreground would list the
   silent push as a blank notification.
   The plugin reads it on each delivery and read, so a toggle applies live.
+- `keyedPluginCss` (on for early adopters) makes the app request each plugin's
+  stylesheet with `css-scope=plugin-attribute-v1`. bb then keys the plugin's
+  utilities on an attribute named after the plugin,
+  `data-bb-plugin-scope-<id>`, so style updates inside other plugins' UI, such
+  as the sidebar and composer, skip that plugin's rules. The app adds the
+  attribute to every element labeled `data-bb-plugin`, including ones a plugin
+  creates itself. The app reads the experiment when it loads a plugin's
+  stylesheet, so a toggle applies after a reload. See
+  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

@@ -9,6 +9,80 @@ import {
 } from "./onboarding-telemetry";
 import { operationFailureReason } from "./onboarding-model";
 
+interface ProjectImportLifetime {
+  active: boolean;
+  canSelect: boolean;
+}
+
+async function runProjectImport({
+  lifetime,
+  entry,
+  hostId,
+  repos,
+  createProject,
+  setImportedProjectDefault,
+  setImporting,
+  onSettled,
+  onContinue,
+}: {
+  lifetime: ProjectImportLifetime;
+  entry: OnboardingEntry;
+  hostId: string;
+  repos: readonly { name: string; path: string }[];
+  createProject: ReturnType<typeof useCreateProject>["mutateAsync"];
+  setImportedProjectDefault: (projectId: string) => void;
+  setImporting: (importing: boolean) => void;
+  onSettled: () => void;
+  onContinue: () => void;
+}): Promise<void> {
+  setImporting(true);
+  let lastImportedProjectId: string | null = null;
+  let succeededCount = 0;
+  const recordOutcome = (
+    outcome: "started" | "succeeded" | "failed",
+    error?: unknown,
+  ) =>
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "import",
+        outcome,
+        item_count: repos.length,
+        succeeded_count: succeededCount,
+        ...(outcome === "failed"
+          ? { failure_reason: operationFailureReason(error) }
+          : {}),
+      },
+    });
+  recordOutcome("started");
+  try {
+    for (const repo of repos) {
+      if (!lifetime.active) return;
+      const project = await createProject({
+        name: repo.name,
+        source: { type: "local_path", hostId, path: repo.path },
+      });
+      lastImportedProjectId = project.id;
+      succeededCount += 1;
+    }
+    recordOutcome("succeeded");
+  } catch (error) {
+    recordOutcome("failed", error);
+    return;
+  } finally {
+    if (lifetime.active) {
+      if (lifetime.canSelect && lastImportedProjectId !== null) {
+        setImportedProjectDefault(lastImportedProjectId);
+      }
+      setImporting(false);
+      onSettled();
+    }
+  }
+  if (lifetime.active) onContinue();
+}
+
 export function useOnboardingProjectImport({
   entry,
   onContinue,
@@ -21,9 +95,7 @@ export function useOnboardingProjectImport({
   const createProject = useCreateProject();
   const setImportedProjectDefault = useImportedProjectDefault();
   const draft = usePromptDraftController({ kind: "new-thread" });
-  const lifetimeRef = useRef<{ active: boolean; canSelect: boolean } | null>(
-    null,
-  );
+  const lifetimeRef = useRef<ProjectImportLifetime | null>(null);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -50,52 +122,17 @@ export function useOnboardingProjectImport({
   ) => {
     const lifetime = lifetimeRef.current;
     if (importing || !lifetime?.active) return;
-    setImporting(true);
-    let lastImportedProjectId: string | null = null;
-    let succeededCount = 0;
-    const recordOutcome = (
-      outcome: "started" | "succeeded" | "failed",
-      error?: unknown,
-    ) =>
-      recordTelemetryEvent({
-        name: "onboarding_operation",
-        properties: {
-          entry,
-          step: "projects",
-          operation: "import",
-          outcome,
-          item_count: repos.length,
-          succeeded_count: succeededCount,
-          ...(outcome === "failed"
-            ? { failure_reason: operationFailureReason(error) }
-            : {}),
-        },
-      });
-    recordOutcome("started");
-    try {
-      for (const repo of repos) {
-        if (!lifetime.active) return;
-        const project = await createProject.mutateAsync({
-          name: repo.name,
-          source: { type: "local_path", hostId, path: repo.path },
-        });
-        lastImportedProjectId = project.id;
-        succeededCount += 1;
-      }
-      recordOutcome("succeeded");
-    } catch (error) {
-      recordOutcome("failed", error);
-      return;
-    } finally {
-      if (lifetime.active) {
-        if (lifetime.canSelect && lastImportedProjectId !== null) {
-          setImportedProjectDefault(lastImportedProjectId);
-        }
-        setImporting(false);
-        onSettled();
-      }
-    }
-    if (lifetime.active) onContinue();
+    await runProjectImport({
+      lifetime,
+      entry,
+      hostId,
+      repos,
+      createProject: createProject.mutateAsync,
+      setImportedProjectDefault,
+      setImporting,
+      onSettled,
+      onContinue,
+    });
   };
 
   return { importing, importProjects };

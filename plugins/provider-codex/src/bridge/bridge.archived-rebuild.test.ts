@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import {
+  experimental_trackChildProcesses,
+  type ExperimentalChildProcessTracker,
+} from "@get-bb/plugin-sdk/testing";
 import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
 import {
@@ -34,6 +38,7 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let archiveStatePath = "";
 let processLogPath = "";
+let children: ExperimentalChildProcessTracker | undefined;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archived-rebuild-"));
@@ -44,6 +49,7 @@ beforeEach(() => {
     scriptPath,
     JSON.stringify({ archiveStatePath, processLogPath }),
   );
+  children = experimental_trackChildProcesses();
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -54,7 +60,7 @@ afterEach(async () => {
     cleanupId: 993_001,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
-    processLogPath,
+    children,
     workspaceDir,
     unstubEnvs: vi.unstubAllEnvs,
   });
@@ -163,7 +169,13 @@ it("keeps the thread resumable when the rebuild after the child died hits an ext
   if (childPid === undefined) {
     throw new Error("Expected the fake app-server child to have spawned");
   }
-  process.kill(childPid, "SIGKILL");
+  const appServer = children
+    ?.running()
+    .find((candidate) => candidate.pid === childPid);
+  if (appServer === undefined) {
+    throw new Error("Expected the fake app-server child to be running");
+  }
+  appServer.kill("SIGKILL");
   const deadline = Date.now() + 15_000;
   while (
     !harness.messages.some(

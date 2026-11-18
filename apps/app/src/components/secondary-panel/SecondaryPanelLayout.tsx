@@ -189,10 +189,21 @@ export function SecondaryPanelLayout({
     compactDrawerContentSettleFrameRef.current = null;
   }, []);
 
+  const [settleInputs, setSettleInputs] = useState({
+    open,
+    renderAsDrawer,
+    resetKey,
+  });
+  if (
+    settleInputs.open !== open ||
+    settleInputs.renderAsDrawer !== renderAsDrawer ||
+    settleInputs.resetKey !== resetKey
+  ) {
+    setSettleInputs({ open, renderAsDrawer, resetKey });
+    setIsCompactDrawerContentSettled(false);
+  }
   useLayoutEffect(() => {
     cancelCompactDrawerContentSettleFrame();
-    // oxlint-disable-next-line react/set-state-in-effect
-    setIsCompactDrawerContentSettled(false);
   }, [cancelCompactDrawerContentSettleFrame, open, renderAsDrawer, resetKey]);
 
   useLayoutEffect(

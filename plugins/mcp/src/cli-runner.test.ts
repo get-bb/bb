@@ -1,7 +1,15 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { experimental_createDescendantPipe } from "@get-bb/plugin-sdk/testing";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import {
   CliUnavailableError,
   cliEnvironment,
@@ -9,15 +17,6 @@ import {
 } from "./cli-runner.js";
 
 const posix = process.platform !== "win32";
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 describe.runIf(posix)("createCliRunner", () => {
   let directory: string;
@@ -72,15 +71,15 @@ describe.runIf(posix)("createCliRunner", () => {
   });
 
   it("kills a command that outlives its timeout, along with its children", async () => {
-    const pidFile = join(directory, "child.pid");
-    await script(`sleep 60 &\necho $! > ${pidFile}\nwait`);
+    const child = await experimental_createDescendantPipe();
+    onTestFinished(() => child.dispose());
+    await script(`sleep 60 > "${child.path}" &\nwait`);
     const startedAt = Date.now();
     const result = await runner()(["hang"], options({ timeoutMs: 300 }));
     expect(Date.now() - startedAt).toBeLessThan(5_000);
     expect(result.timedOut).toBe(true);
-    const childPid = Number((await readFile(pidFile, "utf8")).trim());
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(alive(childPid)).toBe(false);
+    await child.opened;
+    await child.closed;
   });
 
   it("returns when the command exits even if a child keeps its output open", async () => {

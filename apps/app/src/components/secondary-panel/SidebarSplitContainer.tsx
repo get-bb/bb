@@ -375,7 +375,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(
@@ -581,23 +583,26 @@ export function SidebarSplitContainer({
     if (group === null) return null;
     return (
       <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
-        {renderPane({
-          group,
-          isFocused: true,
-          isLeftEdge: true,
-          isMaximized: isFullScreen,
-          isTopRow: true,
-          onBeginTabDrag: (tabId, event) =>
-            beginTabDrag(firstPane.paneId, tabId, event),
-          onReorderTab: (request) => reorderTab(firstPane.paneId, request),
-          onFocusPane: () => focusPane(firstPane.paneId),
-          onRemoveSplit: undefined,
-          onMoveActiveTabToSide: moveActiveTabHandler(firstPane.paneId),
-          onSelectTab: (tabId) => selectTab(firstPane.paneId, tabId),
-          onToggleMaximize: onToggleFullScreen,
-          paneId: firstPane.paneId,
-          showOuterControls: true,
-        })}
+        <SidebarSplitSinglePane
+          renderPane={renderPane}
+          args={{
+            group,
+            isFocused: true,
+            isLeftEdge: true,
+            isMaximized: isFullScreen,
+            isTopRow: true,
+            onBeginTabDrag: (tabId, event) =>
+              beginTabDrag(firstPane.paneId, tabId, event),
+            onReorderTab: (request) => reorderTab(firstPane.paneId, request),
+            onFocusPane: () => focusPane(firstPane.paneId),
+            onRemoveSplit: undefined,
+            onMoveActiveTabToSide: moveActiveTabHandler(firstPane.paneId),
+            onSelectTab: (tabId) => selectTab(firstPane.paneId, tabId),
+            onToggleMaximize: onToggleFullScreen,
+            paneId: firstPane.paneId,
+            showOuterControls: true,
+          }}
+        />
       </div>
     );
   }
@@ -740,6 +745,18 @@ interface SidebarSplitLeafProps {
   rect: { h: number; w: number; x: number; y: number };
   renderPane: (args: SidebarSplitPaneRenderArgs) => ReactNode;
   state: SidebarSplitState;
+}
+
+interface SidebarSplitSinglePaneProps {
+  args: SidebarSplitPaneRenderArgs;
+  renderPane: (args: SidebarSplitPaneRenderArgs) => ReactNode;
+}
+
+function SidebarSplitSinglePane({
+  args,
+  renderPane,
+}: SidebarSplitSinglePaneProps) {
+  return renderPane(args);
 }
 
 function SidebarSplitLeaf(props: SidebarSplitLeafProps) {

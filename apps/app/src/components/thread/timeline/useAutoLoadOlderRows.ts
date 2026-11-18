@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 
@@ -41,6 +42,20 @@ function isSentinelWithinPrefetchRange({
   );
 }
 
+async function runOlderRowsLoad(
+  onLoadOlderRows: () => Promise<void> | void,
+  loadInFlightRef: RefObject<boolean>,
+  setAutoLoadFailed: (failed: boolean) => void,
+): Promise<void> {
+  try {
+    await onLoadOlderRows();
+  } catch {
+    setAutoLoadFailed(true);
+  } finally {
+    loadInFlightRef.current = false;
+  }
+}
+
 export function useAutoLoadOlderRows({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
@@ -66,15 +81,7 @@ export function useAutoLoadOlderRows({
       return;
     }
     loadInFlightRef.current = true;
-    void (async () => {
-      try {
-        await onLoadOlderRows();
-      } catch {
-        setAutoLoadFailed(true);
-      } finally {
-        loadInFlightRef.current = false;
-      }
-    })();
+    void runOlderRowsLoad(onLoadOlderRows, loadInFlightRef, setAutoLoadFailed);
   }, [onLoadOlderRows]);
 
   const loadOlderRows = useCallback(() => {
@@ -117,21 +124,29 @@ export function useAutoLoadOlderRows({
   const positionKeeper = bottomAnchor?.positionKeeper ?? null;
   useEffect(() => {
     if (positionKeeper === null) return;
-    let timeout: number | null = null;
+    const scheduled: { timeout: number | null } = { timeout: null };
     const unsubscribe = positionKeeper.subscribePosition(() => {
-      timeout ??= window.setTimeout(() => {
-        timeout = null;
+      if (scheduled.timeout !== null) return;
+      scheduled.timeout = window.setTimeout(() => {
+        scheduled.timeout = null;
         loadIfSentinelInRange();
       }, 0);
     });
     return () => {
       unsubscribe();
-      if (timeout !== null) window.clearTimeout(timeout);
+      if (scheduled.timeout !== null) window.clearTimeout(scheduled.timeout);
     };
   }, [loadIfSentinelInRange, positionKeeper]);
 
   useEffect(() => {
-    loadIfSentinelInRange();
+    let timeout: number | null = null;
+    const frame = window.requestAnimationFrame(() => {
+      timeout = window.setTimeout(loadIfSentinelInRange, 0);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
   }, [
     isAutoLoadEnabled,
     isLoadingOlderTimelineRows,

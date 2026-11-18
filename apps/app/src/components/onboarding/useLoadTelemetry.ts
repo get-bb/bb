@@ -17,6 +17,15 @@ interface StepLoadRecord {
 
 export type StepLoadRecords = Map<OnboardingStepId, StepLoadRecord>;
 
+function claimLoadOutcome(
+  record: StepLoadRecord,
+  outcome: "failed" | "succeeded",
+): boolean {
+  if (record[outcome]) return false;
+  record[outcome] = true;
+  return true;
+}
+
 export function useLoadTelemetry({
   entry,
   step,
@@ -49,8 +58,8 @@ export function useLoadTelemetry({
         ? "timed_out"
         : null;
   useEffect(() => {
-    if (loaded || failureReason === null || record.failed) return;
-    record.failed = true;
+    if (loaded || failureReason === null || !claimLoadOutcome(record, "failed"))
+      return;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -63,8 +72,7 @@ export function useLoadTelemetry({
     });
   }, [entry, failureReason, loaded, record, step]);
   useEffect(() => {
-    if (!loaded || record.succeeded) return;
-    record.succeeded = true;
+    if (!loaded || !claimLoadOutcome(record, "succeeded")) return;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {

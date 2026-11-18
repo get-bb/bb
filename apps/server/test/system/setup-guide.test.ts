@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSetupGuideExperiment } from "../../src/services/system/setup-guide-experiment.js";
+import { systemSetupGuideResponseSchema } from "@bb/server-contract";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
-import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function postEvent(harness: TestAppHarness, body: unknown) {
@@ -12,82 +11,38 @@ function postEvent(harness: TestAppHarness, body: unknown) {
   });
 }
 
-async function useFlagVariant(harness: TestAppHarness) {
+function captureTelemetry(harness: TestAppHarness) {
   const capture = vi.fn<TelemetryService["capture"]>();
-  const telemetry: TelemetryService = {
+  harness.deps.telemetry = {
     ...harness.deps.telemetry,
     capture,
     isEnabled: () => true,
-    featureFlagIdentity: () => ({ apiKey: "phc_test", distinctId: "install" }),
   };
-  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-    new Response(
-      JSON.stringify({
-        flags: {
-          "setup-guide-redesign": {
-            key: "setup-guide-redesign",
-            enabled: true,
-            variant: "new",
-            metadata: { id: 1, version: 1 },
-          },
-        },
-        errorsWhileComputingFlags: false,
-      }),
-      { status: 200 },
-    ),
-  );
-  harness.deps.telemetry = telemetry;
-  harness.deps.setupGuideExperiment = await createSetupGuideExperiment({
-    dataDir: harness.config.dataDir,
-    fetch,
-    flagTimeoutMs: 1_000,
-    logger: harness.deps.logger,
-    override: null,
-    telemetry,
-  });
-  return { capture };
+  return capture;
 }
 
 describe("setup guide route", () => {
-  it("serves the guide variant without exposing its source", async () => {
+  it("tells older apps to show the setup guide every install now gets", async () => {
     await withTestHarness(async (harness) => {
-      await useFlagVariant(harness);
-
       const response = await harness.app.request("/api/v1/system/setup-guide");
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({ variant: "new" });
+      expect(
+        systemSetupGuideResponseSchema.parse(await response.json()),
+      ).toEqual({ variant: "new" });
     });
   });
+});
 
-  it("records exposure with the flag call and tags setup-guide events", async () => {
+describe("setup guide telemetry", () => {
+  it("sends setup guide events as reported, with no experiment properties", async () => {
     await withTestHarness(async (harness) => {
-      const { capture } = await useFlagVariant(harness);
+      const capture = captureTelemetry(harness);
 
       const exposure = await postEvent(harness, {
         name: "onboarding_exposed",
         properties: { entry: "first_run" },
       });
-      expect(exposure.status).toBe(200);
-      expect(capture.mock.calls.map(([event]) => event)).toEqual([
-        {
-          name: "$feature_flag_called",
-          properties: {
-            $feature_flag: "setup-guide-redesign",
-            $feature_flag_response: "new",
-          },
-        },
-        {
-          name: "onboarding_exposed",
-          properties: {
-            entry: "first_run",
-            setup_guide_variant: "new",
-            setup_guide_source: "flag",
-          },
-        },
-      ]);
-
-      capture.mockClear();
       await postEvent(harness, {
         name: "recommendation",
         properties: {
@@ -99,11 +54,10 @@ describe("setup guide route", () => {
           entry: "first_run",
         },
       });
-      await postEvent(harness, {
-        name: "new_thread_submit",
-        properties: { outcome: "accepted" },
-      });
+
+      expect(exposure.status).toBe(200);
       expect(capture.mock.calls.map(([event]) => event)).toEqual([
+        { name: "onboarding_exposed", properties: { entry: "first_run" } },
         {
           name: "recommendation",
           properties: {
@@ -113,10 +67,8 @@ describe("setup guide route", () => {
             action: "shown",
             surface: "onboarding",
             entry: "first_run",
-            setup_guide_variant: "new",
           },
         },
-        { name: "new_thread_submit", properties: { outcome: "accepted" } },
       ]);
     });
   });

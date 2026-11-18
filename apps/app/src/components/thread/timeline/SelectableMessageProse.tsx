@@ -1,6 +1,6 @@
 import { isIOSWebKit } from "@/lib/ios-webkit";
 import { selectionClipboard } from "@/lib/markdown-clipboard";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 
 export interface SelectionAnchorPoint {
   x: number;
@@ -687,7 +687,9 @@ export function SelectableMessageProse({
 }: SelectableMessageProseProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  useLayoutEffect(() => {
+    onSelectRef.current = onSelect;
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;

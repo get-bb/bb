@@ -98,6 +98,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
@@ -1316,10 +1317,26 @@ export function QueuedMessagesList({
     number | null
   >(null);
   const inlineEditorActive = inlineEditor !== undefined;
+  if (
+    !inlineEditorActive &&
+    (inlineEditorMaxHeight !== null || inlineEditorDesiredHeight !== null)
+  ) {
+    setInlineEditorMaxHeight(null);
+    setInlineEditorDesiredHeight(null);
+  }
+  const [syncedInlineEditor, setSyncedInlineEditor] =
+    useState<typeof inlineEditor>(undefined);
+  if (syncedInlineEditor !== inlineEditor) {
+    setSyncedInlineEditor(inlineEditor);
+    if (inlineEditor) {
+      setWorkspaceOpen(true);
+    } else if (syncedInlineEditor !== undefined) {
+      setWorkspaceOpen(false);
+    }
+  }
   const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const wasInlineEditingRef = useRef(false);
   useEffect(() => {
     if (expandedMobileActionsId === null) return;
 
@@ -1381,11 +1398,6 @@ export function QueuedMessagesList({
   }, [scrollRef]);
 
   const measureInlineEditorMaxHeight = useCallback(() => {
-    if (!inlineEditorActive) {
-      setInlineEditorMaxHeight(null);
-      setInlineEditorDesiredHeight(null);
-      return;
-    }
     const viewport = getScrollElement?.();
     const surface = surfaceRef.current;
     const composerShell = surface?.closest<HTMLElement>("[data-app-composer]");
@@ -1426,16 +1438,11 @@ export function QueuedMessagesList({
       currentHeight === desiredHeight ? currentHeight : desiredHeight,
     );
     scrollInlineEditorNeighborhoodIntoView();
-  }, [
-    getScrollElement,
-    inlineEditorActive,
-    scrollInlineEditorNeighborhoodIntoView,
-    scrollRef,
-  ]);
+  }, [getScrollElement, scrollInlineEditorNeighborhoodIntoView, scrollRef]);
 
   useLayoutEffect(() => {
-    measureInlineEditorMaxHeight();
     if (!inlineEditorActive) return;
+    measureInlineEditorMaxHeight();
 
     const viewport = getScrollElement?.();
     const surface = surfaceRef.current;
@@ -1444,23 +1451,24 @@ export function QueuedMessagesList({
     const animationFrame = window.requestAnimationFrame(
       measureInlineEditorMaxHeight,
     );
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(measureInlineEditorMaxHeight);
-    if (viewport) resizeObserver?.observe(viewport);
-    if (surface) resizeObserver?.observe(surface);
-    if (listRef.current) resizeObserver?.observe(listRef.current);
     const editorElement = listRef.current?.querySelector<HTMLElement>(
       "[data-queued-message-inline-editor]",
     );
-    if (editorElement) resizeObserver?.observe(editorElement);
-    if (composerShell) resizeObserver?.observe(composerShell);
-    if (container) resizeObserver?.observe(container);
+    const unobserve = observeSharedResize(
+      [
+        viewport,
+        surface,
+        listRef.current,
+        editorElement,
+        composerShell,
+        container,
+      ].filter((target) => target !== null && target !== undefined),
+      { read: () => undefined, write: measureInlineEditorMaxHeight },
+    );
     window.addEventListener("resize", measureInlineEditorMaxHeight);
     return () => {
       window.cancelAnimationFrame(animationFrame);
-      resizeObserver?.disconnect();
+      unobserve();
       window.removeEventListener("resize", measureInlineEditorMaxHeight);
     };
   }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
@@ -1556,15 +1564,6 @@ export function QueuedMessagesList({
     [],
   );
 
-  useEffect(() => {
-    if (inlineEditor) {
-      setWorkspaceOpen(true);
-    } else if (wasInlineEditingRef.current) {
-      setWorkspaceOpen(false);
-    }
-    wasInlineEditingRef.current = inlineEditor !== undefined;
-  }, [inlineEditor]);
-
   const openWorkspace = useCallback(() => {
     setWorkspaceOpen(true);
   }, []);
@@ -1578,10 +1577,11 @@ export function QueuedMessagesList({
     onExpandedChange(true);
   }, [onExpandedChange]);
   const isExpanded = mode !== "collapsed";
-  const focus = useDisclosureFocusHandoff(
-    isExpanded,
-    isExpanded ? collapseDrawer : showDrawer,
-  );
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(
+      isExpanded,
+      isExpanded ? collapseDrawer : showDrawer,
+    );
   const handleEdit = useCallback(
     (request: QueuedMessageEditRequest) => {
       setExpandedMobileActionsId(null);
@@ -1726,12 +1726,12 @@ export function QueuedMessagesList({
     >
       <header data-queued-messages-mode={mode} className="shrink-0">
         <button
-          ref={focus.triggerRef}
+          ref={triggerRef}
           type="button"
           aria-label="Toggle queued messages"
           aria-expanded={isExpanded}
           aria-controls={listId}
-          onClick={focus.onTriggerClick}
+          onClick={onTriggerClick}
           className={cn(
             PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
             "hover:bg-state-hover focus-visible:bg-state-hover active:bg-state-hover",
@@ -1807,14 +1807,14 @@ export function QueuedMessagesList({
       {isExpanded ? (
         <div className="shrink-0">
           <PromptStackCollapseRow
-            buttonRef={focus.collapseRef}
+            buttonRef={collapseRef}
             className={cn(
               "rounded-none",
               attachedToComposer && !inlineEditor && "-mb-3 min-h-7.5 pb-3",
             )}
             controlsId={listId}
             label="Collapse queued messages"
-            onCollapse={focus.onCollapseClick}
+            onCollapse={onCollapseClick}
           />
         </div>
       ) : null}

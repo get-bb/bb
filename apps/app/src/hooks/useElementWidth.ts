@@ -1,16 +1,14 @@
 import { useCallback, useState } from "react";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 
 export function useElementWidth() {
   const [width, setWidth] = useState(0);
   const ref = useCallback((element: HTMLDivElement | null) => {
     if (element === null) return;
-    setWidth(element.getBoundingClientRect().width);
+    const measure = () => element.getBoundingClientRect().width;
+    setWidth(measure());
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      setWidth(element.getBoundingClientRect().width);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
+    return observeSharedResize(element, { read: measure, write: setWidth });
   }, []);
   return { ref, width };
 }

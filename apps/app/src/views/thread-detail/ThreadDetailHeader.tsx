@@ -16,6 +16,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
@@ -151,12 +152,9 @@ export function ThreadDetailHeader({
   const isWindowPanelOpen =
     useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
   const isSplitPaneHeader = beginPaneDrag !== undefined;
-  const [measuredPaneWidth, setMeasuredPaneWidth] = useState(0);
+  const [isNarrowSplitPane, setIsNarrowSplitPane] = useState(false);
   const usesResponsiveActionOverflow =
-    isCompactViewport ||
-    (isSplitPaneHeader &&
-      measuredPaneWidth > 0 &&
-      measuredPaneWidth < NARROW_SPLIT_HEADER_MAX_WIDTH);
+    isCompactViewport || (isSplitPaneHeader && isNarrowSplitPane);
   useLayoutEffect(() => {
     if (!isSplitPaneHeader) {
       return;
@@ -165,18 +163,14 @@ export function ThreadDetailHeader({
     const header = headerRef.current;
     const pane = header.closest<HTMLElement>("[data-split-pane-id]");
     const measuredElement = pane ?? header;
-    const measure = () => {
-      const width = measuredElement.getBoundingClientRect().width;
+    const read = () => measuredElement.getBoundingClientRect().width;
+    const write = (width: number) => {
       if (width > 0) {
-        setMeasuredPaneWidth(width);
+        setIsNarrowSplitPane(width < NARROW_SPLIT_HEADER_MAX_WIDTH);
       }
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(measuredElement);
-    return () => {
-      observer.disconnect();
-    };
+    write(read());
+    return observeSharedResize(measuredElement, { read, write });
   }, [isSplitPaneHeader]);
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (

@@ -6,6 +6,7 @@ import {
   type GitTimeoutOptions,
   runGit,
   type RunGitOptions,
+  resolveBranchRef,
   trimOutput,
   WorkspaceError,
 } from "bb-environment-provider-host/workspace-git";
@@ -298,25 +299,18 @@ export async function resolveMergeBaseBranch(
   ref: string,
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
-  const candidates =
-    ref.startsWith("refs/") || ref.startsWith("origin/")
-      ? [ref]
-      : [ref, `refs/remotes/origin/${ref}`];
-  for (const candidate of candidates) {
-    const result = await runGit(
-      ["rev-parse", "--verify", "--end-of-options", `${candidate}^{commit}`],
-      {
-        cwd,
-        ...options,
-        priority: options.priority ?? gitPriority(),
-        allowFailure: true,
-      },
-    );
-    if (result.exitCode === 0 && trimOutput(result.stdout)) {
-      return trimOutput(result.stdout);
-    }
-  }
-  return undefined;
+  const gitOptions = {
+    ...options,
+    priority: options.priority ?? gitPriority(),
+  };
+  const resolved = await resolveBranchRef(cwd, ref, gitOptions);
+  const result = await runGit(
+    ["rev-parse", "--verify", "--end-of-options", `${resolved.ref}^{commit}`],
+    { cwd, ...gitOptions, allowFailure: true },
+  );
+  return result.exitCode === 0
+    ? trimOutput(result.stdout) || undefined
+    : undefined;
 }
 
 export async function readMergeBaseRef(

@@ -67,6 +67,7 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    whenScreenPainted: () => Promise.resolve(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
     ...overrides,
@@ -190,6 +191,41 @@ describe("reconcilePluginFrontends load scheduling", () => {
       "register big",
       "close batch",
     ]);
+  });
+
+  it("holds the other plugins' downloads until the screen paints, so they never compete with it", async () => {
+    const imports = makeDeferredImports();
+    const prefetchModule = vi.fn();
+    let paint = () => {};
+    const screenPainted = new Promise<void>((resolve) => {
+      paint = resolve;
+    });
+    const done = reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps(
+        [candidate("thread-list", 900), candidate("a", 10), candidate("b", 20)],
+        {
+          importModule: imports.importModule,
+          priorityPluginIds: () => ["thread-list"],
+          prefetchModule,
+          whenScreenPainted: () => screenPainted,
+        },
+      ),
+    );
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(imports.started).toEqual([
+      "/api/v1/plugins/thread-list/assets/app.js?h=h",
+    ]);
+
+    await imports.resolveNext();
+    expect(imports.started).toHaveLength(1);
+    expect(prefetchModule).not.toHaveBeenCalled();
+
+    paint();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(imports.started).toHaveLength(3);
+    while (imports.pending() > 0) await imports.resolveNext();
+    await done;
   });
 
   it("downloads the next bundles ahead of the import lanes once priority plugins load", async () => {

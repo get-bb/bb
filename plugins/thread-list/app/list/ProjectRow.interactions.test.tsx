@@ -71,6 +71,7 @@ function makeSectionDnd(
 ): SectionThreadDndState {
   return {
     activeItemId: null,
+    isDragging: false,
     draggedThreadIds: null,
     activeThread: makeThread({
       id: "thr_dragged",

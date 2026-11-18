@@ -114,30 +114,51 @@ export function SidebarNavigationIcon({
   );
 }
 
+function stabilizeItems(
+  previous: readonly ExperimentalSidebarNavigationItem[],
+  items: readonly ExperimentalSidebarNavigationItem[],
+): readonly ExperimentalSidebarNavigationItem[] {
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  const list = items.map((item) => {
+    const prior = previousById.get(item.id);
+    return prior && isSameSidebarNavigationItem(prior, item) ? prior : item;
+  });
+  const unchanged =
+    list.length === previous.length &&
+    list.every((item, index) => item === previous[index]);
+  return unchanged ? previous : list;
+}
+
 function useStableItems(
   items: readonly ExperimentalSidebarNavigationItem[],
 ): readonly ExperimentalSidebarNavigationItem[] {
-  const previousRef = useRef<{
-    byId: Map<string, ExperimentalSidebarNavigationItem>;
-    list: readonly ExperimentalSidebarNavigationItem[];
-  }>({ byId: new Map(), list: [] });
-  return useMemo(() => {
-    const previous = previousRef.current;
-    const byId = new Map<string, ExperimentalSidebarNavigationItem>();
-    const list = items.map((item) => {
-      const prior = previous.byId.get(item.id);
-      const stable =
-        prior && isSameSidebarNavigationItem(prior, item) ? prior : item;
-      byId.set(item.id, stable);
-      return stable;
+  const [stable, setStable] = useState(() => ({ source: items, list: items }));
+  if (stable.source !== items) {
+    const next = { source: items, list: stabilizeItems(stable.list, items) };
+    setStable(next);
+    return next.list;
+  }
+  return stable.list;
+}
+
+async function disableNavigationPlugin({
+  disable,
+  label,
+}: {
+  disable: () => Promise<unknown>;
+  label: string;
+}): Promise<void> {
+  try {
+    await disable();
+    appToast.success(`${label} disabled`);
+  } catch (error) {
+    appToast.error(`Failed to disable ${label}`, {
+      description: error instanceof Error ? error.message : String(error),
     });
-    const unchanged =
-      list.length === previous.list.length &&
-      list.every((item, index) => item === previous.list[index]);
-    const next = unchanged ? previous.list : list;
-    previousRef.current = { byId, list: next };
-    return next;
-  }, [items]);
+    throw error;
+  } finally {
+    await invalidatePluginList({ queryClient: appQueryClient });
+  }
 }
 
 function isSettingsPathname(pathname: string): boolean {
@@ -383,21 +404,11 @@ export function SidebarNavigationModelProvider({
         const pluginId = found?.row.ownerPluginId;
         if (!found || !pluginId) return;
         const { current, item } = found;
-        try {
-          await current.setPluginEnabled(
-            pluginId,
-            false,
-            current.host.onNavigate,
-          );
-          appToast.success(`${item.label} disabled`);
-        } catch (error) {
-          appToast.error(`Failed to disable ${item.label}`, {
-            description: error instanceof Error ? error.message : String(error),
-          });
-          throw error;
-        } finally {
-          await invalidatePluginList({ queryClient: appQueryClient });
-        }
+        await disableNavigationPlugin({
+          disable: () =>
+            current.setPluginEnabled(pluginId, false, current.host.onNavigate),
+          label: item.label,
+        });
       },
     };
   }, [store]);

@@ -1,0 +1,66 @@
+import type { PendingInteraction } from "@bb/domain";
+import { describe, expect, it } from "vitest";
+import { buildChildThreadBlockerSummary } from "../../src/services/interactions/pending-interaction-parent-notice.js";
+
+function interaction(
+  payload: PendingInteraction["payload"],
+  origin?: PendingInteraction["origin"],
+): PendingInteraction {
+  const base = {
+    id: "pint_1",
+    threadId: "thr_child",
+    status: "pending" as const,
+    statusReason: null,
+    createdAt: 1,
+    resolvedAt: null,
+  };
+  switch (payload.kind) {
+    case "plugin":
+      if (origin === undefined || origin.kind !== "plugin") {
+        throw new Error("a plugin payload takes a plugin origin");
+      }
+      return { ...base, turnId: null, origin, payload, resolution: null };
+    case "approval":
+    case "user_question":
+    default: {
+      const provider = {
+        ...base,
+        turnId: "turn_1",
+        providerId: "acp-cursor",
+        providerThreadId: "pt_1",
+        providerRequestId: "req_1",
+        resolution: null,
+      };
+      return payload.kind === "approval"
+        ? { ...provider, payload }
+        : payload.kind === "user_question"
+          ? { ...provider, payload }
+          : { ...provider, payload };
+    }
+  }
+}
+
+describe("child-thread blocker summary", () => {
+  it("names a provider's plugin-defined request by its plugin, with the title as the detail", () => {
+    expect(
+      buildChildThreadBlockerSummary(
+        interaction({
+          kind: "secrets/secret-request",
+          title: "Add a token",
+          data: { fields: ["TOKEN"] },
+        }),
+      ),
+    ).toBe("Blocked on secrets request:\nAdd a token");
+  });
+
+  it("reports a plugin's own card as pending, with its title and interaction id", () => {
+    expect(
+      buildChildThreadBlockerSummary(
+        interaction(
+          { kind: "plugin", title: "Add secrets", data: { fields: ["KEY"] } },
+          { kind: "plugin", pluginId: "secrets", rendererId: "secret-request" },
+        ),
+      ),
+    ).toBe("Pending plugin request: Add secrets\nInteraction: pint_1");
+  });
+});

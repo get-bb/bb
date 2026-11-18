@@ -1,6 +1,6 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 
 export function PluginThreadHeaderActions({
   threadId,
@@ -9,7 +9,7 @@ export function PluginThreadHeaderActions({
   threadId: string;
   projectId: string;
 }) {
-  const { threadHeaderActions } = usePluginSlots();
+  const threadHeaderActions = usePluginSlotKind("threadHeaderActions");
   const isCompactViewport = useIsCompactViewport();
 
   if (threadHeaderActions.length === 0) return null;

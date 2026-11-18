@@ -37,7 +37,6 @@ import {
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
-import { SidebarThreadEntriesTestProvider } from "@/test/sidebarThreadEntriesTestProvider";
 
 const PROJECT_COUNT = 40;
 const SECTION_COUNT = 8;
@@ -205,15 +204,13 @@ export function SidebarThreadListHarness({
     <TooltipProvider>
       <JotaiProvider store={createStore()}>
         <QueryClientProvider client={queryClient}>
-          <SidebarThreadEntriesTestProvider>
-            <MemoryRouter>
-              <SidebarProvider>
-                <Sidebar>
-                  <SidebarContent>{children}</SidebarContent>
-                </Sidebar>
-              </SidebarProvider>
-            </MemoryRouter>
-          </SidebarThreadEntriesTestProvider>
+          <MemoryRouter>
+            <SidebarProvider>
+              <Sidebar>
+                <SidebarContent>{children}</SidebarContent>
+              </Sidebar>
+            </SidebarProvider>
+          </MemoryRouter>
         </QueryClientProvider>
       </JotaiProvider>
     </TooltipProvider>

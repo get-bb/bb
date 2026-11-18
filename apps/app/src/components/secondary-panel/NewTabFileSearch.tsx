@@ -540,6 +540,13 @@ export function NewTabFileSearch({
   const navigableEntriesKey = navigableEntries
     .map(getFileSearchEntryId)
     .join("\n");
+  const [activeIndexEntriesKey, setActiveIndexEntriesKey] = useState<
+    string | null
+  >(null);
+  if (activeIndexEntriesKey !== navigableEntriesKey) {
+    setActiveIndexEntriesKey(navigableEntriesKey);
+    setActiveIndex(navigableEntriesKey.length > 0 ? 0 : -1);
+  }
   const activeEntry = useMemo(
     () =>
       activeIndex >= 0 && activeIndex < navigableEntries.length
@@ -577,10 +584,6 @@ export function NewTabFileSearch({
     });
     onAutoFocusHandled();
   }, [autoFocus, isPointerCoarse, onAutoFocusHandled]);
-
-  useEffect(() => {
-    setActiveIndex(navigableEntriesKey.length > 0 ? 0 : -1);
-  }, [navigableEntriesKey]);
 
   const handleFileSelect = useCallback(
     (suggestion: FilePathSearchSuggestion) => {

@@ -40,7 +40,7 @@ import {
   getLatestStoredConversationOutlineSequence,
   getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
-  getLatestThreadInterruptedReason,
+  getLatestThreadStopAim,
   getLatestThreadSequence,
   getLatestThreadSystemErrorEventRow,
   getLatestTokenUsageRow,
@@ -53,9 +53,7 @@ import {
   getUnfinishedCommandItemData,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
-  hasStoredTerminalClientTurnRequestEvent,
   hasStoredTurnCompleted,
-  hasStoredTurnRequestEventSince,
   hasStoredTurnStarted,
   isStoredTurnContextCompactionOnly,
   isStoredTurnMainRunIdle,
@@ -75,6 +73,9 @@ import {
   listOpenBackgroundTaskItemRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOwnerStoppedBackgroundTaskRowsForHost,
+  listStoredStandaloneThreadTimelineRows,
+  listStoredThreadInteractionLifecycleRows,
+  listStoredThreadNoticeAndInteractionRows,
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -97,9 +98,8 @@ import {
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listThreadEventSuffixBackgroundSettlementRows,
-  listThreadIdsStoppedSinceLastTurnStart,
+  isTurnAimedAtByEarlierStop,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
-  listThreadTurnInterruptionEventStates,
   listTimelineInterruptionRows,
   listTimelineOrderingContext,
   listTimelineRootWindowTurnIds,
@@ -915,11 +915,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getLatestThreadInterruptedReason`,
-    run: (db, fixture) =>
-      getLatestThreadInterruptedReason(db, { threadId: fixture.threadId }),
-  },
-  {
     name: `${EVENTS}#listStoredTurnStartedRowsByTurnIdsUpToSequence`,
     run: (db, fixture) =>
       listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
@@ -954,6 +949,39 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
+    name: `${EVENTS}#listStoredStandaloneThreadTimelineRows`,
+    run: (db, fixture) =>
+      listStoredStandaloneThreadTimelineRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredThreadInteractionLifecycleRows`,
+    run: (db, fixture) =>
+      listStoredThreadInteractionLifecycleRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: 0,
+        beforeSequence: fixture.latestSequence + 1,
+        maxInlineOutputChars: 32_000,
+        interactionIds: ["pint_query_cost_1", "pint_query_cost_2"],
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredThreadNoticeAndInteractionRows`,
+    run: (db, fixture) =>
+      listStoredThreadNoticeAndInteractionRows(db, {
+        threadId: fixture.threadId,
+        sequenceStart: Math.max(0, fixture.latestSequence - 2_000),
+        beforeSequence: fixture.latestSequence + 1,
+        excludeDiagnosticEvents: true,
+        maxInlineOutputChars: 32_000,
+      }),
+  },
+  {
     name: `${EVENTS}#listLatestOpenBackgroundTaskStateRowsForThread`,
     run: (db, fixture) =>
       listLatestOpenBackgroundTaskStateRowsForThread(db, {
@@ -985,14 +1013,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       hasStoredTurnCompleted(db, {
         threadId: fixture.threadId,
         turnId: lastTurn(fixture).turnId,
-      }),
-  },
-  {
-    name: `${EVENTS}#hasStoredTerminalClientTurnRequestEvent`,
-    run: (db, fixture) =>
-      hasStoredTerminalClientTurnRequestEvent(db, {
-        requestId: fixture.pendingRequestId,
-        threadId: fixture.threadId,
       }),
   },
   {
@@ -1261,18 +1281,17 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#listThreadTurnInterruptionEventStates`,
+    name: `${EVENTS}#isTurnAimedAtByEarlierStop`,
     run: (db, fixture) =>
-      listThreadTurnInterruptionEventStates(db, {
-        threadIds: [fixture.threadId],
+      isTurnAimedAtByEarlierStop(db, {
+        threadId: fixture.threadId,
+        turnId: fixture.liveTurn.turnId,
       }),
   },
   {
-    name: `${EVENTS}#listThreadIdsStoppedSinceLastTurnStart`,
+    name: `${EVENTS}#getLatestThreadStopAim`,
     run: (db, fixture) =>
-      listThreadIdsStoppedSinceLastTurnStart(db, {
-        threadIds: [fixture.threadId],
-      }),
+      getLatestThreadStopAim(db, { threadId: fixture.threadId }),
   },
   {
     name: `${EVENTS}#listThreadIdsWithLatestHostDaemonRestartInterruption`,
@@ -1284,14 +1303,6 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#getLastStoredTurnRequestEvent`,
     run: (db, fixture) => getLastStoredTurnRequestEvent(db, fixture.threadId),
-  },
-  {
-    name: `${EVENTS}#hasStoredTurnRequestEventSince`,
-    run: (db, fixture) =>
-      hasStoredTurnRequestEventSince(db, {
-        since: Date.now(),
-        threadId: fixture.threadId,
-      }),
   },
   {
     name: `${EVENTS}#listStoredTaskTurnRequestEvents`,

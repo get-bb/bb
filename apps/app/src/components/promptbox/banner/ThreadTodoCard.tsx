@@ -150,7 +150,8 @@ export function ThreadTodoCard({
   isExpanded,
   onToggle,
 }: ThreadTodoCardProps) {
-  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
+  const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
+    useDisclosureFocusHandoff(isExpanded, onToggle);
   const items = pendingTodos?.items ?? [];
   if (items.length === 0) {
     return null;
@@ -169,8 +170,8 @@ export function ThreadTodoCard({
           aria-expanded={isExpanded}
           aria-controls={BODY_ID}
           aria-label={`To-do list: ${summary.aria}`}
-          ref={focus.triggerRef}
-          onClick={focus.onTriggerClick}
+          ref={triggerRef}
+          onClick={onTriggerClick}
           className={cn(
             TODO_HEADER_BUTTON_CLASS,
             PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -198,8 +199,8 @@ export function ThreadTodoCard({
         isExpanded={isExpanded}
         collapsedBorder="none"
         collapseLabel="Collapse to-do list"
-        collapseRef={focus.collapseRef}
-        onCollapse={focus.onCollapseClick}
+        collapseRef={collapseRef}
+        onCollapse={onCollapseClick}
       >
         <TodoBody items={items} />
       </AnimatedDisclosureBody>

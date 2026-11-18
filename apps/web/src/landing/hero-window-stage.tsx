@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { flushSync } from "react-dom";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import linearLogo from "../assets/company-logos/linear.svg";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
@@ -2222,9 +2222,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
       )}
       {demo || leaving ? (
         <div className={demo ? "rhb-issue-demo" : "rhb-issue-demo is-leaving"}>
-          <span className="rhb-placeholder rhb-issue-ph">
-            Ask a follow-up
-          </span>
+          <span className="rhb-placeholder rhb-issue-ph">Ask a follow-up</span>
           <span className="rhb-issue-q">
             <span>#</span>
             <Typed text="csv" at={0.1} step={MOCK_TYPE_CHAR_S} />
@@ -2359,12 +2357,12 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   useLayoutEffect(() => {
     const strip = stripRef.current?.parentElement;
     if (!strip) return;
-    const ro = new ResizeObserver(() => {
-      const fit = measureStrip();
-      if (fit != null) flushSync(() => setStripFit(fit));
+    return observeSharedResize(strip, {
+      read: measureStrip,
+      write: (fit) => {
+        if (fit != null) setStripFit(fit);
+      },
     });
-    ro.observe(strip);
-    return () => ro.disconnect();
   }, [hasStrip, measureStrip]);
   const stripMore = stripItems.length > stripFit;
   const stripShown = stripMore ? stripItems.slice(0, stripFit - 1) : stripItems;

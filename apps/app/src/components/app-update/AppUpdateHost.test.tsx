@@ -12,6 +12,7 @@ import type {
   SystemAppUpdateResult,
   SystemAppUpdateStatus,
 } from "@bb/server-contract";
+import { BbHttpError } from "@bb/sdk/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appToast } from "@/components/ui/app-toast";
 import { systemAppUpdateQueryKey } from "@/hooks/queries/query-keys";
@@ -272,5 +273,40 @@ describe("AppUpdateHost", () => {
       );
     });
     expect(screen.getByRole("dialog")).toBeDefined();
+  });
+
+  it("shows the server's reason without the HTTP status when dismissing is refused", async () => {
+    const failed = result({
+      message: "Server failed to start",
+      outcome: "failed",
+    });
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      status({ lastResult: failed }),
+    );
+    vi.mocked(sdk.system.acknowledgeAppUpdate).mockRejectedValue(
+      new BbHttpError({
+        status: 409,
+        code: "app_update_rejected",
+        message: "The bb-app launcher did not respond.",
+        body: {
+          code: "app_update_rejected",
+          message: "The bb-app launcher did not respond.",
+        },
+      }),
+    );
+    renderHost();
+    await waitFor(() => expect(appToast.error).toHaveBeenCalled());
+
+    act(() => openAppUpdateResultDetails(failed));
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => {
+      expect(appToast.error).toHaveBeenCalledWith(
+        "Couldn't dismiss the update result",
+        expect.objectContaining({
+          description: "The bb-app launcher did not respond.",
+        }),
+      );
+    });
   });
 });

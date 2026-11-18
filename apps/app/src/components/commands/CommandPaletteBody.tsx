@@ -20,7 +20,7 @@ import {
   rankPaletteActions,
   type RankedPaletteAction,
 } from "@/lib/command-palette/palette-ranking";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { buildSettingsPaletteActions } from "@/lib/command-palette/palette-settings-actions";
 import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plugin-page-actions";
 import {
@@ -59,15 +59,17 @@ export function CommandPaletteBody({
   const listId = useId();
   const optionIdPrefix = useId();
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const pluginSlots = usePluginSlots();
-  const settingsSections = useSettingsNavSections(pluginSlots.fileOpeners);
+  const fileOpeners = usePluginSlotKind("fileOpeners");
+  const navPanels = usePluginSlotKind("navPanels");
+  const pluginSettingsSections = usePluginSlotKind("settingsSections");
+  const settingsSections = useSettingsNavSections(fileOpeners);
   const pluginSettingsEntries = useMemo(
     () =>
       buildPluginSettingsEntries({
         installedPlugins,
-        settingsSections: pluginSlots.settingsSections,
+        settingsSections: pluginSettingsSections,
       }),
-    [installedPlugins, pluginSlots.settingsSections],
+    [installedPlugins, pluginSettingsSections],
   );
   const settingsActions = useMemo(
     () =>
@@ -82,9 +84,9 @@ export function CommandPaletteBody({
     () =>
       buildPluginPagePaletteActions({
         navigate: (path) => void navigate(path),
-        panels: pluginSlots.navPanels,
+        panels: navPanels,
       }),
-    [navigate, pluginSlots.navPanels],
+    [navigate, navPanels],
   );
 
   const serverChoices = useServerChoices();

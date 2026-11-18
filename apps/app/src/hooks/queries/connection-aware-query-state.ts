@@ -62,10 +62,12 @@ export function getConnectionAwareQueryState({
 function useServerConnectionGracePeriodElapsed(): boolean {
   const connectionState = useServerConnectionState();
   const [elapsed, setElapsed] = useState(false);
+  if (connectionState === "connected" && elapsed) {
+    setElapsed(false);
+  }
 
   useEffect(() => {
     if (connectionState === "connected") {
-      setElapsed(false);
       return;
     }
     const timer = setTimeout(

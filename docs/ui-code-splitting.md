@@ -10,7 +10,7 @@ app-local contract, not a Plugin SDK API. App code sorts into three tiers:
 | `intent`  | Rare UI, such as customization, setup dialogs and context-menu contents | `defineSplit({ tier: "intent" })`  |
 
 The router's page components in `App.tsx` stay plain `React.lazy`: they suspend
-into the shared route boundary that marks route content painted, and a
+into the shared route boundary that marks the screen painted, and a
 per-component boundary would mark it before the page loads.
 
 ## Declare a boundary
@@ -94,14 +94,19 @@ Use it from an explicit owner for data demand or related features, such as
 warming panel tab code when the right panel opens.
 
 A preload-tier split needs no registration: defining it queues it, and
-`RouteContentPaintSignal` in `App.tsx` starts the queue with
-`startSplitPreloading()`, and marks route content painted only after critical
-loads settle. On pages with expected surface providers (including the plugin
+`ScreenPaintSignal` starts the queue with `startSplitPreloading()`, and marks
+the screen painted only after critical loads settle. Every top-level screen
+renders it: the main app routes and the first-run onboarding screen. A screen
+that renders neither, such as the auth callback, falls back to a deadline:
+`whenScreenPainted()` resolves at the signal or 3 seconds after the page
+started, whichever comes first, so work waiting on it is delayed, never
+stranded. On pages with expected surface providers (including the plugin
 that owned the open thread panel tab last session) or a plugin panel, the plugin runtime download and shared plugin-list query start alongside system
 config. Priority plugin bundles and styles preload as soon as the list resolves.
 Activation still waits for system config. Pages without expected providers or a plugin panel
-retain deferred boot after route paint and browser idle, with a 1.5-second
-fallback. Plugin activation does not wait for the toaster to mount; startup
+retain deferred boot after the screen paints and browser idle, with a 1.5-second
+fallback. Once booted, plugins the page does not need wait for the screen paint
+before downloading. Plugin activation does not wait for the toaster to mount; startup
 notifications queue until it attaches, including custom plugin toasts.
 SDK Markdown, source-code, and diff wrappers use preload-tier splits. After
 plugin registration settles, the app also queues the selected built-in source
@@ -160,6 +165,13 @@ unmounted until it returns true, rendering `unmounted` (default nothing) in the
 meantime. With `keepMounted: true`, a split stays mounted after `mountWhen`
 turns false again, so closing preserves its state. Downloading never mounts:
 preload does not render hidden UI or run its effects.
+
+Background UI mounted outside the route content, such as the toaster, passes
+`suspends: false`. The split renders `loading` until its module arrives and then
+mounts it without a Suspense boundary. Any boundary that switches between
+fallback and content makes React hold the next retry reveal anywhere in the app
+for 300 ms, so a background split that suspends and reveals while the route is
+still loading delays the route's own content by up to 300 ms.
 
 Keep the existing persistent responsive drawer's deferred realization and
 retained content. Avoid rendering a split merely to preload it.
@@ -229,6 +241,39 @@ Keep code-loading and data-loading reviews separate: releasing the split may
 reveal another loading state while the feature fetches data. Keep focus and
 close controls usable, preserve panel geometry, and check the transition to
 real content. Do not add artificial production delays for screenshots.
+
+## Test lazy boundaries
+
+In `@bb/app` tests, every dynamic `import()` in app source stays pending until
+the test settles it. `vite-test-lazy-imports.ts` wraps each call and
+`src/test/setup.ts` holds the result for the duration of each test. A module
+already loaded before the current test is held too: the setup mocks
+`defineSplit` and React's `lazy` so that a split or lazy component an earlier
+test or file loaded renders its loading state on its first render in each later
+test. A module loaded earlier in the same test renders at once. A test therefore
+never depends on how fast a chunk transforms on the runner or on a sibling test
+having loaded it first:
+
+- Testing Library `findBy*` and `waitFor` settle pending imports before they
+  poll, let imports flow while polling, and settle again before returning.
+- Before a synchronous assertion on lazy content, `await settleLazyModules()`
+  from `@/test/lazy-modules`. It resolves once every import has loaded,
+  including imports that loading starts, and React has committed.
+- `await settleLazyModules(operation)` awaits a promise whose chain loads code,
+  such as booting plugin frontends, and lets its imports load meanwhile.
+- To assert a loading state, render and assert synchronously or poll with
+  `vi.waitFor`, which does not settle. The hold replaces deferred promises in
+  `vi.mock` factories. Keep a factory gate only to make an import fail.
+- Collection-time `await Split.preload()` keeps a heavy module's first
+  transform out of every test in a suite and marks the split as prepared for
+  that file, so its tests render it at once.
+- A test of Suspense or `defineSplit` mechanics itself calls
+  `vi.unmock("react")` and `vi.unmock("@/lib/define-split")`, as
+  `define-split.test.tsx` does.
+
+A test that fails while an import or gated module is pending reports the held
+or loading specifiers in its error, for example `split:remote-path-browser
+(held)`.
 
 ## Choosing a policy
 

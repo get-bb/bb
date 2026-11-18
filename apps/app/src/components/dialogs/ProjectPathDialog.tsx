@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,7 +53,7 @@ export type ProjectPathDialogSubmitHandler = (
   hostId: string | null,
 ) => Promise<void> | void;
 
-interface ProjectPathDialogProps {
+export interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;
@@ -214,9 +214,11 @@ export function ProjectPathDialogContent({
     ? deriveProjectNameFromPath(selectedPath)
     : "";
 
-  useEffect(() => {
+  const [validatedPath, setValidatedPath] = useState(selectedPath);
+  if (validatedPath !== selectedPath) {
+    setValidatedPath(selectedPath);
     setValidationMessage(null);
-  }, [selectedPath]);
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

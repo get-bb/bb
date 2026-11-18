@@ -19,6 +19,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("ThreadTimelineSurface load-older control", () => {
@@ -87,7 +88,9 @@ describe("ThreadTimelineSurface load-older control", () => {
     expect(screen.getByRole("status")).not.toBeNull();
 
     emitLatestSentinelIntersection();
-    expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

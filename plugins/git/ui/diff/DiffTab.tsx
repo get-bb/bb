@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useResizeObserver } from "usehooks-ts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   experimental_useFixedTabTarget as useFixedTabTarget,
   experimental_useTabVisible as useTabVisible,
@@ -8,6 +7,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { useMeasuredValue } from "@bb/shared-ui/hooks/use-measured-value";
 import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import type { DiffFileEntry } from "../../contract.js";
 import { GIT_DIFF_TAB_REFERENCE } from "../diff-tab-target.js";
@@ -28,7 +28,10 @@ import {
   useGitDiffIgnoreWhitespacePreference,
   useGitDiffLineOverflowModePreference,
 } from "./git-diff-view-preferences.js";
-import { buildGitDiffIdentity } from "./gitDiffPanelHelpers.js";
+import {
+  ALL_GIT_DIFF_SELECTION,
+  buildGitDiffIdentity,
+} from "./gitDiffPanelHelpers.js";
 import { GitDiffToolbar } from "./GitDiffToolbar.js";
 import {
   GitDiffLoadingSkeleton,
@@ -36,19 +39,19 @@ import {
 } from "./GitDiffTabContent.js";
 import { DIFF_TOOLBAR_CHROME_CLASS } from "./panel-chrome.js";
 import { useGitDiffPanelState } from "./useGitDiffPanelState.js";
-import {
-  useResponsiveGitDiffPanelDisplay,
-} from "./useResponsiveGitDiffPanelDisplay.js";
+import { useResponsiveGitDiffPanelDisplay } from "./useResponsiveGitDiffPanelDisplay.js";
 
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
+
+function readBorderBoxWidth(element: HTMLElement): number {
+  return element.getBoundingClientRect().width;
+}
 
 export function useDiffTabVisible({
   environment,
 }: ExperimentalThreadTabProps): boolean {
   const status = useGitStatus(environment?.id ?? null);
-  return (
-    environment !== null && status.result?.outcome !== "not_applicable"
-  );
+  return environment !== null && status.result?.outcome !== "not_applicable";
 }
 
 const diffFiltersByEnvironment = new Map<string, DiffFileFilters>();
@@ -66,7 +69,8 @@ export function DiffTab({ environment }: ExperimentalThreadTabProps) {
 function EnvironmentDiffTabGate({ environmentId }: { environmentId: string }) {
   const status = useGitStatus(environmentId);
   const [gitDiffFilters, setGitDiffFilters] = useState(
-    () => diffFiltersByEnvironment.get(environmentId) ?? DEFAULT_DIFF_FILE_FILTERS,
+    () =>
+      diffFiltersByEnvironment.get(environmentId) ?? DEFAULT_DIFF_FILE_FILTERS,
   );
   const changeGitDiffFilters = useCallback(
     (filters: DiffFileFilters) => {
@@ -116,7 +120,11 @@ function EnvironmentDiffTab({
   onGitDiffFiltersChange: (filters: DiffFileFilters) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null!);
-  const { width } = useResizeObserver({ ref: rootRef, box: "border-box" });
+  const width = useMeasuredValue<HTMLDivElement, number | undefined>(
+    rootRef,
+    readBorderBoxWidth,
+    undefined,
+  );
   const { gitDiffDisplayMode, handleGitDiffDisplayModeChange } =
     useResponsiveGitDiffPanelDisplay(width);
   const navigate = useBbNavigate();
@@ -180,6 +188,36 @@ function EnvironmentDiffTab({
     ignoreWhitespace: gitDiffIgnoreWhitespace,
     enabled: isLive,
   });
+  const shownFiles = filesQuery.shown;
+  const isPendingPathSettled =
+    pendingScrollPath !== null &&
+    isLive &&
+    gitDiffSelectValue === ALL_GIT_DIFF_SELECTION &&
+    !filesQuery.isFetching &&
+    !filesQuery.isPlaceholder &&
+    shownFiles !== null &&
+    shownFiles.target === gitDiffTarget;
+  useEffect(() => {
+    if (!isPendingPathSettled || pendingScrollPath === null || !shownFiles) {
+      return;
+    }
+    const result = shownFiles.result;
+    if (result.outcome === "unavailable") return;
+    if (
+      result.outcome === "available" &&
+      result.files.some((file) => file.path === pendingScrollPath)
+    ) {
+      return;
+    }
+    clearPendingIntent();
+    openFilePreview(pendingScrollPath);
+  }, [
+    clearPendingIntent,
+    isPendingPathSettled,
+    openFilePreview,
+    pendingScrollPath,
+    shownFiles,
+  ]);
   const diffFilesResponse = filesQuery.shown?.result;
   const shownTarget = filesQuery.shown?.target ?? gitDiffTarget;
   const shownIgnoreWhitespace =
@@ -250,46 +288,41 @@ function EnvironmentDiffTab({
   );
 
   return (
-    <div
-      ref={rootRef}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-    >
+    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className={DIFF_TOOLBAR_CHROME_CLASS}>
-          <GitDiffToolbar
-            selectionValue={gitDiffSelectValue}
-            selectionOptions={gitDiffSelectOptions}
-            onSelectionChange={onGitDiffSelectionChange}
-            isSelectorDisabled={
-              isDiffFilesLoading || gitDiffTarget === undefined
-            }
-            stats={gitDiffStats}
-            isStatsLoading={isDiffFilesLoading || gitDiffTarget === undefined}
-            totalFilesCount={diffFiles.length}
-            isTruncated={isGitDiffTruncated}
-            fileFilter={gitDiffFileFilter}
-            filters={gitDiffFilters}
-            onFiltersChange={setGitDiffFilters}
-            extensionCounts={extensionCounts}
-            onFileFilterChange={setGitDiffFileFilter}
-            areAllFilesCollapsed={areAllCollapsed}
-            isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
-            collapseAllDisabledReason={
-              isDiffFilesLoading
-                ? null
-                : diffFiles.length === 0
-                  ? "No changes"
-                  : !hasFiles
-                    ? "No files match filter"
-                    : null
-            }
-            onToggleAllCollapsed={toggleAllCollapsed}
-            displayMode={gitDiffDisplayMode}
-            onDisplayModeChange={handleGitDiffDisplayModeChange}
-            lineOverflowMode={gitDiffLineOverflowMode}
-            onLineOverflowModeChange={setGitDiffLineOverflowMode}
-            ignoreWhitespace={gitDiffIgnoreWhitespace}
-            onIgnoreWhitespaceChange={setGitDiffIgnoreWhitespace}
-          />
+        <GitDiffToolbar
+          selectionValue={gitDiffSelectValue}
+          selectionOptions={gitDiffSelectOptions}
+          onSelectionChange={onGitDiffSelectionChange}
+          isSelectorDisabled={isDiffFilesLoading || gitDiffTarget === undefined}
+          stats={gitDiffStats}
+          isStatsLoading={isDiffFilesLoading || gitDiffTarget === undefined}
+          totalFilesCount={diffFiles.length}
+          isTruncated={isGitDiffTruncated}
+          fileFilter={gitDiffFileFilter}
+          filters={gitDiffFilters}
+          onFiltersChange={setGitDiffFilters}
+          extensionCounts={extensionCounts}
+          onFileFilterChange={setGitDiffFileFilter}
+          areAllFilesCollapsed={areAllCollapsed}
+          isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
+          collapseAllDisabledReason={
+            isDiffFilesLoading
+              ? null
+              : diffFiles.length === 0
+                ? "No changes"
+                : !hasFiles
+                  ? "No files match filter"
+                  : null
+          }
+          onToggleAllCollapsed={toggleAllCollapsed}
+          displayMode={gitDiffDisplayMode}
+          onDisplayModeChange={handleGitDiffDisplayModeChange}
+          lineOverflowMode={gitDiffLineOverflowMode}
+          onLineOverflowModeChange={setGitDiffLineOverflowMode}
+          ignoreWhitespace={gitDiffIgnoreWhitespace}
+          onIgnoreWhitespaceChange={setGitDiffIgnoreWhitespace}
+        />
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <GitDiffTabContent

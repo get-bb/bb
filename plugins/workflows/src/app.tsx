@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/activity-row-styles";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
@@ -204,6 +205,16 @@ function RunDuration({
   return <>{formatDuration(startedAt, finishedAt ?? now)}</>;
 }
 
+function readScrollOverflow(element: HTMLElement): {
+  above: boolean;
+  below: boolean;
+} {
+  return {
+    above: element.scrollTop > 1,
+    below: element.scrollTop + element.clientHeight < element.scrollHeight - 1,
+  };
+}
+
 function WorkflowDetailScroll({
   currentPhaseIndex,
   progress,
@@ -216,30 +227,31 @@ function WorkflowDetailScroll({
   const contentKey = progress.agents
     .map((agent) => `${agent.index}:${agent.state}:${agent.lastProgressAt}`)
     .join("|");
+  const applyOverflow = useCallback(
+    (nextOverflow: { above: boolean; below: boolean }) =>
+      setOverflow((currentOverflow) =>
+        currentOverflow.above === nextOverflow.above &&
+        currentOverflow.below === nextOverflow.below
+          ? currentOverflow
+          : nextOverflow,
+      ),
+    [],
+  );
   const updateOverflow = useCallback(() => {
     const element = scrollRef.current;
     if (element === null) return;
-    const nextOverflow = {
-      above: element.scrollTop > 1,
-      below:
-        element.scrollTop + element.clientHeight < element.scrollHeight - 1,
-    };
-    setOverflow((currentOverflow) =>
-      currentOverflow.above === nextOverflow.above &&
-      currentOverflow.below === nextOverflow.below
-        ? currentOverflow
-        : nextOverflow,
-    );
-  }, []);
+    applyOverflow(readScrollOverflow(element));
+  }, [applyOverflow]);
 
   useEffect(() => {
     updateOverflow();
     const element = scrollRef.current;
     if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(updateOverflow);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [contentKey, updateOverflow]);
+    return observeSharedResize(element, {
+      read: () => readScrollOverflow(element),
+      write: applyOverflow,
+    });
+  }, [contentKey, updateOverflow, applyOverflow]);
 
   return (
     <div className="relative isolate min-w-0" data-detail-scroll="base">

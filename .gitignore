@@ -22,6 +22,7 @@ out
 # production
 /build
 /apps/app/build/
+/apps/app/dist-profiling/
 /packages/bb-app/host-daemon/
 /packages/bb-app/host-package/
 /apps/desktop/release/
@@ -103,3 +104,4 @@ provider-recordings/raw/
 /plugins/*/.bundled-runtime/
 
 .ci-health/
+.test-durations/

@@ -6,6 +6,7 @@ import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachine
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -49,9 +50,11 @@ import {
   waitForSettledComposerState,
   waitUntilComposerStateSettled,
   type CommittedComposerState,
+  type CommittedComposerStateController,
 } from "@/components/promptbox/composer-selection-settle";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
+  type ComposerDraftStore,
   type PluginComposerHost,
   useComposerHostDraftNotifier,
   useComposerHostSelection,
@@ -130,7 +133,10 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   buildThreadHandoffCreateRequest,
   buildThreadHandoffFollowUpDraft,
+  stripLeadingThreadHandoffCommand,
   stripThreadHandoffPrefix,
+  THREAD_HANDOFF_COMMAND_SUGGESTION,
+  threadHandoffDraftAfterSourceRemoved,
   type ThreadHandoffCreateSeed,
 } from "@bb/client-core";
 import {
@@ -225,14 +231,13 @@ interface InlineDraftComposerOptions {
   canModifierSubmit: boolean;
   compactPromptPlaceholder: string;
   composerId: string;
-  draft: PromptDraftState;
+  draft: ComposerDraftStore;
   editFocusNonce: number;
   execution: FollowUpPromptBoxProps["execution"];
   executionReadOnly: boolean;
   focusSessionKey: string | number;
   historyResetKey: string;
   isSubmitting: boolean;
-  onChangeMessage: FollowUpComposerProps["onChangeMessage"];
   onEscape?: FollowUpComposerProps["onEscape"];
   onSelectHistoryEntry: (draft: PromptDraftState) => void;
   permission: FollowUpPromptBoxProps["permission"];
@@ -258,15 +263,12 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
       stack={null}
       composer={{
         history: {
-          currentDraft: options.draft,
           entries: [],
           onSelectEntry: options.onSelectHistoryEntry,
           resetKey: options.historyResetKey,
         },
         isFollowUpSubmitting: options.isSubmitting,
-        message: options.draft.text,
-        mentionRanges: options.draft.mentions,
-        onChangeMessage: options.onChangeMessage,
+        draft: options.draft,
         onModifierSubmit: options.submit,
         onSubmit: options.submit,
         onEscape: options.onEscape,
@@ -358,6 +360,20 @@ function writeInlineQueuedMessageDraft(
   }
 }
 
+function isInlineQueuedMessageEditSessionActive(
+  editStateRef: RefObject<InlineQueuedMessageEditState | null>,
+  session: InlineQueuedMessageEditSession,
+): boolean {
+  return isInlineQueuedMessageEditSession(editStateRef.current, session);
+}
+
+function isSentMessageEditActive(
+  sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
+  operationId: string,
+): boolean {
+  return sentMessageEditRef.current?.operationId === operationId;
+}
+
 function readSentMessageEditDraft(
   sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
   operationId: string,
@@ -378,6 +394,66 @@ function writeSentMessageEditDraft(
   }
 }
 
+async function applyThreadComposerSelection(
+  selectionState: CommittedComposerStateController<ThreadComposerSelectionState>,
+  selection: ExperimentalComposerSelection,
+): Promise<ExperimentalComposerSelection> {
+  const deadline = resolveComposerSelectionDeadline();
+  const { observer } = selectionState;
+  let state = await observer.waitUntil(() => true, deadline);
+  const settle = async (requireSettled: boolean) => {
+    state = await waitForSettledComposerState(
+      selectionState,
+      deadline,
+      requireSettled,
+    );
+  };
+  const ensureSettled = async () => {
+    if (state.isSettled) return;
+    state = await waitUntilComposerStateSettled(selectionState, deadline);
+  };
+  if (selection.providerId !== undefined) await ensureSettled();
+  if (
+    selection.providerId !== undefined &&
+    selection.providerId !== state.selectedProviderId &&
+    state.providerIds.includes(selection.providerId)
+  ) {
+    state.changeProvider(selection.providerId);
+    await settle(true);
+  }
+  const providerMatches =
+    selection.providerId === undefined ||
+    state.selectedProviderId === selection.providerId;
+  if (providerMatches && selection.model !== undefined) {
+    await ensureSettled();
+    if (state.isHandoffSelection) {
+      state.handoffSelect({
+        providerId: state.selectedProviderId,
+        model: selection.model,
+        reasoningLevel: selection.reasoningLevel ?? state.reasoningLevel,
+      });
+    } else {
+      state.changeModel(selection.model);
+    }
+    await settle(false);
+  }
+  if (providerMatches && selection.reasoningLevel !== undefined) {
+    await ensureSettled();
+    state.changeReasoning(selection.reasoningLevel);
+    await settle(false);
+  }
+  if (selection.serviceTier !== undefined && state.supportsServiceTier) {
+    state.changeServiceTier(selection.serviceTier);
+    await settle(false);
+  }
+  if (selection.permissionMode !== undefined) {
+    state.changePermissionMode(selection.permissionMode);
+    await settle(false);
+  }
+  await settle(true);
+  return readExecutionSelection(state);
+}
+
 async function runWhileFollowUpShortcutSending(
   setSending: (sending: boolean) => void,
   task: () => Promise<void>,
@@ -387,6 +463,18 @@ async function runWhileFollowUpShortcutSending(
     await task();
   } finally {
     setSending(false);
+  }
+}
+
+async function runWhileCreatingHandoffThread(
+  creatingRef: RefObject<boolean>,
+  task: () => Promise<void>,
+): Promise<void> {
+  creatingRef.current = true;
+  try {
+    await task();
+  } finally {
+    creatingRef.current = false;
   }
 }
 
@@ -508,11 +596,8 @@ export function ThreadDetailPromptArea({
   );
   const {
     promptDraft,
-    currentPromptDraft,
-    currentPromptDraftInput,
-    activeComposerDraft,
-    activeComposerDraftInput,
-    handleChangeMessage: handleComposerMessageChange,
+    hasPromptDraftInput,
+    inlineComposerDraftInput,
     updateActiveComposerAttachments,
   } = useActiveComposerDraft({
     draftScope: {
@@ -693,6 +778,7 @@ export function ThreadDetailPromptArea({
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,
+    isLoadingReasoning,
     resolveReasoningForModel,
     permissionModeOptions,
     supportsPermissionModeSelection,
@@ -764,41 +850,44 @@ export function ThreadDetailPromptArea({
       thread.projectId,
     ],
   );
-  const beginHandoff = useCallback(() => {
-    setHandoffSourceSelection((current) =>
-      current?.threadId === thread.id
-        ? current
-        : {
-            threadId: thread.id,
-            execution: {
-              providerId: thread.providerId,
-              model: effectiveSelectedModel,
-              reasoningLevel,
+  const beginHandoff = useCallback(
+    (baseDraft?: PromptDraftState) => {
+      setHandoffSourceSelection((current) =>
+        current?.threadId === thread.id
+          ? current
+          : {
+              threadId: thread.id,
+              execution: {
+                providerId: thread.providerId,
+                model: effectiveSelectedModel,
+                reasoningLevel,
+              },
+              serviceTier,
+              permissionMode,
+              overriddenFallbackIdentity,
             },
-            serviceTier,
-            permissionMode,
-            overriddenFallbackIdentity,
-          },
-    );
-    const currentDraft = promptDraft.getCurrent();
-    const seededDraft = buildThreadHandoffFollowUpDraft(
+      );
+      const currentDraft = promptDraft.getCurrent();
+      const seededDraft = buildThreadHandoffFollowUpDraft(
+        handoffSeed,
+        baseDraft ?? currentDraft,
+      );
+      if (seededDraft !== currentDraft) {
+        promptDraft.setDraft(seededDraft);
+      }
+    },
+    [
+      effectiveSelectedModel,
       handoffSeed,
-      currentDraft,
-    );
-    if (seededDraft !== currentDraft) {
-      promptDraft.setDraft(seededDraft);
-    }
-  }, [
-    effectiveSelectedModel,
-    handoffSeed,
-    overriddenFallbackIdentity,
-    permissionMode,
-    promptDraft,
-    reasoningLevel,
-    serviceTier,
-    thread.id,
-    thread.providerId,
-  ]);
+      overriddenFallbackIdentity,
+      permissionMode,
+      promptDraft,
+      reasoningLevel,
+      serviceTier,
+      thread.id,
+      thread.providerId,
+    ],
+  );
   const exitHandoff = useCallback(() => {
     if (handoffSourceSelection?.threadId !== thread.id) return;
     setProviderModelReasoning(handoffSourceSelection.execution);
@@ -847,24 +936,103 @@ export function ThreadDetailPromptArea({
     },
     [beginHandoff, fallbackIdentity, setProviderModelReasoning],
   );
+  const {
+    getCurrent: getCurrentPromptDraft,
+    setDraft: setPromptDraft,
+    subscribe: subscribePromptDraft,
+  } = promptDraft;
   useEffect(() => {
     if (isHandoffSelection) {
       return;
     }
     const restoredDraft = stripThreadHandoffPrefix(
       handoffSeed,
-      promptDraft.getCurrent(),
+      getCurrentPromptDraft(),
     );
     if (restoredDraft !== null) {
-      promptDraft.setDraft(restoredDraft);
+      setPromptDraft(restoredDraft);
     }
-  }, [handoffSeed, isHandoffSelection, promptDraft]);
+  }, [getCurrentPromptDraft, handoffSeed, isHandoffSelection, setPromptDraft]);
   const hasSentMessageEdit = sentMessageEdit !== undefined;
+  const [handoffExitSelection, setHandoffExitSelection] =
+    useState<typeof handoffSourceSelection>(null);
+  if (
+    sentMessageEdit !== undefined &&
+    handoffSourceSelection?.threadId === thread.id
+  ) {
+    setOverriddenFallbackIdentity(
+      handoffSourceSelection.overriddenFallbackIdentity,
+    );
+    setHandoffExitSelection(handoffSourceSelection);
+    setHandoffSourceSelection(null);
+  }
+  const restoreHandoffSourceSelection = useEffectEvent(
+    (selection: NonNullable<typeof handoffSourceSelection>) => {
+      setProviderModelReasoning(selection.execution);
+      setServiceTier(selection.serviceTier);
+      setPermissionMode(selection.permissionMode);
+    },
+  );
   useEffect(() => {
-    if (hasSentMessageEdit && isHandoffSelection) {
-      exitHandoff();
+    if (handoffExitSelection !== null) {
+      restoreHandoffSourceSelection(handoffExitSelection);
     }
-  }, [hasSentMessageEdit, isHandoffSelection, exitHandoff]);
+  }, [handoffExitSelection]);
+  const isCreatingHandoffThreadRef = useRef(false);
+  useEffect(() => {
+    if (!isHandoffSelection) {
+      return;
+    }
+    const observed = { draft: getCurrentPromptDraft() };
+    return subscribePromptDraft(() => {
+      const priorDraft = observed.draft;
+      const nextDraft = getCurrentPromptDraft();
+      observed.draft = nextDraft;
+      if (isCreatingHandoffThreadRef.current) {
+        return;
+      }
+      const cancelledDraft = threadHandoffDraftAfterSourceRemoved(
+        handoffSeed,
+        priorDraft,
+        nextDraft,
+      );
+      if (cancelledDraft === null) {
+        return;
+      }
+      if (cancelledDraft !== nextDraft) {
+        setPromptDraft(cancelledDraft);
+      }
+      exitHandoff();
+    });
+  }, [
+    exitHandoff,
+    getCurrentPromptDraft,
+    handoffSeed,
+    isHandoffSelection,
+    setPromptDraft,
+    subscribePromptDraft,
+  ]);
+  const handoffCommands = useMemo(
+    () =>
+      isHandoffSelection || hasSentMessageEdit
+        ? []
+        : [THREAD_HANDOFF_COMMAND_SUGGESTION],
+    [hasSentMessageEdit, isHandoffSelection],
+  );
+  const startHandoffFromCommand = useCallback(
+    (draft: PromptDraftState) => {
+      if (isHandoffSelection) {
+        return false;
+      }
+      const followUpDraft = stripLeadingThreadHandoffCommand(draft);
+      if (followUpDraft === null) {
+        return false;
+      }
+      beginHandoff(followUpDraft);
+      return true;
+    },
+    [beginHandoff, isHandoffSelection],
+  );
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId: thread.projectId,
     mentionsProjectId: projectId,
@@ -875,6 +1043,7 @@ export function ThreadDetailPromptArea({
     selectedProviderComposerActions,
     threadProviderCommands:
       selectedProviderId === thread.providerId ? providerCommands : null,
+    builtinCommands: handoffCommands,
     resolveMentionLink,
   });
   const {
@@ -937,7 +1106,7 @@ export function ThreadDetailPromptArea({
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
-    activeComposerDraftInput,
+    activeComposerDraftInput: inlineComposerDraftInput,
   });
   const isQueueMutationPending =
     (sendMessage.isPending &&
@@ -1037,64 +1206,8 @@ export function ThreadDetailPromptArea({
   );
   const pendingSelectionRef = useRef<Promise<unknown>>(Promise.resolve());
   const applySelection = useCallback(
-    async (
-      selection: ExperimentalComposerSelection,
-    ): Promise<ExperimentalComposerSelection> => {
-      const deadline = resolveComposerSelectionDeadline();
-      const { observer } = selectionState;
-      let state = await observer.waitUntil(() => true, deadline);
-      const settle = async (requireSettled: boolean) => {
-        state = await waitForSettledComposerState(
-          selectionState,
-          deadline,
-          requireSettled,
-        );
-      };
-      const ensureSettled = async () => {
-        if (state.isSettled) return;
-        state = await waitUntilComposerStateSettled(selectionState, deadline);
-      };
-      if (selection.providerId !== undefined) await ensureSettled();
-      if (
-        selection.providerId !== undefined &&
-        selection.providerId !== state.selectedProviderId &&
-        state.providerIds.includes(selection.providerId)
-      ) {
-        state.changeProvider(selection.providerId);
-        await settle(true);
-      }
-      const providerMatches =
-        selection.providerId === undefined ||
-        state.selectedProviderId === selection.providerId;
-      if (providerMatches && selection.model !== undefined) {
-        await ensureSettled();
-        if (state.isHandoffSelection) {
-          state.handoffSelect({
-            providerId: state.selectedProviderId,
-            model: selection.model,
-            reasoningLevel: selection.reasoningLevel ?? state.reasoningLevel,
-          });
-        } else {
-          state.changeModel(selection.model);
-        }
-        await settle(false);
-      }
-      if (providerMatches && selection.reasoningLevel !== undefined) {
-        await ensureSettled();
-        state.changeReasoning(selection.reasoningLevel);
-        await settle(false);
-      }
-      if (selection.serviceTier !== undefined && state.supportsServiceTier) {
-        state.changeServiceTier(selection.serviceTier);
-        await settle(false);
-      }
-      if (selection.permissionMode !== undefined) {
-        state.changePermissionMode(selection.permissionMode);
-        await settle(false);
-      }
-      await settle(true);
-      return readExecutionSelection(state);
-    },
+    (selection: ExperimentalComposerSelection) =>
+      applyThreadComposerSelection(selectionState, selection),
     [selectionState],
   );
   const setSelection = useCallback(
@@ -1140,7 +1253,6 @@ export function ThreadDetailPromptArea({
     [normalPluginComposerHost],
   );
 
-  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const canSubmitModifierShortcut =
     !shouldHideComposer &&
     canSubmitFollowUpShortcut({
@@ -1199,23 +1311,28 @@ export function ThreadDetailPromptArea({
         ...baseRequest,
         ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
       };
-      const clearedSubmittedDraft =
-        promptDraft.clearIfCurrentMatches(submittedDraft);
-      setBottomAttachmentError(null);
-      try {
-        const created = await createThread.mutateAsync(request);
-        navigate(
-          getThreadRoutePath({
-            projectId: created.projectId,
-            threadId: created.id,
-          }),
-        );
-      } catch (error) {
-        if (clearedSubmittedDraft) {
-          promptDraft.restoreIfEmpty(submittedDraft);
-        }
-        throw error;
-      }
+      await runWhileCreatingHandoffThread(
+        isCreatingHandoffThreadRef,
+        async () => {
+          const clearedSubmittedDraft =
+            promptDraft.clearIfCurrentMatches(submittedDraft);
+          setBottomAttachmentError(null);
+          try {
+            const created = await createThread.mutateAsync(request);
+            navigate(
+              getThreadRoutePath({
+                projectId: created.projectId,
+                threadId: created.id,
+              }),
+            );
+          } catch (error) {
+            if (clearedSubmittedDraft) {
+              promptDraft.restoreIfEmpty(submittedDraft);
+            }
+            throw error;
+          }
+        },
+      );
       return true;
     },
     [
@@ -1236,6 +1353,9 @@ export function ThreadDetailPromptArea({
   const submitFollowUpDraft = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
       const submittedDraft = promptDraft.getCurrent();
+      if (startHandoffFromCommand(submittedDraft)) {
+        return;
+      }
       const submittedInput = promptDraftToInput(submittedDraft);
       if (isHandoffSelection) {
         if (effectiveSelectedModel.length === 0) {
@@ -1276,9 +1396,19 @@ export function ThreadDetailPromptArea({
       promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
 
+      const compactRequestFirst = compactFirst && sendAt === undefined;
+      const sendAtFields = sendAt === undefined ? {} : { sendAt };
+      const pluginSubmissionFields =
+        pluginSubmission === undefined ? {} : { pluginSubmission };
+      const failureMessage = isQueuingMessage
+        ? "Failed to queue message"
+        : "Failed to send message";
+      const failureLifecycleOperation = isQueuingMessage
+        ? "queue_message"
+        : "send_message";
       try {
         const request = buildAutoFollowUpRequest({
-          compactFirst: compactFirst && sendAt === undefined,
+          compactFirst: compactRequestFirst,
           threadId: thread.id,
           input: submittedInput,
           execution: followUpExecutionSelection,
@@ -1286,8 +1416,8 @@ export function ThreadDetailPromptArea({
         if (request) {
           await sendMessage.mutateAsync({
             ...request,
-            ...(sendAt === undefined ? {} : { sendAt }),
-            ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+            ...sendAtFields,
+            ...pluginSubmissionFields,
           });
           if (!isQueuingMessage) {
             setFullHistoryThreadId(null);
@@ -1297,12 +1427,8 @@ export function ThreadDetailPromptArea({
         promptDraft.restoreIfEmpty(submittedDraft);
         throw reportMutationError({
           error: nextError,
-          fallbackMessage: isQueuingMessage
-            ? "Failed to queue message"
-            : "Failed to send message",
-          lifecycleOperation: isQueuingMessage
-            ? "queue_message"
-            : "send_message",
+          fallbackMessage: failureMessage,
+          lifecycleOperation: failureLifecycleOperation,
         });
       }
     },
@@ -1316,6 +1442,7 @@ export function ThreadDetailPromptArea({
       promptDraft,
       sendMessage,
       setBottomAttachmentError,
+      startHandoffFromCommand,
       thread.id,
       runtimeDisplayStatus,
     ],
@@ -1332,6 +1459,9 @@ export function ThreadDetailPromptArea({
       }
 
       const submittedDraft = promptDraft.getCurrent();
+      if (startHandoffFromCommand(submittedDraft)) {
+        return;
+      }
       const submittedInput = promptDraftToInput(submittedDraft);
       const shortcutRequest = buildFollowUpShortcutRequest({
         execution: followUpExecutionSelection,
@@ -1344,6 +1474,9 @@ export function ThreadDetailPromptArea({
       }
 
       if (shortcutRequest.kind === "draft") {
+        const sendAtFields = sendAt === undefined ? {} : { sendAt };
+        const pluginSubmissionFields =
+          pluginSubmission === undefined ? {} : { pluginSubmission };
         await submitDraft(async () => {
           promptDraft.clearIfCurrentMatches(submittedDraft);
           setBottomAttachmentError(null);
@@ -1353,10 +1486,8 @@ export function ThreadDetailPromptArea({
               try {
                 await sendMessage.mutateAsync({
                   ...shortcutRequest.request,
-                  ...(sendAt === undefined ? {} : { sendAt }),
-                  ...(pluginSubmission === undefined
-                    ? {}
-                    : { pluginSubmission }),
+                  ...sendAtFields,
+                  ...pluginSubmissionFields,
                 });
               } catch (nextError) {
                 promptDraft.restoreIfEmpty(submittedDraft);
@@ -1401,6 +1532,7 @@ export function ThreadDetailPromptArea({
       sendMessage,
       sendQueuedMessageById,
       setBottomAttachmentError,
+      startHandoffFromCommand,
       submitDraft,
       thread.id,
     ],
@@ -1435,7 +1567,6 @@ export function ThreadDetailPromptArea({
   }, [restoreThreadEnvironment, thread.id]);
   const bottomAttachmentsConfig = useMemo(
     () => ({
-      items: currentPromptDraft.attachments,
       projectId,
       isAttaching: isAttachingBottomFiles,
       pendingUploads: bottomPendingUploads,
@@ -1445,7 +1576,6 @@ export function ThreadDetailPromptArea({
     }),
     [
       bottomAttachmentError,
-      currentPromptDraft.attachments,
       handleAttachBottomFiles,
       isAttachingBottomFiles,
       bottomPendingUploads,
@@ -1460,15 +1590,12 @@ export function ThreadDetailPromptArea({
   const bottomComposerConfig = useMemo<FollowUpComposerProps>(
     () => ({
       history: {
-        currentDraft: currentPromptDraft,
         entries: promptHistoryDrafts,
         onSelectEntry: restoreHistoryDraft,
         resetKey: thread.id,
       },
       isFollowUpSubmitting,
-      message: currentPromptDraft.text,
-      mentionRanges: currentPromptDraft.mentions,
-      onChangeMessage: promptDraft.setTextAndMentions,
+      draft: normalPluginComposerHost,
       onModifierSubmit: handleModifierSubmit,
       onSubmit: handleSend,
       ...(isHandoffSelection
@@ -1488,15 +1615,14 @@ export function ThreadDetailPromptArea({
     [
       canSubmitModifierShortcut,
       compactPromptPlaceholder,
-      currentPromptDraft,
       handleModifierSubmit,
       handleSend,
       isFollowUpSubmitting,
       isHandoffSelection,
+      normalPluginComposerHost,
       promptHistoryDrafts,
       promptPlaceholder,
       restoreHistoryDraft,
-      promptDraft.setTextAndMentions,
       runtimeDisplayStatus,
       steerActiveThreadOnEnter,
       submitMode,
@@ -1574,12 +1700,13 @@ export function ThreadDetailPromptArea({
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
+        isLoading: isLoadingReasoning,
         onChange: setReasoningLevel,
       },
       handoff: {
         sourceProviderId: thread.providerId,
         active: isHandoffSelection,
-        onStart: beginHandoff,
+        onStart: () => beginHandoff(),
         onExit: exitHandoff,
         onSelect: handleHandoffSelect,
       },
@@ -1612,6 +1739,7 @@ export function ThreadDetailPromptArea({
       providerOptions,
       reasoningLevel,
       reasoningOptions,
+      isLoadingReasoning,
       selectedModel,
       selectedProviderId,
       serviceTier,
@@ -1674,6 +1802,7 @@ export function ThreadDetailPromptArea({
           inlineEditingQueuedMessage.model,
           inlineEditingQueuedMessage.reasoningLevel,
         ).reasoningOptions,
+        isLoading: false,
         onChange: (reasoningLevel: ReasoningLevel) =>
           updateInlineQueuedMessage((current) =>
             current ? { ...current, reasoningLevel } : current,
@@ -1844,8 +1973,8 @@ export function ThreadDetailPromptArea({
             commitInlineQueuedMessage,
           ),
         isAvailable: () =>
-          isInlineQueuedMessageEditSession(
-            inlineEditingQueuedMessageRef.current,
+          isInlineQueuedMessageEditSessionActive(
+            inlineEditingQueuedMessageRef,
             session,
           ),
         focus: focusInlinePluginComposer,
@@ -1876,7 +2005,6 @@ export function ThreadDetailPromptArea({
       onDismiss: dismissInlineQueuedMessageEditor,
       content: buildInlineDraftComposer({
         attachments: {
-          items: activeComposerDraft.attachments,
           projectId,
           isAttaching: isAttachingInlineFiles,
           pendingUploads: inlinePendingUploads,
@@ -1885,17 +2013,16 @@ export function ThreadDetailPromptArea({
           onUpdate: updateActiveComposerAttachments,
         },
         canModifierSubmit:
-          activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
+          inlineComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
         compactPromptPlaceholder,
         composerId: `${composerId}-queued-${queuedMessageId}`,
-        draft: activeComposerDraft,
+        draft: queuedMessagePluginComposerHost,
         editFocusNonce,
         execution: inlineExecutionConfig,
         executionReadOnly: false,
         focusSessionKey: editSessionId,
         historyResetKey: `${thread.id}:${editSessionId}`,
         isSubmitting: isUpdateQueuedMessagePending,
-        onChangeMessage: handleComposerMessageChange,
         onSelectHistoryEntry: (draft) =>
           createCoreComposerActions(
             queuedMessagePluginComposerHost,
@@ -1915,16 +2042,14 @@ export function ThreadDetailPromptArea({
     };
     return inlineEditor;
   }, [
-    activeComposerDraft,
-    activeComposerDraftInput.length,
     compactPromptPlaceholder,
     composerId,
     dismissInlineQueuedMessageEditor,
     editFocusNonce,
     handleAttachInlineFiles,
-    handleComposerMessageChange,
     handleInlineComposerSubmit,
     inlineAttachmentError,
+    inlineComposerDraftInput.length,
     inlineEditingQueuedMessage,
     inlineExecutionConfig,
     inlinePermissionConfig,
@@ -1992,7 +2117,7 @@ export function ThreadDetailPromptArea({
         setDraft: (nextDraft) =>
           writeSentMessageEditDraft(sentMessageEditRef, operationId, nextDraft),
         isAvailable: () =>
-          sentMessageEditRef.current?.operationId === operationId,
+          isSentMessageEditActive(sentMessageEditRef, operationId),
         focus: focusInlinePluginComposer,
       };
     }, [
@@ -2007,7 +2132,7 @@ export function ThreadDetailPromptArea({
     if (!sentMessageEdit?.hostElement || !sentMessagePluginComposerHost) {
       return null;
     }
-    const { draft, hostElement, operationId } = sentMessageEdit;
+    const { hostElement, operationId } = sentMessageEdit;
     return createPortal(
       <InlineMessageEditorFrame
         cancelLabel="Stop editing sent message"
@@ -2017,7 +2142,6 @@ export function ThreadDetailPromptArea({
       >
         {buildInlineDraftComposer({
           attachments: {
-            items: draft.attachments,
             projectId,
             isAttaching: isAttachingSentMessageFiles,
             pendingUploads: sentMessagePendingUploads,
@@ -2033,19 +2157,13 @@ export function ThreadDetailPromptArea({
           canModifierSubmit: canSubmitSentMessageEdit,
           compactPromptPlaceholder: "Edit message",
           composerId: `${composerId}-sent-${operationId}`,
-          draft,
+          draft: sentMessagePluginComposerHost,
           editFocusNonce,
           execution: compactExecutionConfig,
           executionReadOnly: true,
           focusSessionKey: operationId,
           historyResetKey: `${thread.id}:${operationId}`,
           isSubmitting: sentMessageEdit.isSubmitting,
-          onChangeMessage: (text, mentions) =>
-            sentMessageEdit.updateDraft((current) => ({
-              ...current,
-              text,
-              mentions,
-            })),
           onEscape: sentMessageEdit.onCancel,
           onSelectHistoryEntry: (nextDraft) =>
             createCoreComposerActions(

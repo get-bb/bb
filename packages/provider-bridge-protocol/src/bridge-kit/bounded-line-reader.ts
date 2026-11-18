@@ -14,6 +14,7 @@ export function readBoundedLines(args: BoundedLineReaderArgs): void {
   const maxLineBytes = args.maxLineBytes ?? MAX_JSON_RPC_LINE_BYTES;
   const decoder = new StringDecoder("utf8");
   let pending = "";
+  let pendingBytes = 0;
   let discarding = false;
   let discardedBytes = 0;
 
@@ -33,18 +34,22 @@ export function readBoundedLines(args: BoundedLineReaderArgs): void {
         emit(pending + text.slice(start, newlineIndex));
       }
       pending = "";
+      pendingBytes = 0;
       start = newlineIndex + 1;
     }
     const tail = text.slice(start);
+    const tailBytes = Buffer.byteLength(tail);
     if (discarding) {
-      discardedBytes += Buffer.byteLength(tail);
+      discardedBytes += tailBytes;
       return;
     }
     pending += tail;
-    if (Buffer.byteLength(pending) > maxLineBytes) {
+    pendingBytes += tailBytes;
+    if (pendingBytes > maxLineBytes) {
       discarding = true;
-      discardedBytes = Buffer.byteLength(pending);
+      discardedBytes = pendingBytes;
       pending = "";
+      pendingBytes = 0;
     }
   });
 
@@ -53,6 +58,7 @@ export function readBoundedLines(args: BoundedLineReaderArgs): void {
       emit(pending);
     }
     pending = "";
+    pendingBytes = 0;
     args.onClose?.();
   });
 

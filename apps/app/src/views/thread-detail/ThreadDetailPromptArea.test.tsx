@@ -30,21 +30,14 @@ import {
   makeThreadWithRuntime as makeThreadWithRuntimeFixture,
 } from "@bb/test-helpers/domain-fixtures";
 import type { ComponentProps } from "react";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import type { PromptDraftAttachment } from "@bb/client-core";
+import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
   getPromptDraftAccessor,
-  usePromptDraftStorage,
+  usePromptDraftController,
+  type PromptDraftController,
 } from "@/hooks/usePromptDraftStorage";
 import { BbHttpError } from "@/lib/sdk";
 import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
@@ -61,7 +54,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 vi.mock("@/hooks/usePromptDraftStorage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/usePromptDraftStorage")>()),
-  usePromptDraftStorage: vi.fn(),
+  usePromptDraftController: vi.fn(),
 }));
 
 function makeQueuedMessage(
@@ -203,7 +196,7 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
   return render(buildPromptAreaElement(options));
 }
 
-beforeAll(() => LazyQueuedMessagesList.preload());
+await LazyQueuedMessagesList.preload();
 
 describe("shared draft submission ownership", () => {
   let nextId = 0;
@@ -212,8 +205,8 @@ describe("shared draft submission ownership", () => {
     const storage = await vi.importActual<
       typeof import("@/hooks/usePromptDraftStorage")
     >("@/hooks/usePromptDraftStorage");
-    vi.mocked(usePromptDraftStorage).mockImplementation(
-      storage.usePromptDraftStorage,
+    vi.mocked(usePromptDraftController).mockImplementation(
+      storage.usePromptDraftController,
     );
   });
 
@@ -362,12 +355,29 @@ describe("shared draft submission ownership", () => {
 });
 
 beforeEach(() => {
-  vi.mocked(usePromptDraftStorage).mockImplementation(() => ({
-    ...mocks.promptDraft,
-    value: mocks.promptDraft.text,
-    clear: vi.fn(),
+  const draftListeners = new Set<() => void>();
+  mocks.promptDraft.subscribe.mockImplementation((listener: () => void) => {
+    draftListeners.add(listener);
+    return () => {
+      draftListeners.delete(listener);
+    };
+  });
+  const promptDraftController: PromptDraftController = {
+    storageKey: mocks.promptDraft.storageKey,
+    getCurrent: mocks.promptDraft.getCurrent,
+    subscribe: mocks.promptDraft.subscribe,
+    setDraft: mocks.promptDraft.setDraft,
+    setTextAndMentions: mocks.promptDraft.setTextAndMentions,
     setAttachments: vi.fn(),
-  }));
+    addAttachment: mocks.promptDraft.addAttachment,
+    updateAttachments: mocks.promptDraft.updateAttachments,
+    clear: vi.fn(),
+    clearIfCurrentMatches: mocks.promptDraft.clearIfCurrentMatches,
+    restoreIfEmpty: mocks.promptDraft.restoreIfEmpty,
+  };
+  vi.mocked(usePromptDraftController).mockImplementation(
+    () => promptDraftController,
+  );
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -380,11 +390,22 @@ beforeEach(() => {
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
   mocks.promptDraft.attachments = [];
-  mocks.promptDraft.getCurrent.mockImplementation(() => ({
-    attachments: mocks.promptDraft.attachments,
-    mentions: mocks.promptDraft.mentions,
-    text: mocks.promptDraft.text,
-  }));
+  let currentDraft: PromptDraftState | null = null;
+  mocks.promptDraft.getCurrent.mockImplementation(() => {
+    if (
+      currentDraft === null ||
+      currentDraft.text !== mocks.promptDraft.text ||
+      currentDraft.mentions !== mocks.promptDraft.mentions ||
+      currentDraft.attachments !== mocks.promptDraft.attachments
+    ) {
+      currentDraft = {
+        attachments: mocks.promptDraft.attachments,
+        mentions: mocks.promptDraft.mentions,
+        text: mocks.promptDraft.text,
+      };
+    }
+    return currentDraft;
+  });
   mocks.promptDraft.setDraft.mockImplementation(
     (draft: {
       attachments: PromptDraftAttachment[];
@@ -394,6 +415,7 @@ beforeEach(() => {
       mocks.promptDraft.attachments = draft.attachments;
       mocks.promptDraft.mentions = draft.mentions;
       mocks.promptDraft.text = draft.text;
+      for (const listener of [...draftListeners]) listener();
     },
   );
   mocks.queuedMessages = [];
@@ -1007,10 +1029,8 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.change(bottomComposer, {
       target: { value: "Still-usable bottom draft" },
     });
-    expect(mocks.promptDraft.setTextAndMentions).toHaveBeenCalledWith(
-      "Still-usable bottom draft",
-      [],
-    );
+    expect(mocks.promptDraft.text).toBe("Still-usable bottom draft");
+    mocks.promptDraft.setDraft.mockClear();
     fireEvent.change(
       inlineEditor.getByRole("textbox", { name: "Composer message" }),
       { target: { value: "Edited queued message" } },
@@ -1029,7 +1049,7 @@ describe("ThreadDetailPromptArea", () => {
     });
     expect(mocks.deleteQueuedMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
-    expect(mocks.promptDraft.text).toBe("Keep this bottom draft");
+    expect(mocks.promptDraft.text).toBe("Still-usable bottom draft");
     await waitFor(() => {
       expect(
         (
@@ -1037,7 +1057,7 @@ describe("ThreadDetailPromptArea", () => {
             name: "Composer message",
           }) as HTMLTextAreaElement
         ).value,
-      ).toBe("Keep this bottom draft");
+      ).toBe("Still-usable bottom draft");
     });
     expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
   });
@@ -2199,5 +2219,113 @@ describe("ThreadDetailPromptArea", () => {
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledTimes(1);
+  });
+  describe("/handoff command", () => {
+    const HANDOFF_COMMAND_MENTION: PromptTextMention = {
+      start: 0,
+      end: 8,
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "handoff",
+        source: "command",
+        origin: "builtin",
+        label: "handoff",
+        argumentHint: null,
+      },
+    };
+
+    function notifyingDraftStore() {
+      const listeners = new Set<() => void>();
+      const notify = () => listeners.forEach((listener) => listener());
+      mocks.promptDraft.subscribe.mockImplementation((listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      });
+      return {
+        edit(text: string, mentions: PromptTextMention[]) {
+          act(() => {
+            mocks.promptDraft.text = text;
+            mocks.promptDraft.mentions = mentions;
+            notify();
+          });
+        },
+        clearOnSend() {
+          mocks.promptDraft.clearIfCurrentMatches.mockImplementation(() => {
+            mocks.promptDraft.text = "";
+            mocks.promptDraft.mentions = [];
+            notify();
+            return true;
+          });
+        },
+      };
+    }
+
+    it("offers /handoff in the thread composer, but not during a handoff", () => {
+      renderPromptArea();
+      expect(screen.getByTestId("builtin-commands").textContent).toBe(
+        "handoff",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+      expect(screen.getByTestId("builtin-commands").textContent).toBe("");
+    });
+
+    it("starts a handoff from a picked /handoff instead of sending it", async () => {
+      mocks.promptDraft.text = "/handoff keep going";
+      mocks.promptDraft.mentions = [HANDOFF_COMMAND_MENTION];
+      renderPromptArea();
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("submit-label").textContent).toBe(
+          "New thread",
+        ),
+      );
+      expect(mocks.promptDraft.getCurrent().text).toMatch(
+        /^Continue from @thread:thr_1\n\nkeep going$/,
+      );
+      expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+      expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("exits the handoff when its source thread pill is deleted", () => {
+      const store = notifyingDraftStore();
+      mocks.promptDraft.text = "Keep going";
+      renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+      expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+
+      store.edit("Continue from \n\nKeep going", []);
+
+      expect(screen.getByTestId("submit-label").textContent).toBe("");
+      expect(mocks.promptDraft.getCurrent().text).toBe("Keep going");
+    });
+
+    it("keeps the handoff while the draft is cleared to send it", async () => {
+      const store = notifyingDraftStore();
+      store.clearOnSend();
+      const created = createDeferredPromise<{
+        id: string;
+        projectId: string;
+      }>();
+      mocks.createThreadMutateAsync.mockReturnValue(created.promise);
+      mocks.promptDraft.text = "Keep going";
+      renderPromptArea();
+      fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+      await waitFor(() =>
+        expect(mocks.createThreadMutateAsync).toHaveBeenCalled(),
+      );
+      expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+      await act(async () => {
+        created.resolve({ id: "thr_new", projectId: "proj_1" });
+        await created.promise;
+      });
+    });
   });
 });

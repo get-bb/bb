@@ -35,14 +35,15 @@ import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useRenameController } from "@bb/shared-ui/inline-rename";
 import { RenameControllerProvider } from "@/components/sidebar/SidebarInlineRename";
-import {
-  ThreadDeleteDialog,
-  type ThreadDeleteDialogTarget,
+import type {
+  ThreadDeleteDialogProps,
+  ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
-import {
-  ThreadArchiveDialog,
-  type ThreadArchiveDialogTarget,
+import type {
+  ThreadArchiveDialogProps,
+  ThreadArchiveDialogTarget,
 } from "@/components/dialogs/ThreadArchiveDialog";
+import { defineSplit } from "@/lib/define-split";
 import { ArchivedThreadToastDescription } from "@/components/thread/ArchivedThreadToastDescription";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
@@ -94,11 +95,56 @@ interface DeleteDialogRequest extends ThreadDeleteDialogTarget {
   cascadeThreadIdsByRootId: ReadonlyMap<string, readonly string[]>;
 }
 
+const ThreadDeleteDialog = defineSplit<
+  ThreadDeleteDialogProps<DeleteDialogRequest>
+>({
+  id: "thread-delete-dialog",
+  tier: "preload",
+  load: () =>
+    import("@/components/dialogs/ThreadDeleteDialog").then(
+      (module) => module.ThreadDeleteDialog<DeleteDialogRequest>,
+    ),
+  loading: () => null,
+  mountWhen: (props) => props.target !== null,
+  keepMounted: true,
+});
+
+const ThreadArchiveDialog = defineSplit<
+  ThreadArchiveDialogProps<ArchiveDialogRequest>
+>({
+  id: "thread-archive-dialog",
+  tier: "preload",
+  load: () =>
+    import("@/components/dialogs/ThreadArchiveDialog").then(
+      (module) => module.ThreadArchiveDialog<ArchiveDialogRequest>,
+    ),
+  loading: () => null,
+  mountWhen: (props) => props.target !== null,
+  keepMounted: true,
+});
+
 function describeThreadCount(count: number): string {
   return count === 1 ? "1 thread" : `${count} threads`;
 }
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
+
+async function restoreArchivedThreads(
+  archivedThreadIds: readonly string[],
+  unarchiveThread: (threadId: string) => Promise<unknown>,
+  afterRestore: () => void,
+): Promise<void> {
+  try {
+    for (const threadId of [...archivedThreadIds].reverse())
+      await unarchiveThread(threadId);
+    afterRestore();
+  } catch (error) {
+    showMutationErrorToast({
+      error,
+      fallbackMessage: "Failed to restore archived threads",
+    });
+  }
+}
 
 function hasRunningWork(thread: Thread): boolean {
   return (
@@ -366,22 +412,17 @@ export function ThreadActionsProvider({
           cancel: {
             label: "Undo",
             onClick: () => {
-              void (async () => {
-                try {
-                  for (const threadId of [...archivedThreadIds].reverse())
-                    await browserSdk.threads.unarchive({ threadId });
+              void restoreArchivedThreads(
+                archivedThreadIds,
+                (threadId) => browserSdk.threads.unarchive({ threadId }),
+                () => {
                   if (
                     destination !== null &&
                     viewedRouteRef.current === destination
                   )
                     navigate(previousRoute);
-                } catch (error) {
-                  showMutationErrorToast({
-                    error,
-                    fallbackMessage: "Failed to restore archived threads",
-                  });
-                }
-              })();
+                },
+              );
             },
           },
           duration: ARCHIVE_UNDO_TOAST_DURATION_MS,

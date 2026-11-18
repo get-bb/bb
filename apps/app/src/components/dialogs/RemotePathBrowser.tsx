@@ -5,7 +5,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getHostPathBasename,
@@ -28,6 +27,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { invalidateHostDirectoryListing } from "@/hooks/cache-owners/host-directory-cache-owner";
 import { useHostDirectory } from "@/hooks/queries/host-queries";
+import { useCompilerSafeVirtualizer } from "@/hooks/useCompilerSafeVirtualizer";
 import { sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -110,7 +110,12 @@ export function RemotePathBrowser({
     (index: number) => entries[index]?.path ?? index,
     [entries],
   );
-  const entryVirtualizer = useVirtualizer({
+  const {
+    virtualItems: entryVirtualItems,
+    totalSize: entriesTotalSize,
+    measureElement: measureEntryElement,
+    scrollToOffset: scrollEntriesToOffset,
+  } = useCompilerSafeVirtualizer({
     count: entries.length,
     getScrollElement,
     estimateSize: estimateEntrySize,
@@ -125,7 +130,7 @@ export function RemotePathBrowser({
 
   const navigateTo = (path: string) => {
     cancelCreatingFolder();
-    entryVirtualizer.scrollToOffset(0);
+    scrollEntriesToOffset(0);
     setCurrentPath(path);
   };
 
@@ -250,11 +255,8 @@ export function RemotePathBrowser({
     body = <EmptyState message="This folder is empty." className="px-2 py-3" />;
   } else {
     body = (
-      <ul
-        className="relative"
-        style={{ height: entryVirtualizer.getTotalSize() }}
-      >
-        {entryVirtualizer.getVirtualItems().map((virtualItem) => {
+      <ul className="relative" style={{ height: entriesTotalSize }}>
+        {entryVirtualItems.map((virtualItem) => {
           const entry = entries[virtualItem.index];
           if (!entry) return null;
           if (entry.kind === "file") {
@@ -262,7 +264,7 @@ export function RemotePathBrowser({
               <li
                 key={entry.path}
                 data-index={virtualItem.index}
-                ref={entryVirtualizer.measureElement}
+                ref={measureEntryElement}
                 className="absolute left-0 flex w-full items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
                 style={{ top: virtualItem.start }}
               >
@@ -277,7 +279,7 @@ export function RemotePathBrowser({
             <li
               key={entry.path}
               data-index={virtualItem.index}
-              ref={entryVirtualizer.measureElement}
+              ref={measureEntryElement}
               className="absolute left-0 w-full"
               style={{ top: virtualItem.start }}
             >

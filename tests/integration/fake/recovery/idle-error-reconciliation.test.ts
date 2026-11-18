@@ -6,10 +6,8 @@ import {
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
 import { withHarness } from "../../helpers/harness.js";
-import {
-  applyThreadLifecycleEvent,
-  requireThreadLifecycleEventApplied,
-} from "@bb/db";
+import { threads } from "@bb/db";
+import { eq } from "drizzle-orm";
 import {
   createRecoveryThread,
   RECOVERY_TEST_TIMEOUT_MS,
@@ -45,18 +43,11 @@ describe.sequential("fake provider idle-error reconciliation integration", () =>
           HOST_OFFLINE_TIMEOUT_MS,
         );
 
-        requireThreadLifecycleEventApplied(
-          applyThreadLifecycleEvent(harness.db, {
-            event: { type: "run.started" },
-            threadId: thread.id,
-          }),
-        );
-        requireThreadLifecycleEventApplied(
-          applyThreadLifecycleEvent(harness.db, {
-            event: { type: "run.failed" },
-            threadId: thread.id,
-          }),
-        );
+        harness.db
+          .update(threads)
+          .set({ status: "error" })
+          .where(eq(threads.id, thread.id))
+          .run();
 
         await harness.startDaemon();
         await waitForHostConnected(harness.api, RECOVERY_TIMEOUT_MS);

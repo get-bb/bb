@@ -37,7 +37,8 @@ import {
   saveThreadProvisionContext,
   type ThreadProvisionContext,
 } from "./thread-startup-store.js";
-import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { finishThreadLifecycleInBackground } from "./lifecycle/finish.js";
+import { runThreadLifecycleTransaction } from "./lifecycle/run.js";
 import { isParentNotifiableChildThread } from "./thread-parent.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 
@@ -144,17 +145,19 @@ export function failThreadProvisioning(
     detail: args.detail,
     scope: threadScope(),
   });
-  const outcome = applyLoggedThreadLifecycleEvent(deps, {
-    event: { type: "run.failed" },
-    threadId: args.thread.id,
+  const outcome = runThreadLifecycleTransaction(deps, args.thread.id, {
+    type: "provisioning.failed",
   });
+  finishThreadLifecycleInBackground(deps, outcome);
   void cancelProviderEnvironmentCreation(deps, args.thread.id).catch((error) =>
     deps.logger.warn(
       { threadId: args.thread.id, error },
       "Failed environment preparation cleanup will retry",
     ),
   );
-  if (outcome.applied) queueChildSetupFailureNotification(deps, args.thread);
+  if (outcome.statusChanged) {
+    queueChildSetupFailureNotification(deps, args.thread);
+  }
 }
 
 export function queueChildSetupFailureNotification(

@@ -1,0 +1,17 @@
+{
+  "provider": "acp-opencode",
+  "cell": "steer-race",
+  "threadId": "thr_b7e5dd60c2",
+  "scope": "thread",
+  "cliVersion": "opencode 2.0.22",
+  "recordedAt": "2026-11-14",
+  "description": "A steer sent as its turn ends, then a follow-up turn.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 35,
+    "provider→bridge": 26,
+    "bridge→provider": 7
+  }
+}

@@ -211,6 +211,7 @@ function createFakeRuntime() {
     }),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    getActiveTurnRequestIds: () => [],
     waitForActiveTurn: async (threadId) =>
       activeTurnsByThreadId.get(threadId) ?? null,
     getProviderSession: () => null,
@@ -244,18 +245,6 @@ function createFakeRuntime() {
       }
     },
   } satisfies FakeAgentRuntime;
-}
-
-function isPidAlive(pid: number): boolean {
-  if (pid === 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function createProvisionWorkspaceMock(path: string) {
@@ -1718,24 +1707,26 @@ describe("RuntimeManager", () => {
     });
     const child = spawn(
       process.execPath,
-      ["-e", "setTimeout(() => {}, 300_000)"],
+      ["-e", "process.stdin.on('data', (chunk) => process.stdout.write(chunk))"],
       {
         cwd: directory,
         detached: true,
-        stdio: "ignore",
+        stdio: ["pipe", "pipe", "ignore"],
       },
     );
-    child.unref();
 
     try {
       await manager.forgetEnvironment("env-forgotten");
-      expect(isPidAlive(child.pid ?? 0)).toBe(true);
+      const echoed = new Promise<string>((resolveEcho, rejectEcho) => {
+        child.stdout.once("data", (chunk) => resolveEcho(String(chunk)));
+        child.once("exit", () =>
+          rejectEcho(new Error("forgetting the environment killed its process")),
+        );
+      });
+      child.stdin.write("ping\n");
+      await expect(echoed).resolves.toBe("ping\n");
     } finally {
-      if (child.pid) {
-        try {
-          process.kill(child.pid, "SIGKILL");
-        } catch {}
-      }
+      child.kill("SIGKILL");
       await fs.rm(directory, {
         recursive: true,
         force: true,

@@ -6,7 +6,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
@@ -16,18 +15,12 @@ import {
   LazyQueuedMessagesList,
   QueuedMessagesPendingCard,
 } from "./LazyQueuedMessagesList";
+import { settleLazyModules } from "@/test/lazy-modules";
 
-const mocks = vi.hoisted(() => {
-  let releaseImport = () => {};
-  const importGate = new Promise<void>((resolve) => {
-    releaseImport = resolve;
-  });
-  return { imported: vi.fn(), importGate, releaseImport };
-});
+const mocks = vi.hoisted(() => ({ imported: vi.fn() }));
 
-vi.mock("./QueuedMessagesList", async (importOriginal) => {
+vi.mock("./QueuedMessagesList", (importOriginal) => {
   mocks.imported();
-  await mocks.importGate;
   return importOriginal();
 });
 
@@ -75,7 +68,7 @@ it("downloads the queue only for queued work, warming it from the pending summar
   expect(mocks.imported).not.toHaveBeenCalled();
 
   view.rerender(<QueuedMessagesPendingCard queuedMessageCount={2} />);
-  await waitFor(() => expect(mocks.imported).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(mocks.imported).toHaveBeenCalledOnce());
   view.rerender(
     <Queue
       initiallyExpanded
@@ -94,8 +87,7 @@ it("downloads the queue only for queued work, warming it from the pending summar
     screen.queryByRole("button", { name: "Send queued message 1 now" }),
   ).toBeNull();
   view.rerender(<QueuedMessagesPendingCard queuedMessageCount={2} />);
-  mocks.releaseImport();
-  await act(() => LazyQueuedMessagesList.preload());
+  await settleLazyModules();
   expect(mocks.imported).toHaveBeenCalledOnce();
   screen.getByRole("status", { name: "Loading queued messages" });
   expect(

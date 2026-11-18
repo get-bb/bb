@@ -16,6 +16,7 @@ import {
 import { BbHttpError } from "@bb/sdk/browser";
 import type {
   ServerMoveStatus,
+  ServerMoveStatusResponse,
   ServerMoveStep,
   ServerMoveStepStatus,
 } from "@bb/server-contract";
@@ -27,6 +28,7 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ServerMoveOverlay } from "./ServerMoveOverlay";
 import { fetchServerHealth } from "@bb/host-daemon-contract";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 vi.mock("@bb/host-daemon-contract", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@bb/host-daemon-contract")>()),
@@ -117,7 +119,7 @@ function LocationDisplay() {
   );
 }
 
-function renderOverlay(path = "/") {
+async function renderOverlay(path = "/") {
   const navigateTo = vi.fn();
   const { queryClient, wrapper } = createQueryClientTestHarness();
   render(
@@ -127,6 +129,10 @@ function renderOverlay(path = "/") {
     </MemoryRouter>,
     { wrapper },
   );
+  await waitFor(() => {
+    expect(queryClient.getQueryData(serverMoveStatusQueryKey())).toBeDefined();
+  });
+  await settleLazyModules();
   return { navigateTo, queryClient };
 }
 
@@ -154,7 +160,7 @@ describe("ServerMoveOverlay", () => {
       move: null,
       lastMove: lastMove(),
     });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await waitFor(() => {
       expect(
@@ -191,7 +197,7 @@ describe("ServerMoveOverlay", () => {
         return cancelled;
       },
     );
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Moving server to desk",
@@ -273,7 +279,7 @@ describe("ServerMoveOverlay", () => {
         return abandoned;
       },
     );
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Couldn't confirm the switch to desk",
@@ -345,7 +351,7 @@ describe("ServerMoveOverlay", () => {
       }),
       lastMove: null,
     });
-    renderOverlay();
+    await renderOverlay();
 
     const overlay = await screen.findByRole("dialog", {
       name: "Moving server to desk",
@@ -375,15 +381,11 @@ describe("ServerMoveOverlay", () => {
         ok: true,
         serverMove: { moveId: "move_1", state: "pending" },
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        serverMove: { moveId: "move_1", state: "activating" },
-      })
       .mockResolvedValue({
         ok: true,
-        serverMove: { moveId: "move_1", state: "ready" },
+        serverMove: { moveId: "move_1", state: "pending" },
       });
-    const { navigateTo } = renderOverlay(
+    const { navigateTo } = await renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
     );
 
@@ -394,6 +396,18 @@ describe("ServerMoveOverlay", () => {
     expect(
       within(waiting).queryByRole("link", { name: "Open the new address" }),
     ).toBeNull();
+    vi.mocked(fetchServerHealth).mockResolvedValue({
+      ok: true,
+      serverMove: { moveId: "move_1", state: "activating" },
+    });
+    await screen.findByText(
+      "desk is switching over to the new server. This page opens it as soon as it's ready.",
+    );
+    expect(navigateTo).not.toHaveBeenCalled();
+    vi.mocked(fetchServerHealth).mockResolvedValue({
+      ok: true,
+      serverMove: { moveId: "move_1", state: "ready" },
+    });
     const destination =
       "https://desk.example.com/projects/proj_1/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3";
     await waitFor(() => {
@@ -422,29 +436,40 @@ describe("ServerMoveOverlay", () => {
   });
 
   it("waits for a bb connect move to answer on the same address, then dismisses with a toast", async () => {
-    vi.mocked(sdk.experimental_server.moveStatus)
-      .mockResolvedValueOnce({
-        move: move({
-          state: "completed",
-          cancellable: false,
-          finishedAt: 2_000,
-          steps: ALL_DONE,
-        }),
-        lastMove: null,
-      })
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce({
-        move: null,
-        lastMove: lastMove({ moveId: "move_0", toHostName: "old-desk" }),
-      })
-      .mockResolvedValue({ move: null, lastMove: lastMove() });
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: move({
+        state: "completed",
+        cancellable: false,
+        finishedAt: 2_000,
+        steps: ALL_DONE,
+      }),
+      lastMove: null,
+    });
     realtime.state = "reconnecting";
-    const { navigateTo } = renderOverlay();
+    const { navigateTo, queryClient } = await renderOverlay();
 
     expect(
       await screen.findByRole("dialog", { name: "Reconnecting to desk…" }),
     ).toBeDefined();
 
+    vi.mocked(sdk.experimental_server.moveStatus)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue({
+        move: null,
+        lastMove: lastMove({ moveId: "move_0", toHostName: "old-desk" }),
+      });
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<ServerMoveStatusResponse>(
+          serverMoveStatusQueryKey(),
+        )?.lastMove?.moveId,
+      ).toBe("move_0");
+    });
+    expect(vi.mocked(appToast.success)).not.toHaveBeenCalled();
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: lastMove(),
+    });
     await waitFor(() => {
       expect(vi.mocked(appToast.success)).toHaveBeenCalledWith(
         "Server moved to desk",
@@ -476,7 +501,7 @@ describe("ServerMoveOverlay", () => {
         }),
         lastMove: null,
       });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await screen.findByRole("dialog", { name: "Moving server to desk" });
     await queryClient.invalidateQueries({
@@ -514,7 +539,7 @@ describe("ServerMoveOverlay", () => {
       }),
       lastMove: null,
     });
-    const { queryClient } = renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await waitFor(() => {
       expect(
@@ -525,17 +550,38 @@ describe("ServerMoveOverlay", () => {
   });
 
   it("explains a move the server forgot by restarting", async () => {
-    vi.mocked(sdk.experimental_server.moveStatus)
-      .mockResolvedValueOnce({ move: move(), lastMove: null })
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValue({ move: null, lastMove: null });
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: move(),
+      lastMove: null,
+    });
     realtime.state = "reconnecting";
-    renderOverlay();
+    const { queryClient } = await renderOverlay();
 
     await screen.findByRole("dialog", { name: "Moving server to desk" });
+    const interrupted = new TypeError("Failed to fetch");
+    vi.mocked(sdk.experimental_server.moveStatus).mockRejectedValue(
+      interrupted,
+    );
+    await waitFor(() => {
+      expect(queryClient.getQueryState(serverMoveStatusQueryKey())?.error).toBe(
+        interrupted,
+      );
+    });
+    expect(
+      screen.getByRole("dialog", { name: "Moving server to desk" }),
+    ).toBeDefined();
+    vi.mocked(sdk.experimental_server.moveStatus).mockResolvedValue({
+      move: null,
+      lastMove: null,
+    });
     const overlay = await screen.findByRole("dialog", {
       name: "Server move stopped",
     });
+    expect(
+      within(overlay).getByText(
+        "The server restarted before the move to desk finished, so nothing switched over.",
+      ),
+    ).toBeDefined();
     fireEvent.click(within(overlay).getByRole("button", { name: "Close" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -569,7 +615,7 @@ describe("ServerMoveOverlay", () => {
           },
         }),
       );
-    const { navigateTo } = renderOverlay("/settings/machines?tab=all");
+    const { navigateTo } = await renderOverlay("/settings/machines?tab=all");
 
     await waitFor(() => {
       expect(navigateTo).toHaveBeenCalledWith(
@@ -583,7 +629,7 @@ describe("ServerMoveOverlay", () => {
       move: null,
       lastMove: lastMove(),
     });
-    renderOverlay("/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3");
+    await renderOverlay("/threads/thr_1?panel=diff&bbServerMove=move_1#turn-3");
 
     await waitFor(() => {
       expect(vi.mocked(appToast.success)).toHaveBeenCalledWith(

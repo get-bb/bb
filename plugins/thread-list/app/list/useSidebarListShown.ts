@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from "react";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { useSidebarContentElementRef } from "../ui/sidebar.js";
 
 export function useSidebarListShown(): boolean {
@@ -9,16 +10,12 @@ export function useSidebarListShown(): boolean {
     if (!canObserve) return;
     const element = scrollElementRef?.current ?? null;
     if (element === null) {
-      const fallback = setTimeout(() =>
-        setShown((current) => current ?? true),
-      );
+      const fallback = setTimeout(() => setShown((current) => current ?? true));
       return () => clearTimeout(fallback);
     }
-    const update = () => setShown(element.clientHeight > 0);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
+    const readShown = () => element.clientHeight > 0;
+    setShown(readShown());
+    return observeSharedResize(element, { read: readShown, write: setShown });
   }, [canObserve, scrollElementRef]);
   return canObserve ? shown === true : true;
 }

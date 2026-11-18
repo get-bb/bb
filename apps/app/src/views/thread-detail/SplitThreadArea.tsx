@@ -18,6 +18,7 @@ import {
   type ComponentProps,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   type SetStateAction,
 } from "react";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -98,7 +99,6 @@ import {
 import { getAdjacentPaneId, getDirectionalPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
-  createSinglePaneLayout,
   focusedPaneRoute,
   paneContentRoute,
   reconcileLayoutForContent,
@@ -187,6 +187,50 @@ interface PreservedScrollPosition {
   top: number;
 }
 
+function restorePreservedScrollPositionsUntilSettled(
+  workspaceRef: RefObject<HTMLDivElement | null>,
+  positions: Map<HTMLElement, PreservedScrollPosition>,
+): () => void {
+  const restore = (): boolean => {
+    const workspace = workspaceRef.current;
+    let corrected = false;
+    for (const [element, position] of positions) {
+      if (workspace === null || !workspace.contains(element)) {
+        positions.delete(element);
+        continue;
+      }
+      if (
+        element.scrollLeft === position.left &&
+        element.scrollTop === position.top
+      ) {
+        continue;
+      }
+      element.scrollLeft = position.left;
+      element.scrollTop = position.top;
+      corrected = true;
+    }
+    return corrected;
+  };
+
+  restore();
+  let frame: number | null = null;
+  let framesRemaining = 5;
+  const restoreUntilSettled = () => {
+    const corrected = restore();
+    framesRemaining -= 1;
+    frame =
+      corrected && framesRemaining > 0
+        ? window.requestAnimationFrame(restoreUntilSettled)
+        : null;
+  };
+  frame = window.requestAnimationFrame(restoreUntilSettled);
+  return () => {
+    if (frame !== null) {
+      window.cancelAnimationFrame(frame);
+    }
+  };
+}
+
 function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const positionsRef = useRef(new Map<HTMLElement, PreservedScrollPosition>());
@@ -219,47 +263,76 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
     }
     previousMaximizedPaneIdRef.current = maximizedPaneId;
 
-    const restore = (): boolean => {
-      const workspace = workspaceRef.current;
-      let corrected = false;
-      for (const [element, position] of positionsRef.current) {
-        if (workspace === null || !workspace.contains(element)) {
-          positionsRef.current.delete(element);
-          continue;
-        }
-        if (
-          element.scrollLeft === position.left &&
-          element.scrollTop === position.top
-        ) {
-          continue;
-        }
-        element.scrollLeft = position.left;
-        element.scrollTop = position.top;
-        corrected = true;
-      }
-      return corrected;
-    };
-
-    restore();
-    let frame: number | null = null;
-    let framesRemaining = 5;
-    const restoreUntilSettled = () => {
-      const corrected = restore();
-      framesRemaining -= 1;
-      frame =
-        corrected && framesRemaining > 0
-          ? window.requestAnimationFrame(restoreUntilSettled)
-          : null;
-    };
-    frame = window.requestAnimationFrame(restoreUntilSettled);
-    return () => {
-      if (frame !== null) {
-        window.cancelAnimationFrame(frame);
-      }
-    };
+    return restorePreservedScrollPositionsUntilSettled(
+      workspaceRef,
+      positionsRef.current,
+    );
   }, [maximizedPaneId]);
 
   return { captureVisibleScrollPositions, workspaceRef };
+}
+
+function focusPaneUntilSettled({
+  focusFirstControl,
+  onFinish,
+  root,
+}: {
+  focusFirstControl: boolean;
+  onFinish: () => void;
+  root: HTMLElement;
+}): () => void {
+  let observer: MutationObserver | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const cancel = () => {
+    observer?.disconnect();
+    clearTimeout(timeout);
+  };
+  const finish = () => {
+    cancelAnimationFrame(frame);
+    cancel();
+    onFinish();
+  };
+  const focus = () => {
+    if (!root.isConnected || root.getAttribute("aria-hidden") === "true")
+      return false;
+    return focusPaneComposer(root) && root.contains(document.activeElement);
+  };
+  const frame = requestAnimationFrame(() => {
+    if (focus()) {
+      finish();
+      return;
+    }
+    const content =
+      root.querySelector<HTMLElement>("[data-pane-content]") ?? root;
+    const control = !focusFirstControl
+      ? null
+      : content.querySelector<HTMLElement>(
+          "input:not(:disabled), textarea:not(:disabled), [contenteditable='true'], button:not(:disabled), a[href], [tabindex='0']",
+        );
+    (control ?? root).focus({ preventScroll: true });
+    observer = new MutationObserver(() => {
+      if (document.activeElement !== root) {
+        finish();
+        return;
+      }
+      if (focus()) finish();
+    });
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["contenteditable", "disabled"],
+    });
+    timeout = setTimeout(finish, 1000);
+  });
+  document.addEventListener("pointerdown", finish, true);
+  document.addEventListener("keydown", finish, true);
+  return () => {
+    cancelAnimationFrame(frame);
+    cancel();
+    document.removeEventListener("pointerdown", finish, true);
+    document.removeEventListener("keydown", finish, true);
+  };
 }
 
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
@@ -293,22 +366,34 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     [routeContent, routeThread],
   );
 
+  const [reconciliation, setReconciliation] = useState<{
+    content: PaneContent;
+    from: SplitLayout | null;
+    layout: SplitLayout;
+  } | null>(null);
+  let layout = storedLayout;
+  if (currentContent !== null) {
+    if (reconciliation?.content !== currentContent) {
+      const next = {
+        content: currentContent,
+        from: storedLayout,
+        layout: reconcileLayoutForContent(storedLayout, currentContent),
+      };
+      setReconciliation(next);
+      layout = next.layout;
+    } else if (storedLayout === reconciliation.from) {
+      layout = reconciliation.layout;
+    }
+  }
+
   useEffect(() => {
-    if (currentContent === null) {
+    if (reconciliation === null) {
       return;
     }
     setLayout((previous) =>
-      reconcileLayoutForContent(previous, currentContent),
+      reconcileLayoutForContent(previous, reconciliation.content),
     );
-  }, [currentContent, setLayout]);
-
-  const layout: SplitLayout | null =
-    storedLayout ??
-    (currentContent?.kind === "thread" && routeThread
-      ? createSinglePaneLayout(routeThread)
-      : currentContent
-        ? reconcileLayoutForContent(null, currentContent)
-        : null);
+  }, [reconciliation, setLayout]);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =
@@ -419,61 +504,14 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       workspace?.querySelectorAll<HTMLElement>("[data-split-pane-id]") ?? [],
     ).find((element) => element.dataset.splitPaneId === paneId);
     if (!root || !pane || layout?.focusedPaneId !== paneId) return;
-    let observer: MutationObserver | undefined;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const cancel = () => {
-      observer?.disconnect();
-      clearTimeout(timeout);
-    };
-    const finish = () => {
-      cancelAnimationFrame(frame);
-      cancel();
-      setKeyboardFocusRequest((current) =>
-        current === keyboardFocusRequest ? null : current,
-      );
-    };
-    const focus = () => {
-      if (!root.isConnected || root.getAttribute("aria-hidden") === "true")
-        return false;
-      return focusPaneComposer(root) && root.contains(document.activeElement);
-    };
-    const frame = requestAnimationFrame(() => {
-      if (focus()) {
-        finish();
-        return;
-      }
-      const content =
-        root.querySelector<HTMLElement>("[data-pane-content]") ?? root;
-      const control =
-        pane.content.kind === "thread"
-          ? null
-          : content.querySelector<HTMLElement>(
-              "input:not(:disabled), textarea:not(:disabled), [contenteditable='true'], button:not(:disabled), a[href], [tabindex='0']",
-            );
-      (control ?? root).focus({ preventScroll: true });
-      observer = new MutationObserver(() => {
-        if (document.activeElement !== root) {
-          finish();
-          return;
-        }
-        if (focus()) finish();
-      });
-      observer.observe(root, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["contenteditable", "disabled"],
-      });
-      timeout = setTimeout(finish, 1000);
+    return focusPaneUntilSettled({
+      focusFirstControl: pane.content.kind !== "thread",
+      onFinish: () =>
+        setKeyboardFocusRequest((current) =>
+          current === keyboardFocusRequest ? null : current,
+        ),
+      root,
     });
-    document.addEventListener("pointerdown", finish, true);
-    document.addEventListener("keydown", finish, true);
-    return () => {
-      cancelAnimationFrame(frame);
-      cancel();
-      document.removeEventListener("pointerdown", finish, true);
-      document.removeEventListener("keydown", finish, true);
-    };
   }, [keyboardFocusRequest, layout, preservedScrollWorkspaceRef]);
 
   const focusPane = useCallback(

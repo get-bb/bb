@@ -29,7 +29,8 @@ import {
 } from "./markdown-message-directives";
 import { MarkdownPreview } from "./markdown-preview";
 
-beforeAll(() => LazyMarkdownHtml.preload());
+await LazyMarkdownHtml.preload();
+await import("./markdown-katex.js");
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
@@ -220,12 +221,8 @@ function createDifferentialLegs(initialContent = "") {
         views.incremental.container.innerHTML,
         JSON.stringify(content),
       ).toBe(views.legacy.container.innerHTML);
-      return {
-        incrementalMutations: observers.incremental
-          .takeRecords()
-          .map(mutationSignature),
-        legacyMutations: observers.legacy.takeRecords().map(mutationSignature),
-      };
+      observers.legacy.takeRecords();
+      return { incrementalRecords: observers.incremental.takeRecords() };
     },
   };
 }
@@ -401,7 +398,7 @@ describe("MarkdownPreview incremental blocks", () => {
     legs.update(`${first}Second paragraph.\n\nThird.`);
   });
 
-  it("re-renders plugin directives with fresh attributes on every new body like a single document", () => {
+  it("renders a settled plugin directive once while later content streams", () => {
     const first = 'Intro.\n\n::inline-vis{file="a.html"}\n\n';
     const legs = createDifferentialLegs(first);
     const steps = [
@@ -411,12 +408,15 @@ describe("MarkdownPreview incremental blocks", () => {
     ];
     for (const step of steps) {
       legs.update(step);
-      expect(counts.incremental).toEqual(counts.legacy);
+      expect(counts.incremental).toEqual({
+        attributeEffects: 1,
+        mounts: 1,
+        renders: 1,
+      });
     }
-    expect(counts.legacy.attributeEffects).toBe(steps.length + 1);
   });
 
-  it("commits the same DOM mutations as a single document while settled content grows", () => {
+  it("only appends DOM for new blocks and never mutates settled blocks while content grows", () => {
     const blocks = [
       "# Plan\n\n",
       "See [the docs](https://example.com/docs) and [a file](</workspace/src/a.ts:12>).\n\n",
@@ -430,10 +430,24 @@ describe("MarkdownPreview incremental blocks", () => {
     ];
     let body = blocks[0] ?? "";
     const legs = createDifferentialLegs(body);
+    const root = legs.incremental.querySelector("[data-markdown-preview]");
     for (const block of blocks.slice(1)) {
+      const settledNodes = [...(root?.childNodes ?? [])];
       body += block;
-      const { incrementalMutations, legacyMutations } = legs.update(body);
-      expect(incrementalMutations, body).toEqual(legacyMutations);
+      const { incrementalRecords } = legs.update(body);
+      for (const record of incrementalRecords) {
+        expect(
+          settledNodes.some(
+            (node) => node === record.target || node.contains(record.target),
+          ),
+          `${mutationSignature(record)} after ${JSON.stringify(block)}`,
+        ).toBe(false);
+        expect(record.removedNodes.length, mutationSignature(record)).toBe(0);
+      }
+      expect(
+        settledNodes.every((node) => node.parentNode === root),
+        JSON.stringify(block),
+      ).toBe(true);
     }
   });
 });

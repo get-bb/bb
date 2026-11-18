@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { multiPaneSplitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
-import {
-  indicatorSplitLayoutAtom,
-  resolvePaneContentSplitIndicator,
-} from "./paneContentSplitIndicator";
+import { resolvePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 
 function content(threadId: string): PaneContent {
   return { kind: "thread", projectId: "p1", threadId };
@@ -25,20 +21,6 @@ function twoPanes(focused: string): SplitLayout {
     focusedPaneId: focused,
   };
 }
-
-describe("indicatorSplitLayoutAtom", () => {
-  it("does not subscribe to the split layout on compact viewports", () => {
-    expect(indicatorSplitLayoutAtom(true, false)).toBe(
-      multiPaneSplitLayoutAtom,
-    );
-    expect(indicatorSplitLayoutAtom(true, true)).not.toBe(
-      multiPaneSplitLayoutAtom,
-    );
-    expect(indicatorSplitLayoutAtom(false, false)).not.toBe(
-      multiPaneSplitLayoutAtom,
-    );
-  });
-});
 
 describe("resolvePaneContentSplitIndicator", () => {
   it("maps the content's pane and the focused pane onto the minimap", () => {

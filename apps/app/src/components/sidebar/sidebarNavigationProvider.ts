@@ -14,7 +14,7 @@ import {
 } from "@/lib/plugin-replacement-preference";
 import {
   useBuiltinPluginIds,
-  usePluginSlots,
+  usePluginSlotKind,
   type ExperimentalSidebarNavigationSlot,
 } from "@/lib/plugin-slots";
 import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
@@ -131,7 +131,9 @@ const lastResolvedCache = createLastKnownCache({
 const LAST_RESOLVED_KEY = lastResolvedCache.key();
 
 export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
-  const { experimentalSidebarNavigations } = usePluginSlots();
+  const experimentalSidebarNavigations = usePluginSlotKind(
+    "experimentalSidebarNavigations",
+  );
   const preference = useAtomValue(sidebarNavigationProviderAtom);
   const settled = usePluginFrontendsSettled();
   const loadFailed = usePluginFrontendLoadFailed();

@@ -220,6 +220,69 @@ function svgTextToDataUrl(contents: string): string | null {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmedContents)}`;
 }
 
+function enrichmentFromContentResults(
+  oldResult: DiffFileContentsResult | null,
+  newResult: DiffFileContentsResult | null,
+  isSvgCard: boolean,
+): DiffFileEnrichmentState {
+  const oldImage = oldResult?.kind === "image" ? oldResult : null;
+  const newImage = newResult?.kind === "image" ? newResult : null;
+  if (oldImage !== null || newImage !== null) {
+    return {
+      status: "ready-image",
+      oldImageUrl: oldImage?.dataUrl ?? null,
+      newImageUrl: newImage?.dataUrl ?? null,
+      oldSizeBytes: oldImage?.sizeBytes ?? null,
+      newSizeBytes: newImage?.sizeBytes ?? null,
+    };
+  }
+  if (oldResult?.kind !== "text" || newResult?.kind !== "text") {
+    return { status: "unavailable" };
+  }
+  const fullFileContents = toDiffFullFileContents(
+    oldResult.file,
+    newResult.file,
+  );
+  if (isSvgCard) {
+    return {
+      status: "ready-svg",
+      fullFileContents,
+      oldImageUrl: svgTextToDataUrl(oldResult.file.contents),
+      newImageUrl: svgTextToDataUrl(newResult.file.contents),
+    };
+  }
+  return { status: "ready", fullFileContents };
+}
+
+function loadDiffFileEnrichment({
+  plan,
+  fetcher,
+  isSvgCard,
+  onSettled,
+}: {
+  plan: DiffFileContentPlan;
+  fetcher: RequestDiffFileContents;
+  isSvgCard: boolean;
+  onSettled: (enrichment: DiffFileEnrichmentState) => void;
+}): () => void {
+  let cancelled = false;
+  void Promise.all([
+    resolveDiffFileContentSource(plan.old, fetcher),
+    resolveDiffFileContentSource(plan.new, fetcher),
+  ])
+    .then(([oldResult, newResult]) => {
+      if (cancelled) return;
+      onSettled(enrichmentFromContentResults(oldResult, newResult, isSvgCard));
+    })
+    .catch(() => {
+      if (cancelled) return;
+      onSettled({ status: "error" });
+    });
+  return () => {
+    cancelled = true;
+  };
+}
+
 interface UseGitDiffCardBodyArgs {
   fileDiff: ParsedGitDiffFile;
   changeKind: GitDiffFileChangeKind;
@@ -262,22 +325,34 @@ export function useGitDiffCardBody({
   useEffect(() => {
     fetcherRef.current = onRequestFileContents;
   });
-  const [enrichment, setEnrichment] = useState<DiffFileEnrichmentState>({
+  const [storedEnrichment, setEnrichment] = useState<DiffFileEnrichmentState>({
     status: "idle",
   });
-  const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
   const [contextRequestVersion, setContextRequestVersion] = useState(0);
   const [isContextRequestedByUser, setIsContextRequestedByUser] =
     useState(false);
   const isPointerCoarse = usePointerCoarse();
-  useEffect(() => {
-    enrichmentStatusRef.current = "idle";
+  const [resetSource, setResetSource] = useState({
+    identity: fileContentPlan.identity,
+    isImageCard,
+    isSvgCard,
+  });
+  if (
+    resetSource.identity !== fileContentPlan.identity ||
+    resetSource.isImageCard !== isImageCard ||
+    resetSource.isSvgCard !== isSvgCard
+  ) {
+    setResetSource({
+      identity: fileContentPlan.identity,
+      isImageCard,
+      isSvgCard,
+    });
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
     setContextRequestVersion(0);
     setIsContextRequestedByUser(false);
-  }, [fileContentPlan.identity, isImageCard, isSvgCard]);
+  }
   const shouldGateDeletedDiff =
     isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
   const needsContentsToRender = isImageCard || isSvgCard;
@@ -308,87 +383,37 @@ export function useGitDiffCardBody({
     isPointerCoarse,
     shouldGateDeletedDiff,
   ]);
+  const enrichmentStatus = storedEnrichment.status;
   useEffect(() => {
-    if (!shouldFetchContents || enrichmentStatusRef.current !== "idle") {
+    if (!shouldFetchContents || enrichmentStatus !== "idle") {
       return;
     }
     const fetcher = fetcherRef.current;
     if (!fetcher) return;
-
-    let cancelled = false;
-    enrichmentStatusRef.current = "loading";
-    setEnrichment({ status: "loading" });
-
-    void Promise.all([
-      resolveDiffFileContentSource(fileContentPlan.old, fetcher),
-      resolveDiffFileContentSource(fileContentPlan.new, fetcher),
-    ])
-      .then(([oldResult, newResult]) => {
-        if (cancelled) return;
-        const oldImage = oldResult?.kind === "image" ? oldResult : null;
-        const newImage = newResult?.kind === "image" ? newResult : null;
-        if (oldImage !== null || newImage !== null) {
-          enrichmentStatusRef.current = "ready-image";
-          setEnrichment({
-            status: "ready-image",
-            oldImageUrl: oldImage?.dataUrl ?? null,
-            newImageUrl: newImage?.dataUrl ?? null,
-            oldSizeBytes: oldImage?.sizeBytes ?? null,
-            newSizeBytes: newImage?.sizeBytes ?? null,
-          });
-          return;
-        }
-        if (oldResult?.kind !== "text" || newResult?.kind !== "text") {
-          enrichmentStatusRef.current = "unavailable";
-          setEnrichment({ status: "unavailable" });
-          return;
-        }
-        const fullFileContents = toDiffFullFileContents(
-          oldResult.file,
-          newResult.file,
-        );
-        if (isSvgCard) {
-          enrichmentStatusRef.current = "ready-svg";
-          setEnrichment({
-            status: "ready-svg",
-            fullFileContents,
-            oldImageUrl: svgTextToDataUrl(oldResult.file.contents),
-            newImageUrl: svgTextToDataUrl(newResult.file.contents),
-          });
-          return;
-        }
-        enrichmentStatusRef.current = "ready";
-        setEnrichment({
-          status: "ready",
-          fullFileContents,
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        enrichmentStatusRef.current = "error";
-        setEnrichment({ status: "error" });
-      });
-
-    return () => {
-      cancelled = true;
-      if (enrichmentStatusRef.current === "loading") {
-        enrichmentStatusRef.current = "idle";
-      }
-    };
+    return loadDiffFileEnrichment({
+      plan: fileContentPlan,
+      fetcher,
+      isSvgCard,
+      onSettled: setEnrichment,
+    });
   }, [
     contextRequestVersion,
+    enrichmentStatus,
     fileContentPlan,
     fileDiff,
     isSvgCard,
     patchText,
     shouldFetchContents,
   ]);
+  const enrichment: DiffFileEnrichmentState =
+    shouldFetchContents && storedEnrichment.status === "idle"
+      ? { status: "loading" }
+      : storedEnrichment;
 
   const requestContextExpansion = useCallback(() => {
-    if (enrichmentStatusRef.current === "error") {
-      enrichmentStatusRef.current = "idle";
-      setEnrichment({ status: "idle" });
-    }
+    setEnrichment((current) =>
+      current.status === "error" ? { status: "idle" } : current,
+    );
     setIsContextRequestedByUser(true);
     setContextRequestVersion((version) => version + 1);
   }, []);

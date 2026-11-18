@@ -82,7 +82,6 @@ describe("useRefetchOnUpdateNeeded", () => {
         });
         const { refetch } = cli;
         useRefetchOnUpdateNeeded({
-          enabled: true,
           states: [health],
           statesUpdatedAt: polledAt,
           cliStatus: cli.data,
@@ -96,7 +95,6 @@ describe("useRefetchOnUpdateNeeded", () => {
           signingIn: false,
           signInFailed: false,
           installInfoPending: cli.isPending,
-          whileInstallInfoPending: "offerInstall",
         });
       },
       {
@@ -128,23 +126,5 @@ describe("useRefetchOnUpdateNeeded", () => {
     rerender({ health: codexHealth("unsupported_version"), polledAt: 5 });
     expect(fetchCli).toHaveBeenCalledTimes(3);
     client.clear();
-  });
-
-  it("leaves today's guide as on main: no extra install-info refetch", () => {
-    const refetch = vi.fn();
-    const { rerender } = renderHook(
-      ({ polledAt }: { polledAt: number }) =>
-        useRefetchOnUpdateNeeded({
-          enabled: false,
-          states: [codexHealth("unsupported_version")],
-          statesUpdatedAt: polledAt,
-          cliStatus: { codex: codexCli(false) },
-          refetch,
-        }),
-      { initialProps: { polledAt: 1 } },
-    );
-    rerender({ polledAt: 2 });
-
-    expect(refetch).not.toHaveBeenCalled();
   });
 });

@@ -10,11 +10,7 @@ import {
   parseBackgroundTaskLifecycleEvent,
   upsertBackgroundTaskMessage,
 } from "./background-task-projection.js";
-import {
-  getEventParentToolCallId,
-  getEventProviderThreadId,
-  getEventTurnId,
-} from "./event-decode.js";
+import { getEventParentToolCallId, getEventTurnId } from "./event-decode.js";
 import {
   parseExecLifecycleEvent,
   parseToolCallLifecycleEvent,
@@ -91,7 +87,6 @@ import {
   onTurnCompleted,
   onTurnStarted,
   type CompactionTurnFinalization,
-  type PendingDelegationTurnLink,
   type ProjectionState,
 } from "./event-projection-state.js";
 import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
@@ -119,6 +114,7 @@ interface BuildFlatProjectionDataResult {
   activeThinking: ActiveThinking | null;
   activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
+  delegatedTurnIds: ReadonlySet<string>;
   messages: EventProjectionMessage[];
 }
 
@@ -126,7 +122,9 @@ interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
   activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
+  delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
+  externalUserBoundarySeqsByTurnId: BuildEventProjectionOptions["externalUserBoundarySeqsByTurnId"];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
@@ -442,80 +440,6 @@ function appendProjectedUserMessage(
   state.messages.push(projectedClientUser);
 }
 
-function getDelegationChildRef(decoded: ThreadEvent): string | undefined {
-  return (decoded.type === "item/started" ||
-    decoded.type === "item/completed" ||
-    decoded.type === "item/delegation/progress" ||
-    decoded.type === "item/delegation/completed") &&
-    decoded.item.type === "delegation"
-    ? decoded.item.childRef
-    : undefined;
-}
-
-function enqueuePendingDelegationTurnLink(
-  state: ProjectionState,
-  providerThreadId: string | undefined,
-  parentTurnId: string | undefined,
-  callId: string,
-): void {
-  if (!providerThreadId || !parentTurnId) {
-    return;
-  }
-  if (state.delegatedTurnLinkCallIds.has(callId)) {
-    return;
-  }
-
-  const pendingLinks =
-    state.pendingDelegationTurnLinksByProviderThreadId.get(providerThreadId) ??
-    [];
-  const link: PendingDelegationTurnLink = {
-    callId,
-    parentTurnId,
-  };
-  pendingLinks.push(link);
-  state.pendingDelegationTurnLinksByProviderThreadId.set(
-    providerThreadId,
-    pendingLinks,
-  );
-  state.delegatedTurnLinkCallIds.add(callId);
-}
-
-function consumePendingDelegationTurnLink(
-  state: ProjectionState,
-  providerThreadId: string | undefined,
-  turnId: string,
-): string | undefined {
-  if (!providerThreadId) {
-    return undefined;
-  }
-  if (state.delegationParentToolCallIdsByTurnId.has(turnId)) {
-    return state.delegationParentToolCallIdsByTurnId.get(turnId);
-  }
-
-  const pendingLinks =
-    state.pendingDelegationTurnLinksByProviderThreadId.get(providerThreadId);
-  if (!pendingLinks || pendingLinks.length === 0) {
-    return undefined;
-  }
-
-  while (pendingLinks.length > 0) {
-    const pendingLink = pendingLinks.shift();
-    if (!pendingLink || pendingLink.parentTurnId === turnId) {
-      continue;
-    }
-    if (pendingLinks.length === 0) {
-      state.pendingDelegationTurnLinksByProviderThreadId.delete(
-        providerThreadId,
-      );
-    }
-    state.delegationParentToolCallIdsByTurnId.set(turnId, pendingLink.callId);
-    return pendingLink.callId;
-  }
-
-  state.pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
-  return undefined;
-}
-
 function shouldUseExplicitEventParentToolCallId({
   eventTurnId,
   isAcceptedRootClientTurn,
@@ -628,7 +552,6 @@ function foldProjectionEvent(
   } = lookups;
   const eventType = decoded.type;
   const eventTurnId = getEventTurnId(decoded);
-  const eventProviderThreadId = getEventProviderThreadId(decoded);
   const isAcceptedRootClientTurn =
     typeof eventTurnId === "string" &&
     acceptedRootClientTurnIds.has(eventTurnId);
@@ -659,23 +582,11 @@ function foldProjectionEvent(
     });
     if (isAcceptedRootClientTurn) {
       state.delegationParentToolCallIdsByTurnId.delete(turnId);
-    } else {
-      const pendingParentToolCallId = consumePendingDelegationTurnLink(
-        state,
-        eventProviderThreadId,
+    } else if (explicitEventParentToolCallId) {
+      state.delegationParentToolCallIdsByTurnId.set(
         turnId,
+        explicitEventParentToolCallId,
       );
-      if (explicitEventParentToolCallId) {
-        state.delegationParentToolCallIdsByTurnId.set(
-          turnId,
-          explicitEventParentToolCallId,
-        );
-      } else if (pendingParentToolCallId) {
-        state.delegationParentToolCallIdsByTurnId.set(
-          turnId,
-          pendingParentToolCallId,
-        );
-      }
     }
     onTurnStarted(state, turnId);
   }
@@ -685,11 +596,6 @@ function foldProjectionEvent(
     : (explicitEventParentToolCallId ??
       (eventTurnId
         ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
-        : undefined) ??
-      (eventProviderThreadId
-        ? state.delegationParentToolCallIdsByProviderThreadId.get(
-            eventProviderThreadId,
-          )
         : undefined));
 
   const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
@@ -862,32 +768,15 @@ function foldProjectionEvent(
     eventParentToolCallId,
   );
   if (toolCallEvent) {
-    const delegationChildRef = getDelegationChildRef(decoded);
-    if (toolCallEvent.kind !== "output") {
-      if (toolCallEvent.call.kind === "delegation" && eventTurnId) {
-        state.delegationTurnIdsByCallId.set(
-          toolCallEvent.call.callId,
-          eventTurnId,
-        );
-      }
-      if (delegationChildRef !== undefined) {
-        if (
-          delegationChildRef === eventProviderThreadId ||
-          state.delegatedTurnLinkCallIds.has(toolCallEvent.call.callId)
-        ) {
-          enqueuePendingDelegationTurnLink(
-            state,
-            eventProviderThreadId,
-            eventTurnId,
-            toolCallEvent.call.callId,
-          );
-        } else {
-          state.delegationParentToolCallIdsByProviderThreadId.set(
-            delegationChildRef,
-            toolCallEvent.call.callId,
-          );
-        }
-      }
+    if (
+      toolCallEvent.kind !== "output" &&
+      toolCallEvent.call.kind === "delegation" &&
+      eventTurnId
+    ) {
+      state.delegationTurnIdsByCallId.set(
+        toolCallEvent.call.callId,
+        eventTurnId,
+      );
     }
     if (toolCallEvent.kind === "begin") {
       onExecBegin(
@@ -1012,6 +901,21 @@ function foldProjectionEvent(
   }
 }
 
+function nestDelegatedTurnMessages(
+  messages: EventProjectionMessage[],
+  parentToolCallIdsByTurnId: ReadonlyMap<string, string>,
+): EventProjectionMessage[] {
+  return messages.map((message) => {
+    if (message.parentToolCallId || message.scope.kind !== "turn") {
+      return message;
+    }
+    const parentToolCallId = parentToolCallIdsByTurnId.get(
+      message.scope.turnId,
+    );
+    return parentToolCallId ? { ...message, parentToolCallId } : message;
+  });
+}
+
 function finishFlatProjection(
   state: ProjectionState,
   orderedEvents: ThreadEventWithMeta[],
@@ -1020,7 +924,10 @@ function finishFlatProjection(
 ): BuildFlatProjectionDataResult {
   finalizeProjectionState({ state, options: options });
   const messages = sortEventProjectionMessagesBySource(
-    normalizeProvisioningFailures(orderedEvents, state.messages),
+    nestDelegatedTurnMessages(
+      normalizeProvisioningFailures(orderedEvents, state.messages),
+      state.delegationParentToolCallIdsByTurnId,
+    ),
   );
   const callMessageById = buildCallMessageById(messages);
   enrichBackgroundAgentModels(messages, callMessageById);
@@ -1033,6 +940,7 @@ function finishFlatProjection(
       messages,
       callMessageById,
     ),
+    delegatedTurnIds: new Set(state.delegationParentToolCallIdsByTurnId.keys()),
     messages,
   };
 }
@@ -1060,7 +968,9 @@ function buildDetailedProjection(
   args: BuildDetailedProjectionArgs,
 ): EventProjection {
   const projection = groupEventProjectionTurns({
+    delegatedTurnIds: args.delegatedTurnIds,
     events: args.events,
+    externalUserBoundarySeqsByTurnId: args.externalUserBoundarySeqsByTurnId,
     messages: args.messages,
   });
   const semanticProjection = normalizeEventProjection({
@@ -1093,7 +1003,9 @@ function buildFullEventProjection(
     activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events,
+    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1127,7 +1039,9 @@ export function buildEventProjectionEntries(
     activeThinking: null,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
+    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1208,6 +1122,7 @@ function copyProjectionStateForFinish(
 export function finishEventProjectionFold(
   fold: EventProjectionFold,
   events: ThreadEventWithMeta[],
+  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>,
 ): EventProjection {
   const orderedEvents = getOrderedThreadEvents(events);
   const flatProjection = finishFlatProjection(
@@ -1220,7 +1135,9 @@ export function finishEventProjectionFold(
     activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
+    delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
+    externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: fold.options.turnMessageDetail,
   });

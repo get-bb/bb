@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Button, type ButtonProps } from "../button";
 import {
@@ -26,7 +27,115 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../tooltip";
+import { observeSharedResize } from "../../../lib/shared-resize-observer";
 import { cn } from "../../../lib/utils";
+
+interface ToolbarLayout {
+  combined: boolean;
+  searchCondensed: boolean;
+}
+
+function observeToolbarLayout({
+  toolbar,
+  individualControls,
+  search,
+  controlsRef,
+  actionRef,
+  combinedRef,
+  restoreControlFocus,
+  expandSearchOnFocus,
+  hasCombinedControls,
+  setCombined,
+  setSearchCondensed,
+}: {
+  toolbar: HTMLDivElement;
+  individualControls: HTMLDivElement;
+  search: HTMLFormElement;
+  controlsRef: RefObject<HTMLDivElement | null>;
+  actionRef: RefObject<HTMLDivElement | null>;
+  combinedRef: RefObject<boolean>;
+  restoreControlFocus: RefObject<boolean>;
+  expandSearchOnFocus: boolean;
+  hasCombinedControls: boolean;
+  setCombined: (combined: boolean) => void;
+  setSearchCondensed: (condensed: boolean) => void;
+}): () => void {
+  let previousWidth = 0;
+  const readLayout = (): ToolbarLayout | null => {
+    const width = toolbar.getBoundingClientRect().width;
+    if (width === 0) return null;
+    const widthChanged = previousWidth !== width;
+    previousWidth = width;
+    if (
+      !widthChanged &&
+      controlsRef.current?.querySelector('[aria-haspopup][data-state="open"]')
+    )
+      return null;
+    const gap = Number.parseFloat(getComputedStyle(toolbar).columnGap) || 0;
+    const searchWidth = Number.parseFloat(getComputedStyle(search).flexBasis);
+    const actionWidth = actionRef.current?.getBoundingClientRect().width ?? 0;
+    const requiredWidth =
+      searchWidth +
+      individualControls.getBoundingClientRect().width +
+      actionWidth +
+      gap * (actionRef.current ? 2 : 1);
+    const next = hasCombinedControls && width < requiredWidth;
+    const controlsWidth = next
+      ? (controlsRef.current
+          ?.querySelector("[data-resource-combined-controls]")
+          ?.getBoundingClientRect().width ?? 0)
+      : individualControls.getBoundingClientRect().width;
+    return {
+      combined: next,
+      searchCondensed:
+        expandSearchOnFocus &&
+        (next ||
+          width -
+            controlsWidth -
+            actionWidth -
+            gap * (actionRef.current ? 2 : 1) <
+            searchWidth),
+    };
+  };
+  const applyLayout = (layout: ToolbarLayout | null) => {
+    if (layout === null) return;
+    setSearchCondensed(layout.searchCondensed);
+    if (combinedRef.current === layout.combined) return;
+    restoreControlFocus.current = Boolean(
+      controlsRef.current?.contains(document.activeElement) ||
+      controlsRef.current?.querySelector('[data-state="open"]'),
+    );
+    combinedRef.current = layout.combined;
+    setCombined(layout.combined);
+  };
+  const measure = () => applyLayout(readLayout());
+  measure();
+  const unobserve = observeSharedResize(
+    [
+      toolbar,
+      individualControls,
+      controlsRef.current,
+      actionRef.current,
+    ].filter((target) => target !== null),
+    { read: readLayout, write: applyLayout },
+  );
+  let frame = 0;
+  const menuObserver = new MutationObserver(() => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(measure);
+  });
+  if (controlsRef.current)
+    menuObserver.observe(controlsRef.current, {
+      attributes: true,
+      attributeFilter: ["data-state"],
+      subtree: true,
+    });
+  return () => {
+    unobserve();
+    menuObserver.disconnect();
+    cancelAnimationFrame(frame);
+  };
+}
 
 export function ResourceToolbar({
   searchValue,
@@ -88,70 +197,19 @@ export function ResourceToolbar({
     const individualControls = individualControlsRef.current;
     const search = searchRef.current;
     if (!toolbar || !individualControls || !search || !compact) return;
-    let previousWidth = 0;
-    const measure = () => {
-      const width = toolbar.getBoundingClientRect().width;
-      if (width === 0) return;
-      const widthChanged = previousWidth !== width;
-      previousWidth = width;
-      if (
-        !widthChanged &&
-        controlsRef.current?.querySelector('[aria-haspopup][data-state="open"]')
-      )
-        return;
-      const gap = Number.parseFloat(getComputedStyle(toolbar).columnGap) || 0;
-      const searchWidth = Number.parseFloat(getComputedStyle(search).flexBasis);
-      const actionWidth = actionRef.current?.getBoundingClientRect().width ?? 0;
-      const requiredWidth =
-        searchWidth +
-        individualControls.getBoundingClientRect().width +
-        actionWidth +
-        gap * (actionRef.current ? 2 : 1);
-      const next = hasCombinedControls && width < requiredWidth;
-      const controlsWidth = next
-        ? (controlsRef.current
-            ?.querySelector("[data-resource-combined-controls]")
-            ?.getBoundingClientRect().width ?? 0)
-        : individualControls.getBoundingClientRect().width;
-      setSearchCondensed(
-        expandSearchOnFocus &&
-          (next ||
-            width -
-              controlsWidth -
-              actionWidth -
-              gap * (actionRef.current ? 2 : 1) <
-              searchWidth),
-      );
-      if (combinedRef.current === next) return;
-      restoreControlFocus.current = Boolean(
-        controlsRef.current?.contains(document.activeElement) ||
-        controlsRef.current?.querySelector('[data-state="open"]'),
-      );
-      combinedRef.current = next;
-      setCombined(next);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(toolbar);
-    observer.observe(individualControls);
-    if (controlsRef.current) observer.observe(controlsRef.current);
-    if (actionRef.current) observer.observe(actionRef.current);
-    let frame = 0;
-    const menuObserver = new MutationObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
+    return observeToolbarLayout({
+      toolbar,
+      individualControls,
+      search,
+      controlsRef,
+      actionRef,
+      combinedRef,
+      restoreControlFocus,
+      expandSearchOnFocus,
+      hasCombinedControls,
+      setCombined,
+      setSearchCondensed,
     });
-    if (controlsRef.current)
-      menuObserver.observe(controlsRef.current, {
-        attributes: true,
-        attributeFilter: ["data-state"],
-        subtree: true,
-      });
-    return () => {
-      observer.disconnect();
-      menuObserver.disconnect();
-      cancelAnimationFrame(frame);
-    };
   }, [compact, expandSearchOnFocus, hasCombinedControls, showCombined]);
 
   useLayoutEffect(() => {

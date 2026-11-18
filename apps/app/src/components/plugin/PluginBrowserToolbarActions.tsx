@@ -3,7 +3,7 @@ import type { ExperimentalPluginBrowserPage } from "@get-bb/plugin-sdk";
 import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
-  usePluginSlots,
+  usePluginSlotKind,
   type PluginBrowserToolbarActionSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -108,7 +108,7 @@ export function PluginBrowserToolbarActions({
   url: string;
   isCompactViewport: boolean;
 }) {
-  const { browserToolbarActions } = usePluginSlots();
+  const browserToolbarActions = usePluginSlotKind("browserToolbarActions");
 
   if (browserToolbarActions.length === 0) return null;
 

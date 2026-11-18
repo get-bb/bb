@@ -9,7 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
-  RedesignedDevicesStep,
+  DevicesStep,
   AgentInstallErrorDetails,
   AgentSignInInstruction,
   AgentSignInPanel,
@@ -30,19 +30,21 @@ function renderAgents(agents: (OnboardingAgent | AgentLoadingRow)[]) {
   const handlers = {
     onSignIn: vi.fn(),
     onInstall: vi.fn(),
-    onViewInstallLog: vi.fn(),
     onCancelSignIn: vi.fn(),
+    onRetryCheck: vi.fn(),
     onRecheck: vi.fn(),
   };
-  render(
-    <AgentStep
-      machineName="bee"
-      agents={agents}
-      loadFailedMessage={null}
-      {...handlers}
-    />,
+  const view = render(
+    <TooltipProvider>
+      <AgentStep
+        machineName="bee"
+        agents={agents}
+        loadFailed={null}
+        {...handlers}
+      />
+    </TooltipProvider>,
   );
-  return handlers;
+  return { ...view, handlers };
 }
 
 afterEach(cleanup);
@@ -63,47 +65,14 @@ describe("AgentStep", () => {
     expect(within(rows[2]!).getByText("pi")).toBeTruthy();
     expect(rows[3]!.dataset.testid).toBe("agent-row-skeleton");
   });
-
-  it("offers the install log only on the agent whose install failed", () => {
-    const handlers = renderAgents([
-      agent("claude-code", { status: "install", canInstall: true }),
-      agent("codex", {
-        status: "installFailed",
-        message: "Install failed",
-        canInstall: true,
-      }),
-      agent("pi", { status: "installing", update: false }),
-    ]);
-
-    fireEvent.click(screen.getByRole("button", { name: "View log" }));
-
-    expect(handlers.onViewInstallLog).toHaveBeenCalledExactlyOnceWith("codex");
-    expect(handlers.onInstall).not.toHaveBeenCalled();
-  });
-
-  it("keeps the install log reachable when the machine offers no retry", () => {
-    const handlers = renderAgents([
-      agent("codex", {
-        status: "installFailed",
-        message: "Install failed",
-        canInstall: false,
-      }),
-    ]);
-
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "View log" }));
-
-    expect(handlers.onViewInstallLog).toHaveBeenCalledExactlyOnceWith("codex");
-  });
 });
 
-describe("AgentStep in the redesigned guide", () => {
+describe("AgentStep failures and sign-in", () => {
   it("keeps a failed install quiet and keeps a way out of signing in", () => {
     const onCancelSignIn = vi.fn();
     render(
       <TooltipProvider>
         <AgentStep
-          quiet
           machineName="bee"
           agents={[
             agent("codex", {
@@ -113,11 +82,11 @@ describe("AgentStep in the redesigned guide", () => {
             }),
             agent("claude-code", { status: "signingIn" }),
           ]}
-          loadFailedMessage={null}
+          loadFailed={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
-          onViewInstallLog={vi.fn()}
           onCancelSignIn={onCancelSignIn}
+          onRetryCheck={vi.fn()}
           onRecheck={vi.fn()}
         />
       </TooltipProvider>,
@@ -143,15 +112,12 @@ describe("OnboardingLayout stepper", () => {
     render(
       <OnboardingLayout
         step="plugins"
-        composition="centered"
-        showSkipAll={false}
         skippedSteps={skipped}
         title="Make bb yours"
         description=""
         primaryLabel="Continue"
         onPrimary={vi.fn()}
         onSelectStep={onSelectStep}
-        onSkipAll={vi.fn()}
       >
         <div />
       </OnboardingLayout>,
@@ -183,7 +149,6 @@ describe("ProjectsStep selection", () => {
   }
 
   function renderProjects(args: {
-    selection?: "line" | "header";
     repos: OnboardingRepo[];
     selectedIds: string[];
   }) {
@@ -196,7 +161,6 @@ describe("ProjectsStep selection", () => {
     };
     render(
       <ProjectsStep
-        {...(args.selection === undefined ? {} : { selection: args.selection })}
         status={{ kind: "results", truncated: false }}
         repos={args.repos}
         selectedIds={new Set(args.selectedIds)}
@@ -206,18 +170,8 @@ describe("ProjectsStep selection", () => {
     return handlers;
   }
 
-  it("keeps today's count line by default", () => {
-    renderProjects({ repos: [repo("a"), repo("b")], selectedIds: ["a"] });
-
-    expect(screen.getByText("1 of 2 selected")).toBeTruthy();
-    expect(
-      screen.queryByRole("checkbox", { name: "Select all projects" }),
-    ).toBeNull();
-  });
-
   it("selects every project from a partly selected header", () => {
     const handlers = renderProjects({
-      selection: "header",
       repos: [repo("a"), repo("b"), repo("c", true)],
       selectedIds: ["a"],
     });
@@ -241,7 +195,6 @@ describe("ProjectsStep selection", () => {
 
   it("clears the selection when every selectable project is checked", () => {
     const handlers = renderProjects({
-      selection: "header",
       repos: [repo("a"), repo("b"), repo("c", true)],
       selectedIds: ["a", "b"],
     });
@@ -257,7 +210,6 @@ describe("ProjectsStep selection", () => {
 
   it("disables the header when every project is already added", () => {
     renderProjects({
-      selection: "header",
       repos: [repo("a", true)],
       selectedIds: [],
     });
@@ -271,7 +223,6 @@ describe("ProjectsStep selection", () => {
 
   it("labels the time column in the header, outside the select-all control", () => {
     renderProjects({
-      selection: "header",
       repos: [repo("a"), repo("b")],
       selectedIds: ["a"],
     });
@@ -451,28 +402,6 @@ describe("AgentSignInPanel", () => {
   });
 });
 
-function renderQuiet(agents: OnboardingAgent[]) {
-  const handlers = {
-    onSignIn: vi.fn(),
-    onInstall: vi.fn(),
-    onViewInstallLog: vi.fn(),
-    onCancelSignIn: vi.fn(),
-    onRecheck: vi.fn(),
-  };
-  const view = render(
-    <TooltipProvider>
-      <AgentStep
-        quiet
-        machineName="bee"
-        agents={agents}
-        loadFailedMessage={null}
-        {...handlers}
-      />
-    </TooltipProvider>,
-  );
-  return { ...view, handlers };
-}
-
 function rowOf(id: string): HTMLElement {
   const row = document.querySelector(`[data-agent-id="${id}"]`);
   if (!(row instanceof HTMLElement)) throw new Error(`no row for ${id}`);
@@ -484,9 +413,9 @@ function hasSubtitle(id: string): boolean {
   return (column?.childElementCount ?? 0) > 1;
 }
 
-describe("AgentStep progress in the redesign", () => {
+describe("AgentStep progress", () => {
   it("tells Pi users to choose a provider in the terminal while signing in", () => {
-    renderQuiet([
+    renderAgents([
       { ...agent("pi", { status: "signingIn" }), setup: "connect" },
     ]);
 
@@ -499,7 +428,7 @@ describe("AgentStep progress in the redesign", () => {
   });
 
   it("drops subtitles the button already says and keeps informative ones", () => {
-    renderQuiet([
+    renderAgents([
       agent("claude-code", {
         status: "signIn",
         reason: "signedOut",
@@ -534,7 +463,7 @@ describe("AgentStep progress in the redesign", () => {
   });
 
   it("leaves a ready agent without account detail to its Ready label", () => {
-    renderQuiet([
+    renderAgents([
       agent("claude-code", { status: "ready", detail: null }),
       agent("cursor", { status: "ready", detail: "you@example.com · Pro" }),
       { ...agent("pi", { status: "ready", detail: null }), setup: "connect" },
@@ -549,7 +478,7 @@ describe("AgentStep progress in the redesign", () => {
   });
 
   it("shows Installing… in the same disabled button", () => {
-    const { rerender } = renderQuiet([
+    const { rerender } = renderAgents([
       agent("codex", { status: "install", canInstall: true }),
     ]);
     screen.getByRole("button", { name: "Install" });
@@ -557,14 +486,13 @@ describe("AgentStep progress in the redesign", () => {
     rerender(
       <TooltipProvider>
         <AgentStep
-          quiet
           machineName="bee"
           agents={[agent("codex", { status: "installing", update: false })]}
-          loadFailedMessage={null}
+          loadFailed={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
-          onViewInstallLog={vi.fn()}
           onCancelSignIn={vi.fn()}
+          onRetryCheck={vi.fn()}
           onRecheck={vi.fn()}
         />
       </TooltipProvider>,
@@ -576,13 +504,13 @@ describe("AgentStep progress in the redesign", () => {
   });
 
   it("shows Updating… while an update installs", () => {
-    renderQuiet([agent("codex", { status: "installing", update: true })]);
+    renderAgents([agent("codex", { status: "installing", update: true })]);
     const busy = screen.getByRole("button", { name: "Updating…" });
     expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows Starting sign in… and no empty panel until the sign-in instruction is known", () => {
-    renderQuiet([
+    renderAgents([
       {
         ...agent("claude-code", { status: "signingIn" }),
         expanded: (
@@ -617,7 +545,7 @@ describe("AgentStep progress in the redesign", () => {
   });
 
   it("spins beside the sign-in line once it is known", () => {
-    renderQuiet([
+    renderAgents([
       {
         ...agent("claude-code", { status: "signingIn" }),
         subline: "Finish signing in on claude.ai.",
@@ -629,26 +557,11 @@ describe("AgentStep progress in the redesign", () => {
       subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
     ).not.toBeNull();
   });
-
-  it("keeps the control guide's subtitles", () => {
-    renderAgents([
-      agent("claude-code", {
-        status: "signIn",
-        reason: "signedOut",
-        canSignIn: true,
-      }),
-      agent("pi", { status: "installing", update: false }),
-      agent("codex", { status: "ready", detail: null }),
-    ]);
-    expect(screen.getByText("Installed · not signed in")).toBeTruthy();
-    expect(screen.getByText("Signed in")).toBeTruthy();
-    expect(screen.getByText("Installing…")).toBeTruthy();
-  });
 });
 
-describe("Agent step header and install details in the redesign", () => {
+describe("Agent step header and install details", () => {
   it("shows the machine line without Check again", () => {
-    renderQuiet([agent("codex", { status: "install", canInstall: true })]);
+    renderAgents([agent("codex", { status: "install", canInstall: true })]);
     expect(screen.getByText("On bee")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Check again/u })).toBeNull();
   });
@@ -683,13 +596,12 @@ describe("Agent step header and install details in the redesign", () => {
       }),
       installLog: "npm error code ECONNREFUSED",
     };
-    const { rerender, handlers } = renderQuiet([failed]);
+    const { rerender, handlers } = renderAgents([failed]);
     within(rowOf("codex")).getByRole("button", { name: /Show details/u });
 
     rerender(
       <TooltipProvider>
         <AgentStep
-          quiet
           machineName="bee"
           agents={[
             {
@@ -698,7 +610,7 @@ describe("Agent step header and install details in the redesign", () => {
               installQueued: true,
             },
           ]}
-          loadFailedMessage={null}
+          loadFailed={null}
           {...handlers}
         />
       </TooltipProvider>,
@@ -710,9 +622,9 @@ describe("Agent step header and install details in the redesign", () => {
   });
 });
 
-describe("Agent rows active at once in the redesign", () => {
+describe("Agent rows active at once", () => {
   it("shows a queued install as Waiting… behind the running one", () => {
-    renderQuiet([
+    renderAgents([
       agent("pi", { status: "installing", update: false }),
       {
         ...agent("codex", { status: "installing", update: false }),
@@ -729,7 +641,7 @@ describe("Agent rows active at once in the redesign", () => {
   });
 });
 
-describe("RedesignedDevicesStep", () => {
+describe("DevicesStep", () => {
   it("hides the machine section until bb connect is on", () => {
     const props = {
       hostName: "bee",
@@ -740,7 +652,7 @@ describe("RedesignedDevicesStep", () => {
     };
     const { rerender } = render(
       <TooltipProvider>
-        <RedesignedDevicesStep {...props} showMachines={false} />
+        <DevicesStep {...props} showMachines={false} />
       </TooltipProvider>,
     );
     expect(screen.queryByText("Where agents run")).toBeNull();
@@ -749,7 +661,7 @@ describe("RedesignedDevicesStep", () => {
 
     rerender(
       <TooltipProvider>
-        <RedesignedDevicesStep {...props} showMachines />
+        <DevicesStep {...props} showMachines />
       </TooltipProvider>,
     );
     screen.getByText("Where agents run");
@@ -770,7 +682,7 @@ describe("RedesignedDevicesStep", () => {
   it("adds no row of its own when bb connect contributes nothing", () => {
     render(
       <TooltipProvider>
-        <RedesignedDevicesStep
+        <DevicesStep
           hostName="bee"
           connectSection={null}
           showMachines={false}

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
@@ -93,11 +94,10 @@ function useCompactHomeMetrics(isCompact: boolean) {
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(region);
-    observer.observe(composer);
-    observer.observe(scrollContent);
-    return () => observer.disconnect();
+    return observeSharedResize([region, composer, scrollContent], {
+      read: () => undefined,
+      write: measure,
+    });
   }, [isCompact]);
 
   return {
@@ -134,76 +134,88 @@ export function RootComposeHome({
     <div
       className={
         isCompact
-          ? "@container/page flex min-h-0 flex-1 flex-col"
-          : "@container/page min-h-0 flex-1 overflow-y-auto"
+          ? "flex min-h-0 flex-1 flex-col"
+          : "min-h-0 flex-1 overflow-y-auto"
       }
       style={isCompact ? PAGE_SHELL_CONTENT_STYLE : undefined}
     >
       <div
-        ref={regionRef}
-        data-testid="root-compose-compact-home"
         className={
           isCompact
-            ? "relative min-h-0 flex-1"
-            : cn(
-                "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
-                ROOT_COMPOSE_MAX_WIDTH_CLASS,
-                wideContentClassName,
-              )
+            ? "@container/page flex min-h-0 flex-1 flex-col"
+            : "@container/page"
         }
-        style={isCompact ? undefined : PAGE_SHELL_CONTENT_STYLE}
       >
-        {isCompact ? (
-          <div
-            ref={scrollViewportRef}
-            data-testid="root-compose-compact-scroll-viewport"
-            data-page-scroll-viewport=""
-            className="absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
-            style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
-          >
+        <div
+          ref={regionRef}
+          data-testid="root-compose-compact-home"
+          className={
+            isCompact
+              ? "relative min-h-0 flex-1"
+              : cn(
+                  "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+                  ROOT_COMPOSE_MAX_WIDTH_CLASS,
+                  wideContentClassName,
+                )
+          }
+          style={isCompact ? undefined : PAGE_SHELL_CONTENT_STYLE}
+        >
+          {isCompact ? (
             <div
-              ref={scrollContentRef}
-              data-testid="root-compose-compact-scroll-content"
-              className="flex min-h-full flex-col justify-end"
+              ref={scrollViewportRef}
+              data-testid="root-compose-compact-scroll-viewport"
+              data-page-scroll-viewport=""
+              className="absolute inset-x-0 bottom-0 overflow-y-auto overscroll-contain"
+              style={{ top: COMPACT_HOME_CHROME_OFFSET_PX }}
             >
               <div
-                ref={leadingSpacerRef}
-                aria-hidden
-                data-testid="root-compose-compact-leading-spacer"
-              />
-              <div className={COMPACT_HOME_COLUMN_CLASS}>
-                {compactScrollContent}
-                {homepageSections}
-              </div>
-              <div
-                ref={bottomSpacerRef}
-                aria-hidden
-                data-testid="root-compose-compact-bottom-spacer"
-              />
-            </div>
-          </div>
-        ) : null}
-        <div
-          ref={composerRef}
-          data-testid="root-compose-compact-composer"
-          className={isCompact ? "absolute inset-x-0 bottom-0 z-10" : undefined}
-        >
-          <div ref={composerFadeRef} data-testid="root-compose-compact-fade">
-            {isCompact ? (
-              <OverflowFade placement="above" tone="background" size="lg" />
-            ) : null}
-          </div>
-          <div className={isCompact ? "bg-background pb-4" : undefined}>
-            <div className={isCompact ? COMPACT_HOME_COLUMN_CLASS : undefined}>
-              <ComposerMaxHeightContext.Provider
-                value={isCompact ? composerMaxHeight : undefined}
+                ref={scrollContentRef}
+                data-testid="root-compose-compact-scroll-content"
+                className="flex min-h-full flex-col justify-end"
               >
-                {composer}
-              </ComposerMaxHeightContext.Provider>
+                <div
+                  ref={leadingSpacerRef}
+                  aria-hidden
+                  data-testid="root-compose-compact-leading-spacer"
+                />
+                <div className={COMPACT_HOME_COLUMN_CLASS}>
+                  {compactScrollContent}
+                  {homepageSections}
+                </div>
+                <div
+                  ref={bottomSpacerRef}
+                  aria-hidden
+                  data-testid="root-compose-compact-bottom-spacer"
+                />
+              </div>
+            </div>
+          ) : null}
+          <div
+            ref={composerRef}
+            data-testid="root-compose-compact-composer"
+            className={
+              isCompact ? "absolute inset-x-0 bottom-0 z-10" : undefined
+            }
+          >
+            <div ref={composerFadeRef} data-testid="root-compose-compact-fade">
+              {isCompact ? (
+                <OverflowFade placement="above" tone="background" size="lg" />
+              ) : null}
+            </div>
+            <div className={isCompact ? "bg-background pb-4" : undefined}>
+              <div
+                className={isCompact ? COMPACT_HOME_COLUMN_CLASS : undefined}
+              >
+                <ComposerMaxHeightContext.Provider
+                  value={isCompact ? composerMaxHeight : undefined}
+                >
+                  {composer}
+                </ComposerMaxHeightContext.Provider>
+              </div>
             </div>
           </div>
+          {isCompact ? null : homepageSections}
         </div>
-        {isCompact ? null : homepageSections}
       </div>
     </div>
   );

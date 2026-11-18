@@ -44,14 +44,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "ORDER BY sequence DESC LIMIT 1 reads one index entry per requested thread",
   ),
   boundedCorrelatedEvents(
-    `${EVENTS}#listThreadTurnInterruptionEventStates`,
-    "The subquery supplies the outer search's sequence, so it runs once per thread; check:query-costs measures it",
-  ),
-  boundedCorrelatedEvents(
-    `${EVENTS}#listThreadIdsStoppedSinceLastTurnStart`,
-    "The subquery supplies the outer search's sequence, so it runs once per thread; check:query-costs measures it",
-  ),
-  boundedCorrelatedEvents(
     `${EVENTS}#listThreadIdsWithLatestHostDaemonRestartInterruption`,
     "MAX(sequence) on the unique thread/sequence index reads one entry, once per thread",
   ),

@@ -74,6 +74,7 @@ import {
 } from "../bridge-protocol.js";
 import {
   createAcpDeltaTranslator,
+  SYSTEM_INSTRUCTIONS_OPEN_TAG,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
 import {
@@ -85,10 +86,15 @@ import {
 } from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
+import {
+  applyOpenCodeSessionPermissions,
+  openCodeUsesSessionPermissions,
+} from "./opencode-session-permissions.js";
 import { planAcpElicitation } from "../elicitation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
+  acpSessionGrantKey,
 } from "../interactions.js";
 import {
   buildAcpModelListParams,
@@ -228,6 +234,7 @@ interface AcpThreadSession {
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  sessionGrants: Set<string>;
   pendingElicitations: Set<AcpAgentRequestResponder>;
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
@@ -265,6 +272,10 @@ function createBridgeAgentConnection(
 }
 
 const bbThreadIdByProviderThreadId = new Map<string, string>();
+const unrestoredThreads = new Map<
+  string,
+  { construction: AcpSessionParams; providerThreadId: string }
+>();
 const pendingRuntimeRequests = new Map<
   number,
   (response: BridgeJsonRpcResponse) => void
@@ -935,6 +946,7 @@ function freshDeclaredSessionOptions(
 }
 
 const ACP_DISCOVERY_SESSION_DELETE_TIMEOUT_MS = 2_000;
+const ACP_DISCOVERY_SESSION_RESTORE_TIMEOUT_MS = 10_000;
 const ACP_DISCOVERY_SESSION_CLI_DELETE_TIMEOUT_MS = 15_000;
 
 interface AcpDiscoverySession {
@@ -1128,14 +1140,12 @@ function settleDeclaredSessionOptions(key: string): ThreadSessionOption[] {
 
 async function loadSessionDiscoveredModels(
   agent: AcpAgentCommandParam,
-  reasoningProbePriorityModelIds: readonly string[],
   parameterizedModelPicker: boolean,
   dialectId: string,
   selectedModel: string | undefined,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify({
     agent,
-    reasoningProbePriorityModelIds,
     parameterizedModelPicker,
   });
   if (
@@ -1237,7 +1247,6 @@ async function loadSessionDiscoveredModels(
       sessionId: newSession.sessionId,
       modelOption,
       configOptions: newSession.configOptions,
-      reasoningProbePriorityModelIds,
       selectedModel,
     });
     const models = buildModelCatalogFromConfigOptions(
@@ -1276,120 +1285,127 @@ async function loadSessionDiscoveredModels(
   }
 }
 
+function acpNativeModelSupport(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): AcpNativeModelSupport {
+  return {
+    ...buildAcpNativeReasoningSupport(
+      findAcpThoughtLevelConfigOption(configOptions),
+    ),
+    supportedServiceTiers: findAcpFastConfigOption(
+      configOptions,
+    )?.options?.some((option) => option.value === "true")
+      ? [{ id: "fast" }]
+      : [],
+  };
+}
+
 async function discoverAcpNativeModelSupport(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
   configOptions: readonly AcpConfigOption[] | undefined;
-  reasoningProbePriorityModelIds: readonly string[];
   selectedModel: string | undefined;
 }): Promise<ReadonlyMap<string, AcpNativeModelSupport>> {
-  const modelOptions = args.modelOption?.options ?? [];
-  if (!args.modelOption || modelOptions.length === 0) {
-    return new Map();
-  }
   const modelOption = args.modelOption;
-  const modelByValue = new Map(
-    modelOptions.map((model) => [model.value, model] as const),
+  const modelValues = new Set(
+    (modelOption?.options ?? []).map((model) => model.value),
   );
   const supportByModel = new Map<string, AcpNativeModelSupport>();
+  if (modelOption === undefined || modelValues.size === 0) {
+    return supportByModel;
+  }
   const currentValue = modelOption.currentValue;
-  if (currentValue !== undefined && modelByValue.has(currentValue)) {
-    supportByModel.set(currentValue, {
-      ...buildAcpNativeReasoningSupport(
-        findAcpThoughtLevelConfigOption(args.configOptions),
-      ),
-      supportedServiceTiers: findAcpFastConfigOption(
-        args.configOptions,
-      )?.options?.some((option) => option.value === "true")
-        ? [{ id: "fast" }]
-        : [],
-    });
+  if (currentValue !== undefined && modelValues.has(currentValue)) {
+    supportByModel.set(currentValue, acpNativeModelSupport(args.configOptions));
   }
-  const modelsToProbe: typeof modelOptions = [];
-  const addedModels = new Set(supportByModel.keys());
-  for (const value of args.selectedModel === undefined
-    ? args.reasoningProbePriorityModelIds
-    : [args.selectedModel]) {
-    const model = modelByValue.get(value);
-    if (model && !addedModels.has(model.value)) {
-      modelsToProbe.push(model);
-      addedModels.add(model.value);
-    }
-  }
-  for (const model of args.selectedModel === undefined ? modelOptions : []) {
-    if (!addedModels.has(model.value)) {
-      modelsToProbe.push(model);
-    }
+  const selectedModel = args.selectedModel;
+  if (
+    selectedModel === undefined ||
+    selectedModel === currentValue ||
+    !modelValues.has(selectedModel)
+  ) {
+    return supportByModel;
   }
 
-  if (modelsToProbe.length === 0) return supportByModel;
-  let timedOut = false;
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutReached = new Promise<
-    ReadonlyMap<string, AcpNativeModelSupport>
-  >((resolve) => {
-    timeout = setTimeout(() => {
-      timedOut = true;
-      void args.connection.kill();
-      resolve(supportByModel);
-    }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
-  });
-
+  const deadline = Date.now() + ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
   try {
-    return await Promise.race([
-      (async () => {
-        for (const model of modelsToProbe) {
-          if (timedOut) break;
-          try {
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-              const configState = await args.connection.request({
-                method: "session/set_config_option",
-                params: {
-                  sessionId: args.sessionId,
-                  configId: modelOption.id,
-                  value: model.value,
-                },
-                resultSchema: acpConfigStateResultSchema,
-              });
-              if (timedOut) break;
-              if (
-                findAcpModelConfigOption(configState.configOptions)
-                  ?.currentValue !== model.value
-              ) {
-                continue;
-              }
-              supportByModel.set(model.value, {
-                ...buildAcpNativeReasoningSupport(
-                  findAcpThoughtLevelConfigOption(configState.configOptions),
-                ),
-                supportedServiceTiers: findAcpFastConfigOption(
-                  configState.configOptions,
-                )?.options?.some((option) => option.value === "true")
-                  ? [{ id: "fast" }]
-                  : [],
-              });
-              break;
-            }
-          } catch (error) {
-            if (timedOut) {
-              break;
-            }
-            process.stderr.write(
-              `acp bridge: ACP-native reasoning discovery for model "${model.value}" failed: ${
-                error instanceof Error ? error.message : String(error)
-              }\n`,
-            );
-          }
-        }
-        return supportByModel;
-      })(),
-      timeoutReached,
-    ]);
-  } finally {
-    if (timeout !== undefined) {
-      clearTimeout(timeout);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const configState: AcpConfigStateResult = await args.connection.request({
+        method: "session/set_config_option",
+        params: {
+          sessionId: args.sessionId,
+          configId: modelOption.id,
+          value: selectedModel,
+        },
+        resultSchema: acpConfigStateResultSchema,
+        timeoutMs: Math.max(1, deadline - Date.now()),
+      });
+      if (
+        findAcpModelConfigOption(configState.configOptions)?.currentValue ===
+        selectedModel
+      ) {
+        supportByModel.set(
+          selectedModel,
+          acpNativeModelSupport(configState.configOptions),
+        );
+        break;
+      }
     }
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: ACP-native reasoning discovery for model "${selectedModel}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  }
+  await restoreAcpDiscoverySessionConfig({
+    connection: args.connection,
+    sessionId: args.sessionId,
+    modelOption,
+    configOptions: args.configOptions,
+  });
+  return supportByModel;
+}
+
+async function restoreAcpDiscoverySessionConfig(args: {
+  connection: AcpAgentConnection;
+  sessionId: string;
+  modelOption: AcpConfigOption;
+  configOptions: readonly AcpConfigOption[] | undefined;
+}): Promise<void> {
+  const deadline = Date.now() + ACP_DISCOVERY_SESSION_RESTORE_TIMEOUT_MS;
+  const setOption = (configId: string, value: string) =>
+    args.connection.request({
+      method: "session/set_config_option",
+      params: { sessionId: args.sessionId, configId, value },
+      resultSchema: acpConfigStateResultSchema,
+      timeoutMs: Math.max(1, deadline - Date.now()),
+    });
+  const startingModel = args.modelOption.currentValue;
+  if (startingModel === undefined) {
+    return;
+  }
+  try {
+    const restored = await setOption(args.modelOption.id, startingModel);
+    for (const option of restored.configOptions ?? []) {
+      const startingValue = args.configOptions?.find(
+        (starting) => starting.id === option.id,
+      )?.currentValue;
+      if (
+        option.id !== args.modelOption.id &&
+        startingValue !== undefined &&
+        option.currentValue !== startingValue
+      ) {
+        await setOption(option.id, startingValue);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: restoring the agent's settings after ACP-native reasoning discovery failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
   }
 }
 
@@ -1811,7 +1827,7 @@ function buildPromptContentBlocks(
     session.pendingInstructions = undefined;
     blocks.push({
       type: "text",
-      text: `<system_instructions>\n${instructions}\n</system_instructions>`,
+      text: `${SYSTEM_INSTRUCTIONS_OPEN_TAG}\n${instructions}\n</system_instructions>`,
     });
   }
 
@@ -1883,7 +1899,7 @@ function pickPermissionOptionId(
     case "allow_once":
       return findOptionIdByKinds(options, ["allow_once", "allow_always"]);
     case "allow_for_session":
-      return findOptionIdByKinds(options, ["allow_always", "allow_once"]);
+      return findOptionIdByKinds(options, ["allow_once", "allow_always"]);
     case "deny":
       return findOptionIdByKinds(options, ["reject_once", "reject_always"]);
   }
@@ -2020,11 +2036,6 @@ function handlePermissionRequest(
     return;
   }
 
-  if (session.activePromptKind === null) {
-    openAgentTurn(session);
-  }
-  session.pendingPermissions.add(pending);
-
   const normalizedToolCall =
     toolCall?.toolCallId !== undefined && bound !== undefined
       ? {
@@ -2057,6 +2068,15 @@ function handlePermissionRequest(
     cwd: session.cwd,
     classifyToolCall: session.dialect.classifyToolCall,
   });
+  const grantKey = acpSessionGrantKey(payload);
+  if (grantKey !== null && session.sessionGrants.has(grantKey)) {
+    respondPermission(pending, "allow_once");
+    return;
+  }
+  if (session.activePromptKind === null) {
+    openAgentTurn(session);
+  }
+  session.pendingPermissions.add(pending);
   void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
     providerThreadId: session.providerThreadId,
     threadId: session.bbThreadId,
@@ -2074,6 +2094,9 @@ function handlePermissionRequest(
             resolution: resolution.data,
           })
         : null;
+      if (response?.decision === "allow_for_session" && grantKey !== null) {
+        session.sessionGrants.add(grantKey);
+      }
       respondPermission(pending, response?.decision ?? null);
     })
     .catch(() => {
@@ -2421,6 +2444,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    sessionGrants: new Set(),
     pendingElicitations: new Set(),
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
@@ -2631,6 +2655,24 @@ async function startAgentSession(
         `ACP session for thread "${bbThreadId}" was released during construction`,
       );
     }
+    if (
+      dialect.id === "opencode" &&
+      openCodeUsesSessionPermissions(capabilities.agentInfo?.version)
+    ) {
+      await applyOpenCodeSessionPermissions({
+        agentCommand: params.agent.command,
+        agentArgs: params.agent.args,
+        cwd: params.cwd,
+        env: childEnv,
+        sessionId,
+        permissionMode: params.permissionMode,
+      });
+    }
+    if (connection.exited) {
+      throw new Error(
+        `ACP agent "${agentLabel}" exited while its session was being set up`,
+      );
+    }
     session.providerThreadId = sessionId;
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
     sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
@@ -2664,6 +2706,7 @@ async function startAgentSession(
       }
     }
     deferredEmits.length = 0;
+    unrestoredThreads.delete(bbThreadId);
     return session;
   } catch (error) {
     session.stopping = true;
@@ -3410,6 +3453,10 @@ async function rebuildAgentSession(
       continuesTurn: continuingTurn,
     });
   } catch (error) {
+    unrestoredThreads.set(session.bbThreadId, {
+      construction,
+      providerThreadId: previousProviderThreadId,
+    });
     if (continuingTurn) {
       const message = error instanceof Error ? error.message : String(error);
       emitForSession(session, "error", {
@@ -3421,11 +3468,37 @@ async function rebuildAgentSession(
     throw error;
   }
   replacement.queuedInputs.push(...queuedInputs);
+  for (const grant of session.sessionGrants) {
+    replacement.sessionGrants.add(grant);
+  }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
     threadId: session.bbThreadId,
     providerThreadId: replacement.providerThreadId,
     reason,
     contextLost: replacement.providerThreadId !== previousProviderThreadId,
+  });
+  return replacement;
+}
+
+async function restoreUnrestoredThread(
+  bbThreadId: string,
+): Promise<AcpThreadSession | undefined> {
+  const unrestored = unrestoredThreads.get(bbThreadId);
+  if (unrestored === undefined) {
+    return undefined;
+  }
+  const replacement = await startAgentSession({
+    kind: "resume",
+    params: unrestored.construction,
+    resumeProviderThreadId: unrestored.providerThreadId,
+    continuesTurn: false,
+  });
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+    threadId: bbThreadId,
+    providerThreadId: replacement.providerThreadId,
+    reason:
+      "The ACP agent exited while its session was being restored; the session was restored before continuing.",
+    contextLost: replacement.providerThreadId !== unrestored.providerThreadId,
   });
   return replacement;
 }
@@ -3720,7 +3793,6 @@ async function handleModelList(
   const sessionDiscoveredModels = params.agent
     ? await loadSessionDiscoveredModels(
         params.agent,
-        params.reasoningProbePriorityModelIds,
         params.parameterizedModelPicker,
         resolvedDialectId,
         selectedModel,
@@ -3759,14 +3831,12 @@ const acpProviderOptionsSchema = z
     acpDialect: z.string().min(1).optional(),
     parameterizedModelPicker: z.boolean().optional(),
     primaryModels: z.array(z.string().min(1)).optional(),
-    reasoningProbePriorityModelIds: z.array(z.string().min(1)).optional(),
   })
   .passthrough();
 
 interface AcpModelPickerOptions {
   parameterizedModelPicker: boolean;
   primaryModels?: string[];
-  reasoningProbePriorityModelIds: string[];
 }
 
 function decodeAcpModelPickerOptions(
@@ -3778,9 +3848,6 @@ function decodeAcpModelPickerOptions(
     ...(parsed.primaryModels === undefined
       ? {}
       : { primaryModels: [...parsed.primaryModels] }),
-    reasoningProbePriorityModelIds: [
-      ...(parsed.reasoningProbePriorityModelIds ?? []),
-    ],
   };
 }
 
@@ -3968,7 +4035,9 @@ async function handleRequest(
 
     case "turn/start": {
       const params = request.params;
-      let session = liveSessionForThread(params.threadId);
+      let session =
+        liveSessionForThread(params.threadId) ??
+        (await restoreUnrestoredThread(params.threadId));
       if (session === undefined) {
         sendError(request.id, -32000, "No active ACP session");
         return;
@@ -4045,6 +4114,7 @@ async function handleRequest(
     }
 
     case "thread/stop": {
+      unrestoredThreads.delete(request.params.threadId);
       const session = sessionsByBbThreadId.get(request.params.threadId);
       if (session) {
         if (request.params.intent === "release") {

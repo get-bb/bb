@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -51,8 +51,8 @@ it("requests full command output while the terminal renderer is still downloadin
     </MemoryRouter>,
   );
 
-  await screen.findByRole("status", { name: "Loading" });
-  await waitFor(() => {
+  await vi.waitFor(() => screen.getByRole("status", { name: "Loading" }));
+  await vi.waitFor(() => {
     expect(sdk.threads.timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
   });
   expect(screen.queryByTestId("timeline-output-preview-note")).toBeNull();

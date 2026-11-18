@@ -24,6 +24,7 @@ import {
   createMarkdownPieceCache,
   findMarkdownPieceCandidates,
   resolveMarkdownPieces,
+  resolveMarkdownPiecesUnlessHtml,
   type MarkdownPieceRenderConfig,
 } from "./markdown-incremental-pieces";
 import { normalizeMathFences } from "./markdown-math-fences";
@@ -312,7 +313,7 @@ describe("resolveMarkdownPieces", () => {
     }
   }, 60_000);
 
-  it("returns fresh elements, hast node props, and directive attributes for reused pieces on every new body", () => {
+  it("keeps settled pieces' elements and directive mounts by identity when the body grows", () => {
     const linkConfig: MarkdownPieceRenderConfig = {
       ...config,
       components: { a: MarkdownLinkComponent },
@@ -335,13 +336,14 @@ describe("resolveMarkdownPieces", () => {
     if (firstLink === null || secondLink === null) {
       throw new Error("Expected a rendered link component");
     }
-    expect(second.children[0]).not.toBe(first.children[0]);
-    expect(secondLink).not.toBe(firstLink);
-    expect(secondLink.props.node).not.toBe(firstLink.props.node);
-    expect(secondLink.props.node).toEqual(firstLink.props.node);
-    expect(second.mounts[0]).not.toBe(first.mounts[0]);
-    expect(second.mounts[0]?.attributes).not.toBe(first.mounts[0]?.attributes);
-    expect(second.mounts[0]).toEqual(first.mounts[0]);
+    expect(second.children.slice(0, first.children.length)).toEqual(
+      first.children,
+    );
+    first.children.forEach((child, index) => {
+      expect(second.children[index]).toBe(child);
+    });
+    expect(secondLink).toBe(firstLink);
+    expect(second.mounts[0]).toBe(first.mounts[0]);
     expect(describeMarkdownChildren(second.children, second.mounts)).toEqual(
       renderWholeDocument(`${settled}More.`, linkConfig),
     );
@@ -413,4 +415,53 @@ describe("resolveMarkdownPieces", () => {
     expectStreamedFixtureMatchesWholeDocument,
     60_000,
   );
+});
+
+describe("resolveMarkdownPieces html detection", () => {
+  it("reports html only for parsed html nodes, not for '<' in code or prose", () => {
+    const hasHtml = (body: string) =>
+      resolveMarkdownPieces(createMarkdownPieceCache(), config, body).hasHtml;
+    expect(
+      hasHtml(
+        "Use `Array<T>` when a < b.\n\n```ts\nconst x: Map<string, number> = new Map();\nif (a <b) {}\n```\n\nArrows <- and <= stay text.",
+      ),
+    ).toBe(false);
+    expect(hasHtml("Press <kbd>Ctrl</kbd> to copy.")).toBe(true);
+    expect(hasHtml("Intro.\n\n<details>\n\nHidden.\n\n</details>")).toBe(true);
+    expect(hasHtml("Intro.\n\n<!-- note -->")).toBe(true);
+  });
+
+  it("keeps reporting html from a settled piece while later pieces stream", () => {
+    const cache = createMarkdownPieceCache();
+    const first = "<sub>note</sub>\n\nParagraph one.\n\n";
+    expect(resolveMarkdownPieces(cache, config, first).hasHtml).toBe(true);
+    expect(
+      resolveMarkdownPieces(cache, config, `${first}Paragraph two.`).hasHtml,
+    ).toBe(true);
+  });
+
+  it("stops parsing pieces while a message with html keeps growing", () => {
+    const recorded: string[] = [];
+    const recordingConfig = createRecordingConfig(recorded);
+    const cache = createMarkdownPieceCache();
+    const first = "<sub>note</sub>\n\nParagraph one.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, first),
+    ).toBeNull();
+    recorded.length = 0;
+    expect(
+      resolveMarkdownPiecesUnlessHtml(
+        cache,
+        recordingConfig,
+        `${first}\n\nParagraph two.`,
+      ),
+    ).toBeNull();
+    expect(recorded).toEqual([]);
+    const replaced = "Use `Array<T>` instead.";
+    expect(
+      resolveMarkdownPiecesUnlessHtml(cache, recordingConfig, replaced)
+        ?.hasHtml,
+    ).toBe(false);
+    expect(recorded).toEqual([replaced]);
+  });
 });

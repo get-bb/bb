@@ -17,6 +17,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { connectPublicProtocol } from "@bb/connect-client";
 import type { HostDaemonLogger } from "../logger.js";
+import { webSocketAgent } from "../websocket-constructor.js";
 
 const MACHINE_TUNNEL_HANDSHAKE_TIMEOUT_MS = 10_000;
 
@@ -151,7 +152,10 @@ export class ConnectTunnelClient {
     this.createWebSocket =
       options.createWebSocket ??
       ((url, websocketOptions) =>
-        new NodeWebSocket(url, { headers: websocketOptions.headers }));
+        new NodeWebSocket(url, {
+          agent: webSocketAgent(url),
+          headers: websocketOptions.headers,
+        }));
     this.fetchFn = options.fetchFn ?? fetch;
     this.backoff = new ReconnectBackoff(options.reconnectBackoff);
     this.handshakeTimeoutMs =

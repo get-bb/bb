@@ -64,13 +64,35 @@ export function findUnnamedPluginRoots(js: string): number[] {
 
 const ANONYMOUS_PLUGIN_ROOT_ARM =
   /,\s*\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)/g;
+const NAMED_PLUGIN_ROOT = /\[data-bb-plugin=("?)([a-z0-9][a-z0-9-]*)\1\]/g;
 
 export function dropAnonymousPluginRootScope(css: string): string {
+  return rewriteUtilitiesLayers(css, (body) =>
+    body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, ""),
+  );
+}
+
+export function keyPluginScopeOnAttribute(css: string): string {
+  return rewriteUtilitiesLayers(css, (body) =>
+    body
+      .replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+      .replace(
+        NAMED_PLUGIN_ROOT,
+        (_match, _quote, pluginId: string) =>
+          `[data-bb-plugin-scope-${pluginId}]`,
+      ),
+  );
+}
+
+function rewriteUtilitiesLayers(
+  css: string,
+  rewrite: (body: string) => string,
+): string {
   return splitStatements(css)
     .map((statement) => {
       if (statement.body === null) return statement.prelude;
       const body = isUtilitiesLayer(statement.prelude)
-        ? statement.body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+        ? rewrite(statement.body)
         : statement.body;
       return `${statement.prelude}{${body}}`;
     })

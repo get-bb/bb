@@ -2,7 +2,7 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 
 interface PluginPanelViewProps {
   pluginId: string;
@@ -15,7 +15,7 @@ export function PluginPanelView({
   panelPath,
   subPath,
 }: PluginPanelViewProps) {
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginSlotKind("navPanels");
   const pluginsSettled = usePluginFrontendsSettled();
   const panel =
     navPanels.find(

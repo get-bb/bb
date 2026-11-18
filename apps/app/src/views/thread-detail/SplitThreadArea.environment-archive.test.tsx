@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext } from "react";
@@ -195,25 +196,14 @@ it("keeps an unrelated split pane open and focused when an environment is archiv
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Archive environment" }));
-  for (let tick = 0; tick < 5; tick += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-  expect(archiveThreads.resolve).not.toBeNull();
-  await act(async () => {
-    archiveThreads.resolve?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  await waitFor(() => expect(archiveThreads.resolve).not.toBeNull());
+  act(() => archiveThreads.resolve?.());
+  await waitFor(() => {
+    expect(screen.queryByTestId("pane-thr-env")).toBeNull();
+    expect(screen.getByTestId("pane-thr-other")).not.toBeNull();
   });
-  for (let tick = 0; tick < 5; tick += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
   unsubscribe();
 
-  expect(screen.queryByTestId("pane-thr-env")).toBeNull();
-  expect(screen.getByTestId("pane-thr-other")).not.toBeNull();
   expect(screen.getByTestId("location").textContent).toBe(
     getThreadRoutePath({
       projectId: PERSONAL_PROJECT_ID,

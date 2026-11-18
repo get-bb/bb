@@ -17,7 +17,7 @@ import {
   runQueuedMessageDispatch,
 } from "../../src/services/threads/queued-message-dispatch.js";
 import { runStartupRecoverySweep } from "../../src/services/system/periodic-sweeps.js";
-import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { moveThreadStatus } from "../helpers/thread-status.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -155,8 +155,8 @@ describe("the requested queue drain", () => {
         expect(holdResponse.status).toBe(200);
         const turnsBefore = turnRequests(harness, thread.id).length;
 
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.succeeded" },
+        moveThreadStatus(harness.deps, {
+          move: "run.succeeded",
           threadId: thread.id,
         });
         await runQueuedMessageDispatch(harness.deps, {
@@ -487,8 +487,8 @@ describe("the requested queue drain", () => {
           );
         }
 
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          event: { type: "run.succeeded" },
+        moveThreadStatus(harness.deps, {
+          move: "run.succeeded",
           threadId: thread.id,
         });
         await runQueuedMessageDispatch(harness.deps, {
@@ -1028,8 +1028,8 @@ describe("a targeted attempt that holds its claim while the turn completes", () 
               if (context.input.text !== "scheduled") {
                 return { action: "proceed" } as const;
               }
-              applyLoggedThreadLifecycleEvent(harness.deps, {
-                event: { type: "run.succeeded" },
+              moveThreadStatus(harness.deps, {
+                move: "run.succeeded",
                 threadId: thread.id,
               });
               await new Promise((resolve) => setImmediate(resolve));

@@ -9,7 +9,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { piSessionNeedsRelocation } from "./session-cwd.js";
+import {
+  piSessionNeedsRelocation,
+  readPiSessionFileState,
+} from "./session-cwd.js";
 
 it("does not modify a session when its requested directory or header is invalid", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-pi-relocation-invalid-"));
@@ -54,6 +57,25 @@ it("requires relocation only for a different directory", () => {
     expect(piSessionNeedsRelocation(file, root)).toBe(true);
     expect(readFileSync(file, "utf8")).toBe(contents);
     expect(readdirSync(root)).toEqual(["session.jsonl"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("judges a session file the way pi does when it opens one", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-pi-session-state-"));
+  const file = join(root, "session.jsonl");
+  const header = JSON.stringify({ type: "session", id: "abc", cwd: root });
+  try {
+    expect(readPiSessionFileState(file)).toBe("missing");
+    writeFileSync(file, "");
+    expect(readPiSessionFileState(file)).toBe("valid");
+    writeFileSync(file, `\n{truncated\n${header}\n`);
+    expect(readPiSessionFileState(file)).toBe("valid");
+    writeFileSync(file, "not a pi session\n");
+    expect(readPiSessionFileState(file)).toBe("invalid");
+    writeFileSync(file, `${JSON.stringify({ type: "message" })}\n${header}\n`);
+    expect(readPiSessionFileState(file)).toBe("invalid");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

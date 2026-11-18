@@ -347,10 +347,7 @@ export function registerSystemRoutes(
     return context.json(compatibleGeneralSettings());
   });
 
-  get(routes.setupGuide, async (context) => {
-    const { guide } = await deps.setupGuideExperiment.resolve();
-    return context.json({ variant: guide.variant });
-  });
+  get(routes.setupGuide, (context) => context.json({ variant: "new" }));
 
   post(routes.recordTelemetryEvent, async (context, payload) => {
     if (
@@ -363,13 +360,7 @@ export function registerSystemRoutes(
         payload.properties.recommendation_id,
       );
     }
-    if (payload.name === "onboarding_exposed") {
-      await deps.setupGuideExperiment.recordExposure(payload.properties.entry);
-      return context.json({ ok: true });
-    }
-    deps.telemetry.capture(
-      await deps.setupGuideExperiment.annotate(withReportedProviderId(payload)),
-    );
+    deps.telemetry.capture(withReportedProviderId(payload));
     return context.json({ ok: true });
   });
 

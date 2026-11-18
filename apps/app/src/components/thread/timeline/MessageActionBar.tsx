@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
@@ -155,35 +156,40 @@ function useMessageActionRowFit({
   rowRef: RefObject<HTMLDivElement | null>;
   inlineCount: number;
 } {
-  const [measuredInlineCount, setMeasuredInlineCount] = useState<
-    number | null
-  >(null);
+  const [measuredInlineCount, setMeasuredInlineCount] = useState<number | null>(
+    null,
+  );
   const rowRef = useRef<HTMLDivElement | null>(null);
-  const observerRef = useRef<ResizeObserver | null>(null);
+  const unobserveRef = useRef<(() => void) | null>(null);
   const slotRef = useCallback(
     (node: HTMLElement | null) => {
-      observerRef.current?.disconnect();
-      observerRef.current = null;
+      unobserveRef.current?.();
+      unobserveRef.current = null;
       if (!enabled || node === null || typeof ResizeObserver === "undefined") {
         return;
       }
-      const observer = new ResizeObserver(([entry]) => {
-        const availableWidth = Math.floor(
-          entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width,
-        );
-        if (rowRef.current !== null) {
-          rowRef.current.style.maxWidth = `${availableWidth}px`;
-        }
-        setMeasuredInlineCount(
-          computeMessageActionRowLayout({
+      let inlineCount: number | null = null;
+      unobserveRef.current = observeSharedResize(node, {
+        read: (entry) =>
+          Math.floor(
+            entry?.contentBoxSize?.[0]?.inlineSize ??
+              entry?.contentRect.width ??
+              node.clientWidth,
+          ),
+        write: (availableWidth) => {
+          if (rowRef.current !== null) {
+            rowRef.current.style.maxWidth = `${availableWidth}px`;
+          }
+          const nextInlineCount = computeMessageActionRowLayout({
             actionCount,
             availableWidth,
             actionWidth,
-          }).inlineCount,
-        );
+          }).inlineCount;
+          if (nextInlineCount === inlineCount) return;
+          inlineCount = nextInlineCount;
+          setMeasuredInlineCount(nextInlineCount);
+        },
       });
-      observer.observe(node);
-      observerRef.current = observer;
     },
     [enabled, actionCount, actionWidth],
   );
@@ -287,6 +293,7 @@ function MessageActionMenuItems({
 }
 
 function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
+  const [now] = useState(() => new Date());
   return (
     <div
       className="mt-1 border-t border-border px-2 pt-2 pb-1 text-xs text-subtle-foreground"
@@ -294,7 +301,7 @@ function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
     >
       <MessageTime
         timestamp={timestamp}
-        label={formatDayMessageTime(timestamp, new Date())}
+        label={formatDayMessageTime(timestamp, now)}
       />
     </div>
   );
@@ -405,13 +412,10 @@ export function MessageActionBar({
       ? TOUCH_ACTION_WIDTH_PX
       : DESKTOP_ACTION_WIDTH_PX,
   });
-  const slotRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      measureSlotRef(node);
-      setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
-    },
-    [measureSlotRef],
-  );
+  const slotRef = (node: HTMLDivElement | null) => {
+    measureSlotRef(node);
+    setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
+  };
   const inlineCount = usesOverflowOnly ? 0 : fittedInlineCount;
   const menuActions = [
     ...(onCopyLink

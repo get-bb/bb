@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ExperimentalMessageMetadataProps } from "@get-bb/plugin-sdk";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
@@ -8,11 +9,12 @@ import { formatShortMessageTime, MessageTime } from "./message-time.js";
 
 function InlineMessageTime({ message }: ExperimentalMessageMetadataProps) {
   const isPointerCoarse = usePointerCoarse();
+  const [now] = useState(() => new Date());
   if (isPointerCoarse) return null;
   return (
     <MessageTime
       timestamp={message.createdAt}
-      label={formatShortMessageTime(message.createdAt, new Date())}
+      label={formatShortMessageTime(message.createdAt, now)}
     />
   );
 }

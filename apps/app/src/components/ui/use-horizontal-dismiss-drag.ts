@@ -6,6 +6,7 @@ import {
   findTouchById,
   hasTextSelectionWithin,
   isHorizontallyScrollableElement,
+  listenToGesture,
 } from "./gesture-dom";
 
 const DRAG_INTENT_PX = 12;
@@ -227,19 +228,22 @@ export function useHorizontalDismissDrag(options: Options) {
 
   const listen = React.useCallback(
     (session: DragSession) => {
-      const prefix = session.input;
-      const moveType = `${prefix}move`;
-      const endType = prefix === "pointer" ? "pointerup" : "touchend";
-      const cancelType = `${prefix}cancel`;
-      const remove = () => {
-        window.removeEventListener(moveType, move);
-        window.removeEventListener(endType, finish);
-        window.removeEventListener(cancelType, cancel);
+      const origin = session.target;
+      const removers =
+        session.input === "pointer"
+          ? [
+              listenToGesture(origin, "pointermove", move, { passive: false }),
+              listenToGesture(origin, "pointerup", finish),
+              listenToGesture(origin, "pointercancel", cancel),
+            ]
+          : [
+              listenToGesture(origin, "touchmove", move, { passive: false }),
+              listenToGesture(origin, "touchend", finish),
+              listenToGesture(origin, "touchcancel", cancel),
+            ];
+      removeListenersRef.current = () => {
+        for (const remove of removers) remove();
       };
-      window.addEventListener(moveType, move, { passive: false });
-      window.addEventListener(endType, finish);
-      window.addEventListener(cancelType, cancel);
-      removeListenersRef.current = remove;
     },
     [cancel, finish, move],
   );
@@ -260,8 +264,7 @@ export function useHorizontalDismissDrag(options: Options) {
         (optionsRef.current.direction === "left" &&
           view !== null &&
           x > view.innerWidth - edgeGuardPx) ||
-        (optionsRef.current.direction === "right" &&
-          x < edgeGuardPx)
+        (optionsRef.current.direction === "right" && x < edgeGuardPx)
       ) {
         return;
       }

@@ -925,6 +925,7 @@ export async function createHostDaemonApp(
       writeAgentCpuPriority(options.dataDir, enabled);
     },
     createWebSocket: options.createWebSocket,
+    getTurnCommandThreadIds: () => router.listThreadIdsHandlingTurnCommands(),
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getUndeliveredEventThreadIds: () => eventSink.listUndeliveredThreadIds(),
     getOpenThreadWork: () =>

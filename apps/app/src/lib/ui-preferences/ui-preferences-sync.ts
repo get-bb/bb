@@ -10,6 +10,7 @@ import type { UiPreferencesResponse } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateUiPreferences } from "@/hooks/cache-owners/system-cache-effects";
 import { uiPreferencesQueryOptions } from "@/hooks/queries/system-queries";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError, sdk } from "../sdk";
 
 type JotaiStore = ReturnType<typeof getDefaultStore>;
@@ -227,8 +228,10 @@ function notifySyncFailure(error: unknown): void {
   if (syncFailureNotified) return;
   syncFailureNotified = true;
   appToast.error("Couldn’t sync UI preferences", {
-    description:
-      error instanceof Error ? error.message : "Changes stay on this device.",
+    description: getMutationErrorMessage({
+      error,
+      fallbackMessage: "Changes stay on this device.",
+    }),
   });
 }
 

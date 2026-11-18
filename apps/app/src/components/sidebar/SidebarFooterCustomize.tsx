@@ -160,15 +160,16 @@ function FooterIconTile({
     id: item.key,
     disabled: reorderDisabled,
   });
+  const { setActivatorNodeRef, attributes, listeners } = dragBindings;
   return (
     <li ref={setNodeRef} style={style} className="relative flex shrink-0">
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            ref={dragBindings.setActivatorNodeRef}
-            {...dragBindings.attributes}
-            {...dragBindings.listeners}
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
             aria-label={`Reorder ${item.label}`}
             data-footer-icon={item.key}
             className={cn(
@@ -211,6 +212,7 @@ function MoreMenuRow({
     id: item.key,
     disabled: reorderDisabled,
   });
+  const { setActivatorNodeRef, attributes, listeners } = dragBindings;
   return (
     <li
       ref={setNodeRef}
@@ -220,9 +222,9 @@ function MoreMenuRow({
     >
       <button
         type="button"
-        ref={dragBindings.setActivatorNodeRef}
-        {...dragBindings.attributes}
-        {...dragBindings.listeners}
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
         aria-label={`Reorder ${item.label}`}
         className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing"
       >

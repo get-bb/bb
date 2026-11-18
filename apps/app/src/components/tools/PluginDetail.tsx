@@ -25,11 +25,13 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { reviewableRangeUpgrade } from "@/components/plugin/management/plugin-status";
+import {
+  pluginHasUpdateSurfaces,
+  reviewableRangeUpgrade,
+} from "@/components/plugin/management/plugin-status";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
-  pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
   CatalogEntryIconChip,
@@ -79,7 +81,7 @@ import {
   subscribePluginFrontendDiagnostics,
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
 
 function pluginMarketplaceUrl({
@@ -404,7 +406,7 @@ export function PluginDetail({
   configurationPath?: string;
 }) {
   const navigate = useNavigate();
-  const { settingsSections } = usePluginSlots();
+  const settingsSections = usePluginSlotKind("settingsSections");
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
     enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });

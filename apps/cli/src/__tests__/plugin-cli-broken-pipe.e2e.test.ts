@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import { killProcessGroup } from "@bb/process-utils";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -107,7 +108,7 @@ describe.skipIf(process.platform === "win32")(
             });
             const timer = setTimeout(() => {
               killed = true;
-              if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+              killProcessGroup({ child, signal: "SIGKILL" });
             }, 60_000);
             child.once("error", (error) => {
               clearTimeout(timer);

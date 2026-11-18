@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { ExperimentalChildProcessTracker } from "@get-bb/plugin-sdk/testing";
 
 type BridgeJsonRpcTestHarness = ReturnType<
   typeof createBridgeJsonRpcTestHarness
@@ -29,36 +30,6 @@ export function spawnedAppServerPids(processLogPath: string): number[] {
     .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
 }
 
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && Reflect.get(error, "code") === "ESRCH") {
-      return false;
-    }
-    throw error;
-  }
-}
-
-export async function waitForAppServerChildrenToExit(
-  processLogPath: string,
-  timeoutMs = 8_000,
-): Promise<void> {
-  const childPids = spawnedAppServerPids(processLogPath);
-  const deadline = Date.now() + timeoutMs;
-  while (childPids.some(processIsAlive)) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `Timed out waiting for app-server children to exit: ${JSON.stringify(childPids.filter(processIsAlive))}`,
-      );
-    }
-    await new Promise((resolveTick) =>
-      setTimeout(resolveTick, PROCESS_POLL_INTERVAL_MS),
-    );
-  }
-}
-
 export async function waitForAppServerProcessStep(
   processLogPath: string,
   step: string,
@@ -81,7 +52,7 @@ export async function cleanupBridgeProcessTest(args: {
   cleanupId: number;
   threadId: string;
   providerThreadId: string;
-  processLogPath: string;
+  children: ExperimentalChildProcessTracker | undefined;
   workspaceDir: string;
   unstubEnvs: () => void;
 }): Promise<void> {
@@ -100,10 +71,11 @@ export async function cleanupBridgeProcessTest(args: {
     }
   }
   try {
-    await waitForAppServerChildrenToExit(args.processLogPath);
+    await args.children?.waitForExit();
   } catch (error) {
     errors.push(error);
   }
+  args.children?.dispose();
   try {
     args.harness?.restore();
   } catch (error) {

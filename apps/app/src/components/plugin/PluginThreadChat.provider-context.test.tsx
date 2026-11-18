@@ -8,15 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import {
-  beforeAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginTimelineRendererProps } from "@get-bb/plugin-sdk";
 import { sdk } from "@/lib/sdk";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
@@ -38,7 +30,7 @@ import {
   makeThreadTimelineResponse,
 } from "@/test/fixtures/thread-responses";
 
-beforeAll(() => LazyPluginThreadChat.preload());
+await LazyPluginThreadChat.preload();
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/sdk")>();

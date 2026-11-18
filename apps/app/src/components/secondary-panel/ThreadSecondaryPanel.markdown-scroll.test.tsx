@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
-import { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState, useSyncExternalStore } from "react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -17,29 +23,55 @@ import {
 import { WorkspaceFilePreviewTabContent } from "./ThreadSecondaryPanelTabContent";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
-const loading = vi.hoisted(() => ({ current: false }));
+const loading = vi.hoisted(() => ({
+  current: false,
+  listeners: new Set<() => void>(),
+}));
+
+function subscribeToLoading(onChange: () => void) {
+  loading.listeners.add(onChange);
+  return () => {
+    loading.listeners.delete(onChange);
+  };
+}
+
+function useLoading() {
+  return useSyncExternalStore(subscribeToLoading, () => loading.current);
+}
+
+function setLoading(value: boolean) {
+  act(() => {
+    loading.current = value;
+    for (const listener of loading.listeners) listener();
+  });
+}
 
 vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({ data: { path: "/workspace" } }),
-  useEnvironmentFilePreview: (_environmentId: string, path: string) => ({
-    data: loading.current
-      ? undefined
-      : {
-          kind: "text",
-          content:
-            path === "short.md"
-              ? "# Short"
-              : "# Reading\n\n[Visit](https://example.invalid/)\n\n".repeat(60),
-          mimeType: "text/markdown",
-          name: path,
-          path,
-          url: `/content/${path}`,
-        },
-    isLoading: loading.current,
-    isFetching: false,
-    error: null,
-    refetch: () => {},
-  }),
+  useEnvironmentFilePreview: (_environmentId: string, path: string) => {
+    const isLoading = useLoading();
+    return {
+      data: isLoading
+        ? undefined
+        : {
+            kind: "text",
+            content:
+              path === "short.md"
+                ? "# Short"
+                : "# Reading\n\n[Visit](https://example.invalid/)\n\n".repeat(
+                    60,
+                  ),
+            mimeType: "text/markdown",
+            name: path,
+            path,
+            url: `/content/${path}`,
+          },
+      isLoading,
+      isFetching: false,
+      error: null,
+      refetch: () => {},
+    };
+  },
 }));
 
 const noop = () => {};
@@ -280,14 +312,13 @@ describe("Markdown reading position in open secondary-panel tabs", () => {
   });
 
   it("waits for ready Markdown content before restoring", () => {
-    const harness = renderHarness();
+    renderHarness();
     scrollTo(780);
     selectTab("Browser");
-    loading.current = true;
+    setLoading(true);
     selectTab("reading.md");
     scrollTo(0);
-    loading.current = false;
-    harness.rerender(harness.content());
+    setLoading(false);
     expect(scrollContainer().scrollTop).toBe(780);
   });
 

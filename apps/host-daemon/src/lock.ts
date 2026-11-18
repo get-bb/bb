@@ -12,6 +12,11 @@ const DAEMON_LOCK_RETRY_INTERVAL_MS = 1_000;
 const DAEMON_LOCK_ACQUIRE_RETRIES = 13;
 const DAEMON_LOCK_REACQUIRE_MAX_CYCLES = 20;
 
+interface ObservedHeartbeat {
+  heartbeatMs: number;
+  sinceMs: number;
+}
+
 interface DaemonLockLogger {
   warn(fields: Record<string, unknown>, message: string): void;
   error(fields: Record<string, unknown>, message: string): void;
@@ -108,19 +113,43 @@ export async function acquireDaemonLock(
     })();
   }
 
-  function lockDaemonLockFile(): Promise<() => Promise<void>> {
-    return lockfile.lock(lockPath, {
-      realpath: false,
-      stale: staleMs,
-      retries: {
-        retries,
-        factor: 1,
-        minTimeout: retryIntervalMs,
-        maxTimeout: retryIntervalMs,
-      },
-      lockfilePath: lockDirPath,
-      onCompromised: handleCompromised,
-    });
+  async function lockDaemonLockFile(): Promise<() => Promise<void>> {
+    let observedHeartbeat: ObservedHeartbeat | null = null;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await lockfile.lock(lockPath, {
+          realpath: false,
+          stale: staleMs,
+          lockfilePath: lockDirPath,
+          onCompromised: handleCompromised,
+        });
+      } catch (error) {
+        if (!isFsErrorWithCode(error, "ELOCKED") || attempt >= retries) {
+          throw error;
+        }
+      }
+      const heartbeatMs = await readHeartbeatMs(lockDirPath);
+      const observedAtMs = performance.now();
+      if (heartbeatMs === null) {
+        observedHeartbeat = null;
+        continue;
+      }
+      if (
+        observedHeartbeat === null ||
+        observedHeartbeat.heartbeatMs !== heartbeatMs
+      ) {
+        observedHeartbeat = { heartbeatMs, sinceMs: observedAtMs };
+      } else if (observedAtMs - observedHeartbeat.sinceMs >= staleMs) {
+        logger.warn(
+          { lockDirPath, heartbeatAt: new Date(heartbeatMs).toISOString() },
+          "Daemon lock heartbeat stopped; reclaiming the orphaned lock",
+        );
+        await removeLockDir(lockDirPath);
+        observedHeartbeat = null;
+        continue;
+      }
+      await sleep(retryIntervalMs);
+    }
   }
 
   release = await lockDaemonLockFile();
@@ -151,4 +180,25 @@ export async function acquireDaemonLock(
     }
     holdsLock = false;
   };
+}
+
+async function readHeartbeatMs(lockDirPath: string): Promise<number | null> {
+  try {
+    return (await fs.stat(lockDirPath)).mtimeMs;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function removeLockDir(lockDirPath: string): Promise<void> {
+  try {
+    await fs.rmdir(lockDirPath);
+  } catch (error) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
+      throw error;
+    }
+  }
 }

@@ -45,6 +45,34 @@ describe("RuntimeTurnState", () => {
     expect(state.getActiveThreadIds()).toEqual([]);
   });
 
+  it("tracks only the requests the running turn accepted", () => {
+    const state = new RuntimeTurnState();
+    const accepted = (
+      turnId: string,
+      clientRequestId: string,
+    ): ThreadEvent => ({
+      type: "turn/input/accepted",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope(turnId),
+      clientRequestId,
+    });
+
+    state.observe(turnStarted("turn-1"));
+    state.noteActiveTurnRequest("t1", "creq_start");
+    state.observe(accepted("turn-1", "creq_steer"));
+    state.observe(accepted("turn-0", "creq_late"));
+    expect(state.getActiveTurnRequestIds("t1")).toEqual([
+      "creq_start",
+      "creq_steer",
+    ]);
+
+    state.observe(turnCompleted("turn-1"));
+    state.noteActiveTurnRequest("t1", "creq_after");
+    state.observe(turnStarted("turn-2"));
+    expect(state.getActiveTurnRequestIds("t1")).toEqual([]);
+  });
+
   it("keeps the root turn active when a delegated child completes", () => {
     const state = new RuntimeTurnState();
 

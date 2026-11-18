@@ -20,6 +20,7 @@ const AppToasterSplit = defineSplit({
   loading: () => null,
   error: ToasterUnavailable,
   tier: "intent",
+  suspends: false,
 });
 
 queueSplitPreload(async () => requestToaster());

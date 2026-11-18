@@ -1,20 +1,14 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { settleLazyModules } from "@/test/lazy-modules";
 import { MarkdownPreview } from "./markdown-preview";
 
-const pipeline = vi.hoisted(() => {
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { held, release, imports: 0 };
-});
+const pipeline = vi.hoisted(() => ({ imports: 0 }));
 
-vi.mock("./markdown-html", async (original) => {
+vi.mock("./markdown-html", (original) => {
   pipeline.imports += 1;
-  await pipeline.held;
   return original();
 });
 
@@ -44,11 +38,9 @@ it("keeps plain Markdown immediate and HTML safe while the real pipeline downloa
   expect(screen.getByText("Still readable")).toBeTruthy();
   expect(screen.getByLabelText("Loading embedded HTML")).toBeTruthy();
   expect(view.container.querySelector("video, script")).toBeNull();
-  await act(async () => pipeline.release());
-  await waitFor(() =>
-    expect(view.container.querySelector("video")?.getAttribute("src")).toBe(
-      "https://example.com/movie.mp4",
-    ),
+  await settleLazyModules();
+  expect(view.container.querySelector("video")?.getAttribute("src")).toBe(
+    "https://example.com/movie.mp4",
   );
   expect(view.container.querySelector("script, [onerror]")).toBeNull();
   expect(screen.queryByLabelText("Loading embedded HTML")).toBeNull();

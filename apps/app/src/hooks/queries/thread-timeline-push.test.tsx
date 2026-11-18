@@ -6,6 +6,7 @@ import type {
   ReceivedThreadTimelineSignal,
   ThreadTimelineReadResponse,
   ThreadTimelineResponse,
+  TimelineRowPatchOperation,
 } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -117,6 +118,27 @@ describe("pushed thread timeline", () => {
     };
   }
 
+  function patchSignal(
+    ops: TimelineRowPatchOperation[],
+    afterTag: string,
+    maxSeq: number,
+  ): ReceivedThreadTimelineSignal {
+    return {
+      type: "thread-timeline",
+      target,
+      timeline: {
+        maxSeq,
+        tag: `timeline-${maxSeq}`,
+        delta: {
+          afterTag,
+          upsertRows: [],
+          patchRows: [{ id: "row-1", ops }],
+          fields: {},
+        },
+      },
+    };
+  }
+
   function cachedTimeline(
     queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
   ) {
@@ -146,6 +168,33 @@ describe("pushed thread timeline", () => {
       makeThreadTimelineResponse({ rows: [firstRow, secondRow], maxSeq: 9 }),
     );
     expect(sdk.threads.timeline).not.toHaveBeenCalled();
+  });
+
+  it("applies a row patch, and refetches instead of rendering a patch that does not fit the held row", async () => {
+    const { queryClient, wrapper } = seedTimeline(7);
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    applyThreadTimelineSignal(
+      queryClient,
+      patchSignal([["append", ["title"], " grew"]], "timeline-7", 8),
+    );
+    expect(cachedTimeline(queryClient)?.rows).toEqual([
+      { ...firstRow, title: "First row grew" },
+    ]);
+    applyThreadTimelineSignal(
+      queryClient,
+      patchSignal([["append", ["missing"], " grew"]], "timeline-8", 9),
+    );
+    expect(cachedTimeline(queryClient)).toMatchObject({
+      maxSeq: 8,
+      rows: [{ ...firstRow, title: "First row grew" }],
+    });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledWith(
+        expect.objectContaining({ afterTag: "timeline-8" }),
+      );
+    });
   });
 
   it("refetches from its own tag when a delta was built on another window", async () => {

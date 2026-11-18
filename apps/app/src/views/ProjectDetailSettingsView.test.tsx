@@ -77,49 +77,50 @@ function stubSidebarBootstrapFetch(
   const projectId = options.projectId ?? "proj_bb";
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          sections: [],
-          projects: [
-            {
-              id: projectId,
-              kind: "standard",
-              name: "bb",
-              gitRemoteUrl: "git@github.com:get-bb/bb.git",
-              createdAt: NOW - 86_400_000,
-              updatedAt: NOW,
-              sources: sources.map((source, index) => ({
-                id: `src_${index}`,
-                projectId,
-                type: "local_path",
-                hostId: source.hostId,
-                path: source.path,
-                isDefault: index === 0,
-                createdAt: NOW,
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            sections: [],
+            projects: [
+              {
+                id: projectId,
+                kind: "standard",
+                name: "bb",
+                gitRemoteUrl: "git@github.com:get-bb/bb.git",
+                createdAt: NOW - 86_400_000,
                 updatedAt: NOW,
-              })),
+                sources: sources.map((source, index) => ({
+                  id: `src_${index}`,
+                  projectId,
+                  type: "local_path",
+                  hostId: source.hostId,
+                  path: source.path,
+                  isDefault: index === 0,
+                  createdAt: NOW,
+                  updatedAt: NOW,
+                })),
+                defaultExecutionOptions: null,
+                threads: [{ id: "thr_1", projectId }],
+              },
+            ],
+            personalProject: {
+              id: "proj_personal",
+              kind: "personal",
+              name: "Personal",
+              gitRemoteUrl: null,
+              createdAt: NOW,
+              updatedAt: NOW,
+              sources: [],
               defaultExecutionOptions: null,
-              threads: [{ id: "thr_1", projectId }],
+              threads: [],
             },
-          ],
-          personalProject: {
-            id: "proj_personal",
-            kind: "personal",
-            name: "Personal",
-            gitRemoteUrl: null,
-            createdAt: NOW,
-            updatedAt: NOW,
-            sources: [],
-            defaultExecutionOptions: null,
-            threads: [],
+          }),
+          {
+            status: options.status ?? 200,
+            headers: { "content-type": "application/json" },
           },
-        }),
-        {
-          status: options.status ?? 200,
-          headers: { "content-type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 }
@@ -291,6 +292,11 @@ describe("ProjectDetailSettingsView", () => {
       ),
     ).toBeDefined();
     await waitFor(() =>
+      expect(sdk.hosts.directory).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host_remote" }),
+      ),
+    );
+    await waitFor(() =>
       expect(
         screen
           .getByRole("button", { name: "Save path" })
@@ -306,9 +312,6 @@ describe("ProjectDetailSettingsView", () => {
         type: "local_path",
         path: "/home/me/bb",
       }),
-    );
-    expect(sdk.hosts.directory).toHaveBeenCalledWith(
-      expect.objectContaining({ hostId: "host_remote" }),
     );
   });
 
