@@ -31,6 +31,7 @@ function renderAgents(agents: (OnboardingAgent | AgentLoadingRow)[]) {
     onSignIn: vi.fn(),
     onInstall: vi.fn(),
     onCancelSignIn: vi.fn(),
+    onRetryCheck: vi.fn(),
     onRecheck: vi.fn(),
   };
   const view = render(
@@ -38,7 +39,7 @@ function renderAgents(agents: (OnboardingAgent | AgentLoadingRow)[]) {
       <AgentStep
         machineName="bee"
         agents={agents}
-        loadFailedMessage={null}
+        loadFailed={null}
         {...handlers}
       />
     </TooltipProvider>,
@@ -81,10 +82,11 @@ describe("AgentStep failures and sign-in", () => {
             }),
             agent("claude-code", { status: "signingIn" }),
           ]}
-          loadFailedMessage={null}
+          loadFailed={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onCancelSignIn={onCancelSignIn}
+          onRetryCheck={vi.fn()}
           onRecheck={vi.fn()}
         />
       </TooltipProvider>,
@@ -486,10 +488,11 @@ describe("AgentStep progress", () => {
         <AgentStep
           machineName="bee"
           agents={[agent("codex", { status: "installing", update: false })]}
-          loadFailedMessage={null}
+          loadFailed={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onCancelSignIn={vi.fn()}
+          onRetryCheck={vi.fn()}
           onRecheck={vi.fn()}
         />
       </TooltipProvider>,
@@ -607,7 +610,7 @@ describe("Agent step header and install details", () => {
               installQueued: true,
             },
           ]}
-          loadFailedMessage={null}
+          loadFailed={null}
           {...handlers}
         />
       </TooltipProvider>,

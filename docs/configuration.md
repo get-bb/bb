@@ -387,8 +387,10 @@ states or the Plugins step's catalog load, with `duration_ms` (time from the
 step first opening to the data arriving), and `failed` the first time they
 fail to load before any data arrives, each at most once per step per guide (a
 failed background refresh after the data loaded is not a load failure); the Agent
-step also fails with `timed_out` when its agent states haven't loaded after 10
-seconds and it offers Retry. `finish` records only `failed`,
+step also fails with `timed_out` when no agent's own check has answered after 10
+seconds. An agent whose check fails shows its own Retry, which rechecks only
+that agent; when every check fails, one Retry rechecks just those agents.
+`finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
 `no_host` (no computer was available: once per guide for `scan` and agent
