@@ -81,7 +81,9 @@ function parseArgs(argv) {
     }
   }
   if (!args.recording || !args.dialect || !args.state) {
-    throw new Error("usage: --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>");
+    throw new Error(
+      "usage: --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>",
+    );
   }
   return args;
 }
@@ -93,7 +95,10 @@ function readLane(dir, direction) {
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line))
-    .map((entry) => ({ ...entry, run: typeof entry.run === "number" ? entry.run : 0 }));
+    .map((entry) => ({
+      ...entry,
+      run: typeof entry.run === "number" ? entry.run : 0,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +108,8 @@ function readLane(dir, direction) {
 const DIALECTS = {
   "json-rpc": {
     classify(message) {
-      const hasId = typeof message.id === "string" || typeof message.id === "number";
+      const hasId =
+        typeof message.id === "string" || typeof message.id === "number";
       if (hasId && typeof message.method === "string") {
         return { kind: "request", id: message.id, key: message.method };
       }
@@ -135,7 +141,11 @@ const DIALECTS = {
         };
       }
       if (message.type === "control_response") {
-        return { kind: "response", id: message.response?.request_id, key: "control_response" };
+        return {
+          kind: "response",
+          id: message.response?.request_id,
+          key: "control_response",
+        };
       }
       return {
         kind: "notification",
@@ -143,7 +153,10 @@ const DIALECTS = {
       };
     },
     isInitialize(classified) {
-      return classified.kind === "request" && classified.key === "control_request:initialize";
+      return (
+        classified.kind === "request" &&
+        classified.key === "control_request:initialize"
+      );
     },
     withResponseId(message, id) {
       return { ...message, response: { ...message.response, request_id: id } };
@@ -183,9 +196,18 @@ const DIALECTS = {
           };
         }
         if (channel.kind === "tool-result" || channel.kind === "reply") {
-          return { kind: "response", id: channel.id, key: "channel:response", channel: true };
+          return {
+            kind: "response",
+            id: channel.id,
+            key: "channel:response",
+            channel: true,
+          };
         }
-        return { kind: "notification", key: `channel:${channel.kind ?? "?"}`, channel: true };
+        return {
+          kind: "notification",
+          key: `channel:${channel.kind ?? "?"}`,
+          channel: true,
+        };
       }
       if (message.type === "response") {
         return { kind: "response", id: message.id, key: "response" };
@@ -239,8 +261,14 @@ function buildSegments(entries, dialect) {
   let current = null;
   for (const entry of entries) {
     const message = parseLine(entry.line);
-    const classified = message === null ? { kind: "raw", key: "raw" } : dialect.classify(message);
-    const startsSegment = entry.dir === "bridge→provider" && message !== null && dialect.isInitialize(classified);
+    const classified =
+      message === null
+        ? { kind: "raw", key: "raw" }
+        : dialect.classify(message);
+    const startsSegment =
+      entry.dir === "bridge→provider" &&
+      message !== null &&
+      dialect.isInitialize(classified);
     if (current === null || startsSegment) {
       current = [];
       segments.push(current);
@@ -294,7 +322,10 @@ function readCursor(stateDir) {
 function cursorAllows(cursor, entry) {
   if (cursor === null) return true;
   if (cursor === false) return false;
-  return entry.run < cursor.run || (entry.run === cursor.run && entry.seq < cursor.seq);
+  return (
+    entry.run < cursor.run ||
+    (entry.run === cursor.run && entry.seq < cursor.seq)
+  );
 }
 
 function firstSessionDefiningKey(script) {
@@ -365,7 +396,7 @@ function connectChannel(channel) {
 // Player
 // ---------------------------------------------------------------------------
 
-function servePiCatalog(entries) {
+function recordedPiModels(entries) {
   const models = new Map();
   let state = {};
   for (const entry of entries) {
@@ -389,6 +420,17 @@ function servePiCatalog(entries) {
       }
     }
   }
+  return { models, state };
+}
+
+const PI_MODEL_SELECTION_KEYS = new Set([
+  "get_available_models",
+  "set_model",
+  "set_thinking_level",
+]);
+
+function servePiCatalog(entries) {
+  const { models, state } = recordedPiModels(entries);
   const channel = connectChannel(DIALECTS["pi-rpc"].channel);
   readNewlineDelimitedLines(channel, (line) => {
     const message = parseLine(line);
@@ -465,9 +507,12 @@ function main() {
     process.argv.includes("--no-session-persistence");
   const segmentIndex = diagnosticFork ? null : claimSegmentIndex(args.state);
   let script = segmentIndex === null ? [] : (segments[segmentIndex] ?? []);
-  const log = (text) => process.stderr.write(`[replay-child #${segmentIndex}] ${text}\n`);
+  const log = (text) =>
+    process.stderr.write(`[replay-child #${segmentIndex}] ${text}\n`);
   if (script.length === 0) {
-    log(`no recorded segment ${segmentIndex} (recording has ${segments.length}); answering generically`);
+    log(
+      `no recorded segment ${segmentIndex} (recording has ${segments.length}); answering generically`,
+    );
   }
   const segmentSessionKey = firstSessionDefiningKey(script);
   let sawSessionDefiningRequest = false;
@@ -486,11 +531,18 @@ function main() {
   let piState = null;
   let piStreaming = false;
   let piPromptProbePending = false;
+  let piSelectionProbePending = false;
+  const piModels =
+    args.dialect === "pi-rpc" ? recordedPiModels(entries).models : new Map();
 
   const channel = dialect.channel ?? null;
   const channelSocket = channel ? connectChannel(channel) : null;
   function emit(message) {
-    if (channel && typeof message[channel.key] === "object" && message[channel.key] !== null) {
+    if (
+      channel &&
+      typeof message[channel.key] === "object" &&
+      message[channel.key] !== null
+    ) {
       channelSocket.write(`${JSON.stringify(message[channel.key])}\n`);
       return;
     }
@@ -517,7 +569,12 @@ function main() {
     }
     if (classified.kind === "response") {
       const liveId = liveIdByRecordedId.get(String(classified.id));
-      emit(dialect.withResponseId(message, liveId === undefined ? classified.id : liveId));
+      emit(
+        dialect.withResponseId(
+          message,
+          liveId === undefined ? classified.id : liveId,
+        ),
+      );
       return;
     }
     if (
@@ -528,7 +585,10 @@ function main() {
     ) {
       emit({
         ...message,
-        request: { ...message.request, callback_id: hookIds.get(message.request.callback_id) },
+        request: {
+          ...message.request,
+          callback_id: hookIds.get(message.request.callback_id),
+        },
       });
       return;
     }
@@ -635,7 +695,10 @@ function main() {
       }
       if (step.classified.kind === "request") {
         liveIdByRecordedId.set(String(step.classified.id), live.classified.id);
-        if (dialect.isInitialize(step.classified) && args.dialect === "claude-cli") {
+        if (
+          dialect.isInitialize(step.classified) &&
+          args.dialect === "claude-cli"
+        ) {
           hookIds = hookCallbackIdMap(step.message, live.message);
         }
       }
@@ -666,11 +729,14 @@ function main() {
             : step.classified.key === live.classified.key);
         if (!same) continue;
         const cursor = readCursor(args.state);
-        const gated = script.slice(position, index).some((between) =>
-          between.dir === "provider→bridge" &&
-          between.classified.kind !== "response" &&
-          !cursorAllows(cursor, between),
-        );
+        const gated = script
+          .slice(position, index)
+          .some(
+            (between) =>
+              between.dir === "provider→bridge" &&
+              between.classified.kind !== "response" &&
+              !cursorAllows(cursor, between),
+          );
         if (gated) {
           lookaheadTimer = setTimeout(lookAhead, CURSOR_POLL_MS);
           return;
@@ -692,7 +758,9 @@ function main() {
             emitRecorded(between);
           }
         }
-        log(`bridge skipped recorded ${skipped.join(", ")}; resuming at ${live.classified.key}`);
+        log(
+          `bridge skipped recorded ${skipped.join(", ")}; resuming at ${live.classified.key}`,
+        );
         position = index;
         advance();
         armStall();
@@ -703,10 +771,14 @@ function main() {
 
   function answerGenerically(live, reason) {
     if (live.classified.kind === "request") {
-      log(`${reason}: answering ${live.classified.key} (${String(live.classified.id)}) generically`);
+      log(
+        `${reason}: answering ${live.classified.key} (${String(live.classified.id)}) generically`,
+      );
       emit(dialect.genericResponse(live.classified.id, live.classified));
     } else {
-      log(`${reason}: dropping unmatched ${live.classified.kind} ${live.classified.key}`);
+      log(
+        `${reason}: dropping unmatched ${live.classified.kind} ${live.classified.key}`,
+      );
     }
   }
 
@@ -716,7 +788,9 @@ function main() {
     const expected = script[position];
     log(
       `stalled for ${STALL_MS}ms at step ${position}/${script.length}` +
-        (expected ? ` (expecting ${expected.dir} ${expected.classified.key})` : ""),
+        (expected
+          ? ` (expecting ${expected.dir} ${expected.classified.key})`
+          : ""),
     );
     for (const live of pendingLive.splice(0)) {
       answerGenerically(live, "stall");
@@ -728,7 +802,8 @@ function main() {
     if (stallTimer !== null) clearTimeout(stallTimer);
     if (lookaheadTimer !== null) clearTimeout(lookaheadTimer);
     stallTimer = pendingLive.length > 0 ? setTimeout(onStall, STALL_MS) : null;
-    lookaheadTimer = pendingLive.length > 0 ? setTimeout(lookAhead, LOOKAHEAD_MS) : null;
+    lookaheadTimer =
+      pendingLive.length > 0 ? setTimeout(lookAhead, LOOKAHEAD_MS) : null;
   }
 
   /**
@@ -747,6 +822,46 @@ function main() {
     }
   }
 
+  function nextBridgeExpectationKey() {
+    return script.slice(position).find((step) => step.dir === "bridge→provider")
+      ?.classified.key;
+  }
+
+  function answerPiModelSelection(live) {
+    const { id, key } = live.classified;
+    const request = live.message;
+    if (key === "get_available_models") {
+      emit({
+        id,
+        type: "response",
+        command: key,
+        success: true,
+        data: { models: [...piModels.values()] },
+      });
+      return;
+    }
+    if (key === "set_model") {
+      const model = piModels.get(`${request.provider}/${request.modelId}`);
+      if (model === undefined) {
+        emit({
+          id,
+          type: "response",
+          command: key,
+          success: false,
+          error: `Model not found: ${request.provider}/${request.modelId}`,
+        });
+        return;
+      }
+      piState = { ...(piState ?? {}), model };
+      piSelectionProbePending = true;
+      emit({ id, type: "response", command: key, success: true, data: model });
+      return;
+    }
+    piState = { ...(piState ?? {}), thinkingLevel: request.level };
+    piSelectionProbePending = true;
+    emit({ id, type: "response", command: key, success: true });
+  }
+
   function onLiveMessage(message) {
     const live = { message, classified: dialect.classify(message) };
     if (
@@ -755,20 +870,32 @@ function main() {
       SESSION_DEFINING_KEY.test(live.classified.key)
     ) {
       sawSessionDefiningRequest = true;
-      if (segmentSessionKey !== null && live.classified.key !== segmentSessionKey) {
+      if (
+        segmentSessionKey !== null &&
+        live.classified.key !== segmentSessionKey
+      ) {
         releaseSegment(live);
       }
     }
     if (
       args.dialect === "pi-rpc" &&
       live.classified.kind === "request" &&
+      PI_MODEL_SELECTION_KEYS.has(live.classified.key) &&
+      nextBridgeExpectationKey() !== live.classified.key
+    ) {
+      answerPiModelSelection(live);
+      return;
+    }
+    if (
+      args.dialect === "pi-rpc" &&
+      live.classified.kind === "request" &&
       live.classified.key === "get_state" &&
-      piPromptProbePending &&
+      (piPromptProbePending || piSelectionProbePending) &&
       piState !== null &&
-      script.slice(position).find((step) => step.dir === "bridge→provider")
-        ?.classified.key !== "get_state"
+      nextBridgeExpectationKey() !== "get_state"
     ) {
       piPromptProbePending = false;
+      piSelectionProbePending = false;
       emit({
         id: live.classified.id,
         type: "response",
