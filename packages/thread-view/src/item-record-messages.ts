@@ -32,12 +32,10 @@ import {
 
 type CallStatus = EventProjectionToolCallMessage["status"];
 
-export const DELEGATION_ITEM_TOOL_NAME = "delegation";
+const DELEGATION_ITEM_TOOL_NAME = "delegation";
 const MAX_REASONING_DETAIL_CHARS = 32_000;
 
-export function itemStatusToExecStatus(
-  status: ThreadEventItemStatus,
-): CallStatus {
+function itemStatusToExecStatus(status: ThreadEventItemStatus): CallStatus {
   switch (status) {
     case "pending":
       return "pending";
