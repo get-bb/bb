@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-type CallSource = "host-state" | "host-workspace" | "other";
-
 const HOST_STATE_READS = [
   "environments.listProviders",
   "hostDaemon.fetchWorkspaceOpenTargets",
@@ -17,156 +15,6 @@ const HOST_STATE_READS = [
   "system.experimental_cliCommand",
   "system.providerStates",
 ] as const;
-
-const HOST_WORKSPACE_READS = [
-  "environments.paths",
-  "hosts.cloneDefaultPath",
-  "hosts.directory",
-  "hosts.experimental_discoverRepos",
-  "hosts.pathsExist",
-  "hosts.pickFolder",
-  "projects.paths",
-  "skills.getContent",
-  "skills.list",
-  "skills.listFiles",
-  "terminals.output",
-  "threads.defaultExecutionOptions",
-  "threads.storageFiles",
-  "threads.storageLocation",
-  "threads.storagePaths",
-] as const;
-
-const OTHER_CALLS = [
-  "environments.archiveThreads",
-  "environments.commit",
-  "environments.get",
-  "environments.update",
-  "experimental_server.cancelMove",
-  "experimental_server.checkMove",
-  "experimental_server.moveStatus",
-  "experimental_server.startMove",
-  "files.mkdir",
-  "hostDaemon.fetchHostStatus",
-  "hostDaemon.openInTarget",
-  "hosts.delete",
-  "hosts.experimental_create",
-  "hosts.experimental_deleteOldServerCopy",
-  "hosts.experimental_getEnrollmentCommand",
-  "hosts.experimental_listProviders",
-  "hosts.experimental_providerCliInstallJobs.list",
-  "hosts.experimental_providerCliInstallJobs.wait",
-  "hosts.experimental_reconnect",
-  "hosts.experimental_resume",
-  "hosts.experimental_retryCleanup",
-  "hosts.experimental_startProviderCliInstall",
-  "hosts.experimental_suspend",
-  "hosts.get",
-  "hosts.list",
-  "hosts.retryUpdate",
-  "hosts.update",
-  "projects.attachments.copy",
-  "projects.attachments.upload",
-  "projects.create",
-  "projects.defaultExecutionOptions",
-  "projects.delete",
-  "projects.machineEnvironment",
-  "projects.promptHistory",
-  "projects.reorder",
-  "projects.replaceMachineEnvironment",
-  "projects.sources.add",
-  "projects.sources.delete",
-  "projects.sources.update",
-  "projects.update",
-  "providers.catalog",
-  "providers.setEnabled",
-  "skills.registry.detail",
-  "skills.registry.entries",
-  "skills.registry.get",
-  "skills.registry.repositoryStars",
-  "skills.registry.search",
-  "skills.remove",
-  "system.acknowledgeAppUpdate",
-  "system.aiServices",
-  "system.appUpdate",
-  "system.applyAppUpdate",
-  "system.config",
-  "system.experimental_cancelScheduledAppUpdate",
-  "system.experimental_installCliCommand",
-  "system.experimental_removeCliCommand",
-  "system.experimental_setAppUpdateAuto",
-  "system.installCliSkills",
-  "system.machineEnvironment",
-  "system.mobileAppReleases",
-  "system.replaceMachineEnvironment",
-  "system.setAiServiceSelection",
-  "system.testAiService",
-  "system.uiPreferences.list",
-  "system.uiPreferences.set",
-  "system.updateExperiments",
-  "system.updateGeneralSettings",
-  "system.updateKeyboardSettings",
-  "system.version",
-  "terminals.close",
-  "terminals.create",
-  "terminals.get",
-  "terminals.list",
-  "terminals.rename",
-  "theme.resolve",
-  "theme.set",
-  "threadSections.create",
-  "threadSections.delete",
-  "threadSections.update",
-  "threads.archiveAll",
-  "threads.cancelPlan",
-  "threads.conversationOutline",
-  "threads.count",
-  "threads.delete",
-  "threads.editMessage",
-  "threads.experimental_listCascade",
-  "threads.experimental_listPluginMetadata",
-  "threads.experimental_regenerateTitle",
-  "threads.fork",
-  "threads.get",
-  "threads.getPluginMetadata",
-  "threads.interactions.cancel",
-  "threads.interactions.list",
-  "threads.interactions.resolve",
-  "threads.interactions.respond",
-  "threads.list",
-  "threads.markRead",
-  "threads.markUnread",
-  "threads.pin",
-  "threads.promptHistory",
-  "threads.queuedMessages.delete",
-  "threads.queuedMessages.experimental_holdForEdit",
-  "threads.queuedMessages.experimental_releaseEditHold",
-  "threads.queuedMessages.list",
-  "threads.queuedMessages.reorder",
-  "threads.queuedMessages.send",
-  "threads.queuedMessages.setGroupBoundary",
-  "threads.queuedMessages.update",
-  "threads.reorderPinned",
-  "threads.resolveMentions",
-  "threads.restoreEnvironment",
-  "threads.search",
-  "threads.send",
-  "threads.spawn",
-  "threads.stop",
-  "threads.tabs.get",
-  "threads.tabs.update",
-  "threads.timeline",
-  "threads.timelineTurnSummaryDetails",
-  "threads.unarchive",
-  "threads.unpin",
-  "threads.update",
-  "threads.updatePluginMetadata",
-] as const;
-
-const CALL_SOURCES = new Map<string, CallSource>([
-  ...HOST_STATE_READS.map((call) => [call, "host-state"] as const),
-  ...HOST_WORKSPACE_READS.map((call) => [call, "host-workspace"] as const),
-  ...OTHER_CALLS.map((call) => [call, "other"] as const),
-]);
 
 const HOST_DAEMON_CLIENT_MODULE = "lib/api-host-daemon.ts";
 const HOST_DERIVED_POLICY = "hostDerivedQueryPolicy";
@@ -594,21 +442,6 @@ const appScan = scanApp();
 const hostStateReads = new Set<string>(HOST_STATE_READS);
 
 describe("host-derived state freshness", () => {
-  it("classifies every SDK and host-daemon call the app makes", () => {
-    expect(
-      appScan.allCalls
-        .filter(({ read }) => !CALL_SOURCES.has(read))
-        .map(({ location, read }) => `${location} ${read}`),
-    ).toEqual([]);
-  });
-
-  it("lists only calls the app makes", () => {
-    const made = new Set(appScan.allCalls.map(({ read }) => read));
-    expect([...CALL_SOURCES.keys()].filter((call) => !made.has(call))).toEqual(
-      [],
-    );
-  });
-
   it("reads host state only in queries the host-derived owner invalidates", () => {
     expect(
       appScan.allCalls

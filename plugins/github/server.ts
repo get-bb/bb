@@ -571,7 +571,6 @@ export default async function plugin(bb: BbPluginApi) {
   type GhState = "ready" | "needs_configuration" | "unavailable";
   let ghState: GhState = "unavailable";
   let ghAuthError: string | null = "checking gh…";
-  let viewerCache: { login: string; fetchedAt: number } | null = null;
 
   async function resolveGh(): Promise<string> {
     if (ghPath !== null) return ghPath;
@@ -592,27 +591,8 @@ export default async function plugin(bb: BbPluginApi) {
     priority: VcsProcessPriority = "interactive",
   ): Promise<string> {
     const file = await resolveGh();
-    try {
-      const { stdout } = await run(file, args, timeoutMs, priority);
-      return stdout;
-    } catch (error) {
-      if (errorMessage(error).includes("ENOENT")) ghPath = null;
-      throw error;
-    }
-  }
-
-  let reportedNeedsConfiguration = false;
-  function syncPluginStatus(error: unknown): void {
-    if (error === null) {
-      if (reportedNeedsConfiguration) bb.status.experimental_configured();
-      reportedNeedsConfiguration = false;
-    } else if (
-      isNeedsConfigurationError(error) &&
-      !reportedNeedsConfiguration
-    ) {
-      bb.status.needsConfiguration(error.message);
-      reportedNeedsConfiguration = true;
-    }
+    const { stdout } = await run(file, args, timeoutMs, priority);
+    return stdout;
   }
 
   async function probeAuth(): Promise<void> {
@@ -652,18 +632,9 @@ export default async function plugin(bb: BbPluginApi) {
   let authProbe: Promise<void> | null = null;
   function checkAuth(): Promise<void> {
     if (authProbe === null) {
-      viewerCache = null;
-      authProbe = probeAuth()
-        .then(
-          () => syncPluginStatus(null),
-          (error: unknown) => {
-            syncPluginStatus(error);
-            throw error;
-          },
-        )
-        .finally(() => {
-          authProbe = null;
-        });
+      authProbe = probeAuth().finally(() => {
+        authProbe = null;
+      });
     }
     return authProbe;
   }
@@ -957,7 +928,7 @@ export default async function plugin(bb: BbPluginApi) {
     await checkAuth();
   } catch (error) {
     if (isNeedsConfigurationError(error)) {
-      bb.log.info(error.message);
+      bb.status.needsConfiguration(error.message);
     } else if (isGhUnavailableError(error)) {
       bb.log.warn(error.message);
     } else {
@@ -1051,6 +1022,8 @@ export default async function plugin(bb: BbPluginApi) {
     bb.log.info(`spawned thread ${thread.id} for ${kind} ${ref}`);
     return { threadId: thread.id };
   }
+
+  let viewerCache: { login: string; fetchedAt: number } | null = null;
 
   async function getViewer(): Promise<string> {
     if (

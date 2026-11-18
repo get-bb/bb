@@ -162,24 +162,21 @@ function useSpawn(): {
   return { spawn, spawningKey };
 }
 
-let lastViewerLogin: string | null = null;
+let viewerLogin: string | null = null;
 
 function useViewer(): string | null {
   const rpc = useRpc<typeof githubRpcContract>();
-  const [login, setLogin] = useState<string | null>(lastViewerLogin);
-  const refetch = useCallback(() => {
+  const [login, setLogin] = useState<string | null>(viewerLogin);
+  useEffect(() => {
+    if (viewerLogin !== null) return;
     rpc.call("viewer").then(
       (result) => {
-        lastViewerLogin = result.login;
+        viewerLogin = result.login;
         setLogin(result.login);
       },
       () => {},
     );
   }, [rpc]);
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-  useRealtime("data-changed", refetch);
   return login;
 }
 

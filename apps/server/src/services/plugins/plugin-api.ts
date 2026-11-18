@@ -510,7 +510,6 @@ export function createPluginApi(options: {
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
-  reportConfigured: () => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
   isMachineProviderIdTaken: (id: string) => string | undefined;
@@ -582,7 +581,6 @@ export function createPluginApi(options: {
     invalidateRpc: optionsInvalidate,
     settingsChanged,
     reportNeedsConfiguration,
-    reportConfigured,
     isAgentToolNameTaken,
     reportAgentToolProblem,
     requestQueueDrain,
@@ -1056,11 +1054,6 @@ export function createPluginApi(options: {
           : "needs configuration";
       if (activated) reportNeedsConfiguration(normalized);
       else pendingNeedsConfiguration = normalized;
-    },
-    experimental_configured() {
-      assertLive();
-      if (activated) reportConfigured();
-      else pendingNeedsConfiguration = null;
     },
   };
 

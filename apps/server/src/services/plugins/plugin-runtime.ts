@@ -539,11 +539,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     setStatus(id, "needs-configuration", message);
   }
 
-  function reportConfigured(id: string): void {
-    if (!needsConfiguration.delete(id)) return;
-    setStatus(id, "running", agentToolProblems.get(id) ?? null);
-  }
-
   function reportAgentToolProblem(id: string, message: string): void {
     agentToolProblems.set(id, message);
     logger.warn(`[plugin:${id}] ${message}`);
@@ -1860,9 +1855,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       },
       reportNeedsConfiguration: (message) => {
         reportNeedsConfiguration(row.id, message);
-      },
-      reportConfigured: () => {
-        reportConfigured(row.id);
       },
       isAgentToolNameTaken: (name) => findAgentToolOwner(name, row.id),
       isEnvironmentProviderIdTaken: (id) => {
