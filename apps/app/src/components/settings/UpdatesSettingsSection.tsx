@@ -1086,18 +1086,36 @@ const UPDATER_NAMES: Record<string, string> = {
   pnpm: "pnpm",
 };
 
-export function providerCliUpdaterName(
-  status: ProviderCliStatusEntry["status"],
-): string | null {
-  const command = status.installAction?.command.trim().split(/\s+/u)[0];
-  if (command === undefined || command.length === 0) {
-    return null;
-  }
-  const executable = (command.split(/[\\/]/u).pop() ?? command).replace(
+function executableBaseName(path: string): string {
+  return (path.split(/[\\/]/u).pop() ?? path).replace(
     /\.(?:exe|cmd|bat)$/iu,
     "",
   );
-  if (executable === status.executableName) {
+}
+
+function firstShellWord(command: string): string | null {
+  const word = /^(?:'[^']*'|\\'|[^\s'])+/u.exec(command.trim())?.[0];
+  return word === undefined
+    ? null
+    : word.replace(
+        /'([^']*)'|\\(')/gu,
+        (_match, quoted: string | undefined, escaped: string | undefined) =>
+          quoted ?? escaped ?? "",
+      );
+}
+
+export function providerCliUpdaterName(
+  status: ProviderCliStatusEntry["status"],
+): string | null {
+  const command =
+    status.installAction === null
+      ? null
+      : firstShellWord(status.installAction.command);
+  if (command === null || command.length === 0) {
+    return null;
+  }
+  const executable = executableBaseName(command);
+  if (executable === executableBaseName(status.executableName)) {
     return "Built-in updater";
   }
   return UPDATER_NAMES[executable] ?? executable;

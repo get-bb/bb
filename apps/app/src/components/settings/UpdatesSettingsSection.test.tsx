@@ -1360,6 +1360,63 @@ The published lede.
     ).toEqual(["mise", "Homebrew"]);
   });
 
+  it("recognizes a provider's own updater when the machine reports its executable by path", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const withExecutable = (
+      provider: "codex" | "claude-code",
+      executableName: string,
+      command: string,
+    ): ProviderCliActionableIssue => {
+      const issue = makeUpdateIssue({ provider });
+      const action = { ...issue.action, command };
+      return {
+        ...issue,
+        action,
+        status: {
+          ...issue.status,
+          executableName,
+          executablePath: executableName,
+          installAction: action,
+        },
+      };
+    };
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            issues: [
+              withExecutable(
+                "codex",
+                "C:\\Users\\Jo's PC\\.local\\bin\\codex.exe",
+                "'C:\\Users\\Jo'\\''s PC\\.local\\bin\\codex.exe' update",
+              ),
+              withExecutable(
+                "claude-code",
+                "/home/user/.local/bin/claude",
+                "/home/user/.local/bin/claude update",
+              ),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(screen.getByRole("button", { name: "workstation" }));
+
+    expect(
+      [...document.querySelectorAll("[data-provider-updater]")].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Built-in updater", "Built-in updater"]);
+  });
+
   it("badges the client-local daemon independently from the server machine", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
