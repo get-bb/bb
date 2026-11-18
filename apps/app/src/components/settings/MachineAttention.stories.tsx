@@ -24,7 +24,7 @@ const cleanup = makeHost({
     ...laptop.lifecycle,
     phase: "removing",
     message: "Provider credentials expired.",
-    teardown: { status: "failed", attempt: 1 },
+    teardown: { status: "failed", attempt: 1, needsRecovery: false },
   },
 });
 

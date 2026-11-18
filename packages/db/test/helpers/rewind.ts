@@ -154,6 +154,16 @@ export function dropPluginFailureLabelColumns(db: DbConnection): void {
   }
 }
 
+export function restoreSuspendRetryAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(hosts)")
+    .all();
+  const names = new Set(columns.map((existing) => existing.name));
+  if (names.has("remove_retry_at") && !names.has("suspend_retry_at")) {
+    db.$client.exec("ALTER TABLE hosts ADD COLUMN suspend_retry_at integer");
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

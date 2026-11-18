@@ -393,6 +393,7 @@ export function registerMachineCommands(
         }
         const { primaryHostId } = await sdk.system.config();
         printMachineTable(hosts, primaryHostId);
+        printMachineRecoveryHints(hosts);
       }),
     );
 
@@ -698,4 +699,13 @@ function printMachineTable(hosts: Host[], serverHostId: string | null): void {
     },
     rows,
   );
+}
+
+function printMachineRecoveryHints(hosts: readonly Host[]): void {
+  for (const host of hosts) {
+    if (host.lifecycle.teardown?.needsRecovery !== true) continue;
+    console.log(
+      `\n${host.name} (${host.id}): ${host.lifecycle.message ?? "Needs recovery."} Inspect the machine, then run bb machine retry-cleanup ${host.id}.`,
+    );
+  }
 }

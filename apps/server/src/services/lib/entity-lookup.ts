@@ -13,6 +13,7 @@ import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
+import { isNeedsRecoveryMessage } from "./persisted-retry.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
@@ -87,6 +88,9 @@ export function toHostRecord(row: HostRow, status: Host["status"]): Host {
           : {
               status: row.teardownStatus,
               attempt: row.teardownAttempt,
+              needsRecovery:
+                row.teardownStatus === "failed" &&
+                isNeedsRecoveryMessage(row.statusMessage),
             },
     },
     maxPermissionMode: row.maxPermissionMode,

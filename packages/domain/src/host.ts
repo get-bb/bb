@@ -21,6 +21,7 @@ export const machineLifecycleSchema = z.object({
     .object({
       status: z.enum(["running", "failed", "removed"]),
       attempt: z.number().int().nonnegative(),
+      needsRecovery: z.boolean(),
     })
     .nullable(),
 });

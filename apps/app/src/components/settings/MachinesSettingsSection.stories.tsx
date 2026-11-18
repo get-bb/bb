@@ -187,7 +187,7 @@ export function Rows() {
             lifecycle: lifecycle({
               phase: "removing",
 
-              teardown: { status: "failed", attempt: 3 },
+              teardown: { status: "failed", attempt: 3, needsRecovery: false },
             }),
           })}
         />

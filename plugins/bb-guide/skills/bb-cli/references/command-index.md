@@ -113,6 +113,8 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb server unlock`
 - `bb server allow-connect`
 - `bb server delete-old-copy`
+- `bb server sweeps`
+- `bb server sweeps retry`
 - `bb server install-machine-service`
 
 ## updates

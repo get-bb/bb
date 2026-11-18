@@ -228,7 +228,11 @@ describe("MachinesSettingsSection", () => {
         ...offlineHost.lifecycle,
         phase: "removing" as const,
         message: "Provider credentials expired.",
-        teardown: { status: "failed" as const, attempt: 3 },
+        teardown: {
+          status: "failed" as const,
+          attempt: 3,
+          needsRecovery: false,
+        },
       },
     };
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
@@ -688,7 +692,11 @@ describe("MachinesSettingsSection", () => {
         ...offlineHost.lifecycle,
         phase: "removing" as const,
         message: "Host is not connected",
-        teardown: { status: "failed" as const, attempt: 0 },
+        teardown: {
+          status: "failed" as const,
+          attempt: 0,
+          needsRecovery: false,
+        },
       },
     };
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
