@@ -979,8 +979,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `agentCpuPriority`, `compactExpiredCache`, `dismissReadNotifications`,
-`keyedPluginCss`, `pluginUpdates`, `skipFocusedThreadNotifications`,
-`threadRowMetadata`, and `updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+`keyedPluginCss`, `pluginUpdates`, `resumeDaemonSessions`,
+`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`) turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -1045,6 +1045,18 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
+- `resumeDaemonSessions` (on for early adopters) lets a machine's daemon
+  session outlive a dropped WebSocket. When the socket closes for any reason
+  other than the daemon shutting down, the server keeps the session active for
+  30 seconds: terminals, pending host requests, Connect sharing and the host's
+  connected status stay as they are, and messages for the daemon queue up. A
+  daemon that reconnects in time resumes the same session with
+  `/internal/ws?sessionId=…&resumeFrom=<n>`, and each side re-sends only the
+  messages the other has not acknowledged. Past 30 seconds the session ends as
+  `expired` and the daemon opens a new one. While the experiment is off, the
+  server ends the session as soon as the socket closes, and session open
+  returns `reconnectGraceMs: 0`, so the daemon opens a new session after every
+  drop. It applies from the next disconnect.
 - `resumeThreadsAfterRestart` resumes threads a
   restart cut off. When a machine's daemon comes back as a new process (bb
   quit, crashed, or updated, or the machine restarted), the server marks the

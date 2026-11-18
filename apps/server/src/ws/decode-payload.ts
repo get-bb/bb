@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-function decodeSocketPayload(raw: unknown): string {
+export function decodeSocketPayload(raw: unknown): string {
   if (typeof raw === "string") {
     return raw;
   }
@@ -28,7 +28,15 @@ export function parseSocketMessage<T>(
     return null;
   }
 
-  const result = schema.safeParse(decoded);
+  return parseSocketValue(socket, decoded, schema);
+}
+
+export function parseSocketValue<T>(
+  socket: { close(code?: number, reason?: string): void },
+  value: unknown,
+  schema: z.ZodType<T>,
+): T | null {
+  const result = schema.safeParse(value);
   if (!result.success) {
     socket.close(1008, "invalid-message");
     return null;

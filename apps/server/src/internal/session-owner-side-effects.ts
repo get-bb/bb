@@ -198,6 +198,21 @@ export function handleDaemonSessionSilent(
   });
 }
 
+export function handleDaemonSessionResumeExpired(
+  deps: DaemonSocketClosedDeps,
+  args: HandleDaemonSocketClosedArgs,
+): void {
+  deps.logger.warn(
+    { reconnectGraceMs: HOST_RECONNECT_GRACE_MS, sessionId: args.sessionId },
+    "Daemon did not reconnect within the grace period; ending its session",
+  );
+  deps.hub.closeDaemonSessionSocket(args.sessionId, "expired");
+  handleDaemonSessionLost(deps, {
+    reason: "expired",
+    sessionId: args.sessionId,
+  });
+}
+
 function handleDaemonSessionLost(
   deps: DaemonSocketClosedDeps,
   args: HandleDaemonSessionLostArgs,
