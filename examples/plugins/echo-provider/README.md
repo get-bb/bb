@@ -26,43 +26,45 @@ public API would have a hole.
 
 Registration (`server.ts`, `bb.providers.register`):
 
-| Capability                                                                                                                                                              | Where                                              |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `strings` — sign-in and expiry hints, install URL, brand prefix, plan-mode copy, icon tint                                                                 | `server.ts`                                        |
-| `reasoningLevels` — labelled picker options beside the coarse ladder                                                                                       | `server.ts`                                        |
-| `serviceTiers` and `capabilities.supportsServiceTier`                                                                                                      | `server.ts`                                        |
-| `capabilities` — permission modes, fork, archive/rename                                                                                                                 | `server.ts`                                        |
-| `maintenance.health: true` — the server polls `provider/health` through the bridge; usage and installation stay off                                         | `server.ts`, answered in `src/provider-bridge.ts`  |
-| `composerActions: ["plan"]`                                                                                                                                             | `server.ts`                                        |
-| `models.fallback` — the cold-cache model list                                                                                                              | `server.ts`                                        |
-| `env.passthrough` — one daemon env var the bridge may read                                                                                                 | `server.ts`, read in `src/provider-bridge.ts`      |
-| `experimental_nativeSkillRoots` — one workspace-relative skill root (`.echo/skills`) bb lists beside its own skills                                        | `server.ts`, asserted in `server.test.ts`          |
-| `deriveProviderOptions` — the plugin's `shout` setting (`bb.settings.define`) travels to the bridge as `providerOptions`                                   | `server.ts`, read back in `src/provider-bridge.ts` |
-| `extensionKinds` — one item kind (`echo-provider/receipt`) and one state kind (`echo-provider/mood`), each with a zod schema the server enforces at ingest | `src/vocabulary.ts`                                |
-| `bb.agents.registerTool` with `presentation` — a bb tool whose row reads the way the plugin says                                                           | `server.ts`                                        |
+| Capability                                                                                                                                                                         | Where                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `strings` — sign-in and expiry hints, install URL, brand prefix, plan-mode copy, icon tint                                                                                         | `server.ts`                                              |
+| `reasoningLevels` — labelled picker options beside the coarse ladder                                                                                                               | `server.ts`                                              |
+| `serviceTiers` and `capabilities.supportsServiceTier`                                                                                                                              | `server.ts`                                              |
+| `capabilities` — permission modes, fork, archive/rename                                                                                                                            | `server.ts`                                              |
+| `maintenance.health: true` — the server polls `provider/health` through the bridge; usage and installation stay off                                                                | `server.ts`, answered in `src/provider-bridge.ts`        |
+| `composerActions: ["plan"]`                                                                                                                                                        | `server.ts`                                              |
+| `models.fallback` — the cold-cache model list                                                                                                                                      | `server.ts`                                              |
+| `env.passthrough` — one daemon env var the bridge may read                                                                                                                         | `server.ts`, read in `src/provider-bridge.ts`            |
+| `experimental_nativeSkillRoots` — one workspace-relative skill root (`.echo/skills`) bb lists beside its own skills                                                                | `server.ts`, asserted in `server.test.ts`                |
+| `deriveProviderOptions` — the plugin's `shout` setting (`bb.settings.define`) travels to the bridge as `providerOptions`                                                           | `server.ts`, read back in `src/provider-bridge.ts`       |
+| `extensionKinds` — one item kind (`echo-provider/receipt`) and one state kind (`echo-provider/mood`), each with a zod schema the server enforces at ingest                         | `src/vocabulary.ts`                                      |
+| `bb.agents.registerTool` with `presentation` — a bb tool whose row reads the way the plugin says                                                                                   | `server.ts`                                              |
 | `bb.branding.experimental_icons` — one declared icon (`receipt`) the receipt row references as `echo-provider/receipt`; the server serves it hashed and checks the glyph at ingest | `package.json`, `icons/receipt.svg`, `src/vocabulary.ts` |
-| `bb.host` — one artifact carrying the bridge and a host RPC entry                                                                                                       | `host.ts`, `contract.ts`                           |
+| `bb.host` — one artifact carrying the bridge and a host RPC entry                                                                                                                  | `host.ts`, `contract.ts`                                 |
 
 The bridge (`src/provider-bridge.ts`, grammar v3). Every accepted prompt runs
 the same scripted turn:
 
-| Capability                                                                                                       | Delta                               |
-| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Handshake reports `grammarVersions: [3, 3]`, `steerMode`, `sessionRestore`, `approvalEnforcedBy`                 | `initialize`                        |
-| `presentation` on **every** `item.open` and `item.close`                                                         | all items                           |
-| A shell command with streamed output                                                                             | `command` + `item.outputDelta`      |
-| A file read                                                                                                      | `fileRead`                          |
-| A content search                                                                                                 | `search`                            |
-| Delegated work with a real child turn linked through `parentRef`                                                 | `delegation` + keyed `turn.open`    |
-| A plan snapshot                                                                                                  | `planSteps`                         |
-| A bookkeeping tool whose row clients collapse                                                                    | `tool` with `presentation.suppress` |
-| The plugin's bb tool, called over `item/tool/call` and stamped `server: "bb"` with the definition's presentation | `tool`                              |
-| The extension item, validated server-side against the declared schema                                            | `extension`                         |
-| The extension state, latest snapshot wins                                                                        | `extension.state`                   |
-| The echoed message, reporting the derived `providerOptions` and the passed-through env var                       | `item.textDelta` / `item.textClose` |
-| Usage and the context-window meter                                                                               | `usage`, `contextWindow`            |
-| A zero-work turn (`/noop`) that still settles                                                                    | `turn.boundary` with `claimIfIdle`  |
-| A malformed extension payload (`malformed-receipt`) the server replaces with `provider/unhandled`                | `extension`                         |
+| Capability                                                                                                                                                                                                                      | Delta                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Handshake reports `grammarVersions: [3, 3]`, `steerMode`, `sessionRestore`, `approvalEnforcedBy`                                                                                                                                | `initialize`                        |
+| Handshake reports protocol 3 and declares `sessionSettings`: `providerOptions` and model/reasoning apply live (read from each `turn/start`), dynamic tools need a resume; `openWork: { list: false }` (nothing outlives a turn) | `initialize`                        |
+| `turn/start` answers `{ admission: "accepted" }` after `input.accepted` and `turn.open` are on the wire                                                                                                                         | `turn/start` result                 |
+| `presentation` on **every** `item.open` and `item.close`                                                                                                                                                                        | all items                           |
+| A shell command with streamed output                                                                                                                                                                                            | `command` + `item.outputDelta`      |
+| A file read                                                                                                                                                                                                                     | `fileRead`                          |
+| A content search                                                                                                                                                                                                                | `search`                            |
+| Delegated work with a real child turn linked through `parentRef`                                                                                                                                                                | `delegation` + keyed `turn.open`    |
+| A plan snapshot                                                                                                                                                                                                                 | `planSteps`                         |
+| A bookkeeping tool whose row clients collapse                                                                                                                                                                                   | `tool` with `presentation.suppress` |
+| The plugin's bb tool, called over `item/tool/call` and stamped `server: "bb"` with the definition's presentation                                                                                                                | `tool`                              |
+| The extension item, validated server-side against the declared schema                                                                                                                                                           | `extension`                         |
+| The extension state, latest snapshot wins                                                                                                                                                                                       | `extension.state`                   |
+| The echoed message, reporting the derived `providerOptions` and the passed-through env var                                                                                                                                      | `item.textDelta` / `item.textClose` |
+| Usage and the context-window meter                                                                                                                                                                                              | `usage`, `contextWindow`            |
+| A zero-work turn (`/noop`) that still opens and settles its turn explicitly                                                                                                                                                     | `turn.open` + `turn.boundary`       |
+| A malformed extension payload (`malformed-receipt`) the server replaces with `provider/unhandled`                                                                                                                               | `extension`                         |
 
 Outside any session, the bridge answers the one maintenance request the
 declaration turns on: `provider/health` → `{ supported: true, health: { status:
@@ -73,8 +75,9 @@ off and answer method-not-found, so declaration and bridge cannot disagree.
 
 1. **The public testing kit** (`@get-bb/plugin-sdk/provider-bridge/testing`):
    - `provider-bridge.conformance.test.ts` drives the bridge through the
-     canonical Provider Bridge Protocol suite and pins fourteen green rules:
-     the twelve every bridge runs plus `turn/settles-without-activity`, which
+     canonical Provider Bridge Protocol suite and pins nineteen green rules:
+     the seventeen every bridge runs (among them `turn/admission-answered`
+     and `openWork/list-declared`) plus `turn/settles-without-activity`, which
      the fixture's zero-work prompt enables, and
      `presentation/icon-namespaced-declared`, which the fixture's `icons`
      declaration enables. (The kit's three other rules —

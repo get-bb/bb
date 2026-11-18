@@ -193,6 +193,7 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
     run: (db, fixture) =>
       db.transaction((tx) =>
         supersedeQueuedRetriesInTransaction(tx, {
+          keepRetriesOfRequestsRefusedWith: "thread_busy",
           threadId: fixture.threadId,
           retryOfTurnRequestId: null,
         }),

@@ -315,6 +315,7 @@ const eventProjectionOperationTypeValues = [
   "provider-unhandled",
   "provider-environment",
   "warning",
+  "session-settings",
   "deprecation",
   "thread-interrupted",
   "thread-provisioning",

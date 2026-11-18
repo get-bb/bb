@@ -631,7 +631,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
     const toolCalls: ToolCallRequest[] = [];
     const runtimeInstance = createAgentRuntime({
       workspacePath: workspaceDir,
-      env: { BB_PROVIDER_BRIDGE_RECORD_DIR: recordDir },
+      getProcessEnv: () => ({ BB_PROVIDER_BRIDGE_RECORD_DIR: recordDir }),
       skillRoots,
       onEvent: (event) => {
         runtimeEvents.push(event);

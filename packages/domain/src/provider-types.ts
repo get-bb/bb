@@ -32,7 +32,7 @@ export const availableModelSchema = z.object({
   description: z.string(),
   reasoningDiscovery: z.enum(["unknown", "known"]).default("known"),
   supportedReasoningEfforts: z.array(modelReasoningEffortSchema),
-  defaultReasoningEffort: reasoningLevelSchema,
+  defaultReasoningEffort: reasoningLevelSchema.optional(),
   supportedServiceTiers: z.array(modelServiceTierSchema).optional(),
   sessionOptions: z.array(threadSessionOptionSchema).max(64).optional(),
   isDefault: z.boolean(),

@@ -11,6 +11,7 @@ import {
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -76,6 +77,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
   expect(resumed1.error).toBeUndefined();
 
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_a2b3c4d5e6",
@@ -163,6 +165,7 @@ it("drops replayed token usage and thread-scopes replayed context usage on fork"
   });
 
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId: forkedProviderThreadId,
     clientRequestId: "creq_fkr2k3d4e5",

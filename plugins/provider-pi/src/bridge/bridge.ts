@@ -4,15 +4,14 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
+  BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
-  buildShellEnvOverrides,
   experimental_buildProviderCliEnv as buildProviderCliEnv,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -32,11 +31,16 @@ import {
   threadForkParamsSchema,
   threadResumeParamsSchema,
   threadStartParamsSchema,
+  threadOpenWorkParamsSchema,
   threadStopParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
   type BridgeToolCallRequest,
   type InitializeResult,
+  type OpenWorkItem,
+  type SessionSettingsDeclaration,
+  type ThreadOpenWorkResult,
+  type TurnInputResult,
   type ThreadDelta,
   type ThreadEventContextWindowUsage,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -74,7 +78,6 @@ import {
   type PiRpcSessionOptions,
   type ToolCallForwarder,
 } from "./rpc-session.js";
-import type { PiModelRef } from "./model-selection.js";
 import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
@@ -128,6 +131,10 @@ const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("skills/configure"),
     params: skillsConfigureParamsSchema,
+  }),
+  z.object({
+    method: z.literal(BRIDGE_REQUEST_METHODS.threadOpenWork),
+    params: threadOpenWorkParamsSchema,
   }),
 ]);
 
@@ -200,8 +207,16 @@ interface ThreadSession {
   providerThreadId: string;
   cwd: string;
   construction: PiSessionParams;
-  constructionModel: PiModelRef | undefined;
 }
+
+const PI_SESSION_SETTINGS: SessionSettingsDeclaration = {
+  model: { apply: "live" },
+  reasoningLevel: { apply: "live" },
+  env: { apply: "resume" },
+  instructions: { apply: "resume" },
+  dynamicTools: { apply: "resume" },
+  skills: { apply: "resume" },
+};
 
 let sessionSerialCounter = 0;
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 8_000;
@@ -535,6 +550,8 @@ async function handleRequest(
           steerMode: "inject",
           skills: { configure: true },
           commands: { list: false },
+          openWork: { list: true },
+          sessionSettings: PI_SESSION_SETTINGS,
         },
       };
       sendResult(request.id, result);
@@ -602,6 +619,9 @@ async function handleRequest(
     case "skills/configure":
       configuredSkillPaths = request.params.roots.map((root) => root.path);
       sendResult(request.id, { ok: true });
+      break;
+    case BRIDGE_REQUEST_METHODS.threadOpenWork:
+      sendResult(request.id, await listOpenWork(request.params.threadId));
       break;
   }
 }
@@ -758,12 +778,10 @@ async function constructPiThreadSession(
     providerThreadId,
     cwd: params.cwd,
     construction: params,
-    constructionModel: undefined,
   };
   sessions.set(threadId, threadSession);
   try {
     await session.start();
-    threadSession.constructionModel = session.getSelectedModel();
     const liveModel = session.getLiveModel();
     if (
       liveModel &&
@@ -936,16 +954,103 @@ async function handleThreadFork(
   );
 }
 
-function startPiPrompt(
+function sendTurnInputResult(
+  id: string | number,
+  result: TurnInputResult,
+): void {
+  sendResult(id, result);
+}
+
+function recordAcceptedTurn(threadId: string, clientRequestId: string): void {
+  sendThreadDeltas(threadId, [
+    { kind: "input.accepted", clientRequestId },
+    { kind: "turn.open" },
+  ]);
+}
+
+async function applyLiveSettings(
   threadSession: ThreadSession,
-  threadId: string,
-  text: string,
-  images: ImageContent[],
+  params: TurnStartParams,
 ): Promise<void> {
-  const dispatch = threadSession.session.prompt(
-    text,
-    images.length > 0 ? images : undefined,
+  const changed = new Set(params.apply.settings);
+  const turnOptions = buildPiTurnOptions(params.options);
+  if (changed.has("model") && turnOptions.model !== undefined) {
+    const model = await threadSession.session.setModel(
+      await threadSession.session.resolveModel(turnOptions.model),
+    );
+    if (
+      model &&
+      typeof model.id === "string" &&
+      typeof model.provider === "string"
+    ) {
+      contextWindows.learn([
+        {
+          id: model.id,
+          provider: model.provider,
+          contextWindow: model.contextWindow,
+        },
+      ]);
+    }
+  }
+  if (
+    (changed.has("model") || changed.has("reasoningLevel")) &&
+    turnOptions.thinkingLevel !== undefined
+  ) {
+    await threadSession.session.setThinkingLevel(turnOptions.thinkingLevel);
+  }
+}
+
+async function startPiCompaction(
+  id: string | number,
+  threadSession: ThreadSession,
+  params: TurnStartParams,
+): Promise<void> {
+  const start = await threadSession.session.startCompaction();
+  if (start.admission === "busy") {
+    sendTurnInputResult(id, { admission: "busy", message: start.message });
+    return;
+  }
+  recordAcceptedTurn(params.threadId, params.clientRequestId);
+  sendTurnInputResult(id, { admission: "accepted" });
+  void start.compactionEndDelivered.then(
+    (delivered) => {
+      if (!delivered) {
+        reportPromptSettled({
+          sessionSerial: threadSession.sessionSerial,
+          threadId: params.threadId,
+        });
+      }
+    },
+    (error: unknown) =>
+      reportPromptSettled({
+        error,
+        sessionSerial: threadSession.sessionSerial,
+        threadId: params.threadId,
+      }),
   );
+}
+
+async function startPiPrompt(
+  id: string | number,
+  threadSession: ThreadSession,
+  params: TurnStartParams,
+): Promise<void> {
+  const input = extractPiPromptInput(params.input);
+  if (input === null) {
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
+    return;
+  }
+  const dispatch = threadSession.session.prompt(
+    input.text,
+    input.images.length > 0 ? input.images : undefined,
+  );
+  const admission = await dispatch.admitted;
+  if (admission.admission === "busy") {
+    sendTurnInputResult(id, { admission: "busy", message: admission.message });
+    return;
+  }
+  recordAcceptedTurn(params.threadId, params.clientRequestId);
+  sendTurnInputResult(id, { admission: "accepted" });
   void dispatch.settled.then((outcome) => {
     if (outcome === null || outcome.boundaryDelivered) {
       return;
@@ -953,87 +1058,19 @@ function startPiPrompt(
     reportPromptSettled({
       ...(outcome.error !== undefined ? { error: outcome.error } : {}),
       sessionSerial: threadSession.sessionSerial,
-      threadId,
+      threadId: params.threadId,
     });
   });
-  return dispatch.consumed;
 }
 
-function startPiCompaction(
-  threadSession: ThreadSession,
-  threadId: string,
-): void {
-  void threadSession.session.compact().then(
-    () =>
-      reportPromptSettled({
-        sessionSerial: threadSession.sessionSerial,
-        threadId,
-      }),
-    (error: unknown) =>
-      reportPromptSettled({
-        error,
-        sessionSerial: threadSession.sessionSerial,
-        threadId,
-      }),
-  );
-}
-
-function recordAcceptedTurnInput(params: TurnStartParams): void {
-  sendThreadDeltas(params.threadId, [
-    { kind: "input.accepted", clientRequestId: params.clientRequestId },
-  ]);
-}
-
-async function reconcileTurnOptions(
+async function restoreExitedPiSession(
   threadId: string,
   threadSession: ThreadSession,
   options: TurnStartParams["options"],
 ): Promise<ThreadSession> {
   const turnOptions = buildPiTurnOptions(options);
-  const construction = threadSession.construction;
-  const shellEnvOverrides =
-    options.envVars && Object.keys(options.envVars).length > 0
-      ? { BB_THREAD_ID: threadId, ...buildShellEnvOverrides(options.envVars) }
-      : undefined;
-  const environmentChanged =
-    shellEnvOverrides !== undefined &&
-    !isDeepStrictEqual(shellEnvOverrides, construction.shellEnvOverrides);
-  const changedModelRequest =
-    turnOptions.model !== undefined && turnOptions.model !== construction.model
-      ? turnOptions.model
-      : undefined;
-  const thinkingLevelChanged =
-    turnOptions.thinkingLevel !== undefined &&
-    turnOptions.thinkingLevel !== construction.thinkingLevel;
-  const piExited = threadSession.session.hasExited();
-  if (
-    !piExited &&
-    !environmentChanged &&
-    changedModelRequest === undefined &&
-    !thinkingLevelChanged
-  ) {
-    return threadSession;
-  }
-  const nextModel =
-    changedModelRequest === undefined || piExited
-      ? undefined
-      : await threadSession.session.resolveModel(changedModelRequest);
-  const modelChanged =
-    nextModel !== undefined &&
-    (threadSession.constructionModel === undefined ||
-      threadSession.constructionModel.provider !== nextModel.provider ||
-      threadSession.constructionModel.id !== nextModel.id);
-  if (
-    !piExited &&
-    !environmentChanged &&
-    !modelChanged &&
-    !thinkingLevelChanged
-  ) {
-    return threadSession;
-  }
   const rebuildParams: PiSessionParams = {
-    ...construction,
-    ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
+    ...threadSession.construction,
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
@@ -1050,9 +1087,7 @@ async function reconcileTurnOptions(
       ? "pi's session file was missing, so the conversation continues without its earlier context."
       : sessionFileState === "invalid"
         ? "pi's session file is not a valid pi session, so the conversation continues in a new session without its earlier context."
-        : piExited
-          ? "pi exited; the session was restored from its session file."
-          : "Execution settings changed; the pi session was rebuilt to apply them.";
+        : "pi exited; the session was restored from its session file.";
   const replacement = await rebuildThreadSession(
     threadId,
     threadSession,
@@ -1061,7 +1096,6 @@ async function reconcileTurnOptions(
       ? `pi_${randomUUID()}`
       : threadSession.providerThreadId,
   );
-  const contextLost = sessionFileState !== "valid";
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({
@@ -1071,7 +1105,7 @@ async function reconcileTurnOptions(
       threadId,
       providerThreadId: replacement.providerThreadId,
       reason,
-      contextLost,
+      contextLost: sessionFileState !== "valid",
     },
   });
   return replacement;
@@ -1088,11 +1122,13 @@ async function handleTurnStart(
   }
   let threadSession: ThreadSession;
   try {
-    threadSession = await reconcileTurnOptions(
-      params.threadId,
-      liveSession,
-      params.options,
-    );
+    threadSession = liveSession.session.hasExited()
+      ? await restoreExitedPiSession(
+          params.threadId,
+          liveSession,
+          params.options,
+        )
+      : liveSession;
   } catch (error) {
     sendError(
       id,
@@ -1101,22 +1137,18 @@ async function handleTurnStart(
     );
     return;
   }
-  if (isStandaloneBuiltinCompactCommand(params.input)) {
-    recordAcceptedTurnInput(params);
-    startPiCompaction(threadSession, params.threadId);
-    sendResult(id, { threadId: params.threadId });
+  const busy = threadSession.session.inputBusyMessage();
+  if (busy !== null) {
+    sendTurnInputResult(id, { admission: "busy", message: busy });
     return;
   }
-  const input = extractPiPromptInput(params.input);
-  if (input === null) {
-    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
-    return;
-  }
-  const { text, images } = input;
   try {
-    await startPiPrompt(threadSession, params.threadId, text, images);
-    recordAcceptedTurnInput(params);
-    sendResult(id, { threadId: params.threadId });
+    await applyLiveSettings(threadSession, params);
+    if (isStandaloneBuiltinCompactCommand(params.input)) {
+      await startPiCompaction(id, threadSession, params);
+      return;
+    }
+    await startPiPrompt(id, threadSession, params);
   } catch (error) {
     sendError(
       id,
@@ -1140,24 +1172,26 @@ async function handleTurnSteer(
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
-  const { text, images } = input;
-  if (threadSession.session.getIsCompacting()) {
-    sendError(id, -32000, "Cannot steer while context compaction is active");
-    return;
-  }
   if (threadSession.session.hasExited()) {
     rejectStaleSteer(id);
     return;
   }
   try {
-    await threadSession.session.steer(
-      text,
-      images.length > 0 ? images : undefined,
+    const admission = await threadSession.session.steer(
+      input.text,
+      input.images.length > 0 ? input.images : undefined,
     );
+    if (admission.admission === "busy") {
+      sendTurnInputResult(id, {
+        admission: "busy",
+        message: admission.message,
+      });
+      return;
+    }
     sendThreadDeltas(params.threadId, [
       { kind: "input.accepted", clientRequestId: params.clientRequestId },
     ]);
-    sendResult(id, { threadId: params.threadId });
+    sendTurnInputResult(id, { admission: "accepted" });
   } catch (error) {
     if (threadSession.session.hasExited()) {
       rejectStaleSteer(id);
@@ -1176,6 +1210,44 @@ function rejectStaleSteer(id: string | number): void {
   sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
     recovery: { kind: "staleTurn", message, retryable: false },
   });
+}
+
+async function listOpenWork(threadId: string): Promise<ThreadOpenWorkResult> {
+  const threadSession = sessions.get(threadId);
+  if (!threadSession || threadSession.closing || !threadSession.session.alive) {
+    return { items: [] };
+  }
+  const items: OpenWorkItem[] = extensionUi
+    .pendingForScope(threadSession)
+    .map((pending) => ({
+      id: pending.interactionId,
+      kind: "interaction",
+      description: `Pi is waiting for an answer: ${pending.title}`,
+    }));
+  const state = await threadSession.session.getState();
+  if (state.isStreaming) {
+    items.push({
+      id: "pi-agent-run",
+      kind: "turn",
+      description: "Pi is running an agent turn.",
+    });
+  }
+  if (state.isCompacting) {
+    items.push({
+      id: "pi-compaction",
+      kind: "turn",
+      description: "Pi is compacting the context.",
+    });
+  }
+  const queued = state.pendingMessageCount ?? 0;
+  if (queued > 0) {
+    items.push({
+      id: "pi-queued-messages",
+      kind: "turn",
+      description: `Pi has ${String(queued)} queued message${queued === 1 ? "" : "s"} to run.`,
+    });
+  }
+  return { items };
 }
 
 async function handleThreadStop(

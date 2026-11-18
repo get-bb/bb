@@ -14,8 +14,9 @@ import {
   type ThreadTurnRequestKind,
 } from "@bb/domain";
 import {
-  COMPETING_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
+  THREAD_BUSY_ERROR_CODE,
+  TURN_REJECTED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
 } from "@bb/host-daemon-contract";
 
@@ -39,6 +40,8 @@ export type TurnRequestAnswer =
   | { kind: "unconfirmed" }
   | { kind: "lost"; joinsRunningTurn: boolean; startsTurn: boolean }
   | { kind: "stale" }
+  | { kind: "busy"; busyStreak: number; message: string }
+  | { kind: "rejected"; message: string }
   | {
       kind: "refused";
       code: string;
@@ -170,6 +173,7 @@ export type ThreadLifecycleEffect =
     }
   | { kind: "send-stop" }
   | { kind: "redeliver-steer"; requestId: string }
+  | { kind: "requeue-busy-request"; requestId: string; delayMs: number | null }
   | { kind: "drain-queue"; wake: "thread-ready" | "turn-started" }
   | {
       kind: "turn-ended";
@@ -624,11 +628,89 @@ function answerRequest(
       });
       releaseHeld(draft);
       return;
+    case "busy":
+      settleBusyRequest(draft, request, answer);
+      releaseHeld(draft);
+      return;
+    case "rejected":
+      settleRejectedRequest(draft, request, answer);
+      releaseHeld(draft);
+      return;
     case "refused":
       refuseRequest(draft, request, answer);
       releaseHeld(draft);
       return;
   }
+}
+
+const BUSY_RETRY_MAX_ATTEMPTS = 6;
+const BUSY_RETRY_BASE_DELAY_MS = 5_000;
+
+function settleIdleUnlessTurnRunning(draft: Draft): "turn-running" | "idle" {
+  if (draft.state.activeTurnId !== null || draft.awaitingAnswers()) {
+    return "turn-running";
+  }
+  if (draft.move("run.succeeded") && draft.status === "idle") {
+    draft.effect({ kind: "prune-idle" });
+  }
+  return "idle";
+}
+
+function settleRejectedRequest(
+  draft: Draft,
+  request: ThreadTurnRequestState,
+  answer: Extract<TurnRequestAnswer, { kind: "rejected" }>,
+): void {
+  draft.remove(request.requestId);
+  if (draft.state.deleted) return;
+  draft.effect({
+    kind: "append-request-rejected",
+    requestId: request.requestId,
+    reason: TURN_REJECTED_ERROR_CODE,
+    message: answer.message,
+  });
+  if (settleIdleUnlessTurnRunning(draft) === "idle") {
+    draft.effect({ kind: "drain-queue", wake: "thread-ready" });
+  }
+}
+
+function settleBusyRequest(
+  draft: Draft,
+  request: ThreadTurnRequestState,
+  answer: Extract<TurnRequestAnswer, { kind: "busy" }>,
+): void {
+  draft.remove(request.requestId);
+  if (draft.state.deleted) return;
+  draft.effect({
+    kind: "append-request-rejected",
+    requestId: request.requestId,
+    reason: THREAD_BUSY_ERROR_CODE,
+    message: answer.message,
+  });
+  if (answer.busyStreak >= BUSY_RETRY_MAX_ATTEMPTS) {
+    draft.effect({
+      kind: "append-system-error",
+      code: "provider_busy",
+      message: `The agent answered busy ${answer.busyStreak} times in a row, so bb stopped re-sending this message. Retry it once the agent is free, or stop the thread.`,
+      detail: null,
+      turnId: null,
+    });
+    draft.move("run.failed");
+    draft.heldCompletion = null;
+    draft.effect({
+      kind: "notify-parent",
+      notice: { turnStatus: "failed", failureContext: null, turnId: null },
+    });
+    return;
+  }
+  draft.effect({
+    kind: "requeue-busy-request",
+    requestId: request.requestId,
+    delayMs:
+      settleIdleUnlessTurnRunning(draft) === "turn-running"
+        ? null
+        : BUSY_RETRY_BASE_DELAY_MS * 2 ** (answer.busyStreak - 1),
+  });
 }
 
 function refuseRequest(
@@ -647,12 +729,6 @@ function refuseRequest(
       reason: answer.code,
       message: answer.message,
     });
-    if (
-      answer.code === COMPETING_TURN_ERROR_CODE &&
-      draft.state.activeTurnId !== null
-    ) {
-      return;
-    }
   }
   if (answer.expectedTurnCompleted) return;
   draft.effect({

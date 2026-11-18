@@ -11,6 +11,7 @@ import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridg
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -179,6 +180,7 @@ it.each([
       .object({ providerThreadId: z.string() })
       .parse(response.result);
     harness.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId,
       input: [{ type: "text", text: "Hello" }],

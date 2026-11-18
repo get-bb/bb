@@ -1,6 +1,7 @@
 import { providerForkSchema } from "@bb/domain";
 import { z } from "zod";
-import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "./version.js";
+import { sessionSettingsDeclarationSchema } from "./session-contract.js";
+import { THREAD_DELTA_GRAMMAR_V2 } from "./version.js";
 
 export const bridgeGrammarVersionsSchema = z
   .tuple([z.number().int().positive(), z.number().int().positive()])
@@ -30,8 +31,8 @@ export const bridgeCapabilitiesSchema = z
     fork: providerForkSchema.default("none"),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
     grammarVersions: bridgeGrammarVersionsSchema.default([
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      THREAD_DELTA_GRAMMAR_V2,
+      THREAD_DELTA_GRAMMAR_V2,
     ]),
     steerMode: bridgeSteerModeSchema.default("queue"),
     skills: z
@@ -40,6 +41,10 @@ export const bridgeCapabilitiesSchema = z
     commands: z
       .object({ list: z.boolean().default(false) })
       .default({ list: false }),
+    openWork: z
+      .object({ list: z.boolean().default(false) })
+      .default({ list: false }),
+    sessionSettings: sessionSettingsDeclarationSchema.optional(),
   })
   .passthrough();
 
@@ -50,8 +55,8 @@ export const initializeParamsSchema = z
     protocolVersion: z.number().int().positive(),
     client: z.object({ name: z.string().min(1), version: z.string().min(1) }),
     grammarVersions: bridgeGrammarVersionsSchema.default([
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      THREAD_DELTA_GRAMMAR_V2,
+      THREAD_DELTA_GRAMMAR_V2,
     ]),
   })
   .passthrough();

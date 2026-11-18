@@ -1,22 +1,22 @@
-{"ts":1794633033468,"run":1794633032743,"seq":26,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
-{"ts":1794633033667,"run":1794633032743,"seq":34,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `sleep 8`. When it finishes, reply with exactly: steer-1-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
-{"ts":1794633036153,"run":1794633032743,"seq":68,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the sleep finishes, reply with exactly: steer-1-steered\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
-{"ts":1794633043168,"run":1794633032743,"seq":83,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
-{"ts":1794633044189,"run":1794633032743,"seq":106,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
-{"ts":1794633046512,"run":1794633032743,"seq":124,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-6\"}"}
-{"ts":1794633046512,"run":1794633032743,"seq":126,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
-{"ts":1794633046246,"run":1794633032743,"seq":128,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
-{"ts":1794633046512,"run":1794633032743,"seq":135,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `sleep 8`. When it finishes, reply with exactly: steer-2-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
-{"ts":1794633049527,"run":1794633032743,"seq":165,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the sleep finishes, run `printf '%s' \\\"$BB_CONFORMANCE_PROBE\\\"` once and reply with exactly its output.\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
-{"ts":1794633056533,"run":1794633032743,"seq":180,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
-{"ts":1794633058761,"run":1794633032743,"seq":218,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
-{"ts":1794633060257,"run":1794633032743,"seq":234,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-6\"}"}
-{"ts":1794633062618,"run":1794633032743,"seq":247,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-7\"}"}
-{"ts":1794633062619,"run":1794633032743,"seq":249,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
-{"ts":1794633062306,"run":1794633032743,"seq":251,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
-{"ts":1794633062618,"run":1794633032743,"seq":258,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `sleep 8`. When it finishes, reply with exactly: steer-3-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
-{"ts":1794633066317,"run":1794633032743,"seq":288,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the sleep finishes, reply with exactly: steer-3-steered\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
-{"ts":1794633073325,"run":1794633032743,"seq":299,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
-{"ts":1794633074886,"run":1794633032743,"seq":327,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
-{"ts":1794633076894,"run":1794633032743,"seq":335,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-6\"}"}
-{"ts":1794633076894,"run":1794633032743,"seq":337,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1795047617609,"run":1795047616066,"seq":22,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1795047617798,"run":1795047616066,"seq":30,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `python3 -c \\\"import time; time.sleep(8)\\\"`. When it finishes, reply with exactly: steer-1-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1795047620565,"run":1795047616066,"seq":75,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the command finishes, reply with exactly: steer-1-steered\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
+{"ts":1795047627581,"run":1795047616066,"seq":87,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1795047631063,"run":1795047616066,"seq":112,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
+{"ts":1795047633086,"run":1795047616066,"seq":125,"dir":"bridge→provider","line":"{\"type\":\"set_model\",\"provider\":\"openai-codex\",\"modelId\":\"gpt-6.1-sol\",\"id\":\"bb-6\"}"}
+{"ts":1795047633087,"run":1795047616066,"seq":128,"dir":"bridge→provider","line":"{\"type\":\"set_thinking_level\",\"level\":\"low\",\"id\":\"bb-7\"}"}
+{"ts":1795047633087,"run":1795047616066,"seq":131,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `python3 -c \\\"import time; time.sleep(8)\\\"`. When it finishes, reply with exactly: steer-2-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-8\"}"}
+{"ts":1795047636342,"run":1795047616066,"seq":172,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the command finishes, run `printf '%s' \\\"$BB_CONFORMANCE_PROBE\\\"` once and reply with exactly its output.\",\"streamingBehavior\":\"steer\",\"id\":\"bb-9\"}"}
+{"ts":1795047643358,"run":1795047616066,"seq":187,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-10\"}"}
+{"ts":1795047645237,"run":1795047616066,"seq":226,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-11\"}"}
+{"ts":1795047646383,"run":1795047616066,"seq":242,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-12\"}"}
+{"ts":1795047648391,"run":1795047616066,"seq":250,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-13\"}"}
+{"ts":1795047648392,"run":1795047616066,"seq":254,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-14\"}"}
+{"ts":1795047648392,"run":1795047616066,"seq":256,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1795047662340,"run":1795047616066,"seq":264,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1795047648413,"run":1795047616066,"seq":266,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1795047648639,"run":1795047616066,"seq":274,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run this shell command exactly once: `python3 -c \\\"import time; time.sleep(8)\\\"`. When it finishes, reply with exactly: steer-3-original\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1795047651944,"run":1795047616066,"seq":315,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"New instruction: after the command finishes, reply with exactly: steer-3-steered\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
+{"ts":1795047658956,"run":1795047616066,"seq":326,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1795047660308,"run":1795047616066,"seq":353,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
+{"ts":1795047662339,"run":1795047616066,"seq":362,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-6\"}"}

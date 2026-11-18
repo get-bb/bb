@@ -9,6 +9,7 @@ import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -94,6 +95,7 @@ it("settles the open delegation as failed when the app-server child dies", async
   }
 
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/subagent-then-crash", mentions: [] }],

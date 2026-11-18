@@ -31,6 +31,7 @@ import {
 } from "../thread-commands.js";
 import { buildThreadStatusChangeMetadata } from "../thread-runtime-display.js";
 import { runReleasedTurnFollowUps } from "../turn-end-follow-ups.js";
+import { requeueBusyTurnRequest } from "../turn-retry.js";
 import type { ThreadLifecycleEffect, ThreadLifecycleInput } from "./machine.js";
 import {
   environmentForThread,
@@ -179,6 +180,13 @@ async function runEffect(
       sendThreadStopCommand(deps, { environment, threadId });
       return;
     }
+    case "requeue-busy-request":
+      await requeueBusyTurnRequest(deps, {
+        requestId: clientTurnRequestIdSchema.parse(effect.requestId),
+        sendAt: effect.delayMs === null ? null : Date.now() + effect.delayMs,
+        threadId,
+      });
+      return;
     case "sync-title": {
       const thread = getThread(deps.db, threadId);
       const environment =

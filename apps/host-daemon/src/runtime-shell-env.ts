@@ -3,7 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { delimiter, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import type { AgentRuntimeShellEnvironment } from "@bb/agent-runtime";
 import { assignIfDefined } from "@bb/config/objects";
 
 interface ResolveLocalBbExecutablePathOptions {
@@ -388,11 +388,11 @@ export function resolveBbExecutablePathInDirectory(
 
 export function prepareRuntimeShellEnv(
   options: PrepareRuntimeShellEnvOptions,
-): NonNullable<AgentRuntimeOptions["shellEnv"]> {
+): AgentRuntimeShellEnvironment {
   const bbExecutablePath =
     options.bbExecutablePath ??
     resolveBbExecutablePathInDirectory(options.bbExecutableDirectory);
-  const shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {
+  const shellEnv: AgentRuntimeShellEnvironment = {
     PATH: prependPath(
       options.bbExecutableDirectory,
       options.inheritedPath ?? process.env.PATH,

@@ -1571,7 +1571,7 @@ function buildUncachedTimeline(
     const deps = { ...harness.deps, db };
     const settings = getAppSettings(db);
     const { response } = buildThreadTimelineWithProfile(db, thread, {
-      ...resolveThreadHeadStateOptions(deps, thread.providerId),
+      ...resolveThreadHeadStateOptions(deps, thread),
       completedTurnDisplay: resolveThreadCompletedTurnDisplay(
         deps,
         settings,

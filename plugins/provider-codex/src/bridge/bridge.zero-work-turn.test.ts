@@ -15,6 +15,7 @@ import type {
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -100,45 +101,102 @@ afterEach(async () => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("settles a prompt the app-server accepts without any turn activity", async () => {
+function acceptedBeforeResponse(clientRequestId: string, requestId: number) {
+  const acceptedIndex = harness.messages.findIndex(
+    (message) =>
+      message.method === "thread/delta" &&
+      JSON.stringify(message.params).includes(
+        `"clientRequestId":"${clientRequestId}"`,
+      ),
+  );
+  const responseIndex = harness.messages.findIndex(
+    (message) => message.id === requestId && message.method === undefined,
+  );
+  return acceptedIndex !== -1 && acceptedIndex < responseIndex;
+}
+
+it("answers accepted only after the turn it opened is on the wire", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
-    input: [{ type: "text", text: "/clear", mentions: [] }],
-    clientRequestId: "creq_zerwrk2345",
+    input: [{ type: "text", text: "/late-start", mentions: [] }],
+    clientRequestId: "creq_ackrder234",
     options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
-  await harness.waitForResponse(2);
+  const response = await harness.waitForResponse(2);
 
-  const events = await waitForEvents((all) =>
-    all.some((event) => event.type === "turn/completed"),
-  );
-  const started = events.filter((event) => event.type === "turn/started");
-  const completed = events.filter((event) => event.type === "turn/completed");
-  expect(started).toHaveLength(1);
-  expect(completed).toHaveLength(1);
-  const turnId =
-    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
-  expect(turnId).not.toBe("");
-  expect(completed[0]).toMatchObject({
-    status: "completed",
-    scope: { kind: "turn", turnId },
-  });
-  expect(completed[0]).not.toHaveProperty("providerCheckpointId");
+  expect(response.result).toEqual({ admission: "accepted" });
+  expect(acceptedBeforeResponse("creq_ackrder234", 2)).toBe(true);
   expect(
-    events.filter((event) => event.type === "turn/input/accepted"),
-  ).toEqual([
-    expect.objectContaining({
-      clientRequestId: "creq_zerwrk2345",
-      scope: { kind: "turn", turnId },
+    threadEvents().filter((event) => event.type === "turn/started"),
+  ).toHaveLength(1);
+}, 30_000);
+
+it("fails a turn/start answer that reports no turn instead of inventing one", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/turnless-response", mentions: [] }],
+    clientRequestId: "creq_turnfree23",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  const response = await harness.waitForResponse(2);
+
+  expect(response.error).toMatchObject({
+    message: "codex answered turn/start without reporting the turn it started",
+  });
+  expect(
+    threadEvents().filter(
+      (event) =>
+        event.type === "turn/started" || event.type === "turn/input/accepted",
+    ),
+  ).toEqual([]);
+}, 30_000);
+
+it("answers busy without opening a turn when Codex cannot take input during a compaction", async () => {
+  const scriptPath = join(workspaceDir, "script.json");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      turnStartError: {
+        code: -32603,
+        message:
+          "failed to submit turn input: ActiveTurnNotSteerable { turn_kind: Compact }",
+      },
     }),
-  ]);
+  );
+  stubFakeCodexAppServer(scriptPath);
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "hello", mentions: [] }],
+    clientRequestId: "creq_busystrt23",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  const response = await harness.waitForResponse(2);
+
+  expect(response.result).toEqual({
+    admission: "busy",
+    message: expect.stringContaining("compact"),
+  });
+  expect(
+    threadEvents().filter(
+      (event) =>
+        event.type === "turn/started" || event.type === "turn/input/accepted",
+    ),
+  ).toEqual([]);
 }, 30_000);
 
 it("preserves the native checkpoint when thread/stop interrupts a turn", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
@@ -173,9 +231,10 @@ it("preserves the native checkpoint when thread/stop interrupts a turn", async (
   );
 }, 30_000);
 
-it("keeps one lifecycle when turn/started lags the turn/start response past the grace window", async () => {
+it("keeps one lifecycle when turn/started lags the turn/start response", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/late-start", mentions: [] }],
@@ -223,6 +282,7 @@ it("keeps one lifecycle when turn/started lags the turn/start response past the 
 it("settles a response-proved turn as failed when codex dies before turn/started", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/respond-then-exit", mentions: [] }],
@@ -258,6 +318,7 @@ it("settles a response-proved turn as failed when codex dies before turn/started
 it("settles a turn the turn/start response reports as already completed", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/respond-completed", mentions: [] }],
@@ -294,6 +355,7 @@ it("settles a turn the turn/start response reports as already completed", async 
 it("acknowledges a dispatch codex steers into the already-running turn", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
@@ -306,6 +368,7 @@ it("acknowledges a dispatch codex steers into the already-running turn", async (
   );
 
   harness.sendRequest(3, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/steer-into-active", mentions: [] }],
@@ -355,6 +418,7 @@ it("acknowledges a dispatch codex steers into the already-running turn", async (
 it("does not resurrect a response-opened turn settled before its turn/started arrives", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: [{ type: "text", text: "/interrupt-before-start", mentions: [] }],
@@ -406,6 +470,7 @@ it.each([350, 6_500])(
     const providerThreadId = await startSession();
     const dispatchedAt = Date.now();
     harness.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId,
       input: [
@@ -452,6 +517,7 @@ async function compactAndWaitForCompletion(
 ): Promise<ThreadEvent[]> {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: compactCommandInput(),
@@ -470,6 +536,7 @@ async function compactAndWaitForCompletion(
 it("waits for a compaction turn that starts long after the empty compact response", async () => {
   vi.stubEnv("FAKE_CODEX_COMPACTION_TURN_DELAY_MS", "600");
   const events = await compactAndWaitForCompletion("creq_cmpktate23");
+  expect(acceptedBeforeResponse("creq_cmpktate23", 2)).toBe(true);
 
   const started = events.filter((event) => event.type === "turn/started");
   const completed = events.filter((event) => event.type === "turn/completed");
@@ -533,6 +600,7 @@ it.each([
     stubFakeCodexAppServer(scriptPath);
     const providerThreadId = await startSession();
     harness.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId,
       input: [
@@ -645,6 +713,7 @@ it.each([
     stubFakeCodexAppServer(scriptPath);
     const providerThreadId = await startSession();
     harness.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId,
       input: [
@@ -692,6 +761,7 @@ it("binds delayed tool work to the accepted request on consecutive turns", async
   const requests = ["creq_first23456", "creq_after23456"];
   for (const [index, clientRequestId] of requests.entries()) {
     harness.sendRequest(index + 2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId,
       clientRequestId,
@@ -731,6 +801,7 @@ it("does not acknowledge a rejected compaction after an early idle status", asyn
   vi.stubEnv("FAKE_CODEX_COMPACTION_MODE", "idle-before-rejection");
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     input: compactCommandInput(),

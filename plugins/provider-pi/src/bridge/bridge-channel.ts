@@ -12,6 +12,7 @@ interface PiBridgeChannelHandlers {
   onLine: (line: string) => void;
   onOverflow: (bytes: number) => void;
   onError: (error: Error) => void;
+  onClose: () => void;
 }
 
 function listenAddress(): { address: string; directory: string | null } {
@@ -124,6 +125,9 @@ export class PiBridgeChannel {
 
   private attach(socket: Socket): void {
     this.socket = socket;
+    socket.once("close", () => {
+      if (!this.closed && !this.ended) this.handlers.onClose();
+    });
     this.candidates.delete(socket);
     for (const candidate of this.candidates) candidate.destroy();
     this.candidates.clear();

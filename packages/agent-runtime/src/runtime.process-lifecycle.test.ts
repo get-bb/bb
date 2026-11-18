@@ -166,7 +166,7 @@ describe("createAgentRuntime process lifecycle", () => {
       }),
       createProviderIdentityState: (providerId) =>
         identityRegistry.createProviderState({ providerId }),
-      env: args.env,
+      getEnv: () => args.env,
       getNextRequestId: () => nextRequestId++,
       handleDeferredEvents: () => {},
       handleStdoutLine: ({ line, providerProcess }) => {
@@ -237,7 +237,8 @@ describe("createAgentRuntime process lifecycle", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: scriptedEchoProcessEnv({ exitAfter: "initialize" }),
+        getProcessEnv: () =>
+          scriptedEchoProcessEnv({ exitAfter: "initialize" }),
         onEvent: () => {},
         onProcessExit: exitInfo,
       },
@@ -533,7 +534,10 @@ describe("createAgentRuntime process lifecycle", () => {
             process.stdout.write(JSON.stringify({
               jsonrpc: "2.0",
               id: msg.id,
-              result: { protocolVersion: 2, capabilities: { grammarVersions: [3, 3] } },
+              result: {
+                protocolVersion: 3,
+                capabilities: { grammarVersions: [3, 3], sessionSettings: {} },
+              },
             }) + "\\n");
           }
         });
@@ -565,7 +569,10 @@ describe("createAgentRuntime process lifecycle", () => {
           process.stdout.write(JSON.stringify({
             jsonrpc: "2.0",
             id: msg.id,
-            result: { protocolVersion: 2, capabilities: { grammarVersions: [3, 3] } },
+            result: {
+                protocolVersion: 3,
+                capabilities: { grammarVersions: [3, 3], sessionSettings: {} },
+              },
           }) + "\\n");
           setInterval(() => {
             if (existsSync(${JSON.stringify(args.exitFile)})) process.exit(42);
@@ -808,7 +815,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: { ...processLog.env, ...args.env },
+        getProcessEnv: () => ({ ...processLog.env, ...args.env }),
         onEvent: (event) => args.events.push(event),
         onProcessExit: (info) => processExits.push(info),
       },
@@ -944,7 +951,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const runtime = createAgentRuntime({
       workspacePath: tmpDir,
-      env: record.env,
+      getProcessEnv: () => record.env,
       onEvent: () => {},
       onToolCall: async () => ({ contentItems: [], success: true }),
     });
@@ -1373,7 +1380,11 @@ describe("createAgentRuntime process lifecycle", () => {
     vi.stubEnv("PATH", "");
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, env: record.env, onEvent: () => {} },
+      runtime: {
+        workspacePath: tmpDir,
+        getProcessEnv: () => record.env,
+        onEvent: () => {},
+      },
     });
     try {
       await runtime.ensureProvider({ providerId: "fake" });
@@ -1439,7 +1450,8 @@ describe("createAgentRuntime process lifecycle", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: scriptedEchoProcessEnv({ emitIdentityOnSigterm: true }),
+        getProcessEnv: () =>
+          scriptedEchoProcessEnv({ emitIdentityOnSigterm: true }),
         onEvent: (event) => events.push(event),
       },
     });
@@ -1487,14 +1499,14 @@ describe("createAgentRuntime process lifecycle", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: {
+        getProcessEnv: () => ({
           ...record.env,
           ...scriptedEchoProcessEnv({
             failMethods: [
               { method: "skills/configure", message: "configure failed" },
             ],
           }),
-        },
+        }),
         skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
         onEvent: () => {},
       },
@@ -1613,7 +1625,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: processLog.env,
+        getProcessEnv: () => processLog.env,
         onEvent: (event) => events.push(event),
       },
     });
@@ -1738,7 +1750,11 @@ describe("createAgentRuntime process lifecycle", () => {
   it("concurrent ensureProvider calls do not spawn duplicate processes", async () => {
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, env: record.env, onEvent: () => {} },
+      runtime: {
+        workspacePath: tmpDir,
+        getProcessEnv: () => record.env,
+        onEvent: () => {},
+      },
     });
 
     await Promise.all([

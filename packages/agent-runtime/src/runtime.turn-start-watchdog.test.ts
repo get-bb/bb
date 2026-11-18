@@ -11,7 +11,6 @@ import {
   type LaunchBoundAgentRuntime,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
-import { CompetingTurnError } from "./runtime.js";
 
 describe("turn-start watchdog", () => {
   let tmpDir: string;
@@ -93,7 +92,11 @@ describe("turn-start watchdog", () => {
     const realSetTimeout = setTimeout;
     const record = createScriptedEchoRequestRecord();
     runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, env: record.env, onEvent: () => {} },
+      runtime: {
+        workspacePath: tmpDir,
+        getProcessEnv: () => record.env,
+        onEvent: () => {},
+      },
       launch: {
         scripted: {
           swallowTurnStart: true,
@@ -129,7 +132,7 @@ describe("turn-start watchdog", () => {
         }
         await new Promise((resolve) => realSetTimeout(resolve, 10));
       }
-      await vi.advanceTimersByTimeAsync(30_001);
+      await vi.advanceTimersByTimeAsync(120_001);
 
       await expect(turnStart).resolves.toEqual({ status: "unconfirmed" });
       expect(liveRuntime.getLiveThreadIds()).toEqual(["t1"]);
@@ -140,7 +143,7 @@ describe("turn-start watchdog", () => {
           input: [promptTextInput({ text: "competing" })],
           options: fullRuntimeOptions,
         }),
-      ).rejects.toThrow(CompetingTurnError);
+      ).resolves.toMatchObject({ status: "busy" });
     } finally {
       vi.useRealTimers();
     }
@@ -153,7 +156,7 @@ describe("turn-start watchdog", () => {
     runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
-        env: record.env,
+        getProcessEnv: () => record.env,
         onEvent: (event) => events.push(event),
       },
       launch: { scripted: { turnStartErrorAfterMs: 1_500 } },
@@ -186,7 +189,7 @@ describe("turn-start watchdog", () => {
         }
         await new Promise((resolve) => realSetTimeout(resolve, 10));
       }
-      await vi.advanceTimersByTimeAsync(30_001);
+      await vi.advanceTimersByTimeAsync(120_001);
       await expect(turnStart).resolves.toEqual({ status: "unconfirmed" });
     } finally {
       vi.useRealTimers();

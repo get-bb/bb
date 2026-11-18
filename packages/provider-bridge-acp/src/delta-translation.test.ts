@@ -619,11 +619,15 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
 
     expect(events.map((event) => event.type)).toEqual([
       "item/completed",
+      "item/completed",
       "thread/compacted",
       "turn/completed",
     ]);
     expect(events[0]).toMatchObject({
       item: { type: "agentMessage", text: "Compacted successfully" },
+    });
+    expect(events[1]).toMatchObject({
+      item: { type: "contextCompaction" },
     });
   });
 

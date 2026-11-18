@@ -6,6 +6,7 @@ import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestH
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -82,6 +83,7 @@ it.each([
       const providerThreadId = (start.result as { providerThreadId: string })
         .providerThreadId;
       bridge.sendRequest(2, "turn/start", {
+        apply: NO_SESSION_SETTINGS_CHANGE,
         threadId,
         providerThreadId,
         input: [{ type: "text", text: "Ask", mentions: [] }],

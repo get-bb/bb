@@ -7,6 +7,7 @@ import { z } from "zod";
 import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -47,6 +48,7 @@ let workspaceDir: string;
 let requestLogPath: string;
 let nextRequestId = 1;
 let turnCount = 0;
+let appliedDaybreak: string | boolean | undefined;
 
 function useScript(script: Record<string, unknown>): void {
   const scriptPath = join(workspaceDir, "script.json");
@@ -102,6 +104,7 @@ async function request(
 async function startThread(
   sessionOptions?: Record<string, string | boolean>,
 ): Promise<string> {
+  appliedDaybreak = sessionOptions?.daybreak;
   const result = await request("thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -120,7 +123,16 @@ async function startTurn(
   model: string,
   sessionOptions?: Record<string, string | boolean>,
 ): Promise<void> {
+  const daybreak = sessionOptions?.daybreak;
+  const daybreakChanged =
+    daybreak !== undefined && daybreak !== appliedDaybreak;
+  if (daybreakChanged) {
+    appliedDaybreak = daybreak;
+  }
   await request("turn/start", {
+    apply: daybreakChanged
+      ? { ...NO_SESSION_SETTINGS_CHANGE, sessionOptions: ["daybreak"] }
+      : NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     clientRequestId: `creq_daybreak2${"23456789"[turnCount++ % 8]}`,
@@ -134,6 +146,7 @@ async function startTurn(
 }
 
 beforeEach(() => {
+  appliedDaybreak = undefined;
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-daybreak-ws-"));
   requestLogPath = join(workspaceDir, "requests.jsonl");
   harness = createBridgeJsonRpcTestHarness(handleLine);

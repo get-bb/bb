@@ -88,6 +88,9 @@ const HANDSHAKE_FIELDS = {
   approvalEnforcedBy: "approvalEnforcedBy",
   steerMode: "steerMode",
   skills: "skills",
+  commands: "commands",
+  openWork: "openWork",
+  sessionSettings: "sessionSettings",
 } as const satisfies Record<
   string,
   keyof z.infer<typeof bridgeCapabilitiesSchema> | Gap

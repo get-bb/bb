@@ -49,7 +49,7 @@ it("passes the canonical protocol suite against the fake agent", async () => {
             displayName: "Fake ACP Agent",
             command: process.execPath,
             args: [FAKE_AGENT_PATH],
-            env: { FAKE_ACP_FORK_SESSION: "1" },
+            env: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_COMPACT_COMMAND: "1" },
           },
         },
       },

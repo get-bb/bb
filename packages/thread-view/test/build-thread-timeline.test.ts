@@ -1925,6 +1925,8 @@ describe("buildThreadTimelineFromEvents", () => {
       {
         acceptedClientRequestEvents: acceptedContext,
         rejectedClientRequestEvents: [],
+        requestedClientRequestEvents: [],
+        busyRetryGiveUpEvents: [],
       },
     );
 
@@ -1987,6 +1989,8 @@ describe("buildThreadTimelineFromEvents", () => {
       {
         acceptedClientRequestEvents: [],
         rejectedClientRequestEvents: rejectedContext,
+        requestedClientRequestEvents: [],
+        busyRetryGiveUpEvents: [],
       },
     );
 
@@ -2020,6 +2024,8 @@ describe("buildThreadTimelineFromEvents", () => {
       {
         acceptedClientRequestEvents: acceptedContext,
         rejectedClientRequestEvents: [],
+        requestedClientRequestEvents: [],
+        busyRetryGiveUpEvents: [],
       },
     );
     const userRows = rows.filter(
@@ -3358,4 +3364,417 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
     operationKind: "reasoning",
   });
   expect(completed?.id).not.toBe(live.activeThinking?.id);
+});
+
+describe("busy-refused messages bb re-sends", () => {
+  const busyText = "Reply with only: after-compaction";
+
+  function busyRefusedChain() {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const original = event.clientTurnRequested({
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: busyText,
+    });
+    const originalRequestId = original.data.requestId;
+    const busyRejection = (requestId: typeof originalRequestId) =>
+      event.clientTurnRejected({
+        requestId,
+        reason: "thread_busy",
+        message: "The agent is compacting context.",
+      });
+    const retry = (attempt: number) =>
+      event.clientTurnRequested({
+        initiator: "system",
+        retryOf: { attempt, requestId: originalRequestId },
+        input: [
+          {
+            type: "text",
+            text: busyText,
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ],
+        target: { kind: "new-turn" },
+        text: busyText,
+      });
+    return {
+      busyRejection,
+      event,
+      original,
+      originalRequestId,
+      refusedPrefix: [
+        event.turnStarted({ turnId: "turn-1" }),
+        original,
+        busyRejection(originalRequestId),
+        event.turnCompleted({ turnId: "turn-1" }),
+      ],
+      retry,
+    };
+  }
+
+  function userRows(rows: readonly TimelineRow[]) {
+    return rows.filter(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+  }
+
+  it("shows the original as a delivered message once bb's retry is accepted", () => {
+    const { event, refusedPrefix, retry } = busyRefusedChain();
+    const acceptedRetry = retry(2);
+    const rows = buildTimelineRows(
+      fromRows([
+        ...refusedPrefix,
+        acceptedRetry,
+        event.turnStarted({ turnId: "turn-2" }),
+        event.inputAccepted({
+          clientRequestId: acceptedRetry.data.requestId,
+          turnId: "turn-2",
+        }),
+        event.assistantCompleted({
+          text: "after-compaction",
+          turnId: "turn-2",
+        }),
+        event.turnCompleted({ turnId: "turn-2" }),
+      ]),
+      "idle",
+    );
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation" ? [[row.role, row.text]] : [],
+      ),
+    ).toEqual([
+      ["user", busyText],
+      ["assistant", "after-compaction"],
+    ]);
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnId: "turn-2",
+        turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+      }),
+    ]);
+  });
+
+  it("places each delivered message in the turn its retry ran in", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const sentDuringCompaction = (text: string) =>
+      event.clientTurnRequested({
+        target: { kind: "steer", expectedTurnId: "turn-compact" },
+        text,
+      });
+    const retryOf = (
+      original: ReturnType<typeof sentDuringCompaction>,
+      text: string,
+    ) =>
+      event.clientTurnRequested({
+        initiator: "system",
+        retryOf: { attempt: 2, requestId: original.data.requestId },
+        input: [{ type: "text", text, mentions: [], visibility: "agent-only" }],
+        target: { kind: "new-turn" },
+        text,
+      });
+    const busy = (request: ReturnType<typeof sentDuringCompaction>) =>
+      event.clientTurnRejected({
+        requestId: request.data.requestId,
+        reason: "thread_busy",
+        message: "The agent is compacting context.",
+      });
+    const runRetry = (
+      retry: ReturnType<typeof retryOf>,
+      turnId: string,
+      reply: string,
+    ) => [
+      retry,
+      event.turnStarted({ turnId }),
+      event.inputAccepted({ clientRequestId: retry.data.requestId, turnId }),
+      event.assistantCompleted({ text: reply, turnId }),
+      event.turnCompleted({ turnId }),
+    ];
+
+    const compactionTurn = event.turnStarted({ turnId: "turn-compact" });
+    const alpha = sentDuringCompaction("Reply with only: alpha-during-compact");
+    const beta = sentDuringCompaction("Reply with only: beta-during-compact");
+    const refusals = [
+      busy(alpha),
+      busy(beta),
+      event.turnCompleted({ turnId: "turn-compact" }),
+    ];
+    const alphaRetry = retryOf(alpha, "Reply with only: alpha-during-compact");
+    const alphaTurn = runRetry(
+      alphaRetry,
+      "turn-alpha",
+      "alpha-during-compact",
+    );
+    const betaRetry = retryOf(beta, "Reply with only: beta-during-compact");
+    const betaTurn = runRetry(betaRetry, "turn-beta", "beta-during-compact");
+
+    const rows = buildTimelineRows(
+      fromRows([
+        compactionTurn,
+        alpha,
+        beta,
+        ...refusals,
+        ...alphaTurn,
+        ...betaTurn,
+      ]),
+      "idle",
+    );
+
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation"
+          ? [[row.role, row.turnId, row.sourceSeqStart, row.text]]
+          : [],
+      ),
+    ).toEqual([
+      [
+        "user",
+        "turn-alpha",
+        alphaRetry.seq,
+        "Reply with only: alpha-during-compact",
+      ],
+      ["assistant", "turn-alpha", expect.any(Number), "alpha-during-compact"],
+      [
+        "user",
+        "turn-beta",
+        betaRetry.seq,
+        "Reply with only: beta-during-compact",
+      ],
+      ["assistant", "turn-beta", expect.any(Number), "beta-during-compact"],
+    ]);
+  });
+
+  it("leaves a delivered message to its retry's page when the retry is only in page context", () => {
+    const { event, refusedPrefix, retry } = busyRefusedChain();
+    const acceptedRetry = retry(2);
+    const retryTurnStarted = event.turnStarted({ turnId: "turn-2" });
+    const retryAccepted = event.inputAccepted({
+      clientRequestId: acceptedRetry.data.requestId,
+      turnId: "turn-2",
+    });
+    const rows = buildTimelineRows(fromRows(refusedPrefix), "idle", null, {
+      acceptedClientRequestEvents: fromRows([retryTurnStarted, retryAccepted]),
+      rejectedClientRequestEvents: [],
+      requestedClientRequestEvents: fromRows([acceptedRetry]),
+      busyRetryGiveUpEvents: [],
+    });
+
+    expect(userRows(rows)).toEqual([]);
+  });
+
+  it("renders a delivered message on its retry's page when the original is only in page context", () => {
+    const { busyRejection, event, original, originalRequestId, retry } =
+      busyRefusedChain();
+    const compactionTurn = event.turnStarted({ turnId: "turn-1" });
+    const refusal = busyRejection(originalRequestId);
+    const acceptedRetry = retry(2);
+    const rows = buildTimelineRows(
+      fromRows([
+        acceptedRetry,
+        event.turnStarted({ turnId: "turn-2" }),
+        event.inputAccepted({
+          clientRequestId: acceptedRetry.data.requestId,
+          turnId: "turn-2",
+        }),
+        event.assistantCompleted({
+          text: "after-compaction",
+          turnId: "turn-2",
+        }),
+        event.turnCompleted({ turnId: "turn-2" }),
+      ]),
+      "idle",
+      null,
+      {
+        acceptedClientRequestEvents: [],
+        rejectedClientRequestEvents: fromRows([refusal]),
+        requestedClientRequestEvents: fromRows([compactionTurn, original]),
+        busyRetryGiveUpEvents: [],
+      },
+    );
+
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "conversation"
+          ? [[row.role, row.turnId, row.sourceSeqStart, row.text]]
+          : [],
+      ),
+    ).toEqual([
+      ["user", "turn-2", acceptedRetry.seq, busyText],
+      ["assistant", "turn-2", expect.any(Number), "after-compaction"],
+    ]);
+    expect(userRows(rows)[0]?.turnRequest).toEqual({
+      isGrouped: false,
+      kind: "message",
+      status: "accepted",
+    });
+  });
+
+  it("keeps the original failed when bb's give-up is only in page context", () => {
+    const { busyRejection, event, refusedPrefix, retry } = busyRefusedChain();
+    const lastAttempt = retry(2);
+    const lastRefusal = busyRejection(lastAttempt.data.requestId);
+    const giveUp = event.systemError({
+      code: "provider_busy",
+      message: "bb stopped re-sending this message.",
+    });
+    const rows = buildTimelineRows(fromRows(refusedPrefix), "idle", null, {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents: fromRows([lastRefusal]),
+      requestedClientRequestEvents: fromRows([lastAttempt]),
+      busyRetryGiveUpEvents: fromRows([giveUp]),
+    });
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnRequest: { isGrouped: false, kind: "steer", status: "rejected" },
+      }),
+    ]);
+  });
+
+  it("shows the original as pending while bb is still re-sending it", () => {
+    const { busyRejection, refusedPrefix, retry } = busyRefusedChain();
+    const secondAttempt = retry(2);
+    const rows = buildTimelineRows(
+      fromRows([
+        ...refusedPrefix,
+        secondAttempt,
+        busyRejection(secondAttempt.data.requestId),
+      ]),
+      "idle",
+    );
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
+      }),
+    ]);
+  });
+
+  it("shows the original as pending when its busy refusal comes from page context", () => {
+    const { event, original, originalRequestId } = busyRefusedChain();
+    const rows = buildTimelineRows(
+      fromRows([event.turnStarted({ turnId: "turn-1" }), original]),
+      "idle",
+      null,
+      {
+        acceptedClientRequestEvents: [],
+        rejectedClientRequestEvents: fromRows([
+          event.clientTurnRejected({
+            requestId: originalRequestId,
+            reason: "thread_busy",
+            message: "The agent is compacting context.",
+          }),
+        ]),
+        requestedClientRequestEvents: [],
+        busyRetryGiveUpEvents: [],
+      },
+    );
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
+      }),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "bb gave up after repeated busy answers",
+      tail: ({
+        busyRejection,
+        event,
+        retry,
+      }: ReturnType<typeof busyRefusedChain>) => {
+        const lastAttempt = retry(2);
+        return [
+          lastAttempt,
+          busyRejection(lastAttempt.data.requestId),
+          event.systemError({
+            code: "provider_busy",
+            message: "The agent answered busy 2 times in a row.",
+          }),
+        ];
+      },
+    },
+    {
+      label: "bb's retry was refused for another reason",
+      tail: ({ event, retry }: ReturnType<typeof busyRefusedChain>) => {
+        const lastAttempt = retry(2);
+        return [
+          lastAttempt,
+          event.clientTurnRejected({
+            requestId: lastAttempt.data.requestId,
+            reason: "turn_rejected",
+            message: "The agent refused the turn.",
+          }),
+        ];
+      },
+    },
+  ])("keeps the original failed when $label", ({ tail }) => {
+    const chain = busyRefusedChain();
+    const rows = buildTimelineRows(
+      fromRows([...chain.refusedPrefix, ...tail(chain)]),
+      "idle",
+    );
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnRequest: { isGrouped: false, kind: "steer", status: "rejected" },
+      }),
+    ]);
+  });
+
+  it("renders a refused steer whose expected turn started before the page", () => {
+    const { event, original, originalRequestId } = busyRefusedChain();
+    const rows = buildTimelineRows(
+      fromRows([
+        original,
+        event.clientTurnRejected({
+          requestId: originalRequestId,
+          reason: "turn_rejected",
+          message: "The agent refused the turn.",
+        }),
+      ]),
+      "idle",
+    );
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        text: busyText,
+        turnId: null,
+        turnRequest: { isGrouped: false, kind: "steer", status: "rejected" },
+      }),
+    ]);
+  });
+
+  it("keeps a non-busy refusal failed", () => {
+    const { event, original, originalRequestId } = busyRefusedChain();
+    const rows = buildTimelineRows(
+      fromRows([
+        event.turnStarted({ turnId: "turn-1" }),
+        original,
+        event.clientTurnRejected({
+          requestId: originalRequestId,
+          reason: "turn_rejected",
+          message: "The agent refused the turn.",
+        }),
+        event.turnCompleted({ turnId: "turn-1" }),
+      ]),
+      "idle",
+    );
+
+    expect(userRows(rows)).toEqual([
+      expect.objectContaining({
+        turnRequest: { isGrouped: false, kind: "steer", status: "rejected" },
+      }),
+    ]);
+  });
 });

@@ -26,7 +26,6 @@ export interface AcpAgentDefinition {
   guidedSignIn?: boolean;
   installUrl?: string;
   iconTint?: { light: string; dark: string };
-  supportsManualCompaction?: boolean;
   fork?: "none" | "tip";
   reasoningLevels?: readonly PluginProviderReasoningLevel[];
   providerUsage?: boolean;
@@ -40,7 +39,22 @@ const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
 const launchSpecFields = experimental_acpLaunchSpecSchema.shape;
 
-export const customAcpAgentSchema = z
+const RETIRED_CUSTOM_AGENT_FIELDS: ReadonlySet<string> = new Set([
+  "supportsManualCompaction",
+]);
+
+function withoutRetiredCustomAgentFields(entry: unknown): unknown {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    return entry;
+  }
+  return Object.fromEntries(
+    Object.entries(entry).filter(
+      ([field]) => !RETIRED_CUSTOM_AGENT_FIELDS.has(field),
+    ),
+  );
+}
+
+const customAcpAgentFieldsSchema = z
   .object({
     id: z.string().regex(SLUG_PATTERN),
     displayName: z.string().min(1),
@@ -54,10 +68,14 @@ export const customAcpAgentSchema = z
     nativeReasoning: launchSpecFields.nativeReasoning,
     nativeSkillRoots: launchSpecFields.nativeSkillRoots,
     permissionCli: launchSpecFields.permissionCli,
-    supportsManualCompaction: z.boolean().default(false),
     providerUsage: z.boolean().optional(),
   })
   .strict();
+
+export const customAcpAgentSchema = z.preprocess(
+  withoutRetiredCustomAgentFields,
+  customAcpAgentFieldsSchema,
+);
 export type CustomAcpAgent = z.infer<typeof customAcpAgentSchema>;
 
 const CUSTOM_AGENT_GLYPH = "Toolbox";
@@ -101,7 +119,6 @@ export function customAcpAgentDefinition(
       : {}),
     visibility: "always",
     fork: "none",
-    supportsManualCompaction: agent.supportsManualCompaction,
   };
 }
 
