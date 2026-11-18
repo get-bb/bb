@@ -189,11 +189,21 @@ export interface HostDaemonApp {
   connection: ServerConnection;
 }
 
-interface PendingInteractiveInterruptRequest {
-  providerId: string;
-  reason: string;
-  threadIds: readonly string[];
-}
+type PendingInteractiveInterruptRequest =
+  | {
+      kind: "threads";
+      providerId: string;
+      reason: string;
+      threadIds: readonly string[];
+    }
+  | {
+      kind: "withdrawn";
+      reason: string;
+      request: HostDaemonInteractiveRequestKey;
+    };
+
+const WITHDRAWN_INTERACTIVE_REQUEST_REASON =
+  "The agent stopped waiting for this answer";
 
 export function startIdleProviderSessionReaper(
   args: StartIdleProviderSessionReaperArgs,
@@ -352,11 +362,40 @@ export async function createHostDaemonApp(
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
   ): string {
-    return [
-      request.providerId,
-      request.reason,
-      [...request.threadIds].sort().join(","),
-    ].join("|");
+    switch (request.kind) {
+      case "threads":
+        return [
+          request.kind,
+          request.providerId,
+          request.reason,
+          [...request.threadIds].sort().join(","),
+        ].join("|");
+      case "withdrawn":
+        return [
+          request.kind,
+          request.request.threadId,
+          request.request.providerId,
+          request.request.providerThreadId,
+          request.request.providerRequestId,
+        ].join("|");
+    }
+  }
+
+  function sendInteractiveInterrupt(
+    request: PendingInteractiveInterruptRequest,
+  ): Promise<unknown> {
+    switch (request.kind) {
+      case "threads":
+        return runSessionRequest({
+          source: "interruptInteractiveRequests",
+          request: () => serverClient.interruptInteractiveRequests(request),
+        });
+      case "withdrawn":
+        return runSessionRequest({
+          source: "withdrawInteractiveRequest",
+          request: () => serverClient.withdrawInteractiveRequest(request),
+        });
+    }
   }
 
   function clearInteractiveInterruptRetry(): void {
@@ -411,17 +450,15 @@ export async function createHostDaemonApp(
 
         const [key, request] = nextEntry;
         try {
-          await runSessionRequest({
-            source: "interruptInteractiveRequests",
-            request: () => serverClient.interruptInteractiveRequests(request),
-          });
+          await sendInteractiveInterrupt(request);
           pendingInteractiveInterrupts.delete(key);
           interactiveInterruptRetryDelayMs =
             INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
         } catch (error) {
           const logFields = {
-            providerId: request.providerId,
-            threadIds: request.threadIds,
+            ...(request.kind === "threads"
+              ? { providerId: request.providerId, threadIds: request.threadIds }
+              : request.request),
             ...runtimeErrorLogFields(error),
           };
           if (isRejectedInteractiveInterrupt(error)) {
@@ -479,9 +516,22 @@ export async function createHostDaemonApp(
       }),
     onRegistrationFailure: ({ error, request }) => {
       enqueueInteractiveInterrupt({
+        kind: "threads",
         providerId: request.providerId,
         reason: `Failed to register interactive request while provider was waiting: ${error.message}`,
         threadIds: [request.threadId],
+      });
+    },
+    onRequestWithdrawn: (request) => {
+      enqueueInteractiveInterrupt({
+        kind: "withdrawn",
+        reason: WITHDRAWN_INTERACTIVE_REQUEST_REASON,
+        request: {
+          threadId: request.threadId,
+          providerId: request.providerId,
+          providerThreadId: request.providerThreadId,
+          providerRequestId: request.providerRequestId,
+        },
       });
     },
   });
@@ -661,10 +711,29 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onInteractiveRequest: async (request) => {
+    onInteractiveRequest: async (request, signal) => {
       try {
-        return await interactiveRequestRegistry.registerAndWait(request);
+        return await interactiveRequestRegistry.registerAndWait(
+          request,
+          signal,
+        );
       } catch (error) {
+        if (
+          error instanceof InteractiveRequestRegistryError &&
+          error.code === "interactive_request_withdrawn"
+        ) {
+          options.logger.info(
+            {
+              threadId: request.threadId,
+              providerThreadId: request.providerThreadId,
+              turnId: request.turnId,
+              providerRequestId: request.providerRequestId,
+              kind: request.payload.kind,
+            },
+            "Interactive provider request withdrawn by the provider",
+          );
+          throw error;
+        }
         if (
           error instanceof InteractiveRequestRegistryError &&
           (error.code === "interactive_request_rejected" ||
@@ -723,6 +792,7 @@ export async function createHostDaemonApp(
       });
 
       enqueueInteractiveInterrupt({
+        kind: "threads",
         providerId: info.providerId,
         threadIds,
         reason,

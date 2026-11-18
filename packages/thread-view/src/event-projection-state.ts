@@ -143,6 +143,12 @@ function interruptPendingToolMessages(
               message.output;
           }
           message.output ||= "Tool execution interrupted";
+          if (
+            message.kind !== "delegation" &&
+            message.approvalStatus === "waiting_for_approval"
+          ) {
+            message.approvalStatus = null;
+          }
         }
         break;
       case "web-search":

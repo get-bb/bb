@@ -252,6 +252,32 @@ describe("v3 item projection", () => {
     },
   );
 
+  it("stops showing an approval wait on a command the turn ended without settling", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const command = { itemId: "command-1", command: "curl -sI example.com" };
+    const rendered = renderTimelineFixture({
+      events: [
+        event.turnStarted({ createdAt: 0, seq: 0 }),
+        event.commandStarted({
+          ...command,
+          approvalStatus: "waiting_for_approval",
+          createdAt: 1_000,
+          seq: 1,
+        }),
+        event.turnCompleted({ createdAt: 2_000, seq: 2 }),
+      ],
+      projectionOptions: { turnMessageDetail: "full" },
+    });
+
+    expect(workRow(rendered.rows, "command", command.itemId)).toMatchObject({
+      status: "interrupted",
+      approvalStatus: null,
+    });
+  });
+
   it("projects fileRead and search items to file-read and search rows; bare tool calls derive no intent", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const v3 = renderTimelineFixture({

@@ -263,6 +263,14 @@ interface InterruptPendingInteractionsForThreadsLifecycleArgs {
   threadIds: readonly string[];
 }
 
+interface InterruptWithdrawnProviderRequestArgs {
+  providerId: string;
+  providerRequestId: string;
+  providerThreadId: string;
+  reason: string;
+  threadId: string;
+}
+
 interface InterruptPendingInteractionsForThreadIdsLifecycleArgs {
   reason: string;
   threadIds: readonly string[];
@@ -646,7 +654,7 @@ export class PendingInteractionLifecycle {
     thread: Thread,
     interaction: PendingInteraction,
   ): void {
-    appendPendingInteractionTimelineEvent(this.deps, interaction);
+    appendPendingInteractionTimelineEvent(this.deps, interaction, "server");
     notifyInteractionChanged({
       deps: this.deps,
       threadId: interaction.threadId,
@@ -931,6 +939,30 @@ export class PendingInteractionLifecycle {
     );
   }
 
+  interruptWithdrawnProviderRequest(
+    args: InterruptWithdrawnProviderRequestArgs,
+  ): PendingInteraction | null {
+    const row = getPendingInteractionByProviderRequest(this.deps.db, args);
+    if (!row || row.threadId !== args.threadId) {
+      return null;
+    }
+    const updated = setPendingInteractionInterrupted(this.deps.db, {
+      id: row.id,
+      statusReason: args.reason,
+    });
+    if (!updated) {
+      return null;
+    }
+    const interaction = toPendingInteraction(updated);
+    appendPendingInteractionTimelineEvent(this.deps, interaction, "provider");
+    notifyInteractionChanged({
+      deps: this.deps,
+      threadId: interaction.threadId,
+    });
+    this.notifyInteractionSettled(interaction.threadId);
+    return interaction;
+  }
+
   interruptPendingInteractionsForThreadIds(
     args: InterruptPendingInteractionsForThreadIdsLifecycleArgs,
   ): PendingInteraction[] {
@@ -1171,7 +1203,7 @@ export class PendingInteractionLifecycle {
     interaction: PendingInteraction,
   ): void {
     this.endProviderWaitForInterruptedInteraction(interaction);
-    appendPendingInteractionTimelineEvent(this.deps, interaction);
+    appendPendingInteractionTimelineEvent(this.deps, interaction, "server");
     notifyInteractionChanged({
       deps: this.deps,
       threadId: interaction.threadId,

@@ -273,12 +273,23 @@ let runtimeRequestIdCounter = 0;
 function sendRuntimeRequest(
   method: string,
   params: Record<string, unknown>,
+  signal: AbortSignal,
 ): Promise<unknown> {
+  signal.throwIfAborted();
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
+      const abort = (): void => {
+        if (!pendingRuntimeRequests.delete(requestId)) return;
+        sendNotification(BRIDGE_NOTIFICATION_METHODS.requestCancelled, {
+          requestId,
+        });
+        rejectResponse(new Error("codex withdrew the request"));
+      };
+      signal.addEventListener("abort", abort, { once: true });
       pendingRuntimeRequests.set(requestId, (response) => {
+        signal.removeEventListener("abort", abort);
         if ("error" in response) {
           rejectResponse(
             new Error(response.error.message ?? "Runtime request failed"),
@@ -503,6 +514,7 @@ interface CodexBridgeSession {
   releasePromise: Promise<void> | null;
   goalStatus: CodexGoalStatus | null;
   stopsRequested: number;
+  pendingChildRequests: Map<string | number, AbortController>;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
@@ -536,6 +548,7 @@ function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
+  withdrawChildRequests(session, session.pendingChildRequests.keys());
   const previousChildExit = session.previousChildExit;
   session.previousChildExit = null;
   const currentChildExit = session.connection?.kill() ?? Promise.resolve();
@@ -718,6 +731,10 @@ function toProviderRuntimeEvent(
   } as ProviderRuntimeEvent;
 }
 
+const codexServerRequestResolvedSchema = z
+  .object({ requestId: z.union([z.string(), z.number()]) })
+  .passthrough();
+
 async function handleChildNotification(
   bbThreadId: string,
   serial: number,
@@ -736,6 +753,12 @@ async function handleChildNotification(
   }
   if (method === "thread/status/changed") {
     settleCompactionDispatchesWhenCodexIsNotRunning(session, params);
+  }
+  if (method === "serverRequest/resolved") {
+    const parsed = codexServerRequestResolvedSchema.safeParse(params);
+    if (parsed.success) {
+      withdrawChildRequests(session, [parsed.data.requestId]);
+    }
   }
   if (method === "turn/started") {
     const parsed = codexTurnNotificationPeekSchema.safeParse(params);
@@ -849,23 +872,30 @@ function handleChildRequest(
       );
       return;
     }
-    void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.toolCall, {
-      providerThreadId: session.codexThreadId ?? parsed.data.threadId,
-      threadId: session.bbThreadId,
-      turnId: parsed.data.turnId,
-      callId: parsed.data.callId,
-      tool: parsed.data.tool,
-      arguments: parsed.data.arguments ?? {},
-    })
+    const signal = trackChildRequest(session, responder.requestId);
+    void sendRuntimeRequest(
+      BRIDGE_INBOUND_REQUEST_METHODS.toolCall,
+      {
+        providerThreadId: session.codexThreadId ?? parsed.data.threadId,
+        threadId: session.bbThreadId,
+        turnId: parsed.data.turnId,
+        callId: parsed.data.callId,
+        tool: parsed.data.tool,
+        arguments: parsed.data.arguments ?? {},
+      },
+      signal,
+    )
       .then((result) => {
         responder.result(result);
       })
       .catch((error: unknown) => {
+        if (signal.aborted) return;
         responder.error(
           BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
           error instanceof Error ? error.message : String(error),
         );
-      });
+      })
+      .finally(() => untrackChildRequest(session, responder.requestId, signal));
     return;
   }
 
@@ -940,6 +970,7 @@ function handleChildRequest(
     );
     return;
   }
+  const signal = trackChildRequest(session, responder.requestId);
   void resolveCodexMcpElicitationAppIcon(decoded)
     .then(async (request) => {
       if (currentSession(bbThreadId, serial) !== session) {
@@ -950,13 +981,18 @@ function handleChildRequest(
         return;
       }
       const [runtimeResult] = await Promise.allSettled([
-        sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-          providerThreadId: session.codexThreadId ?? request.providerThreadId,
-          threadId: session.bbThreadId,
-          turnId: request.turnId,
-          payload: request.payload,
-        }),
+        sendRuntimeRequest(
+          BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+          {
+            providerThreadId: session.codexThreadId ?? request.providerThreadId,
+            threadId: session.bbThreadId,
+            turnId: request.turnId,
+            payload: request.payload,
+          },
+          signal,
+        ),
       ]);
+      if (signal.aborted) return;
       const result = buildCodexInteractiveResult(
         request.payload,
         runtimeResult,
@@ -968,6 +1004,7 @@ function handleChildRequest(
       responder.result(result.response);
     })
     .catch((error: unknown) => {
+      if (signal.aborted) return;
       answerWithoutUser(
         {
           kind: "runtime-error",
@@ -975,7 +1012,39 @@ function handleChildRequest(
         },
         null,
       );
-    });
+    })
+    .finally(() => untrackChildRequest(session, responder.requestId, signal));
+}
+
+function trackChildRequest(
+  session: CodexBridgeSession,
+  requestId: string | number,
+): AbortSignal {
+  const controller = new AbortController();
+  session.pendingChildRequests.set(requestId, controller);
+  return controller.signal;
+}
+
+function untrackChildRequest(
+  session: CodexBridgeSession,
+  requestId: string | number,
+  signal: AbortSignal,
+): void {
+  if (session.pendingChildRequests.get(requestId)?.signal === signal) {
+    session.pendingChildRequests.delete(requestId);
+  }
+}
+
+function withdrawChildRequests(
+  session: CodexBridgeSession,
+  requestIds: Iterable<string | number>,
+): void {
+  for (const requestId of [...requestIds]) {
+    const controller = session.pendingChildRequests.get(requestId);
+    if (!controller) continue;
+    session.pendingChildRequests.delete(requestId);
+    controller.abort();
+  }
 }
 
 function buildMacOsPermissionItemDelta(
@@ -1009,6 +1078,7 @@ function handleChildExit(
     return;
   }
   session.connection = null;
+  withdrawChildRequests(session, session.pendingChildRequests.keys());
 
   const openTurnIds = [...session.openCodexTurnIds];
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
@@ -1337,6 +1407,7 @@ async function constructThreadSession(
       options: decoded.sessionOptions,
     }),
     openCodexTurnIds: new Set(),
+    pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
@@ -1592,6 +1663,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
+    pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),

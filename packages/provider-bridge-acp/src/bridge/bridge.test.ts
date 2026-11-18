@@ -3358,6 +3358,37 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("permission:no");
   });
 
+  it("tells the runtime it stopped waiting on a forwarded permission when the session stops", async () => {
+    const { providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "request-permission", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded permission request",
+    );
+
+    await stopThread(providerThreadId);
+
+    expect(
+      output.messages.filter(
+        (message) => message.method === "notifications/cancelled",
+      ),
+    ).toEqual([
+      expect.objectContaining({ params: { requestId: forwarded.id } }),
+    ]);
+  });
+
   it("presents an external-directory write permission as a file-change approval", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
       permissionMode: "accept-edits",

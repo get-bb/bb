@@ -11,6 +11,9 @@ Prompt directives:
 - `delay:<ms>` holds the turn open before it settles.
 - `approve:<command|file_change|permission_grant|plan>` raises an approval
   on `interaction/request`; a denied approval answers `Denied`.
+- `withdraw_approval` (with `approve:<kind>`) withdraws the approval after
+  `delay:<ms>` with `notifications/cancelled`, as a provider does when a hook
+  answers it, and answers `Approval withdrawn`.
 - `ask_user` raises a user question and echoes the answer.
 - `call_tool:<name>` / `call_tool_unresolved:<name>` calls a dynamic tool
   with a resolved or an unresolved turn id and answers `Tool called: <name>`.

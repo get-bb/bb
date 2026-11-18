@@ -245,6 +245,7 @@ const APPROVAL_KINDS: readonly ApprovalKind[] = [
 
 interface TurnPlan {
   approvalKind: ApprovalKind | null;
+  withdrawApproval: boolean;
   delayMs: number;
   questionRequested: boolean;
   responseText: string;
@@ -301,6 +302,7 @@ function parseTurnPlan(inputText: string): TurnPlan {
     backgroundTask: /(?:^|\s)bg_task(?:\s|$)/u.test(inputText),
     settleBackgroundTasks: /(?:^|\s)bg_task_done(?:\s|$)/u.test(inputText),
     approvalKind,
+    withdrawApproval: /(?:^|\s)withdraw_approval(?:\s|$)/u.test(inputText),
     delayMs: delayMatch?.[1] === undefined ? 0 : Number(delayMatch[1]),
     questionRequested: questionMatch !== null,
     responseText:
@@ -693,6 +695,13 @@ function beginTurn(args: {
       responseText: plan.responseText,
       delayMs: plan.delayMs,
     });
+    if (plan.withdrawApproval) {
+      setTimeout(() => {
+        if (!pendingReplies.delete(requestId)) return;
+        notify(BRIDGE_NOTIFICATION_METHODS.requestCancelled, { requestId });
+        scheduleCompletion(session, "Approval withdrawn", 0);
+      }, plan.delayMs);
+    }
     return;
   }
   if (plan.questionRequested) {

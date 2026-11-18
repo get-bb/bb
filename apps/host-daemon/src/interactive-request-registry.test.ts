@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -11,6 +11,7 @@ import {
 } from "./interactive-request-registry.js";
 
 interface CreateRegistryArgs {
+  onRequestWithdrawn?: (request: PendingInteractionCreate) => void;
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
@@ -54,6 +55,7 @@ function createCommandApprovalResolution(): PendingInteractionResolution {
 
 function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
   return new InteractiveRequestRegistry({
+    onRequestWithdrawn: args.onRequestWithdrawn ?? (() => {}),
     registerRequest: args.registerRequest,
   });
 }
@@ -66,7 +68,10 @@ describe("InteractiveRequestRegistry", () => {
     const registry = createRegistry({
       registerRequest: () => registration.promise,
     });
-    const pending = registry.registerAndWait(request);
+    const pending = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
 
     registry.endRequests(
       [
@@ -104,8 +109,14 @@ describe("InteractiveRequestRegistry", () => {
         status: "pending",
       }),
     });
-    const ended = registry.registerAndWait(request);
-    const stillOpen = registry.registerAndWait(other);
+    const ended = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
+    const stillOpen = registry.registerAndWait(
+      other,
+      new AbortController().signal,
+    );
     const key = {
       threadId: request.threadId,
       providerId: request.providerId,
@@ -149,8 +160,14 @@ describe("InteractiveRequestRegistry", () => {
       },
     });
 
-    const first = registry.registerAndWait(request);
-    const second = registry.registerAndWait(request);
+    const first = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
+    const second = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
 
     expect(registrations).toEqual([request]);
     registration.resolve({
@@ -184,7 +201,10 @@ describe("InteractiveRequestRegistry", () => {
       }),
     });
 
-    const pending = registry.registerAndWait(request);
+    const pending = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
     const command = {
       interactionId: "pint_registry",
       providerId: request.providerId,
@@ -230,7 +250,9 @@ describe("InteractiveRequestRegistry", () => {
       }),
     });
 
-    await expect(registry.registerAndWait(request)).rejects.toMatchObject({
+    await expect(
+      registry.registerAndWait(request, new AbortController().signal),
+    ).rejects.toMatchObject({
       code: "interactive_request_rejected",
       message: "Thread is already awaiting user interaction",
       name: "InteractiveRequestRegistryError",
@@ -247,7 +269,10 @@ describe("InteractiveRequestRegistry", () => {
       }),
     });
 
-    const pending = registry.registerAndWait(request);
+    const pending = registry.registerAndWait(
+      request,
+      new AbortController().signal,
+    );
     registry.interruptThreads({
       providerId: request.providerId,
       reason: "Provider exited",
@@ -255,5 +280,92 @@ describe("InteractiveRequestRegistry", () => {
     });
 
     await expect(pending).rejects.toThrow("Provider exited");
+  });
+
+  it("closes a request the provider withdraws only after the server registered it", async () => {
+    const request = createCommandApprovalRequest();
+    const registration =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    const withdrawn: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      onRequestWithdrawn: (closed) => withdrawn.push(closed),
+      registerRequest: () => registration.promise,
+    });
+    const provider = new AbortController();
+    const pending = registry.registerAndWait(request, provider.signal);
+
+    provider.abort();
+    await expect(pending).rejects.toMatchObject({
+      code: "interactive_request_withdrawn",
+    });
+    expect(registry.listOpenRequests()).toEqual([]);
+    expect(withdrawn).toEqual([]);
+
+    registration.resolve({
+      outcome: "created",
+      interactionId: "pint_withdrawn",
+      status: "pending",
+    });
+    await vi.waitFor(() => expect(withdrawn).toEqual([request]));
+    expect(() =>
+      registry.resolve({
+        interactionId: "pint_withdrawn",
+        providerId: request.providerId,
+        providerRequestId: request.providerRequestId,
+        providerThreadId: request.providerThreadId,
+        resolution: createCommandApprovalResolution(),
+        threadId: request.threadId,
+      }),
+    ).toThrowError(InteractiveRequestRegistryError);
+  });
+
+  it("does not report a withdrawal for a request the server never registered", async () => {
+    const request = createCommandApprovalRequest();
+    const withdrawn: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      onRequestWithdrawn: (closed) => withdrawn.push(closed),
+      registerRequest: async () => ({
+        outcome: "rejected",
+        reason: "Thread is already awaiting user interaction",
+      }),
+    });
+    const provider = new AbortController();
+    const pending = registry.registerAndWait(request, provider.signal);
+    provider.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      code: "interactive_request_withdrawn",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(withdrawn).toEqual([]);
+  });
+
+  it("ignores a withdrawal after the answer reached the provider", async () => {
+    const request = createCommandApprovalRequest();
+    const withdrawn: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      onRequestWithdrawn: (closed) => withdrawn.push(closed),
+      registerRequest: async () => ({
+        outcome: "created",
+        interactionId: "pint_answered",
+        status: "pending",
+      }),
+    });
+    const provider = new AbortController();
+    const pending = registry.registerAndWait(request, provider.signal);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    registry.resolve({
+      interactionId: "pint_answered",
+      providerId: request.providerId,
+      providerRequestId: request.providerRequestId,
+      providerThreadId: request.providerThreadId,
+      resolution: createCommandApprovalResolution(),
+      threadId: request.threadId,
+    });
+    provider.abort();
+
+    await expect(pending).resolves.toEqual(createCommandApprovalResolution());
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(withdrawn).toEqual([]);
   });
 });

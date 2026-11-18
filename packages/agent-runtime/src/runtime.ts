@@ -9,19 +9,19 @@ import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  BRIDGE_NOTIFICATION_METHODS,
   commandListResultSchema,
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
+  requestCancelledNotificationSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
 } from "@bb/provider-bridge-protocol";
 import {
   JsonRpcRequestTimeoutError,
   JsonRpcResponseError,
-  PROVIDER_TOOL_CALL_CANCELLED_METHOD,
-  providerToolCallCancellationSchema,
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
   parseJsonRpcLine,
@@ -41,7 +41,7 @@ import {
 } from "./execution-options.js";
 import {
   handleRuntimeProviderRequest,
-  RuntimeToolCalls,
+  RuntimeProviderRequests,
   type ResolveRuntimeProviderRequestThreadIdArgs,
   type RuntimeProviderRequestKind,
 } from "./runtime-provider-requests.js";
@@ -310,7 +310,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const suppressedThreadEventIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
-  const toolCalls = new RuntimeToolCalls();
+  const toolCalls = new RuntimeProviderRequests();
+  const interactiveRequests = new RuntimeProviderRequests();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
   const threadEventGrammar = new ThreadEventGrammar();
   const bridgeNodeEnv = defaultBridgeNodeEnv();
@@ -1313,15 +1314,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
-    if (args.parsed.method === PROVIDER_TOOL_CALL_CANCELLED_METHOD) {
-      const cancellation = providerToolCallCancellationSchema.safeParse(
+    if (args.parsed.method === BRIDGE_NOTIFICATION_METHODS.requestCancelled) {
+      const cancellation = requestCancelledNotificationSchema.safeParse(
         args.parsed.params,
       );
       if (cancellation.success) {
-        toolCalls.cancel(
-          args.proc.interactiveRequestScope,
-          cancellation.data.requestId,
-        );
+        const scope = args.proc.interactiveRequestScope;
+        const { requestId } = cancellation.data;
+        if (!toolCalls.cancel(scope, requestId)) {
+          interactiveRequests.cancel(scope, requestId);
+        }
       }
       return;
     }
@@ -1383,6 +1385,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadRuntimeConfigs.get(threadId)?.options,
         onInteractiveRequest: options.onInteractiveRequest,
         onToolCall: options.onToolCall,
+        interactiveRequests,
         toolCalls,
         parsedId: parsedLine.parsedId,
         parsedMethod: parsedLine.parsedMethod,

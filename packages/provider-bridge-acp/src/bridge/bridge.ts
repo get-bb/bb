@@ -30,7 +30,6 @@ import type {
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
-  PROVIDER_TOOL_CALL_CANCELLED_METHOD,
   BridgeRecoveryError,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -194,6 +193,7 @@ interface AcpSessionPolicy {
 interface PendingAcpPermission {
   responder: AcpAgentRequestResponder;
   options: AcpPermissionOption[];
+  withdrawal: AbortController;
 }
 
 interface AcpPendingTurnInput {
@@ -247,7 +247,7 @@ interface AcpThreadSession {
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
-  pendingElicitations: Set<AcpAgentRequestResponder>;
+  pendingElicitations: Map<AcpAgentRequestResponder, AbortController>;
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
@@ -346,8 +346,10 @@ function sendRuntimeRequest(
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
       abort = () => {
-        pendingRuntimeRequests.delete(requestId);
-        sendNotification(PROVIDER_TOOL_CALL_CANCELLED_METHOD, { requestId });
+        if (!pendingRuntimeRequests.delete(requestId)) return;
+        sendNotification(BRIDGE_NOTIFICATION_METHODS.requestCancelled, {
+          requestId,
+        });
         rejectResponse(new Error("ACP dynamic tool call cancelled"));
       };
       signal?.addEventListener("abort", abort, { once: true });
@@ -1961,25 +1963,33 @@ function withdrawPendingQuestions(
   detail: string,
 ): void {
   const cause: UnansweredInteractionCause = { kind: "withdrawn", detail };
-  for (const pending of session.pendingPermissions) {
-    answerWithoutUser(session, pending.responder, cause);
-  }
+  const permissions = [...session.pendingPermissions];
+  const elicitations = [...session.pendingElicitations];
   session.pendingPermissions.clear();
-  for (const responder of session.pendingElicitations) {
-    answerWithoutUser(session, responder, cause);
-  }
   session.pendingElicitations.clear();
+  for (const pending of permissions) {
+    answerWithoutUser(session, pending.responder, cause);
+    pending.withdrawal.abort();
+  }
+  for (const [responder, withdrawal] of elicitations) {
+    answerWithoutUser(session, responder, cause);
+    withdrawal.abort();
+  }
 }
 
 function cancelPendingPermissions(session: AcpThreadSession): void {
-  for (const pending of session.pendingPermissions) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-  }
+  const permissions = [...session.pendingPermissions];
+  const elicitations = [...session.pendingElicitations];
   session.pendingPermissions.clear();
-  for (const responder of session.pendingElicitations) {
-    responder.result({ action: "cancel" });
-  }
   session.pendingElicitations.clear();
+  for (const pending of permissions) {
+    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    pending.withdrawal.abort();
+  }
+  for (const [responder, withdrawal] of elicitations) {
+    responder.result({ action: "cancel" });
+    withdrawal.abort();
+  }
 }
 
 const COMPACTION_QUESTION_CAUSE: UnansweredInteractionCause = {
@@ -2011,13 +2021,18 @@ function handleElicitationRequest(
   if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
-  session.pendingElicitations.add(responder);
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: null,
-    payload: plan.payload,
-  })
+  const withdrawal = new AbortController();
+  session.pendingElicitations.set(responder, withdrawal);
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: null,
+      payload: plan.payload,
+    },
+    withdrawal.signal,
+  )
     .then((result) => {
       if (!session.pendingElicitations.delete(responder)) {
         return;
@@ -2092,6 +2107,7 @@ function handlePermissionRequest(
   const pending: PendingAcpPermission = {
     responder,
     options: parsed.data.options,
+    withdrawal: new AbortController(),
   };
 
   if (session.policy.permissionMode === "full") {
@@ -2140,12 +2156,16 @@ function handlePermissionRequest(
     openAgentTurn(session);
   }
   session.pendingPermissions.add(pending);
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: null,
-    payload,
-  })
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: null,
+      payload,
+    },
+    pending.withdrawal.signal,
+  )
     .then((result) => {
       if (!session.pendingPermissions.delete(pending)) {
         return;
@@ -2517,7 +2537,7 @@ async function startAgentSession(
     turnSettled: undefined,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
-    pendingElicitations: new Set(),
+    pendingElicitations: new Map(),
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,

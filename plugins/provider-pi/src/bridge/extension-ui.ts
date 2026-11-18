@@ -29,6 +29,7 @@ interface PendingExtensionUiRequest {
   scope: object;
   threadId: string;
   request: PiExtensionUiRequest;
+  expiry: ReturnType<typeof setTimeout> | null;
   respond: (
     requestId: string | number,
     fields: PiExtensionUiResponseFields,
@@ -38,6 +39,7 @@ interface PendingExtensionUiRequest {
 export interface ExtensionUiCoordinatorOptions {
   sendInteractionRequest: (request: InteractionUiRequest) => void;
   sendThreadDeltas: (threadId: string, deltas: ThreadDelta[]) => void;
+  sendRequestCancelled: (interactionId: string) => void;
 }
 
 export interface HandleExtensionUiRequestArgs {
@@ -112,6 +114,28 @@ export function createExtensionUiCoordinator(
     args.respond(args.requestId, { cancelled: true });
   }
 
+  const take = (interactionId: string): PendingExtensionUiRequest | null => {
+    const entry = pending.get(interactionId);
+    if (!entry) {
+      return null;
+    }
+    pending.delete(interactionId);
+    if (entry.expiry !== null) {
+      clearTimeout(entry.expiry);
+    }
+    return entry;
+  };
+
+  const withdraw = (
+    interactionId: string,
+  ): PendingExtensionUiRequest | null => {
+    const entry = take(interactionId);
+    if (entry) {
+      options.sendRequestCancelled(interactionId);
+    }
+    return entry;
+  };
+
   return {
     handle(args) {
       if (FIRE_AND_FORGET_METHODS.has(String(rawMethod(args.request)))) {
@@ -152,6 +176,10 @@ export function createExtensionUiCoordinator(
         scope: args.scope,
         threadId: args.threadId,
         request,
+        expiry:
+          request.timeout === undefined
+            ? null
+            : setTimeout(() => withdraw(interactionId), request.timeout),
         respond: args.respond,
       });
       try {
@@ -171,7 +199,7 @@ export function createExtensionUiCoordinator(
           },
         });
       } catch (error) {
-        pending.delete(interactionId);
+        take(interactionId);
         cancelWithoutUser({
           threadId: args.threadId,
           requestId: request.id,
@@ -185,11 +213,10 @@ export function createExtensionUiCoordinator(
     },
 
     handleRuntimeResponse(response) {
-      const entry = pending.get(String(response.id));
+      const entry = take(String(response.id));
       if (!entry) {
         return false;
       }
-      pending.delete(String(response.id));
       const unanswered = {
         threadId: entry.threadId,
         requestId: entry.request.id,
@@ -229,11 +256,11 @@ export function createExtensionUiCoordinator(
     },
 
     cancelPendingForScope(scope) {
-      for (const [interactionId, entry] of pending) {
+      for (const [interactionId, entry] of [...pending]) {
         if (entry.scope !== scope) {
           continue;
         }
-        pending.delete(interactionId);
+        withdraw(interactionId);
         entry.respond(entry.request.id, { cancelled: true });
       }
     },
