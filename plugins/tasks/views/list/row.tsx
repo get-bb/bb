@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type {
   Label,
   Project,
@@ -6,6 +6,7 @@ import type {
   TaskThread,
 } from "../../shared/contract.js";
 import { Icon } from "@/components/ui/icon";
+import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import type { TaskRowMeta } from "./data.js";
 import { activeWorkLabel, formatDueDate, partitionLabels } from "./lib.js";
@@ -103,6 +104,53 @@ interface TaskRowProps {
   pending: boolean;
 }
 
+const KEY_TYPOGRAPHY = "text-xs tabular-nums";
+
+export function KeyColumnScope({
+  keys,
+  className,
+  children,
+}: {
+  keys: readonly string[];
+  className: string;
+  children: ReactNode;
+}) {
+  const scopeRef = useRef<HTMLDivElement>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const scope = scopeRef.current;
+    const sizer = sizerRef.current;
+    if (scope === null || sizer === null) return;
+    const measure = () => Math.ceil(sizer.getBoundingClientRect().width);
+    const apply = (width: number) => {
+      scope.style.setProperty("--task-key-width", `${width}px`);
+    };
+    apply(measure());
+    return observeSharedResize(sizer, { read: measure, write: apply });
+  }, []);
+  return (
+    <div ref={scopeRef} className={cn("relative", className)}>
+      <div
+        ref={sizerRef}
+        aria-hidden
+        className={cn(
+          "pointer-events-none invisible absolute left-0 top-0 flex h-0 w-max flex-col overflow-hidden",
+          KEY_TYPOGRAPHY,
+        )}
+      >
+        {keys.map((key) => (
+          <span
+            key={key}
+            data-key-sizer={key}
+            className="before:content-[attr(data-key-sizer)]"
+          />
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export const TaskRow = memo(function TaskRow({
   task,
   meta,
@@ -159,7 +207,13 @@ export const TaskRow = memo(function TaskRow({
           onOpenChange={(next) => setOpenMenu(next ? "priority" : null)}
           className="col-start-1 row-start-2"
         />
-        <span className="col-start-2 row-start-2 min-w-0 truncate text-xs tabular-nums text-subtle-foreground @max-md:max-w-32 @md:w-14 @md:shrink-0">
+        <span
+          title={task.key}
+          className={cn(
+            "col-start-2 row-start-2 min-w-0 truncate text-subtle-foreground @max-md:max-w-32 @md:w-[var(--task-key-width,3.5rem)] @md:shrink-0",
+            KEY_TYPOGRAPHY,
+          )}
+        >
           {task.key}
         </span>
         <StatusEditor

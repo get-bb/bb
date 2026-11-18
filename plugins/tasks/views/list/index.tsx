@@ -12,9 +12,11 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   matchesFilters,
+  matchesSearch,
   useLabels,
   useListTaskEdit,
   useListTasks,
+  widestKeysByPrefix,
   useTaskListMeta,
   type TaskEdit,
 } from "./data.js";
@@ -43,7 +45,7 @@ import {
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
-import { TaskRow } from "./row.js";
+import { KeyColumnScope, TaskRow } from "./row.js";
 import { rowWindows, useRowWindowViewport } from "./row-window.js";
 
 const NO_LABELS: readonly Label[] = [];
@@ -107,6 +109,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     });
   };
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const labelProjectIds = useMemo(
     () =>
@@ -190,25 +193,36 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return tasksQuery.data.filter((task) =>
-      matchesFilters(
-        task,
-        filters.statuses,
-        filters.priorities,
-        labelIds ?? [],
-      ),
+    return tasksQuery.data.filter(
+      (task) =>
+        matchesFilters(
+          task,
+          filters.statuses,
+          filters.priorities,
+          labelIds ?? [],
+        ) && matchesSearch(task, search),
     );
-  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds]);
+  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
+  const widestKeys = useMemo(
+    () => widestKeysByPrefix(tasksQuery.data ?? []),
+    [tasksQuery.data],
+  );
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
     [displayTasks, sort],
   );
 
   const showProject = projectId === null;
-  const filtered = hasActiveFilters(filters);
+  const filtered = hasActiveFilters(filters) || search.trim() !== "";
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
+  const scopeKey = listScrollScopeKey({
+    projectId,
+    activeOnly,
+    filters,
+    search,
+    sort,
+  });
   const settledScope = useRef(scopeKey);
   const scopeChanged = settledScope.current !== scopeKey;
   useEffect(() => {
@@ -251,7 +265,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setFilters(EMPTY_FILTERS)}
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setSearch("");
+              }}
             >
               Clear filters
             </Button>
@@ -330,13 +347,20 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       <ListFilterBar
         filters={filters}
         onChange={setFilters}
+        search={search}
+        onSearchChange={setSearch}
         sort={sort}
         onSortChange={setSort}
         labelOptions={labelOptions}
         taskCount={displayTasks?.length}
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="@container flex min-h-full flex-col">{body}</div>
+        <KeyColumnScope
+          keys={widestKeys}
+          className="@container flex min-h-full flex-col"
+        >
+          {body}
+        </KeyColumnScope>
       </div>
       <NewTaskDialog
         open={newTaskOpen}
