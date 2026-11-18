@@ -42,9 +42,9 @@ export const PROVIDER_ID = "goals";
 const GOAL_KIND = `${PLUGIN_ID}/goal`;
 const PROVIDER_THREAD_ID = "provider-thread";
 export const RETENTION_DEADLINE = Date.now() + 60 * 60_000;
-const TURN_ONE_END = 9;
-const SECOND_TURN_SEQUENCE = 12;
-export const NEXT_SEQUENCE = 22;
+const TURN_ONE_END = 10;
+const SECOND_TURN_SEQUENCE = 13;
+export const NEXT_SEQUENCE = 24;
 
 export interface Server {
   db: DbConnection;
@@ -413,6 +413,32 @@ function seedRetainedCommand(
   });
 }
 
+function seedFileChange(
+  harness: TestAppHarness,
+  fixture: Fixture,
+  turnId: string,
+  sequence: number,
+): void {
+  seedTurnEvent(harness, fixture, turnId, sequence, {
+    type: "item/completed",
+    data: {
+      item: {
+        type: "fileChange",
+        id: `${turnId}-file-change`,
+        approvalStatus: null,
+        status: "completed",
+        changes: [
+          {
+            path: "/tmp/test-environment/src/goal.ts",
+            kind: "update",
+            diff: "@@ -1 +1 @@\n-a\n+b\n",
+          },
+        ],
+      },
+    },
+  });
+}
+
 function seedProviderUnhandled(
   harness: TestAppHarness,
   fixture: Fixture,
@@ -433,11 +459,13 @@ function seedOwnershipChange(
   harness: TestAppHarness,
   fixture: Fixture,
   sequence: number,
+  turnId: string | null,
 ): void {
   seedEvent(harness.deps, {
     threadId: fixture.threadId,
     environmentId: fixture.environmentId,
-    scope: threadScope(),
+    providerThreadId: PROVIDER_THREAD_ID,
+    scope: turnId === null ? threadScope() : turnScope(turnId),
     sequence,
     type: "system/operation",
     data: {
@@ -462,11 +490,11 @@ export function seedOpenSecondTurn(
   question: string,
 ): void {
   seedUserMessage(harness, fixture, SECOND_TURN_SEQUENCE, `/plan ${question}`);
-  seedTurnEvent(harness, fixture, "turn-2", 13, {
+  seedTurnEvent(harness, fixture, "turn-2", 14, {
     type: "turn/started",
     data: {},
   });
-  seedTurnEvent(harness, fixture, "turn-2", 14, {
+  seedTurnEvent(harness, fixture, "turn-2", 15, {
     type: "turn/input/accepted",
     data: {
       clientRequestId: encodeClientTurnRequestIdNumber({
@@ -474,19 +502,19 @@ export function seedOpenSecondTurn(
       }),
     },
   });
-  seedRetainedCommand(harness, fixture, "turn-2", 15);
+  seedRetainedCommand(harness, fixture, "turn-2", 16);
   seedEvent(harness.deps, {
     threadId: fixture.threadId,
     environmentId: fixture.environmentId,
     providerThreadId: PROVIDER_THREAD_ID,
-    sequence: 17,
+    sequence: 18,
     type: "thread/extensionState/updated",
     scope: threadScope(),
     data: { kind: GOAL_KIND, payload: { status: "active" } },
   });
-  seedProviderUnhandled(harness, fixture, "turn-2", 18);
-  seedOwnershipChange(harness, fixture, 19);
-  seedTurnEvent(harness, fixture, "turn-2", 20, {
+  seedProviderUnhandled(harness, fixture, "turn-2", 19);
+  seedOwnershipChange(harness, fixture, 20, null);
+  seedTurnEvent(harness, fixture, "turn-2", 21, {
     type: "thread/contextWindowUsage/updated",
     data: {
       contextWindowUsage: {
@@ -503,7 +531,7 @@ export function seedOpenSecondTurn(
     outputTokens: 0,
     reasoningOutputTokens: 0,
   };
-  seedTurnEvent(harness, fixture, "turn-2", 21, {
+  seedTurnEvent(harness, fixture, "turn-2", 22, {
     type: "thread/tokenUsage/updated",
     data: {
       tokenUsage: {
@@ -514,6 +542,7 @@ export function seedOpenSecondTurn(
       },
     },
   });
+  seedFileChange(harness, fixture, "turn-2", 23);
 }
 
 export const REWIND_CUTOFF_SEQUENCE = SECOND_TURN_SEQUENCE;
@@ -522,13 +551,22 @@ export function fillHistoryGaps(
   harness: TestAppHarness,
   fixture: Fixture,
 ): void {
-  seedTurnEvent(harness, fixture, "turn-1", 7, {
+  seedTurnEvent(harness, fixture, "turn-1", 8, {
     type: "item/completed",
     data: {
-      item: { type: "agentMessage", id: "inserted-1", text: "Inserted answer" },
+      item: {
+        type: "commandExecution",
+        id: "inserted-command",
+        command: "echo inserted",
+        cwd: "/tmp/test-environment/src",
+        approvalStatus: null,
+        status: "completed",
+        exitCode: 0,
+        aggregatedOutput: "inserted",
+      },
     },
   });
-  seedUserMessage(harness, fixture, 10, "Inserted question");
+  seedUserMessage(harness, fixture, 11, "Inserted question");
 }
 
 export function seedThreadHistory(
@@ -556,9 +594,10 @@ export function seedThreadHistory(
     data: {},
   });
   seedRetainedCommand(harness, fixture, "turn-1", 3);
-  seedProviderUnhandled(harness, fixture, "turn-1", 5);
-  seedOwnershipChange(harness, fixture, 6);
-  seedTurnEvent(harness, fixture, "turn-1", 8, {
+  seedFileChange(harness, fixture, "turn-1", 5);
+  seedProviderUnhandled(harness, fixture, "turn-1", 6);
+  seedOwnershipChange(harness, fixture, 7, "turn-1");
+  seedTurnEvent(harness, fixture, "turn-1", 9, {
     type: "item/completed",
     data: {
       item: { type: "agentMessage", id: "answer-1", text: "First answer" },
@@ -572,7 +611,7 @@ export function seedThreadHistory(
     threadId: fixture.threadId,
     environmentId: fixture.environmentId,
     scope: threadScope(),
-    sequence: 11,
+    sequence: 12,
     type: "system/operation",
     data: {
       operation: THREAD_CONTEXT_CLEAR_OPERATION,
