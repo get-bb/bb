@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -51,7 +51,7 @@ function findViolations(file: string): Violation[] {
   const violations: Violation[] = [];
   const report = (node: ts.Node) => {
     violations.push({
-      file: relative(SRC_ROOT, file),
+      file: relative(SRC_ROOT, file).split(sep).join("/"),
       line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1,
       text: node.getText().replace(/\s+/g, ""),
     });
