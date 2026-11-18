@@ -1378,35 +1378,33 @@ own the row chrome instead of the plugin rendering `SetupOptionRow`.
 
 Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
-`internal_DO_NOT_USE_onSetupStarted` is set only when the setup guide renders a
-plugin's settings section inline (the current guide's Devices step expands the
-bb connect settings under Set up). The section calls it when the user actually
-starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
-code is submitted, or Turn on is pressed, so the current guide records
-`remote_access` `started` at the same moment as the redesigned guide's
-`onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
-counterpart, called with the same `InternalDoNotUseSetupFailureStage` and
-optional `InternalDoNotUseSetupFailureDetail` the redesigned guide's
+`internal_DO_NOT_USE_onSetupStarted` is meant to be set only when a setup
+guide renders a plugin's settings section inline. The section calls it when the
+user actually starts setting up: bb connect calls it when getbb.app sign-in
+starts, a pairing code is submitted, or Turn on is pressed, matching when the
+setup guide section's `onSetupStarted` fires.
+`internal_DO_NOT_USE_onSetupFailed(stage)` is its failure counterpart, called
+with the same `InternalDoNotUseSetupFailureStage` and optional
+`InternalDoNotUseSetupFailureDetail` the setup guide section's
 `onSetupFailed` receives (`sign_in` when getbb.app sign-in
 can't start or ends denied, expired, or failed; `pairing` when a pairing code
 is rejected; `turn_on` when turning remote access on fails). Core's
 `PluginSettingsSections` passes them through its `onSetupStarted` and
 `onSetupFailed` props; Settings never sets them.
 
-Callers: the bundled `connect` plugin only. Core caller: the onboarding
-Devices step (current guide), which renders `PluginSettingsSections` for
-`connect`.
+Callers: the bundled `connect` plugin only. Core caller: none. The setup
+guide's Devices step renders `PluginSetupGuideSections` instead, and Settings
+never sets these props.
 
-**Audit before stabilizing.** Decide whether the setup guide should render
-setup guide rows in both variants instead, which would make this prop
-unnecessary.
+**Audit before stabilizing.** Remove both members, `PluginSettingsSections`'
+`onSetupStarted` and `onSetupFailed` props, and connect's handling of them.
 
 ## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 
 Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
 A provider declaration sets `internal_DO_NOT_USE_guidedSignIn: true` when the
-redesigned first-run setup guide should run its sign-in in the guided panel:
+first-run setup guide should run its sign-in in the guided panel:
 the guide runs the provider's login command, keeps its terminal behind Show
 terminal, reads the sign-in link and code from the output, and shows them in
 the row. Every other provider is terminal-first: the guide opens the login
