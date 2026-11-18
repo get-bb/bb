@@ -194,6 +194,41 @@ export const acpUsageUpdateSchema = z
   .passthrough();
 export type AcpUsageUpdate = z.infer<typeof acpUsageUpdateSchema>;
 
+export const acpCompactionUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("compaction_update"),
+    compactionId: z.string().min(1),
+    status: z.string(),
+    error: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type AcpCompactionUpdate = z.infer<typeof acpCompactionUpdateSchema>;
+
+const openCodeCompactionMarkerSchema = z.object({
+  _meta: z.object({
+    "opencode/compaction": z.object({
+      messageId: z.string().min(1),
+      status: z.enum(["started", "completed", "failed"]),
+      error: z.object({ message: z.string() }).nullish(),
+    }),
+  }),
+});
+
+export function readOpenCodeCompactionUpdate(
+  update: AcpSessionUpdate,
+): AcpCompactionUpdate | undefined {
+  if (update.sessionUpdate !== "session_info_update") return undefined;
+  const parsed = openCodeCompactionMarkerSchema.safeParse(update);
+  if (!parsed.success) return undefined;
+  const marker = parsed.data._meta["opencode/compaction"];
+  return {
+    sessionUpdate: "compaction_update",
+    compactionId: marker.messageId,
+    status: marker.status === "started" ? "in_progress" : marker.status,
+    ...(marker.error ? { error: marker.error.message } : {}),
+  };
+}
+
 const acpOtherSessionUpdateSchema = z
   .object({
     sessionUpdate: z.string(),

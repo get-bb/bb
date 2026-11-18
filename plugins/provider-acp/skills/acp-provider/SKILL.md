@@ -105,6 +105,19 @@ OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
 before attempting provider-specific recovery.
 
+OpenCode 2.x also reports compaction through its `opencode/compaction` session metadata. bb maps those notifications to the same compaction row.
+
+bb sends `clientCapabilities.session.compaction: {}` at `initialize`. An agent
+that reports its own compaction with the ACP `compaction_update` session update
+gets the same "Compacting context" row as Claude Code, Codex, and Pi, and a
+`completed` status marks the context compacted. A `failed` or `cancelled`
+status shows the compaction as failed, with the agent's `error` text. During
+bb's own `/compact`, a `failed` or `cancelled` update also sets the result of
+the compaction turn. bb does not show
+`compaction_summary_chunk` content. An agent that reports compaction in another
+way, such as agent text or a `think` tool call, shows as that text or as a
+thought.
+
 Listing models reads only the reasoning choices the agent reports for its
 current model; it never switches the agent's model. Selecting an unprobed model
 starts a separate discovery session that switches to only that model, with a

@@ -4048,6 +4048,57 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).not.toContain("echo:/compact");
   });
 
+  function contextCompactionItems(type: string): Record<string, unknown>[] {
+    return threadEvents().filter(
+      (event) =>
+        event.type === type &&
+        (event.item as { type?: string } | undefined)?.type ===
+          "contextCompaction",
+    );
+  }
+
+  it("shows one compaction row when the agent also reports /compact with compaction_update", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_COMPACT_UPDATE_STATUS: "completed" },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(contextCompactionItems("item/started")).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "failed",
+      { status: "failed", error: { message: "summary model rejected" } },
+    ],
+    ["cancelled", { status: "interrupted" }],
+  ])(
+    "settles /compact from a %s compaction_update the agent sends with end_turn",
+    async (updateStatus, turn) => {
+      const { providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_COMPACT_UPDATE_STATUS: updateStatus,
+          FAKE_ACP_COMPACT_UPDATE_ERROR: "summary model rejected",
+        },
+      });
+
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: compactCommandInput(),
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+      expect(await waitForTurnCompleted()).toMatchObject(turn);
+      expect(threadEventsOfType("thread/compacted")).toEqual([]);
+      expect(contextCompactionItems("item/started")).toHaveLength(1);
+    },
+  );
+
   it("fails the compaction turn legibly when the agent rejects the request", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_PROMPT_ERROR: "1" },
@@ -5375,6 +5426,70 @@ describe("acp bridge: work the agent starts on its own", () => {
     }
   });
 
+  it("opens a turn for a compaction the agent starts on its own and keeps it open until the compaction ends", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-unprompted-compaction");
+      await waitForTurnStartedCount(2);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(turnStatuses()).toEqual(["completed"]);
+
+      await waitFor(
+        () =>
+          threadEventsOfType("thread/compacted").length === 1
+            ? true
+            : undefined,
+        "agent compaction end",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      const compactionItems = (type: string) =>
+        threadEventsOfType(type).filter(
+          (event) =>
+            (event.item as { type?: string } | undefined)?.type ===
+            "contextCompaction",
+        );
+      expect(compactionItems("item/started")).toHaveLength(1);
+      expect(compactionItems("item/completed")).toHaveLength(1);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles a completion-only compaction even when stale progress follows", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(
+        providerThreadId,
+        "then-unprompted-finished-compaction",
+      );
+      await waitForTurnStartedCount(2);
+      await waitFor(
+        () =>
+          threadEventsOfType("thread/compacted").length === 1
+            ? true
+            : undefined,
+        "agent compaction end",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the agent's turn open while a tool it announced is running, and settles it as interrupted when the user sends a message", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
@@ -5682,6 +5797,17 @@ describe("acp bridge: questions the agent asks", () => {
     );
     expect(initialize?.params?.["clientCapabilities"]).toMatchObject({
       elicitation: { form: {} },
+    });
+  });
+
+  it("tells the agent it shows session compaction updates", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    await startThread({ envVars: { FAKE_ACP_REQUEST_LOG: requestLog } });
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect(initialize?.params?.["clientCapabilities"]).toMatchObject({
+      session: { compaction: {} },
     });
   });
 
