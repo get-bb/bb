@@ -4,6 +4,10 @@ type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.50.0": {
+    date: "November 18, 2026",
+    headline: "Automatic updates, steadier turns, and a faster app",
+  },
   "0.49.0": {
     date: "November 6, 2026",
     headline: "A more reliable bb",

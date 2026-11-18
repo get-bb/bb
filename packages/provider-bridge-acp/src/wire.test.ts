@@ -4,6 +4,7 @@ import {
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
   acpToolCallUpdateEventSchema,
+  readOpenCodeCompactionUpdate,
 } from "./wire.js";
 
 describe("acpToolCallUpdateEventSchema", () => {
@@ -181,5 +182,25 @@ describe("acpSessionForkResultSchema", () => {
       sessionId: "forked-session",
       configOptions: undefined,
     });
+  });
+});
+
+it("preserves the message ID and failure reason of an OpenCode compaction", () => {
+  expect(
+    readOpenCodeCompactionUpdate({
+      sessionUpdate: "session_info_update",
+      _meta: {
+        "opencode/compaction": {
+          messageId: "msg_compact",
+          status: "failed",
+          error: { type: "provider.error", message: "summary request failed" },
+        },
+      },
+    }),
+  ).toEqual({
+    sessionUpdate: "compaction_update",
+    compactionId: "msg_compact",
+    status: "failed",
+    error: "summary request failed",
   });
 });

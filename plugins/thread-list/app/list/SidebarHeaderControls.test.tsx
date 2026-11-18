@@ -44,7 +44,6 @@ function setup(
   section = false,
   organization: OrganizationMode = "project",
   compact = false,
-  experiments: string[] = [],
 ) {
   const store = createStore();
   store.set(sidebarThreadLifecyclesAtom, ["active"]);
@@ -74,7 +73,7 @@ function setup(
       </CompactViewportOverrideProvider>
     </Provider>
   );
-  renderSlot({ component: Harness }, {}, { experiments });
+  renderSlot({ component: Harness }, {});
   return { store, newThread, newSection };
 }
 
@@ -178,7 +177,14 @@ describe("sidebar header controls", () => {
     await openMenu("Review");
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["New section", "Organize", "Sort by", "Filter", "Rename", "Remove"]);
+    ).toEqual([
+      "New section",
+      "Organize",
+      "Sort by",
+      "Filter",
+      "Rename",
+      "Remove",
+    ]);
     expect(screen.getAllByRole("separator")).toHaveLength(3);
     fireEvent.click(screen.getByRole("menuitem", { name: "New section" }));
     expect(newSection).toHaveBeenCalledOnce();
@@ -279,20 +285,8 @@ describe("sidebar header controls", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 
-  it("offers row metadata only while its experiment is on", async () => {
-    setup();
-    await openMenu();
-    await openSubmenu("Organize");
-    await screen.findByRole("menuitemcheckbox", { name: "Provider icons" });
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: "Metadata" }),
-    ).toBeNull();
-  });
-
   it("toggles row metadata in the Organize Rows group", async () => {
-    const { store } = setup("Pinned", false, "project", false, [
-      "threadRowMetadata",
-    ]);
+    const { store } = setup();
     await openMenu();
     await openSubmenu("Organize");
     const toggle = await screen.findByRole("menuitemcheckbox", {
@@ -385,7 +379,9 @@ it.each([false, true])(
   async (compact) => {
     const { store } = setup("Pinned", false, "project", compact);
     if (compact) {
-      fireEvent.click(screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }));
+      fireEvent.click(
+        screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }),
+      );
       fireEvent.click(await screen.findByRole("menuitem", { name: "Filter" }));
     } else {
       await openMenu();

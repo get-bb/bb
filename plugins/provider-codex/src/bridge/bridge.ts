@@ -51,6 +51,7 @@ import {
   type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { resumeWithProviderMigration } from "./provider-migration.js";
 import {
   CODEX_GOAL_EXTENSION_KIND,
   CODEX_MACOS_PERMISSION_EXTENSION_KIND,
@@ -379,8 +380,6 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
     command: command ?? "codex",
     args: [
       ...args,
-      "-c",
-      `openai_base_url=${JSON.stringify(poolBaseUrl)}`,
       "-c",
       'model_provider="bb-account-pool"',
       "-c",
@@ -1041,10 +1040,12 @@ async function initializeChild(
 
 const codexThreadIdentityResultSchema = z
   .object({
+    modelProvider: z.string().optional(),
     thread: z
       .object({
         id: z.string().min(1),
         daybreakEnabled: z.boolean().nullish().catch(null),
+        modelProvider: z.string().optional(),
       })
       .passthrough(),
   })
@@ -1244,6 +1245,9 @@ async function constructThreadSession(
     })),
   );
   const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
+  const poolSelected = Boolean(
+    launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV],
+  );
   const envHash = environmentHash(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
@@ -1277,9 +1281,7 @@ async function constructThreadSession(
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
-    quotaRecoveryAllowed: !(
-      launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV]
-    ),
+    quotaRecoveryAllowed: !poolSelected,
     rebuildBeforeNextTurnReason: null,
     daybreakEnabled: null,
     modelCatalog: null,
@@ -1408,13 +1410,44 @@ async function constructThreadSession(
       }
     }
 
-    const result = await requestThreadConstructionWithWriterRetry(
-      connection,
+    const result = await resumeWithProviderMigration({
       method,
       params,
-    );
+      poolSelected,
+      currentProvider: async () => {
+        const result = await connection.request({
+          method: "config/read",
+          params: {},
+          resultSchema: z.object({
+            config: z.object({ model_provider: z.string().nullish() }),
+          }),
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        return result.config.model_provider ?? "openai";
+      },
+      request: (nextMethod, nextParams) =>
+        requestThreadConstructionWithWriterRetry(
+          connection,
+          nextMethod,
+          nextParams,
+        ),
+    });
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
+    if (
+      args.request.kind === "resume" &&
+      args.request.providerThreadId !== codexThreadId
+    ) {
+      session.identityAnnounced = false;
+      announceSessionIdentity(session, codexThreadId);
+      sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+        threadId: args.threadId,
+        providerThreadId: codexThreadId,
+        reason:
+          "Codex provider routing changed; conversation history was preserved.",
+        contextLost: false,
+      });
+    }
     translator.activateThreadGitWritableRoots({
       providerThreadId: codexThreadId,
       threadId: args.threadId,

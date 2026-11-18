@@ -676,6 +676,27 @@ export function attachCallThread(
   );
 }
 
+export function reopenFailedCallOnWorker(
+  db: Db,
+  callId: string,
+): WorkflowCallRow | null {
+  const changed = statement(
+    db,
+    `UPDATE workflow_calls SET status = 'running', error = NULL,
+       finished_at = NULL, last_activity_at = ?
+       WHERE id = ? AND status = 'failed' AND result_json IS NULL
+         AND child_thread_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM workflow_runs
+           WHERE workflow_runs.id = workflow_calls.run_id
+             AND workflow_runs.status = 'running'
+         )`,
+  ).run(Date.now(), callId).changes;
+  return changed === 0
+    ? null
+    : optionalCall(statement(db, `${CALL_SELECT} WHERE id = ?`).get(callId));
+}
+
 export function queueCallProviderRetry(
   db: Db,
   callId: string,

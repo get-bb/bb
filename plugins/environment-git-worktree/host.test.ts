@@ -1138,6 +1138,7 @@ describe.concurrent("worktree host entry", () => {
       sourcePath: string,
       dataDir: string,
       branchName: string,
+      storedBaseBranch?: string,
     ) {
       const harness = createHarness(dataDir);
       const created = await harness.experimental_call(
@@ -1159,7 +1160,7 @@ describe.concurrent("worktree host entry", () => {
           ownedBranch: {
             name: branchName,
             repositoryPath: sourcePath,
-            baseBranch: created.baseBranch,
+            baseBranch: storedBaseBranch ?? created.baseBranch,
           },
         });
       return { harness, path: created.path, remove };
@@ -1292,6 +1293,24 @@ describe.concurrent("worktree host entry", () => {
         await owned.harness.experimental_dispose();
       },
     );
+
+    it("deletes a squash-merged branch whose stored bare base trails origin", async ({
+      onTestFinished,
+    }) => {
+      const { sourcePath, clone, dataDir } =
+        await createClonedRepository(onTestFinished);
+      const branch = "bb/squash-local-base-thr_9";
+      const owned = await createOwned(clone, dataDir, branch, "main");
+      await commitIn(owned.path, "one.txt");
+      await git(clone, "push", "origin", branch);
+      await git(sourcePath, "merge", "--squash", branch);
+      await git(sourcePath, "commit", "-m", "Squash (#2)");
+      await git(sourcePath, "branch", "-D", branch);
+      await git(clone, "fetch", "--prune", "origin");
+      expect(await owned.remove()).toEqual({ status: "removed" });
+      expect(await branchExists(clone, branch)).toBe(false);
+      await owned.harness.experimental_dispose();
+    });
 
     it("keeps its branch when another checkout has it and never touches the user's branch", async ({
       onTestFinished,

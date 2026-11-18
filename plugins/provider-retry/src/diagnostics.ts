@@ -1,15 +1,6 @@
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { retryAvailabilitySchema, retryConsentSchema } from "./retry-contract.js";
-
-const senderConsentSchema = z.object({
-  pluginId: z.string(),
-  answer: z.union([
-    retryConsentSchema,
-    z.object({ kind: z.literal("unanswered") }),
-  ]),
-});
-export type SenderConsent = z.infer<typeof senderConsentSchema>;
+import { retryAvailabilitySchema } from "./retry-contract.js";
 
 export const retryDiagnosticSchema = z.object({
   requestId: z.string(),
@@ -23,7 +14,6 @@ export const retryDiagnosticSchema = z.object({
       sendAt: z.number(),
     }),
   ]),
-  consent: senderConsentSchema.nullable().default(null),
 });
 export type RetryDiagnostic = z.infer<typeof retryDiagnosticSchema>;
 export const retryDiagnosticContract = defineRpcContract({

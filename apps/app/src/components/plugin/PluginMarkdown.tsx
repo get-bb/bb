@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import type { MarkdownProps } from "@get-bb/plugin-sdk";
+import type {
+  MarkdownProps,
+  PluginMessageDirectiveMessage,
+} from "@get-bb/plugin-sdk";
 import { getEnvironmentFilePreviewSourceAtRef } from "@bb/client-core";
 import { normalizeAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import {
@@ -7,6 +10,13 @@ import {
   type MarkdownThreadMentions,
 } from "@/components/ui/markdown-preview";
 import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
+import { WithoutCodeFenceRenderers } from "@/components/ui/markdown-code-fence-renderers";
+import type { MarkdownMessageDirectives } from "@/components/ui/markdown-message-directives";
+import {
+  MessageCodeFences,
+  MessageSlotRegistriesProvider,
+  useMessageDirectives,
+} from "@/components/ui/message-markdown-slots";
 import {
   useMessageLinkRouting,
   useThreadTimelineNavigation,
@@ -60,8 +70,10 @@ function PluginDocumentMarkdown({
   className,
   content,
   document,
+  messageDirectives,
 }: Pick<MarkdownProps, "className" | "content"> & {
   document: PluginMarkdownDocument;
+  messageDirectives: MarkdownMessageDirectives | undefined;
 }) {
   const messageRouting = usePluginMarkdownMessageRouting();
   const navigation = useAppNavigationHost();
@@ -111,16 +123,20 @@ function PluginDocumentMarkdown({
       content={content}
       className={className}
       linkRouting={linkRouting}
+      messageDirectives={messageDirectives}
       threadMentions={PLUGIN_MARKDOWN_THREAD_MENTIONS}
     />
   );
 }
 
-export function PluginMarkdown({
+function PluginMarkdownBody({
   content,
   className,
   experimental_document,
-}: MarkdownProps) {
+  messageDirectives,
+}: MarkdownProps & {
+  messageDirectives: MarkdownMessageDirectives | undefined;
+}) {
   const messageRouting = usePluginMarkdownMessageRouting();
   const document = useMemo(
     () =>
@@ -135,6 +151,7 @@ export function PluginMarkdown({
         className={className}
         content={content}
         document={document}
+        messageDirectives={messageDirectives}
       />
     );
   }
@@ -144,7 +161,65 @@ export function PluginMarkdown({
       content={content}
       className={className}
       linkRouting={document === null ? {} : messageRouting}
+      messageDirectives={messageDirectives}
       threadMentions={PLUGIN_MARKDOWN_THREAD_MENTIONS}
     />
+  );
+}
+
+function parsePluginMarkdownMessage(
+  message: PluginMessageDirectiveMessage,
+): PluginMessageDirectiveMessage | null {
+  const { id, threadId, turnId, projectId }: Record<string, unknown> = {
+    ...message,
+  };
+  if (
+    typeof id !== "string" ||
+    !id.trim() ||
+    typeof threadId !== "string" ||
+    !threadId.trim() ||
+    (turnId !== null && typeof turnId !== "string") ||
+    (projectId !== null && typeof projectId !== "string")
+  ) {
+    return null;
+  }
+  return { id, threadId, turnId, projectId };
+}
+
+function PluginMessageMarkdown({
+  message: { id, threadId, turnId, projectId },
+  ...props
+}: MarkdownProps & { message: PluginMessageDirectiveMessage }) {
+  const message = useMemo(
+    () => ({ id, threadId, turnId, projectId }),
+    [id, threadId, turnId, projectId],
+  );
+  const messageDirectives = useMessageDirectives(message, null);
+  return (
+    <MessageCodeFences message={message} streaming={false}>
+      <PluginMarkdownBody {...props} messageDirectives={messageDirectives} />
+    </MessageCodeFences>
+  );
+}
+
+export function PluginMarkdown({
+  experimental_message,
+  ...props
+}: MarkdownProps) {
+  const message =
+    experimental_message === undefined
+      ? null
+      : parsePluginMarkdownMessage(experimental_message);
+  if (message === null) {
+    return (
+      <WithoutCodeFenceRenderers>
+        <PluginMarkdownBody {...props} messageDirectives={undefined} />
+      </WithoutCodeFenceRenderers>
+    );
+  }
+  return (
+    <MessageSlotRegistriesProvider>
+      <PluginMessageMarkdown {...props} message={message} />
+    </MessageSlotRegistriesProvider>
   );
 }

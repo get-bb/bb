@@ -5,6 +5,7 @@ import {
   readCheckoutRef,
   readGitRepo,
   readRefs,
+  resolveBranchRef,
   runGit,
   WorkspaceError,
   type GitRepo,
@@ -53,12 +54,15 @@ function checkoutLabel(
   return `${verb} branch ${branch.name}`;
 }
 
-type BranchLocation = "local" | "origin" | "missing";
+type BranchLocation =
+  | { kind: "local" }
+  | { kind: "origin"; ref: string }
+  | { kind: "missing" };
 
 interface SwitchPlan {
   switchArgs: string[];
   startPoint: string | null;
-  location: BranchLocation;
+  existingBranchMissing: boolean;
 }
 
 async function locateBranch(
@@ -69,12 +73,12 @@ async function locateBranch(
   const originRef = `refs/remotes/origin/${name}`;
   const refs = await readRefs(repo.path, [localRef, originRef]);
   if (refs.has(localRef)) {
-    return "local";
+    return { kind: "local" };
   }
   if (refs.has(originRef)) {
-    return "origin";
+    return { kind: "origin", ref: originRef };
   }
-  return "missing";
+  return { kind: "missing" };
 }
 
 async function assertSwitchable(
@@ -108,7 +112,7 @@ async function assertSwitchable(
         `Cannot inspect current checkout: ${ref.reason}`,
       );
   }
-  if (branch.kind === "existing" && plan.location === "missing") {
+  if (plan.existingBranchMissing) {
     throw new WorkspaceError(
       "checkout_missing_branch",
       `Cannot checkout missing branch ${branch.name}`,
@@ -144,20 +148,21 @@ async function planSwitch(
     const location = await locateBranch(repo, branch.name);
     return {
       switchArgs:
-        location === "origin"
-          ? ["switch", "--track", `origin/${branch.name}`]
+        location.kind === "origin"
+          ? ["switch", "--track", location.ref]
           : ["switch", branch.name],
       startPoint: null,
-      location,
+      existingBranchMissing: location.kind === "missing",
     };
   }
-  const location = await locateBranch(repo, branch.baseBranch);
-  const startPoint =
-    location === "origin" ? `origin/${branch.baseBranch}` : branch.baseBranch;
+  const { ref: startPoint } = await resolveBranchRef(
+    repo.path,
+    branch.baseBranch,
+  );
   return {
     switchArgs: ["switch", "--no-track", "-C", branch.name, startPoint],
     startPoint,
-    location,
+    existingBranchMissing: false,
   };
 }
 

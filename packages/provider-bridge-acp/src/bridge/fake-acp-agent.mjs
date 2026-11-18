@@ -83,6 +83,11 @@
  *                              and prompt-result _meta.usage
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
+ * - FAKE_ACP_COMPACT_UPDATE_STATUS
+ *                            → during /compact, send compaction_update
+ *                              in_progress, then this status
+ * - FAKE_ACP_COMPACT_UPDATE_ERROR
+ *                            → error text for that terminal update
  * - FAKE_ACP_RESUME_SESSION=1
  *                            → advertise and serve session/resume
  * - FAKE_ACP_ADDITIONAL_DIRECTORIES=1
@@ -101,6 +106,10 @@
  * - "then-unprompted-stream"     → message chunks and a finished tool call
  * - "then-unprompted-permission" → a permission request, then its outcome
  * - "then-unprompted-open-tool"  → a tool call that stays in progress
+ * - "then-unprompted-compaction" → a compaction_update in_progress, then
+ *                                  completed
+ * - "then-unprompted-finished-compaction"
+ *                                → a completed update followed by stale progress
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
  * - "stop-reason:<reason>"       → end the turn with that stop reason
@@ -287,6 +296,15 @@ if (process.env.FAKE_ACP_LAUNCH_LOG) {
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\n");
+}
+
+function compactionUpdate(compactionId, status, error) {
+  return {
+    sessionUpdate: "compaction_update",
+    compactionId,
+    status,
+    ...(error === undefined ? {} : { error }),
+  };
 }
 
 function notifyUpdate(update, targetSessionId = activeSessionId) {
@@ -612,6 +630,31 @@ async function handlePrompt(message) {
     if (compactMessage !== undefined) {
       notifyUpdate(messageChunk(compactMessage));
     }
+    const compactUpdateStatus = process.env.FAKE_ACP_COMPACT_UPDATE_STATUS;
+    if (compactUpdateStatus !== undefined) {
+      notifyUpdate(compactionUpdate("cmp-manual", "in_progress"));
+      notifyUpdate(
+        compactionUpdate(
+          "cmp-manual",
+          compactUpdateStatus,
+          process.env.FAKE_ACP_COMPACT_UPDATE_ERROR,
+        ),
+      );
+    }
+  } else if (text.includes("then-unprompted-finished-compaction")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate(compactionUpdate("cmp-finished", "completed"));
+      notifyUpdate(compactionUpdate("cmp-finished", "in_progress"));
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-compaction")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate(compactionUpdate("cmp-idle", "in_progress"));
+      setTimeout(() => {
+        notifyUpdate(compactionUpdate("cmp-idle", "completed"));
+      }, UNPROMPTED_DELAY_MS * 4);
+    }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("request-external-directory-permission")) {
     // opencode's external_directory permission: the running edit tool asks
     // with the generic kind "other", a bare directory title, and

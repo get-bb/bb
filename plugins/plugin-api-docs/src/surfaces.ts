@@ -1787,6 +1787,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ThreadChat",
           "Markdown",
           "MarkdownProps.experimental_document",
+          "MarkdownProps.experimental_message",
           "experimental_NewThreadComposer",
           "experimental_VoiceInputTextarea",
           "ExperimentalVoiceInputTextareaProps",

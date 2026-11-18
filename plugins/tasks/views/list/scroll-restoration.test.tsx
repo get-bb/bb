@@ -16,6 +16,7 @@ describe("listScrollScopeKey", () => {
     projectId: null,
     activeOnly: false,
     filters: EMPTY_FILTERS,
+    search: "",
     sort: "manual" as const,
   };
 
@@ -58,6 +59,18 @@ describe("listScrollScopeKey", () => {
     };
     expect(listScrollScopeKey({ ...base, filters: withComma })).not.toBe(
       listScrollScopeKey({ ...base, filters: twoLabels }),
+    );
+  });
+
+  it("isolates a search query and keeps the unsearched key unchanged", () => {
+    expect(listScrollScopeKey({ ...base, search: "  " })).toBe(
+      listScrollScopeKey(base),
+    );
+    expect(listScrollScopeKey({ ...base, search: " Agents " })).toBe(
+      listScrollScopeKey({ ...base, search: "agents" }),
+    );
+    expect(listScrollScopeKey({ ...base, search: "agents" })).not.toBe(
+      listScrollScopeKey(base),
     );
   });
 

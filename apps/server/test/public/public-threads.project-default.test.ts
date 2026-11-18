@@ -129,6 +129,7 @@ describe("project-default thread environment", () => {
           hasUncommittedChanges: false,
           operation: { kind: "none" },
           originDefaultBranch: "origin/main",
+          defaultWorktreeBaseBranch: "origin/main",
         },
         onInspectGitSource,
       });
@@ -187,6 +188,7 @@ describe("project-default thread environment", () => {
         hasUncommittedChanges: false,
         operation: { kind: "none" as const },
         originDefaultBranch: null,
+        defaultWorktreeBaseBranch: null,
       } satisfies GitSourceInspection,
     },
     {
@@ -202,6 +204,7 @@ describe("project-default thread environment", () => {
         hasUncommittedChanges: false,
         operation: { kind: "none" as const },
         originDefaultBranch: null,
+        defaultWorktreeBaseBranch: null,
       } satisfies GitSourceInspection,
     },
   ])(

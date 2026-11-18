@@ -115,7 +115,13 @@ export type AgentSetupState =
   | { status: "update"; detail: string | null; canInstall: boolean }
   | { status: "installing"; update: boolean }
   | { status: "installFailed"; message: string; canInstall: boolean }
-  | { status: "unknown"; message: string | null };
+  | { status: "unknown"; message: string | null }
+  | {
+      status: "checkFailed";
+      message: string;
+      detail: string | null;
+      retrying: boolean;
+    };
 
 interface ResolveAgentSetupStateArgs {
   health: SystemProviderState;
@@ -234,35 +240,173 @@ export function projectsPrimaryAction({
   return added ? "completed" : "skipped";
 }
 
-export interface AgentCheckSoFar {
-  providerId: string;
-  state: SystemProviderState | null | undefined;
-}
+export type AgentCheck =
+  | { providerId: string; kind: "pending" }
+  | { providerId: string; kind: "unchecked" }
+  | {
+      providerId: string;
+      kind: "answered";
+      state: SystemProviderState;
+      settledAt: number;
+    }
+  | { providerId: string; kind: "absent"; settledAt: number }
+  | { providerId: string; kind: "failed"; error: unknown; settledAt: number };
+
+export type AgentCheckFailure = "timed_out" | "other";
 
 export type AgentRowSoFar =
   | { kind: "agent"; state: SystemProviderState }
+  | {
+      kind: "failed";
+      providerId: string;
+      name: string;
+      failure: AgentCheckFailure;
+      detail: string | null;
+      retrying: boolean;
+    }
   | { kind: "loading"; key: string };
 
-export function agentRowsSoFar(
-  checks: readonly AgentCheckSoFar[],
-): AgentRowSoFar[] | undefined {
+export function agentCheckFailedMessage(failure: AgentCheckFailure): string {
+  return failure === "timed_out"
+    ? "Didn't respond in time."
+    : "Couldn't load agent";
+}
+
+export type AgentListFailure = "host_unavailable" | "other";
+
+export function agentListFailure({
+  hostConnected,
+  errors,
+}: {
+  hostConnected: boolean;
+  errors: readonly unknown[];
+}): AgentListFailure {
+  return !hostConnected ||
+    errors.some((error) => operationFailureReason(error) === "host_unavailable")
+    ? "host_unavailable"
+    : "other";
+}
+
+export function agentListFailedMessage({
+  failure,
+  machineName,
+}: {
+  failure: AgentListFailure;
+  machineName: string | null;
+}): string {
+  return failure === "host_unavailable"
+    ? `Can't reach ${machineName ?? "this computer"}. Make sure bb is running there, then retry.`
+    : "Couldn't load agents";
+}
+
+function checkFailure(error: unknown): AgentCheckFailure {
+  return operationFailureReason(error) === "timed_out" ? "timed_out" : "other";
+}
+
+function stateRow(
+  state: SystemProviderState,
+  retrying: boolean,
+): AgentRowSoFar {
+  return state.status === "unknown"
+    ? {
+        kind: "failed",
+        providerId: state.providerId,
+        name: state.displayName,
+        failure: "other",
+        detail: state.statusMessage,
+        retrying,
+      }
+    : { kind: "agent", state };
+}
+
+function checkRow(
+  check: Exclude<AgentCheck, { kind: "pending" | "unchecked" }>,
+  names: ReadonlyMap<string, string>,
+): AgentRowSoFar | null {
+  switch (check.kind) {
+    case "answered":
+      return stateRow(check.state, false);
+    case "absent":
+      return null;
+    case "failed":
+      return {
+        kind: "failed",
+        providerId: check.providerId,
+        name: names.get(check.providerId) ?? check.providerId,
+        failure: checkFailure(check.error),
+        detail: null,
+        retrying: false,
+      };
+  }
+}
+
+export function resolveAgentRows({
+  states,
+  statesSettledAt,
+  checks,
+  names,
+}: {
+  states: readonly SystemProviderState[] | undefined;
+  statesSettledAt: number;
+  checks: readonly AgentCheck[];
+  names: ReadonlyMap<string, string>;
+}): AgentRowSoFar[] | undefined {
+  if (states !== undefined) {
+    return states.flatMap((state) => {
+      const check = checks.find(
+        (candidate) => candidate.providerId === state.providerId,
+      );
+      if (
+        check !== undefined &&
+        check.kind !== "pending" &&
+        check.kind !== "unchecked" &&
+        check.settledAt > statesSettledAt
+      ) {
+        const row = checkRow(check, names);
+        return row === null ? [] : [row];
+      }
+      return [stateRow(state, check?.kind === "pending")];
+    });
+  }
   let lastShown = -1;
   checks.forEach((check, index) => {
-    if (check.state != null) lastShown = index;
+    if (check.kind === "answered" || check.kind === "failed") {
+      lastShown = index;
+    }
   });
   if (lastShown === -1) return undefined;
   const rows: AgentRowSoFar[] = [];
-  checks.slice(0, lastShown + 1).forEach((check) => {
-    if (check.state === undefined) {
+  for (const check of checks.slice(0, lastShown + 1)) {
+    if (check.kind === "pending" || check.kind === "unchecked") {
       rows.push({ kind: "loading", key: check.providerId });
-    } else if (check.state !== null) {
-      rows.push({ kind: "agent", state: check.state });
+      continue;
     }
-  });
-  if (checks.slice(lastShown + 1).some((check) => check.state === undefined)) {
+    const row = checkRow(check, names);
+    if (row !== null) rows.push(row);
+  }
+  if (
+    checks
+      .slice(lastShown + 1)
+      .some((check) => check.kind === "pending" || check.kind === "unchecked")
+  ) {
     rows.push({ kind: "loading", key: "more" });
   }
   return rows;
+}
+
+export function failedAgentProviderIds(
+  rows: readonly AgentRowSoFar[] | undefined,
+  checks: readonly AgentCheck[],
+): string[] {
+  const failed =
+    rows === undefined
+      ? checks.flatMap((check) =>
+          check.kind === "failed" ? [check.providerId] : [],
+        )
+      : rows.flatMap((row) => (row.kind === "failed" ? [row.providerId] : []));
+  return failed.length > 0 || rows !== undefined
+    ? failed
+    : checks.map((check) => check.providerId);
 }
 
 export function hasReadyAgent(

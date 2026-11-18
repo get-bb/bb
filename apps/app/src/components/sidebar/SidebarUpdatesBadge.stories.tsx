@@ -161,7 +161,6 @@ function seedScenario(queryClient: QueryClient, scenario: Scenario): void {
       experiments: {
         ...config.experiments,
         pluginUpdates: true,
-        updateWhenIdle: true,
       },
     });
   }

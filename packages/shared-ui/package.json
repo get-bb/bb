@@ -239,6 +239,11 @@
       "types": "./src/components/ui/workflow-progress.tsx",
       "default": "./src/components/ui/workflow-progress.tsx"
     },
+    "./hooks/use-browser-dimming-modal": {
+      "source": "./src/hooks/useBrowserDimmingModal.ts",
+      "types": "./src/hooks/useBrowserDimmingModal.ts",
+      "default": "./src/hooks/useBrowserDimmingModal.ts"
+    },
     "./hooks/use-compact-viewport": {
       "source": "./src/components/ui/hooks/use-compact-viewport.tsx",
       "types": "./src/components/ui/hooks/use-compact-viewport.tsx",
