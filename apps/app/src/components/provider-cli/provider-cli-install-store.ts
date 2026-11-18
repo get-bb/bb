@@ -7,6 +7,7 @@ import type {
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import type { ProviderCliActionableIssue } from "@/components/provider-cli/provider-cli-install";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
+import { terminalOutputToPlainText } from "@bb/text-utils";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { invalidateSystemExecutionOptions } from "@/hooks/cache-owners/system-cache-effects";
@@ -245,7 +246,7 @@ function showProviderCliInstallFailureToast(args: {
 }): void {
   const logDialogState: ProviderCliInstallLogDialogState = {
     displayName: args.issue.status.displayName,
-    log: truncateProviderCliFailureLog(args.log),
+    log: truncateProviderCliFailureLog(terminalOutputToPlainText(args.log)),
     message: args.message,
     title: getProviderCliTitle({ issue: args.issue, phase: "log" }),
   };

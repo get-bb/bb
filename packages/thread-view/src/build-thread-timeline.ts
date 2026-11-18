@@ -17,7 +17,6 @@ import type {
 } from "@bb/server-contract";
 import {
   isBackgroundAgentTaskType,
-  readTerminalOutputLines,
   type ActiveThinking,
   type CompletedTurnDisplay,
   type JsonValue,
@@ -27,6 +26,7 @@ import {
   type ThreadTimelineModelFallback,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
+import { readTerminalOutputLines } from "@bb/text-utils";
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionFileEditChange,
