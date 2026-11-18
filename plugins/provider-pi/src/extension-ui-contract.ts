@@ -12,6 +12,8 @@ const boundedText = (max: number) => z.string().max(max);
 
 export const PI_EXTENSION_UI_MAX_OPTIONS = 64;
 
+export const PI_EXTENSION_UI_MAX_MESSAGE_LENGTH = 8192;
+
 const baseExtensionUiRequestSchema = z.object({
   id: z.union([z.string(), z.number()]),
   method: dialogMethodSchema,
@@ -23,7 +25,7 @@ const baseExtensionUiRequestSchema = z.object({
     .array(boundedText(512))
     .max(PI_EXTENSION_UI_MAX_OPTIONS)
     .optional(),
-  message: boundedText(8192).optional(),
+  message: z.string().optional(),
   placeholder: boundedText(1024).optional(),
   prefill: boundedText(65536).optional(),
   timeout: z.number().int().positive().optional(),
@@ -40,10 +42,10 @@ export type PiExtensionUiRequest = z.infer<typeof piExtensionUiRequestSchema>;
 export const piExtensionUiPayloadDataSchema = z.object({
   requestId: z.string().min(1),
   fullTitle: z.string().min(1).optional(),
+  message: boundedText(PI_EXTENSION_UI_MAX_MESSAGE_LENGTH).optional(),
   ...baseExtensionUiRequestSchema.pick({
     method: true,
     options: true,
-    message: true,
     placeholder: true,
     prefill: true,
   }).shape,
