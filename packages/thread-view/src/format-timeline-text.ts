@@ -3,7 +3,7 @@ import type {
   TimelineRow,
   TimelineRowStatus,
 } from "@bb/server-contract";
-import { displayWidth } from "@bb/text-utils";
+import { displayWidth, terminalOutputToPlainText } from "@bb/text-utils";
 import { assertNever } from "./assert-never.js";
 import {
   buildTimelineWorkSummaryLabel,
@@ -162,7 +162,10 @@ function formatWorkTitle(
 }
 
 function formatWorkOutput(output: string, color: boolean): string {
-  return dim(indentBlock(output.trim(), "  "), color);
+  return dim(
+    indentBlock(terminalOutputToPlainText(output).trim(), "  "),
+    color,
+  );
 }
 
 function formatCommandExitCodeLine(
