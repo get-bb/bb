@@ -77,7 +77,7 @@ import {
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOwnerStoppedBackgroundTaskRowsForHost,
   listStoredStandaloneThreadTimelineRows,
-  listStoredThreadInteractionLifecycleRows,
+  listStoredInteractionLifecycleRows,
   listStoredThreadNoticeAndInteractionRows,
   listStoredBufferedTextDeltaRowsByItems,
   listStoredClientTurnRequestIdsInRange,
@@ -1047,9 +1047,9 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#listStoredThreadInteractionLifecycleRows`,
+    name: `${EVENTS}#listStoredInteractionLifecycleRows`,
     run: (db, fixture) =>
-      listStoredThreadInteractionLifecycleRows(db, {
+      listStoredInteractionLifecycleRows(db, {
         threadId: fixture.threadId,
         sequenceStart: 0,
         beforeSequence: fixture.latestSequence + 1,

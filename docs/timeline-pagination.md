@@ -72,15 +72,16 @@ only once per half budget of appended events. The grid is not used when the
 cut's turn has finished or has at most one budget of events before the cut, so
 pages over finished history keep their boundaries.
 
-A page reads a turn that starts inside its window, or has at most 256 events
-outside it, whole. Otherwise a turn whose rows render flat, meaning a running
-turn or any turn under the flat display, is read only inside the window. The
-page adds the complete events of items that cross the window edges (an item
-still open at the window start, and an item that started in the turn and
-completes in the window at thread scope), the
-delegation parents of rows it reads, the children of delegations it owns (on
-the latest page, of every delegation it reads), and the turn's lifecycle,
-accepted input, compaction and provider events.
+A page reads a turn that starts inside its window, or has at most a sixth of
+the event budget outside it, whole. Otherwise a turn whose rows render flat,
+meaning a running turn or any turn under the flat display, is read only inside
+the window. The page adds the complete events of items that cross the window
+edges (an item still open at the window start, an item with events in the
+window whose `item/started` is not among them, including items that stream
+without one, and an item that started in the turn and completes in the window
+at thread scope), every lifecycle event of an interaction with an event in the
+window, the delegation parents and children of rows it reads, and the turn's
+lifecycle, accepted input, compaction and provider events.
 
 A finished turn under the collapsed display that started before the window is
 still read whole, because its summary rows depend on all of it.

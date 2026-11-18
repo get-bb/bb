@@ -4403,7 +4403,7 @@ export function listStoredStandaloneThreadTimelineRows(
     .all();
 }
 
-export function listStoredThreadInteractionLifecycleRows(
+export function listStoredInteractionLifecycleRows(
   db: DbConnection,
   args: {
     beforeSequence: number;
@@ -4423,7 +4423,6 @@ export function listStoredThreadInteractionLifecycleRows(
         eq(events.type, "system/interaction/lifecycle"),
         gte(events.sequence, args.sequenceStart),
         lt(events.sequence, args.beforeSequence),
-        isNull(events.turnId),
         inArray(
           sql`json_extract(${events.data}, '$.interaction.id')`,
           [...args.interactionIds],

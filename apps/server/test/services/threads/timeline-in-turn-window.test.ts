@@ -2852,6 +2852,119 @@ describe("page-bounded reads of turns whose rows render flat", () => {
     );
   });
 
+  it("reads a whole item that streams without item/started when a steer starts the page inside it", () => {
+    const { db, thread } = setup();
+    const reasoningId = "reasoning-without-start";
+    const delta = (sequence: number): EventInput => ({
+      threadId: thread.id,
+      sequence,
+      type: "item/reasoning/textDelta",
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId: reasoningId,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ itemId: reasoningId, delta: `step ${sequence} ` }),
+    });
+    const events: EventInput[] = [
+      ...turnEvents(thread, 1, 1),
+      ...commandBlock(thread, 4, "turn-1", "before", 300),
+      delta(604),
+      delta(605),
+      ...steerEvents(thread, 606, 2, "turn-1"),
+      delta(608),
+      itemEvent(thread, 609, "item/completed", "turn-1", {
+        type: "reasoning",
+        id: reasoningId,
+        summary: [],
+        content: ["step 604 step 605 step 608"],
+      }),
+      ...commandBlock(thread, 610, "turn-1", "after", 30),
+      turnCompletedEvent(thread, 670, "turn-1"),
+    ];
+    insertEvents(db, noopNotifier, events);
+
+    const budgeted = walkFlatPages(db, thread, 100);
+    expect(budgeted.pages).toBeGreaterThan(1);
+    expect(budgeted.rows).toEqual(walkFlatPages(db, thread, LARGE_BUDGET).rows);
+  });
+
+  it("keeps a question in place when it was asked before the page and answered inside it", () => {
+    const { db, thread } = setup();
+    const events: EventInput[] = [...turnEvents(thread, 1, 1)];
+    let sequence = 4;
+    const question = (status: "pending" | "resolved"): EventInput => ({
+      threadId: thread.id,
+      sequence: sequence++,
+      type: "system/interaction/lifecycle",
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        interaction: {
+          id: "question-1",
+          status,
+          statusReason: null,
+          origin: {
+            kind: "provider",
+            providerId: "claude-code",
+            providerRequestId: "question-1:request",
+          },
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "question-1:q",
+                prompt: "Which one?",
+                shortLabel: "Choice",
+                multiSelect: false,
+                options: [
+                  { value: "a", label: "A", description: "First" },
+                  { value: "b", label: "B", description: "Second" },
+                ],
+                allowFreeText: true,
+              },
+            ],
+          },
+          resolution:
+            status === "resolved"
+              ? {
+                  kind: "user_answer",
+                  answers: { "question-1:q": { selected: ["a"] } },
+                }
+              : null,
+        },
+      }),
+    });
+    for (let item = 0; item < 100; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `before-${item}`),
+      );
+      sequence += 2;
+    }
+    events.push(question("pending"));
+    for (let item = 0; item < 40; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `waiting-${item}`),
+      );
+      sequence += 2;
+    }
+    events.push(question("resolved"));
+    for (let item = 0; item < 100; item += 1) {
+      events.push(
+        ...commandItemEvents(thread, sequence, "turn-1", `after-${item}`),
+      );
+      sequence += 2;
+    }
+    insertEvents(db, noopNotifier, events);
+
+    const budgeted = walkFlatPages(db, thread, 60);
+    expect(budgeted.pages).toBeGreaterThan(3);
+    expect(budgeted.rows).toEqual(walkFlatPages(db, thread, LARGE_BUDGET).rows);
+  });
+
   it("keeps one compaction row per turn when the turn compacts twice across pages", () => {
     const { db, thread } = setup();
     const events: EventInput[] = [...turnEvents(thread, 1, 1)];

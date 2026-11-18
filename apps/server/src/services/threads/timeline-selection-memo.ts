@@ -11,7 +11,7 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
   listStoredStandaloneThreadTimelineRows,
-  listStoredThreadInteractionLifecycleRows,
+  listStoredInteractionLifecycleRows,
   listStoredThreadNoticeAndInteractionRows,
   listStoredEventRowsByParentToolCallIds,
   listAppendedEventRows,
@@ -110,8 +110,8 @@ export interface TimelineSelectionRowSource {
   listThreadNoticeAndInteractionRows(
     args: Parameters<typeof listStoredThreadNoticeAndInteractionRows>[1],
   ): StoredEventRow[];
-  listThreadInteractionRows(
-    args: Parameters<typeof listStoredThreadInteractionLifecycleRows>[1],
+  listInteractionLifecycleRows(
+    args: Parameters<typeof listStoredInteractionLifecycleRows>[1],
   ): StoredEventRow[];
   listRootWindowTurnIds(
     args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
@@ -932,12 +932,15 @@ function acceptsThreadRowJoiningTurn(
   ) {
     return false;
   }
-  if (row.turnId !== null || row.type !== "system/interaction/lifecycle") {
+  if (
+    (row.turnId !== null && !scope.extension.windowedTurnIds.has(row.turnId)) ||
+    row.type !== "system/interaction/lifecycle"
+  ) {
     return true;
   }
   const event = decodeStoredEventRowCached(scope.db, row);
   if (event.type !== "system/interaction/lifecycle") return false;
-  return listStoredThreadInteractionLifecycleRows(scope.db, {
+  return listStoredInteractionLifecycleRows(scope.db, {
     threadId: scope.args.threadId,
     interactionIds: [event.interaction.id],
     sequenceStart: scope.args.epochSequenceStart,
@@ -1177,8 +1180,8 @@ function createTrimmedSelectionRowSource(
     listThreadNoticeAndInteractionRows(query) {
       return listStoredThreadNoticeAndInteractionRows(db, query);
     },
-    listThreadInteractionRows(query) {
-      return listStoredThreadInteractionLifecycleRows(db, query);
+    listInteractionLifecycleRows(query) {
+      return listStoredInteractionLifecycleRows(db, query);
     },
     listThreadWindowRows(query) {
       const sequenceStart = expectLatestBounds(query);
