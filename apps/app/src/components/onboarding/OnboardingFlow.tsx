@@ -403,10 +403,12 @@ function AgentStepContainer({
     providerIds: checkedProviderIds,
     enabled: statesLoading,
   });
+  const statesLoadTimedOut =
+    statesLoad.timedOut && checksSoFar.every((check) => check.state === null);
   const statesLoadFailed =
     hostId !== null &&
     states === undefined &&
-    (statesQuery.isError || statesLoad.timedOut);
+    (statesQuery.isError || statesLoadTimedOut);
   const rows: AgentRowSoFar[] | undefined = statesLoadFailed
     ? undefined
     : states !== undefined
@@ -422,7 +424,7 @@ function AgentStepContainer({
     noHost,
     query: statesQuery,
     loaded: states !== undefined,
-    timedOut: statesLoad.timedOut,
+    timedOut: statesLoadTimedOut,
   });
   const refetchProviderStates = useCallback<RefetchProviderStates>(
     (options) => {
