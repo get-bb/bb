@@ -78,10 +78,20 @@ const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
 const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
 const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 
+interface RecoverableMessage {
+  key: string;
+  message: HostDaemonDaemonWsMessage;
+}
+
 interface PendingSocketPayload {
   bytes: number;
   payload: string;
-  recoverableKey: string | null;
+  recoverable: RecoverableMessage | null;
+}
+
+interface SentRecoverableMessage {
+  message: HostDaemonDaemonWsMessage;
+  seq: number;
 }
 
 function recoverableMessageKey(
@@ -161,7 +171,10 @@ export class ServerConnection {
     string,
     HostDaemonDaemonWsMessage
   >();
-  private readonly recoverableMessageSeqs = new Map<string, number>();
+  private readonly sentRecoverableMessages = new Map<
+    string,
+    SentRecoverableMessage
+  >();
 
   constructor(private readonly options: ServerConnectionOptions) {
     this.createWebSocket =
@@ -198,9 +211,10 @@ export class ServerConnection {
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
     const parsed = hostDaemonDaemonWsMessageSchema.parse(message);
     const recoverableKey = recoverableMessageKey(parsed);
-    if (recoverableKey !== null) {
-      this.pendingRecoverableMessages.set(recoverableKey, parsed);
-      this.recoverableMessageSeqs.delete(recoverableKey);
+    const recoverable =
+      recoverableKey === null ? null : { key: recoverableKey, message: parsed };
+    if (recoverable !== null) {
+      this.pendingRecoverableMessages.set(recoverable.key, parsed);
     }
     if (this.sequencer === null) {
       return false;
@@ -214,17 +228,17 @@ export class ServerConnection {
         (this.pendingSocketPayloads.length > 0 ||
           (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES))
     ) {
-      return this.enqueueSocketPayload(payload, recoverableKey);
+      return this.enqueueSocketPayload(payload, recoverable);
     }
     if (
       isTerminalDaemonLifecycleMessage(parsed) &&
       this.pendingSocketPayloads.length > 0
     ) {
-      const queued = this.enqueueSocketPayload(payload, recoverableKey);
+      const queued = this.enqueueSocketPayload(payload, recoverable);
       this.flushSocketPayloads(true);
       return queued;
     }
-    return this.writeSocketPayload(websocket, payload, recoverableKey);
+    return this.writeSocketPayload(websocket, payload, recoverable);
   }
 
   private connectedWebSocket(): ReconnectingWebSocketLike | null {
@@ -242,15 +256,18 @@ export class ServerConnection {
   private writeSocketPayload(
     websocket: ReconnectingWebSocketLike,
     payload: string,
-    recoverableKey: string | null,
+    recoverable: RecoverableMessage | null,
   ): boolean {
     const sequencer = this.sequencer;
     if (sequencer === null) {
       return false;
     }
     const frame = sequencer.encode(payload);
-    if (recoverableKey !== null) {
-      this.recoverableMessageSeqs.set(recoverableKey, sequencer.sentSeq);
+    if (recoverable !== null) {
+      this.sentRecoverableMessages.set(recoverable.key, {
+        message: recoverable.message,
+        seq: sequencer.sentSeq,
+      });
     }
     this.sendFrame(websocket, frame);
     return true;
@@ -276,7 +293,7 @@ export class ServerConnection {
 
   private enqueueSocketPayload(
     payload: string,
-    recoverableKey: string | null,
+    recoverable: RecoverableMessage | null,
   ): boolean {
     const bytes = Buffer.byteLength(payload, "utf8");
     if (this.pendingSocketBytes + bytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
@@ -291,7 +308,7 @@ export class ServerConnection {
       this.websocket?.reconnect(1013, "terminal-backpressure");
       return false;
     }
-    this.pendingSocketPayloads.push({ bytes, payload, recoverableKey });
+    this.pendingSocketPayloads.push({ bytes, payload, recoverable });
     this.pendingSocketBytes += bytes;
     if (this.connectedWebSocket() !== null) {
       this.scheduleSocketDrain();
@@ -322,11 +339,7 @@ export class ServerConnection {
         break;
       }
       this.pendingSocketBytes -= pending.bytes;
-      this.writeSocketPayload(
-        websocket,
-        pending.payload,
-        pending.recoverableKey,
-      );
+      this.writeSocketPayload(websocket, pending.payload, pending.recoverable);
       websocket = this.connectedWebSocket();
     }
     if (websocket !== null && this.pendingSocketPayloads.length > 0) {
@@ -562,7 +575,7 @@ export class ServerConnection {
             { sessionId: session.sessionId },
             "Connected to server",
           );
-          this.flushSocketPayloads(false);
+          this.flushSocketPayloads(true);
           await this.options.onSessionOpened?.(session);
           this.flushPendingRecoverableMessages();
           if (!settled) {
@@ -685,7 +698,7 @@ export class ServerConnection {
       { sessionId: session.sessionId },
       "Reconnected; resuming the server session",
     );
-    this.flushSocketPayloads(false);
+    this.flushSocketPayloads(true);
   }
 
   private startResumeDeadline(session: HostDaemonSessionOpenResponse): void {
@@ -715,7 +728,7 @@ export class ServerConnection {
   private abandonSession(): void {
     this.clearResumeDeadline();
     this.clearSocketPayloads();
-    this.recoverableMessageSeqs.clear();
+    this.sentRecoverableMessages.clear();
     this.sequencer = null;
     this.sessionSocketOpened = false;
     this.socketReady = false;
@@ -726,7 +739,7 @@ export class ServerConnection {
     for (const [key, message] of Array.from(
       this.pendingRecoverableMessages.entries(),
     )) {
-      if (this.recoverableMessageSeqs.has(key)) {
+      if (this.sentRecoverableMessages.get(key)?.message === message) {
         continue;
       }
       if (!this.sendMessage(message)) {
@@ -736,9 +749,12 @@ export class ServerConnection {
   }
 
   private pruneAcknowledgedRecoverableMessages(acknowledgedSeq: number): void {
-    for (const [key, seq] of this.recoverableMessageSeqs) {
-      if (seq <= acknowledgedSeq) {
-        this.recoverableMessageSeqs.delete(key);
+    for (const [key, sent] of this.sentRecoverableMessages) {
+      if (sent.seq > acknowledgedSeq) {
+        continue;
+      }
+      this.sentRecoverableMessages.delete(key);
+      if (this.pendingRecoverableMessages.get(key) === sent.message) {
         this.pendingRecoverableMessages.delete(key);
       }
     }

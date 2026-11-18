@@ -951,6 +951,100 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("delivers messages queued while disconnected before newer ones once the session resumes", async () => {
+    const { connection, logger, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const identity = (label: string) => ({
+        type: "connect-tunnel.identity" as const,
+        identity: { label, baseDomain: "getbb.app" },
+      });
+
+      socket.reconnect();
+      connection.sendMessage(identity("queued-while-away"));
+      webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
+      await vi.waitFor(() =>
+        expect(logger.info).toHaveBeenCalledWith(
+          { sessionId: "session-1" },
+          "Reconnected; resuming the server session",
+        ),
+      );
+      connection.sendMessage(identity("sent-after-resume"));
+      webSocket.setBufferedAmount(socket, 0);
+
+      await vi.waitFor(() =>
+        expect(
+          webSocket
+            .sentMessages(socket)
+            .filter((message) =>
+              JSON.stringify(message).includes("connect-tunnel.identity"),
+            ),
+        ).toEqual([
+          identity("queued-while-away"),
+          identity("sent-after-resume"),
+        ]),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("re-sends the newest recoverable message in the next session when only an older one with its key was acknowledged", async () => {
+    const { connection, logger, webSocket } = createConnectionFixture({
+      sessionIds: ["first", "second"],
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const identity = (label: string) => ({
+        type: "connect-tunnel.identity" as const,
+        identity: { label, baseDomain: "getbb.app" },
+      });
+      vi.mocked(socket.send).mockImplementation((frame: string) => {
+        if (frame.includes('"label":"older"')) {
+          webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
+        }
+      });
+
+      socket.reconnect();
+      connection.sendMessage(identity("older"));
+      connection.sendMessage(identity("newer"));
+      await vi.waitFor(() =>
+        expect(logger.info).toHaveBeenCalledWith(
+          { sessionId: "first" },
+          "Reconnected; resuming the server session",
+        ),
+      );
+      const olderFrame = parseSentFrames(socket).find((frame) =>
+        JSON.stringify(frame).includes('"label":"older"'),
+      );
+      if (
+        typeof olderFrame !== "object" ||
+        olderFrame === null ||
+        !("seq" in olderFrame) ||
+        typeof olderFrame.seq !== "number"
+      ) {
+        throw new Error("Expected the older identity frame");
+      }
+      webSocket.deliver(socket, { type: "heartbeat-ack" }, olderFrame.seq);
+      vi.mocked(socket.send).mockClear();
+      webSocket.setBufferedAmount(socket, 0);
+
+      webSocket.deliver(socket, { type: "session-close", reason: "expired" });
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      await vi.waitFor(() =>
+        expect(webSocket.sentMessages(socket)).toContainEqual(
+          identity("newer"),
+        ),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("delivers a terminal exit that happened while disconnected in the next session when the server cannot resume", async () => {
     const { connection, webSocket } = createConnectionFixture({
       sessionIds: ["first", "second"],
