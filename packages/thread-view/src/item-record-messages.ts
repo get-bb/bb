@@ -123,6 +123,15 @@ function toolArgs(
   return parsed;
 }
 
+function visibleRunningOutput(record: ItemRecord, settled: boolean): string {
+  if (record.finished || settled) return record.output;
+  const visible = Math.max(
+    record.flushedOutputLength,
+    record.output.lastIndexOf("\n") + 1,
+  );
+  return record.output.slice(0, visible);
+}
+
 function visibleStreamingText(text: string): string {
   return text.slice(0, text.lastIndexOf("\n") + 1);
 }
@@ -240,7 +249,7 @@ function formatItemRecord(
         ? assistantRecordMessage(record, record.textKey, settled)
         : reasoningRecordMessage(record, record.textKey);
   if (record.textKind !== null) return message ? [message] : [];
-  return itemRecordMessages(record);
+  return itemRecordMessages(record, settled);
 }
 
 export function collectItemRecordMessages(
@@ -276,7 +285,9 @@ export function collectItemRecordMessages(
 function fileEditMessages(
   record: ItemRecord,
   item: Extract<ThreadEventItem, { type: "fileChange" }> | null,
+  settled: boolean,
 ): EventProjectionFileEditMessage[] {
+  const stdout = visibleRunningOutput(record, settled);
   const emptyKey = `${record.itemId}:0`;
   const entries =
     item !== null && item.changes.length > 0
@@ -315,7 +326,7 @@ function fileEditMessages(
     ...(item ? presentationOf(record, item) : {}),
     callId: record.itemId,
     changes: change ? [change] : [],
-    stdout: record.output.length > 0 ? record.output : undefined,
+    stdout: stdout.length > 0 ? stdout : undefined,
     stderr: item?.error,
     approvalStatus: item
       ? itemStatusToApprovalStatus(item.approvalStatus)
@@ -333,11 +344,14 @@ function activityStatus(
   return mapped === "pending" ? "completed" : mapped;
 }
 
-function itemRecordMessages(record: ItemRecord): EventProjectionMessage[] {
+function itemRecordMessages(
+  record: ItemRecord,
+  settled: boolean,
+): EventProjectionMessage[] {
   const item = record.item;
   if (item === null) {
     return record.outputKind === "file-change"
-      ? fileEditMessages(record, null)
+      ? fileEditMessages(record, null, settled)
       : [];
   }
   const completedAt =
@@ -367,7 +381,7 @@ function itemRecordMessages(record: ItemRecord): EventProjectionMessage[] {
           source: null,
           output:
             ((record.finished ? item.aggregatedOutput : undefined) ??
-              record.output) + record.lateOutput,
+              visibleRunningOutput(record, settled)) + record.lateOutput,
           exitCode: item.exitCode ?? null,
           approvalStatus: itemStatusToApprovalStatus(item.approvalStatus),
           status:
@@ -424,7 +438,7 @@ function itemRecordMessages(record: ItemRecord): EventProjectionMessage[] {
         },
       ];
     case "fileChange":
-      return fileEditMessages(record, item);
+      return fileEditMessages(record, item, settled);
     case "webSearch":
     case "webFetch":
     case "imageView":

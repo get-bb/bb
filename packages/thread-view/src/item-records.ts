@@ -47,6 +47,7 @@ export interface ItemRecord {
   text: string;
   output: string;
   lateOutput: string;
+  flushedOutputLength: number;
   description: string | null;
   reasoningSummary: string;
   reasoningContent: string;
@@ -69,6 +70,7 @@ export interface ItemRecordStore {
   records: ItemRecord[];
   currentByItemId: Map<string, ItemRecord>;
   openText: Set<ItemRecord>;
+  openOutput: Set<ItemRecord>;
   textKeys: Set<string>;
   finalActivityIds: Set<string>;
 }
@@ -120,6 +122,7 @@ export function createItemRecordStore(): ItemRecordStore {
     records: [],
     currentByItemId: new Map(),
     openText: new Set(),
+    openOutput: new Set(),
     textKeys: new Set(),
     finalActivityIds: new Set(),
   };
@@ -324,6 +327,7 @@ function createRecord(
     text: "",
     output: "",
     lateOutput: "",
+    flushedOutputLength: 0,
     description: null,
     reasoningSummary: "",
     reasoningContent: "",
@@ -469,6 +473,7 @@ function applyItem(
 }
 
 function applyRole(
+  store: ItemRecordStore,
   record: ItemRecord,
   role: ItemEventRole,
   entry: ThreadEventWithMeta,
@@ -541,6 +546,10 @@ function applyRole(
         record.lateOutput += role.delta;
       } else {
         record.output = role.reset ? role.delta : record.output + role.delta;
+        record.flushedOutputLength = role.reset
+          ? 0
+          : record.flushedOutputLength;
+        store.openOutput.add(record);
       }
       break;
     case "progress":
@@ -567,7 +576,8 @@ export function applyItemEvent(
   const otherTurn =
     record?.turnId !== undefined &&
     turnId !== undefined &&
-    turnId !== record.turnId;
+    turnId !== record.turnId &&
+    (record.textKind !== null || record.item?.type === "fileChange");
   const keepsRecord =
     record?.item?.type === "backgroundTask" ||
     (record !== undefined &&
@@ -592,9 +602,10 @@ export function applyItemEvent(
       ]);
     }
   }
-  applyRole(record, role, entry, context);
+  applyRole(store, record, role, entry, context);
   if (record.finished) {
     store.openText.delete(record);
+    store.openOutput.delete(record);
     if (record.item !== null && ACTIVITY_ITEM_TYPES.has(record.item.type)) {
       store.finalActivityIds.add(record.itemId);
     }
@@ -607,6 +618,11 @@ export function stopOpenTextRecords(
   turnId: string | null,
   stop: ItemRecordStop,
 ): void {
+  for (const record of store.openOutput) {
+    record.flushedOutputLength = record.output.length;
+    record.version += 1;
+  }
+  store.openOutput.clear();
   for (const record of store.openText) {
     if (turnId !== null && record.turnId !== turnId) {
       continue;
