@@ -152,11 +152,7 @@ export async function getCodexProviderInstallationRun(
   env: NodeJS.ProcessEnv,
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getCodexProviderInstallationStatus(
-    env,
-    undefined,
-    true,
-  );
+  const status = await getCodexProviderInstallationStatus(env, undefined, true);
   return buildCodexProviderInstallationRun(status, action);
 }
 

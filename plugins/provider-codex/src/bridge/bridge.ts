@@ -2627,7 +2627,9 @@ async function handleRequest(
     case "provider/usage":
       sendResult(
         request.id,
-        await getCodexProviderUsage(buildProviderCliEnv(request.params.envVars)),
+        await getCodexProviderUsage(
+          buildProviderCliEnv(request.params.envVars),
+        ),
       );
       break;
     case "provider/installation/status":

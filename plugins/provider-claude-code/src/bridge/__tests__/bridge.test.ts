@@ -1199,7 +1199,10 @@ describe("bridge", () => {
     });
 
     try {
-      bridge.sendRequest(1, "commands/list", { envVars: {}, cwd: "/tmp/commands-project" });
+      bridge.sendRequest(1, "commands/list", {
+        envVars: {},
+        cwd: "/tmp/commands-project",
+      });
       const response = await bridge.waitForResponse(1);
 
       expect(response.result).toEqual({

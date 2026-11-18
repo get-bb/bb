@@ -772,7 +772,8 @@ describe("OpenCode Go usage", () => {
           jsonrpc: "2.0",
           id: "go-usage-test",
           method: "provider/usage",
-          params: { envVars: {},
+          params: {
+            envVars: {},
             providerId: "test-opencode",
             providerOptions: {
               acpDialect: "opencode",

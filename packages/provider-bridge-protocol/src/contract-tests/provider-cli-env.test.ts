@@ -35,7 +35,10 @@ const FAKE_CODEX = join(
   checkout,
   "plugins/provider-codex/src/bridge/fake-codex-app-server.mjs",
 );
-const FAKE_PI = join(checkout, "plugins/provider-pi/src/bridge/fake-pi-rpc.mjs");
+const FAKE_PI = join(
+  checkout,
+  "plugins/provider-pi/src/bridge/fake-pi-rpc.mjs",
+);
 const FAKE_ACP = join(
   checkout,
   "packages/provider-bridge-acp/src/bridge/fake-acp-agent.mjs",
@@ -134,7 +137,10 @@ function codexLaunch(
   };
 }
 
-function piLaunch(ctx: CaseContext, recording: boolean): Record<string, string> {
+function piLaunch(
+  ctx: CaseContext,
+  recording: boolean,
+): Record<string, string> {
   return {
     BB_PI_BRIDGE_COMMAND: process.execPath,
     BB_PI_BRIDGE_ARGS: JSON.stringify(
@@ -210,7 +216,12 @@ function acpLaunchSpec(ctx: CaseContext, modelList: boolean) {
       args,
       env: {},
       ...(modelList
-        ? { modelCli: { listArgs: [...args, "--list-models"], primaryModels: [] } }
+        ? {
+            modelCli: {
+              listArgs: [...args, "--list-models"],
+              primaryModels: [],
+            },
+          }
         : {}),
     },
   };
@@ -313,7 +324,9 @@ const cases: ProviderCliEnvCase[] = [
     launchFromThreadEnv: (ctx) => piLaunch(ctx, true),
     launchedByThreadEnv: () => true,
     cliLaunches: (ctx) =>
-      recordedLaunches(ctx).filter((launch) => !launch.args.includes("--version")),
+      recordedLaunches(ctx).filter(
+        (launch) => !launch.args.includes("--version"),
+      ),
     probeEnv: (ctx) => ({
       PATH: pathWithFakeBin(ctx),
       FAKE_PI_VERSION: PROBED_VERSION,

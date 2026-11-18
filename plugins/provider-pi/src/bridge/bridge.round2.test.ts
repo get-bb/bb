@@ -444,7 +444,8 @@ it("a steer still queued when the run ends is reported dropped through the deliv
 }, 90_000);
 
 it("recovers from one transient model mismatch by respawning", async () => {
-  const catalog = await harness.request((nextId += 1), "model/list", { envVars: {},
+  const catalog = await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(catalog.error).toBeUndefined();
@@ -504,7 +505,8 @@ it("a child whose extension never reports ready is a construction error, not a h
 
 it("evicts an idle catalog child", async () => {
   vi.stubEnv("BB_PI_CATALOG_IDLE_MS", "300");
-  const models = await harness.request((nextId += 1), "model/list", { envVars: {},
+  const models = await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.error, JSON.stringify(models)).toBeUndefined();
@@ -519,7 +521,8 @@ it("evicts an idle catalog child", async () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   expect(harness.readProcessLog().exited).toContain(spawned[0]);
-  await harness.request((nextId += 1), "model/list", { envVars: {},
+  await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(harness.readProcessLog().spawned).toHaveLength(2);

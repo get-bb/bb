@@ -88,7 +88,10 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
     });
 
     vi.clearAllMocks();
-    const compatibilityStatus = await getPiProviderInstallationStatus(process.env, false);
+    const compatibilityStatus = await getPiProviderInstallationStatus(
+      process.env,
+      false,
+    );
     expect(compatibilityStatus).toMatchObject({
       installed: true,
       currentVersion: "0.84.0",

@@ -195,10 +195,7 @@ export function buildAcpModelListParams(
     };
   }
   const listCommand = buildAcpModelListCommand(launchSpec, options.envVars);
-  const agent = buildAcpModelDiscoveryAgentCommand(
-    launchSpec,
-    options.envVars,
-  );
+  const agent = buildAcpModelDiscoveryAgentCommand(launchSpec, options.envVars);
   return {
     ...(listCommand !== undefined ? { listCommand } : {}),
     ...(agent !== undefined ? { agent } : {}),

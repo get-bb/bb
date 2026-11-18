@@ -57,8 +57,10 @@ describe("provider installation status", () => {
 
   it("defaults legacy requests to update discovery and accepts local-only probes", () => {
     expect(
-      providerInstallationStatusParamsSchema.parse({ providerId: "codex", envVars: {} })
-        .checkUpdates,
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        envVars: {},
+      }).checkUpdates,
     ).toBe(true);
     expect(
       providerInstallationStatusParamsSchema.parse({

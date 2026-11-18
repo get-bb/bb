@@ -32,7 +32,8 @@ afterEach(async () => {
 });
 
 it("reports ready with the installed version after the get_state probe", async () => {
-  const response = await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  const response = await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
@@ -81,7 +82,8 @@ it.skipIf(process.platform !== "win32").each(["global", "local"])(
     );
     vi.stubEnv(PI_BRIDGE_COMMAND_ENV, undefined);
     vi.stubEnv(PI_BRIDGE_ARGS_ENV, undefined);
-    const models = await harness.request(nextRequestId(), "model/list", { envVars: {},
+    const models = await harness.request(nextRequestId(), "model/list", {
+      envVars: {},
       cwd: root,
     });
     expect(models.error).toBeUndefined();
@@ -92,14 +94,16 @@ it.skipIf(process.platform !== "win32").each(["global", "local"])(
 
 it("refuses a pi older than the supported minimum before spawning it", async () => {
   vi.stubEnv("FAKE_PI_VERSION", "0.83.2");
-  const health = await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
   expect(health.result).toMatchObject({
     health: { status: "unsupported_version", installedVersion: "0.83.2" },
   });
-  const models = await harness.request(nextRequestId(), "model/list", { envVars: {},
+  const models = await harness.request(nextRequestId(), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.error).toMatchObject({
@@ -113,14 +117,16 @@ it("refuses a pi older than the supported minimum before spawning it", async () 
 it("reports not_installed when the launch command is missing", async () => {
   vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
   vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-  const health = await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
   expect(health.result).toMatchObject({
     health: { status: "not_installed", canInstall: true, canUpdate: false },
   });
-  const models = await harness.request(nextRequestId(), "model/list", { envVars: {},
+  const models = await harness.request(nextRequestId(), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.error).toMatchObject({
@@ -131,7 +137,8 @@ it("reports not_installed when the launch command is missing", async () => {
 
 it("fails closed when pi cannot report its version, with install guidance", async () => {
   vi.stubEnv("FAKE_PI_VERSION", "crash");
-  const health = await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
@@ -147,7 +154,8 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       ),
     },
   });
-  const models = await harness.request(nextRequestId(), "model/list", { envVars: {},
+  const models = await harness.request(nextRequestId(), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.error).toMatchObject({
@@ -158,14 +166,17 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
 it("memoizes the install gate per launch path across health polls", async () => {
   const processLog = join(harness.workspaceDir, "process.log");
   vi.stubEnv("FAKE_PI_PROCESS_LOG", processLog);
-  await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
-  await harness.request(nextRequestId(), "model/list", { envVars: {},
+  await harness.request(nextRequestId(), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
-  await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });
@@ -177,7 +188,8 @@ it("memoizes the install gate per launch path across health polls", async () => 
     PI_BRIDGE_ARGS_ENV,
     JSON.stringify([fakePiPath, "--other-launch"]),
   );
-  await harness.request(nextRequestId(), "provider/health", { envVars: {},
+  await harness.request(nextRequestId(), "provider/health", {
+    envVars: {},
     providerId: "pi",
     cwd: harness.workspaceDir,
   });

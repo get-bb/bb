@@ -606,7 +606,8 @@ it("a child's tool and prompt files go with the child after release and failed c
 }, 60_000);
 
 it("closing the catalog waits for its child to exit", async () => {
-  const models = await harness.request((nextId += 1), "model/list", { envVars: {},
+  const models = await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.result).toMatchObject({ models: expect.any(Array) });

@@ -68,8 +68,8 @@ export function requestProviderHealth(
       }),
     )
     .finally(() => {
-    if (requests.get(key) === request) requests.delete(key);
-  });
+      if (requests.get(key) === request) requests.delete(key);
+    });
   requests.set(key, request);
   return request;
 }
