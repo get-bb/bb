@@ -103,7 +103,8 @@ function stubManualLaunch(configure?: () => void) {
   vi.mocked(sdk.hosts.get).mockImplementation(() => new Promise(() => {}));
   vi.mocked(sdk.hosts.delete).mockResolvedValue({
     ok: true,
-    status: "removed",
+    progress: "complete",
+    warnings: [],
   });
   configure?.();
 }

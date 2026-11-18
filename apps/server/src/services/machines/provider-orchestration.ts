@@ -39,6 +39,10 @@ import type {
 } from "@get-bb/plugin-sdk/machine-provider";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
 import { ApiError } from "../../errors.js";
+import {
+  operationComplete,
+  operationInProgress,
+} from "../lib/operation-response.js";
 import type { ThreadProvisioningDeps } from "../threads/thread-provisioning-environment.js";
 import { decideWithinBox } from "../threads/dispatch-hooks.js";
 import {
@@ -1110,7 +1114,7 @@ export function readMachineRemovalOutcome(
 ): HostRemovalResponse {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) {
-    return { ok: true, status: "removed" };
+    return { ...operationComplete(), warnings: [] };
   }
   if (row.teardownStatus === "failed") {
     throw new ApiError(
@@ -1119,7 +1123,7 @@ export function readMachineRemovalOutcome(
       row.statusMessage ?? "Machine teardown failed",
     );
   }
-  return { ok: true, status: "removing" };
+  return { ...operationInProgress(), warnings: [] };
 }
 
 export async function retryMachineCleanup(

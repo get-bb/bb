@@ -234,7 +234,8 @@ describe("bb machine command output", () => {
       const get = vi.fn(async () => pending);
       const remove = vi.fn(async () => ({
         ok: true as const,
-        status: "removed" as const,
+        progress: "complete" as const,
+        warnings: [],
       }));
       stubServerApi({
         "v1.hosts.$get": vi.fn(
@@ -344,7 +345,7 @@ describe("bb machine command output", () => {
     async (command, route, message) => {
       const lifecycleAction = vi.fn(async () =>
         command === "retry-cleanup"
-          ? { ok: true as const, status: "removed" as const }
+          ? { ok: true as const, progress: "complete" as const, warnings: [] }
           : {
               ...hosts[1]!,
               lifecycle: {
@@ -450,7 +451,8 @@ describe("bb machine command output", () => {
   it("bb machine remove resolves and removes a provider machine", async () => {
     const remove = vi.fn(async () => ({
       ok: true as const,
-      status: "removed" as const,
+      progress: "complete" as const,
+      warnings: [],
     }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
@@ -473,7 +475,8 @@ describe("bb machine command output", () => {
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.$delete": vi.fn(async () => ({
         ok: true as const,
-        status: "removing" as const,
+        progress: "in-progress" as const,
+        warnings: [],
       })),
     });
 
@@ -487,7 +490,8 @@ describe("bb machine command output", () => {
   it("bb machine remove --force skips cleanup for a stranded machine", async () => {
     const remove = vi.fn(async () => ({
       ok: true as const,
-      status: "removed" as const,
+      progress: "complete" as const,
+      warnings: [],
     }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),

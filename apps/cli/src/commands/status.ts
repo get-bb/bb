@@ -97,7 +97,7 @@ export function registerStatusCommand(
             .map((p) => ({ id: p.id, status: p.status }));
         }
 
-        if (context.projectId || context.threadId) {
+        if (serverError === null && (context.projectId || context.threadId)) {
           const sdk = createCliBbSdk(getUrl());
           const status = await sdk.status.get({
             projectId: context.projectId,
@@ -142,6 +142,15 @@ export function registerStatusCommand(
             }
           }
         }
+
+        const missingContext = [
+          ...(context.projectId && payload.project === null
+            ? [`project ${context.projectId}`]
+            : []),
+          ...(context.threadId && payload.thread === null
+            ? [`thread ${context.threadId}`]
+            : []),
+        ];
 
         reportCommandResult(opts, payload, {
           text: () => {
@@ -213,13 +222,19 @@ export function registerStatusCommand(
             }
           },
           failure:
-            serverError === null
-              ? null
-              : {
+            serverError !== null
+              ? {
                   message: `The bb server at ${getUrl()} did not answer: ${serverError}`,
                   code: "server_unreachable",
                   hint: null,
-                },
+                }
+              : missingContext.length > 0
+                ? {
+                    message: `The context ${missingContext.join(" and ")} was not found on the server`,
+                    code: "context_not_found",
+                    hint: "Check BB_PROJECT_ID and BB_THREAD_ID.",
+                  }
+                : null,
         });
       }),
     );

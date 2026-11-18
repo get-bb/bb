@@ -5,16 +5,15 @@ import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import {
+  outputJson,
+  reportCommandResult,
+  type JsonOutputOptions,
+} from "../command-result.js";
 import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
-import {
-  collectOption,
-  confirmDestructiveAction,
-  outputJson,
-  type JsonOutputOptions,
-} from "./helpers.js";
+import { collectOption, confirmDestructiveAction } from "./helpers.js";
 
 interface SkillWorkspaceOptions extends JsonOutputOptions {
   environment?: string;

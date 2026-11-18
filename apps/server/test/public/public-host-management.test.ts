@@ -591,7 +591,10 @@ describe("public host management", () => {
         { method: "POST" },
       );
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({ ok: true });
+      expect(await readJson(response)).toEqual({
+        ok: true,
+        progress: "in-progress",
+      });
       expect(harness.hub.takeHostProtocolUpdateRetry(host.id)).toBe(true);
       expect(harness.hub.takeHostProtocolUpdateRetry(host.id)).toBe(false);
 
@@ -645,7 +648,11 @@ describe("public host management", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({ ok: true, status: "removed" });
+      expect(await readJson(response)).toEqual({
+        ok: true,
+        progress: "complete",
+        warnings: [],
+      });
       await expect(
         harness.deps.machineAuth.verifyDaemonHostKey(hostKey),
       ).resolves.toBeNull();
@@ -749,7 +756,8 @@ describe("public host management", () => {
         expect(removed.status).toBe(200);
         expect(await readJson(removed)).toEqual({
           ok: true,
-          status: "removed",
+          progress: "complete",
+          warnings: [],
         });
         expect(remove).toHaveBeenCalledOnce();
         expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
@@ -817,7 +825,11 @@ describe("public host management", () => {
         { method: "POST" },
       );
       expect(retried.status).toBe(200);
-      expect(await readJson(retried)).toEqual({ ok: true, status: "removed" });
+      expect(await readJson(retried)).toEqual({
+        ok: true,
+        progress: "complete",
+        warnings: [],
+      });
       expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
     });
   });
@@ -946,7 +958,7 @@ describe("public host management", () => {
     });
   }, 30_000);
 
-  it("fails a removal whose bb connect credential cannot be revoked", async () => {
+  it("completes a removal whose bb connect credential cannot be revoked, with a warning", async () => {
     await withTestHarness(async (harness) => {
       const primary = seedHost(harness.deps, { id: "host_primary" });
       seedPrimaryHost(harness.deps, primary.id);
@@ -964,10 +976,11 @@ describe("public host management", () => {
         method: "DELETE",
       });
 
-      expect(response.status).toBe(502);
-      expect(await readJson(response)).toMatchObject({
-        code: "connect_credential_revoke_failed",
-        message: expect.stringContaining("getbb.app unreachable"),
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({
+        ok: true,
+        progress: "complete",
+        warnings: [expect.stringContaining("getbb.app unreachable")],
       });
       expect(getHost(harness.db, host.id)?.destroyedAt).not.toBeNull();
     });

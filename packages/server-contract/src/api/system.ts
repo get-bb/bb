@@ -1,5 +1,6 @@
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
+import { operationResponseSchema } from "./operation.js";
 import {
   aiServiceSelectionSchema,
   aiServiceSelectionsSchema,
@@ -727,9 +728,7 @@ export type SystemAppUpdateAcknowledgeRequest = z.infer<
   typeof systemAppUpdateAcknowledgeRequestSchema
 >;
 
-export const systemConfigReloadResponseSchema = z.object({
-  ok: z.literal(true),
-});
+export const systemConfigReloadResponseSchema = operationResponseSchema;
 
 export const cliSkillMachineStatusSchema = z.enum([
   "installed",

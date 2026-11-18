@@ -395,6 +395,7 @@ describe("thread runtime stop", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         ok: true,
+        progress: "in-progress",
         status: "stopping",
       });
       expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
@@ -1352,6 +1353,7 @@ describe("thread runtime stop", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         ok: true,
+        progress: "complete",
         status: "idle",
       });
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");

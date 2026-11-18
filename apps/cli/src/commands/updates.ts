@@ -14,9 +14,9 @@ import type {
 import { action, CliExitError } from "../action.js";
 import { CliUsageError } from "../cli-usage-error.js";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import { outputJson, reportCommandResult } from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 import {
   providerCliInstallFailure,
   resolveMachineId,

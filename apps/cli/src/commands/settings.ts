@@ -31,9 +31,12 @@ import type {
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+} from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
@@ -396,8 +399,7 @@ export function registerSettingsCommands(
     .action(
       action(async (opts: JsonOptions) => {
         const result = await createCliBbSdk(getUrl()).system.config();
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -616,8 +618,11 @@ export function registerSettingsCommands(
         const { preferences } =
           await createCliBbSdk(getUrl()).system.uiPreferences.list();
         const entry = preferences[key];
-        if (outputJson(opts, { key, ...entry })) return;
-        console.log(JSON.stringify(entry.value));
+        reportCommandResult(
+          opts,
+          { key, ...entry },
+          { text: [JSON.stringify(entry.value)], failure: null },
+        );
       }),
     );
   ui.command("set <key> <value>")
@@ -739,8 +744,7 @@ export function registerSettingsCommands(
           bindings: config.keybindings,
           overrides: config.keybindingOverrides,
         };
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
   keyboard
@@ -838,8 +842,7 @@ export function registerSettingsCommands(
           hostId,
           refresh: opts.refresh,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -853,8 +856,7 @@ export function registerSettingsCommands(
         const result = await createCliBbSdk(getUrl()).system.version({
           force: opts.force,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 

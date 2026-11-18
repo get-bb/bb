@@ -6,11 +6,15 @@ import {
 import { Command } from "commander";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
 import { action, CliExitError } from "../action.js";
-import type { HostDeleteResult, HostProviderCliInstallResult } from "@bb/sdk";
+import type { HostProviderCliInstallResult } from "@bb/sdk";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+  reportOperation,
+} from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { confirmDestructiveAction } from "./helpers.js";
 
 function enrollmentExpiryNotice(expiresAt: number | null): string {
@@ -98,15 +102,6 @@ export function providerCliInstallFailure(
       : `The install exited with code ${completed.exitCode ?? "unknown"}`;
   }
   return "The install did not report completion";
-}
-
-function describeMachineRemoval(
-  hostId: string,
-  result: HostDeleteResult,
-): string {
-  return result.status === "removed"
-    ? `Machine ${hostId} removed`
-    : `Machine ${hostId} is still being removed; check progress with bb machine show ${hostId}`;
 }
 
 function parseProviderCliKey(value: string): string {
@@ -413,8 +408,7 @@ export function registerMachineCommands(
           target,
         });
         const host = await sdk.hosts.get({ hostId });
-        if (outputJson(opts, host)) return;
-        console.log(JSON.stringify(host, null, 2));
+        printJsonResult(host);
       }),
     );
 
@@ -508,8 +502,10 @@ export function registerMachineCommands(
           hostId,
           force: opts.force,
         });
-        if (outputJson(opts, result)) return;
-        console.log(describeMachineRemoval(hostId, result));
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} removed`,
+          inProgress: `Machine ${hostId} is still being removed; check progress with bb machine show ${hostId}`,
+        });
       }),
     );
 
@@ -525,8 +521,10 @@ export function registerMachineCommands(
           target,
         });
         const result = await sdk.hosts.retryUpdate({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} update retry requested`);
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} updated`,
+          inProgress: `Machine ${hostId} update retry requested`,
+        });
       }),
     );
 
@@ -611,8 +609,10 @@ export function registerMachineCommands(
           target,
         });
         const result = await sdk.hosts.experimental_retryCleanup({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(describeMachineRemoval(hostId, result));
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} removed`,
+          inProgress: `Machine ${hostId} is still being removed; check progress with bb machine show ${hostId}`,
+        });
       }),
     );
 
@@ -634,8 +634,7 @@ export function registerMachineCommands(
           hostId,
           refresh: true,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
   providerCli

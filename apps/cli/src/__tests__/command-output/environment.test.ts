@@ -228,7 +228,10 @@ describe("bb environment command output", () => {
   );
 
   it("bb environment delete reports requested cleanup and its lifecycle", async () => {
-    const remove = vi.fn(async () => ({ ok: true as const }));
+    const remove = vi.fn(async () => ({
+      ok: true as const,
+      progress: "in-progress" as const,
+    }));
     const get = vi.fn(async () =>
       fixtures.makeEnvironment({
         id: "env-delete",

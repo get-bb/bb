@@ -1,3 +1,4 @@
+import { operationComplete } from "../services/lib/operation-response.js";
 import { withReportedProviderId } from "../services/system/provider-telemetry.js";
 import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
@@ -361,7 +362,7 @@ export function registerSystemRoutes(
       );
     }
     deps.telemetry.capture(withReportedProviderId(payload));
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   put(routes.keyboardSettings, (context, payload) => {
@@ -430,7 +431,7 @@ export function registerSystemRoutes(
       const message = error instanceof Error ? error.message : String(error);
       throw new ApiError(422, "invalid_config", message);
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   get(routes.cliSkillsStatus, async (context, query) =>

@@ -485,7 +485,7 @@ describe("bb plugin update commands", () => {
       runCommand(["plugin", "update", "notes", "--yes"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "signature verification failed",
+      "Error: signature verification failed",
     );
 
     vi.clearAllMocks();
@@ -502,7 +502,7 @@ describe("bb plugin update commands", () => {
       runCommand(["plugin", "update", "notes"], register),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      "Refusing to update without confirmation — re-run with --yes.",
+      "Error: Refusing to update without confirmation — re-run with --yes.",
     );
   });
 

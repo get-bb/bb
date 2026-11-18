@@ -1,3 +1,7 @@
+import {
+  operationComplete,
+  operationInProgress,
+} from "../../services/lib/operation-response.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
@@ -417,7 +421,7 @@ export function registerThreadActionRoutes(
       queuedMessageId: context.req.param("queuedMessageId"),
       threadId: thread.id,
     });
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   del(routes.deleteQueuedMessage, (context) => {
@@ -437,7 +441,7 @@ export function registerThreadActionRoutes(
       throw new ApiError(404, "invalid_request", "Queued message not found");
     }
     emitPluginMessageCancelled(toThreadQueuedMessage(queuedMessage));
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   post(routes.stop, async (context) => {
@@ -451,20 +455,32 @@ export function registerThreadActionRoutes(
     if (stopped === null) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json({ ok: true as const, status: stopped.status });
+    if (stopped.status === "active" || stopped.status === "starting") {
+      throw new ApiError(
+        409,
+        "thread_stop_unfinished",
+        `Thread ${thread.id} is still ${stopped.status}; the stop did not finish`,
+      );
+    }
+    return context.json({
+      ...(stopped.status === "stopping"
+        ? operationInProgress()
+        : operationComplete()),
+      status: stopped.status,
+    });
   });
 
   post(routes.compact, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     await compactThreadContext(deps, thread);
-    return context.json({ ok: true });
+    return context.json(operationInProgress());
   });
 
   post(routes.clearContext, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const environment = await requireThreadCommandEnvironment(deps, { thread });
     await clearThreadContext(deps, { environment, thread });
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   post(routes.cancelPlan, async (context) => {
@@ -504,7 +520,7 @@ export function registerThreadActionRoutes(
         "The provider did not confirm that Plan mode exited",
       );
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   post(routes.clearGoal, async (context) => {
@@ -551,7 +567,7 @@ export function registerThreadActionRoutes(
           : "The provider did not clear the Goal",
       );
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   post(routes.open, (context, payload) => {
@@ -645,11 +661,11 @@ export function registerThreadActionRoutes(
 
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt === null) return context.json({ ok: true });
+    if (thread.archivedAt === null) return context.json(operationComplete());
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
     if (!unarchiveThread(deps.db, deps.hub, thread.id)) {
       if (getThread(deps.db, thread.id)?.archivedAt === null)
-        return context.json({ ok: true });
+        return context.json(operationComplete());
       throw new ApiError(
         409,
         "invalid_request",
@@ -680,7 +696,7 @@ export function registerThreadActionRoutes(
         thread,
       });
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   post(routes.restoreEnvironment, (context) => {

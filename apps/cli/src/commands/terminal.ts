@@ -14,11 +14,14 @@ import {
 } from "@bb/server-contract";
 import { action, CliExitError, CliUsageError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+} from "../command-result.js";
 import { terminalScopeHint } from "../context-hints.js";
 import { durationHelp, parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 import {
   DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES,
@@ -266,8 +269,7 @@ export function registerTerminalCommands(
         const session = await createCliBbSdk(getUrl()).terminals.get({
           terminalId,
         });
-        if (outputJson(opts, session)) return;
-        console.log(JSON.stringify(session, null, 2));
+        printJsonResult(session);
       }),
     );
 

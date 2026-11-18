@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import {
   jsonValueSchema,
@@ -25,7 +26,6 @@ import {
 } from "../machine.js";
 import {
   collectOption,
-  outputJson,
   parseReasoningLevel,
   prependErrorContext,
 } from "../helpers.js";

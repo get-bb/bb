@@ -16,9 +16,6 @@ export interface BbSdkTransport {
   readJson<TResponse extends SdkResponseLike>(
     response: Promise<TResponse>,
   ): Promise<JsonBodyOf<TResponse>>;
-  readVoid<TResponse extends SdkResponseLike>(
-    response: Promise<TResponse>,
-  ): Promise<void>;
   resolve<TResponse extends SdkResponseLike>(
     response: Promise<TResponse>,
   ): Promise<TResponse>;

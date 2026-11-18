@@ -1,4 +1,8 @@
 import {
+  operationComplete,
+  operationInProgress,
+} from "../services/lib/operation-response.js";
+import {
   projectMachineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
@@ -544,7 +548,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     }
     beginProjectDeletion(deps, { projectId: id });
     requestProjectDeletionAdvance(deps, { projectId: id });
-    return context.json({ ok: true });
+    return context.json(operationInProgress());
   });
 
   post(routes.createSource, async (context, payload) => {
@@ -664,7 +668,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     if (!deleted) {
       throw new ApiError(404, "invalid_request", "Project source not found");
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   get(routes.files, async (context, query) => {
@@ -972,7 +976,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       targetProjectId,
       payload.paths,
     );
-    return context.json({ ok: true as const });
+    return context.json(operationComplete());
   });
 
   get(routes.attachmentContent, async (context, query) => {

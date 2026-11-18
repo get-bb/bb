@@ -30,6 +30,10 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import { errorMessage } from "../services/lib/error-log-fields.js";
 import {
+  operationComplete,
+  operationInProgress,
+} from "../services/lib/operation-response.js";
+import {
   getGateAuthKind,
   type RequestHeaderReader,
 } from "../request-context.js";
@@ -112,7 +116,7 @@ async function revokeConnectMachineCredential(
   deps: AppDeps,
   plugins: PluginService,
   machineId: string,
-): Promise<void> {
+): Promise<string | null> {
   try {
     const connectPlugin = plugins
       .list()
@@ -131,16 +135,13 @@ async function revokeConnectMachineCredential(
       null,
     );
     if (!result.ok) throw new Error(result.error.message);
+    return null;
   } catch (error) {
     deps.logger.error(
       { err: error, machineId },
       "Host was removed locally, but its bb connect machine credential could not be revoked. Revoke this machine manually from the getbb.app dashboard.",
     );
-    throw new ApiError(
-      502,
-      "connect_credential_revoke_failed",
-      `The machine was removed from this server, but its bb connect credential could not be revoked: ${errorMessage(error)}. Revoke it from the getbb.app dashboard.`,
-    );
+    return `The machine was removed from this server, but its bb connect credential could not be revoked: ${errorMessage(error)}. Revoke it from the getbb.app dashboard.`;
   }
 }
 
@@ -275,7 +276,7 @@ export function registerHostRoutes(
       );
     }
     deps.hub.requestHostProtocolUpdateRetry(hostId);
-    return context.json({ ok: true as const });
+    return context.json(operationInProgress());
   });
 
   post(routes.reconcile, (context) => {
@@ -344,14 +345,18 @@ export function registerHostRoutes(
     });
     deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
     if (destroyed !== null) emitPluginHostDeleted(destroyed);
-    if (host.connectMachineId !== null) {
-      await revokeConnectMachineCredential(
-        deps,
-        plugins,
-        host.connectMachineId,
-      );
-    }
-    return context.json({ ok: true as const, status: "removed" as const });
+    const revokeWarning =
+      host.connectMachineId === null
+        ? null
+        : await revokeConnectMachineCredential(
+            deps,
+            plugins,
+            host.connectMachineId,
+          );
+    return context.json({
+      ...operationComplete(),
+      warnings: revokeWarning === null ? [] : [revokeWarning],
+    });
   });
 
   get(routes.discoveredRepos, async (context) => {

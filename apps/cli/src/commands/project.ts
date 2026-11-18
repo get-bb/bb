@@ -1,3 +1,8 @@
+import {
+  outputJson,
+  printJsonResult,
+  reportOperation,
+} from "../command-result.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
@@ -11,7 +16,7 @@ import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 import {
   resolveMachineEnvironmentRouting,
   resolveMachineHostId,
@@ -386,8 +391,7 @@ export function registerProjectCommands(
           projectId: id,
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -424,8 +428,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -445,8 +448,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -462,8 +464,7 @@ export function registerProjectCommands(
           provider: opts.provider ?? "",
           ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -481,8 +482,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -589,9 +589,15 @@ export function registerProjectCommands(
           }
         }
         const sdk = createCliBbSdk(getUrl());
-        await sdk.projects.delete({ projectId: id });
-        if (outputJson(opts, { ok: true, id })) return;
-        console.log(`Project ${id} deleted`);
+        const result = await sdk.projects.delete({ projectId: id });
+        reportOperation(
+          opts,
+          { ...result, id },
+          {
+            complete: `Project ${id} deleted`,
+            inProgress: `Project ${id} deleted; its environments are still being cleaned up`,
+          },
+        );
       }),
     );
 

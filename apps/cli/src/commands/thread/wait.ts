@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import { threadStatusSchema, threadStatusValues } from "@bb/domain";
 import {
@@ -9,7 +10,7 @@ import {
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { durationHelp } from "../../duration.js";
-import { outputJson, requireThreadId } from "../helpers.js";
+import { requireThreadId } from "../helpers.js";
 import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitPollIntervalMs,

@@ -29,8 +29,9 @@ Outside a thread the CLI targets http://127.0.0.1:38886; set BB_SERVER_URL (and
 BB_HOST_DAEMON_PORT) only for a deliberate non-default target.
 
 Run `bb status` to see your current context (resolved project and thread IDs).
-It exits non-zero (`server_unreachable`) when the bb server does not answer,
-after printing the context it could resolve locally. It also warns when an
+It exits non-zero when the bb server does not answer (`server_unreachable`) or
+does not know the context project or thread (`context_not_found`), after
+printing the context it could resolve locally. It also warns when an
 enabled plugin is not running (incompatible after a bb upgrade, failed to load,
 or missing); run `bb plugin list` for the detail.
 

@@ -97,10 +97,11 @@ Lifecycle:
   that is still running: when the machine still runs a turn for a thread the app
   shows as idle or failed, or a turn starts while the stop is being delivered,
   the stop interrupts that turn and waits for the attempt. If the interrupt
-  fails, the thread remains stopping. The stop response reports the thread's
-  `status` afterwards, and `bb thread stop` exits non-zero
-  (`thread_stop_unfinished`) while the thread is still starting, active, or
-  stopping; check `bb thread show <id> --json` and stop it again.
+  fails, the thread remains stopping: the stop answers `progress:
+  "in-progress"` with the thread's `status`, and `bb thread stop` says the
+  thread is still stopping and exits 0; check `bb thread show <id> --json`
+  before treating the stop as confirmed. A stop after which the thread is still
+  starting or active fails with `thread_stop_unfinished` and exits non-zero.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread

@@ -235,7 +235,8 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, failedHost]);
     vi.mocked(sdk.hosts.experimental_retryCleanup).mockResolvedValue({
       ok: true,
-      status: "removing",
+      progress: "in-progress",
+      warnings: [],
     });
     stubSidebarBootstrapFetch();
     renderSection();
@@ -514,7 +515,10 @@ describe("MachinesSettingsSection", () => {
         lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
       },
     ]);
-    vi.mocked(sdk.hosts.retryUpdate).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.hosts.retryUpdate).mockResolvedValue({
+      ok: true,
+      progress: "complete",
+    });
     stubSidebarBootstrapFetch();
 
     renderSection();
@@ -652,7 +656,8 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
     vi.mocked(sdk.hosts.delete).mockResolvedValue({
       ok: true,
-      status: "removed",
+      progress: "complete",
+      warnings: [],
     });
     stubSidebarBootstrapFetch();
 
@@ -690,7 +695,8 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, strandedHost]);
     vi.mocked(sdk.hosts.delete).mockResolvedValue({
       ok: true,
-      status: "removed",
+      progress: "complete",
+      warnings: [],
     });
     stubSidebarBootstrapFetch();
 

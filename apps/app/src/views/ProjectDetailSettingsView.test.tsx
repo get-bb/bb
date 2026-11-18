@@ -245,7 +245,10 @@ describe("ProjectDetailSettingsView", () => {
       { hostId: "host_primary", path: "/Users/me/bb" },
       { hostId: "host_remote", path: "/home/me/bb" },
     ]);
-    vi.mocked(sdk.projects.sources.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.projects.sources.delete).mockResolvedValue({
+      ok: true,
+      progress: "complete",
+    });
 
     renderView();
     fireEvent.pointerDown(
@@ -394,7 +397,10 @@ describe("ProjectDetailSettingsView", () => {
     stubSidebarBootstrapFetch([
       { hostId: "host_primary", path: "/Users/me/bb" },
     ]);
-    vi.mocked(sdk.projects.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.projects.delete).mockResolvedValue({
+      ok: true,
+      progress: "complete",
+    });
 
     renderView();
     fireEvent.click(

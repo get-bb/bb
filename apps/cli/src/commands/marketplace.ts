@@ -3,9 +3,12 @@ import { Command } from "commander";
 import type { PluginMarketplace } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { reportCommandResult } from "../command-result.js";
+import {
+  outputJson,
+  reportCommandResult,
+  type JsonOutputOptions,
+} from "../command-result.js";
 import { renderBorderlessTable } from "../table.js";
-import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
 function normalizeSource(source: string): string {
   const trimmed = source.trim();

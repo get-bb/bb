@@ -1,3 +1,4 @@
+import type { OperationResponse } from "@bb/server-contract";
 import {
   type PromptInput,
   type PendingInteraction,
@@ -204,14 +205,14 @@ export type ThreadTimelineReadResult = ThreadTimelineReadResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
-export type ThreadDeleteResult = { ok: true };
+export type ThreadDeleteResult = OperationResponse;
 export type ThreadSendResult = SendMessageResponse;
 export type ThreadRetryResult = RetryTurnResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
-export type ThreadStopResult = { ok: true; status: ThreadStatus };
-export type ThreadCompactResult = { ok: true };
-export type ThreadBannerActionResult = { ok: true };
-export type ThreadUnarchiveResult = { ok: true };
+export type ThreadStopResult = OperationResponse & { status: ThreadStatus };
+export type ThreadCompactResult = OperationResponse;
+export type ThreadBannerActionResult = OperationResponse;
+export type ThreadUnarchiveResult = OperationResponse;
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
 export type ThreadReadStateResult = ThreadResponse;
 export type ThreadRestoreEnvironmentResult = ThreadResponse;
@@ -220,9 +221,9 @@ export type ThreadPromptHistoryResult = PromptHistoryResponse;
 export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
-export type ThreadQueuedMessageDeleteResult = { ok: true };
+export type ThreadQueuedMessageDeleteResult = OperationResponse;
 export type ThreadQueuedMessageEditHoldResult = QueuedMessageEditHoldResponse;
-export type ThreadQueuedMessageEditHoldReleaseResult = { ok: true };
+export type ThreadQueuedMessageEditHoldReleaseResult = OperationResponse;
 export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
 export type ThreadQueuedMessageGroupBoundaryResult =
@@ -1165,7 +1166,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"]["queued-messages"][
           ":queuedMessageId"
         ].$delete({
@@ -1175,7 +1176,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async experimental_holdForEdit(input) {
       return transport.readJson(
@@ -1190,7 +1190,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async experimental_releaseEditHold(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
           "edit-hold"
         ].$delete({
@@ -1200,7 +1200,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async list(input) {
       return transport.readJson(
@@ -1346,7 +1345,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].$delete({
           param: { id: input.threadId },
           json: {
@@ -1354,7 +1353,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async editMessage(input) {
       const { threadId, ...json } = input;
@@ -1614,36 +1612,32 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async compact(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].compact.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async clearContext(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].context.clear.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async cancelPlan(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].plan.cancel.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async clearGoal(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].goal.clear.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     tabs,
     async context(input) {
@@ -1723,12 +1717,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async unarchive(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].unarchive.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async unpin(input) {
       return transport.readJson(

@@ -1,3 +1,4 @@
+import { outputJson, passThroughExitCode } from "../command-result.js";
 import { Buffer } from "node:buffer";
 import { stripVTControlCharacters } from "node:util";
 import { z } from "zod";
@@ -10,7 +11,6 @@ import {
 } from "@bb/sdk";
 import type { TerminalSession } from "@bb/server-contract";
 import { CliExitError, CliUsageError } from "../action.js";
-import { outputJson } from "./helpers.js";
 
 const MATCH_WINDOW_CHARS = 256 * 1024;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -225,7 +225,7 @@ export function reportTerminalObservation(args: {
       console.error(line);
     }
   }
-  process.exitCode = observationExitCode(args.report);
+  passThroughExitCode(observationExitCode(args.report));
 }
 
 function observationExitCode(report: TerminalObservationReport): number {

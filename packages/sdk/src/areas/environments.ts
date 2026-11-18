@@ -1,6 +1,9 @@
+import {
+  operationResponseSchema,
+  type OperationResponse,
+} from "@bb/server-contract";
 import { createPluginsArea } from "./plugins.js";
 import { createRetiredEnvironmentMembers } from "./retired-environment-members.js";
-import { z } from "zod";
 import {
   environmentSchema,
   type Environment,
@@ -83,7 +86,7 @@ export type EnvironmentListResult = Environment[];
 export interface EnvironmentDeleteArgs {
   environmentId: string;
 }
-export type EnvironmentDeleteResult = { ok: true };
+export type EnvironmentDeleteResult = OperationResponse;
 export interface EnvironmentListProvidersArgs {
   projectId?: string;
   hostId?: string;
@@ -91,12 +94,10 @@ export interface EnvironmentListProvidersArgs {
 }
 export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 
-const okResponseSchema = z.object({ ok: z.literal(true) });
-
 export interface EnvironmentsArea {
   experimental_cleanup(
     args: EnvironmentActionArgs & { recover?: boolean },
-  ): Promise<{ ok: true }>;
+  ): Promise<OperationResponse>;
   archiveThreads(
     args: EnvironmentActionArgs,
   ): Promise<EnvironmentArchiveThreadsResult>;
@@ -217,7 +218,7 @@ export function createEnvironmentsArea(
           param: { id: input.environmentId },
         }),
       );
-      return okResponseSchema.parse(body);
+      return operationResponseSchema.parse(body);
     },
     async get(input) {
       const body = await transport.readJson(

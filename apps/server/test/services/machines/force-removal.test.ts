@@ -256,7 +256,11 @@ it("exposes forced removal as a forced machine delete", async () =>
       { method: "DELETE" },
     );
     expect(response.status).toBe(200);
-    expect(await readJson(response)).toEqual({ ok: true, status: "removed" });
+    expect(await readJson(response)).toEqual({
+      ok: true,
+      progress: "complete",
+      warnings: [],
+    });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledOnce();
     const missing = await harness.app.request(
@@ -344,7 +348,7 @@ it("leaves a provider removal failure retryable after skipping cleanup", async (
     providerDown = false;
     await expect(
       retryMachineCleanup(harness.deps, target.host.id),
-    ).resolves.toEqual({ ok: true, status: "removed" });
+    ).resolves.toEqual({ ok: true, progress: "complete", warnings: [] });
     expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
     expect(machineRemove).toHaveBeenCalledTimes(2);
   }));

@@ -89,7 +89,7 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
       body: await removed.clone().json(),
     }).toEqual({
       status: 200,
-      body: { ok: true, status: "removed" },
+      body: { ok: true, progress: "complete", warnings: [] },
     });
     expect(getHost(harness.db, created.id)?.phase).toBe("destroyed");
   });
