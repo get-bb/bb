@@ -62,11 +62,13 @@ export function PluginCard({
             nameClassName="line-clamp-2 whitespace-normal"
           />
         ) : (
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <PluginDisplayName
-              displayName={props.title}
-              nameClassName="line-clamp-2 whitespace-normal"
-            />
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0">
+              <PluginDisplayName
+                displayName={props.title}
+                nameClassName="line-clamp-2 whitespace-normal"
+              />
+            </span>
             {titleMeta}
           </span>
         )
