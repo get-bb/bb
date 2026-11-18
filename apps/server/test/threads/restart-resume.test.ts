@@ -676,6 +676,29 @@ describe("resuming threads after a restart", () => {
     });
   });
 
+  it("names a long background command without splitting an emoji", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture, {
+        text: "Run the migration",
+      });
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: `echo ${"x".repeat(194)}\u{1F600} done`,
+        description: "Echo a long line",
+        id: "task-echo",
+      });
+      finishTurn(harness, waiting.thread.id);
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      const text = requestTexts(harness, waiting.thread.id).at(-1);
+      expect(text).toContain(`\`echo ${"x".repeat(194)}…\``);
+      expect(text).not.toMatch(/[\uD800-\uDFFF]/u);
+    });
+  });
+
   it("wakes an idle thread whose background command the daemon stopped as it shut down, once", async () => {
     await withTestHarness(async (harness) => {
       continueAfterRestarts(harness, true);

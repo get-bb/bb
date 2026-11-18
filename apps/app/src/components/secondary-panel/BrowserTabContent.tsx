@@ -68,6 +68,7 @@ import {
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { PluginBrowserToolbarActions } from "@/components/plugin/PluginBrowserToolbarActions";
 import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface BrowserTabContentProps {
   tabId: string;
@@ -973,7 +974,10 @@ export function BrowserTabContent({
 
   const handleFindQueryChange = useCallback(
     (rawQuery: string) => {
-      const query = rawQuery.slice(0, BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH);
+      const query = sliceUtf16Head(
+        rawQuery,
+        BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH,
+      );
       setFindQuery(query);
       if (query.length === 0) {
         clearFind();

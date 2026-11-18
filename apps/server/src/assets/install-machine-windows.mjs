@@ -412,7 +412,11 @@ async function downloadPackage({ bootstrap, dataDir, npmPrefix }) {
       const body = await response.json();
       if (body !== null && typeof body.message === "string") {
         details.push(
-          `Server: ${body.message.replace(/[\x00-\x1f\x7f-\x9f]/gu, " ").slice(0, 2000)}`,
+          `Server: ${Array.from(
+            body.message.replace(/[\x00-\x1f\x7f-\x9f]/gu, " "),
+          )
+            .slice(0, 2000)
+            .join("")}`,
         );
       }
     } catch {}

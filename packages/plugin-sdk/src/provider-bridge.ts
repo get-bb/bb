@@ -281,6 +281,14 @@ export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/p
  */
 export { killPortableProcess as experimental_killPortableProcess } from "@bb/process-utils";
 
+/**
+ * Serializes one JSON-RPC message for a provider's stdin the way bb's runtime
+ * does, replacing any lone surrogate in a string with U+FFFD so strict JSON
+ * parsers such as Codex's accept the line. Experimental: see
+ * docs/api_to_audit.md.
+ */
+export { serializeJsonRpcLine as experimental_serializeJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
+
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------

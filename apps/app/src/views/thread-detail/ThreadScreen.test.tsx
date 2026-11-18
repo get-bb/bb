@@ -139,6 +139,9 @@ function screenElement(presentation: ThreadScreenPresentation) {
         environmentCheckout: undefined,
         environmentChrome: undefined,
         contextEnvironmentId: null,
+        focusRequest: null,
+        onCreateNewThreadInEnvironment: null,
+        onOpenThreadInfo: null,
         permissionPolicy: "snapshot",
       }}
       environment={null}
@@ -148,8 +151,12 @@ function screenElement(presentation: ThreadScreenPresentation) {
       thread={THREAD}
       timelineEnabled
       timelineHost={{
+        consumerMessageActions: [],
         environmentHostName: null,
-        includePluginMessageActions: false,
+        leadingContent: null,
+        messageActionSurface: "thread-view",
+        onForkMessage: null,
+        onTitleAction: null,
         unreadDividerAutoScroll: false,
         unreadDividerPlacement: null,
       }}

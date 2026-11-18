@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -53,7 +54,10 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
-import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import {
+  useRootComposeReuseEnvironment,
+  useSetRootComposeProjectId,
+} from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -71,7 +75,7 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
@@ -1540,6 +1544,48 @@ describe("PluginNewThreadComposer seeding", () => {
       machine: { type: "existing", hostId: "host_1" },
       inputs: DEFAULT_BRANCH_INPUTS,
     });
+  });
+
+  it("starts an unseeded composer on the remembered New thread project, as bb's New thread does", async () => {
+    function PickInNewThread() {
+      const setRootComposeProjectId = useSetRootComposeProjectId();
+      useLayoutEffect(() => setRootComposeProjectId("proj_1"));
+      return null;
+    }
+    const submitted: NewThreadRequest[] = [];
+    const composer = (
+      <PluginNewThreadComposer
+        draftKey="unseeded-project"
+        initialPrompt="hello"
+        onSubmit={(request) => {
+          submitted.push(request);
+        }}
+      />
+    );
+    const view = render(
+      <Provider>
+        <MemoryRouter>
+          <PickInNewThread />
+        </MemoryRouter>
+      </Provider>,
+    );
+    view.rerender(
+      <Provider>
+        <MemoryRouter>
+          <PickInNewThread />
+          {composer}
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_1");
   });
 
   it("keeps project defaults when no seed props are passed", async () => {

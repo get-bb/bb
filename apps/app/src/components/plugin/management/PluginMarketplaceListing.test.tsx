@@ -26,6 +26,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     publisherKey: "bb-community",
     publisherLabel: "BB Community",
     official: true,
+    listings: [],
     author: {
       name: "Pat Lee",
       github: "patlee",

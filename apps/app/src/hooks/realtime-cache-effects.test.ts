@@ -652,12 +652,15 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
-    it("refetches only the pushed host's provider CLI status", () => {
+    it("refetches the pushed host's provider CLI status, providers and models", () => {
       const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const invalidatedCatalogs = seedExecutionOptions(queryClient, "host-b");
       const hostAKey = hostProviderCliStatusQueryKey("host-a");
       const hostBKey = hostProviderCliStatusQueryKey("host-b");
+      const providersKey = systemProvidersQueryKey({ hostId: "host-a" });
       queryClient.setQueryData(hostAKey, {});
       queryClient.setQueryData(hostBKey, {});
+      queryClient.setQueryData(providersKey, []);
 
       effects.handleChanged({
         type: "changed",
@@ -668,6 +671,12 @@ describe("createRealtimeCacheEffects", () => {
 
       expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
+      expect(invalidatedCatalogs()).toEqual([
+        "envHostA",
+        "envUnknown",
+        "hostA",
+      ]);
       effects.dispose();
     });
   });

@@ -16,6 +16,7 @@ import {
   callHostRetryableOnlineRpc,
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
+import { invalidateEnvironmentProviderMachineAvailability } from "../environments/provider-machine-availability.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
@@ -94,6 +95,15 @@ function providerStatusCache(deps: WorkSessionDeps) {
   return cache;
 }
 
+export function forgetHostDerivedState(
+  deps: WorkSessionDeps,
+  hostId: string,
+): void {
+  deps.providerRegistry.forgetInstalledForHost(hostId);
+  deps.lifecycleDedupers.providerModelCatalogs.markHostStale(hostId);
+  invalidateEnvironmentProviderMachineAvailability();
+}
+
 export type ProviderInstallationsReadMode = "prewarm" | "read" | "refresh";
 
 export async function getProviderInstallations(
@@ -155,6 +165,7 @@ export async function getProviderInstallations(
               revalidateStale: args.mode !== "prewarm",
               onReplaced: (previous, next) => {
                 if (!isDeepStrictEqual(previous, next)) {
+                  forgetHostDerivedState(deps, args.hostId);
                   deps.hub.notifyHost(args.hostId, [
                     "provider-cli-status-changed",
                   ]);

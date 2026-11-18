@@ -29,6 +29,7 @@ import {
   extractShellCommandFromString,
   parseShellCommandIntents,
 } from "./tool-call-parsing.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 type CallStatus = EventProjectionToolCallMessage["status"];
 
@@ -169,7 +170,7 @@ function normalizeReasoningDetail(detail: string): string {
   const trimmed = detail.trim();
   if (trimmed.length <= MAX_REASONING_DETAIL_CHARS) return trimmed;
   const dropped = trimmed.length - MAX_REASONING_DETAIL_CHARS;
-  return `${trimmed.slice(0, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")} more characters truncated]`;
+  return `${sliceUtf16Head(trimmed, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")} more characters truncated]`;
 }
 
 function reasoningFinalText(item: ThreadEventItem | null): string {

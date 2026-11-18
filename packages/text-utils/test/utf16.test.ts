@@ -3,6 +3,7 @@ import {
   sliceUtf16Head,
   sliceUtf16HeadAndTail,
   sliceUtf16Tail,
+  toWellFormedUtf16,
 } from "../src/index.js";
 
 describe("sliceUtf16HeadAndTail", () => {
@@ -27,5 +28,17 @@ describe("sliceUtf16HeadAndTail", () => {
     expect(sliceUtf16Tail("ab𠮷d", 2)).toBe("d");
     expect(sliceUtf16Tail("abcdef", 2)).toBe("ef");
     expect(sliceUtf16Tail("abcdef", -1)).toBe("");
+  });
+});
+
+describe("toWellFormedUtf16", () => {
+  it("replaces lone surrogates and keeps pairs", () => {
+    const pair = "\u{1F600}";
+    expect(toWellFormedUtf16(`a${pair.slice(0, 1)}b`)).toBe("a\uFFFDb");
+    expect(toWellFormedUtf16(`a${pair.slice(1)}`)).toBe("a\uFFFD");
+    expect(toWellFormedUtf16(`${pair}${pair.slice(1)}${pair}`)).toBe(
+      `${pair}\uFFFD${pair}`,
+    );
+    expect(toWellFormedUtf16(`ok ${pair}`)).toBe(`ok ${pair}`);
   });
 });

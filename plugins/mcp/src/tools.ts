@@ -1,3 +1,4 @@
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk";
 import type { CliRunner } from "./cli-runner.js";
 import {
   SEARCH_DEFAULT_LIMIT,
@@ -68,7 +69,7 @@ export interface ToolDependencies {
 
 function truncate(text: string): string {
   if (text.length <= RESULT_MAX_CHARS) return text;
-  return `${text.slice(0, RESULT_MAX_CHARS)}\n[truncated: ${text.length - RESULT_MAX_CHARS} more characters. Return less: filter or slice inside the script.]`;
+  return `${sliceUtf16Head(text, RESULT_MAX_CHARS)}\n[truncated: ${text.length - RESULT_MAX_CHARS} more characters. Return less: filter or slice inside the script.]`;
 }
 
 function errorMessage(error: unknown): string {

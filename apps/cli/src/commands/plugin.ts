@@ -58,6 +58,7 @@ import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 
 import { renderBorderlessTable } from "../table.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface NewPluginTarget {
   packageName: string;
@@ -506,7 +507,7 @@ async function callPlugins(
     parsed = text ? JSON.parse(text) : {};
   } catch {
     throw new Error(
-      `Unexpected response from /api/v1/plugins${path} (${response.status}): ${text.slice(0, 200)}`,
+      `Unexpected response from /api/v1/plugins${path} (${response.status}): ${sliceUtf16Head(text, 200)}`,
     );
   }
   if (!response.ok && ![400, 404, 422].includes(response.status)) {
@@ -1090,7 +1091,11 @@ export function registerPluginCommands(
           outputJson(opts, results);
           return;
         }
-        const showMarketplace = results.some((result) => !result.official);
+        const showMarketplace = results.some(
+          (result) =>
+            !result.official ||
+            result.listings.some((listing) => !listing.official),
+        );
         const now = Date.now();
         const badges = results.map((result) =>
           pluginInstallBadgeLabel(pluginInstallBadge(result, now)),
@@ -1100,7 +1105,15 @@ export function registerPluginCommands(
           result.displayName,
           result.description,
           result.category ?? "Uncategorized",
-          ...(showMarketplace ? [result.marketplaceDisplayName] : []),
+          ...(showMarketplace
+            ? [
+                result.listings.length === 0
+                  ? result.marketplaceDisplayName
+                  : result.listings
+                      .map((listing) => listing.marketplaceDisplayName)
+                      .join(", "),
+              ]
+            : []),
           ...(showInstalls ? [badges[index]] : []),
           result.installed
             ? "✓ installed"

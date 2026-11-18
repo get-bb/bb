@@ -31,6 +31,7 @@ import {
   callHostOnlineRpc,
   callHostOnlineRpcForWork,
 } from "./hosts/online-rpc.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface LeaseEntry {
   lease: ExperimentalDesktopBrowserLease;
@@ -116,7 +117,7 @@ function toStoredBrowserTab(
     id: tab.tabId,
     kind: "browser" as const,
     environmentId: null,
-    title: tab.title.slice(0, 1024) || null,
+    title: sliceUtf16Head(tab.title, 1024) || null,
     url: tab.url,
     desktopTarget: {
       hostId: scope.hostId,

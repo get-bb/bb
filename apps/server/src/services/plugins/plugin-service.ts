@@ -209,6 +209,7 @@ import type {
 import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -524,7 +525,9 @@ class PluginRpcBoundaryError extends Error {
       )
       .join("; ");
     const summary =
-      issues && issues.length > 300 ? `${issues.slice(0, 299)}…` : issues;
+      issues && issues.length > 300
+        ? `${sliceUtf16Head(issues, 299)}…`
+        : issues;
     super(summary ? `${rpcError.message} (${summary})` : rpcError.message);
     this.name = "PluginRpcBoundaryError";
   }
@@ -957,6 +960,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       changes.push("provider-registrations-changed");
     }
     deps.hub.notifySystem(changes);
+    deps.onPluginsChanged?.();
   }
 
   function compactPath(path: string): string {

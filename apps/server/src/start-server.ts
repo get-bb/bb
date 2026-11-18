@@ -55,6 +55,7 @@ import {
 } from "./services/system/periodic-sweeps.js";
 import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
 import { installProviderCliStatusPrewarm } from "./services/system/provider-cli-status-prewarm.js";
+import { installHostDerivedStateBaseline } from "./services/hosts/host-derived-state.js";
 import {
   createProviderRegistryService,
   type ProviderRegistryService,
@@ -486,6 +487,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pendingServerMove === null
       ? installProviderCliStatusPrewarm(sweepDeps)
       : null;
+  const hostDerivedStateBaseline =
+    pendingServerMove === null
+      ? installHostDerivedStateBaseline(sweepDeps)
+      : null;
   if (pendingServerMove === null) {
     releaseSendsHeldAcrossRestart(sweepDeps);
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
@@ -561,6 +566,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
       providerCliStatusPrewarm?.stop();
+      hostDerivedStateBaseline?.stop();
       eventLoopStallMonitor.stop();
       await performanceDiagnostics.stop();
       stopDaemonLivenessChecks();

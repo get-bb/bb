@@ -27,6 +27,7 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "zod": "^4.6.7"
   },
   "devDependencies": {

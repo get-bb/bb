@@ -76,6 +76,7 @@ import {
 } from "./services/plugins/plugin-server-access-registry.js";
 import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
+import { requestHostDerivedStateRefreshForPluginChange } from "./services/hosts/host-derived-state.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -142,6 +143,7 @@ import { apiJsonCompression } from "./api-response-compression.js";
 import { APP_SURFACE_WEB, type AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { registerServerMoveRoutes } from "./routes/server-move.js";
+import { registerServerSweepRoutes } from "./routes/server-sweeps.js";
 import {
   INTERNAL_SERVER_MOVE_PENDING_PATH,
   registerInternalServerMoveRoutes,
@@ -801,7 +803,9 @@ export function createApp(
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
+      requestHostDerivedStateRefreshForPluginChange(deps);
     },
+    onPluginsChanged: () => requestHostDerivedStateRefreshForPluginChange(deps),
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
         kind: "plugin-unregistered",
@@ -942,6 +946,7 @@ export function createApp(
   );
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
+  registerServerSweepRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");

@@ -210,9 +210,11 @@ message, Original }` — render fenced code blocks of chosen languages in
   public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu. Slot actions are limited to the main
-  timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, icon?, run }`. Activating it calls
+  assistant-message text-selection menu, in bb's thread view and in embedded
+  `ThreadChat`. `experimental_surfaces` limits it to `"thread-view"` and/or
+  `"embedded-chat"` (omitted = both); an empty or unknown list fails
+  registration. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never

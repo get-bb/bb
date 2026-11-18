@@ -50,6 +50,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: {
     name: "BB",
     github: "get-bb",

@@ -26,6 +26,7 @@
     "@bb/mobile-bridge": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@expo/ui": "58.0.27",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@hugeicons/core-free-icons": "~4.3.4",

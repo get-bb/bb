@@ -27,6 +27,7 @@ import type {
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeSkillRoot,
 } from "./types.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface RuntimeProviderProcess extends ManagedProcess {
   adapter: BridgeProtocolAdapter;
@@ -192,9 +193,13 @@ export class RuntimeProviderProcessManager {
 
       try {
         if (hasChildProcessExited(providerProcess.child)) {
-          const stderr = formatProviderStderr(
+          const formattedStderr = formatProviderStderr(
             providerProcess.stderrTail,
-          )?.slice(0, 500);
+          );
+          const stderr =
+            formattedStderr === null
+              ? null
+              : sliceUtf16Head(formattedStderr, 500);
           throw new Error(
             `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
               (stderr ? `\nstderr: ${stderr}` : ""),

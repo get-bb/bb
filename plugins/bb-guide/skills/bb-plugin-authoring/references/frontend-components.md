@@ -22,7 +22,8 @@ className?, leadingContent?, messageActions? }` —
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
   rendered in this instance's per-message action bar after the native
-  actions (slot-registered `messageAction`s do not appear in `ThreadChat`) — `roles` limits the action to `"user"` and/or
+  actions and the slot-registered `messageAction`s whose
+  `experimental_surfaces` include `"embedded-chat"` — `roles` limits the action to `"user"` and/or
   `"assistant"` messages (omitted = both), and `run(message)` receives the
   same narrow `ThreadChatMessageReference` as the `messageAction` slot;
   errors from `run` are contained and logged, never breaking the timeline.

@@ -85,8 +85,10 @@ import {
 import { listHostThreadIds } from "../../src/data/threads.js";
 import {
   deleteSweepItemFailures,
+  deleteSweepItemFailuresAfterAttempts,
   deleteSweepItemFailuresOfUnknownSweeps,
   getSweepItemFailure,
+  listAllSweepItemFailures,
   listSweepItemFailures,
   upsertSweepItemFailure,
 } from "../../src/data/sweep-item-failures.js";
@@ -692,6 +694,14 @@ const MAINTENANCE_CASES: readonly Case[] = [
   {
     name: `${SWEEP_ITEM_FAILURES}#deleteSweepItemFailuresOfUnknownSweeps`,
     run: (db) => deleteSweepItemFailuresOfUnknownSweeps(db, KNOWN_SWEEPS),
+  },
+  {
+    name: `${SWEEP_ITEM_FAILURES}#listAllSweepItemFailures`,
+    run: (db) => listAllSweepItemFailures(db),
+  },
+  {
+    name: `${SWEEP_ITEM_FAILURES}#deleteSweepItemFailuresAfterAttempts`,
+    run: (db) => deleteSweepItemFailuresAfterAttempts(db, 7),
   },
 ];
 

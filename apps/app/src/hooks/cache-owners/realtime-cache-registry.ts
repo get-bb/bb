@@ -535,7 +535,11 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
     dirty: [dirtyProjectCommandCatalogQueries],
   },
   "provider-cli-status-changed": {
-    dirty: [dirtyHostProviderCliStatusQueries],
+    dirty: [
+      dirtyHostProviderCliStatusQueries,
+      dirtySystemProviderQueries,
+      dirtyHostSystemExecutionOptionQueries,
+    ],
   },
   "provider-cli-install-jobs-changed": {
     dirty: [dirtyHostProviderCliInstallJobQueries],
