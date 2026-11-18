@@ -3915,6 +3915,28 @@ workspace. Omitting it keeps message routing.
 Stabilize after plugin consumers verify nested paths, source identity, missing
 files, containment and line locations.
 
+## Message Markdown (`MarkdownProps.experimental_message`)
+
+Requires SDK 0.6.157.
+
+The Markdown component accepts the `{ id, threadId, turnId, projectId }` of the
+chat message it shows, the same shape message directives and code-fence
+renderers receive. With it, the code-fence renderers and message directives
+plugins register render in the Markdown as they do in the thread timeline, and
+receive that object as their `message`. A plugin that draws its own view of a
+thread can then show a reply's inline UI, chips and embeds. Without it, or
+when `id` or `threadId` is blank, fences render as code and directives as their
+source text, as before. `openWorkspaceFile` is null.
+
+Core caller: the thread timeline. `ThreadTimelineRows` provides the registries
+through the same `MessageSlotRegistriesProvider`, and `ConversationMessageContent`
+mounts fences and directives through the same `useMessageDirectives` and
+`MessageCodeFences` (`apps/app/src/components/ui/message-markdown-slots.tsx`).
+
+Stabilize after plugin consumers verify streaming text (the host passes
+`streaming: false`), workspace file opening, and fence state keyed by a plugin
+message id across remounts.
+
 ## `PluginFileOpenerProps.experimental_lineRange` (`@get-bb/plugin-sdk/app`)
 
 Passes the owning file tab's latest one-based, inclusive
