@@ -105,6 +105,8 @@ OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
 does not expose compatible compaction. Check the actual agent's capabilities
 before attempting provider-specific recovery.
 
+OpenCode 2.x also reports compaction through its `opencode/compaction` session metadata. bb maps those notifications to the same compaction row.
+
 bb sends `clientCapabilities.session.compaction: {}` at `initialize`. An agent
 that reports its own compaction with the ACP `compaction_update` session update
 gets the same "Compacting context" row as Claude Code, Codex, and Pi, and a

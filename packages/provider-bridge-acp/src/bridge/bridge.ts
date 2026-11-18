@@ -124,6 +124,7 @@ import {
   acpAgentMessageChunkUpdateSchema,
   acpCompactionUpdateSchema,
   extractAcpContentText,
+  readOpenCodeCompactionUpdate,
   acpUsageUpdateSchema,
   type AcpCompactionUpdate,
   type AcpConfigStateResult,
@@ -3682,12 +3683,15 @@ function handleAgentNotification(
       };
     }
   }
-  const compactionUpdate = acpCompactionUpdateSchema.safeParse(
-    parsed.data.update,
-  );
+  const compactionUpdate =
+    session.dialect.id === "opencode"
+      ? readOpenCodeCompactionUpdate(parsed.data.update)
+      : undefined;
+  const update = compactionUpdate ?? parsed.data.update;
+  const parsedCompaction = acpCompactionUpdateSchema.safeParse(update);
   if (session.activePromptKind === "compaction") {
-    if (compactionUpdate.success) {
-      recordCompactionUpdateOutcome(session, compactionUpdate.data);
+    if (parsedCompaction.success) {
+      recordCompactionUpdateOutcome(session, parsedCompaction.data);
       return;
     }
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
@@ -3697,10 +3701,10 @@ function handleAgentNotification(
       session.compactionAgentMessage +=
         extractAcpContentText(chunk.data.content) ?? "";
     }
-  } else if (compactionUpdate.success) {
-    trackAgentCompaction(session, compactionUpdate.data);
+  } else if (parsedCompaction.success) {
+    trackAgentCompaction(session, parsedCompaction.data);
   }
-  emitSessionUpdate(session, parsed.data.update, rawUpdate);
+  emitSessionUpdate(session, update, rawUpdate);
 }
 
 type AcpCompactionUpdateOutcome =
