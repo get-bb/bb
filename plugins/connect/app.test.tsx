@@ -93,9 +93,12 @@ const signedInAccount = {
   },
 };
 
-async function clickSetUp(slot: ReturnType<typeof renderSlot>) {
+async function clickSetUpOnceStatusLoaded(slot: ReturnType<typeof renderSlot>) {
   const setUp = await slot.findByRole("button", { name: "Set up" });
-  await waitFor(() => expect(setUp.hasAttribute("disabled")).toBe(false));
+  await waitFor(() =>
+    expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+  );
+  await act(async () => {});
   fireEvent.click(setUp);
 }
 
@@ -1052,7 +1055,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    await clickSetUp(slot);
+    await clickSetUpOnceStatusLoaded(slot);
     await slot.findByRole("link", { name: "getbb.app" });
     expect(onSetupStarted).toHaveBeenCalledOnce();
     expect(slot.navigateCalls).toContainEqual({
@@ -1096,7 +1099,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    await clickSetUp(slot);
+    await clickSetUpOnceStatusLoaded(slot);
     const showCode = await slot.findByRole("button", {
       name: "Show pairing code",
     });
@@ -1150,7 +1153,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    await clickSetUp(slot);
+    await clickSetUpOnceStatusLoaded(slot);
     const toggle = await slot.findByRole("button", {
       name: "Have a pairing code?",
     });
@@ -1209,7 +1212,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    await clickSetUp(slot);
+    await clickSetUpOnceStatusLoaded(slot);
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
@@ -1260,7 +1263,7 @@ describe("connect setup guide section", () => {
       },
     );
 
-    await clickSetUp(slot);
+    await clickSetUpOnceStatusLoaded(slot);
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
@@ -1315,7 +1318,10 @@ describe("connect setup guide section", () => {
     );
 
     const setUp = await slot.findByRole("button", { name: "Set up" });
-    await waitFor(() => expect(setUp.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+    );
+    await act(async () => {});
     vi.useFakeTimers();
     await act(async () => fireEvent.click(setUp));
     await act(async () => vi.advanceTimersByTimeAsync(2_000));
@@ -1352,7 +1358,10 @@ describe("connect setup guide section", () => {
     );
 
     const setUp = await slot.findByRole("button", { name: "Set up" });
-    await waitFor(() => expect(setUp.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+    );
+    await act(async () => {});
     vi.useFakeTimers();
     await act(async () => fireEvent.click(setUp));
     await act(async () => vi.advanceTimersByTimeAsync(2_000));
@@ -1425,7 +1434,10 @@ describe("connect setup guide section", () => {
     );
 
     const setUp = await slot.findByRole("button", { name: "Set up" });
-    await waitFor(() => expect(setUp.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+    );
+    await act(async () => {});
     fireEvent.click(setUp);
     await slot.findByText("bb connect is on");
     slot.getByText("https://workstation.getbb.app");
