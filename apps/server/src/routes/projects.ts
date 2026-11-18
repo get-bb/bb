@@ -78,6 +78,7 @@ import {
   buildCommandListResponse,
   providerHasCommandSurface,
 } from "../services/threads/provider-command-typeahead.js";
+import { supportsBuiltinCompact } from "../services/threads/compaction-offer.js";
 import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
@@ -793,9 +794,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       buildCommandListResponse({
         commands: result.commands,
         liveCommands,
-        includeBuiltinCompact: deps.providerRegistry.supportsManualCompaction(
-          query.provider,
-        ),
+        includeBuiltinCompact: supportsBuiltinCompact(deps, {
+          providerId: query.provider,
+          threadId: null,
+        }),
         skillCatalog,
       }),
     );

@@ -119,6 +119,7 @@ import {
 import { parseStoredEvent } from "./thread-data.js";
 import { readThreadHeadState } from "./thread-head-state.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import { selectBusyRetryContextRows } from "./timeline-busy-retry-context.js";
 import {
   keepTimelineProjection,
   type BuiltTimelineProjection,
@@ -1327,17 +1328,30 @@ function selectStandardTimelineEventRows(
         : [],
     ),
   );
-  const requestKeys = rows
-    .filter((row) => row.type === "turn/input/accepted")
-    .filter(
-      (row) =>
-        !existingRequests.has(parseAcceptedInputClientRequestId(row, decode)),
-    )
-    .map((row) => ({
-      acceptedSequence: row.sequence,
-      threadId: thread.id,
-      requestId: parseAcceptedInputClientRequestId(row, decode),
-    }));
+  const requestKeys = [
+    ...rows.flatMap((row) =>
+      row.type === "turn/input/accepted"
+        ? [
+            {
+              acceptedSequence: row.sequence,
+              requestId: parseAcceptedInputClientRequestId(row, decode),
+            },
+          ]
+        : [],
+    ),
+    ...[...contextRows, ...rows].flatMap((row) =>
+      row.type === "client/turn/rejected"
+        ? [
+            {
+              acceptedSequence: row.sequence,
+              requestId: parseRejectedClientRequestId(row, decode),
+            },
+          ]
+        : [],
+    ),
+  ]
+    .filter((key) => !existingRequests.has(key.requestId))
+    .map((key) => ({ ...key, threadId: thread.id }));
   const requestedRows = listStoredClientTurnRequestRowsByKeys(db, {
     keys: requestKeys,
   }).filter((row) => row.sequence <= maxSeq);
@@ -1379,11 +1393,44 @@ function selectStandardTimelineEventRows(
   const visibleSequences = new Set(
     [...contextRows, ...rows].map((row) => row.sequence),
   );
+  const selectedRows = ensureTimelineWindowTurnStartedRows(db, {
+    threadId: thread.id,
+    requestTargetTurnIds: [...contextRows, ...requestedRows, ...rows].flatMap(
+      (row) => {
+        if (row.type !== "client/turn/requested") return [];
+        const event = decode(row);
+        if (event.type !== "client/turn/requested") return [];
+        return (event.target.kind === "steer" ||
+          event.target.kind === "auto") &&
+          event.target.expectedTurnId !== null
+          ? [event.target.expectedTurnId]
+          : [];
+      },
+    ),
+    rows: mergeStoredEventRowsById([
+      ...interruptionRows,
+      ...terminalContext,
+      ...contextRows,
+      ...requestedRows,
+      ...rows,
+    ]),
+  });
   return {
     budgetFloorSequence: budgetFloor,
     hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
+      busyRetryContextRows: measureThreadTimelineStage(
+        profile,
+        "group-context-query",
+        () =>
+          selectBusyRetryContextRows(db, {
+            decode,
+            maxSeq,
+            rows: selectedRows,
+            threadId: thread.id,
+          }),
+      ),
       contextOnlyInterruptionSequences: new Set(
         interruptionRows
           .filter((row) => !visibleSequences.has(row.sequence))
@@ -1395,30 +1442,7 @@ function selectStandardTimelineEventRows(
       hasOlderSegments: hasOlder,
       paginationPage:
         contentCursor === undefined ? page : { ...page, segmentLimit: 1 },
-      rows: ensureTimelineWindowTurnStartedRows(db, {
-        threadId: thread.id,
-        requestTargetTurnIds: [
-          ...contextRows,
-          ...requestedRows,
-          ...rows,
-        ].flatMap((row) => {
-          if (row.type !== "client/turn/requested") return [];
-          const event = decode(row);
-          if (event.type !== "client/turn/requested") return [];
-          return (event.target.kind === "steer" ||
-            event.target.kind === "auto") &&
-            event.target.expectedTurnId !== null
-            ? [event.target.expectedTurnId]
-            : [];
-        }),
-        rows: mergeStoredEventRowsById([
-          ...interruptionRows,
-          ...terminalContext,
-          ...contextRows,
-          ...requestedRows,
-          ...rows,
-        ]),
-      }),
+      rows: selectedRows,
       strategy:
         !hasOlder && page.kind === "latest" ? "full" : "standard-window",
     },
@@ -1647,9 +1671,20 @@ function buildThreadTimelineInternal(
       "summary-compaction",
       () => compactThreadTimelineSummaryEvents(decodedRawEvents),
     );
+    const { busyRetryContextRows } = eventSelection;
     const acceptedClientRequestContext: AcceptedClientRequestContext = {
-      acceptedClientRequestEvents: [],
-      rejectedClientRequestEvents: [],
+      acceptedClientRequestEvents: busyRetryContextRows.acceptedRows.map(
+        toThreadEventWithMeta,
+      ),
+      rejectedClientRequestEvents: busyRetryContextRows.rejectedRows.map(
+        toThreadEventWithMeta,
+      ),
+      requestedClientRequestEvents: busyRetryContextRows.requestedRows.map(
+        toThreadEventWithMeta,
+      ),
+      busyRetryGiveUpEvents: busyRetryContextRows.giveUpRows.map(
+        toThreadEventWithMeta,
+      ),
     };
     const eventProjection =
       cachedEventProjection ??
@@ -1997,6 +2032,8 @@ function buildThreadConversationRows(
       rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
         (row) => toThreadEventWithMeta(row),
       ),
+      requestedClientRequestEvents: [],
+      busyRetryGiveUpEvents: [],
     };
     const timeline = buildThreadTimelineFromEvents({
       acceptedClientRequestContext,
@@ -2063,6 +2100,8 @@ function selectThreadConversationOutline(
     rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
       (row) => toThreadEventWithMeta(row),
     ),
+    requestedClientRequestEvents: [],
+    busyRetryGiveUpEvents: [],
   };
   return {
     events: decodedRawEvents,

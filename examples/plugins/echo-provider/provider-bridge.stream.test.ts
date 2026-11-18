@@ -160,7 +160,7 @@ function completedItem<T extends ItemEvent["item"]["type"]>(
 describe("the echo bridge's grammar v3 stream", () => {
   it("runs the whole scripted turn through the runtime assembler", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: 3,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -173,6 +173,7 @@ describe("the echo bridge's grammar v3 stream", () => {
       providerThreadId,
       input: textInput(PROMPT),
       clientRequestId: "creq_ech2345678",
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: {
         ...FULL_OPTIONS,
         providerOptions: { shout: true, model: "echo-1", promptMode: null },
@@ -391,7 +392,7 @@ describe("the echo bridge's grammar v3 stream", () => {
 
   it("emits the malformed receipt payload the server must reject", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: 3,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -406,18 +407,30 @@ describe("the echo bridge's grammar v3 stream", () => {
 
   it("settles a zero-work turn and falls back to defaults without providerOptions", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: 3,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
     const providerThreadId = await startSession({});
-    await request("turn/start", {
+    const answer = await request("turn/start", {
       threadId: THREAD_ID,
       providerThreadId,
       input: textInput("/noop"),
       clientRequestId: "creq_ech2345679",
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: FULL_OPTIONS,
     });
+    expect(answer.result).toEqual({ admission: "accepted" });
+    const answeredAt = harness.messages.findIndex(
+      (message) => message.id === answer.id,
+    );
+    const openedAt = harness.messages.findIndex(
+      (message) =>
+        message.method === "thread/delta" &&
+        JSON.stringify(message.params).includes('"kind":"turn.open"'),
+    );
+    expect(openedAt).toBeGreaterThanOrEqual(0);
+    expect(openedAt).toBeLessThan(answeredAt);
     const zeroWork = assembledEvents().map((event) => event.type);
     expect(zeroWork).toEqual([
       "turn/started",
@@ -430,6 +443,7 @@ describe("the echo bridge's grammar v3 stream", () => {
       providerThreadId,
       input: textInput("plain"),
       clientRequestId: "creq_ech234567a",
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
       options: FULL_OPTIONS,
     });
     const events = assembledEvents();
@@ -463,7 +477,7 @@ describe("the echo bridge's grammar v3 stream", () => {
 describe("the echo bridge's provider maintenance", () => {
   it("answers provider/health with a ready result the runtime's schema accepts", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: 3,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });

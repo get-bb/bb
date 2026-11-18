@@ -1090,7 +1090,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(277);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(278);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1127,7 +1127,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(274)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(275)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(276)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(277)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(277)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(278)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -2072,7 +2073,7 @@ describe("host-daemon command schemas", () => {
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
-        model: "acp-default",
+        model: "claude-sonnet-5-5",
         serviceTier: "default",
         reasoningLevel: "medium",
         providerOptions: {},
@@ -2102,7 +2103,7 @@ describe("host-daemon command schemas", () => {
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "follow up", mentions: [] }],
       options: {
-        model: "acp-default",
+        model: "claude-sonnet-5-5",
         serviceTier: "default",
         reasoningLevel: "medium",
         providerOptions: {},

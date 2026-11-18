@@ -12,6 +12,20 @@ const THREAD_ID = "thr_manualcompactq";
 let harness: FakePiBridgeHarness | undefined;
 let nextId = 3000;
 
+const COMPACT_COMMAND_MENTION = {
+  start: 0,
+  end: 8,
+  resource: {
+    kind: "command",
+    trigger: "/",
+    name: "compact",
+    source: "command",
+    origin: "builtin",
+    label: "compact",
+    argumentHint: null,
+  },
+};
+
 afterEach(async () => {
   await harness?.teardown();
   harness = undefined;
@@ -42,6 +56,22 @@ async function start() {
       threadId: THREAD_ID,
       providerThreadId,
       clientRequestId,
+      input: [
+        {
+          type: "text",
+          text,
+          mentions: text === "/compact" ? [COMPACT_COMMAND_MENTION] : [],
+        },
+      ],
+      apply: { settings: [], sessionOptions: [], providerOptions: [] },
+      options: FULL_PERMISSION_OPTIONS,
+    });
+  const steer = (clientRequestId: string, text: string) =>
+    bridge.request(++nextId, "turn/steer", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId,
+      expectedTurnId: "turn-2",
       input: [{ type: "text", text, mentions: [] }],
       options: FULL_PERMISSION_OPTIONS,
     });
@@ -66,6 +96,7 @@ async function start() {
     bridge,
     providerThreadId,
     turn,
+    steer,
     promptCount,
     releaseCompaction,
     boundaries,
@@ -73,69 +104,166 @@ async function start() {
   };
 }
 
-it("holds a prompt sent while a Pi extension compacts and sends it when compaction ends", async () => {
+function compactionTurnKinds(deltas: Record<string, unknown>[]): string[] {
+  return deltas
+    .filter((d) =>
+      ["turn.open", "turn.boundary", "item.open", "item.close"].includes(
+        String(d.kind),
+      ),
+    )
+    .map((d) =>
+      d.kind === "item.open" || d.kind === "item.close"
+        ? `${String(d.kind)}:${String((d.item as { type?: unknown }).type)}`
+        : String(d.kind),
+    );
+}
+
+it("answers busy while a Pi extension compacts after a run, and gives the compaction its own turn", async () => {
   const t = await start();
   expect(
-    (await t.turn("creq_ab23456789", "/compact-on-settle")).error,
-  ).toBeUndefined();
+    (await t.turn("creq_ab23456789", "/compact-on-settle")).result,
+  ).toEqual({ admission: "accepted" });
   await t.bridge.waitFor(
-    () => t.boundaries().length >= 1,
-    "the compacting turn to settle",
+    () =>
+      compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).includes(
+        "item.open:compaction",
+      ),
+    "the compaction to open",
   );
+  expect(compactionTurnKinds(t.bridge.deltasOf(THREAD_ID))).toEqual([
+    "turn.open",
+    "turn.open",
+    "turn.boundary",
+    "turn.open",
+    "item.open:compaction",
+  ]);
 
-  const queued = await t.turn("creq_cd23456789", "sent during compaction");
-  expect(queued.error).toBeUndefined();
+  const steer = await t.steer("creq_cd2345678a", "steer during compaction");
+  expect(steer.result).toEqual({
+    admission: "busy",
+    message: "Pi is compacting the context.",
+  });
+
+  const refused = await t.turn("creq_cd23456789", "sent during compaction");
+  expect(refused.result).toEqual({
+    admission: "busy",
+    message: "Pi is compacting the context.",
+  });
+  expect(
+    t.bridge
+      .deltasOf(THREAD_ID)
+      .filter((d) => d.kind === "input.accepted")
+      .map((d) => d.clientRequestId),
+  ).toEqual(["creq_ab23456789"]);
   expect(t.promptCount()).toBe(1);
 
   t.releaseCompaction();
   await t.bridge.waitFor(
-    () => t.settledAfterReply("sent during compaction"),
-    "the queued prompt to run",
+    () => t.boundaries().length >= 2,
+    "the compaction turn to settle",
+  );
+  expect(compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).slice(3)).toEqual([
+    "turn.open",
+    "item.open:compaction",
+    "item.close:compaction",
+    "turn.boundary",
+  ]);
+
+  expect((await t.turn("creq_ef23456789", "after compaction")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(
+    () => t.settledAfterReply("after compaction"),
+    "the next prompt to run",
   );
   expect(t.boundaries().map((d) => d.status)).not.toContain("failed");
   expect(t.promptCount()).toBe(2);
 }, 30_000);
 
-it("retries a prompt Pi rejected before the bridge saw the compaction start", async () => {
+it("answers busy when Pi refuses a prompt for a compaction the bridge had not seen start", async () => {
   const t = await start();
   expect(
     (await t.turn("creq_ab23456789", "/compact-on-settle-late")).error,
   ).toBeUndefined();
-  await t.bridge.waitFor(
-    () => t.boundaries().length >= 1,
-    "the compacting turn to settle",
-  );
+  await t.bridge.waitFor(() => t.boundaries().length >= 1, "the run to settle");
 
-  const queued = await t.turn("creq_cd23456789", "raced with compaction");
-  expect(queued.error).toBeUndefined();
+  const refused = await t.turn("creq_cd23456789", "raced with compaction");
+  expect(refused.result).toMatchObject({ admission: "busy" });
   expect(t.promptCount()).toBe(2);
+  await t.bridge.waitFor(
+    () =>
+      compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).includes(
+        "item.open:compaction",
+      ),
+    "Pi to report the compaction",
+  );
 
   t.releaseCompaction();
   await t.bridge.waitFor(
+    () => t.boundaries().length >= 2,
+    "the compaction turn to settle",
+  );
+  expect(
+    (await t.turn("creq_ef23456789", "raced with compaction")).result,
+  ).toEqual({ admission: "accepted" });
+  await t.bridge.waitFor(
     () => t.settledAfterReply("raced with compaction"),
-    "the retried prompt to run",
+    "the resent prompt to run",
   );
   expect(t.boundaries().map((d) => d.status)).not.toContain("failed");
   expect(t.promptCount()).toBe(3);
 }, 30_000);
 
-it("drops a prompt held behind compaction when the thread is released", async () => {
+it("answers busy to a steer and a new turn while bb's /compact runs, and accepts the next turn after it ends", async () => {
   const t = await start();
-  expect(
-    (await t.turn("creq_ab23456789", "/compact-on-settle")).error,
-  ).toBeUndefined();
-  await t.bridge.waitFor(
-    () => t.boundaries().length >= 1,
-    "the compacting turn to settle",
-  );
-  expect((await t.turn("creq_cd23456789", "never sent")).error).toBeUndefined();
-
-  const released = await t.bridge.request(++nextId, "thread/stop", {
-    threadId: THREAD_ID,
-    providerThreadId: t.providerThreadId,
-    intent: "release",
-    activeTurnId: null,
+  expect((await t.turn("creq_ab23456789", "first")).result).toEqual({
+    admission: "accepted",
   });
-  expect(released.error).toBeUndefined();
+  await t.bridge.waitFor(() => t.settledAfterReply("first"), "the first run");
+
+  expect((await t.turn("creq_bc23456789", "/compact")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(
+    () =>
+      compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).includes(
+        "item.open:compaction",
+      ),
+    "the compaction to open",
+  );
+
+  const busy = { admission: "busy", message: "Pi is compacting the context." };
+  expect((await t.steer("creq_cd2345678a", "steer")).result).toEqual(busy);
+  expect((await t.turn("creq_cd23456789", "next turn")).result).toEqual(busy);
+  expect((await t.turn("creq_de23456789", "/compact")).result).toEqual(busy);
+  expect(
+    t.bridge
+      .deltasOf(THREAD_ID)
+      .filter((d) => d.kind === "input.accepted")
+      .map((d) => d.clientRequestId),
+  ).toEqual(["creq_ab23456789", "creq_bc23456789"]);
   expect(t.promptCount()).toBe(1);
+
+  t.releaseCompaction();
+  await t.bridge.waitFor(
+    () => t.boundaries().length >= 2,
+    "the compaction turn to settle",
+  );
+  expect(compactionTurnKinds(t.bridge.deltasOf(THREAD_ID)).slice(3)).toEqual([
+    "turn.open",
+    "turn.open",
+    "item.open:compaction",
+    "item.close:compaction",
+    "turn.boundary",
+  ]);
+
+  expect((await t.turn("creq_ef23456789", "next turn")).result).toEqual({
+    admission: "accepted",
+  });
+  await t.bridge.waitFor(
+    () => t.settledAfterReply("next turn"),
+    "the next turn to run",
+  );
+  expect(t.boundaries().map((d) => d.status)).not.toContain("failed");
+  expect(t.promptCount()).toBe(2);
 }, 30_000);

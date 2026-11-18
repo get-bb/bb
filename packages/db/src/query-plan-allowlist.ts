@@ -24,10 +24,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "turn/mainRun/updated is rare per thread; measured 0.013 ms vs 0.012 ms",
   ),
   acceptedEventsIndex(
-    `${EVENTS}#getStoredTurnRequestEventForTurn`,
-    "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
-  ),
-  acceptedEventsIndex(
     `${EVENTS}#getLatestStoredTurnSystemOperationData`,
     "system/operation events are rare per thread",
   ),

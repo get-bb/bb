@@ -15,6 +15,7 @@ import computerUseElicitation from "../fixtures/computer-use-elicitation.json";
 import mcpToolApprovalElicitation from "../fixtures/mcp-tool-approval-elicitation.json";
 import { CODEX_MCP_ELICITATION_KIND } from "../mcp-elicitation.js";
 import { handleLine } from "./bridge.js";
+import { NO_SESSION_SETTINGS_CHANGE } from "./fake-codex-app-server-harness.js";
 
 vi.mock("../native-application-icon.js", () => ({
   resolveNativeApplicationIconDataUrl: vi
@@ -235,6 +236,7 @@ async function runElicitation(args: {
     ).providerThreadId;
 
     harness.sendRequest(turnRequestId, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId,
       providerThreadId,
       input: [{ type: "text", text: "open Calculator", mentions: [] }],

@@ -146,13 +146,21 @@ describe("work state on a v1 connection", () => {
     expect(session.snapshot().work.state).toBe("idle");
   });
 
-  it("does not treat state_update as known on a v1 connection", () => {
-    const events = model().applySessionUpdate({
-      sessionUpdate: "state_update",
-      state: "running",
-    });
-    expect(events).toMatchObject([
-      { type: "unhandled", reason: "unknown-variant" },
+  it("ends agent-started work on an explicit idle state_update, so the next output starts new agent work", () => {
+    const session = model();
+    session.applySessionUpdate(agentChunk("background done"));
+    expect(
+      session.applySessionUpdate({
+        sessionUpdate: "state_update",
+        state: "idle",
+        stopReason: "end_turn",
+      }),
+    ).toMatchObject([
+      { type: "work", work: { state: "idle", stopReason: "end_turn" } },
+    ]);
+    expect(session.applySessionUpdate(agentChunk("again"))).toMatchObject([
+      { type: "work", work: { state: "running", initiator: "agent" } },
+      { type: "message" },
     ]);
   });
 });

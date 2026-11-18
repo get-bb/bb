@@ -7,6 +7,7 @@ import { z } from "zod";
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -87,6 +88,7 @@ async function startThread(
     scriptPath,
     JSON.stringify({
       requestLogPath,
+      steerRequiresActiveTurn: true,
       ...script,
       ...(initialGoalStatus === null ? {} : { initialGoalStatus }),
     }),
@@ -118,6 +120,7 @@ function sendUserTurn(
   text: string,
 ) {
   harness.sendRequest(requestId, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     clientRequestId,
@@ -176,29 +179,79 @@ it("leaves a thread without an active goal alone when stopping it", async () => 
   expect(goalStatesSent()).toEqual(["complete"]);
 });
 
-it("resumes a paused goal for /goal resume and binds the turn Codex starts to that message", async () => {
-  const providerThreadId = await startThread("paused");
-
-  const response = await sendUserTurn(
-    providerThreadId,
-    2,
-    "creq_garesume5z",
-    "/goal resume",
+function acceptedBeforeResponse(clientRequestId: string, requestId: number) {
+  const acceptedIndex = harness.messages.findIndex(
+    (message) =>
+      message.method === "thread/delta" &&
+      JSON.stringify(message.params).includes(
+        `"clientRequestId":"${clientRequestId}"`,
+      ),
   );
-
-  expect(response.error).toBeUndefined();
-  await vi.waitFor(() =>
-    expect(acceptedTurnIdFor("creq_garesume5z")).toMatch(/^turn-fx-/u),
+  const responseIndex = harness.messages.findIndex(
+    (message) => message.id === requestId && message.method === undefined,
   );
-  expect(goalSetParams()).toEqual([
-    { threadId: providerThreadId, origin: "user", status: "active" },
-  ]);
-  expect(
-    recordedRequests().some((request) => request.method === "turn/start"),
-  ).toBe(false);
-});
+  return acceptedIndex !== -1 && acceptedIndex < responseIndex;
+}
 
-it("finishes /goal resume when Codex does not start a goal turn", async () => {
+function turnLifecycleFor(clientRequestId: string) {
+  const turnId = acceptedTurnIdFor(clientRequestId);
+  return deltasSent()
+    .filter(
+      (delta) =>
+        delta.providerTurnId === turnId &&
+        (delta.kind === "turn.open" ||
+          delta.kind === "input.accepted" ||
+          delta.kind === "turn.boundary"),
+    )
+    .map((delta) =>
+      delta.kind === "turn.boundary"
+        ? `${delta.kind}:${String(delta.status)}`
+        : delta.kind,
+    );
+}
+
+it.each([
+  { order: "before", script: {} },
+  { order: "after", script: { goalTurnStartDelayMs: 50 } },
+])(
+  "binds /goal resume to the Goal turn Codex starts when Codex reports that turn $order it answers which turn is active",
+  async ({ script }) => {
+    const providerThreadId = await startThread("paused", script);
+
+    const response = await sendUserTurn(
+      providerThreadId,
+      2,
+      "creq_garesume5z",
+      "/goal resume",
+    );
+
+    expect(response.result).toEqual({ admission: "accepted" });
+    expect(acceptedBeforeResponse("creq_garesume5z", 2)).toBe(true);
+    expect(acceptedTurnIdFor("creq_garesume5z")).toMatch(/^turn-fx-/u);
+    await vi.waitFor(() =>
+      expect(turnLifecycleFor("creq_garesume5z")).toEqual([
+        "turn.open",
+        "input.accepted",
+        "turn.boundary:completed",
+      ]),
+    );
+    expect(
+      deltasSent().some(
+        (delta) =>
+          delta.kind === "turn.open" &&
+          String(delta.providerTurnId).startsWith("zero-work-"),
+      ),
+    ).toBe(false);
+    expect(goalSetParams()).toEqual([
+      { threadId: providerThreadId, origin: "user", status: "active" },
+    ]);
+    expect(
+      recordedRequests().some((request) => request.method === "turn/start"),
+    ).toBe(false);
+  },
+);
+
+it("finishes /goal resume with an empty turn when Codex starts no Goal turn", async () => {
   const providerThreadId = await startThread("paused", {
     goalResumeStartsNoTurn: true,
   });
@@ -210,33 +263,46 @@ it("finishes /goal resume when Codex does not start a goal turn", async () => {
     "/goal resume",
   );
 
-  expect(response.error).toBeUndefined();
-  await vi.waitFor(
-    () => expect(acceptedTurnIdFor("creq_garesume2z")).toMatch(/^zero-work-/u),
-    { timeout: 8_000 },
-  );
-}, 15_000);
-
-it("clears the goal for /goal clear without starting a Codex turn", async () => {
-  const providerThreadId = await startThread("paused");
-
-  const response = await sendUserTurn(
-    providerThreadId,
-    2,
-    "creq_gawipe22zz",
-    "/goal clear",
-  );
-
-  expect(response.error).toBeUndefined();
-  await vi.waitFor(() =>
-    expect(acceptedTurnIdFor("creq_gawipe22zz")).toMatch(/^zero-work-/u),
-  );
-  const methods = recordedRequests().map((request) => request.method);
-  expect(methods).toContain("thread/goal/clear");
-  expect(methods).not.toContain("turn/start");
+  expect(response.result).toEqual({ admission: "accepted" });
+  expect(acceptedBeforeResponse("creq_garesume2z", 2)).toBe(true);
+  expect(acceptedTurnIdFor("creq_garesume2z")).toMatch(/^zero-work-/u);
+  expect(turnLifecycleFor("creq_garesume2z")).toEqual([
+    "turn.open",
+    "input.accepted",
+    "turn.boundary:completed",
+  ]);
+  expect(goalStatesSent().at(-1)).toBe("active");
 });
 
-it("rejects /goal resume when the goal is already active", async () => {
+it.each([
+  { command: "clear", status: "paused", method: "thread/goal/clear" },
+  { command: "pause", status: "active", method: "thread/goal/set" },
+])(
+  "settles /goal $command on the Codex reply without starting a Codex turn",
+  async ({ command, status, method }) => {
+    const providerThreadId = await startThread(status);
+
+    const response = await sendUserTurn(
+      providerThreadId,
+      2,
+      "creq_gawipe22zz",
+      `/goal ${command}`,
+    );
+
+    expect(response.result).toEqual({ admission: "accepted" });
+    expect(acceptedBeforeResponse("creq_gawipe22zz", 2)).toBe(true);
+    expect(turnLifecycleFor("creq_gawipe22zz")).toEqual([
+      "turn.open",
+      "input.accepted",
+      "turn.boundary:completed",
+    ]);
+    const methods = recordedRequests().map((request) => request.method);
+    expect(methods).toContain(method);
+    expect(methods).not.toContain("turn/start");
+  },
+);
+
+it("rejects /goal resume when the goal is already active without opening a turn", async () => {
   const providerThreadId = await startThread("active");
 
   const response = await sendUserTurn(
@@ -246,8 +312,13 @@ it("rejects /goal resume when the goal is already active", async () => {
     "/goal resume",
   );
 
-  expect(response.error?.message).toBe("The Goal is already active.");
+  expect(response.result).toEqual({
+    admission: "rejected",
+    message: "The Goal is already active.",
+  });
   expect(goalSetParams()).toEqual([]);
+  expect(acceptedTurnIdFor("creq_garesume3z")).toBeUndefined();
+  expect(deltasSent().some((delta) => delta.kind === "turn.open")).toBe(false);
 });
 
 it("sends other /goal text to Codex as a normal prompt", async () => {

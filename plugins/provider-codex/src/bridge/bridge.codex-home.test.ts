@@ -102,33 +102,3 @@ it("lists models from the requested CODEX_HOME", async () => {
 
   expect(await launchedHomes()).toEqual([WORK_HOME, INHERITED_HOME]);
 }, 30_000);
-
-it("rebuilds the session on the new home when a turn changes CODEX_HOME", async () => {
-  const threadId = "thr_home_change";
-  const providerThreadId = await startThread(1, threadId, {
-    CODEX_HOME: PERSONAL_HOME,
-  });
-  const turns = [
-    { id: 2, home: PERSONAL_HOME },
-    { id: 3, home: WORK_HOME },
-  ];
-  for (const turn of turns) {
-    harness.sendRequest(turn.id, "turn/start", {
-      threadId,
-      providerThreadId,
-      clientRequestId: `creq_hxmechng${turn.id}x`,
-      input: [{ type: "text", text: "say hello", mentions: [] }],
-      options: sessionOptions({ CODEX_HOME: turn.home }),
-    });
-    expect((await harness.waitForResponse(turn.id)).error).toBeUndefined();
-  }
-
-  expect(await launchedHomes()).toEqual([PERSONAL_HOME, WORK_HOME]);
-  expect(
-    harness.messages.filter((message) => message.method === "session/replaced"),
-  ).toEqual([
-    expect.objectContaining({
-      params: expect.objectContaining({ threadId, providerThreadId }),
-    }),
-  ]);
-}, 30_000);

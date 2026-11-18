@@ -67,6 +67,7 @@ const POST_COMMIT_EFFECT_KINDS: ReadonlySet<ThreadLifecycleEffect["kind"]> =
     "notify-parent",
     "prune-idle",
     "redeliver-steer",
+    "requeue-busy-request",
     "send-stop",
     "sync-title",
     "turn-ended",

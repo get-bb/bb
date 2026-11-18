@@ -49,10 +49,11 @@ type ThreadHeadStateThread = Pick<Thread, "id" | "providerId" | "status">;
 
 export function resolveThreadHeadStateOptions(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
-  providerId: string,
+  thread: Pick<Thread, "id" | "providerId">,
 ): ThreadHeadStateOptions {
+  const { providerId } = thread;
   return {
-    compactionOfferEnabled: isCompactionOfferEnabled(deps, providerId),
+    compactionOfferEnabled: isCompactionOfferEnabled(deps, thread),
     extensionStateKinds: Object.entries(
       deps.providerRegistry.get(providerId)?.info.extensionKinds ?? {},
     ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),

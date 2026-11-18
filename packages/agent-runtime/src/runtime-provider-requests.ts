@@ -1,3 +1,4 @@
+import type { RuntimeSessionStates } from "./runtime-session-state.js";
 import type { ChildProcess } from "node:child_process";
 import type {
   AgentRuntimeExecutionOptions,
@@ -77,6 +78,17 @@ export class RuntimeProviderRequests {
     return true;
   }
 
+  hasThread(threadId: string): boolean {
+    for (const calls of this.pending.values()) {
+      for (const call of calls.values()) {
+        if (call.threadId === threadId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   cancelThread(threadId: string, turnId?: string): void {
     for (const [scope, calls] of this.pending) {
       for (const [requestId, call] of calls) {
@@ -122,6 +134,7 @@ interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
   onToolCall: AgentRuntimeOptions["onToolCall"];
   interactiveRequests: RuntimeProviderRequests;
   toolCalls: RuntimeProviderRequests;
+  sessions: Pick<RuntimeSessionStates, "beginInteraction" | "endInteraction">;
   resolveThreadId: (
     args: ResolveRuntimeProviderRequestThreadIdArgs,
   ) => string | null;
@@ -360,8 +373,12 @@ function handleInteractiveProviderRequest(
     turnId: resolvedTurnId,
   });
   if (!controller) return true;
+  args.sessions.beginInteraction(resolvedThreadId);
   void args
     .onInteractiveRequest(scopedInteractiveReq, controller.signal)
+    .finally(() => {
+      args.sessions.endInteraction(resolvedThreadId);
+    })
     .then((resolution) => {
       if (controller.signal.aborted) return;
       const result = buildInteractiveResponse({

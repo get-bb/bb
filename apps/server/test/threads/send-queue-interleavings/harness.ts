@@ -390,8 +390,8 @@ class FakeDaemon {
     if (command.target.mode === "start" && this.activeTurn !== null) {
       this.respond(held.request, held.sessionId, {
         ok: false,
-        errorCode: "competing_turn",
-        errorMessage: `Refusing to start a competing turn for thread "${this.threadId}" while another turn is active or starting`,
+        errorCode: "thread_busy",
+        errorMessage: "Another turn is active or starting.",
       });
       return;
     }

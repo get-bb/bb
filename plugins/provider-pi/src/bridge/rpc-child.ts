@@ -116,6 +116,10 @@ export class PiRpcChild {
         this.stderrTail = `${this.stderrTail}pi bridge channel: ${error.message}\n`;
         this.kill();
       },
+      onClose: () => {
+        this.stderrTail = `${this.stderrTail}pi bridge channel closed\n`;
+        this.kill();
+      },
     });
     const launch = resolvePiLaunch(args.env);
     try {

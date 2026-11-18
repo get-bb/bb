@@ -45,6 +45,12 @@ const STEER_PROMPT_TEXT = "also check git log";
 const SECOND_PROMPT_TEXT = "now summarize";
 const RESUMED_PROMPT_TEXT = "and once more after the resume";
 
+const NO_SETTINGS_APPLY = {
+  settings: [],
+  sessionOptions: [],
+  providerOptions: [],
+};
+
 const FIRST_REQUEST_ID = "creq_23456789ab";
 const STEER_REQUEST_ID = "creq_23456789ac";
 const SECOND_REQUEST_ID = "creq_23456789ad";
@@ -362,6 +368,7 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
       input: promptInput(FIRST_PROMPT_TEXT),
       clientRequestId: FIRST_REQUEST_ID,
       options: CANONICAL_OPTIONS,
+      apply: NO_SETTINGS_APPLY,
     });
     await bridge.waitForResponse(2);
     await settle(bridge, collect);
@@ -387,6 +394,7 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
       input: promptInput(SECOND_PROMPT_TEXT),
       clientRequestId: SECOND_REQUEST_ID,
       options: CANONICAL_OPTIONS,
+      apply: NO_SETTINGS_APPLY,
     });
     await bridge.waitForResponse(4);
     await settle(bridge, collect);
@@ -407,6 +415,7 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
       input: promptInput(RESUMED_PROMPT_TEXT),
       clientRequestId: RESUMED_REQUEST_ID,
       options: CANONICAL_OPTIONS,
+      apply: NO_SETTINGS_APPLY,
     });
     await bridge.waitForResponse(6);
     await settle(bridge, collect);
@@ -476,6 +485,7 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "thread/tokenUsage/updated",
   "turn/completed",
+  "thread/contextWindowUsage/updated",
   "turn/started",
   "turn/input/accepted",
   "item/started:agentMessage",

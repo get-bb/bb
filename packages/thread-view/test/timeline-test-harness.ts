@@ -94,6 +94,7 @@ type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   inputGroups?: PromptInput[][];
   requestId?: ClientTurnRequestId;
   requestMethod?: "thread/start" | "turn/start";
+  retryOf?: { attempt: number; requestId: ClientTurnRequestId };
   senderThreadId?: string | null;
   source?: "spawn" | "tell";
   systemMessageKind?: SystemMessageKind;
@@ -696,6 +697,12 @@ export function createTimelineEventFactory(
         data: {
           direction: "outbound",
           requestId: args.requestId ?? clientRequestIdForSequence(base.seq),
+          ...(args.retryOf !== undefined
+            ? {
+                retryOfRequestId: args.retryOf.requestId,
+                retryAttempt: args.retryOf.attempt,
+              }
+            : {}),
           source: args.source ?? "tell",
           initiator,
           senderThreadId,
@@ -1539,11 +1546,12 @@ export function renderTimelineFixture(
           threadName: args.projectionOptions.threadName ?? "",
           turnMessageDetail: "full",
         });
-  const pendingMessages = buildPendingSteerMessagesFromEvents(
+  const steerMessages = buildPendingSteerMessagesFromEvents(
     EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
     decodedEvents,
     commonProjectionOptions,
   );
+  const pendingMessages = [...steerMessages.refused, ...steerMessages.steers];
   const lazyRows = rows.map((row) => {
     if (row.kind !== "turn") return row;
     const details = buildThreadTimelineTurnDetailsFromEvents({

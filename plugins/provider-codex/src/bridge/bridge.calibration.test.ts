@@ -26,6 +26,7 @@ import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -360,6 +361,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
     await settle(1);
 
     bridge.sendRequest(2, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId: THREAD_ID,
       input: promptInput("check the tree"),
@@ -387,6 +389,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
     await settle(3);
 
     bridge.sendRequest(4, "turn/start", {
+      apply: NO_SESSION_SETTINGS_CHANGE,
       threadId: THREAD_ID,
       providerThreadId: THREAD_ID,
       input: promptInput("now summarize"),

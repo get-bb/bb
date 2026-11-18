@@ -1,21 +1,28 @@
 import { deepStrictEqual } from "node:assert";
 import type { RuntimePermissionPolicy } from "@bb/domain";
+import {
+  EMPTY_SESSION_SETTINGS_APPLY,
+  classifySessionSettingChange,
+  type SessionSettingsApply,
+  type SessionSettingsDeclaration,
+} from "../session-contract.js";
 
 type PermissionMode = RuntimePermissionPolicy["permissionMode"];
 
 export interface PermissionChangeCase {
   before: PermissionMode;
   after: PermissionMode;
-  method: "turn/start" | "turn/steer";
 }
 
 export interface PermissionChangeDriver {
+  initialize(): Promise<void>;
+  declaration(): SessionSettingsDeclaration;
   start(options: RuntimePermissionPolicy): Promise<void>;
-  dispatch(
-    method: PermissionChangeCase["method"],
+  turn(
     options: RuntimePermissionPolicy,
-    hold: boolean,
+    apply: SessionSettingsApply,
   ): Promise<void>;
+  resume(options: RuntimePermissionPolicy): Promise<void>;
   observe(): Promise<{ mode: PermissionMode; sandbox: boolean }>;
 }
 
@@ -25,13 +32,7 @@ export function permissionChangeCases(
   return modes.flatMap((before) =>
     modes
       .filter((after) => after !== before)
-      .flatMap((after) =>
-        (["turn/start", "turn/steer"] as const).map((method) => ({
-          before,
-          after,
-          method,
-        })),
-      ),
+      .map((after) => ({ before, after })),
   );
 }
 
@@ -64,21 +65,33 @@ export async function runPermissionChangeCase(
   driver: PermissionChangeDriver,
   scenario: PermissionChangeCase,
 ): Promise<void> {
-  await driver.start(permissionChangeOptions(scenario.before));
-  await driver.dispatch(
-    "turn/start",
-    permissionChangeOptions(scenario.before),
-    scenario.method === "turn/steer",
-  );
+  await driver.initialize();
+  const before = permissionChangeOptions(scenario.before);
+  const after = permissionChangeOptions(scenario.after);
+  await driver.start(before);
+  await driver.turn(before, EMPTY_SESSION_SETTINGS_APPLY);
   deepStrictEqual(await driver.observe(), {
     mode: scenario.before,
     sandbox: scenario.before !== "full",
   });
-  await driver.dispatch(
-    scenario.method,
-    permissionChangeOptions(scenario.after),
-    false,
-  );
+  const apply = classifySessionSettingChange(driver.declaration(), {
+    setting: "permission",
+    value: scenario.after,
+  });
+  if (apply === "fresh") {
+    throw new Error(
+      `the bridge declares a permission change to ${scenario.after} fresh; bb could never apply it to a running session`,
+    );
+  }
+  if (apply === "resume") {
+    await driver.resume(after);
+    await driver.turn(after, EMPTY_SESSION_SETTINGS_APPLY);
+  } else {
+    await driver.turn(after, {
+      ...EMPTY_SESSION_SETTINGS_APPLY,
+      settings: ["permission"],
+    });
+  }
   deepStrictEqual(await driver.observe(), {
     mode: scenario.after,
     sandbox: scenario.after !== "full",

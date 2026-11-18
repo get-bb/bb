@@ -1,17 +1,17 @@
 {
   "provider": "acp-opencode",
   "cell": "settings-steer",
-  "threadId": "thr_db9ad7d1af",
+  "threadId": "thr_79b4443751",
   "scope": "thread",
   "cliVersion": "opencode 2.0.22",
-  "recordedAt": "2026-11-14",
+  "recordedAt": "2026-11-19",
   "description": "Long turns, each steered with one changed setting: model, env var, permission mode, reasoning level.",
   "note": "",
   "bridgeRuns": 1,
   "lines": {
-    "runtime→bridge": 13,
-    "bridge→runtime": 122,
-    "provider→bridge": 111,
-    "bridge→provider": 29
+    "runtime→bridge": 15,
+    "bridge→runtime": 124,
+    "provider→bridge": 104,
+    "bridge→provider": 22
   }
 }

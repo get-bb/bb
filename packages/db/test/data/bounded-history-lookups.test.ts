@@ -7,7 +7,6 @@ import {
   hasStoredProviderTurnCompletedSince,
   insertEvents,
   isStoredTurnContextCompactionOnly,
-  isStoredTurnProviderCompactionRunning,
   listLatestTurnFinalAgentMessageEventRows,
   listStoredTaskTurnRequestEvents,
   listStoredTimelineThreadWindowEventRows,
@@ -298,50 +297,6 @@ describe("history lookups bounded by existing indexes", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([3]);
-  });
-  it("reports a provider compaction running only while the turn's latest root compaction has started", () => {
-    const { db, thread } = setup();
-    const running = (turnId: string) =>
-      isStoredTurnProviderCompactionRunning(db, { threadId: thread.id, turnId });
-    const compaction = (
-      sequence: number,
-      type: "item/started" | "item/completed",
-      turnId: string,
-      itemId: string,
-      parentToolCallId?: string,
-    ) =>
-      event(thread.id, sequence, type, {
-        itemId,
-        itemKind: "contextCompaction",
-        turnId,
-        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-      });
-
-    insertEvents(db, noopNotifier, [
-      event(thread.id, 1, "turn/started", { turnId: "turn-1" }),
-      compaction(2, "item/started", "turn-1", "compact-1"),
-    ]);
-    expect(running("turn-1")).toBe(true);
-    expect(running("turn-2")).toBe(false);
-
-    insertEvents(db, noopNotifier, [
-      compaction(3, "item/completed", "turn-1", "compact-1"),
-      compaction(4, "item/started", "turn-1", "nested", "call-1"),
-    ]);
-    expect(running("turn-1")).toBe(false);
-
-    insertEvents(db, noopNotifier, [
-      compaction(5, "item/started", "turn-1", "compact-2"),
-    ]);
-    expect(running("turn-1")).toBe(true);
-
-    insertEvents(db, noopNotifier, [
-      event(thread.id, 6, "turn/input/accepted", {
-        data: { clientRequestId: "creq_23456789aa" },
-        turnId: "turn-1",
-      }),
-    ]);
-    expect(running("turn-1")).toBe(false);
   });
 
   it("treats a turn as compaction-only when its only root completed items are compactions", () => {

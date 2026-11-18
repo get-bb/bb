@@ -79,7 +79,7 @@ describe.skipIf(SOURCE_DB === undefined)(
           const thread = getThread(db, threadId);
           if (thread === null) throw new Error(`missing thread ${threadId}`);
           const { response } = buildThreadTimelineWithProfile(db, thread, {
-            ...resolveThreadHeadStateOptions(deps, thread.providerId),
+            ...resolveThreadHeadStateOptions(deps, thread),
             completedTurnDisplay: resolveThreadCompletedTurnDisplay(
               deps,
               settings,

@@ -162,7 +162,7 @@ async function createRaceHarness(): Promise<RaceHarness> {
     createRuntime: (options) => {
       runtime = createAgentRuntime({
         ...options,
-        env: { ...options.env, ...record.env },
+        getProcessEnv: () => ({ ...options.getProcessEnv?.(), ...record.env }),
       });
       return runtime;
     },

@@ -80,8 +80,8 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   sandboxEnabled: boolean;
   fullAccessApprovalsEnabled: boolean;
   commandDescriptionsEnabled: boolean;
-  memoryEnabled?: boolean | undefined;
-  providerSubagentsEnabled?: boolean | undefined;
+  memoryEnabled: boolean;
+  providerSubagentsEnabled: boolean;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 };
 
@@ -184,13 +184,30 @@ interface BuildClaudeSessionParamsArgs {
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 }
 
+function resolveClaudeProviderSettings(
+  providerOptions: z.infer<typeof claudeProviderOptionsSchema>,
+) {
+  return {
+    workflowsEnabled: providerOptions.workflowsEnabled ?? false,
+    chromeEnabled: providerOptions.chromeEnabled ?? false,
+    disable1MContext: providerOptions.disable1MContext ?? false,
+    artifactsEnabled: providerOptions.artifactsEnabled ?? false,
+    sandboxEnabled: providerOptions.sandboxEnabled ?? true,
+    fullAccessApprovalsEnabled:
+      providerOptions.fullAccessApprovalsEnabled ?? false,
+    commandDescriptionsEnabled:
+      providerOptions.commandDescriptionsEnabled ?? false,
+    memoryEnabled: providerOptions.memoryEnabled ?? true,
+    providerSubagentsEnabled: providerOptions.providerSubagentsEnabled ?? true,
+  };
+}
+
 export function buildClaudeSessionParams(
   args: BuildClaudeSessionParamsArgs,
 ): Record<string, unknown> {
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
-  const config = buildClaudeCodeConfig(args.options.envVars);
   return buildInternalSessionParams({
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
@@ -202,17 +219,7 @@ export function buildClaudeSessionParams(
       ...args.options,
       skillRoots: args.skillRoots,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
-      workflowsEnabled: providerOptions.workflowsEnabled ?? false,
-      chromeEnabled: providerOptions.chromeEnabled ?? false,
-      disable1MContext: providerOptions.disable1MContext ?? false,
-      artifactsEnabled: providerOptions.artifactsEnabled ?? false,
-      sandboxEnabled: providerOptions.sandboxEnabled ?? true,
-      fullAccessApprovalsEnabled:
-        providerOptions.fullAccessApprovalsEnabled ?? false,
-      commandDescriptionsEnabled:
-        providerOptions.commandDescriptionsEnabled ?? false,
-      memoryEnabled: providerOptions.memoryEnabled,
-      providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
+      ...resolveClaudeProviderSettings(providerOptions),
     },
   });
 }
@@ -244,7 +251,7 @@ export function buildClaudeTurnParams(
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
-  const config = buildClaudeCodeConfig(args.options.envVars);
+  const claudeCodePermissionMode = providerOptions.claudeCodePermissionMode;
   return {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
@@ -253,31 +260,21 @@ export function buildClaudeTurnParams(
       : {}),
     input: stripClaudePlanCommandMentions({
       input: args.input,
-      claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
+      claudeCodePermissionMode,
     }),
     ...(args.options.model ? { model: args.options.model } : {}),
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }
       : {}),
-    ...(args.options.serviceTier !== undefined
-      ? { serviceTier: args.options.serviceTier }
-      : {}),
-    workflowsEnabled: providerOptions.workflowsEnabled,
-    chromeEnabled: providerOptions.chromeEnabled,
-    disable1MContext: providerOptions.disable1MContext,
-    artifactsEnabled: providerOptions.artifactsEnabled,
-    sandboxEnabled: providerOptions.sandboxEnabled,
-    fullAccessApprovalsEnabled: providerOptions.fullAccessApprovalsEnabled,
-    commandDescriptionsEnabled: providerOptions.commandDescriptionsEnabled,
-    memoryEnabled: providerOptions.memoryEnabled,
-    providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
-    ...(config ? { config } : {}),
+    serviceTier: args.options.serviceTier ?? "default",
+    ...resolveClaudeProviderSettings(providerOptions),
     permissionMode: toClaudePermissionMode(args.options),
     permissionScope: args.options.permissionScope,
-    additionalWorkspaceWriteRoots: providerOptions.additionalWorkspaceWriteRoots ?? [],
+    additionalWorkspaceWriteRoots:
+      providerOptions.additionalWorkspaceWriteRoots ?? [],
     permissionEscalation: args.options.permissionEscalation,
-    ...(providerOptions.claudeCodePermissionMode !== undefined
-      ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }
+    ...(claudeCodePermissionMode !== undefined
+      ? { claudeCodePermissionMode }
       : {}),
   };
 }

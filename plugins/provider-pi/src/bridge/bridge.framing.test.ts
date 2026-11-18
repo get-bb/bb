@@ -54,6 +54,7 @@ it("carries U+2028/U+2029 through stdout events, RPC responses, and both channel
     providerThreadId,
     clientRequestId: "creq_ab23456789",
     input: [{ type: "text", text, mentions: [] }],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
   await harness.waitForMessage(
@@ -91,6 +92,7 @@ it("carries U+2028/U+2029 through stdout events, RPC responses, and both channel
             mentions: [],
           },
         ],
+        apply: { settings: [], sessionOptions: [], providerOptions: [] },
         options: FULL_PERMISSION_OPTIONS,
       },
     }),

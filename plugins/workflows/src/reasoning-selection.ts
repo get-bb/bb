@@ -1,7 +1,7 @@
 export interface WorkflowReasoningModel {
   reasoningDiscovery: "known" | "unknown";
   supportedReasoningEfforts: Array<{ reasoningEffort: string }>;
-  defaultReasoningEffort: string;
+  defaultReasoningEffort?: string;
 }
 
 export function resolveWorkflowReasoning(
@@ -17,7 +17,7 @@ export function resolveWorkflowReasoning(
     return requested;
   }
   if (inherited) {
-    return model.defaultReasoningEffort;
+    return model.defaultReasoningEffort ?? null;
   }
   if (
     model.reasoningDiscovery === "known" &&
