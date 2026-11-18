@@ -380,6 +380,7 @@ function PluginThreadChatBody({
                   ? environmentHost.name
                   : null,
               leadingContent: leadingContent ?? null,
+              messageActionSurface: "thread-chat",
               onForkMessage: isForkAvailable ? handleForkMessage : null,
               onTitleAction: handleTimelineTitleAction,
               unreadDividerAutoScroll: unreadDividerState.autoScroll,

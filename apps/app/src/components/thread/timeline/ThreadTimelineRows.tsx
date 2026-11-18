@@ -138,6 +138,7 @@ import {
 } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useSurfaceMessageActionSlots } from "@/lib/message-action-surface";
 import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
 import {
   usePluginComposerHost,
@@ -2334,7 +2335,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     props.initialExpanded ?? EMPTY_ROW_ID_SET,
   );
   const projectId = props.projectId;
-  const messageActionSlots = usePluginSlotKind("messageActions");
+  const messageActionSlots = useSurfaceMessageActionSlots();
   const messageMetadataSlots = usePluginSlotKind("messageMetadata");
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const timelineThreadId = props.threadId;

@@ -154,6 +154,7 @@ function screenElement(presentation: ThreadScreenPresentation) {
         consumerMessageActions: [],
         environmentHostName: null,
         leadingContent: null,
+        messageActionSurface: "thread",
         onForkMessage: null,
         onTitleAction: null,
         unreadDividerAutoScroll: false,

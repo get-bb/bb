@@ -202,6 +202,7 @@ vi.mock("./useThreadDetailThread", () => ({
 
 interface ThreadScreenSurface {
   name: string;
+  messageActionSurface: "thread" | "thread-chat";
   hasComposer: boolean;
   render: (hosts: SurfaceHosts) => ReactNode;
   openedReadme: (hosts: SurfaceHosts) => boolean;
@@ -237,6 +238,7 @@ function pluginOpenedReadme({ openFilePreview }: SurfaceHosts) {
 const SURFACES: readonly ThreadScreenSurface[] = [
   {
     name: "thread page",
+    messageActionSurface: "thread",
     hasComposer: true,
     render: ({ sink }) => (
       <DefaultPaneContextProvider
@@ -268,18 +270,21 @@ const SURFACES: readonly ThreadScreenSurface[] = [
   },
   {
     name: "plugin ThreadChat full",
+    messageActionSurface: "thread-chat",
     hasComposer: true,
     render: pluginThreadChat("full"),
     openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat compact",
+    messageActionSurface: "thread-chat",
     hasComposer: true,
     render: pluginThreadChat("compact"),
     openedReadme: pluginOpenedReadme,
   },
   {
     name: "plugin ThreadChat timeline",
+    messageActionSurface: "thread-chat",
     hasComposer: false,
     render: pluginThreadChat("timeline"),
     openedReadme: pluginOpenedReadme,
@@ -297,7 +302,27 @@ beforeEach(() => {
     "provider",
     makePluginRegistrationSet({
       messageActions: [
-        { id: "summarize", title: "Summarize", icon: "Zap", run: vi.fn() },
+        {
+          id: "summarize",
+          title: "Summarize",
+          icon: "Zap",
+          experimental_surfaces: ["thread", "thread-chat"],
+          run: vi.fn(),
+        },
+        {
+          id: "thread-view-only",
+          title: "Thread view only",
+          icon: "Zap",
+          experimental_surfaces: ["thread"],
+          run: vi.fn(),
+        },
+        {
+          id: "thread-chat-only",
+          title: "ThreadChat only",
+          icon: "Zap",
+          experimental_surfaces: ["thread-chat"],
+          run: vi.fn(),
+        },
       ],
     }),
   );
@@ -341,6 +366,20 @@ describe.each(SURFACES)("ThreadScreen surface contract: $name", (surface) => {
     const { container } = renderSurface(surface);
     const row = await findRow(container, "assistant_row");
     expect(row.querySelector('[aria-label="Summarize"]')).not.toBeNull();
+  });
+
+  it("shows a message action only on the surfaces it declares", async () => {
+    const { container } = renderSurface(surface);
+    const row = await findRow(container, "assistant_row");
+    await waitFor(() =>
+      expect(row.querySelector('[aria-label="Summarize"]')).not.toBeNull(),
+    );
+    expect(row.querySelector('[aria-label="Thread view only"]') !== null).toBe(
+      surface.messageActionSurface === "thread",
+    );
+    expect(row.querySelector('[aria-label="ThreadChat only"]') !== null).toBe(
+      surface.messageActionSurface === "thread-chat",
+    );
   });
 
   it("opens a changed file from its timeline title", async () => {

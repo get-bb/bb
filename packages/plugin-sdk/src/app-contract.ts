@@ -3620,6 +3620,9 @@ export interface ExperimentalMessageMetadataRegistration {
   component: ComponentType<ExperimentalMessageMetadataProps>;
 }
 
+/** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
+export type ExperimentalMessageActionSurface = "thread" | "thread-chat";
+
 /** Context handed to a `messageAction`'s `run`. */
 export interface PluginMessageActionContext {
   /** The thread whose timeline surfaced the action. */
@@ -3642,11 +3645,12 @@ export interface PluginMessageActionContext {
 
 /**
  * An action on chat messages in every thread timeline, including embedded
- * `ThreadChat` timelines: an icon button in the per-message action bar (user
- * and assistant messages) and an entry in the assistant-message
- * text-selection menu. Host-rendered chrome — the plugin
- * supplies title, icon, and `run` behavior only. Resolved icon names take precedence over
- * plugin branding; omitted or unknown names fall back to branding.
+ * `ThreadChat` timelines unless `experimental_surfaces` narrows it: an icon
+ * button in the per-message action bar (user and assistant messages) and an
+ * entry in the assistant-message text-selection menu. Host-rendered chrome —
+ * the plugin supplies title, icon, and `run` behavior only. Resolved icon
+ * names take precedence over plugin branding; omitted or unknown names fall
+ * back to branding.
  */
 export interface PluginMessageActionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -3654,6 +3658,12 @@ export interface PluginMessageActionRegistration {
   /** Tooltip / menu label for the action. */
   title: string;
   icon?: BbIconName;
+  /**
+   * Timelines that show the action: `"thread"` is bb's thread view and
+   * `"thread-chat"` an embedded `ThreadChat`. Omit for both. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_surfaces?: readonly ExperimentalMessageActionSurface[];
   /**
    * Runs when the user activates the action. Errors (sync or async) are
    * contained and logged; they never break the timeline.

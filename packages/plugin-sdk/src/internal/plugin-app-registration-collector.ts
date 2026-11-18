@@ -22,6 +22,7 @@ import type {
   PluginCommandRegistration,
   ExperimentalComposerCommandRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageActionSurface,
   ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -308,6 +309,41 @@ export type CollectedPluginCommandRegistration =
       defaultShortcut: CollectedCommandShortcut;
     });
 
+export type CollectedPluginMessageActionRegistration = Omit<
+  PluginMessageActionRegistration,
+  "experimental_surfaces"
+> & {
+  experimental_surfaces: readonly ExperimentalMessageActionSurface[];
+};
+
+const MESSAGE_ACTION_SURFACES: readonly ExperimentalMessageActionSurface[] = [
+  "thread",
+  "thread-chat",
+];
+
+function isMessageActionSurface(
+  value: unknown,
+): value is ExperimentalMessageActionSurface {
+  return value === "thread" || value === "thread-chat";
+}
+
+function collectMessageActionSurfaces(
+  kind: string,
+  value: unknown,
+): readonly ExperimentalMessageActionSurface[] {
+  if (value === undefined) return MESSAGE_ACTION_SURFACES;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(isMessageActionSurface)
+  ) {
+    throw new Error(
+      `${kind}: "experimental_surfaces" must be a non-empty array of "thread" or "thread-chat", got ${JSON.stringify(value)}`,
+    );
+  }
+  return MESSAGE_ACTION_SURFACES.filter((surface) => value.includes(surface));
+}
+
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
@@ -340,7 +376,7 @@ export interface CollectedPluginAppRegistrations {
   composers: ExperimentalComposerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
-  messageActions: PluginMessageActionRegistration[];
+  messageActions: CollectedPluginMessageActionRegistration[];
   messageMetadata: ExperimentalMessageMetadataRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
@@ -1260,6 +1296,10 @@ export function collectPluginAppRegistrations(
                 icon: requireNonEmptyString(kind, "icon", registration.icon),
               }
             : {}),
+          experimental_surfaces: collectMessageActionSurfaces(
+            kind,
+            registration.experimental_surfaces,
+          ),
           run: registration.run,
         });
       },

@@ -400,7 +400,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add an action to messages in a thread. With this, a plugin can:",
         bullets: [
-          "Appear under messages on hover, or on text selected in a reply, in the main timeline only",
+          "Appear under messages on hover, or on text selected in a reply",
+          "Show in bb's thread view, in embedded ThreadChat, or in only one of them",
           "Receive the message with the sequence its link uses, or the selected text",
           "Open a [side-panel tab](thread-panel) or write into the composer with the result",
         ],
@@ -408,6 +409,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
           "ThreadChatMessageReference",
+          "PluginMessageActionRegistration.experimental_surfaces",
+          "ExperimentalMessageActionSurface",
         ],
         firstParty: ["Side chat"],
       },

@@ -1505,6 +1505,7 @@ function ThreadDetailViewInternal(
         environmentHostName: threadEnvironmentHost?.name ?? null,
         consumerMessageActions: NO_CONSUMER_MESSAGE_ACTIONS,
         leadingContent: null,
+        messageActionSurface: "thread",
         onForkMessage: isForkAvailable ? handleForkMessage : null,
         onTitleAction: handleTimelineTitleAction,
         unreadDividerAutoScroll: unreadDividerState.autoScroll,

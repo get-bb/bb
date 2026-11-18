@@ -7,6 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { ExperimentalMessageActionSurface } from "@get-bb/plugin-sdk";
+import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
 import { defaultAppSettings, type Environment } from "@bb/domain";
 import type { ThreadResponse, TimelineRow } from "@bb/server-contract";
@@ -102,6 +104,7 @@ export interface ThreadScreenTimelineHost {
   consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
   environmentHostName: string | null;
   leadingContent: ReactNode;
+  messageActionSurface: ExperimentalMessageActionSurface;
   onForkMessage: ThreadTimelineForkMessageHandler | null;
   onTitleAction: TimelineTitleActionResolver | null;
   unreadDividerAutoScroll: boolean;
@@ -580,53 +583,55 @@ export function ThreadScreen({
   const selectionAddToChat = composer ? handleAddToChat : undefined;
   const surface = (
     <SelectionAddToChatContext.Provider value={selectionAddToChat}>
-      <ThreadTimelineSurface
-        activeThinking={timeline.activeThinking}
-        canSpawnChild={thread.canSpawnChild}
-        contextBoundarySeq={timeline.contextBoundarySeq}
-        hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-        hostConnectionNotice={buildHostConnectionNotice(
-          thread,
-          timelineHost.environmentHostName,
-        )}
-        isCatchingUpTimeline={timeline.isCatchingUpTimeline}
-        isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
-        isThreadTimelinePending={isThreadTimelinePending}
-        timelineError={Boolean(timeline.timelineError)}
-        loadingContent={
-          isPanelPresentation ? (
-            <ThreadTimelinePanelLoadingSkeleton />
-          ) : undefined
-        }
-        timelineErrorClassName={
-          isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
-        }
-        leadingContent={timelineHost.leadingContent}
-        consumerMessageActions={timelineHost.consumerMessageActions}
-        onForkMessage={timelineHost.onForkMessage ?? undefined}
-        onEditMessage={handleEditSentMessage}
-        inlineMessageEditor={inlineMessageEditor}
-        onMessageAddToChat={selectionAddToChat}
-        onSelectionAddToChat={selectionAddToChat}
-        onLoadOlderRows={timeline.loadOlderTimelineRows}
-        onTitleAction={timelineHost.onTitleAction ?? undefined}
-        projectId={projectId}
-        resolveMentionLink={resolveMentionLink}
-        showOngoingIndicator={
-          thread.status !== "stopping" &&
-          !hasPendingInteraction &&
-          isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
-          !isThreadTimelinePending
-        }
-        timelineRows={timelineRows}
-        timelineNavigationTargetRowId={timelineNavigationTargetRowId}
-        isStopping={thread.status === "stopping"}
-        stoppingAnchorAt={thread.updatedAt}
-        threadId={thread.id}
-        threadRuntimeDisplayStatus={thread.runtime.displayStatus}
-        unreadDividerAutoScroll={timelineHost.unreadDividerAutoScroll}
-        unreadDividerPlacement={timelineHost.unreadDividerPlacement}
-      />
+      <MessageActionSurfaceProvider value={timelineHost.messageActionSurface}>
+        <ThreadTimelineSurface
+          activeThinking={timeline.activeThinking}
+          canSpawnChild={thread.canSpawnChild}
+          contextBoundarySeq={timeline.contextBoundarySeq}
+          hasOlderTimelineRows={timeline.hasOlderTimelineRows}
+          hostConnectionNotice={buildHostConnectionNotice(
+            thread,
+            timelineHost.environmentHostName,
+          )}
+          isCatchingUpTimeline={timeline.isCatchingUpTimeline}
+          isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
+          isThreadTimelinePending={isThreadTimelinePending}
+          timelineError={Boolean(timeline.timelineError)}
+          loadingContent={
+            isPanelPresentation ? (
+              <ThreadTimelinePanelLoadingSkeleton />
+            ) : undefined
+          }
+          timelineErrorClassName={
+            isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
+          }
+          leadingContent={timelineHost.leadingContent}
+          consumerMessageActions={timelineHost.consumerMessageActions}
+          onForkMessage={timelineHost.onForkMessage ?? undefined}
+          onEditMessage={handleEditSentMessage}
+          inlineMessageEditor={inlineMessageEditor}
+          onMessageAddToChat={selectionAddToChat}
+          onSelectionAddToChat={selectionAddToChat}
+          onLoadOlderRows={timeline.loadOlderTimelineRows}
+          onTitleAction={timelineHost.onTitleAction ?? undefined}
+          projectId={projectId}
+          resolveMentionLink={resolveMentionLink}
+          showOngoingIndicator={
+            thread.status !== "stopping" &&
+            !hasPendingInteraction &&
+            isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
+            !isThreadTimelinePending
+          }
+          timelineRows={timelineRows}
+          timelineNavigationTargetRowId={timelineNavigationTargetRowId}
+          isStopping={thread.status === "stopping"}
+          stoppingAnchorAt={thread.updatedAt}
+          threadId={thread.id}
+          threadRuntimeDisplayStatus={thread.runtime.displayStatus}
+          unreadDividerAutoScroll={timelineHost.unreadDividerAutoScroll}
+          unreadDividerPlacement={timelineHost.unreadDividerPlacement}
+        />
+      </MessageActionSurfaceProvider>
     </SelectionAddToChatContext.Provider>
   );
 
