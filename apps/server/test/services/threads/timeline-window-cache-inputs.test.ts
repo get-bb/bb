@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { threadScope, turnScope } from "@bb/domain";
-import { getThread } from "@bb/db";
 import {
   isThreadTimelineDelta,
   timelineRowChildren,
@@ -38,14 +37,11 @@ function full(response: ThreadTimelineReadResponse): ThreadTimelineResponse {
   return response;
 }
 
-function readLatest(
-  harness: TestAppHarness,
+async function readLatest(
   windows: ReturnType<typeof createThreadTimelineWindows>,
   threadId: string,
-): ThreadTimelineResponse {
-  const thread = getThread(harness.deps.db, threadId);
-  if (thread === null) throw new Error(`missing thread ${threadId}`);
-  return full(windows.read(thread, desktop, undefined));
+): Promise<ThreadTimelineResponse> {
+  return full(await windows.read(threadId, desktop, undefined));
 }
 
 function commandAvailability(
@@ -157,17 +153,17 @@ describe("timeline window cache inputs", () => {
       });
       const windows = createThreadTimelineWindows(harness.deps);
 
-      const before = readLatest(harness, windows, thread.id);
+      const before = await readLatest(windows, thread.id);
       expect(commandAvailability(before.rows, "cmd-retained")).toBe(
         "available",
       );
-      expect(readLatest(harness, windows, thread.id)).toBe(before);
+      expect(await readLatest(windows, thread.id)).toBe(before);
 
       const now = vi.spyOn(Date, "now").mockReturnValue(truncatedAt);
       try {
         expect(
           commandAvailability(
-            readLatest(harness, windows, thread.id).rows,
+            (await readLatest(windows, thread.id)).rows,
             "cmd-retained",
           ),
         ).toBe("retention-expired");
@@ -202,14 +198,14 @@ describe("timeline window cache inputs", () => {
       });
       const windows = createThreadTimelineWindows(harness.deps);
 
-      expect(readLatest(harness, windows, thread.id).extensionStates).toEqual(
+      expect((await readLatest(windows, thread.id)).extensionStates).toEqual(
         {},
       );
 
       withoutGoalState.dispose();
       registerGoalsProvider(harness, true);
 
-      expect(readLatest(harness, windows, thread.id).extensionStates).toEqual({
+      expect((await readLatest(windows, thread.id)).extensionStates).toEqual({
         [GOAL_KIND]: { status: "active" },
       });
     });

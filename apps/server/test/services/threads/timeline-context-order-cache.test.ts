@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { THREAD_CONTEXT_CLEAR_OPERATION } from "@bb/domain";
 import {
+  bumpThreadEventRewriteGeneration,
   advanceThreadPruning,
   deleteThreadEventSuffixInTransaction,
   getLatestCompletedThreadContextClearSequence,
@@ -487,11 +488,12 @@ describe("timeline grouping context cache", () => {
       },
     },
     {
-      name: "another connection deletes a context row",
+      name: "a raw delete of a context row bumps the rewrite generation",
       remove: (testThread: TestThread, sequence: number) => {
         testThread.coldDb.$client
           .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
           .run(testThread.thread.id, sequence);
+        bumpThreadEventRewriteGeneration(testThread.thread.id);
       },
     },
   ])(

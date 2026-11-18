@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getThread } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import { threads } from "@bb/db";
+import { eq } from "drizzle-orm";
 import {
   isThreadTimelineDelta,
   timelineRowChildren,
   type TimelineRow,
 } from "@bb/server-contract";
+import { createInProcessThreadReadPool } from "../../../src/services/threads/read-pool/thread-read-pool.js";
 import { createThreadTimelineWindows } from "../../../src/services/threads/thread-timeline-windows.js";
 import { timelineRowsJsonBytes } from "../../../src/services/threads/timeline-content-pagination.js";
 import {
@@ -63,8 +64,8 @@ function hasNestedRows(rows: readonly TimelineRow[]): boolean {
 }
 
 describe("timeline content pagination byte accounting", () => {
-  it("counts nested rows exactly as their serialized UTF-8 bytes", () => {
-    withTestThread((testThread) => {
+  it("counts nested rows exactly as their serialized UTF-8 bytes", async () => {
+    await withTestThread(async (testThread) => {
       const { db, thread } = testThread;
       appendRows(testThread, [
         { type: "turn/started", turnId: "turn-1" },
@@ -77,11 +78,16 @@ describe("timeline content pagination byte accounting", () => {
           data: { status: "completed" },
         },
       ]);
-      const response = createThreadTimelineWindows({
+      db.update(threads)
+        .set({ status: "idle" })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const response = await createThreadTimelineWindows({
         ...harness.deps,
         db,
+        threadReads: createInProcessThreadReadPool(db),
       }).read(
-        { ...(getThread(db, thread.id) as Thread), status: "idle" },
+        thread.id,
         {
           deferContent: false,
           includeNestedRows: true,

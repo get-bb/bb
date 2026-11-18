@@ -52,12 +52,20 @@ function readMigratedImage(): Buffer {
   return migratedImage;
 }
 
-export function withTestThread(run: (testThread: TestThread) => void): void {
+export function withTestThread<TResult extends void | Promise<void>>(
+  run: (testThread: TestThread) => TResult,
+): TResult {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-timeline-cache-"));
   const file = path.join(dir, "bb.db");
   fs.writeFileSync(file, readMigratedImage());
   const db = createConnection(file);
   const coldDb = createConnection(file);
+  const cleanup = () => {
+    coldDb.$client.close();
+    db.$client.close();
+    fs.rmSync(dir, { force: true, recursive: true });
+  };
+  let result: TResult;
   try {
     const host = upsertHost(db, noopNotifier, { name: "timeline-cache-host" });
     const { project } = createProject(db, noopNotifier, {
@@ -69,12 +77,16 @@ export function withTestThread(run: (testThread: TestThread) => void): void {
       providerId: "codex",
       status: "active",
     });
-    run({ coldDb, db, projectId: project.id, thread });
-  } finally {
-    coldDb.$client.close();
-    db.$client.close();
-    fs.rmSync(dir, { force: true, recursive: true });
+    result = run({ coldDb, db, projectId: project.id, thread });
+  } catch (error) {
+    cleanup();
+    throw error;
   }
+  if (result instanceof Promise) {
+    return result.finally(cleanup) as TResult;
+  }
+  cleanup();
+  return result;
 }
 
 export function appendRows(

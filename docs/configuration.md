@@ -1175,9 +1175,13 @@ divider. A message that started a new turn keeps the divider above it, a turn
 that is still running or has no answer puts it above the first row after your
 read point, and the divider never lands on your own message.
 
-Timeline builds slower than 150 ms log `Thread timeline build blocked the event
-loop` with main-thread CPU time and context-switch counts, and event-loop
-stalls over 500 ms log `Event loop stalled`, both at `info`.
+Timeline builds slower than 150 ms log `Slow thread timeline build` with CPU
+time and context-switch counts, and event-loop stalls over 500 ms log `Event
+loop stalled`, both at `info`. Timeline and conversation-outline reads run in a
+pool of up to four reader worker threads (half the cores), each with its own
+read-only connection and an 8 MB SQLite page cache, so these builds no longer
+block the server's main thread. A worker that stops logs `Thread read worker
+stopped`; its reads then run on the main thread until it restarts.
 
 ## Plugins
 

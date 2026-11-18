@@ -40,7 +40,7 @@ describe("slow thread timeline build log", () => {
         involuntaryContextSwitches: 1_204,
         voluntaryContextSwitches: 3,
       }),
-      "Thread timeline build blocked the event loop",
+      "Slow thread timeline build",
     );
   });
 });

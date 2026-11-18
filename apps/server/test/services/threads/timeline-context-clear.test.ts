@@ -19,7 +19,7 @@ import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
   getThreadMessage,
-  loadThreadConversationOutline,
+  projectThreadConversationOutlineItems,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 
@@ -448,10 +448,9 @@ describe("timeline context-clear epochs", () => {
       ),
     ).toEqual(["Earlier task", "Fresh task"]);
     expect(
-      loadThreadConversationOutline(db, thread, {
-        ...outlineOptions,
-        outlineSequence: 4,
-      }).items.map((item) => item.preview),
+      projectThreadConversationOutlineItems(db, thread, outlineOptions).map(
+        (item) => item.preview,
+      ),
     ).toEqual(["Earlier task", "Fresh task"]);
     expect(
       getThreadMessage(db, thread, {

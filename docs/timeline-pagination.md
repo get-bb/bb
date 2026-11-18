@@ -350,8 +350,10 @@ into the kept state and finishes a copy, so the kept state is never consumed.
 Any read that selects afresh, adds a request, acceptance or turn start, or
 reads a thread that is no longer active projects the whole selection again,
 exactly as a first read does, and keeps that projection for the next read. A
-history rewrite, a compaction or a write from another connection drops the
-kept selection and projection. Dropping either only costs a fresh read.
+history rewrite or a compaction drops the kept selection and projection: both
+bump the thread's rewrite generation, which the server sends with every read to
+the reader workers that own these caches. Writes from another database
+connection are not detected. Dropping either only costs a fresh read.
 
 ## Conversation outline caching
 
@@ -361,8 +363,9 @@ cache. The app requests user items while the table of contents is visible and
 assistant items only while its Agent messages tab is open. Active
 threads reuse completed outline items from a bounded in-memory cache (16 threads,
 8 million characters) and reproject only the tail; history rewrites, context
-clears, metadata or display changes, and writes from another database connection
-force a rebuild. Background tasks in the kept history do not prevent reuse, but
+clears, and metadata or display changes force a rebuild. Outlines are built in
+the reader workers and are not persisted; reopening a thread after a restart
+rebuilds its outline off the main thread. Background tasks in the kept history do not prevent reuse, but
 a later event for one of them, like a child event of a kept tool call, forces a
 rebuild. Eviction only affects performance.
 

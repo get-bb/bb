@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { clearThreadReadCaches } from "../../src/services/threads/read-pool/thread-read.js";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -204,6 +205,7 @@ export function clearCrossBuildTimelineCaches(db: DbConnection): void {
   clearStoredEventDecodeCache(db);
   clearTimelineSelectionMemo(db);
   clearTimelineProjectionFolds(db);
+  clearThreadReadCaches(db);
 }
 
 export function selectionWasReused(

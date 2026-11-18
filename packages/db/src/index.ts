@@ -1,4 +1,8 @@
-export { afterCommit, createConnection } from "./connection.js";
+export {
+  afterCommit,
+  createConnection,
+  createReadOnlyConnection,
+} from "./connection.js";
 export type {
   DbConnection,
   DbQueryConnection,

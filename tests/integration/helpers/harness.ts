@@ -62,6 +62,7 @@ import type {
 } from "../../../apps/server/src/types.js";
 import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
+import { createInProcessThreadReadPool } from "../../../apps/server/src/services/threads/read-pool/thread-read-pool.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import {
@@ -350,6 +351,7 @@ async function startIntegrationServer(
     skillTreeRegistry,
     telemetry,
     terminalSessions,
+    threadReads: createInProcessThreadReadPool(db),
     walCheckpointer,
     watchInterests,
   };

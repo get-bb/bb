@@ -6,7 +6,6 @@ import {
   type ExternalUserBoundaryTurnSpan,
 } from "@bb/thread-view";
 import {
-  getDatabaseDataVersion,
   getFirstParentedTimelineBoundarySequence,
   getThreadEventRewriteGeneration,
   getTimelineGroupingContextChangesInRange,
@@ -129,7 +128,6 @@ type TimelineOrderingContextRow = ReturnType<
 >[number];
 
 interface TimelineOrderingContextLog {
-  dataVersion: number;
   generation: number;
   rows: TimelineOrderingContextRow[];
   threadId: string;
@@ -139,7 +137,6 @@ interface TimelineOrderingContextLog {
 interface TimelineGroupingContextEntry {
   orderingContext: TimelineOrderingContext;
   context: TimelineGroupingContext;
-  dataVersion: number;
   generation: number;
   maxSeq: number;
   threadId: string;
@@ -201,7 +198,6 @@ function listOrderingContextRows(
   args: TimelineGroupingContextArgs,
   key: string,
   generation: number,
-  dataVersion: number,
 ): readonly TimelineOrderingContextRow[] {
   let logs = orderingContextLogs.get(db);
   if (logs === undefined) {
@@ -210,13 +206,8 @@ function listOrderingContextRows(
   }
   let log = logs.get(key);
   logs.delete(key);
-  if (
-    log === undefined ||
-    log.generation !== generation ||
-    log.dataVersion !== dataVersion
-  ) {
+  if (log === undefined || log.generation !== generation) {
     log = {
-      dataVersion,
       generation,
       rows: [],
       threadId: args.threadId,
@@ -297,10 +288,8 @@ export function getTimelineGroupingContext(
   }
   const key = JSON.stringify([args.threadId, args.sequenceStart]);
   const generation = getThreadEventRewriteGeneration(args.threadId);
-  const dataVersion = getDatabaseDataVersion(db);
   const entries = (cache.get(key) ?? []).filter(
-    (entry) =>
-      entry.generation === generation && entry.dataVersion === dataVersion,
+    (entry) => entry.generation === generation,
   );
   cache.delete(key);
   const reusable = findReusableEntry(db, args, entries);
@@ -314,7 +303,7 @@ export function getTimelineGroupingContext(
   const orderingContext =
     reusable?.entry.orderingContext ??
     computeTimelineOrderingContext(
-      listOrderingContextRows(db, args, key, generation, dataVersion),
+      listOrderingContextRows(db, args, key, generation),
     );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, args);
   const context: TimelineGroupingContext = {
@@ -333,7 +322,6 @@ export function getTimelineGroupingContext(
     {
       context,
       orderingContext,
-      dataVersion,
       generation,
       maxSeq: args.maxSeq,
       threadId: args.threadId,

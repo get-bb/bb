@@ -42,7 +42,7 @@ export interface CreateConnectionOptions {
   queryPlanObserver?: () => QueryPlanExecutionObserver | null;
 }
 
-export type DbConnection = ReturnType<typeof createConnection>;
+export type DbConnection = ReturnType<typeof wrapConnection>;
 export type DbTransaction = Parameters<
   Parameters<DbConnection["transaction"]>[0]
 >[0];
@@ -427,7 +427,26 @@ export function createConnection(
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("synchronous = NORMAL");
-  sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
+  return wrapConnection(sqlite, options, SQLITE_CACHE_SIZE_KIB);
+}
+
+export function createReadOnlyConnection(
+  path: string,
+  pageCacheKib: number,
+): DbConnection {
+  return wrapConnection(
+    new Database(path, { fileMustExist: true, readonly: true }),
+    {},
+    pageCacheKib,
+  );
+}
+
+function wrapConnection(
+  sqlite: Database.Database,
+  options: CreateConnectionOptions,
+  pageCacheKib: number,
+) {
+  sqlite.pragma(`cache_size = -${pageCacheKib}`);
   sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   registerHostPathSqlFunctions(sqlite);

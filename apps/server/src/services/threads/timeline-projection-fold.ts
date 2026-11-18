@@ -4,14 +4,12 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import {
-  getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
   type DbConnection,
   type StoredEventRow,
 } from "@bb/db";
 
 interface KeptTimelineProjectionFold {
-  dataVersion: number;
   fold: EventProjectionFold;
   generation: number;
   rows: readonly StoredEventRow[];
@@ -70,13 +68,11 @@ export function keepTimelineProjectionFold(
     keptFolds.set(db, folds);
   }
   const generation = getThreadEventRewriteGeneration(args.threadId);
-  const dataVersion = getDatabaseDataVersion(db);
   const kept = folds.get(args.key);
   folds.delete(args.key);
   const resumed =
     kept !== undefined &&
     kept.generation === generation &&
-    kept.dataVersion === dataVersion &&
     startsWithRows(args.rows, kept.rows) &&
     resumeEventProjectionFold(
       kept.fold,
@@ -87,7 +83,6 @@ export function keepTimelineProjectionFold(
     ? args.rows.length - kept.rows.length
     : fold.events.length;
   folds.set(args.key, {
-    dataVersion,
     fold,
     generation,
     rows: args.rows,

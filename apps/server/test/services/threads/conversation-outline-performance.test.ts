@@ -4,21 +4,44 @@ import {
   createProject,
   createThread,
   deleteThreadEventSuffixInTransaction,
-  getLatestStoredConversationOutlineSequence,
-  getThread,
-  getThreadConversationOutlineRecord,
+  getThreadEventRewriteGeneration,
   insertEvents,
   noopNotifier,
   threads,
   upsertHost,
+  type DbConnection,
   type SlowDbQueryLogFields,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import { eq } from "drizzle-orm";
-import {
-  buildThreadConversationOutline,
-  loadThreadConversationOutline,
-} from "../../../src/services/threads/timeline.js";
+import { runThreadRead } from "../../../src/services/threads/read-pool/thread-read.js";
+import { buildThreadConversationOutline } from "../../../src/services/threads/timeline.js";
+
+function readOutline(db: DbConnection, threadId: string) {
+  const result = runThreadRead(db, {
+    kind: "conversation-outline",
+    providers: {},
+    rewriteGeneration: getThreadEventRewriteGeneration(threadId),
+    threadId,
+  });
+  if (result.kind !== "conversation-outline" || result.outline === null) {
+    throw new Error(`Expected an outline for ${threadId}`);
+  }
+  return result.outline;
+}
+
+function userMessage(threadId: string, sequence: number, text: string) {
+  return {
+    threadId,
+    sequence,
+    type: "system/manager/user_message" as const,
+    scope: threadScope(),
+    itemId: null,
+    itemKind: null,
+    parentToolCallId: null,
+    data: JSON.stringify({ text }),
+  };
+}
 
 function setup(status: Thread["status"] = "starting") {
   const queries: SlowDbQueryLogFields[] = [];
@@ -89,86 +112,36 @@ describe("thread conversation outline performance", () => {
     db.$client.close();
   });
 
-  it("loads an exact materialized stable outline without event history", () => {
+  it("serves a repeated outline read from the read cache without event history", () => {
     const { db, queries, thread } = setup("idle");
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ text: "Persisted response" }),
-      },
-    ]);
-    const outlineSequence = getLatestStoredConversationOutlineSequence(db, {
-      threadId: thread.id,
-    });
-    const first = loadThreadConversationOutline(db, thread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 1,
-      outlineSequence,
-    });
+    insertEvents(db, noopNotifier, [userMessage(thread.id, 1, "Response")]);
+    const readsEventRows = () =>
+      queries.some((query) =>
+        query.sql.startsWith('select "created_at", "data"'),
+      );
+    queries.length = 0;
+    const first = readOutline(db, thread.id);
+    expect(readsEventRows()).toBe(true);
     queries.length = 0;
 
-    const second = loadThreadConversationOutline(db, thread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 2,
-      outlineSequence,
-    });
-
-    expect(second).toEqual({ items: first.items, maxSeq: 2 });
-    expect(queries.some((query) => query.sql.includes('from "events"'))).toBe(
-      false,
-    );
-    expect(
-      queries.some((query) =>
-        query.sql.includes('from "thread_conversation_outlines"'),
-      ),
-    ).toBe(true);
+    expect(readOutline(db, thread.id)).toEqual(first);
+    expect(readsEventRows()).toBe(false);
     db.$client.close();
   });
 
-  it("rejects materialized outlines after metadata changes and rewinds", () => {
+  it("re-projects a cached outline after a rename or a rewind", () => {
     const { db, queries, thread } = setup("idle");
     insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ text: "Original response" }),
-      },
+      userMessage(thread.id, 1, "Original response"),
     ]);
-    loadThreadConversationOutline(db, thread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 1,
-      outlineSequence: 1,
-    });
+    readOutline(db, thread.id);
     db.update(threads)
       .set({ title: "Renamed thread" })
       .where(eq(threads.id, thread.id))
       .run();
-    const renamedThread = getThread(db, thread.id);
-    if (renamedThread === null) {
-      throw new Error("Expected renamed thread");
-    }
     queries.length = 0;
 
-    loadThreadConversationOutline(db, renamedThread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 1,
-      outlineSequence: 1,
-    });
+    readOutline(db, thread.id);
 
     expect(queries.some((query) => query.sql.includes('from "events"'))).toBe(
       true,
@@ -180,45 +153,8 @@ describe("thread conversation outline performance", () => {
         threadId: thread.id,
       }),
     );
-    queries.length = 0;
 
-    const rewound = loadThreadConversationOutline(db, renamedThread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 0,
-      outlineSequence: 0,
-    });
-
-    expect(rewound).toEqual({ items: [], maxSeq: 0 });
-    expect(queries.some((query) => query.sql.includes('from "events"'))).toBe(
-      true,
-    );
-    db.$client.close();
-  });
-
-  it("does not materialize active thread revisions", () => {
-    const { db, thread } = setup("active");
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ text: "Live response" }),
-      },
-    ]);
-
-    loadThreadConversationOutline(db, thread, {
-      completedTurnDisplay: "collapse",
-      includeClearedContextHistory: false,
-      maxSeq: 1,
-      outlineSequence: 1,
-    });
-
-    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
+    expect(readOutline(db, thread.id)).toEqual({ items: [], maxSeq: 0 });
     db.$client.close();
   });
 

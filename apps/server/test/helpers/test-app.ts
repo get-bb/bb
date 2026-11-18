@@ -1,4 +1,5 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
+import { createInProcessThreadReadPool } from "../../src/services/threads/read-pool/thread-read-pool.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
@@ -381,6 +382,7 @@ export async function createTestAppHarness(
     terminalSessions,
     watchInterests,
     sharedPorts,
+    threadReads: createInProcessThreadReadPool(db),
     walCheckpointer,
   };
   const { app, pluginCatalogService, pluginService, serverMove } =
@@ -420,7 +422,8 @@ export async function withTestHarness<T>(
 ): Promise<T>;
 export async function withTestHarness<T>(
   overridesOrRun:
-    TestAppHarnessConfigOverrides | ((harness: TestAppHarness) => Promise<T>),
+    | TestAppHarnessConfigOverrides
+    | ((harness: TestAppHarness) => Promise<T>),
   maybeRun?: (harness: TestAppHarness) => Promise<T>,
 ): Promise<T> {
   const overrides: TestAppHarnessConfigOverrides =

@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { defaultFeatureFlags, threadScope, turnScope } from "@bb/domain";
-import { getThread } from "@bb/db";
+import { threads } from "@bb/db";
 import {
   isThreadTimelineDelta,
   timelineRowChildren,
@@ -87,26 +88,20 @@ function stagesOfLastBuild(): Set<string> {
   return new Set(profile.stageTimings.map((timing) => timing.stage));
 }
 
-function freshRead(
+async function freshRead(
   harness: TestAppHarness,
   threadId: string,
   request: ThreadTimelineWindowRequest,
-): ThreadTimelineResponse {
+): Promise<ThreadTimelineResponse> {
   clearCrossBuildTimelineCaches(harness.deps.db);
   clearTimelineOrderingContextCache(harness.deps.db);
   return full(
-    createThreadTimelineWindows(harness.deps).read(
-      requireThread(harness, threadId),
+    await createThreadTimelineWindows(harness.deps).read(
+      threadId,
       request,
       undefined,
     ),
   );
-}
-
-function requireThread(harness: TestAppHarness, threadId: string) {
-  const thread = getThread(harness.deps.db, threadId);
-  if (thread === null) throw new Error(`missing thread ${threadId}`);
-  return thread;
 }
 
 function seedUserMessages(
@@ -236,6 +231,20 @@ function seedSettledDelegation(
   });
 }
 
+async function readOlderPages(
+  windows: ReturnType<typeof createThreadTimelineWindows>,
+  threadId: string,
+  cursors: readonly TimelinePaginationCursor[],
+): Promise<ThreadTimelineResponse[]> {
+  const pages: ThreadTimelineResponse[] = [];
+  for (const cursor of cursors) {
+    pages.push(
+      full(await windows.read(threadId, olderPageRequest(cursor), undefined)),
+    );
+  }
+  return pages;
+}
+
 function olderPageRequest(
   cursor: TimelinePaginationCursor,
 ): ThreadTimelineWindowRequest {
@@ -255,7 +264,7 @@ describe("timeline window caches", () => {
         threadId: thread.id,
       });
       const windows = createThreadTimelineWindows(harness.deps);
-      const before = full(windows.read(thread, desktop, undefined));
+      const before = full(await windows.read(thread.id, desktop, undefined));
       expect(JSON.stringify(before.rows)).not.toContain("message 2");
 
       seedUserMessages(harness, {
@@ -263,10 +272,10 @@ describe("timeline window caches", () => {
         sequences: [2],
         threadId: thread.id,
       });
-      const after = full(windows.read(thread, desktop, undefined));
+      const after = full(await windows.read(thread.id, desktop, undefined));
       expect(after.maxSeq).toBe(before.maxSeq);
       expect(JSON.stringify(after.rows)).toContain("message 2");
-      expect(after).toEqual(freshRead(harness, thread.id, desktop));
+      expect(after).toEqual(await freshRead(harness, thread.id, desktop));
     });
   });
 
@@ -284,33 +293,28 @@ describe("timeline window caches", () => {
         });
         const windows = createThreadTimelineWindows(harness.deps);
         const cursors: TimelinePaginationCursor[] = [];
-        let page = full(windows.read(thread, desktop, undefined));
+        let page = full(await windows.read(thread.id, desktop, undefined));
         while (page.timelinePage.olderCursor !== null) {
           cursors.push(page.timelinePage.olderCursor);
           page = full(
-            windows.read(
-              thread,
+            await windows.read(
+              thread.id,
               olderPageRequest(page.timelinePage.olderCursor),
               undefined,
             ),
           );
         }
         expect(cursors.length).toBeGreaterThan(1);
-        const olderPages = cursors.map((cursor) =>
-          full(windows.read(thread, olderPageRequest(cursor), undefined)),
-        );
+        const olderPages = await readOlderPages(windows, thread.id, cursors);
 
         seedUserMessages(harness, {
           environmentId: environment.id,
           sequences: [9],
           threadId: thread.id,
         });
-        const grown = requireThread(harness, thread.id);
-        full(windows.read(grown, desktop, undefined));
+        full(await windows.read(thread.id, desktop, undefined));
         const buildsBeforeOlderReads = builds.profiles.length;
-        const afterAppend = cursors.map((cursor) =>
-          full(windows.read(grown, olderPageRequest(cursor), undefined)),
-        );
+        const afterAppend = await readOlderPages(windows, thread.id, cursors);
         expect(builds.profiles.length).toBe(buildsBeforeOlderReads);
         expect(afterAppend).toEqual(olderPages);
 
@@ -319,17 +323,17 @@ describe("timeline window caches", () => {
           sequences: [3],
           threadId: thread.id,
         });
-        const afterRewrite = cursors.map((cursor) =>
-          full(windows.read(grown, olderPageRequest(cursor), undefined)),
-        );
+        const afterRewrite = await readOlderPages(windows, thread.id, cursors);
         expect(builds.profiles.length).toBe(
           buildsBeforeOlderReads + cursors.length,
         );
-        expect(afterRewrite).toEqual(
-          cursors.map((cursor) =>
-            freshRead(harness, thread.id, olderPageRequest(cursor)),
-          ),
-        );
+        const freshOlderPages: ThreadTimelineResponse[] = [];
+        for (const cursor of cursors) {
+          freshOlderPages.push(
+            await freshRead(harness, thread.id, olderPageRequest(cursor)),
+          );
+        }
+        expect(afterRewrite).toEqual(freshOlderPages);
       },
     );
   });
@@ -354,13 +358,13 @@ describe("timeline window caches", () => {
         });
       }
       const windows = createThreadTimelineWindows(harness.deps);
-      full(windows.read(thread, desktop, undefined));
-      const phoneWindow = full(windows.read(thread, phone, undefined));
+      full(await windows.read(thread.id, desktop, undefined));
+      const phoneWindow = full(await windows.read(thread.id, phone, undefined));
       const phoneStages = stagesOfLastBuild();
       expect(phoneStages.has("group-context-query")).toBe(false);
       expect(phoneStages.has("thread-view-projection")).toBe(false);
       expect(phoneStages.has("thread-view-rows")).toBe(false);
-      expect(phoneWindow).toEqual(freshRead(harness, thread.id, phone));
+      expect(phoneWindow).toEqual(await freshRead(harness, thread.id, phone));
 
       seedTurn(harness, {
         environmentId: environment.id,
@@ -368,12 +372,15 @@ describe("timeline window caches", () => {
         threadId: thread.id,
         turnId: "turn-4",
       });
-      const grown = requireThread(harness, thread.id);
-      const desktopAfter = full(windows.read(grown, desktop, undefined));
-      const phoneAfter = full(windows.read(grown, phone, undefined));
+      const desktopAfter = full(
+        await windows.read(thread.id, desktop, undefined),
+      );
+      const phoneAfter = full(await windows.read(thread.id, phone, undefined));
       expect(stagesOfLastBuild().has("thread-view-rows")).toBe(false);
-      expect(desktopAfter).toEqual(freshRead(harness, thread.id, desktop));
-      expect(phoneAfter).toEqual(freshRead(harness, thread.id, phone));
+      expect(desktopAfter).toEqual(
+        await freshRead(harness, thread.id, desktop),
+      );
+      expect(phoneAfter).toEqual(await freshRead(harness, thread.id, phone));
     });
   });
 
@@ -394,19 +401,23 @@ describe("timeline window caches", () => {
         turnId: "turn-1",
       });
       const windows = createThreadTimelineWindows(harness.deps);
-      full(windows.read(thread, desktop, undefined));
+      full(await windows.read(thread.id, desktop, undefined));
       const rowShape = (request: ThreadTimelineWindowRequest) =>
         `${request.includeNestedRows}:${request.deferContent}`;
       const materializedShapes = new Set([rowShape(desktop)]);
       for (const [name, request] of Object.entries(variants)) {
-        const response = full(windows.read(thread, request, undefined));
+        const response = full(
+          await windows.read(thread.id, request, undefined),
+        );
         const stages = stagesOfLastBuild();
         expect(stages.has("thread-view-projection"), name).toBe(false);
         expect(stages.has("thread-view-rows"), name).toBe(
           !materializedShapes.has(rowShape(request)),
         );
         materializedShapes.add(rowShape(request));
-        expect(response, name).toEqual(freshRead(harness, thread.id, request));
+        expect(response, name).toEqual(
+          await freshRead(harness, thread.id, request),
+        );
       }
     });
   });
@@ -434,16 +445,20 @@ describe("timeline window caches", () => {
         turnId: "turn-1",
       });
       const windows = createThreadTimelineWindows(harness.deps);
-      const app = full(windows.read(thread, desktop, undefined));
-      const cliLog = full(windows.read(thread, variants.cliLog!, undefined));
+      const app = full(await windows.read(thread.id, desktop, undefined));
+      const cliLog = full(
+        await windows.read(thread.id, variants.cliLog!, undefined),
+      );
       expect(stagesOfLastBuild().has("thread-view-projection")).toBe(false);
       expect(delegationChildRows(app)).toEqual([null]);
       expect(delegationChildRows(cliLog)).toEqual([1]);
-      expect(cliLog).toEqual(freshRead(harness, thread.id, variants.cliLog!));
+      expect(cliLog).toEqual(
+        await freshRead(harness, thread.id, variants.cliLog!),
+      );
     });
   });
 
-  it("drops a deleted thread's cached windows", async () => {
+  it("does not serve a deleted thread's cached windows", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       seedUserMessages(harness, {
@@ -452,13 +467,20 @@ describe("timeline window caches", () => {
         threadId: thread.id,
       });
       const windows = createThreadTimelineWindows(harness.deps);
-      windows.read(thread, desktop, undefined);
+      await windows.read(thread.id, desktop, undefined);
       const cachedBuilds = builds.profiles.length;
-      windows.read(thread, desktop, undefined);
+      await windows.read(thread.id, desktop, undefined);
       expect(builds.profiles.length).toBe(cachedBuilds);
+      harness.deps.db
+        .update(threads)
+        .set({ deletedAt: Date.now() })
+        .where(eq(threads.id, thread.id))
+        .run();
       harness.deps.hub.notifyThread(thread.id, ["thread-deleted"]);
-      windows.read(thread, desktop, undefined);
-      expect(builds.profiles.length).toBe(cachedBuilds + 1);
+      await expect(
+        windows.read(thread.id, desktop, undefined),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(builds.profiles.length).toBe(cachedBuilds);
     });
   });
 });

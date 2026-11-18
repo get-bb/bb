@@ -5,7 +5,6 @@ import {
   advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
   findUnprunableThreadEventSequence,
-  getDatabaseDataVersion,
   getLatestThreadSequence,
   getThreadEventRewriteGeneration,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -107,7 +106,6 @@ export class TimelineSelectionTrimFallback extends Error {}
 
 export interface LatestTimelineSelectionLookup {
   budgetFloor: TimelineBudgetFloor | null;
-  dataVersion: number;
   decodedPrefix: DecodedTimelineRows | null;
   generation: number;
   selection: TimelineEventRowSelection | null;
@@ -127,7 +125,6 @@ interface TimelineSelectionMemoEntry {
   delegatingItemIds: ReadonlySet<string>;
   missingParentToolCallIds: ReadonlySet<string>;
   dataChars: number;
-  dataVersion: number;
   decoded: DecodedTimelineRows | null;
   epochSequenceStart: number;
   familyKey: string;
@@ -369,7 +366,6 @@ function findCurrentSibling(
       entry.familyKey === familyKey &&
       entry.maxSeq === args.maxSeq &&
       entry.generation === lookup.generation &&
-      entry.dataVersion === lookup.dataVersion &&
       matches(entry)
     ) {
       return entry;
@@ -979,10 +975,8 @@ export function lookupLatestTimelineSelection(
   args: LatestTimelineSelectionMemoArgs,
 ): LatestTimelineSelectionLookup {
   const generation = getThreadEventRewriteGeneration(args.threadId);
-  const dataVersion = getDatabaseDataVersion(db);
   const miss: LatestTimelineSelectionLookup = {
     budgetFloor: null,
-    dataVersion,
     decodedPrefix: null,
     generation,
     selection: null,
@@ -992,10 +986,7 @@ export function lookupLatestTimelineSelection(
   if (memo === undefined) return miss;
   const key = selectionMemoKey(args);
   const entry = memo.entries.get(key);
-  const entryIsCurrent =
-    entry !== undefined &&
-    entry.generation === generation &&
-    entry.dataVersion === dataVersion;
+  const entryIsCurrent = entry !== undefined && entry.generation === generation;
   const fromSibling = lookupFromWiderSibling(
     db,
     memo,
@@ -1194,7 +1185,6 @@ export function rememberLatestTimelineSelection(
     delegatingItemIds: collectDelegatingItemIds(result.selection.rows),
     missingParentToolCallIds: new Set(),
     dataChars: dataCharsOfRows(result.selection.rows),
-    dataVersion: lookup.dataVersion,
     decoded: null,
     epochSequenceStart: args.epochSequenceStart,
     familyKey: selectionMemoFamilyKey(args),

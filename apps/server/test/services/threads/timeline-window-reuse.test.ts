@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getThread, type DbConnection } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import type { DbConnection } from "@bb/db";
 import {
   isThreadTimelineDelta,
   type ThreadTimelineReadResponse,
   type ThreadTimelineResponse,
   type TimelineRow,
 } from "@bb/server-contract";
+import { createInProcessThreadReadPool } from "../../../src/services/threads/read-pool/thread-read-pool.js";
 import {
   createThreadTimelineWindows,
   type ThreadTimelineWindowRequest,
@@ -77,38 +77,37 @@ function full(response: ThreadTimelineReadResponse): ThreadTimelineResponse {
   return response;
 }
 
-function readLatest(db: DbConnection, threadId: string) {
-  const thread = getThread(db, threadId) as Thread;
-  return full(
-    createThreadTimelineWindows({ ...harness.deps, db }).read(
-      thread,
-      request,
-      undefined,
-    ),
-  );
+function windowsFor(db: DbConnection) {
+  return createThreadTimelineWindows({
+    ...harness.deps,
+    db,
+    threadReads: createInProcessThreadReadPool(db),
+  });
+}
+
+async function readLatest(db: DbConnection, threadId: string) {
+  return full(await windowsFor(db).read(threadId, request, undefined));
 }
 
 describe("timeline window reuse", () => {
-  it("keeps unchanged rows from the previous window and serializes like a fresh build", () => {
-    withTestThread((testThread) => {
+  it("keeps unchanged rows from the previous window and serializes like a fresh build", async () => {
+    await withTestThread(async (testThread) => {
       const { coldDb, db, thread } = testThread;
       appendRows(testThread, [
         { type: "turn/started", turnId: "turn-1" },
         ...command("command-1", "one"),
         ...command("command-2", "two"),
       ]);
-      const windows = createThreadTimelineWindows({ ...harness.deps, db });
-      const read = () =>
-        full(
-          windows.read(getThread(db, thread.id) as Thread, request, undefined),
-        );
-      const first = read();
+      const windows = windowsFor(db);
+      const read = async () =>
+        full(await windows.read(thread.id, request, undefined));
+      const first = await read();
       appendRows(testThread, command("command-3", "three"));
-      const second = read();
+      const second = await read();
 
       expect(second.tag).not.toBe(first.tag);
       expect(JSON.stringify(second)).toBe(
-        JSON.stringify(readLatest(coldDb, thread.id)),
+        JSON.stringify(await readLatest(coldDb, thread.id)),
       );
       const previousById = new Map(first.rows.map((row) => [row.id, row]));
       const kept = second.rows.filter(
@@ -129,14 +128,14 @@ describe("timeline window reuse", () => {
     });
   });
 
-  it("reuses a row only when it serializes to the same JSON", () => {
-    withTestThread((testThread) => {
+  it("reuses a row only when it serializes to the same JSON", async () => {
+    await withTestThread(async (testThread) => {
       const { db, thread } = testThread;
       appendRows(testThread, [
         { type: "turn/started", turnId: "turn-1" },
         ...command("command-1", "one"),
       ]);
-      const previous = readLatest(db, thread.id);
+      const previous = await readLatest(db, thread.id);
       const row = previous.rows.find(
         (candidate): candidate is Extract<TimelineRow, { kind: "work" }> =>
           candidate.kind === "work",

@@ -1176,7 +1176,10 @@ applied chunk.
 
 1. Note the request path and UTC time. Find its `Slow API request` and nearby
    `Event loop stalled` records; for timelines, also
-   `Thread timeline build blocked the event loop` and its stage timings.
+   `Slow thread timeline build` and its stage timings. Timeline and
+   conversation-outline builds run in the thread read workers, so a slow
+   build there no longer stalls the main thread unless the pool fell back to
+   main (`Thread read worker stopped`).
    `inFlightWorkAtObservation` can name an unrelated long poll; compare
    `longestSynchronousWork` and its wall/CPU times with the profile instead.
    Measured synchronous work includes daemon WebSocket messages, timeline
@@ -1199,9 +1202,10 @@ applied chunk.
    for the same interval: CPU far below wall time with many involuntary
    switches means the thread was waiting for a core, and with many voluntary
    switches it was waiting on a lock, disk, or another thread.
-   `Thread timeline build blocked the event loop` carries the same split as
+   `Slow thread timeline build` carries the same split as
    `cpuDurationMs`, `voluntaryContextSwitches`, and
-   `involuntaryContextSwitches`.
+   `involuntaryContextSwitches`; all three are process-wide while the build
+   runs in a worker.
    `stallAttribution` is `candidate`, with the operation in
    `stallCauseCandidate`, when a measured synchronous operation is long enough
    (within one 50 ms timer interval) to explain the maximum delay, and `unattributed`

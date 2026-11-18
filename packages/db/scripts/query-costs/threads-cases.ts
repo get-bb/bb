@@ -6,10 +6,6 @@ import {
   listStoredThreadPromptHistoryRows,
 } from "../../src/data/prompt-history.js";
 import {
-  getThreadConversationOutlineRecord,
-  upsertThreadConversationOutlineRecord,
-} from "../../src/data/thread-conversation-outlines.js";
-import {
   getThreadPluginMetadata,
   insertThreadPluginMetadata,
   listPluginThreadMetadata,
@@ -109,7 +105,6 @@ const SECTIONS = "packages/db/src/data/thread-sections.ts";
 const RUN_STATE = "packages/db/src/data/thread-run-state.ts";
 const TABS = "packages/db/src/data/thread-tabs.ts";
 const PLUGIN_METADATA = "packages/db/src/data/thread-plugin-metadata.ts";
-const OUTLINES = "packages/db/src/data/thread-conversation-outlines.ts";
 const PRUNING = "packages/db/src/data/thread-pruning.ts";
 const PRUNING_WORK = "packages/db/src/data/thread-pruning-work.ts";
 const PURGES = "packages/db/src/data/thread-purges.ts";
@@ -135,17 +130,6 @@ function first<T>(values: readonly T[], label: string): T {
   return value;
 }
 
-function outlineItemsJson(turns: number): string {
-  return JSON.stringify(
-    Array.from({ length: turns * 2 }, (_, item) => ({
-      id: `outline-next-${item}`,
-      role: item % 2 === 0 ? "user" : "assistant",
-      preview: `Turn ${item}: check the failing build, fix the cause, and rerun the targeted tests.`,
-      attachmentSummary: null,
-    })),
-  );
-}
-
 function purgeThreadRows(db: DbConnection, threadId: string): void {
   while (
     deleteThreadPurgeBatch(db, {
@@ -158,7 +142,6 @@ function purgeThreadRows(db: DbConnection, threadId: string): void {
 }
 
 let reorderArgs: Omit<ReorderPinnedThreadArgs, "db" | "notifier"> | null = null;
-let nextOutlineItemsJson = "";
 
 function requireReorderArgs(): Omit<
   ReorderPinnedThreadArgs,
@@ -626,26 +609,6 @@ const PLUGIN_METADATA_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
 ];
 
-const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
-  {
-    name: `${OUTLINES}#getThreadConversationOutlineRecord`,
-    run: (db, fixture) =>
-      getThreadConversationOutlineRecord(db, fixture.threadId),
-  },
-  {
-    name: `${OUTLINES}#upsertThreadConversationOutlineRecord`,
-    prepare: (_db, fixture) => {
-      nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
-    },
-    run: (db, fixture) =>
-      upsertThreadConversationOutlineRecord(db, {
-        threadId: fixture.threadId,
-        projectionKey: `v3:${fixture.latestSequence + 1}`,
-        itemsJson: nextOutlineItemsJson,
-      }),
-  },
-];
-
 const PRUNING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
     name: `${PRUNING}#getNextThreadPruningPolicy`,
@@ -765,7 +728,6 @@ export const THREADS_COST_GROUP = registerCostGroup<ThreadsSeed>({
     ...SECTION_CASES,
     ...TAB_CASES,
     ...PLUGIN_METADATA_CASES,
-    ...OUTLINE_CASES,
     ...PRUNING_CASES,
     ...PURGE_CASES,
     ...PROMPT_HISTORY_CASES,

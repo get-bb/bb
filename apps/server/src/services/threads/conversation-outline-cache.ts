@@ -1,8 +1,4 @@
-import {
-  getDatabaseDataVersion,
-  getThreadEventRewriteGeneration,
-  type DbConnection,
-} from "@bb/db";
+import { getThreadEventRewriteGeneration, type DbConnection } from "@bb/db";
 import type { ThreadConversationOutlineItem } from "@bb/server-contract";
 import {
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
@@ -41,7 +37,6 @@ interface Entry {
   agentMessageDeltaCount: number;
   checkpoint: Checkpoint;
   historySequenceStart: number;
-  dataVersion: number;
   generation: number;
   key: string;
   maxSeq: number;
@@ -243,7 +238,6 @@ export function projectConversationOutlineIncrementally(args: {
     cache = { entries: new Map(), chars: 0 };
     caches.set(args.db, cache);
   }
-  const dataVersion = getDatabaseDataVersion(args.db);
   const generation = getThreadEventRewriteGeneration(args.threadId);
   const entry = cache.entries.get(args.threadId);
   if (entry !== undefined) {
@@ -261,7 +255,6 @@ export function projectConversationOutlineIncrementally(args: {
   const canReuseEntry =
     entry !== undefined &&
     entry.key === args.key &&
-    entry.dataVersion === dataVersion &&
     entry.generation === generation &&
     entry.historySequenceStart === args.historySequenceStart &&
     (args.orderingBoundarySequence === null ||
@@ -329,7 +322,6 @@ export function projectConversationOutlineIncrementally(args: {
         agentMessageDeltaCount,
         checkpoint: next,
         historySequenceStart: args.historySequenceStart,
-        dataVersion,
         generation,
         key: args.key,
         maxSeq: args.maxSeq,

@@ -20,6 +20,7 @@ import type { AiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import type { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
 import type { ProviderNativeRootsCache } from "./services/providers/native-roots.js";
 import type { ProviderLiveCommandsCache } from "./services/providers/provider-live-commands.js";
+import type { ThreadReadPool } from "./services/threads/read-pool/thread-read-pool.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -60,6 +61,7 @@ export interface AppDeps {
   terminalSessions: TerminalSessionLifecycle;
   watchInterests: WatchInterestCoordinator;
   sharedPorts: HostSharedPortCoordinator;
+  threadReads: ThreadReadPool;
   walCheckpointer: WalCheckpointer;
 }
 

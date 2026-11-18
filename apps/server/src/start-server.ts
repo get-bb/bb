@@ -10,7 +10,7 @@ import {
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { availableParallelism, homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
@@ -28,6 +28,10 @@ import {
   listRunningThreads,
   setAppSettings,
 } from "@bb/db";
+import {
+  createThreadReadPool,
+  THREAD_READ_WORKER_PAGE_CACHE_KIB,
+} from "./services/threads/read-pool/thread-read-pool.js";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -181,6 +185,19 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const hub = new NotificationHub();
   const walCheckpointer = startGatedWalCheckpointer({ db, hub, logger });
   walCheckpointer.attach(db.$client);
+  const threadReads = createThreadReadPool({
+    databasePath: serverConfig.databasePath,
+    fallbackDb: db,
+    logger,
+    pageCacheKib: THREAD_READ_WORKER_PAGE_CACHE_KIB,
+    size: Math.min(4, Math.floor(availableParallelism() / 2)),
+    workerUrl: new URL(
+      import.meta.url.endsWith(".ts")
+        ? "./thread-read-worker.ts"
+        : "./thread-read-worker.js",
+      import.meta.url,
+    ),
+  });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
@@ -399,6 +416,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       terminalSessions,
       watchInterests,
       sharedPorts,
+      threadReads,
       walCheckpointer,
     },
     {
@@ -589,6 +607,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       await closeWebSockets();
       await closeServer;
       await walCheckpointer.stop();
+      await threadReads.close();
     })();
     return shutdownPromise;
   };

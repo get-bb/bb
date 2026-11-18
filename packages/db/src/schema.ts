@@ -830,17 +830,6 @@ export const threadSearchSegments = sqliteTable(
   ],
 );
 
-export const threadConversationOutlines = sqliteTable(
-  "thread_conversation_outlines",
-  {
-    threadId: text("thread_id")
-      .primaryKey()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    projectionKey: text("projection_key").notNull(),
-    itemsJson: text("items_json").notNull(),
-  },
-);
-
 export const threadDynamicContextFileStates = sqliteTable(
   "thread_dynamic_context_file_states",
   {

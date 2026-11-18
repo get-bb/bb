@@ -28,7 +28,6 @@ export * from "./sessions.js";
 export * from "./sweep-item-failures.js";
 export * from "./sweeps.js";
 export * from "./terminal-sessions.js";
-export * from "./thread-conversation-outlines.js";
 export * from "./thread-plugin-metadata.js";
 export * from "./thread-pruning.js";
 export * from "./thread-purges.js";

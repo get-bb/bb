@@ -65,7 +65,6 @@ import {
   environments,
   events,
   promptHistoryEntries,
-  threadConversationOutlines,
   threadDynamicContextFileStates,
   threadSearchSegments,
   threads,
@@ -78,7 +77,6 @@ import {
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import {
   bumpThreadEventRewriteGeneration,
-  getDatabaseDataVersion,
   getThreadEventRewriteGeneration,
 } from "./event-rewrite-generation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
@@ -355,9 +353,6 @@ export function deleteThreadEventSuffixInTransaction(
     )
     .run();
   if (result.changes > 0) {
-    db.delete(threadConversationOutlines)
-      .where(eq(threadConversationOutlines.threadId, args.threadId))
-      .run();
     bumpThreadEventRewriteGeneration(args.threadId);
     rewindResolvedItemPruning(db, {
       threadId: args.threadId,
@@ -1732,7 +1727,6 @@ export function listStoredEventRows(
 }
 
 interface LatestThreadStateCacheEntry {
-  dataVersion: number;
   generation: number;
   latestSequence: number | null;
   scannedThroughSequence: number;
@@ -1928,14 +1922,12 @@ export function listLatestThreadStateEventRowsByThreadIds(
     cache = new Map();
     latestThreadStateCaches.set(db, cache);
   }
-  const dataVersion = getDatabaseDataVersion(db);
   const cacheKey = (threadId: string) => JSON.stringify([threadId, args.kind]);
   const cached = new Map<string, LatestThreadStateCacheEntry>();
   for (const threadId of threadIds) {
     const entry = cache.get(cacheKey(threadId));
     if (
       entry !== undefined &&
-      entry.dataVersion === dataVersion &&
       entry.generation === getThreadEventRewriteGeneration(threadId)
     ) {
       cached.set(threadId, entry);
@@ -1947,7 +1939,6 @@ export function listLatestThreadStateEventRowsByThreadIds(
     cache.delete(key);
     cache.set(key, {
       ...state,
-      dataVersion,
       generation: getThreadEventRewriteGeneration(threadId),
     });
   }

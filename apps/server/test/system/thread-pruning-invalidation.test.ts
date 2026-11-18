@@ -1,12 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  events,
-  getThread,
-  getThreadEventRewriteGeneration,
-  threads,
-} from "@bb/db";
+import { events, getThreadEventRewriteGeneration, threads } from "@bb/db";
 import {
   defaultFeatureFlags,
   encodeClientTurnRequestIdNumber,
@@ -148,18 +143,20 @@ function full(response: unknown): ThreadTimelineResponse {
   return parsed;
 }
 
-function freshLatest(
+async function freshLatest(
   harness: TestAppHarness,
   threadId: string,
-): ThreadTimelineResponse {
+): Promise<ThreadTimelineResponse> {
   clearTimelineSelectionMemo(harness.db);
   clearTimelineProjectionFolds(harness.db);
   clearTimelineOrderingContextCache(harness.db);
   clearStoredEventDecodeCache(harness.db);
-  const thread = getThread(harness.db, threadId);
-  if (thread === null) throw new Error("missing thread");
   return full(
-    createThreadTimelineWindows(harness.deps).read(thread, LATEST, undefined),
+    await createThreadTimelineWindows(harness.deps).read(
+      threadId,
+      LATEST,
+      undefined,
+    ),
   );
 }
 
@@ -232,8 +229,7 @@ describe("pruning invalidation", () => {
       const windows = createThreadTimelineWindows(harness.deps);
       const compactions = recordCompactions(harness, threadId);
       const generation = getThreadEventRewriteGeneration(threadId);
-      const loadThread = () => getThread(harness.db, threadId)!;
-      const served = full(windows.read(loadThread(), LATEST, undefined));
+      const served = full(await windows.read(threadId, LATEST, undefined));
       const usageTypes: ThreadEventType[] = [
         "thread/tokenUsage/updated",
         "thread/contextWindowUsage/updated",
@@ -257,8 +253,8 @@ describe("pruning invalidation", () => {
       );
       expect(compactions.notices()).toBe(0);
       expect(getThreadEventRewriteGeneration(threadId)).toBe(generation);
-      expect(windows.read(loadThread(), LATEST, undefined)).toBe(served);
-      expect(freshLatest(harness, threadId)).toEqual(served);
+      expect(await windows.read(threadId, LATEST, undefined)).toBe(served);
+      expect(await freshLatest(harness, threadId)).toEqual(served);
       compactions.stop();
     });
   });
@@ -278,8 +274,7 @@ describe("pruning invalidation", () => {
       script.finishTurn(third, 3);
       const threadId = script.thread.id;
       const windows = createThreadTimelineWindows(harness.deps);
-      const loadThread = () => getThread(harness.db, threadId)!;
-      const initial = full(windows.read(loadThread(), LATEST, undefined));
+      const initial = full(await windows.read(threadId, LATEST, undefined));
       expect(JSON.stringify(initial.rows)).not.toContain("User message 1");
       const compactions = recordCompactions(harness, threadId);
       const sweep = () =>
@@ -295,8 +290,8 @@ describe("pruning invalidation", () => {
         const remaining = rateLimitRows();
         await sweep();
         removedByRun.push(remaining - rateLimitRows());
-        const served = full(windows.read(loadThread(), LATEST, undefined));
-        expect(served).toEqual(freshLatest(harness, threadId));
+        const served = full(await windows.read(threadId, LATEST, undefined));
+        expect(served).toEqual(await freshLatest(harness, threadId));
       }
 
       expect(rateLimitRows()).toBe(1);
@@ -304,7 +299,7 @@ describe("pruning invalidation", () => {
         removedByRun.filter((removed) => removed > 0).length,
       ).toBeGreaterThan(1);
       expect(compactions.notices()).toBe(0);
-      const compacted = full(windows.read(loadThread(), LATEST, undefined));
+      const compacted = full(await windows.read(threadId, LATEST, undefined));
       expect(JSON.stringify(compacted.rows)).toContain("User message 1");
       compactions.stop();
     });
@@ -366,8 +361,7 @@ describe("pruning invalidation", () => {
       });
       const threadId = script.thread.id;
       const windows = createThreadTimelineWindows(harness.deps);
-      const loadThread = () => getThread(harness.db, threadId)!;
-      const cursor = full(windows.read(loadThread(), LATEST, undefined))
+      const cursor = full(await windows.read(threadId, LATEST, undefined))
         .timelinePage.olderCursor;
       if (cursor === null) throw new Error("expected an older cursor");
       const compactions = recordCompactions(harness, threadId);
@@ -382,8 +376,8 @@ describe("pruning invalidation", () => {
         countEvents(harness, threadId, ["provider/rateLimits/updated"]),
       ).toBe(1);
       const older = full(
-        windows.read(
-          loadThread(),
+        await windows.read(
+          threadId,
           {
             ...LATEST,
             page: { kind: "older", segmentLimit: 20, beforeCursor: cursor },

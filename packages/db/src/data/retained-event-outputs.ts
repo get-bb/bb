@@ -16,6 +16,7 @@ import {
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
 import { events, retainedEventOutputs } from "../schema.js";
+import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
@@ -495,8 +496,9 @@ export function deleteExpiredRetainedEventOutputs(
     .delete(retainedEventOutputs)
     .where(inArray(retainedEventOutputs.eventId, eventIds))
     .run();
-  return {
-    deleted: result.changes,
-    threadIds: [...new Set(rows.map((row) => row.threadId))],
-  };
+  const threadIds = [...new Set(rows.map((row) => row.threadId))];
+  for (const threadId of threadIds) {
+    bumpThreadEventRewriteGeneration(threadId);
+  }
+  return { deleted: result.changes, threadIds };
 }

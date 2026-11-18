@@ -9,6 +9,7 @@ import {
   type ThreadEventType,
 } from "@bb/domain";
 import {
+  bumpThreadEventRewriteGeneration,
   advanceThreadPruning,
   createThread,
   deleteThreadEventSuffixInTransaction,
@@ -1192,11 +1193,14 @@ describe("latest timeline selection memo", () => {
         advanceSettledThreadPruning(testThread, "resolved-items").removed,
     },
     {
-      name: "another connection deletes a delta",
-      rewrite: (testThread: TestThread, sequence: number) =>
-        testThread.coldDb.$client
+      name: "a raw delete bumps the rewrite generation",
+      rewrite: (testThread: TestThread, sequence: number) => {
+        const { changes } = testThread.coldDb.$client
           .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
-          .run(testThread.thread.id, sequence).changes,
+          .run(testThread.thread.id, sequence);
+        bumpThreadEventRewriteGeneration(testThread.thread.id);
+        return changes;
+      },
     },
   ])("rebuilds after $name", ({ rewrite }) => {
     withTestThread((testThread) => {

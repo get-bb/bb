@@ -4,15 +4,15 @@ import {
   type CompletedTurnDisplay,
 } from "@bb/domain";
 import {
+  bumpThreadEventRewriteGeneration,
   deleteThreadEventSuffixInTransaction,
   createThread,
   noopNotifier,
-  getLatestStoredConversationOutlineSequence,
   getLatestThreadSequence,
 } from "@bb/db";
 import {
   buildThreadConversationOutline,
-  loadThreadConversationOutline,
+  projectThreadConversationOutlineItems,
 } from "../../../src/services/threads/timeline.js";
 import {
   appendRows,
@@ -202,14 +202,13 @@ function load(
   completedTurnDisplay: CompletedTurnDisplay = "collapse",
 ) {
   const threadId = testThread.thread.id;
-  return loadThreadConversationOutline(testThread.db, testThread.thread, {
-    completedTurnDisplay,
-    includeClearedContextHistory: false,
-    maxSeq: getLatestThreadSequence(testThread.db, { threadId }),
-    outlineSequence: getLatestStoredConversationOutlineSequence(testThread.db, {
-      threadId,
-    }),
-  });
+  const maxSeq = getLatestThreadSequence(testThread.db, { threadId });
+  const items = projectThreadConversationOutlineItems(
+    testThread.db,
+    testThread.thread,
+    { completedTurnDisplay, includeClearedContextHistory: false, maxSeq },
+  );
+  return { items, maxSeq };
 }
 
 function expectMatchesFull(
@@ -304,12 +303,14 @@ describe("incremental conversation outlines", () => {
           started("live"),
           delta("live", "Live"),
         ]);
-        const removeCompletion = () =>
+        const removeCompletion = () => {
           testThread.coldDb.$client
             .prepare(
               "DELETE FROM events WHERE thread_id = ? AND turn_id = ? AND type = 'turn/completed'",
             )
             .run(testThread.thread.id, "nested-child-0");
+          bumpThreadEventRewriteGeneration(testThread.thread.id);
+        };
         if (change === "incomplete child") removeCompletion();
         expectMatchesFull(testThread);
         switch (change) {
@@ -575,7 +576,7 @@ describe("incremental conversation outlines", () => {
   it.each([
     "rewind",
     "clear",
-    "external rewrite",
+    "raw rewrite",
     "metadata",
     "display",
     "late event",
@@ -642,12 +643,13 @@ describe("incremental conversation outlines", () => {
               delta("fresh", "Fresh"),
             ]);
             break;
-          case "external rewrite":
+          case "raw rewrite":
             testThread.coldDb.$client
               .prepare(
                 "UPDATE events SET data = json_set(data, '$.item.text', 'Rewritten') WHERE thread_id = ? AND sequence = 4",
               )
               .run(testThread.thread.id);
+            bumpThreadEventRewriteGeneration(testThread.thread.id);
             break;
           case "display":
             break;
