@@ -149,6 +149,9 @@ export function MachineRowContent({
                   <MachineStatusDot tone={machineStatusTone(host)} />
                   <span className="min-w-0 truncate">{connectionLabel}</span>
                 </span>
+                {host.status === "connected" && host.route !== null ? (
+                  <span className="truncate">via {host.route.displayName}</span>
+                ) : null}
                 {platformLabel === null ? null : (
                   <span className="truncate">{platformLabel}</span>
                 )}

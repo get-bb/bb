@@ -72,6 +72,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: false,
         pluginUpdates: false,
         resumeDaemonSessions: false,
+        serverRoutes: false,
         skipFocusedThreadNotifications: false,
         threadContextCard: true,
         walCheckpointWorker: false,

@@ -1086,7 +1086,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(276);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(277);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1122,7 +1122,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(273)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(274)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(275)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(276)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(276)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(277)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -2919,6 +2920,7 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_123",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
@@ -2948,6 +2950,7 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_default_shares",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
@@ -2961,6 +2964,7 @@ describe("host-daemon session schemas", () => {
 
     expect(() =>
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,

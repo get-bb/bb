@@ -11,7 +11,7 @@ import {
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
 import { getGateAuthKind } from "../request-context.js";
-import { serverAccessStatus } from "../services/machines/server-access.js";
+import { serverAccessOverview } from "../services/machines/server-access.js";
 import {
   getAppSettings,
   getAppKeybindingOverrides,
@@ -211,9 +211,12 @@ export function registerSystemRoutes(
         ...deps.hub.listDaemonLocalApiPorts(),
       ]),
     ];
+    const access = await serverAccessOverview(deps);
     return {
+      serverId: access.serverId,
+      routes: access.routes,
       generalSettings: compatibleGeneralSettings(),
-      serverAccess: await serverAccessStatus(deps),
+      serverAccess: access.status,
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,

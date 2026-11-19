@@ -84,6 +84,7 @@ export function createTailscalePlugin(options: TailscalePluginOptions = {}) {
     bb.experimental_serverAccess.register({
       id: TAILSCALE_PROVIDER_ID,
       displayName: "Tailscale",
+      routeKind: "private-overlay",
       description:
         "Use this server's private tailnet address (Tailscale Serve). Machines must be on the same tailnet.",
       availability: () => tailscale.availability(),

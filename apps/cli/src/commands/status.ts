@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import { z } from "zod";
+import { serverRouteSchema, type ServerRoute } from "@bb/server-contract";
 import type {
   ThreadParentNotifications,
   ThreadTimelinePendingTodos,
@@ -18,8 +20,15 @@ import {
 } from "./environment-helpers.js";
 import { printPendingTodos } from "./thread/pending-todos.js";
 
+const statusServerSchema = z.object({
+  serverId: z.string().min(1),
+  routes: z.array(serverRouteSchema),
+});
+
 interface StatusPayload {
   dataDir: string | null;
+  serverId: string | null;
+  routes: ServerRoute[];
   project: { id: string; name: string } | null;
   thread: {
     id: string;
@@ -61,6 +70,8 @@ export function registerStatusCommand(
 
         const payload: StatusPayload = {
           dataDir: null,
+          serverId: null,
+          routes: [],
           project: null,
           thread: null,
           childThreads: null,
@@ -75,6 +86,11 @@ export function registerStatusCommand(
           const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
           if (response.ok) {
             const config = (await response.json()) as { dataDir?: unknown };
+            const server = statusServerSchema.safeParse(config);
+            if (server.success) {
+              payload.serverId = server.data.serverId;
+              payload.routes = server.data.routes;
+            }
             if (typeof config.dataDir === "string") {
               payload.dataDir = config.dataDir;
               serverAvailable = true;
@@ -206,6 +222,13 @@ export function registerStatusCommand(
             if (payload.dataDir) {
               console.log("");
               console.log(`Data dir: ${payload.dataDir}`);
+            }
+
+            if (payload.routes.length > 0) {
+              console.log(`Reachable at:`);
+              for (const route of payload.routes) {
+                console.log(`  ${route.url}  (${route.displayName})`);
+              }
             }
 
             const attention = payload.pluginsNeedingAttention;

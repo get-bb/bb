@@ -140,6 +140,18 @@ export function dropThreadRunStateTables(db: DbConnection): void {
   );
 }
 
+export function dropServerAccessRouteTables(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS host_server_access_grants");
+  const sessionColumns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(host_daemon_sessions)")
+    .all();
+  for (const column of ["route_provider_id", "route_kind"]) {
+    if (sessionColumns.some((existing) => existing.name === column)) {
+      db.$client.exec(`ALTER TABLE host_daemon_sessions DROP COLUMN ${column}`);
+    }
+  }
+}
+
 export function dropPluginFailureLabelColumns(db: DbConnection): void {
   for (const [table, column] of [
     ["plugins", "last_failure_label"],
@@ -187,6 +199,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropServerAccessRouteTables(db);
 }
 
 export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {

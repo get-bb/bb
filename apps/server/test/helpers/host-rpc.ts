@@ -153,7 +153,11 @@ export function registerHostRpcResponder(
     close() {},
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
-      if (message.type === "provider-session-policy.replace") return;
+      if (
+        message.type === "provider-session-policy.replace" ||
+        message.type === "server-routes.replace"
+      )
+        return;
       if (
         message.type === "machine-environment.replace" &&
         args.onMachineEnvironment

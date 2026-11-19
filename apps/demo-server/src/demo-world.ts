@@ -67,17 +67,32 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
+  serverId: "srv_demo",
+  routes: [
+    {
+      providerId: "direct",
+      kind: "custom",
+      displayName: "Manual",
+      url: "https://demo.invalid",
+    },
+  ],
   serverAccess: {
     effectiveUrl: "https://demo.invalid",
     urlSource: "setting",
-    defaultProviderId: "direct",
+    localNetwork: { bindHost: "127.0.0.1", addresses: [], listenerError: null },
     providers: [
       {
         id: "direct",
-        displayName: "Direct URL",
-        description: "Connect machines directly to this server URL.",
+        displayName: "Manual",
+        description: "Use your own domain or network address.",
         pluginId: null,
-        availability: null,
+        routeKind: "custom",
+        enabled: true,
+        availability: {
+          status: "available",
+          serverUrl: "https://demo.invalid",
+        },
+        urls: ["https://demo.invalid"],
       },
     ],
   },

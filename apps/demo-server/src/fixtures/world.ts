@@ -176,6 +176,7 @@ export function hosts(now: number): Host[] {
       },
       maxPermissionMode: "full",
       lastSeenAt: now,
+      route: null,
       lastRejectedProtocolVersion: null,
       createdAt: now - 7 * DAY_MS,
       updatedAt: now,

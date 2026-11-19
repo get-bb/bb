@@ -49,6 +49,7 @@ function host(status: Host["status"]): Host {
     },
     maxPermissionMode: "full",
     lastSeenAt: null,
+    route: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,

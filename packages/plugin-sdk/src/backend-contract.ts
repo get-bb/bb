@@ -519,10 +519,23 @@ export interface ServerAccessGrant {
   headers?: Record<string, string>;
 }
 
+export type ServerAccessRouteKind =
+  | "local-network"
+  | "private-overlay"
+  | "relay"
+  | "custom";
+
 export interface ServerAccessProviderDeclaration {
   id: string;
   displayName: string;
   description: string;
+  /**
+   * How machines and apps travel to this server over the provider's address.
+   * Core ranks enabled routes by kind (local network, private overlay such as
+   * a tailnet, relay, then custom) until the user orders them in Settings.
+   * Omitted means `"custom"`.
+   */
+  routeKind?: ServerAccessRouteKind;
   availability():
     | (import("./machine-provider.js").PluginMachineProviderAvailability & {
         serverUrl?: string;

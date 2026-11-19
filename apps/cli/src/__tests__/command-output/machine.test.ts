@@ -29,6 +29,7 @@ const hosts: Host[] = [
     },
     maxPermissionMode: "full",
     lastSeenAt: 1_700_000_000_000,
+    route: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
@@ -48,6 +49,7 @@ const hosts: Host[] = [
     },
     maxPermissionMode: "full",
     lastSeenAt: null,
+    route: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
@@ -273,7 +275,19 @@ describe("bb machine command output", () => {
   it("bb machine list marks the server machine in the table", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_120_000);
     stubServerApi({
-      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.$get": vi.fn(async () => [
+        hosts[0],
+        {
+          ...hosts[1],
+          status: "connected",
+          lastSeenAt: 1_700_000_060_000,
+          route: {
+            providerId: "local-network",
+            kind: "local-network",
+            displayName: "Local network",
+          },
+        },
+      ]),
       "v1.system.config.$get": vi.fn(async () => ({
         primaryHostId: "host-primary",
       })),
@@ -283,7 +297,7 @@ describe("bb machine command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "Name         Role    ID            Type        Status        Provider       Last seen\n-----------  ------  ------------  ----------  ------------  -------------  ---------\nworkstation  server  host-primary  persistent  connected     user-enrolled  2m ago\n-----------  ------  ------------  ----------  ------------  -------------  ---------\nlaptop               host-remote   persistent  disconnected  ssh            never",
+      "Name         Role    ID            Type        Status     Route          Provider       Last seen\n-----------  ------  ------------  ----------  ---------  -------------  -------------  ---------\nworkstation  server  host-primary  persistent  connected                 user-enrolled  2m ago\n-----------  ------  ------------  ----------  ---------  -------------  -------------  ---------\nlaptop               host-remote   persistent  connected  Local network  ssh            1m ago",
       "",
     ]);
   });

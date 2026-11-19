@@ -78,6 +78,7 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
       teardown: null,
     },
     lastSeenAt: null,
+    route: null,
     maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 0,

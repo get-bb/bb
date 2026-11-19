@@ -414,9 +414,13 @@ describe("connectAccessUrl", () => {
   ): ServerAccessStatus {
     return {
       providers,
-      defaultProviderId: "connect",
       effectiveUrl: null,
       urlSource: null,
+      localNetwork: {
+        bindHost: "127.0.0.1",
+        addresses: [],
+        listenerError: null,
+      },
     };
   }
   const connect = {
@@ -424,6 +428,9 @@ describe("connectAccessUrl", () => {
     displayName: "bb connect",
     description: "",
     pluginId: "connect",
+    routeKind: "relay" as const,
+    enabled: true,
+    urls: [],
   };
 
   it("is on only when bb connect is available with an address", () => {
@@ -440,6 +447,20 @@ describe("connectAccessUrl", () => {
         ]),
       ),
     ).toEqual({ status: "on", url: "https://sawyer.getbb.app" });
+    expect(
+      connectAccessUrl(
+        access([
+          {
+            ...connect,
+            enabled: false,
+            availability: {
+              status: "available",
+              serverUrl: "https://sawyer.getbb.app",
+            },
+          },
+        ]),
+      ),
+    ).toEqual({ status: "off" });
     expect(
       connectAccessUrl(
         access([{ ...connect, availability: { status: "available" } }]),
@@ -466,6 +487,9 @@ describe("connectAccessUrl", () => {
             displayName: "Direct",
             description: "",
             pluginId: null,
+            routeKind: "custom",
+            enabled: true,
+            urls: ["https://bb.example.com"],
             availability: {
               status: "available",
               serverUrl: "https://bb.example.com",
