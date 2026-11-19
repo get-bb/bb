@@ -66,23 +66,20 @@ type ThreadContextCardSectionEntry =
   | { owner: "core"; slot: CoreThreadContextCardSection }
   | { owner: "plugin"; slot: PluginThreadContextCardSectionSlot };
 
-export type ThreadContextCardLayout = "gutter" | "shift" | "banner";
+export type ThreadContextCardLayout = "card" | "banner";
 
 const TRANSCRIPT_MAX_WIDTH_PX = 760;
 const CARD_WIDTH_PX = 288;
-export const THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX = CARD_WIDTH_PX + 24;
+const RESERVED_WIDTH_PX = CARD_WIDTH_PX + 24;
+const TRANSCRIPT_CENTERED_MIN_WIDTH_PX =
+  TRANSCRIPT_MAX_WIDTH_PX + 2 * RESERVED_WIDTH_PX;
 
 export function resolveThreadContextCardLayout(
   paneWidth: number,
 ): ThreadContextCardLayout {
-  const gutter = (paneWidth - TRANSCRIPT_MAX_WIDTH_PX) / 2;
-  if (gutter >= THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX) return "gutter";
-  if (
-    paneWidth - THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX >=
-    TRANSCRIPT_MAX_WIDTH_PX
-  )
-    return "shift";
-  return "banner";
+  return paneWidth - RESERVED_WIDTH_PX >= TRANSCRIPT_MAX_WIDTH_PX
+    ? "card"
+    : "banner";
 }
 
 const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
@@ -240,14 +237,16 @@ function isCardShown(
   return state.cardRevealed || (pinned && state.cardHasContent);
 }
 
-export function useThreadContextCardContentInset(): number {
+export function useThreadContextCardTranscriptCenteredMinWidth():
+  | number
+  | undefined {
   const state = usePaneState();
   const [pinned] = useAtom(pinnedAtom);
   return state !== null &&
-    state.layout === "shift" &&
+    state.layout === "card" &&
     isCardShown(state, pinned)
-    ? THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX
-    : 0;
+    ? TRANSCRIPT_CENTERED_MIN_WIDTH_PX
+    : undefined;
 }
 
 const CONTENT_SELECTOR =

@@ -9,15 +9,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, ReactNode, RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import {
-  PAGE_CONTAINER_INSET_END_VARIABLE,
-  PAGE_SHELL_CONTENT_STYLE,
-} from "./page-shell-content-style.js";
+import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
 import { PAGE_SCROLL_TO_TOP_EVENT } from "@/lib/page-scroll-to-top";
 import { isIOSWebKit } from "@/lib/ios-webkit";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor.js";
@@ -45,7 +42,7 @@ interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
-  contentInsetEndPx?: number;
+  contentCenteredMinWidthPx?: number;
   scrollAreaClassName?: string;
   contentClassName?: string;
   maxWidthClassName: string;
@@ -133,7 +130,7 @@ export function BottomAnchoredScrollBody({
   maxWidthClassName,
   footer,
   scrollOverlay,
-  contentInsetEndPx,
+  contentCenteredMinWidthPx,
   children,
   scrollAnchorThreadId,
 }: BottomAnchoredScrollBodyProps) {
@@ -377,12 +374,11 @@ export function BottomAnchoredScrollBody({
               ref={scrollContentRef}
               className="@container/page flex min-h-full min-w-0 flex-col"
               style={
-                contentInsetEndPx
-                  ? ({
-                      paddingInlineEnd: contentInsetEndPx,
-                      [PAGE_CONTAINER_INSET_END_VARIABLE]: `${contentInsetEndPx}px`,
-                    } as CSSProperties)
-                  : undefined
+                contentCenteredMinWidthPx === undefined
+                  ? undefined
+                  : {
+                      paddingInlineEnd: `max(0px, calc(${contentCenteredMinWidthPx}px - 100%))`,
+                    }
               }
             >
               <div

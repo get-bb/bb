@@ -26,7 +26,7 @@ import {
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
   resolveThreadContextCardLayout,
-  useThreadContextCardContentInset,
+  useThreadContextCardTranscriptCenteredMinWidth,
   useThreadContextKind,
   WithoutThreadContextCard,
   type CoreThreadContextCardRow,
@@ -71,9 +71,11 @@ function Empty() {
   return null;
 }
 
-function Inset() {
+function TranscriptCenteredMinWidth() {
   return (
-    <output aria-label="Inset">{useThreadContextCardContentInset()}</output>
+    <output aria-label="Transcript centered min width">
+      {useThreadContextCardTranscriptCenteredMinWidth() ?? "none"}
+    </output>
   );
 }
 
@@ -134,7 +136,7 @@ function renderPane({
               <header>
                 <ThreadContextCardHeaderButton />
               </header>
-              <Inset />
+              <TranscriptCenteredMinWidth />
               <div data-scroll-overlay="">
                 <ThreadContextCard />
               </div>
@@ -157,9 +159,8 @@ afterEach(() => {
 
 describe("resolveThreadContextCardLayout", () => {
   it.each([
-    [1384, "gutter"],
-    [1383, "shift"],
-    [1072, "shift"],
+    [1600, "card"],
+    [1072, "card"],
     [1071, "banner"],
     [390, "banner"],
   ] as const)("lays out a %ipx pane as %s", (width, layout) => {
@@ -281,13 +282,17 @@ describe("thread context card", () => {
       })),
     });
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
-    expect(screen.getByLabelText("Inset").textContent).toBe("0");
+    expect(
+      screen.getByLabelText("Transcript centered min width").textContent,
+    ).toBe("none");
 
     fireEvent.click(screen.getByRole("button", { name: "Pin thread context" }));
     expect(
       screen.getByRole("group", { name: "Thread context" }).textContent,
     ).toContain("Nothing to show yet");
-    expect(screen.getByLabelText("Inset").textContent).not.toBe("0");
+    expect(
+      screen.getByLabelText("Transcript centered min width").textContent,
+    ).toBe("1384");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Unpin thread context" }),
@@ -310,7 +315,7 @@ describe("thread context card", () => {
     ).toContain("Branch for thr_1");
   });
 
-  it("lays out the card and the transcript inset in the same frame as a resize", () => {
+  it("lays out the card and the transcript clearance in the same frame as a resize", () => {
     const resize: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal(
       "ResizeObserver",
@@ -329,19 +334,20 @@ describe("thread context card", () => {
       for (const callback of resize) callback([]);
     };
     const card = () => screen.queryByRole("group", { name: "Thread context" });
-    const inset = () => screen.getByLabelText("Inset").textContent;
+    const centeredMinWidth = () =>
+      screen.getByLabelText("Transcript centered min width").textContent;
 
     resizeTo(1200);
     expect(card()).toBeTruthy();
-    expect(inset()).toBe("312");
+    expect(centeredMinWidth()).toBe("1384");
 
     resizeTo(900);
     expect(card()).toBeNull();
-    expect(inset()).toBe("0");
+    expect(centeredMinWidth()).toBe("none");
 
     resizeTo(1200);
     expect(card()).toBeTruthy();
-    expect(inset()).toBe("312");
+    expect(centeredMinWidth()).toBe("1384");
     vi.unstubAllGlobals();
   });
 
