@@ -52,9 +52,34 @@ interface InstallGlobalCliSkillsArgs {
   hostIds: readonly string[];
 }
 
+interface GlobalCliSkill {
+  install: HostInstallGlobalSkill;
+  windowsTreeHash: string | null;
+}
+
+function windowsReportedFileMode(mode: number): number {
+  return (mode & 0o200) === 0 ? 0o444 : 0o666;
+}
+
+function windowsReportedTreeHash(
+  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"],
+  treeHash: string,
+): string | null {
+  const manifest = skillTreeRegistry.manifest(treeHash);
+  if (manifest === undefined) return null;
+  return hashSkillTreeFiles(
+    manifest.files.map((file) => ({
+      path: file.path,
+      mode: windowsReportedFileMode(file.mode),
+      sizeBytes: file.sizeBytes,
+      sha256: file.sha256,
+    })),
+  );
+}
+
 async function resolveGlobalCliSkills(
   deps: GlobalSkillInstallDeps,
-): Promise<HostInstallGlobalSkill[]> {
+): Promise<GlobalCliSkill[]> {
   return (
     await resolveServerOwnedSkillCatalogEntries({
       builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
@@ -68,51 +93,32 @@ async function resolveGlobalCliSkills(
     GLOBAL_CLI_SKILL_NAMES.includes(runtimeSource.name)
       ? [
           {
-            name: runtimeSource.name,
-            treeHash: runtimeSource.treeHash,
-            entryPath: runtimeSource.entryPath,
+            install: {
+              name: runtimeSource.name,
+              treeHash: runtimeSource.treeHash,
+              entryPath: runtimeSource.entryPath,
+            },
+            windowsTreeHash: windowsReportedTreeHash(
+              deps.skillTreeRegistry,
+              runtimeSource.treeHash,
+            ),
           },
         ]
       : [],
   );
 }
 
-function windowsReportedFileMode(mode: number): number {
-  return (mode & 0o200) === 0 ? 0o444 : 0o666;
-}
-
-function expectedInstalledTreeHash(args: {
-  platform: HostPlatform | null;
-  skill: HostInstallGlobalSkill;
-  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"];
-}): string {
-  if (args.platform !== "win32") return args.skill.treeHash;
-  const manifest = args.skillTreeRegistry.manifest(args.skill.treeHash);
-  if (manifest === undefined) return args.skill.treeHash;
-  return hashSkillTreeFiles(
-    manifest.files.map((file) => ({
-      path: file.path,
-      mode: windowsReportedFileMode(file.mode),
-      sizeBytes: file.sizeBytes,
-      sha256: file.sha256,
-    })),
-  );
-}
-
 function resolveMachineSkillStatus(args: {
   entries: HostGlobalSkillsStatusResult["entries"];
   platform: HostPlatform | null;
-  skills: readonly HostInstallGlobalSkill[];
-  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"];
+  skills: readonly GlobalCliSkill[];
 }): CliSkillMachineStatus {
   const expectedByName = new Map(
     args.skills.map((skill) => [
-      skill.name,
-      expectedInstalledTreeHash({
-        platform: args.platform,
-        skill,
-        skillTreeRegistry: args.skillTreeRegistry,
-      }),
+      skill.install.name,
+      args.platform === "win32"
+        ? skill.windowsTreeHash
+        : skill.install.treeHash,
     ]),
   );
   const relevant = args.entries.filter((entry) =>
@@ -120,6 +126,9 @@ function resolveMachineSkillStatus(args: {
   );
   if (relevant.length === 0 || relevant.every((e) => e.treeHash === null)) {
     return "missing";
+  }
+  if (relevant.some((entry) => expectedByName.get(entry.name) === null)) {
+    return "unknown";
   }
   return relevant.every(
     (entry) => entry.treeHash === expectedByName.get(entry.name),
@@ -146,7 +155,7 @@ export async function readGlobalCliSkillStatus(
           timeoutMs: STATUS_TIMEOUT_MS,
           command: {
             type: "host.global_skills_status",
-            names: skills.map((skill) => skill.name),
+            names: skills.map((skill) => skill.install.name),
           },
         });
         return {
@@ -155,7 +164,6 @@ export async function readGlobalCliSkillStatus(
             entries: result.entries,
             platform: deps.hub.getDaemonPlatformForHost(host.id),
             skills,
-            skillTreeRegistry: deps.skillTreeRegistry,
           }),
         };
       } catch (error) {
@@ -206,7 +214,10 @@ export async function installGlobalCliSkills(
         const result = await callHostOnlineRpcForWork(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: { type: "host.install_global_skills", skills },
+          command: {
+            type: "host.install_global_skills",
+            skills: skills.map((skill) => skill.install),
+          },
         });
         return {
           ok: true as const,

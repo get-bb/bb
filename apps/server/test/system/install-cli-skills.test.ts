@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,10 +8,16 @@ import {
   systemInstallCliSkillsResponseSchema,
 } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../helpers/host-rpc.js";
 import { seedHost, seedHostSession } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { resolveServerOwnedSkillCatalogEntries } from "../../src/services/skills/injected-skills.js";
+
+const CLI_SKILL_MD =
+  "---\nname: bb-cli\ndescription: Control bb from the CLI.\n---\n";
 
 async function writeBuiltinCliSkill(harness: TestAppHarness): Promise<void> {
   const skillDirectory = join(
@@ -19,10 +25,7 @@ async function writeBuiltinCliSkill(harness: TestAppHarness): Promise<void> {
     "bb-cli",
   );
   await mkdir(skillDirectory, { recursive: true });
-  await writeFile(
-    join(skillDirectory, "SKILL.md"),
-    "---\nname: bb-cli\ndescription: Control bb from the CLI.\n---\n",
-  );
+  await writeFile(join(skillDirectory, "SKILL.md"), CLI_SKILL_MD);
 }
 
 async function expectedCliSkillTreeHash(
@@ -40,6 +43,76 @@ async function expectedCliSkillTreeHash(
     throw new Error("The built-in bb-cli skill did not resolve to a tree");
   }
   return entry.runtimeSource.treeHash;
+}
+
+const CLI_SKILL_FILES = [
+  { path: "SKILL.md", mode: 0o644, windowsMode: 0o666, content: CLI_SKILL_MD },
+  {
+    path: "scripts/run.sh",
+    mode: 0o755,
+    windowsMode: 0o666,
+    content: "#!/bin/sh\necho bb\n",
+  },
+  {
+    path: "references/locked.md",
+    mode: 0o464,
+    windowsMode: 0o444,
+    content: "Read-only reference\n",
+  },
+];
+
+async function writeCliSkillWithModes(
+  harness: TestAppHarness,
+): Promise<string> {
+  const skillDirectory = join(
+    harness.deps.config.builtinSkillsRootPath,
+    "bb-cli",
+  );
+  for (const file of CLI_SKILL_FILES) {
+    const filePath = join(skillDirectory, ...file.path.split("/"));
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, file.content);
+    await chmod(filePath, file.mode);
+  }
+  return hashSkillTreeFiles(
+    CLI_SKILL_FILES.map((file) => ({
+      path: file.path,
+      mode: file.windowsMode,
+      sizeBytes: Buffer.byteLength(file.content),
+      sha256: createHash("sha256").update(file.content).digest("hex"),
+    })),
+  );
+}
+
+function statusResponse(
+  hostId: string,
+  treeHash: string | null,
+): HostRpcHandlerResult {
+  return {
+    ok: true,
+    result: {
+      entries: [
+        {
+          name: "bb-cli",
+          path: `/home/${hostId}/.agents/skills/bb-cli`,
+          treeHash,
+        },
+      ],
+    },
+  };
+}
+
+async function readCliSkillStatuses(
+  harness: TestAppHarness,
+): Promise<Record<string, string>> {
+  const response = await harness.app.request("/api/v1/system/cli-skills");
+  expect(response.status).toBe(200);
+  const body = systemCliSkillsStatusResponseSchema.parse(
+    await readJson(response),
+  );
+  return Object.fromEntries(
+    body.machines.map((machine) => [machine.hostId, machine.status]),
+  );
 }
 
 function installRequest(hostIds: string[]): Request {
@@ -204,72 +277,64 @@ describe("install cli skills", () => {
     });
   });
 
-  it("accepts a Windows machine's tree, whose files report no exec or owner-only bits", async () => {
-    await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
-      const skillDirectory = join(
-        harness.deps.config.builtinSkillsRootPath,
-        "bb-cli",
-      );
-      const scriptContent = "#!/bin/sh\necho bb\n";
-      await mkdir(join(skillDirectory, "scripts"), { recursive: true });
-      await writeFile(join(skillDirectory, "scripts", "run.sh"), scriptContent);
-      await chmod(join(skillDirectory, "SKILL.md"), 0o644);
-      await chmod(join(skillDirectory, "scripts", "run.sh"), 0o755);
-      const skillContent =
-        "---\nname: bb-cli\ndescription: Control bb from the CLI.\n---\n";
-      const windowsTreeHash = hashSkillTreeFiles(
-        [
-          { path: "SKILL.md", content: skillContent },
-          { path: "scripts/run.sh", content: scriptContent },
-        ].map(({ path, content }) => ({
-          path,
-          mode: 0o666,
-          sizeBytes: Buffer.byteLength(content),
-          sha256: createHash("sha256").update(content).digest("hex"),
-        })),
-      );
-      const windows = seedHostSession(harness.deps, {
-        id: "host-windows",
-        platform: "win32",
+  it.skipIf(process.platform === "win32")(
+    "accepts a Windows machine's tree, whose files report only 0o666 or 0o444",
+    async () => {
+      await withTestHarness(async (harness) => {
+        const windowsTreeHash = await writeCliSkillWithModes(harness);
+        const windows = seedHostSession(harness.deps, {
+          id: "host-windows",
+          platform: "win32",
+        });
+        const linux = seedHostSession(harness.deps, {
+          id: "host-linux",
+          platform: "linux",
+        });
+        for (const { host, session } of [windows, linux]) {
+          registerHostRpcResponder(harness, {
+            hostId: host.id,
+            sessionId: session.id,
+            handle: () => statusResponse(host.id, windowsTreeHash),
+          });
+        }
+
+        expect(await readCliSkillStatuses(harness)).toEqual({
+          "host-windows": "installed",
+          "host-linux": "outdated",
+        });
       });
-      const linux = seedHostSession(harness.deps, {
-        id: "host-linux",
-        platform: "linux",
-      });
-      for (const { host, session } of [windows, linux]) {
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "compares a Windows machine against the tree resolved before a rescan replaced it",
+    async () => {
+      await withTestHarness(async (harness) => {
+        const windowsTreeHash = await writeCliSkillWithModes(harness);
+        const skillDirectory = join(
+          harness.deps.config.builtinSkillsRootPath,
+          "bb-cli",
+        );
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-windows",
+          platform: "win32",
+        });
         registerHostRpcResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
-          handle: () => ({
-            ok: true,
-            result: {
-              entries: [
-                {
-                  name: "bb-cli",
-                  path: `/home/${host.id}/.agents/skills/bb-cli`,
-                  treeHash: windowsTreeHash,
-                },
-              ],
-            },
-          }),
+          handle: async () => {
+            await chmod(join(skillDirectory, "SKILL.md"), 0o600);
+            await harness.deps.skillTreeRegistry.readTree(skillDirectory);
+            return statusResponse(host.id, windowsTreeHash);
+          },
         });
-      }
 
-      const response = await harness.app.request("/api/v1/system/cli-skills");
-      const body = systemCliSkillsStatusResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(
-        Object.fromEntries(
-          body.machines.map((machine) => [machine.hostId, machine.status]),
-        ),
-      ).toEqual({
-        "host-windows": "installed",
-        "host-linux": "outdated",
+        expect(await readCliSkillStatuses(harness)).toEqual({
+          "host-windows": "installed",
+        });
       });
-    });
-  });
+    },
+  );
 
   it("reports a machine with no daemon session as unknown", async () => {
     await withTestHarness(async (harness) => {
