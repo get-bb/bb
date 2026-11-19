@@ -18,8 +18,6 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import {
   CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-  CONTEXT_CARD_CHEVRON_CLASS,
-  CONTEXT_CARD_TOGGLE_CLASS,
 } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -260,15 +258,13 @@ const EMPTY_BLOCK_CLASS =
   "[&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))]:hidden";
 
 const SECTION_DIVIDER_CLASS =
-  "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-2 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-2";
+  "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-1 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-1";
 
 const SHOW_EMPTY_STATE_CLASS =
   "contents [&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))>[data-thread-context-card-empty]]:flex";
 
-const SECTION_TOGGLE_CLASS = cn(
-  CONTEXT_CARD_TOGGLE_CLASS,
-  "min-h-5 w-full min-w-0 gap-1.5 rounded px-2 text-left font-medium leading-5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pointer-coarse:min-h-8",
-);
+const SECTION_TOGGLE_CLASS =
+  "flex h-6.5 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-left font-medium text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring max-md:pointer-coarse:h-9";
 
 function ThreadContextCardSectionView({
   sectionKey,
@@ -295,7 +291,7 @@ function ThreadContextCardSectionView({
       aria-label={title}
       className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
     >
-      <h3 className="m-0 mb-0.5 text-xs">
+      <h3 className="m-0 text-xs">
         <button
           type="button"
           aria-expanded={open}
@@ -308,8 +304,7 @@ function ThreadContextCardSectionView({
             name="ChevronDown"
             aria-hidden="true"
             className={cn(
-              CONTEXT_CARD_CHEVRON_CLASS,
-              "ml-auto",
+              "ml-auto size-3.5 shrink-0 text-subtle-foreground",
               open && "rotate-180",
             )}
           />
