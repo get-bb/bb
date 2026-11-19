@@ -6,6 +6,7 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { createColdStorage } from "./cold-storage.js";
+import type { ColdThreadCursor } from "./contract.js";
 import { selectCandidates, type RetentionThread } from "./policy.js";
 import plugin from "./server.js";
 
@@ -284,7 +285,7 @@ describe("retention plugin", () => {
             projectId: null,
             search: null,
             limit: 50,
-            offset: 0,
+            after: null,
           }),
         ).toMatchObject({
           threads: [
@@ -326,9 +327,9 @@ describe("retention plugin", () => {
           projectId: null,
           search: null,
           limit: 50,
-          offset: 0,
+          after: null,
         }),
-      ).toEqual({ threads: [], hasMore: false });
+      ).toEqual({ threads: [], hasMore: false, totalCount: 0, totalBytes: 0 });
     } finally {
       await host.harness.dispose();
     }
@@ -423,9 +424,9 @@ describe("retention plugin", () => {
           projectId: null,
           search: null,
           limit: 50,
-          offset: 0,
+          after: null,
         }),
-      ).toEqual({ threads: [], hasMore: false });
+      ).toEqual({ threads: [], hasMore: false, totalCount: 0, totalBytes: 0 });
 
       host.bb.storage
         .database()
@@ -440,7 +441,7 @@ describe("retention plugin", () => {
           projectId: null,
           search: null,
           limit: 50,
-          offset: 0,
+          after: null,
         }).threads,
       ).toHaveLength(1);
       present = false;
@@ -450,9 +451,67 @@ describe("retention plugin", () => {
           projectId: null,
           search: null,
           limit: 50,
-          offset: 0,
+          after: null,
         }).threads,
       ).toEqual([]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("pages cold storage by cursor without skipping or repeating rows, with totals and literal search", async () => {
+    const host = createFakePluginHost({ pluginId: "storage-retention" });
+    try {
+      const coldStorage = createColdStorage(host.bb);
+      const insert = host.bb.storage
+        .database()
+        .prepare<[string, string, number | null, number | null]>(
+          `INSERT INTO cold_threads (thread_id, project_id, title, provider_id, thread_created_at, requested_at, stored_at, file_bytes)
+           VALUES (?, 'proj_test', ?, 'codex', 1, 1, ?, ?)`,
+        );
+      insert.run("thr_m1", "moving one", null, null);
+      insert.run("thr_m2", "moving two", null, null);
+      insert.run("thr_a", "100%_done", 50, 10);
+      insert.run("thr_b", "100xxdone", 50, 20);
+      insert.run("thr_c", "third", 40, 30);
+      insert.run("thr_d", "fourth", 30, 40);
+      insert.run("thr_e", "fifth", 20, 50);
+      const all = [
+        "thr_m2",
+        "thr_m1",
+        "thr_b",
+        "thr_a",
+        "thr_c",
+        "thr_d",
+        "thr_e",
+      ];
+      const seen: string[] = [];
+      let after: ColdThreadCursor | null = null;
+      for (;;) {
+        const page = coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 2,
+          after,
+        });
+        expect(page).toMatchObject({ totalCount: 7, totalBytes: 150 });
+        seen.push(...page.threads.map((entry) => entry.threadId));
+        const last = page.threads.at(-1);
+        if (!page.hasMore || last === undefined) break;
+        after = { storedAt: last.storedAt, threadId: last.threadId };
+      }
+      expect(seen).toEqual(all);
+      expect(
+        coldStorage.list({
+          projectId: null,
+          search: "100%_",
+          limit: 50,
+          after: null,
+        }),
+      ).toMatchObject({
+        threads: [{ threadId: "thr_a" }],
+        totalCount: 1,
+        totalBytes: 10,
+      });
     } finally {
       await host.harness.dispose();
     }

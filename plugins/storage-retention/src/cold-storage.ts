@@ -5,7 +5,11 @@ import type {
   ThreadDeleteFinalizeHookContext,
   ThreadDeleteFinalizeHookDecision,
 } from "@get-bb/plugin-sdk";
-import type { ColdThread, ColdThreadList } from "./contract.js";
+import type {
+  ColdThread,
+  ColdThreadCursor,
+  ColdThreadList,
+} from "./contract.js";
 import { openPluginDatabase } from "./database.js";
 import { readThreadsById } from "./sdk-data.js";
 
@@ -168,38 +172,59 @@ export function createColdStorage(bb: BbPluginApi) {
     projectId: string | null;
     search: string | null;
     limit: number;
-    offset: number;
+    after: ColdThreadCursor | null;
   }): ColdThreadList {
+    const pattern =
+      args.search === null
+        ? null
+        : `%${args.search.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+    const filter = `(? IS NULL OR project_id = ?)
+      AND (? IS NULL OR title LIKE ? ESCAPE '\\')`;
+    const filterParams = [args.projectId, args.projectId, pattern, pattern];
+    const cursor =
+      args.after === null
+        ? { sql: "1", params: [] }
+        : args.after.storedAt === null
+          ? {
+              sql: "((stored_at IS NULL AND thread_id < ?) OR stored_at IS NOT NULL)",
+              params: [args.after.threadId],
+            }
+          : {
+              sql: "(stored_at < ? OR (stored_at = ? AND thread_id < ?))",
+              params: [
+                args.after.storedAt,
+                args.after.storedAt,
+                args.after.threadId,
+              ],
+            };
     const rows = db
-      .prepare<
-        [
-          string | null,
-          string | null,
-          string | null,
-          string | null,
-          number,
-          number,
-        ],
-        ColdThreadRow
-      >(
+      .prepare<(string | number | null)[], ColdThreadRow>(
         `SELECT ${LISTED_COLUMNS} FROM cold_threads
-         WHERE (? IS NULL OR project_id = ?)
-           AND (? IS NULL OR title LIKE '%' || ? || '%')
+         WHERE ${filter} AND ${cursor.sql}
          ORDER BY stored_at IS NOT NULL, stored_at DESC, thread_id DESC
-         LIMIT ? OFFSET ?`,
+         LIMIT ?`,
       )
-      .all(
-        args.projectId,
-        args.projectId,
-        args.search,
-        args.search,
-        args.limit + 1,
-        args.offset,
-      );
+      .all(...filterParams, ...cursor.params, args.limit + 1);
+    const totals = db
+      .prepare<(string | null)[], { count: number; bytes: number }>(
+        `SELECT COUNT(*) AS count, COALESCE(SUM(file_bytes), 0) AS bytes
+         FROM cold_threads WHERE ${filter}`,
+      )
+      .get(...filterParams)!;
     return {
       threads: rows.slice(0, args.limit).map(toColdThread),
       hasMore: rows.length > args.limit,
+      totalCount: totals.count,
+      totalBytes: totals.bytes,
     };
+  }
+
+  function cursorOf(threadId: string): ColdThreadCursor {
+    const row = pendingRow(threadId);
+    if (row === undefined) {
+      throw new Error(`Thread ${threadId} isn't in cold storage.`);
+    }
+    return { storedAt: row.stored_at, threadId };
   }
 
   function requireStored(threadId: string): void {
@@ -236,6 +261,7 @@ export function createColdStorage(bb: BbPluginApi) {
 
   return {
     beforeDeleteFinalize,
+    cursorOf,
     dropAbandonedMoves,
     list,
     remove,
