@@ -7,7 +7,9 @@ import type {
 import type {
   HostGlobalSkillsStatusResult,
   HostInstallGlobalSkill,
+  HostPlatform,
 } from "@bb/host-daemon-contract";
+import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -75,12 +77,43 @@ async function resolveGlobalCliSkills(
   );
 }
 
+function windowsReportedFileMode(mode: number): number {
+  return (mode & 0o200) === 0 ? 0o444 : 0o666;
+}
+
+function expectedInstalledTreeHash(args: {
+  platform: HostPlatform | null;
+  skill: HostInstallGlobalSkill;
+  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"];
+}): string {
+  if (args.platform !== "win32") return args.skill.treeHash;
+  const manifest = args.skillTreeRegistry.manifest(args.skill.treeHash);
+  if (manifest === undefined) return args.skill.treeHash;
+  return hashSkillTreeFiles(
+    manifest.files.map((file) => ({
+      path: file.path,
+      mode: windowsReportedFileMode(file.mode),
+      sizeBytes: file.sizeBytes,
+      sha256: file.sha256,
+    })),
+  );
+}
+
 function resolveMachineSkillStatus(args: {
   entries: HostGlobalSkillsStatusResult["entries"];
+  platform: HostPlatform | null;
   skills: readonly HostInstallGlobalSkill[];
+  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"];
 }): CliSkillMachineStatus {
   const expectedByName = new Map(
-    args.skills.map((skill) => [skill.name, skill.treeHash]),
+    args.skills.map((skill) => [
+      skill.name,
+      expectedInstalledTreeHash({
+        platform: args.platform,
+        skill,
+        skillTreeRegistry: args.skillTreeRegistry,
+      }),
+    ]),
   );
   const relevant = args.entries.filter((entry) =>
     expectedByName.has(entry.name),
@@ -120,7 +153,9 @@ export async function readGlobalCliSkillStatus(
           ...base,
           status: resolveMachineSkillStatus({
             entries: result.entries,
+            platform: deps.hub.getDaemonPlatformForHost(host.id),
             skills,
+            skillTreeRegistry: deps.skillTreeRegistry,
           }),
         };
       } catch (error) {
