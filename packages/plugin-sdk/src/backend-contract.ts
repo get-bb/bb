@@ -2166,20 +2166,14 @@ export interface PluginStatusApi {
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
  * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
  * leaves the namespace unchanged. `environments.experimental_create` with
- * `hold: "plugin"` holds the environment for this plugin unless `pluginId`
- * names another.
+ * `hold: "plugin"` always holds the environment for the calling plugin.
  */
 export type PluginBbSdk = Omit<BbSdk, "threads" | "environments"> & {
   environments: Omit<BbSdk["environments"], "experimental_create"> & {
     experimental_create(
       args:
         | Extract<EnvironmentCreateArgs, { hold: "user" }>
-        | (Omit<
-            Extract<EnvironmentCreateArgs, { hold: "plugin" }>,
-            "pluginId"
-          > & {
-            pluginId?: string;
-          }),
+        | Omit<Extract<EnvironmentCreateArgs, { hold: "plugin" }>, "pluginId">,
     ): Promise<EnvironmentCreateResult>;
   };
   threads: Omit<

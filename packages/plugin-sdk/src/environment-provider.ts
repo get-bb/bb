@@ -100,11 +100,13 @@ export interface PluginEnvironmentProviderSteps {
   /**
    * Hands this operation a ready environment this plugin holds, at once and
    * atomically: the hold is cleared, the environment becomes the one this
-   * create produces, and it keeps its setup. Rejects when the environment is
-   * not a ready one this plugin holds on the same project and machine; then
-   * nothing changed. A `created` result must name its path.
+   * create produces, keeps its setup, and takes `resource`, which `remove()`
+   * receives if create never returns. Rejects when the environment is not a
+   * ready one this plugin holds on the same project and machine; then nothing
+   * changed. A `created` result must name its path; any other outcome leaves
+   * the environment in error, and its thread fails.
    */
-  adopt(environmentId: string): Promise<void>;
+  adopt(environmentId: string, resource: JsonValue): Promise<void>;
 }
 
 export interface PluginEnvironmentProviderCreateContext<

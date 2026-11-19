@@ -374,9 +374,7 @@ function wrapSdkForPlugin(
       ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
       experimental_create(args) {
         return sdk.environments.experimental_create(
-          args.hold === "user"
-            ? args
-            : { ...args, pluginId: args.pluginId ?? pluginId },
+          args.hold === "user" ? args : { ...args, pluginId },
         );
       },
     },

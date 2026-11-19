@@ -633,19 +633,31 @@ async function runCreate(
         environmentId: provisioning.id,
       });
   };
-  const adopt = async (environmentId: string): Promise<void> => {
+  const createMap = perDbRegistry(createOperations, deps.db);
+  let running: ActiveOperation | undefined;
+  const adopt = async (
+    environmentId: string,
+    resource: JsonValue,
+  ): Promise<void> => {
     signal.throwIfAborted();
     if (requested.path !== null || adoptedExistingEnvironment)
       throw new Error("adopt must come before setup and only once");
+    running = createMap.get(provisioning.id);
     provisioning = adoptHeldEnvironment(
       deps.db,
       provisioning,
       environmentId,
       `plugin:${record.pluginId}`,
+      resourceSchema.parse(resource),
     );
+    if (running !== undefined) createMap.set(provisioning.id, running);
     adoptedExistingEnvironment = true;
     existingProviderOwnsLifecycle = true;
     handedOff = true;
+  };
+  const forgetAdoption = () => {
+    if (running !== undefined && createMap.get(provisioning.id) === running)
+      createMap.delete(provisioning.id);
   };
   const steps: ProviderSteps = {
     environment: providerEnvironment(provisioning),
@@ -822,8 +834,10 @@ async function runCreate(
       signal.aborted &&
       current?.attempt === provisioning.attempt &&
       current.teardownStatus === "running"
-    )
+    ) {
+      forgetAdoption();
       return;
+    }
     failure = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${errorMessage(error)}`;
   }
   try {
@@ -865,6 +879,7 @@ async function runCreate(
       }
       requestEnvironmentProvisioningRecheck(threadId);
     }
+    forgetAdoption();
   }
 }
 
@@ -880,6 +895,11 @@ function failCreate(
   provisioning: EnvironmentRow,
   message: string,
 ): boolean {
+  if (currentProvisioningRow(deps, provisioning, ["ready"])?.createPending)
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: provisioning.id,
+      event: { type: "provision.requested" },
+    });
   const changed = mutateProvisioning(
     deps,
     provisioning,
@@ -2466,6 +2486,11 @@ export async function advanceEnvironmentProvisioning(
   const createMap = perDbRegistry(createOperations, deps.db);
   if (environment.status === "creating" && createMap.has(environment.id))
     return;
+  if (environment.status === "ready" && environment.createPending) {
+    if (createMap.has(environment.id)) return;
+    writeEnvironment(deps, environment.id, { createPending: false });
+    environment = getEnvironment(deps.db, environment.id)!;
+  }
   if (
     environment.status === "creating" ||
     (environment.createPending &&

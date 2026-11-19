@@ -4434,17 +4434,24 @@ environments. Environment responses carry `heldBy` and `statusMessage`;
 version-1 providers and a located path that already has an environment are
 refused. Core's caller is `bb environment create`.
 
-`hold: "plugin"` holds it for the calling plugin (or `pluginId` outside a
-plugin): threads cannot join it ("held by <plugin>"), and a create that
-returns its path without adopting it fails. A version-2 provider of that
-plugin hands one to a new thread with `adopt(environmentId)`
-(`adoptHeldEnvironment` in `packages/db/src/data/environments.ts`), which in
-one transaction clears the hold, moves the thread's reservation onto the held
-environment and drops the reservation; setup does not run again, and the
+`hold: "plugin"` holds it for the calling plugin (`pluginId` outside a
+plugin; a plugin's `bb.sdk` always sends its own id): threads cannot join it
+("held by <plugin>"), and a create that returns its path without adopting it
+fails. A version-2 provider of that plugin hands one to a new thread with
+`adopt(environmentId, resource)` (`adoptHeldEnvironment` in
+`packages/db/src/data/environments.ts`), which in one transaction clears the
+hold, moves the thread's reservation onto the held environment, records
+`resource`, and drops the reservation; setup does not run again, and the
 create must return the held environment's path. A refused adopt changes
-nothing. Its only caller is the Worktree plugin's warm pool, which renames a
-member's placeholder branch under the git ref lock, then adopts it, and
-renames the branch back when core refuses.
+nothing. The thread starts only once create returns `created`. Any other
+outcome after an adopt (a failed or aborted create, or a path other than the
+adopted one) fails the environment and its thread, and the environment is
+then retired and removed with the recorded resource. After a restart between
+adopt and create returning, core finishes the create from what adopt
+recorded and starts the thread. Its only caller is the Worktree plugin's warm
+pool, which renames a member's placeholder branch under the git ref lock,
+then adopts it with a resource naming the new branch, and renames the branch
+back when core refuses.
 
 Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
 

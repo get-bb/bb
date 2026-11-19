@@ -671,12 +671,17 @@ export function listProvisioningEnvironmentIds(
   return db
     .select({ id: environments.id })
     .from(environments)
-    .where(inArray(environments.status, ["creating", "provisioning"]))
+    .where(
+      or(
+        inArray(environments.status, ["creating", "provisioning"]),
+        eq(environments.createPending, true),
+      ),
+    )
     .all()
     .map((environment) => environment.id);
 }
 
-export function adoptHeldEnvironment(db: DbConnection, provisioning: EnvironmentRow, environmentId: string, holder: EnvironmentHolder): EnvironmentRow {
+export function adoptHeldEnvironment(db: DbConnection, provisioning: EnvironmentRow, environmentId: string, holder: EnvironmentHolder, resource: JsonValue): EnvironmentRow {
   return db.transaction((tx) => {
     const current = getEnvironment(tx, provisioning.id);
     if (current === null || current.attempt !== provisioning.attempt || current.ownerThreadId !== provisioning.ownerThreadId || current.status !== "creating") throw new Error("Environment preparation is no longer current");
@@ -685,6 +690,6 @@ export function adoptHeldEnvironment(db: DbConnection, provisioning: Environment
     if (held.projectId !== current.projectId || held.hostId !== current.hostId) throw new Error(`Environment ${environmentId} is on another project or machine`);
     if (held.teardownStatus !== null || held.status !== "ready" || held.ownerThreadId !== null) throw new Error(`Environment ${environmentId} is not ready to hand over`);
     tx.update(environments).set({ ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null, createPending: false }).where(eq(environments.id, current.id)).run();
-    return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, heldBy: null, createPending: true, retireAt: current.retireAt, statusMessage: current.statusMessage }).where(eq(environments.id, held.id)).returning().get()!;
+    return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, heldBy: null, createPending: true, resource, retireAt: current.retireAt, statusMessage: current.statusMessage }).where(eq(environments.id, held.id)).returning().get()!;
   }, { behavior: "immediate" });
 }
