@@ -7,7 +7,7 @@ Host components:
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
   `{ threadId, variant?, layout?, focusRequest?, permissionPolicy?,
-className?, leadingContent?, messageActions? }` —
+experimental_hiddenControls?, className?, leadingContent?, messageActions? }` —
   `variant` is `"full"` (standard chat controls, default), `"compact"`
   (side-panel presentation), or `"timeline"` (transcript without a
   composer); `layout` is `"contained"` (fills and scrolls within the
@@ -18,6 +18,12 @@ className?, leadingContent?, messageActions? }` —
   a plugin surface can never widen permissions) or `"editable"` (the
   instance gets a live picker, letting the user set a mode for this thread
   independently of the one it was forked from);
+  `experimental_hiddenControls` lists composer controls to leave out —
+  `"environment"` (the environment and branch summary with its New thread
+  in this environment action) and `"permissionMode"` (the permission picker);
+  hiding changes no setting, so sends keep the thread's environment and the
+  mode `permissionPolicy` resolves. A `ThreadChat` showing the route's thread
+  follows `#msg=` message links;
   `leadingContent` is a `ReactNode` rendered above the conversation,
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
@@ -248,7 +254,7 @@ onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
   `{ onSubmit, defaultProjectId?, defaultProviderId?, defaultModel?,
 defaultReasoningLevel?, defaultServiceTier?, defaultPermissionMode?,
 defaultEnvironment?, initialPrompt?, placeholder?, layout?, focusRequest?,
-className?, draftKey? }` — the `default*` props are SEEDS, not controlled
+hiddenControls?, className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   values: the user can change every one, and each takes precedence over the
   project's remembered defaults when provided. They are value-compared each
   render; changing any of them after mount re-seeds every selection
@@ -256,7 +262,11 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   in one mounted composer reloads that record's values. `initialPrompt`
   seeds the draft only while it is still empty; `layout` is `"contained"`
   (default) or `"document"` like `ThreadChat`; `focusRequest` is a
-  change-detected nonce that focuses the editor; `draftKey` picks where the
+  change-detected nonce that focuses the editor; `hiddenControls` leaves
+  `"project"`, `"environment"`, and/or `"permissionMode"` out of the row
+  beneath the editor while the composer still submits bb's resolved value
+  for each (the seeded or remembered project, its default environment, the
+  provider's default mode); `draftKey` picks where the
   draft persists (default: a key scoped to your plugin). The project selector
   offers the same "New project" entry as bb's main new-thread view; the
   project it creates becomes this composer's selection without navigating

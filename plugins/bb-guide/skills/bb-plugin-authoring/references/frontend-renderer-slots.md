@@ -38,6 +38,29 @@ Original }`. `experimental_fullFileContents` is either
 
   Experimental: see `docs/api_to_audit.md`.
 
+- `experimental_page` → `{ location }` — draw bb's page for whole routes.
+  Registration: `{ id, title, description?, routes, chrome, component }`.
+  `routes` lists `"home"` (`/`, the New thread screen) and/or `"thread"`
+  (`/projects/:projectId/threads/:threadId` and `/threads/:threadId`).
+  `location` is `{ kind: "home" }` or
+  `{ kind: "thread", projectId, threadId }`. The page renders at bb's own
+  URLs, so `useBbNavigate().toThread`, notification taps, quick-palette
+  search, `bb thread open`, and copied links all land on it.
+  `chrome.sidebar` is `"shown"` or `"hidden"`. Hidden drops bb's sidebar and
+  its toggle on those routes, and on macOS desktop bb draws a draggable
+  title band above the page so the window controls stay clear. Exclusive per
+  route: a page from a plugin the user installed wins over a bundled one,
+  then the first in slot order. bb's own New thread screen and thread split
+  panes are registered through this slot and draw any route no plugin claims.
+  The component stays mounted while the route moves between routes it owns,
+  so switching threads re-renders it with a new `location`. A crashing page
+  falls back to bb's. Split panes are bb's workspace, so opening a thread in
+  a split acts as a plain open on a plugin page. Build the page from
+  `ThreadChat` and `experimental_NewThreadComposer`, and hide their IDE
+  controls with `experimental_hiddenControls` / `hiddenControls`. The
+  bundled Chat plugin (`plugins/chat`) is a complete example to fork.
+  Experimental: see `docs/api_to_audit.md`.
+
 - `experimental_composer` → `{}` — draw bb's composer input box everywhere
   bb shows a composer (a thread's composer, the New thread screen, queued and
   sent message editors): the editor, @-mention and slash-command menus,
