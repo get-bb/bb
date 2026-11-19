@@ -944,7 +944,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   data-queued-message-sender=""
                   className={cn(
                     "inline-flex min-w-0 items-center gap-1",
-                    (isProcessing || hasWaitLine) && "max-w-[40%] shrink-0",
+                    (isProcessing || hasWaitLine) &&
+                      "max-w-[max(40%,11rem)] shrink-0",
                   )}
                   title={`${sender.prefix} ${sender.label}`}
                 >

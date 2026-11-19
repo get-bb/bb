@@ -358,6 +358,43 @@ describe("QueuedMessagesList", () => {
     ).not.toBeNull();
   });
 
+  it("keeps a readable sender next to a wait line on narrow rows", () => {
+    const waitingOn = {
+      kind: "plugin",
+      pluginId: "concurrency-limit",
+      reason: "1 of 1 running on all hosts",
+    } as const;
+    const { container } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_spawn",
+        initiator: "user",
+        senderThreadId: "thr_requester",
+        waitingOn,
+      }),
+      makeThreadQueuedMessage({
+        id: "q_agent",
+        initiator: "agent",
+        senderThreadId: "thr_sender",
+        waitingOn,
+      }),
+    ]);
+    expandQueue();
+    for (const id of ["q_spawn", "q_agent"]) {
+      const sender = container.querySelector<HTMLElement>(
+        `[data-queued-message-id="${id}"] [data-queued-message-sender]`,
+      );
+      expect(sender?.classList).toContain("max-w-[max(40%,11rem)]");
+      expect(sender?.classList).toContain("shrink-0");
+      expect(
+        container
+          .querySelector(
+            `[data-queued-message-id="${id}"] [data-queued-message-wait]`,
+          )
+          ?.classList.contains("min-w-0"),
+      ).toBe(true);
+    }
+  });
+
   it.each([
     {
       label: "a system notice with nothing to wait on",
