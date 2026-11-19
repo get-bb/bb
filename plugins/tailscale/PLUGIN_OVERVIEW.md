@@ -2,7 +2,7 @@ Reach this bb privately at `https://<machine>.<tailnet>.ts.net` through Tailscal
 
 ## What you get
 
-- **One-click setup.** Settings → Tailscale → **Set up** (or `bb tailscale setup`) runs `tailscale serve --bg --https=443 <bb's loopback address>` on the server's machine. When another service already uses port 443, bb uses 8443 instead. It never replaces a Serve mapping it didn't create.
+- **One-click setup.** Settings → Tailscale → **Set up** (or `bb tailscale setup`) runs `tailscale serve --bg --https=443 <bb's loopback address>` on the server's machine. When another service already uses port 443, bb uses its own port instead (for example `https://<machine>.<tailnet>.ts.net:38886`). It never replaces a Serve mapping it didn't create.
 - **Adopts what you already have.** If you set up Tailscale Serve for bb by hand, the plugin finds that mapping and uses it as it is.
 - **Status** in Settings and `bb tailscale status`: the address, your tailnet, whether the address answers over HTTPS, and what to fix when it doesn't (install or sign in to Tailscale, turn on MagicDNS or HTTPS certificates).
 - **No `BB_APP_URL` needed.** Once Serve reaches bb, bb accepts the address as its own, so browsers on your tailnet can open it right away.

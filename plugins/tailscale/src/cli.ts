@@ -13,7 +13,8 @@ const DESCRIPTION = [
   "The tailnet is the access boundary: only devices on your tailnet that its ACLs allow can reach the address.",
   "",
   "`bb tailscale setup` runs `tailscale serve --bg --https=443 <bb's loopback URL>` on the server's machine,",
-  "or uses port 8443 when another service already has 443. It never replaces someone else's Serve mapping.",
+  "or uses bb's own port (https://<machine>.<tailnet>.ts.net:<bb port>) when another service already has 443.",
+  "It never replaces someone else's Serve mapping or shadows a service already listening on the tailnet address.",
   "A Serve mapping you made yourself that points at bb is adopted as it is.",
   "`bb tailscale teardown` removes only the mapping bb created.",
   "Tailscale must be installed, signed in, with MagicDNS and HTTPS certificates on in the tailnet.",
@@ -115,7 +116,7 @@ export function registerTailscaleCli(
         }),
         setup: cliCommand({
           summary:
-            "Set up Tailscale Serve for this bb (port 443, or 8443 when 443 is taken)",
+            "Set up Tailscale Serve for this bb (port 443, or bb's own port when 443 is taken)",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {

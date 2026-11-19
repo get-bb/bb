@@ -1552,8 +1552,9 @@ The official Tailscale plugin (`bb plugin install tailscale`, plugin id
 `bb--tailscale`) makes this server reachable at
 `https://<machine>.<tailnet>.ts.net` through Tailscale Serve. Settings →
 Tailscale → **Set up** or `bb tailscale setup` runs
-`tailscale serve --bg --yes --https=443 <loopback URL>`, or uses 8443 when
-another service has 443; a Serve mapping to bb made by hand is adopted
+`tailscale serve --bg --yes --https=443 <loopback URL>`, or uses bb's own port
+(for example `:38886`) when another service has 443 or already listens on the
+tailnet address at that port; a Serve mapping to bb made by hand is adopted
 unchanged. bb changes Serve only on setup and on **Remove** (`bb tailscale
 teardown`), which removes only the mapping bb created; stopping bb or
 disabling the plugin leaves it in place. Once Serve reaches bb, the address is

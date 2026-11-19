@@ -13,13 +13,16 @@ the access boundary; there is no bb sign-in on this route.
   whether `https://<address>/health` answers from this bb, and what to fix.
   States: `not-installed`, `not-running`, `logged-out`, `needs-approval`,
   `needs-magicdns`, `needs-https` (turn it on at `adminUrl`), `not-served`
-  (run setup), `conflict` (Serve ports 443 and 8443 are both used by other
+  (run setup), `conflict` (443 and bb's own port are both used by other
   services), `served`, `error`. `--json` adds `serve` (`port`, `url`,
   `owner` `bb` | `adopted`, `funnel`) and `https` (`ok`, `error`).
 - `bb tailscale setup [--json]` runs
   `tailscale serve --bg --yes --https=443 <bb's loopback URL>` on the server's
-  machine, or `--https=8443` when 443 is taken. It never replaces another
-  service's mapping. A mapping to bb made by hand is adopted unchanged.
+  machine, or `--https=<bb's port>` (for example 38886) when 443 is taken. A
+  port counts as taken when Tailscale Serve already uses it or something
+  already listens on this machine's tailnet address at that port, so it never
+  replaces another service's mapping or shadows bb bound to every interface.
+  A mapping to bb made by hand is adopted unchanged.
 - `bb tailscale teardown [--json]` removes only the mapping bb created; it
   refuses to remove an adopted one and prints the `tailscale serve` command
   that would.

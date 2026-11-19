@@ -1,7 +1,9 @@
+import { connect } from "node:net";
 import {
   TAILSCALE_ADMIN_DNS_URL,
   findBbMapping,
-  freeServePort,
+  freeServePorts,
+  servePortCandidates,
   parseNodeStatus,
   parseServeConfig,
   serveUrl,
@@ -51,6 +53,7 @@ export interface TailscaleOptions {
   now?: () => number;
   timing?: Partial<TailscaleTiming>;
   onChange?: (status: TailscaleStatus, availabilityChanged: boolean) => void;
+  listening?: (address: string, port: number) => Promise<boolean>;
 }
 
 interface Snapshot {
@@ -191,9 +194,9 @@ export class Tailscale {
       ) {
         throw new Error(status.message ?? "Tailscale is not ready");
       }
-      const port = freeServePort(config);
-      if (port === null) throw new Error(conflictMessage());
       const target = this.options.target();
+      const port = await this.pickPort(node, config, target);
+      if (port === null) throw new Error(conflictMessage(target));
       await this.serve(cli, port, target);
       await this.options.ownership.set({ port, target });
       const after = await this.fresh();
@@ -226,6 +229,21 @@ export class Tailscale {
       await this.options.ownership.clear();
       return (await this.fresh()).status;
     });
+  }
+
+  private async pickPort(
+    node: TailscaleNode,
+    config: ServeConfig,
+    target: string,
+  ): Promise<number | null> {
+    const listening = this.options.listening ?? listeningOn;
+    for (const port of freeServePorts(config, target)) {
+      const taken = await Promise.all(
+        node.addresses.map((address) => listening(address, port)),
+      );
+      if (!taken.includes(true)) return port;
+    }
+    return null;
   }
 
   private isOurs(snapshot: Snapshot, owned: OwnedMapping): boolean {
@@ -427,7 +445,7 @@ export class Tailscale {
     const dnsName = node.dnsName;
     const mapping = findBbMapping(config, dnsName, base.target);
     if (mapping === null) {
-      const port = freeServePort(config);
+      const free = freeServePorts(config, base.target);
       return {
         cli,
         node,
@@ -435,10 +453,10 @@ export class Tailscale {
         status: {
           ...base,
           ...nodeFields,
-          state: port === null ? "conflict" : "not-served",
+          state: free.length === 0 ? "conflict" : "not-served",
           message:
-            port === null
-              ? conflictMessage()
+            free.length === 0
+              ? conflictMessage(base.target)
               : "Set up Tailscale Serve for bb in Settings → Tailscale, or run bb tailscale setup",
           checkedAt: this.now(),
         },
@@ -550,6 +568,24 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-function conflictMessage(): string {
-  return "Tailscale Serve already uses ports 443 and 8443 on this machine for other services. Free one with `tailscale serve --https=<port> off`, then set up again.";
+function conflictMessage(target: string): string {
+  const ports = servePortCandidates(target).join(" and ");
+  return `Ports ${ports} on this machine's tailnet address are already in use by other services. Free one (for a Tailscale Serve mapping, \`tailscale serve --https=<port> off\`), then set up again.`;
+}
+
+export function listeningOn(
+  address: string,
+  port: number,
+  timeoutMs = 750,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host: address, port });
+    const finish = (open: boolean) => {
+      socket.destroy();
+      resolve(open);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
 }

@@ -10,6 +10,7 @@ const nodeStatusSchema = z.object({
   Self: z
     .object({
       DNSName: z.string().optional(),
+      TailscaleIPs: z.array(z.string()).nullish(),
       HostName: z.string().optional(),
     })
     .nullish(),
@@ -28,6 +29,7 @@ export interface TailscaleNode {
   tailnet: string | null;
   magicDns: boolean;
   https: boolean;
+  addresses: string[];
 }
 
 function withoutTrailingDot(name: string): string {
@@ -50,6 +52,7 @@ export function parseNodeStatus(stdout: string): TailscaleNode {
       (raw.CertDomains ?? []).some(
         (domain) => withoutTrailingDot(domain) === dnsName,
       ),
+    addresses: raw.Self?.TailscaleIPs ?? [],
   };
 }
 
@@ -130,7 +133,10 @@ export function proxiesTo(proxy: string, target: string): boolean {
   );
 }
 
-export const SERVE_PORTS = [443, 8443] as const;
+export function servePortCandidates(target: string): number[] {
+  const bbPort = Number(new URL(target).port);
+  return [...new Set([443, bbPort])];
+}
 
 export function findBbMapping(
   config: ServeConfig,
@@ -150,8 +156,8 @@ export function findBbMapping(
   return null;
 }
 
-export function freeServePort(config: ServeConfig): number | null {
-  return SERVE_PORTS.find((port) => !config.ports.has(port)) ?? null;
+export function freeServePorts(config: ServeConfig, target: string): number[] {
+  return servePortCandidates(target).filter((port) => !config.ports.has(port));
 }
 
 export function serveUrl(dnsName: string, port: number): string {

@@ -1,5 +1,6 @@
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
+import { createServer } from "node:net";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -8,12 +9,13 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { OWNED_MAPPING_KEY, createTailscalePlugin } from "./plugin.js";
 import { execTailscale } from "./tailscale-cli.js";
+import { listeningOn } from "./tailscale.js";
 import { FakeTailscale } from "./testing/fake-tailscale.js";
 import type { TailscaleStatus } from "./types.js";
 
 const TARGET = "http://127.0.0.1:38886";
 const URL_443 = "https://mini.tail1234.ts.net";
-const URL_8443 = "https://mini.tail1234.ts.net:8443";
+const URL_BB_PORT = "https://mini.tail1234.ts.net:38886";
 
 const hosts: FakePluginHost[] = [];
 
@@ -36,13 +38,20 @@ function healthFetch(launchIds: Record<string, string>): typeof fetch {
 const SAME_SERVER = healthFetch({
   "http://127.0.0.1:38886": "launch-1",
   [URL_443]: "launch-1",
-  [URL_8443]: "launch-1",
+  [URL_BB_PORT]: "launch-1",
+});
+
+const listeners = new Set<string>();
+
+afterEach(() => {
+  listeners.clear();
 });
 
 function plugin(cli: FakeTailscale | null, fetchImpl = SAME_SERVER) {
   return createTailscalePlugin({
     locate: async () => cli,
     fetch: fetchImpl,
+    listening: async (address, port) => listeners.has(`${address}:${port}`),
     timing: { freshMs: 0, probeRetryMs: 1 },
     pollIntervalMs: 60_000,
   });
@@ -233,13 +242,13 @@ describe("tailscale serve setup and teardown", () => {
     ).toBe(true);
   });
 
-  it("never overwrites another service on 443: it uses 8443 and teardown removes only that", async () => {
+  it("never overwrites another service on 443: it uses bb's own port and teardown removes only that", async () => {
     const cli = new FakeTailscale();
     cli.map(443, "http://127.0.0.1:3000");
     const { host } = await load(cli);
 
     expect(await host.harness.callRpc("setup", null)).toMatchObject({
-      serve: { port: 8443, url: URL_8443, owner: "bb" },
+      serve: { port: 38886, url: URL_BB_PORT, owner: "bb" },
     });
     expect(cli.web.get(443)?.proxy).toBe("http://127.0.0.1:3000");
 
@@ -250,7 +259,7 @@ describe("tailscale serve setup and teardown", () => {
     expect(cli.mutations.at(-1)).toEqual([
       "serve",
       "--yes",
-      "--https=8443",
+      "--https=38886",
       "off",
     ]);
     expect([...cli.web.keys()]).toEqual([443]);
@@ -263,7 +272,7 @@ describe("tailscale serve setup and teardown", () => {
     const { host } = await load(cli);
 
     expect(await host.harness.callRpc("setup", null)).toMatchObject({
-      serve: { port: 8443, url: URL_8443, owner: "bb" },
+      serve: { port: 38886, url: URL_BB_PORT, owner: "bb" },
     });
   });
 
@@ -287,14 +296,31 @@ describe("tailscale serve setup and teardown", () => {
     expect(refusals).toBe(0);
   });
 
-  it("reports a conflict when 443 and 8443 are both taken, and changes nothing", async () => {
+  it("skips a port something already listens on at the tailnet address, such as bb bound to every interface", async () => {
     const cli = new FakeTailscale();
     cli.map(443, "http://127.0.0.1:3000");
-    cli.tcpForwards.add(8443);
+    listeners.add("100.64.0.7:38886");
+    const { host } = await load(cli);
+
+    await expect(host.harness.callRpc("setup", null)).rejects.toThrow(
+      "Ports 443 and 38886",
+    );
+    expect(cli.mutations).toEqual([]);
+
+    cli.web.delete(443);
+    expect(await host.harness.callRpc("setup", null)).toMatchObject({
+      serve: { port: 443, owner: "bb" },
+    });
+  });
+
+  it("reports a conflict when 443 and bb's port are both taken, and changes nothing", async () => {
+    const cli = new FakeTailscale();
+    cli.map(443, "http://127.0.0.1:3000");
+    cli.tcpForwards.add(38886);
     const { host, provider } = await load(cli);
 
     await expect(host.harness.callRpc("setup", null)).rejects.toThrow(
-      "already uses ports 443 and 8443",
+      "Ports 443 and 38886",
     );
     expect(cli.mutations).toEqual([]);
     expect(await provider.availability()).toMatchObject({
@@ -450,4 +476,23 @@ describe("tailscale CLI runner", () => {
       });
     },
   );
+});
+
+describe("tailnet port check", () => {
+  it("sees a listening port as taken and a closed one as free", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("server has no port");
+    }
+    try {
+      expect(await listeningOn("127.0.0.1", address.port)).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    expect(await listeningOn("127.0.0.1", address.port)).toBe(false);
+  });
 });

@@ -103,6 +103,7 @@ export class FakeTailscale implements TailscaleCli {
       CertDomains: this.node.https ? [this.node.dnsName] : null,
       Self: {
         HostName: "mini",
+        TailscaleIPs: ["100.64.0.7", "fd7a:115c:a1e0::7"],
         DNSName: signedIn && this.node.magicDns ? `${this.node.dnsName}.` : "",
       },
     };

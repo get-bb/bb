@@ -27,6 +27,7 @@ export interface TailscalePluginOptions {
   now?: () => number;
   timing?: Partial<TailscaleTiming>;
   pollIntervalMs?: number;
+  listening?: (address: string, port: number) => Promise<boolean>;
 }
 
 function kvOwnership(bb: BbPluginApi): OwnershipStore {
@@ -71,6 +72,9 @@ export function createTailscalePlugin(options: TailscalePluginOptions = {}) {
       fetch: options.fetch ?? fetch,
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.timing === undefined ? {} : { timing: options.timing }),
+      ...(options.listening === undefined
+        ? {}
+        : { listening: options.listening }),
       onChange: (status, availabilityChanged) => {
         bb.realtime.publish(TAILSCALE_REALTIME_CHANNEL, status);
         if (availabilityChanged) bb.experimental_serverAccess.recheck();

@@ -34,9 +34,9 @@ bb tailscale setup
 ```
 
 Setup publishes bb through Tailscale Serve at
-`https://<machine>.<tailnet>.ts.net` (port 8443 when another service already
-uses 443), and bb accepts that address without `BB_APP_URL`. A Serve mapping
-to bb that you made by hand is adopted unchanged. Tailscale must be installed
+`https://<machine>.<tailnet>.ts.net` (on bb's own port, such as `:38886`, when
+another service already uses 443), and bb accepts that address without
+`BB_APP_URL`. A Serve mapping to bb that you made by hand is adopted unchanged. Tailscale must be installed
 and signed in on the server's machine, with MagicDNS and HTTPS certificates on
 in the tailnet; `bb tailscale status` says what is missing. **Remove** (or
 `bb tailscale teardown`) turns off only the mapping bb created. Tailscale ACLs
