@@ -1863,6 +1863,31 @@ sends nothing for non-public plugins or when usage data is off. Each plugin's
 use is sent at most once per day. Forks of these plugins inherit the call, so
 removing it later means leaving a no-op stub.
 
+## `bb.server.internal_DO_NOT_USE_tunnelMarker`
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+Returns `{ header, value }`: the header name (`x-bb-tunnel-marker`) and a
+32-byte secret the server makes at start. The connect tunnel stamps it on every
+stream it forwards to `loopbackBaseUrl` (never on shared-port streams), and
+`@bb/tunnel-client` replaces any client-supplied copy. The server honours the
+`x-bb-gate-*` verdict only on requests carrying the current value and deletes
+the marker and every gate header from all other requests before any handler or
+plugin sees them. Plugins whose source is not `builtin` get a throw. Only caller:
+`plugins/connect/src/plugin.ts` (`getTunnelMarker`).
+
+## `bb.http.internal_DO_NOT_USE_requestAccess`
+
+Internal to bb's bundled `mcp` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_requestAccess(context)` returns who core decided sent the
+request a plugin HTTP route is handling: `server-machine`, `signed-in-device`,
+`connect-session`, `machine`, `oauth` or `anonymous`. It reads the same
+resolution core's own routes use (`apps/server/src/request-access.ts`). Only
+caller: `plugins/mcp/src/server.ts`, which serves the server machine and
+signed-in devices directly and gate OAuth clients through bb connect, and
+refuses everything else on its `auth: "none"` route.
+
 ## `app.slots.internal_DO_NOT_USE_setupGuideSection` (`@get-bb/plugin-sdk/app`)
 
 Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API and may change or disappear in any release. They are left out of the Plugin Guide and the API index, but nothing enforces this at runtime: any plugin that calls one is accepted.
@@ -5339,6 +5364,26 @@ and failure recovery at every step, including a server restart mid-move;
 behavior when the target runs a provider-managed machine; and whether
 `startMove` should return immediately or expose progress through a durable
 operation id instead of the in-memory status.
+
+## Signing devices in (`bb.sdk.experimental_access`)
+
+`experimental_access` wraps `/api/v1/access/*`. `session()` says how the caller
+is let in (`{ authenticated, via: "local" | "connect" | "credential" |
+"machine" | null, credentialId, problem }`). `createPairing()` mints a 10-minute,
+single-use `XXXXX-XXXXX` code (owner only; machine credentials get 403).
+`redeemPairing({ kind: "browser", code })` sets the HttpOnly
+`bb_session_<port>` cookie; `{ kind: "device", code, label }` returns
+`{ token, cookieName }`, usable as `Authorization: Bearer` or as that cookie.
+`listCredentials()` lists signed-in devices with `current`; `revokeCredential({
+id })` signs one out and closes its sockets; `signOut()` revokes the caller's
+own. A credential redeemed over HTTPS is refused over plain HTTP
+(`credential_requires_https`). Core callers: the app's pairing screen and
+Settings → Devices, `bb access`, and the mobile app's direct-profile sign-in.
+
+Before stabilization, audit: whether plugins should be able to mint pairing
+codes at all (a plugin already acts as the owner over loopback), credential
+expiry and renewal, per-device scopes if bb ever has more than one user, and
+whether `session()` should name the route a request arrived over.
 
 ## Server sweep failures (`bb.sdk.experimental_server.sweepFailures`, `retrySweepFailures`)
 
