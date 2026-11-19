@@ -1934,10 +1934,7 @@ function ColdStorageSummary({
   ];
   return (
     <section className="space-y-3">
-      <SectionHeading
-        title="Cold storage"
-        description="Search, restore or delete the threads moved here."
-      />
+      <SectionHeading title="Cold storage" />
       <div
         role="note"
         className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs leading-snug text-subtle-foreground"
