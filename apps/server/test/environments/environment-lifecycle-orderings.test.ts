@@ -1734,6 +1734,32 @@ const ORDERINGS: Ordering[] = [
     },
   },
   {
+    name: "checkout: a second thread joins during setup, archive both",
+    async run(world) {
+      const attach = world.machine().hold("attach");
+      await world.createCheckoutThread("A", "default");
+      await attach.reached;
+      await world.createCheckoutThread("B", "default");
+      await world.archive("A");
+      await world.archive("B");
+      await world.release("finish attach", attach);
+    },
+  },
+  {
+    name: "checkout: archive during setup while the daemon is away, reconnect, a second thread joins",
+    async run(world) {
+      const attach = world.machine().hold("attach");
+      await world.createCheckoutThread("A", "default");
+      await attach.reached;
+      await world.disconnect();
+      await world.archive("A");
+      await world.reconnect();
+      await world.createCheckoutThread("B", "default");
+      await world.archive("B");
+      await world.release("finish attach", attach);
+    },
+  },
+  {
     name: "checkout: a second thread's setup fails while the first is live",
     async run(world) {
       await world.createCheckoutThread("A");
