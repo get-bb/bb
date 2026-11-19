@@ -354,6 +354,58 @@ and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
 
+## Launcher SDK and navigation (`PluginCommandContext.experimental_sdk`/`experimental_navigate`, `PluginMessageActionContext.experimental_sdk`/`experimental_navigate`)
+
+Requires SDK 0.6.166.
+
+Command and message-action handlers receive the registering plugin's
+`useSdk()` client and `useBbNavigate()`, matching what thread actions already
+get as `sdk`/`navigate`. A command's navigate is bound to the focused surface
+(like its `experimental_panel`); a message action's to the thread view whose
+timeline showed the message.
+
+Docs: `frontend-renderer-slots.md`.
+
+Core callers: `createBbNavigate` in `apps/app/src/lib/plugin-navigation-hooks.ts`
+is the one implementation behind `useBbNavigate`, thread-action items,
+commands and message actions. `PluginActionServicesProvider`
+(`apps/app/src/lib/plugin-action-services-provider.tsx`, mounted in
+`main.tsx`) binds it once for `CommandPalette` (palette and keyboard
+invocation) and `ThreadTimelineRows` (message actions), so neither subscribes
+to the router. Contract tests: the panel controller contract table in
+`ThreadDetailView.contract.test.tsx` runs the terminal, file preview and URL
+cases against message actions and palette commands too.
+
+Plugin caller: Conductor's Run command and "Fork to new workspace" message
+action, which replaced an invisible `experimental_appOverlay` that copied
+`useSdk()`/`useBbNavigate()` into module globals.
+
+Before stabilizing, rename to `sdk`/`navigate` to match thread actions and
+decide whether `PluginNewThreadPanelActionContext` and `ExperimentalThreadTabActionContext`
+contexts should get them too.
+
+## `BbContext.experimental_pluginPanel` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.166.
+
+`useBbContext().experimental_pluginPanel` is `{ pluginId, path, subPath }`
+(type `ExperimentalPluginPanelPage`) when the route shows a plugin nav panel,
+any plugin's, else null. `subPath` is percent-encoded like the panel
+component's `subPath` prop.
+
+Docs: `frontend-hooks-and-ui.md`.
+
+Core callers: derived with `paneContentForPathname`
+(`apps/app/src/views/thread-detail/splitThreadNavigation.ts`), the same parse
+`AppLayout` uses to pick the plugin panel it mounts.
+
+Plugin caller: Conductor's sidebar highlights the workspace whose Untitled
+page is open, replacing its own store of mounted pages.
+
+Before stabilizing, decide whether `BbContext` should describe every page
+(thread, New thread, settings, plugin panel) as one union, and whether split
+panes need the focused pane's page or every pane's.
+
 ## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
 
 `experimental_matchesShortcutKey(event, key)` says whether a keydown presses

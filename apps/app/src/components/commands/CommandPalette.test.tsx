@@ -44,6 +44,8 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { LocationProbe } from "@/test/location-probe";
+import { PluginActionServicesProvider } from "@/lib/plugin-action-services-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { settleLazyModules } from "@/test/lazy-modules";
 
 const PALETTE_SHORTCUT = {
@@ -215,7 +217,10 @@ vi.mock("@/lib/app-query-client", () => ({
   },
 }));
 
-vi.mock("@/components/ui/app-route-anchor", () => ({
+vi.mock("@/components/ui/app-route-anchor", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/ui/app-route-anchor")
+  >()),
   useRouteNavigate: () => routeNavigateMock,
 }));
 
@@ -362,20 +367,24 @@ function renderPalette({
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <MemoryRouter>
-          <AppCommandProvider>
-            <button type="button" data-testid="origin">
-              origin
-            </button>
-            <Handler command="thread.new" />
-            <Handler command="thread.search" />
-            <Handler command="thread.next" />
-            <Handler command="panel.toggle" />
-            <Handler command="terminal.open" />
-            <Handler command="composer.focus" />
-            <Handler command="browser.reload" />
-            <CommandPalette threadId={null} projectId={null} />
-            <LocationProbe />
-          </AppCommandProvider>
+          <QueryClientProvider client={new QueryClient()}>
+            <PluginActionServicesProvider>
+              <AppCommandProvider>
+                <button type="button" data-testid="origin">
+                  origin
+                </button>
+                <Handler command="thread.new" />
+                <Handler command="thread.search" />
+                <Handler command="thread.next" />
+                <Handler command="panel.toggle" />
+                <Handler command="terminal.open" />
+                <Handler command="composer.focus" />
+                <Handler command="browser.reload" />
+                <CommandPalette threadId={null} projectId={null} />
+                <LocationProbe />
+              </AppCommandProvider>
+            </PluginActionServicesProvider>
+          </QueryClientProvider>
         </MemoryRouter>
       </CompactViewportOverrideProvider>
     </Provider>,
@@ -2434,8 +2443,11 @@ describe("CommandPalette", () => {
             id: "open-issue",
             title: "Open issue",
             defaultShortcut: null,
-            run: () => {
+            run: ({ experimental_navigate }) => {
               testState.calls.push("plugin-ran");
+              experimental_navigate.toPluginPanel("issues", {
+                subPath: "LIN-1",
+              });
             },
           },
         ],
@@ -2457,6 +2469,9 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(searchField(), { key: "Enter" });
 
     await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins/linear/issues/LIN-1",
+    );
   });
 
   it("says so when nothing matches", async () => {

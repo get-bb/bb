@@ -3643,6 +3643,14 @@ export interface PluginMessageActionContext {
    * `useComposer()` returns there.
    */
   composer: PluginComposerApi | null;
+  /** The registering plugin's `useSdk()` client. */
+  experimental_sdk: PluginBrowserBbSdk;
+  /**
+   * The registering plugin's `useBbNavigate()`, bound to the thread view
+   * whose timeline surfaced the action, so terminals, files and links open
+   * in that view.
+   */
+  experimental_navigate: BbNavigate;
 }
 
 /**
@@ -3688,6 +3696,14 @@ export interface PluginCommandContext {
    * guard with `isAvailable` rather than assuming.
    */
   experimental_panel: ExperimentalPanelController;
+  /** The registering plugin's `useSdk()` client. */
+  experimental_sdk: PluginBrowserBbSdk;
+  /**
+   * The registering plugin's `useBbNavigate()`, bound to the focused
+   * surface like `experimental_panel`, so terminals, files and links open
+   * where the user is working.
+   */
+  experimental_navigate: BbNavigate;
 }
 
 /** A default keyboard shortcut. Omitted modifiers are false. */
@@ -5464,10 +5480,24 @@ export interface ExperimentalPanelTabIconProps {
   tabKey: string;
 }
 
+/** A plugin nav panel page; see {@link BbContext.experimental_pluginPanel}. */
+export interface ExperimentalPluginPanelPage {
+  pluginId: string;
+  /** The panel's registered `path`. */
+  path: string;
+  /** The location inside the panel, percent-encoded like the component's `subPath` prop; empty at the panel's root. */
+  subPath: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
   threadId: string | null;
+  /**
+   * The plugin nav panel the route shows (any plugin's), or null on other
+   * pages. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_pluginPanel: ExperimentalPluginPanelPage | null;
 }
 
 export interface BbNavigate {

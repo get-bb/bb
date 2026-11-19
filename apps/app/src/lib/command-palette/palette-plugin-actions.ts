@@ -1,7 +1,15 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
 import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
-import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
+import {
+  getFocusedAppNavigationSurface,
+  getFocusedAppPanelController,
+  type ResolvedAppNavigationHostCapabilities,
+} from "@/lib/app-navigation-host";
+import type {
+  BindPluginActionServices,
+  PluginActionServices,
+} from "@/lib/plugin-navigation-hooks";
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
@@ -24,6 +32,7 @@ export interface BuildPluginPaletteActionsArgs {
   threadId: string | null;
   projectId: string | null;
   panel: AppPanelController | null;
+  services: (pluginId: string) => PluginActionServices;
 }
 
 function describeError(error: unknown): string {
@@ -38,6 +47,7 @@ function actionContext(
     slot.pluginId,
     () => args.panel,
   );
+  const services = args.services(slot.pluginId);
   const context: PluginCommandContext & {
     openPanel: ReturnType<typeof createRetiredOpenPanel>;
   } = {
@@ -45,6 +55,8 @@ function actionContext(
     projectId: args.projectId,
     experimental_panel,
     openPanel: createRetiredOpenPanel(experimental_panel),
+    experimental_sdk: services.sdk,
+    experimental_navigate: services.navigate,
   };
   return context;
 }
@@ -101,12 +113,19 @@ export interface BuildPluginComposerCommandActionsArgs {
   dispatch: (command: PluginCommandId, target: EventTarget | null) => void;
 }
 
-export function buildFocusedSurfacePaletteActions(
-  args: Omit<BuildPluginPaletteActionsArgs, "panel">,
-): PaletteAction[] {
+export function buildFocusedSurfacePaletteActions({
+  bindServices,
+  host,
+  ...args
+}: Omit<BuildPluginPaletteActionsArgs, "panel" | "services"> & {
+  bindServices: BindPluginActionServices;
+  host: ResolvedAppNavigationHostCapabilities;
+}): PaletteAction[] {
   return buildPluginPaletteActions({
     ...args,
     panel: getFocusedAppPanelController(),
+    services: (pluginId) =>
+      bindServices(pluginId, () => getFocusedAppNavigationSurface() ?? host),
   });
 }
 

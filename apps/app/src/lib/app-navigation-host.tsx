@@ -48,7 +48,7 @@ interface AppNavigationHostCapabilities {
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
-interface ResolvedAppNavigationHostCapabilities {
+export interface ResolvedAppNavigationHostCapabilities {
   panel: AppPanelController;
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
@@ -150,7 +150,7 @@ export function AppNavigationSurfaceProvider({
   );
 }
 
-function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
+export function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
   let focused: ResolvedAppNavigationHostCapabilities | null = null;
   for (const surface of focusedSurfaces.values()) focused = surface.current;
   return focused;

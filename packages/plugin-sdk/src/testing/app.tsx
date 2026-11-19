@@ -27,6 +27,7 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type ExperimentalPageTitle,
   type BbContext,
+  type ExperimentalPluginPanelPage,
   type BbNavigate,
   type BranchesState,
   type ComposerCustomization,
@@ -2382,8 +2383,12 @@ export interface RenderSlotOptions<
   experimental_rpcContract?: NoInfer<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
   settings?: Record<string, string | number | boolean>;
-  /** `useBbContext()` selection; both default to null. */
-  context?: { projectId?: string | null; threadId?: string | null };
+  /** `useBbContext()` selection; each defaults to null. */
+  context?: {
+    projectId?: string | null;
+    threadId?: string | null;
+    experimental_pluginPanel?: ExperimentalPluginPanelPage | null;
+  };
   /** `experimental_usePluginId()` value; defaults to `test-plugin`. */
   pluginId?: string;
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
@@ -3432,7 +3437,12 @@ export function renderSlot<
     realtimeHandlers,
     realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
-    bbContext: { projectId, threadId },
+    bbContext: {
+      projectId,
+      threadId,
+      experimental_pluginPanel:
+        options.context?.experimental_pluginPanel ?? null,
+    },
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
       shortcuts: new Map(),

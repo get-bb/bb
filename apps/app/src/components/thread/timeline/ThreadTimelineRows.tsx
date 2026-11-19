@@ -137,6 +137,8 @@ import {
   type MessageMetadataProps,
 } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import type { PluginActionServices } from "@/lib/plugin-navigation-hooks";
+import { useBindPluginActionServices } from "@/lib/plugin-action-services-provider";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { useSurfaceMessageActionSlots } from "@/lib/message-action-surface";
 import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
@@ -197,6 +199,7 @@ interface TimelineRendererStaticContextValue {
       ) => void)
     | undefined;
   panel: AppPanelController;
+  messageActionServices: (pluginId: string) => PluginActionServices;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -719,6 +722,7 @@ function buildRowPluginMessageActions(args: {
   message: ThreadChatMessageReference;
   selectedText?: string;
   panel: AppPanelController;
+  messageActionServices: (pluginId: string) => PluginActionServices;
   composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
   const {
@@ -727,6 +731,7 @@ function buildRowPluginMessageActions(args: {
     message,
     selectedText,
     panel,
+    messageActionServices,
     composerHost,
   } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
@@ -745,6 +750,7 @@ function buildRowPluginMessageActions(args: {
         selectedText,
         panel,
         composerHost,
+        services: messageActionServices(slot.pluginId),
       }),
   }));
 }
@@ -876,6 +882,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     consumerMessageActions,
     reportProseSelection,
     panel,
+    messageActionServices,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -905,6 +912,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     timelineThreadId: threadId,
     message: messageReference,
     panel,
+    messageActionServices,
     composerHost,
   });
   const rowConsumerActions =
@@ -2390,7 +2398,17 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
-  const { panel } = useAppNavigationHost();
+  const navigationHost = useAppNavigationHost();
+  const { panel } = navigationHost;
+  const latestNavigationHost = useRef(navigationHost);
+  useLayoutEffect(() => {
+    latestNavigationHost.current = navigationHost;
+  });
+  const bindPluginServices = useBindPluginActionServices();
+  const [messageActionServices] = useState(
+    () => (pluginId: string) =>
+      bindPluginServices(pluginId, () => latestNavigationHost.current),
+  );
   const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
@@ -2405,12 +2423,14 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
         panel,
+        messageActionServices,
         composerHost,
       }) ?? []
     );
   }, [
     activeSelection,
     composerHost,
+    messageActionServices,
     messageActionSlots,
     panel,
     timelineThreadId,
@@ -2433,6 +2453,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
       panel,
+      messageActionServices,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2454,6 +2475,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       reportProseSelection,
       timelineThreadId,
       panel,
+      messageActionServices,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,

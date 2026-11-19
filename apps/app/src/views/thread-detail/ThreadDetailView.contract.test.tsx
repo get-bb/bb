@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Provider } from "jotai";
-import type { ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalThreadHeaderRowProps } from "@get-bb/plugin-sdk";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
@@ -35,7 +35,12 @@ import {
 import {
   getFocusedAppPanelController,
   resetFocusedAppNavigationSurfacesForTest,
+  useAppNavigationHost,
 } from "@/lib/app-navigation-host";
+import {
+  PluginActionServicesProvider,
+  useBindPluginActionServices,
+} from "@/lib/plugin-action-services-provider";
 import { buildFocusedSurfacePaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { markPluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
@@ -84,6 +89,10 @@ const fixtures = vi.hoisted(() => ({
   router: null as ReturnType<
     typeof import("react-router-dom").createMemoryRouter
   > | null,
+  services: null as {
+    bind: import("@/lib/plugin-navigation-hooks").BindPluginActionServices;
+    host: import("@/lib/app-navigation-host").ResolvedAppNavigationHostCapabilities;
+  } | null,
 }));
 
 const THREAD = makeThreadResponse({
@@ -201,6 +210,7 @@ async function mountThreadView(
   fixtures.probeHost = probeHost;
   const probe = fixtures.probe;
   probe.current = null;
+  probe.navigate = undefined;
   const sink: ContractStateSink = { current: null };
   fixtures.sink = sink;
   const router = createMemoryRouter(
@@ -208,7 +218,8 @@ async function mountThreadView(
       {
         path: "/",
         element: (
-          <>
+          <PluginActionServicesProvider>
+            <PluginActionServicesProbe />
             <ThreadActionCollectors
               coreRegistrations={[]}
               requestRename={() => undefined}
@@ -230,7 +241,7 @@ async function mountThreadView(
                 timelineEnabled={false}
               />
             </DefaultPaneContextProvider>
-          </>
+          </PluginActionServicesProvider>
         ),
       },
     ],
@@ -266,7 +277,11 @@ async function mountThreadView(
   }
   if (probeHost === "paletteCommand") {
     await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
+    const services = fixtures.services;
+    if (services === null) throw new Error("services probe has not rendered");
     const [command] = buildFocusedSurfacePaletteActions({
+      bindServices: services.bind,
+      host: services.host,
       slots: getPluginSlotSnapshot().commandPaletteActions.flatMap((slot) =>
         slot.pluginId === CONTRACT_PLUGIN_ID && slot.target === "app"
           ? [slot]
@@ -292,10 +307,7 @@ async function mountThreadView(
     );
     await waitFor(() => expect(probe.current).not.toBeNull());
   }
-  const exposesNavigation =
-    probeHost === "prompt" ||
-    probeHost === "headerRow" ||
-    probeHost === "threadAction";
+  const exposesNavigation = probeHost !== "newTabAction";
   return {
     panel: () => readContractPanel(probe),
     navigation: exposesNavigation
@@ -366,15 +378,13 @@ describePanelControllerContract("thread header action", FULL_SUPPORT, () =>
   mountThreadView("threadAction"),
 );
 
-describePanelControllerContract(
-  "thread message action",
-  PANEL_ONLY_SUPPORT,
-  () => mountThreadView("messageAction"),
+describePanelControllerContract("thread message action", FULL_SUPPORT, () =>
+  mountThreadView("messageAction"),
 );
 
 describePanelControllerContract(
   "command palette command on a thread",
-  PANEL_ONLY_SUPPORT,
+  FULL_SUPPORT,
   () => mountThreadView("paletteCommand"),
 );
 
@@ -383,6 +393,15 @@ describePanelControllerContract(
   PANEL_ONLY_SUPPORT,
   () => mountThreadView("newTabAction"),
 );
+
+function PluginActionServicesProbe() {
+  const bind = useBindPluginActionServices();
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    fixtures.services = { bind, host };
+  });
+  return null;
+}
 
 function HeaderRowProbe() {
   return fixtures.probeHost === "headerRow" ? (
@@ -450,17 +469,21 @@ beforeEach(() => {
           id: "probe-message",
           title: "Probe message",
           icon: "Zap",
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "messageAction")
+          run: ({ experimental_panel, experimental_navigate }) => {
+            if (fixtures.probeHost === "messageAction") {
               fixtures.probe.current = experimental_panel;
+              fixtures.probe.navigate = experimental_navigate;
+            }
           },
         });
         app.commands.register({
           id: "probe-command",
           title: "Probe command",
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "paletteCommand")
+          run: ({ experimental_panel, experimental_navigate }) => {
+            if (fixtures.probeHost === "paletteCommand") {
               fixtures.probe.current = experimental_panel;
+              fixtures.probe.navigate = experimental_navigate;
+            }
           },
         });
         app.slots.experimental_tab({

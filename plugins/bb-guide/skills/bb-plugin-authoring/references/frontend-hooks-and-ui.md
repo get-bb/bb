@@ -33,7 +33,11 @@ Hooks:
 - `experimental_useThreadExtensionState(threadId, kind)` → the latest state your provider bridge emitted for one of your declared `extensionKinds` (the local name, without your plugin id) on that thread, or null when there is none. It follows live updates while bb shows the thread; parse the value with your kind's schema before use. Only your own plugin's kinds are readable.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
-- `useBbContext()` → `{ projectId, threadId }` from the current route.
+- `useBbContext()` → `{ projectId, threadId, experimental_pluginPanel }` from
+  the current route. `experimental_pluginPanel` is `{ pluginId, path, subPath }`
+  when the route shows a plugin nav panel (any plugin's; compare `pluginId`
+  with `experimental_usePluginId()`), with `subPath` percent-encoded like the
+  panel component's prop, and null elsewhere.
 - `experimental_usePluginId()` → this plugin's id, the same value as the
   server's `bb.pluginId`. Key anything kept outside bb's plugin storage with
   it (localStorage entries, log prefixes) so a copy published under another

@@ -201,7 +201,7 @@ const slot = renderSlot(
       listNotes: () => ({ root: "/notes", notes: [], error: null }),
     }, // method → handler, calls logged
     settings: { greeting: "hi" }, // useSettings() values
-    context: { projectId: "p1", threadId: null }, // useBbContext()
+    context: { projectId: "p1", threadId: null }, // useBbContext(); experimental_pluginPanel defaults to null
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
     openUrl: (url) => url.startsWith("https://"),
   },

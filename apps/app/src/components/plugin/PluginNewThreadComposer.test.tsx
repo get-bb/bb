@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { unavailablePluginActionServices } from "@/lib/plugin-action-services-provider";
 import {
   useEffect,
   useLayoutEffect,
@@ -1761,6 +1762,7 @@ describe("PluginNewThreadComposer seeding", () => {
       threadId: null,
       projectId: null,
       panel: getFocusedAppPanelController(),
+      services: unavailablePluginActionServices,
     });
     await act(async () => {
       command.run();

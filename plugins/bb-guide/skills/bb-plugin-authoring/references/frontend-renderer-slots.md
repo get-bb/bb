@@ -215,7 +215,7 @@ message, Original }` — render fenced code blocks of chosen languages in
   `"embedded-chat"` (omitted = both); an empty or unknown list fails
   registration. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
-  `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
+  `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer, experimental_sdk, experimental_navigate }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
   an internal timeline row); `experimental_messageSeq` is the recorded message
@@ -223,15 +223,20 @@ message, Original }` — render fenced code blocks of chosen languages in
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
   `experimental_panel` is the thread view's
-  [panel controller](frontend-hooks-and-ui.md#panel-controller). Errors from `run` (sync or
+  [panel controller](frontend-hooks-and-ui.md#panel-controller);
+  `experimental_sdk` and `experimental_navigate` are this plugin's `useSdk()`
+  and `useBbNavigate()`, with navigation bound to that thread view (terminals,
+  files and URLs open in its side panel). Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
   component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
-  receive `{ threadId, projectId, experimental_panel }`, where `threadId` and
-  `projectId` are null on surfaces without one and `experimental_panel` is the
-  focused surface's [panel controller](frontend-hooks-and-ui.md#panel-controller). `isAvailable` is called for palette listing and keyboard invocation — keep
+  receive `{ threadId, projectId, experimental_panel, experimental_sdk, experimental_navigate }`, where `threadId` and
+  `projectId` are null on surfaces without one, `experimental_panel` is the
+  focused surface's [panel controller](frontend-hooks-and-ui.md#panel-controller),
+  and `experimental_sdk`/`experimental_navigate` are this plugin's `useSdk()`
+  and `useBbNavigate()`, with navigation bound to the focused surface. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
   `experimental_panel` declines (returning false) when the focused surface has

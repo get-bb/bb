@@ -12,6 +12,7 @@ import {
   createPluginPanelController,
   createRetiredOpenPanel,
 } from "./plugin-panel-controller";
+import type { PluginActionServices } from "./plugin-navigation-hooks";
 
 interface RunPluginMessageActionArgs {
   slot: PluginMessageActionSlot;
@@ -20,6 +21,7 @@ interface RunPluginMessageActionArgs {
   selectedText?: string;
   panel: AppPanelController;
   composerHost: PluginComposerHost | null;
+  services: PluginActionServices;
 }
 
 function messageActionComposer(
@@ -44,6 +46,7 @@ export function runPluginMessageAction({
   selectedText,
   panel,
   composerHost,
+  services,
 }: RunPluginMessageActionArgs): void {
   const experimental_panel = createPluginPanelController(
     slot.pluginId,
@@ -58,6 +61,8 @@ export function runPluginMessageAction({
     experimental_panel,
     openPanel: createRetiredOpenPanel(experimental_panel),
     composer: messageActionComposer(slot.pluginId, threadId, composerHost),
+    experimental_sdk: services.sdk,
+    experimental_navigate: services.navigate,
   };
   const warn = (error: unknown) => {
     console.warn(

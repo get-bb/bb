@@ -6,6 +6,7 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
+import { unavailablePluginActionServices } from "@/lib/plugin-action-services-provider";
 import { buildPluginPaletteActions } from "./palette-plugin-actions";
 
 type AppCommandSlot = Extract<
@@ -36,6 +37,7 @@ function build(
     threadId: "thr_1",
     projectId: "proj_1",
     panel,
+    services: unavailablePluginActionServices,
   });
 }
 
