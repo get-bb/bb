@@ -31,7 +31,6 @@ function installedSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     id: `skill_${"a".repeat(64)}`,
     name: "useful-skill",
     description: "A useful skill.",
-    provider: null,
     providers: [],
     scope: "bb-user",
     pluginId: null,
@@ -137,7 +136,6 @@ describe("registry skill matching", () => {
       resolveInstalledRegistrySkill(registrySkill, [
         installedSkill({ manageable: false }),
         installedSkill({ scope: "provider-user" }),
-        installedSkill({ provider: "codex" }),
       ]),
     ).toBeNull();
   });

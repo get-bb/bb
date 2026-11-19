@@ -39,7 +39,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "plugin list":
     "{plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)",
   "skill list":
-    "{skills: [{id, name, description, scope, provider, providers, filePath}]}    (wrapped in .skills; provider is null and providers lists every reader when several providers read the skill)",
+    "{skills: [{id, name, description, scope, providers, filePath}]}    (wrapped in .skills; providers lists every provider that reads the skill file, [] for bb skills)",
 };
 
 export function jsonShapeHelp(commandPath: string): string | null {

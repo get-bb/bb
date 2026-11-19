@@ -163,15 +163,9 @@ async function enrichRegistryEntries(
   });
 }
 
-function skillProviderLabel(
-  skill: Pick<SkillSummary, "provider" | "providers" | "scope">,
-): string {
-  if (skill.provider !== null) return skill.provider;
-  return skill.providers.length > 1 ||
-    skill.scope === "shared-user" ||
-    skill.scope === "shared-project"
-    ? "shared"
-    : "bb";
+function skillProviderLabel(providers: SkillSummary["providers"]): string {
+  if (providers.length > 1) return "shared";
+  return providers[0] ?? "bb";
 }
 
 export function registerSkillCommands(
@@ -203,7 +197,7 @@ export function registerSkillCommands(
               entry.id,
               entry.name,
               entry.scope,
-              skillProviderLabel(entry),
+              skillProviderLabel(entry.providers),
               entry.manageable ? "yes" : "no",
               entry.filePath,
             ]),

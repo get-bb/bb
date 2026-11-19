@@ -47,14 +47,11 @@ afterEach(() => {
 });
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
-  const provider =
-    overrides.provider === undefined ? "claude-code" : overrides.provider;
   return {
     id: `skill_${"a".repeat(64)}`,
     name: "code-review",
     description: "Review the current diff.",
-    provider,
-    providers: provider === null ? [] : [provider],
+    providers: ["claude-code"],
     scope: "provider-user",
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
@@ -287,15 +284,15 @@ describe("SkillsOverview", () => {
   it("shows skills from every provider by default with BB Official skills first", () => {
     const markup = render({
       skills: [
-        makeSkill({ name: "claude-skill", provider: "claude-code" }),
+        makeSkill({ name: "claude-skill", providers: ["claude-code"] }),
         makeSkill({
           name: "aa-user-skill",
-          provider: null,
+          providers: [],
           scope: "bb-user",
         }),
         makeSkill({
           name: "zz-official-skill",
-          provider: null,
+          providers: [],
           scope: "bb-builtin",
           manageable: false,
         }),
@@ -324,20 +321,20 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "official-skill",
-            provider: null,
+            providers: [],
             scope: "bb-builtin",
             manageable: false,
           }),
           makeSkill({
             name: "automations",
-            provider: null,
+            providers: [],
             scope: "plugin",
             pluginId: "automations",
             manageable: false,
           }),
           makeSkill({
             name: "user-skill",
-            provider: null,
+            providers: [],
             scope: "bb-user",
           }),
         ]}
@@ -396,17 +393,17 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "claude-authored",
-            provider: "claude-code",
+            providers: ["claude-code"],
             scope: "provider-user",
           }),
           makeSkill({
             name: "codex-authored",
-            provider: "codex",
+            providers: ["codex"],
             scope: "provider-project",
           }),
           makeSkill({
             name: "official-skill",
-            provider: null,
+            providers: [],
             scope: "bb-builtin",
             manageable: false,
           }),
@@ -445,13 +442,13 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "official-skill",
-            provider: null,
+            providers: [],
             scope: "bb-builtin",
             manageable: false,
           }),
           makeSkill({
             name: "automations",
-            provider: null,
+            providers: [],
             scope: "plugin",
             pluginId: "automations",
             manageable: false,
@@ -497,7 +494,7 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "official-skill",
-            provider: null,
+            providers: [],
             scope: "bb-builtin",
             manageable: false,
           }),
@@ -572,13 +569,13 @@ describe("SkillsOverview", () => {
           makeSkill({
             name: "foo-skill",
             description: null,
-            provider: "acp-foo",
+            providers: ["acp-foo"],
             scope: "provider-user",
           }),
           makeSkill({
             name: "bar-skill",
             description: null,
-            provider: "acp-bar",
+            providers: ["acp-bar"],
             scope: "provider-user",
           }),
         ]}
@@ -611,7 +608,7 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "codex-skill",
-            provider: "codex",
+            providers: ["codex"],
             scope: "provider-user",
           }),
         ]}
@@ -656,7 +653,6 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "shared-skill",
-            provider: null,
             providers: ["claude-code", "codex"],
             scope: "provider-user",
             filePath: "/home/u/.agents/skills/shared-skill/SKILL.md",
@@ -664,13 +660,13 @@ describe("SkillsOverview", () => {
           makeSkill({
             id: `skill_${"b".repeat(64)}`,
             name: "bb-skill",
-            provider: null,
+            providers: [],
             scope: "bb-user",
           }),
           makeSkill({
             id: `skill_${"c".repeat(64)}`,
             name: "cursor-skill",
-            provider: "acp-cursor",
+            providers: ["acp-cursor"],
           }),
         ]}
         isLoading={false}
@@ -700,7 +696,7 @@ describe("SkillsOverview", () => {
         skills={[
           makeSkill({
             name: "codex-skill",
-            provider: "codex",
+            providers: ["codex"],
             scope: "provider-user",
           }),
         ]}
@@ -726,10 +722,10 @@ describe("SkillsOverview", () => {
       makeSkill({
         id: `skill_${"b".repeat(64)}`,
         name: "bb-skill",
-        provider: null,
+        providers: [],
         scope: "bb-user",
       }),
-      makeSkill({ name: "claude-skill", provider: "claude-code" }),
+      makeSkill({ name: "claude-skill", providers: ["claude-code"] }),
     ];
     const view = renderDom(
       <SkillsOverview
@@ -764,7 +760,7 @@ describe("SkillsOverview", () => {
           makeSkill({
             id: `skill_${"c".repeat(64)}`,
             name: "new-bb-skill",
-            provider: null,
+            providers: [],
             scope: "bb-user",
           }),
         ]}
@@ -784,7 +780,7 @@ describe("SkillsOverview", () => {
       skills: [
         makeSkill({
           name: "bb-skill",
-          provider: null,
+          providers: [],
           scope: "bb-user",
           manageable: true,
         }),
@@ -804,7 +800,7 @@ describe("SkillsOverview", () => {
       renderDom(
         <SkillsOverview
           providerRoster={NO_PROVIDER_ROSTER}
-          skills={[makeSkill({ provider: null, scope: "bb-user" })]}
+          skills={[makeSkill({ providers: [], scope: "bb-user" })]}
           isLoading={false}
           hasError={false}
           onCreateSkill={() => {}}
@@ -1447,7 +1443,7 @@ describe("RegistrySkillDetailView reference creation", () => {
         {...props}
         localSkill={makeSkill({
           name: registrySkill.skillId,
-          provider: null,
+          providers: [],
           scope: "bb-user",
           registrySkillId: registrySkill.id,
         })}
@@ -1467,7 +1463,7 @@ describe("SkillDetailDialogView", () => {
   it("presents a built-in skill as BB Official without an actions menu", async () => {
     const skill = makeSkill({
       name: "bb-cli",
-      provider: null,
+      providers: [],
       scope: "bb-builtin",
       manageable: false,
     });
@@ -1486,7 +1482,7 @@ describe("SkillDetailDialogView", () => {
     {
       skill: makeSkill({
         name: "documents",
-        provider: "codex",
+        providers: ["codex"],
         scope: "plugin",
         pluginId: "documents",
         manageable: false,
@@ -1498,7 +1494,7 @@ describe("SkillDetailDialogView", () => {
     {
       skill: makeSkill({
         name: "plugin-notes",
-        provider: null,
+        providers: [],
         scope: "plugin",
         pluginId: "skill-catalog-fixture",
         manageable: false,
@@ -1511,15 +1507,14 @@ describe("SkillDetailDialogView", () => {
     {
       skill: makeSkill({
         name: "pstack:poteto",
-        provider: null,
         providers: ["acp-cursor", "claude-code"],
         scope: "plugin",
         pluginId: "pstack",
         manageable: false,
       }),
       accessibleLabel:
-        "pstack:poteto is included with Pstack plugin, read by Cursor, Claude Code",
-      tooltipName: "Pstack plugin, read by Cursor, Claude Code.",
+        "pstack:poteto is included with Pstack plugin, read by Claude Code, Cursor",
+      tooltipName: "Pstack plugin, read by Claude Code, Cursor.",
       providerIcon: "shared",
     },
   ])("presents $skill.name as plugin-provided", async (example) => {
@@ -1548,7 +1543,7 @@ describe("SkillDetailDialogView", () => {
   it("labels externally discovered provider skills as imported", async () => {
     const skill = makeSkill({
       name: "code-review",
-      provider: "claude-code",
+      providers: ["claude-code"],
       scope: "provider-user",
       manageable: true,
     });
@@ -1570,7 +1565,7 @@ describe("SkillDetailDialogView", () => {
   it("uses a hoverable copy target and delegates editing to the thread flow", () => {
     const skill = makeSkill({
       name: "bb-skill",
-      provider: null,
+      providers: [],
       scope: "bb-user",
       manageable: true,
       filePath: "/home/u/.bb/skills/bb-skill/SKILL.md",

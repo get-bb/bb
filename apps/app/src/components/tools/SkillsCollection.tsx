@@ -62,12 +62,13 @@ function providerLabel(
   return providerRoster.get(provider)?.displayName ?? provider;
 }
 
+function soleProvider(skill: SkillSummary): SkillProvider | null {
+  const [provider, ...others] = skill.providers;
+  return provider !== undefined && others.length === 0 ? provider : null;
+}
+
 function isSharedSkill(skill: SkillSummary): boolean {
-  return (
-    skill.providers.length > 1 ||
-    skill.scope === "shared-user" ||
-    skill.scope === "shared-project"
-  );
+  return skill.providers.length > 1;
 }
 
 function sharedProvidersLabel(
@@ -76,6 +77,7 @@ function sharedProvidersLabel(
 ): string {
   return skill.providers
     .map((provider) => providerLabel(provider, providerRoster))
+    .sort((left, right) => left.localeCompare(right))
     .join(", ");
 }
 
@@ -85,7 +87,7 @@ function skillOwnerLabel(
 ): string {
   return isSharedSkill(skill)
     ? "Shared"
-    : providerLabel(skill.provider, providerRoster);
+    : providerLabel(soleProvider(skill), providerRoster);
 }
 
 function providerFilterId(provider: SkillProvider): ResourceProviderFilter {
@@ -101,15 +103,15 @@ function filterProviderId(
 }
 
 function skillOwnerFilterId(skill: SkillSummary): ResourceProviderFilter {
-  if (skill.provider !== null) return providerFilterId(skill.provider);
-  return isSharedSkill(skill) ? "owner:shared" : "owner:bb";
+  if (isSharedSkill(skill)) return "owner:shared";
+  const provider = soleProvider(skill);
+  return provider === null ? "owner:bb" : providerFilterId(provider);
 }
 
 function skillProviderFilterIds(skill: SkillSummary): ResourceProviderFilter[] {
-  const owner = skillOwnerFilterId(skill);
-  return owner === "owner:shared"
-    ? [owner, ...skill.providers.map(providerFilterId)]
-    : [owner];
+  return isSharedSkill(skill)
+    ? ["owner:shared", ...skill.providers.map(providerFilterId)]
+    : [skillOwnerFilterId(skill)];
 }
 
 function providerFilterLabel(
@@ -225,17 +227,18 @@ function SkillLeading({
   skill: SkillSummary;
   providerRoster: ProviderRoster;
 }) {
-  if (skill.provider !== null) {
+  if (isSharedSkill(skill)) {
+    return <Icon name="Layers" className="size-6" />;
+  }
+  const provider = soleProvider(skill);
+  if (provider !== null) {
     return (
       <ProviderLogo
-        providerId={skill.provider}
-        provider={providerRoster.get(skill.provider)}
+        providerId={provider}
+        provider={providerRoster.get(provider)}
         className="size-6"
       />
     );
-  }
-  if (isSharedSkill(skill)) {
-    return <Icon name="Layers" className="size-6" />;
   }
   return <BbLogo className="size-6" />;
 }
@@ -254,9 +257,10 @@ function providerLabelForScope(
   skill: SkillSummary,
   providerRoster: ProviderRoster,
 ): string | undefined {
-  return skill.provider === null
+  const provider = soleProvider(skill);
+  return provider === null
     ? undefined
-    : providerRoster.get(skill.provider)?.displayName;
+    : providerRoster.get(provider)?.displayName;
 }
 
 function providerPluginNameForSkill(skill: SkillSummary): string {
@@ -276,7 +280,7 @@ function includedPluginDescription(
 ): string {
   return isSharedSkill(skill)
     ? `${providerPluginDisplayName(skill)} plugin, read by ${sharedProvidersLabel(skill, providerRoster)}`
-    : `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider, providerRoster)} plugin)`;
+    : `${providerPluginDisplayName(skill)} (${providerLabel(soleProvider(skill), providerRoster)} plugin)`;
 }
 
 function IncludedPluginTooltip({
@@ -287,13 +291,12 @@ function IncludedPluginTooltip({
   providerRoster: ProviderRoster;
 }) {
   const shared = isSharedSkill(skill);
+  const provider = soleProvider(skill);
   return (
     <SkillProvenanceTooltip
       prefix="Included with"
-      providerId={skill.provider}
-      provider={
-        skill.provider === null ? undefined : providerRoster.get(skill.provider)
-      }
+      providerId={provider}
+      provider={provider === null ? undefined : providerRoster.get(provider)}
       name={
         shared
           ? `${includedPluginDescription(skill, providerRoster)}.`
@@ -311,7 +314,7 @@ function skillMutationDisabledReason(
   if (skill.scope === "bb-builtin") return "Built-in skill";
   if (skill.scope === "plugin") return "Bundled with plugin";
   if (isSharedSkill(skill)) return "Read-only shared skill";
-  return `Bundled with ${providerLabel(skill.provider, providerRoster)}`;
+  return `Bundled with ${providerLabel(soleProvider(skill), providerRoster)}`;
 }
 
 const SKILLS_BROWSE_DESCRIPTION = (
@@ -593,7 +596,7 @@ export function SkillsOverview({
       <ResourceListPanel>
         {libraryList.items.map((skill) => (
           <SkillRow
-            key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+            key={`${skill.scope}-${skill.providers.join(",")}-${skill.name}-${skill.filePath}`}
             skill={skill}
             providerRoster={providerRoster}
             onSelect={() => onSelectSkill(skill)}
@@ -742,6 +745,7 @@ export function SkillDetailDialogView({
   if (skill === null) return null;
   const bundledPluginName =
     skill.scope === "plugin" ? providerPluginNameForSkill(skill) : null;
+  const importedProvider = soleProvider(skill);
   const disabledReason = skillMutationDisabledReason(skill, providerRoster);
   const canEditSelectedPath = canEdit && selectedPath === "SKILL.md";
   const headerActions =
@@ -806,30 +810,24 @@ export function SkillDetailDialogView({
                 ),
                 accessibleLabel: `${skill.name} is included with ${includedPluginDescription(skill, providerRoster)}`,
               }
-            : skill.provider !== null
+            : isSharedSkill(skill)
               ? {
-                  label: "Imported",
-                  tooltip: (
-                    <SkillProvenanceTooltip
-                      prefix="Discovered from"
-                      providerId={skill.provider}
-                      provider={providerRoster.get(skill.provider)}
-                      name={providerLabel(skill.provider, providerRoster)}
-                    />
-                  ),
-                  accessibleLabel: `${skill.name} is imported from ${providerLabel(skill.provider, providerRoster)}`,
+                  label: "Shared",
+                  tooltip: `Read by ${sharedProvidersLabel(skill, providerRoster)}`,
+                  accessibleLabel: `${skill.name} is shared by ${sharedProvidersLabel(skill, providerRoster)}`,
                 }
-              : isSharedSkill(skill)
+              : importedProvider !== null
                 ? {
-                    label: "Shared",
-                    tooltip:
-                      skill.providers.length > 1
-                        ? `Read by ${sharedProvidersLabel(skill, providerRoster)}`
-                        : "From your shared skill roots",
-                    accessibleLabel:
-                      skill.providers.length > 1
-                        ? `${skill.name} is shared by ${sharedProvidersLabel(skill, providerRoster)}`
-                        : `${skill.name} is from your shared skill roots`,
+                    label: "Imported",
+                    tooltip: (
+                      <SkillProvenanceTooltip
+                        prefix="Discovered from"
+                        providerId={importedProvider}
+                        provider={providerRoster.get(importedProvider)}
+                        name={providerLabel(importedProvider, providerRoster)}
+                      />
+                    ),
+                    accessibleLabel: `${skill.name} is imported from ${providerLabel(importedProvider, providerRoster)}`,
                   }
                 : undefined
       }

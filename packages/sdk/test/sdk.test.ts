@@ -242,7 +242,11 @@ describe("@bb/sdk", () => {
       startedAt: 1,
     };
     const replies: Array<() => Response> = [
-      () => jsonResponse({ body: { job: { ...base, state: "running" } }, status: 202 }),
+      () =>
+        jsonResponse({
+          body: { job: { ...base, state: "running" } },
+          status: 202,
+        }),
       () => {
         throw new TypeError("Load failed");
       },
@@ -268,7 +272,8 @@ describe("@bb/sdk", () => {
         fetch: async (input, init) => {
           urls.push(`${init?.method ?? "GET"} ${String(input)}`);
           const reply = replies.shift();
-          if (reply === undefined) throw new Error("No queued SDK test response");
+          if (reply === undefined)
+            throw new Error("No queued SDK test response");
           return reply();
         },
         runtime: "node",
@@ -2282,7 +2287,6 @@ describe("@bb/sdk", () => {
               id: `skill_${"c".repeat(64)}`,
               name: "shared-skill",
               description: null,
-              provider: null,
               providers: ["claude-code", "codex"],
               scope: "provider-user",
               pluginId: null,
@@ -2321,20 +2325,25 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await expect(
-      sdk.skills.list({ projectId: "proj_123", environmentId: null }),
-    ).resolves.toMatchObject({
+    const listed = await sdk.skills.list({
+      projectId: "proj_123",
+      environmentId: null,
+    });
+    expect(listed.skills.map((skill) => "provider" in skill)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(listed).toMatchObject({
       skills: [
-        { name: "local-skill", provider: null, providers: [] },
+        { name: "local-skill", providers: [] },
         {
           name: "released-codex-skill",
-          provider: "codex",
           providers: ["codex"],
           scope: "codex-user",
         },
         {
           name: "shared-skill",
-          provider: null,
           providers: ["claude-code", "codex"],
         },
       ],

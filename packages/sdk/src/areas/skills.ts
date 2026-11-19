@@ -228,8 +228,10 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
     async list(input) {
       const response: {
         skills: Array<
-          Omit<SkillSummary, "providers"> &
-            Partial<Pick<SkillSummary, "providers">>
+          Omit<SkillSummary, "providers"> & {
+            providers?: SkillSummary["providers"];
+            provider?: SkillSummary["providers"][number] | null;
+          }
         >;
       } = await transport.readJson(
         transport.api.v1.projects[":id"].skills.$get(
@@ -241,10 +243,11 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         ),
       );
       return {
-        skills: response.skills.map(({ providers, ...skill }) => ({
+        skills: response.skills.map(({ provider, providers, ...skill }) => ({
           ...skill,
           providers:
-            providers ?? (skill.provider === null ? [] : [skill.provider]),
+            providers ??
+            (provider === null || provider === undefined ? [] : [provider]),
         })),
       };
     },

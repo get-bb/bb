@@ -121,10 +121,10 @@ roots such as .agents/skills and .claude/skills when the provider supports them.
 It also includes project ancestor roots for providers that search to the Git
 repository root. Configured Pi, omp, Grok, and Hermes directories are included.
 Enabled provider plugins also contribute skills to the selected provider's `/`
-command menu. `bb skill list` shows the native skills of every provider that
-declares skill roots. A skill file that more than one provider reads (for
-example under ~/.agents/skills) is listed once as shared: provider is null and
-providers names every provider that reads it.
+command menu. `bb skill list` shows the native skills of every enabled,
+installed provider that declares skill roots. Each skill's providers field names
+every such provider that reads its file; a file that more than one reads (for
+example under ~/.agents/skills) is listed once, as shared.
 
 ACP agents (acp-*), including custom agents set in the ACP providers plugin's
 customAgents setting, are documented in the acp-provider skill.

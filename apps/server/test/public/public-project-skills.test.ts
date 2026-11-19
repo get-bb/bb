@@ -19,6 +19,7 @@ import { writeRegistrySkillProvenance } from "../../src/services/skills/registry
 import { providerHasNativeRootSurface } from "../../src/services/providers/native-roots.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { declaredNativeRootSet } from "../helpers/provider-registry.js";
+import { healthAnswer } from "../helpers/provider-model-catalogs.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -67,6 +68,7 @@ function registerSkillRpc(
     hostId: string;
     sessionId: string;
     skillsByProvider?: Record<string, DiscoveredSkill[]>;
+    installedProviders?: readonly string[];
     deletedPath?: string;
     listedFiles?: string[];
     fileContents?: Record<string, string>;
@@ -80,6 +82,13 @@ function registerSkillRpc(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: (request) => {
+      if (request.command.type === "provider.health") {
+        return healthAnswer(
+          args.installedProviders?.includes(request.command.providerId)
+            ? "ready"
+            : "not_installed",
+        );
+      }
       if (request.command.type === "host.list_skills") {
         return {
           ok: true,
@@ -403,7 +412,6 @@ describe("public project skills route", () => {
           ),
           name: "portable-review",
           description: "portable-review skill",
-          provider: null,
           providers: [],
           scope: "shared-project",
           pluginId: null,
@@ -1282,7 +1290,6 @@ describe("public project skills route", () => {
           id: skillId("/data/skills/bb-helper/SKILL.md"),
           name: "bb-helper",
           description: "bb-helper skill",
-          provider: null,
           providers: [],
           scope: "bb-user",
           pluginId: null,
@@ -1294,7 +1301,6 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.cursor/skills/impeccable/SKILL.md"),
           name: "impeccable",
           description: "impeccable skill",
-          provider: "acp-cursor",
           providers: ["acp-cursor"],
           scope: "provider-project",
           pluginId: null,
@@ -1306,7 +1312,6 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.claude/skills/cp/SKILL.md"),
           name: "cp",
           description: "cp skill",
-          provider: "claude-code",
           providers: ["claude-code"],
           scope: "provider-project",
           pluginId: null,
@@ -1318,7 +1323,6 @@ describe("public project skills route", () => {
           id: skillId("/home/.claude/skills/cu/SKILL.md"),
           name: "cu",
           description: "cu skill",
-          provider: "claude-code",
           providers: ["claude-code"],
           scope: "provider-user",
           pluginId: null,
@@ -1330,7 +1334,6 @@ describe("public project skills route", () => {
           id: skillId("/home/.codex/skills/cx/SKILL.md"),
           name: "cx",
           description: "cx skill",
-          provider: "codex",
           providers: ["codex"],
           scope: "provider-user",
           pluginId: null,
@@ -1345,13 +1348,11 @@ describe("public project skills route", () => {
       const surfaced = harness.deps.providerRegistry
         .list()
         .filter(providerHasNativeRootSurface)
-        .map((registration) => registration.info.id)
-        .sort();
+        .map((registration) => registration.info.id);
+      const scanned = listed.map((command) => command.providerId).sort();
+      expect(scanned).toEqual(["acp-cursor", "claude-code", "codex", "pi"]);
       expect(surfaced).toEqual(
-        expect.arrayContaining(["acp-cursor", "claude-code", "codex", "pi"]),
-      );
-      expect(listed.map((command) => command.providerId).sort()).toEqual(
-        surfaced,
+        expect.arrayContaining([...scanned, "acp-grok", "acp-omp"]),
       );
       for (const command of listed) {
         expect(command).toEqual({
@@ -1367,7 +1368,7 @@ describe("public project skills route", () => {
     });
   });
 
-  it("lists a skill file that several providers read once, as shared, instead of under the first provider", async () => {
+  it("lists a skill file that several installed providers read once, with every reader, instead of under the first provider", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-shared-provider-skills",
@@ -1415,9 +1416,14 @@ describe("public project skills route", () => {
       const stub = registerSkillRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
+        installedProviders: ["acp-grok"],
         skillsByProvider: {
           "acp-cursor": [readByProvider("acp-cursor", agentsSkill), cursorOnly],
           "acp-grok": [readByProvider("acp-grok", claudePluginSkill)],
+          "acp-omp": [
+            readByProvider("acp-omp", agentsSkill),
+            readByProvider("acp-omp", claudePluginSkill),
+          ],
           "claude-code": [
             readByProvider("claude-code", claudePluginSkill),
             claudeCopy,
@@ -1437,32 +1443,28 @@ describe("public project skills route", () => {
         body.skills.map((skill) => ({
           name: skill.name,
           scope: skill.scope,
-          provider: skill.provider,
           providers: skill.providers,
           pluginId: skill.pluginId,
           manageable: skill.manageable,
         })),
       ).toEqual([
         {
-          name: "bb-cli",
+          name: "cursor-only",
           scope: "provider-user",
-          provider: null,
-          providers: ["acp-cursor", "codex", "pi"],
+          providers: ["acp-cursor"],
           pluginId: null,
           manageable: true,
         },
         {
-          name: "cursor-only",
+          name: "bb-cli",
           scope: "provider-user",
-          provider: "acp-cursor",
-          providers: ["acp-cursor"],
+          providers: ["acp-cursor", "codex", "pi"],
           pluginId: null,
           manageable: true,
         },
         {
           name: "review",
           scope: "provider-user",
-          provider: "claude-code",
           providers: ["claude-code"],
           pluginId: null,
           manageable: true,
@@ -1470,7 +1472,6 @@ describe("public project skills route", () => {
         {
           name: "pstack:poteto",
           scope: "plugin",
-          provider: null,
           providers: ["acp-grok", "claude-code"],
           pluginId: "pstack",
           manageable: false,
@@ -1615,7 +1616,7 @@ describe("public project skills route", () => {
         expect(matches[0]).toMatchObject({
           name: "plugin-notes",
           description: "Read notes contributed by the fixture plugin.",
-          provider: null,
+          providers: [],
           scope: "plugin",
           pluginId: installed.id,
           filePath: skillFilePath,
