@@ -61,13 +61,38 @@ describe("tailscale settings section", () => {
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
 
+  it("says the address isn't answering instead of reachable when the HTTPS check fails", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          status: () => ({
+            ...served("bb"),
+            https: {
+              ok: false,
+              error:
+                "https://mini.tail1234.ts.net/health didn't answer: fetch failed",
+              checkedAt: 1_700_000_000_000,
+            },
+          }),
+        },
+      },
+    );
+    await slot.findByText("Set up, but not answering yet");
+    expect(slot.queryByText("Reachable on your tailnet")).toBeNull();
+    expect(slot.getByText(/didn't answer: fetch failed/u)).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Remove" })).toBeTruthy();
+  });
+
   it("never offers to remove a mapping made outside bb", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
       { openUrl: () => true, rpc: { status: () => served("adopted") } },
     );
-    await slot.findByText(/Set up outside bb/u);
+    await slot.findByText(/set up outside bb/u);
     expect(slot.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });

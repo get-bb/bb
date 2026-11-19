@@ -43,6 +43,16 @@ const STATE_COPY: Record<
   error: { label: "Couldn't read Tailscale", tone: "bad" },
 };
 
+function headline(status: TailscaleStatus): { label: string; tone: Tone } {
+  if (status.state === "served" && status.https === null) {
+    return { label: "Checking the address…", tone: "muted" };
+  }
+  if (status.state === "served" && status.https?.ok === false) {
+    return { label: "Set up, but not answering yet", tone: "warn" };
+  }
+  return STATE_COPY[status.state];
+}
+
 const ADMIN_LINK_TEXT: Partial<Record<TailscaleStatus["state"], string>> = {
   "not-installed": "Download Tailscale",
   "needs-approval": "Open machines in the admin console",
@@ -120,6 +130,16 @@ function useTailscaleStatus() {
         (result) => {
           accept(result);
           const next = asStatus(result);
+          if (method === "setup" && next?.https?.ok === false) {
+            toast.warning(
+              "Tailscale Serve is set up, but the address isn't answering yet",
+              {
+                id,
+                description: next.https.error ?? undefined,
+              },
+            );
+            return;
+          }
           toast.success(
             method === "setup"
               ? "bb is reachable on your tailnet"
@@ -163,7 +183,7 @@ function TailscaleSettingsSection() {
     return <p className="text-sm text-muted-foreground">Loading...</p>;
   }
 
-  const copy = STATE_COPY[status.state];
+  const copy = headline(status);
   const adminLink = ADMIN_LINK_TEXT[status.state];
   return (
     <div className="space-y-2">
@@ -182,10 +202,10 @@ function TailscaleSettingsSection() {
             {status.serve.url}
           </UrlLink>
           <p className="text-xs text-muted-foreground">
+            Forwards to {status.target} ·{" "}
             {status.serve.owner === "adopted"
-              ? "Set up outside bb. bb uses it as it is and won't remove it."
-              : `Set up by bb on port ${status.serve.port}. It stays in place when bb stops or this plugin is disabled; Remove turns it off.`}{" "}
-            Forwards to {status.target}.
+              ? "set up outside bb, so bb won't remove it"
+              : `set up by bb on port ${status.serve.port}`}
           </p>
           {status.https !== null && !status.https.ok ? (
             <p className="text-xs text-warning-text">{status.https.error}</p>
@@ -226,7 +246,11 @@ function TailscaleSettingsSection() {
       </div>
       <p className="text-xs text-muted-foreground">
         Only devices on your tailnet that its access rules allow can reach this
-        address. Also <code>bb tailscale status|setup|teardown</code>.
+        address.
+        {status.serve?.owner === "bb"
+          ? " Stopping bb or disabling this plugin leaves Serve in place; Remove turns it off."
+          : ""}{" "}
+        Also <code>bb tailscale status|setup|teardown</code>.
       </p>
     </div>
   );

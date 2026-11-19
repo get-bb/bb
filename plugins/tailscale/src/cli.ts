@@ -38,7 +38,11 @@ const STATE_TEXT: Record<TailscaleStatus["state"], string> = {
 };
 
 export function formatStatus(status: TailscaleStatus): string {
-  const lines = [`Tailscale: ${STATE_TEXT[status.state]}`];
+  const state =
+    status.state === "served" && status.https?.ok === false
+      ? "set up, but not answering"
+      : STATE_TEXT[status.state];
+  const lines = [`Tailscale: ${state}`];
   if (status.serve !== null) {
     lines.push(
       `  address: ${status.serve.url}${status.serve.owner === "adopted" ? "  (set up outside bb; adopted)" : ""}`,
