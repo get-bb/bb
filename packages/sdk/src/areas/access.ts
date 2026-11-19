@@ -47,42 +47,44 @@ export function createAccessArea(
   args: CreateSdkAreaArgs,
 ): ExperimentalAccessArea {
   const { transport } = args;
-  const access = transport.api.v1.access;
+  const access = () => transport.api.v1.access;
   return {
     async session(input) {
       return accessSessionResponseSchema.parse(
         await transport.readJson(
-          access.session.$get({}, ...signalRequestArgs(input?.signal)),
+          access().session.$get({}, ...signalRequestArgs(input?.signal)),
         ),
       );
     },
     async createPairing() {
       return accessPairingSchema.parse(
-        await transport.readJson(access.pairings.$post()),
+        await transport.readJson(access().pairings.$post()),
       );
     },
     async redeemPairing(input) {
       return redeemAccessPairingResponseSchema.parse(
-        await transport.readJson(access.pairings.redeem.$post({ json: input })),
+        await transport.readJson(
+          access().pairings.redeem.$post({ json: input }),
+        ),
       );
     },
     async listCredentials(input) {
       return accessCredentialListResponseSchema.parse(
         await transport.readJson(
-          access.credentials.$get({}, ...signalRequestArgs(input?.signal)),
+          access().credentials.$get({}, ...signalRequestArgs(input?.signal)),
         ),
       );
     },
     async revokeCredential(input) {
       return revokeAccessCredentialResponseSchema.parse(
         await transport.readJson(
-          access.credentials[":id"].$delete({ param: { id: input.id } }),
+          access().credentials[":id"].$delete({ param: { id: input.id } }),
         ),
       );
     },
     async signOut() {
       return accessSignOutResponseSchema.parse(
-        await transport.readJson(access["sign-out"].$post()),
+        await transport.readJson(access()["sign-out"].$post()),
       );
     },
   };

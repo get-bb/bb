@@ -68,6 +68,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerServerCommands(program, deps.getUrl),
   ),
   group(
+    "access",
+    () => import("./commands/access.js"),
+    (m) => (program, deps) => m.registerAccessCommands(program, deps.getUrl),
+  ),
+  group(
     "updates",
     () => import("./commands/updates.js"),
     (m) => (program, deps) => m.registerUpdatesCommands(program, deps.getUrl),
