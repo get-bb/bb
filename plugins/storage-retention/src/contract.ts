@@ -181,7 +181,7 @@ export const storageRpc = defineRpcContract({
     input: coldThreadInput,
     output: z.object({
       threadId: z.string(),
-      rows: z.number().int().nonnegative(),
+      restoredThreadIds: z.array(z.string()),
     }),
   },
   deleteColdThread: {

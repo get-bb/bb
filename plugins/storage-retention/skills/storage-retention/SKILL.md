@@ -55,8 +55,11 @@ which opens a page with search, Show more, Restore and Delete) and by
 `movingCount` and `lastStoredAt` for the matching threads and `hasMore`; pass the last thread ID as `--after` for
 the next page. Restore (or
 `bb storage restore --thread ID`) imports the file back, and a restored
-archived thread counts as archived from that moment. Each file is an ordinary
-thread file, so `bb thread import FILE` also brings it back. If the plugin is disabled
+archived thread counts as archived from that moment. It first restores the
+cold-stored threads it points at as parent, source or lifecycle owner, so those
+links survive, and returns `restoredThreadIds`. Each file is an ordinary
+thread file, so `bb thread import FILE` also brings it back; the hourly run
+then drops it from cold storage, and moving it again writes a fresh file. If the plugin is disabled
 while a thread is still being written, bb removes that thread without a copy.
 Days must be whole numbers from 1 to 3650, or `never`. Unspecified settings
 preserve their saved values. Saved policies apply across all projects. The

@@ -252,14 +252,7 @@ export function registerCli(
                 throw new Error(
                   "Only archived, unpinned threads can be moved to cold storage.",
                 );
-              await coldStorage.store({
-                id: thread.id,
-                projectId: thread.projectId,
-                title: thread.title ?? thread.titleFallback ?? null,
-                providerId: thread.providerId,
-                createdAt: thread.createdAt,
-                archivedAt: thread.archivedAt,
-              });
+              await coldStorage.store(thread);
               return { threadId, state: "moving" };
             }),
         }),

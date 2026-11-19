@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import type {
   BbPluginApi,
   ThreadDeleteFinalizeHookContext,
@@ -13,14 +14,23 @@ import type {
 import { openPluginDatabase } from "./database.js";
 import { readThreadsById } from "./sdk-data.js";
 
-export interface ColdStoreRequest {
-  id: string;
-  projectId: string;
-  title: string | null;
-  providerId: string;
-  createdAt: number;
-  archivedAt: number | null;
-}
+type SdkThread = Awaited<
+  ReturnType<BbPluginApi["sdk"]["threads"]["list"]>
+>[number];
+export type ColdStoreRequest = Pick<
+  SdkThread,
+  | "id"
+  | "projectId"
+  | "title"
+  | "titleFallback"
+  | "providerId"
+  | "createdAt"
+  | "archivedAt"
+  | "parentThreadId"
+  | "sourceThreadId"
+  | "lifecycleOwnerThreadId"
+>;
+const linkedThreadIdsSchema = z.array(z.string());
 
 interface ColdThreadRow {
   thread_id: string;
@@ -71,19 +81,46 @@ export function createColdStorage(bb: BbPluginApi) {
       .get(threadId);
   }
 
+  async function forget(threadId: string): Promise<boolean> {
+    const removed =
+      db.prepare("DELETE FROM cold_threads WHERE thread_id = ?").run(threadId)
+        .changes > 0;
+    await rm(filePath(threadId), { force: true });
+    return removed;
+  }
+
   async function store(thread: ColdStoreRequest): Promise<void> {
+    const linkedThreadIds = [
+      ...new Set(
+        [
+          thread.parentThreadId,
+          thread.sourceThreadId,
+          thread.lifecycleOwnerThreadId,
+        ].filter((id): id is string => id !== null && id !== thread.id),
+      ),
+    ];
     db.prepare(
       `INSERT INTO cold_threads
-         (thread_id, project_id, title, provider_id, thread_created_at, archived_at, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (thread_id) DO NOTHING`,
+         (thread_id, project_id, title, provider_id, thread_created_at, archived_at, linked_thread_ids, requested_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (thread_id) DO UPDATE SET
+         project_id = excluded.project_id,
+         title = excluded.title,
+         provider_id = excluded.provider_id,
+         thread_created_at = excluded.thread_created_at,
+         archived_at = excluded.archived_at,
+         linked_thread_ids = excluded.linked_thread_ids,
+         requested_at = excluded.requested_at,
+         stored_at = NULL,
+         file_bytes = NULL`,
     ).run(
       thread.id,
       thread.projectId,
-      thread.title,
+      thread.title ?? thread.titleFallback ?? null,
       thread.providerId,
       thread.createdAt,
       thread.archivedAt,
+      JSON.stringify(linkedThreadIds),
       Date.now(),
     );
     try {
@@ -92,9 +129,8 @@ export function createColdStorage(bb: BbPluginApi) {
         childThreadsConfirmed: true,
       });
     } catch (error) {
-      db.prepare(
-        "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at IS NULL",
-      ).run(thread.id);
+      await forget(thread.id);
+      changed();
       throw error;
     }
     changed();
@@ -139,31 +175,42 @@ export function createColdStorage(bb: BbPluginApi) {
     return { action: "wait" };
   }
 
-  async function dropAbandonedMoves(): Promise<void> {
-    const pending = db
-      .prepare<[], { thread_id: string }>(
-        "SELECT thread_id FROM cold_threads WHERE stored_at IS NULL",
+  async function reconcile(): Promise<void> {
+    const rows = db
+      .prepare<[], { thread_id: string; stored_at: number | null }>(
+        "SELECT thread_id, stored_at FROM cold_threads",
       )
       .all()
-      .map((row) => row.thread_id)
-      .filter((threadId) => !exporting.has(threadId));
-    if (pending.length === 0) return;
-    const threads = await readThreadsById(bb, pending);
-    const remove = db.prepare(
+      .filter((row) => !exporting.has(row.thread_id));
+    if (rows.length === 0) return;
+    const threads = await readThreadsById(
+      bb,
+      rows.map((row) => row.thread_id),
+    );
+    const removeMoving = db.prepare(
       "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at IS NULL",
     );
+    const removeStored = db.prepare(
+      "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at = ?",
+    );
     let dropped = 0;
-    for (const threadId of pending) {
-      const thread = threads.get(threadId);
-      if (thread !== undefined && thread.deletedAt !== null) continue;
-      if (thread === undefined) {
-        bb.log.warn(
-          `Thread ${threadId} was removed before it could be moved to cold storage`,
-        );
+    for (const row of rows) {
+      const thread = threads.get(row.thread_id);
+      if (row.stored_at === null) {
+        if (thread !== undefined && thread.deletedAt !== null) continue;
+        if (thread === undefined) {
+          bb.log.warn(
+            `Thread ${row.thread_id} was removed before it could be moved to cold storage`,
+          );
+        }
+        if (removeMoving.run(row.thread_id).changes === 0) continue;
+      } else {
+        if (thread === undefined || thread.deletedAt !== null) continue;
+        if (removeStored.run(row.thread_id, row.stored_at).changes === 0)
+          continue;
       }
-      if (remove.run(threadId).changes === 0) continue;
       dropped += 1;
-      await rm(filePath(threadId), { force: true });
+      await rm(filePath(row.thread_id), { force: true });
     }
     if (dropped > 0) changed();
   }
@@ -238,22 +285,58 @@ export function createColdStorage(bb: BbPluginApi) {
     return { storedAt: row.stored_at, threadId };
   }
 
-  function requireStored(threadId: string): void {
-    const row = pendingRow(threadId);
-    if (row?.stored_at == null) {
-      throw new Error(`Thread ${threadId} isn't in cold storage.`);
+  function storedLinks(threadId: string): string[] | null {
+    const row = db
+      .prepare<
+        [string],
+        { stored_at: number | null; linked_thread_ids: string }
+      >(
+        "SELECT stored_at, linked_thread_ids FROM cold_threads WHERE thread_id = ?",
+      )
+      .get(threadId);
+    if (row?.stored_at == null) return null;
+    return linkedThreadIdsSchema.parse(JSON.parse(row.linked_thread_ids));
+  }
+
+  async function restoreOne(
+    threadId: string,
+    restored: string[],
+    visiting: Set<string>,
+  ): Promise<void> {
+    visiting.add(threadId);
+    const links = storedLinks(threadId);
+    if (links === null) return;
+    for (const linkedId of links) {
+      if (visiting.has(linkedId) || storedLinks(linkedId) === null) continue;
+      try {
+        await restoreOne(linkedId, restored, visiting);
+      } catch (error) {
+        bb.log.warn(
+          `Could not restore ${linkedId} before ${threadId}, so ${threadId} comes back without its link to it: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
+    const current = (await readThreadsById(bb, [threadId])).get(threadId);
+    if (current === undefined || current.deletedAt !== null) {
+      await bb.sdk.threads.experimental_import({
+        file: await readFile(filePath(threadId)),
+      });
+      restored.push(threadId);
+    }
+    await forget(threadId);
   }
 
   async function restore(threadId: string) {
-    requireStored(threadId);
-    const result = await bb.sdk.threads.experimental_import({
-      file: await readFile(filePath(threadId)),
-    });
-    db.prepare("DELETE FROM cold_threads WHERE thread_id = ?").run(threadId);
-    await rm(filePath(threadId), { force: true });
-    changed();
-    return result;
+    if (storedLinks(threadId) === null) {
+      throw new Error(`Thread ${threadId} isn't in cold storage.`);
+    }
+    const restored: string[] = [];
+    try {
+      await restoreOne(threadId, restored, new Set());
+    } finally {
+      changed();
+    }
+    return { threadId, restoredThreadIds: restored };
   }
 
   async function remove(threadId: string): Promise<{ ok: true }> {
@@ -273,8 +356,8 @@ export function createColdStorage(bb: BbPluginApi) {
   return {
     beforeDeleteFinalize,
     cursorOf,
-    dropAbandonedMoves,
     list,
+    reconcile,
     remove,
     restore,
     store,

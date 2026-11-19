@@ -1626,7 +1626,7 @@ A thread file (`application/zstd`) is zstd-compressed JSONL. The first line is
 a header (`format: "bb.thread"`, `formatVersion`, thread id, title, project,
 provider, and created, archived and exported times). Then come the thread's own
 rows (`threads`, plugin metadata, tabs, prompt history, search segments,
-conversation outline) as `row` lines, every event in sequence order with its
+conversation outline, dynamic context file states) as `row` lines, every event in sequence order with its
 retained outputs, and the thread's attachments as base64 `attachment` lines.
 A seek table sits in a zstd skippable frame.
 
@@ -1637,16 +1637,21 @@ A seek table sits in a zstd skippable frame.
   recreates a deleted thread in its project: the thread row goes in hidden with
   a purge queued,
   then its rows, attachments and events, and one transaction unhides it,
-  cancels the purge and restarts an archived thread's archive clock. An import
+  cancels the purge and restarts an archived thread's archive clock. A
+  recreated thread's storage counts as not yet deleted, and its links to
+  threads that are not on this server (parent, source, lifecycle owner,
+  environment, section) are dropped. An import
   that fails or is cut off leaves the hidden thread to that purge. It answers
   `{ threadId, rows }`: 404 when the project is not on this server, 400 for a
-  file that is not a thread file or uses a format version this bb does not
-  read, and 409 when the thread still exists, is still being deleted, or
+  file that is not a thread file, is damaged, has rows from another thread or
+  project, or uses a newer format version than this bb reads (it reads every
+  version from 1 up to its own), and 409 when the thread still exists, is still being deleted, or
   another import or export of it is running.
 
 Core callers: `bb thread export` and `bb thread import`. Plugin caller: the
 Storage & retention plugin exports a thread from its `thread.delete_finalize`
-hook and imports it back when someone restores it.
+hook and imports it back when someone restores it, restoring the cold-stored
+threads it links to first so its links survive.
 
 Stabilization: decide what a cross-server import does with projects,
 environments and provider sessions (it is refused today), commit to reading

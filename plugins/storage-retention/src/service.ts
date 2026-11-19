@@ -63,6 +63,7 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
     if (running || disposed) return;
     running = true;
     try {
+      await coldStorage.reconcile();
       const policy = await readPolicy();
       if (
         policy.archiveAfterDays === null &&
@@ -78,7 +79,6 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
         deletedCount: 0,
         failedCount: 0,
       };
-      await coldStorage.dropAbandonedMoves();
       for (const action of ["archive", "coldStore", "delete"] as const) {
         for (const candidate of selected[action].slice(0, BATCH_LIMIT)) {
           if (disposed) return;
@@ -107,14 +107,7 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
                 (entry) => entry.id === candidate.rootId,
               );
               if (thread === undefined) continue;
-              await coldStorage.store({
-                id: thread.id,
-                projectId: thread.projectId,
-                title: thread.title ?? thread.titleFallback ?? null,
-                providerId: thread.providerId,
-                createdAt: thread.createdAt,
-                archivedAt: thread.archivedAt,
-              });
+              await coldStorage.store(thread);
               run.coldStoredCount += 1;
             } else {
               await bb.sdk.threads.delete({

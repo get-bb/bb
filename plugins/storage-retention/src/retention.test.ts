@@ -317,7 +317,7 @@ describe("retention plugin", () => {
         await host.harness.callRpc("restoreColdThread", {
           threadId: "thr_old",
         }),
-      ).toEqual({ threadId: "thr_old", rows: 4 });
+      ).toEqual({ threadId: "thr_old", restoredThreadIds: ["thr_old"] });
       expect(host.harness.sdk.callsTo("threads.experimental_import")).toEqual([
         [{ file: Buffer.from(file) }],
       ]);
@@ -417,14 +417,7 @@ describe("retention plugin", () => {
       plugin(host.bb);
       const coldStorage = createColdStorage(host.bb);
       await expect(
-        coldStorage.store({
-          id: "thr_old",
-          projectId: "proj_test",
-          title: null,
-          providerId: "codex",
-          createdAt: 1,
-          archivedAt: 1,
-        }),
+        coldStorage.store(makeThreadResponse({ id: "thr_old", archivedAt: 1 })),
       ).rejects.toThrow("thread is busy");
       expect(
         coldStorage.list({
@@ -449,7 +442,7 @@ describe("retention plugin", () => {
            VALUES ('thr_old', 'proj_test', 'codex', 1, 1)`,
         )
         .run();
-      await coldStorage.dropAbandonedMoves();
+      await coldStorage.reconcile();
       expect(
         coldStorage.list({
           projectId: null,
@@ -459,7 +452,180 @@ describe("retention plugin", () => {
         }).threads,
       ).toHaveLength(1);
       present = false;
-      await coldStorage.dropAbandonedMoves();
+      await coldStorage.reconcile();
+      expect(
+        coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 50,
+          after: null,
+        }).threads,
+      ).toEqual([]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("writes a fresh file when a thread brought back outside the plugin is moved again, and drops its old entry", async () => {
+    const live = new Set<string>(["thr_old"]);
+    let version = 1;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () => [
+            makeThreadResponse({
+              id: "thr_old",
+              archivedAt: 1,
+              title: `Version ${version}`,
+              deletedAt: live.has("thr_old") ? null : 2,
+            }),
+          ],
+          delete: async () => {
+            live.delete("thr_old");
+            return { ok: true };
+          },
+          experimental_export: async () => new Uint8Array([version]),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      const coldStorage = createColdStorage(host.bb);
+      const directory = join(
+        dirname(host.bb.storage.database().name),
+        "cold-storage",
+      );
+      const moveAndWrite = async () => {
+        const [thread] = await host.bb.sdk.threads.list();
+        if (thread === undefined) throw new Error("no thread");
+        await coldStorage.store(thread);
+        const context = { threadId: "thr_old", projectId: "proj_test" };
+        expect(coldStorage.beforeDeleteFinalize(context)).toEqual({
+          action: "wait",
+        });
+        await vi.waitFor(() =>
+          expect(coldStorage.beforeDeleteFinalize(context)).toEqual({
+            action: "proceed",
+          }),
+        );
+      };
+      const listed = () =>
+        coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 50,
+          after: null,
+        });
+
+      await moveAndWrite();
+      live.add("thr_old");
+      version = 2;
+      await moveAndWrite();
+      expect(
+        new Uint8Array(readFileSync(join(directory, "thr_old.jsonl.zst"))),
+      ).toEqual(new Uint8Array([2]));
+      expect(listed().threads).toMatchObject([
+        { threadId: "thr_old", title: "Version 2", state: "stored" },
+      ]);
+
+      live.add("thr_old");
+      await coldStorage.reconcile();
+      expect(listed().threads).toEqual([]);
+      expect(existsSync(join(directory, "thr_old.jsonl.zst"))).toBe(false);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("restores the cold-stored threads a thread links to first, and only forgets one that is already back", async () => {
+    const live = new Set<string>(["thr_parent", "thr_child"]);
+    const files: Record<string, Uint8Array> = {
+      thr_parent: new Uint8Array([1]),
+      thr_child: new Uint8Array([2]),
+    };
+    const threadList = () => [
+      makeThreadResponse({
+        id: "thr_parent",
+        archivedAt: 1,
+        deletedAt: live.has("thr_parent") ? null : 2,
+      }),
+      makeThreadResponse({
+        id: "thr_child",
+        archivedAt: 1,
+        parentThreadId: "thr_parent",
+        deletedAt: live.has("thr_child") ? null : 2,
+      }),
+    ];
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async (args) =>
+            threadList().filter(
+              (thread) =>
+                args?.threadIds === undefined ||
+                args.threadIds.includes(thread.id),
+            ),
+          delete: async ({ threadId }) => {
+            live.delete(threadId);
+            return { ok: true };
+          },
+          experimental_export: async ({ threadId }) => {
+            const file = files[threadId];
+            if (file === undefined) throw new Error("unknown thread");
+            return file;
+          },
+          experimental_import: async ({ file }) => {
+            const threadId =
+              Buffer.from(file as Uint8Array)[0] === 1
+                ? "thr_parent"
+                : "thr_child";
+            live.add(threadId);
+            return { threadId, rows: 1 };
+          },
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      const coldStorage = createColdStorage(host.bb);
+      for (const thread of threadList().reverse()) {
+        await coldStorage.store(thread);
+        const context = { threadId: thread.id, projectId: "proj_test" };
+        coldStorage.beforeDeleteFinalize(context);
+        await vi.waitFor(() =>
+          expect(coldStorage.beforeDeleteFinalize(context)).toEqual({
+            action: "proceed",
+          }),
+        );
+      }
+
+      expect(await coldStorage.restore("thr_child")).toEqual({
+        threadId: "thr_child",
+        restoredThreadIds: ["thr_parent", "thr_child"],
+      });
+      expect(host.harness.sdk.callsTo("threads.experimental_import")).toEqual([
+        [{ file: Buffer.from([1]) }],
+        [{ file: Buffer.from([2]) }],
+      ]);
+
+      const [parent] = threadList();
+      if (parent === undefined) throw new Error("no parent");
+      await coldStorage.store(parent);
+      const context = { threadId: "thr_parent", projectId: "proj_test" };
+      coldStorage.beforeDeleteFinalize(context);
+      await vi.waitFor(() =>
+        expect(coldStorage.beforeDeleteFinalize(context)).toEqual({
+          action: "proceed",
+        }),
+      );
+      live.add("thr_parent");
+      expect(await coldStorage.restore("thr_parent")).toEqual({
+        threadId: "thr_parent",
+        restoredThreadIds: [],
+      });
+      expect(
+        host.harness.sdk.callsTo("threads.experimental_import"),
+      ).toHaveLength(2);
       expect(
         coldStorage.list({
           projectId: null,
