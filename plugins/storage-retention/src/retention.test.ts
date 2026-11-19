@@ -329,7 +329,14 @@ describe("retention plugin", () => {
           limit: 50,
           after: null,
         }),
-      ).toEqual({ threads: [], hasMore: false, totalCount: 0, totalBytes: 0 });
+      ).toEqual({
+        threads: [],
+        hasMore: false,
+        totalCount: 0,
+        totalBytes: 0,
+        movingCount: 0,
+        lastStoredAt: null,
+      });
     } finally {
       await host.harness.dispose();
     }
@@ -426,7 +433,14 @@ describe("retention plugin", () => {
           limit: 50,
           after: null,
         }),
-      ).toEqual({ threads: [], hasMore: false, totalCount: 0, totalBytes: 0 });
+      ).toEqual({
+        threads: [],
+        hasMore: false,
+        totalCount: 0,
+        totalBytes: 0,
+        movingCount: 0,
+        lastStoredAt: null,
+      });
 
       host.bb.storage
         .database()
@@ -493,7 +507,12 @@ describe("retention plugin", () => {
           limit: 2,
           after,
         });
-        expect(page).toMatchObject({ totalCount: 7, totalBytes: 150 });
+        expect(page).toMatchObject({
+          totalCount: 7,
+          totalBytes: 150,
+          movingCount: 2,
+          lastStoredAt: 50,
+        });
         seen.push(...page.threads.map((entry) => entry.threadId));
         const last = page.threads.at(-1);
         if (!page.hasMore || last === undefined) break;

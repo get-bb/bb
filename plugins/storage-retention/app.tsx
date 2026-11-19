@@ -468,6 +468,7 @@ function StoragePanel(props: PluginNavPanelProps) {
     if (previous === "reconnecting" && connection === "connected")
       void refresh();
   }, [connection, refresh]);
+  if (props.subPath === COLD_STORAGE_PATH) return <ColdStoragePage />;
   return (
     <StoragePage
       key={props.subPath}
@@ -1723,6 +1724,12 @@ function StoragePage({
                 ))}
               </div>
             </section>
+            <ColdStorageSummary
+              policyOn={state?.policy.coldStoreAfterDays != null}
+              onOpen={() =>
+                navigate.toPluginPanel(PANEL, { subPath: COLD_STORAGE_PATH })
+              }
+            />
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
@@ -1757,7 +1764,7 @@ function StoragePage({
                   />
                   <RetentionField
                     label="Move archived threads to cold storage"
-                    description="After this long in the archive, move them out of bb's database into files kept by this plugin. Restore them below."
+                    description="After this long in the archive, move them out of bb's database into files kept by this plugin. Restore them from Cold storage above."
                     presets={COLD_STORE_PRESETS}
                     value={policy.coldStoreAfterDays}
                     disabled={savingSetting}
@@ -1831,7 +1838,6 @@ function StoragePage({
                 </div>
               )}
             </section>
-            <ColdStorageSection />
           </>
         )}
       </div>
@@ -1839,8 +1845,10 @@ function StoragePage({
   );
 }
 
-const COLD_STORAGE_PREVIEW = 5;
+const COLD_STORAGE_PATH = "cold-storage";
 const COLD_STORAGE_PAGE = 50;
+const TEXT_BUTTON =
+  "rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface LoadedColdThreads {
   search: string | null;
@@ -1862,27 +1870,119 @@ function sortsAfter(entry: ColdThread, cursor: ColdThreadCursor): boolean {
   );
 }
 
-function ColdStorageSection() {
+function useColdStorageChanges(): number {
+  const [changes, setChanges] = useState(0);
+  useRealtime("cold-storage-changed", () => {
+    setChanges((count) => count + 1);
+  });
+  return changes;
+}
+
+function ColdStorageSummary({
+  policyOn,
+  onOpen,
+}: {
+  policyOn: boolean;
+  onOpen: () => void;
+}) {
+  const rpc = useRpc<typeof storageRpc>();
+  const changes = useColdStorageChanges();
+  const [summary, setSummary] = useState<ColdThreadList | null>(null);
+  const latestRequest = useRef(0);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const request = ++latestRequest.current;
+      rpc
+        .call("coldThreads", {
+          projectId: null,
+          search: null,
+          limit: 1,
+          after: null,
+        })
+        .then((list) => {
+          if (request === latestRequest.current) setSummary(list);
+        })
+        .catch((error: unknown) => {
+          if (request !== latestRequest.current) return;
+          toast.error("Couldn’t load cold storage", {
+            description: message(error),
+          });
+        });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [rpc, changes]);
+  if (summary === null || (summary.totalCount === 0 && !policyOn)) return null;
+  const details = [
+    ...(summary.lastStoredAt === null
+      ? ["Nothing moved yet"]
+      : [`Last moved ${ago(summary.lastStoredAt)}`]),
+    ...(summary.movingCount > 0 ? [`${summary.movingCount} moving`] : []),
+  ];
+  return (
+    <section className="space-y-3">
+      <SectionHeading
+        title="Cold storage"
+        description="Archived threads moved out of bb’s database into files. Open it to search, restore or delete them."
+      />
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          onClick={onOpen}
+        >
+          <span className="min-w-0 flex-1 space-y-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Icon
+                name="Archive"
+                className="size-3.5 shrink-0 text-subtle-foreground"
+              />
+              <span className="truncate text-sm font-medium">
+                {plural(summary.totalCount, "thread")}
+              </span>
+            </span>
+            <span className="block text-xs text-subtle-foreground/75">
+              {details.join(" · ")}
+            </span>
+          </span>
+          <span className="text-sm font-medium tabular-nums">
+            {bytes(summary.totalBytes)}
+          </span>
+          <Icon
+            name="ChevronRight"
+            className="size-4 shrink-0 text-muted-foreground"
+          />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ColdStoragePage() {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
+  const changes = useColdStorageChanges();
   const [searchText, setSearchText] = useState("");
   const [search, setSearch] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<LoadedColdThreads | null>(null);
-  const [changes, setChanges] = useState(0);
   const latestRequest = useRef(0);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchText.trim() || null), 250);
     return () => clearTimeout(timer);
   }, [searchText]);
   const fetchPage = useCallback(
-    (after: ColdThreadCursor | null, limit: number) =>
-      rpc.call("coldThreads", { projectId: null, search, limit, after }),
+    (after: ColdThreadCursor | null) =>
+      rpc.call("coldThreads", {
+        projectId: null,
+        search,
+        limit: COLD_STORAGE_PAGE,
+        after,
+      }),
     [rpc, search],
   );
   const refresh = useCallback(async () => {
     const request = ++latestRequest.current;
     try {
-      const first = await fetchPage(null, COLD_STORAGE_PREVIEW);
+      const first = await fetchPage(null);
       if (request !== latestRequest.current) return;
       setLoaded((current) => {
         const last = first.threads.at(-1);
@@ -1891,7 +1991,7 @@ function ColdStorageSection() {
           current.search !== search ||
           !first.hasMore ||
           last === undefined ||
-          current.list.threads.length <= COLD_STORAGE_PREVIEW
+          current.list.threads.length <= COLD_STORAGE_PAGE
         ) {
           return { search, list: first };
         }
@@ -1921,30 +2021,22 @@ function ColdStorageSection() {
     const timer = setTimeout(() => void refresh(), 200);
     return () => clearTimeout(timer);
   }, [refresh, changes]);
-  useRealtime("cold-storage-changed", () => {
-    setChanges((count) => count + 1);
-  });
-  if (loaded === null) return null;
-  const { list } = loaded;
-  if (loaded.search === null && list.totalCount === 0) return null;
-  const showMore = async () => {
-    const last = list.threads.at(-1);
+  const showMore = async (current: LoadedColdThreads) => {
+    const last = current.list.threads.at(-1);
     if (last === undefined) return;
     try {
-      const page = await fetchPage(coldThreadCursor(last), COLD_STORAGE_PAGE);
-      setLoaded((current) => {
-        if (current === null || current.search !== loaded.search) {
-          return current;
-        }
+      const page = await fetchPage(coldThreadCursor(last));
+      setLoaded((latest) => {
+        if (latest === null || latest.search !== current.search) return latest;
         const shown = new Set(
-          current.list.threads.map((entry) => entry.threadId),
+          latest.list.threads.map((entry) => entry.threadId),
         );
         return {
-          search: current.search,
+          search: latest.search,
           list: {
             ...page,
             threads: [
-              ...current.list.threads,
+              ...latest.list.threads,
               ...page.threads.filter((entry) => !shown.has(entry.threadId)),
             ],
           },
@@ -1956,19 +2048,6 @@ function ColdStorageSection() {
       });
     }
   };
-  const showFewer = () =>
-    setLoaded((current) =>
-      current === null
-        ? current
-        : {
-            search: current.search,
-            list: {
-              ...current.list,
-              threads: current.list.threads.slice(0, COLD_STORAGE_PREVIEW),
-              hasMore: true,
-            },
-          },
-    );
   const drop = (entry: ColdThread) =>
     setLoaded((current) =>
       current === null
@@ -2018,90 +2097,111 @@ function ColdStorageSection() {
       });
     }
   };
-  const remaining = list.totalCount - list.threads.length;
+  const list = loaded?.list ?? null;
+  const remaining = list === null ? 0 : list.totalCount - list.threads.length;
   return (
-    <section className="space-y-3">
-      <SectionHeading
-        title="Cold storage"
-        description="Archived threads moved out of bb’s database into files. Restoring one brings it back to the archive with its full history."
-        badge={`${loaded.search === null ? plural(list.totalCount, "thread") : plural(list.totalCount, "match", "matches")} · ${bytes(list.totalBytes)}`}
-        action={
-          <Input
-            type="search"
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            placeholder="Search titles"
-            aria-label="Search cold storage"
-            className="h-8 w-48"
-          />
-        }
-      />
-      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-        {list.threads.length === 0 && (
-          <p className="px-4 py-3 text-sm text-subtle-foreground">
-            No threads in cold storage match “{loaded.search}”.
-          </p>
-        )}
-        {list.threads.map((entry) => (
-          <div
-            key={entry.threadId}
-            className="flex min-h-14 items-center gap-3 px-4 py-2.5"
+    <div className="h-full w-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-10 pt-4 md:px-5 md:pt-5">
+        <header className="space-y-3">
+          <button
+            className="inline-flex items-center gap-1.5 text-xs leading-snug text-subtle-foreground/75 hover:text-foreground"
+            onClick={() => navigate.toPluginPanel(PANEL)}
           >
+            <Icon name="ArrowLeft" className="size-4" />
+            All storage
+          </button>
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
-              <span className="block truncate text-sm">
-                {entry.title ?? "Untitled thread"}
-              </span>
-              <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
-                {entry.state === "stored" && entry.storedAt !== null
-                  ? `Moved ${ago(entry.storedAt)} · ${bytes(entry.fileBytes)}`
-                  : "Moving…"}
-              </span>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <h1 className="text-base font-semibold">Cold storage</h1>
+                {list !== null && (
+                  <Pill>
+                    {`${
+                      loaded?.search === null
+                        ? plural(list.totalCount, "thread")
+                        : plural(list.totalCount, "match", "matches")
+                    } · ${bytes(list.totalBytes)}`}
+                  </Pill>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                Archived threads moved out of bb’s database into files.
+                Restoring one brings it back to the archive with its full
+                history.
+              </p>
             </div>
-            {entry.state === "stored" && (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void restore(entry)}
-                >
-                  Restore
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  aria-label={`Delete ${entry.title ?? "thread"} from cold storage permanently`}
-                  onClick={() => void remove(entry)}
-                >
-                  <Icon name="Trash2" className="size-4" />
-                </Button>
-              </>
-            )}
+            <Input
+              type="search"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Search titles"
+              aria-label="Search cold storage"
+              className="h-8 w-full sm:w-56"
+            />
           </div>
-        ))}
+        </header>
+        {list === null ? (
+          <Skeleton className="h-40 w-full rounded-lg" />
+        ) : (
+          <section className="space-y-3">
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+              {list.threads.length === 0 && (
+                <p className="px-4 py-3 text-sm text-subtle-foreground">
+                  {loaded?.search === null
+                    ? "Nothing in cold storage yet. Threads moved by the cold storage policy or bb storage cold-store show up here."
+                    : `No threads in cold storage match “${loaded?.search}”.`}
+                </p>
+              )}
+              {list.threads.map((entry) => (
+                <div
+                  key={entry.threadId}
+                  className="flex min-h-14 items-center gap-3 px-4 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">
+                      {entry.title ?? "Untitled thread"}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
+                      {entry.state === "stored" && entry.storedAt !== null
+                        ? `Moved ${ago(entry.storedAt)} · ${bytes(entry.fileBytes)}`
+                        : "Moving…"}
+                    </span>
+                  </div>
+                  {entry.state === "stored" && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void restore(entry)}
+                      >
+                        Restore
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-label={`Delete ${entry.title ?? "thread"} from cold storage permanently`}
+                        onClick={() => void remove(entry)}
+                      >
+                        <Icon name="Trash2" className="size-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            {loaded !== null && list.hasMore && remaining > 0 && (
+              <button
+                type="button"
+                className={TEXT_BUTTON}
+                onClick={() => void showMore(loaded)}
+              >
+                {`Show ${Math.min(COLD_STORAGE_PAGE, remaining).toLocaleString()} more`}
+              </button>
+            )}
+          </section>
+        )}
       </div>
-      {(list.hasMore || list.threads.length > COLD_STORAGE_PREVIEW) && (
-        <div className="flex gap-4">
-          {list.hasMore && remaining > 0 && (
-            <button
-              type="button"
-              className="rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => void showMore()}
-            >
-              {`Show ${Math.min(COLD_STORAGE_PAGE, remaining).toLocaleString()} more`}
-            </button>
-          )}
-          {list.threads.length > COLD_STORAGE_PREVIEW && (
-            <button
-              type="button"
-              className="rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={showFewer}
-            >
-              Show fewer
-            </button>
-          )}
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 
