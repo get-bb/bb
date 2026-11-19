@@ -79,6 +79,7 @@ it("keeps inherited commits out of a new checkout branch's diff", async () => {
       environment: { id: "env_test", name: null, projectId: "project-1" },
       branchName: async () => "bb/checkout-regression",
       setup: async () => {},
+      adopt: async () => {},
       attempt: 1,
       pathKey: "merge-base-regression",
       report: { step() {}, log() {} },

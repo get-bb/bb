@@ -309,6 +309,7 @@ it.each([false, true])(
         environment: { id: "env_test", name: null, projectId: PROJECT.id },
         branchName: async () => "bb/test",
         setup: async () => {},
+        adopt: async () => {},
         attempt: 1,
         pathKey: "fixture",
         report: { step() {}, log() {} },
@@ -406,6 +407,7 @@ describe("checkout provider merge base", () => {
           environment: { id: "env_test", name: null, projectId: PROJECT.id },
           branchName: async () => "bb/thread-branch",
           setup: async () => {},
+          adopt: async () => {},
           attempt: 1,
           pathKey: "merge-base",
           report: { step() {}, log() {} },
@@ -461,6 +463,7 @@ describe("restoring a destroyed checkout environment", () => {
         environment: { id: "env_test", name: null, projectId: PROJECT.id },
         branchName: async () => "bb/unused",
         setup: async () => {},
+        adopt: async () => {},
         attempt: 2,
         pathKey: "restored",
         previous: {

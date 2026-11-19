@@ -24,6 +24,8 @@ import type * as z from "zod";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  EnvironmentCreateArgs,
+  EnvironmentCreateResult,
   PluginThreadMetadataListArgs,
   PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
@@ -2163,9 +2165,23 @@ export interface PluginStatusApi {
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
  * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
- * leaves the namespace unchanged.
+ * leaves the namespace unchanged. `environments.experimental_create` with
+ * `hold: "plugin"` holds the environment for this plugin unless `pluginId`
+ * names another.
  */
-export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+export type PluginBbSdk = Omit<BbSdk, "threads" | "environments"> & {
+  environments: Omit<BbSdk["environments"], "experimental_create"> & {
+    experimental_create(
+      args:
+        | Extract<EnvironmentCreateArgs, { hold: "user" }>
+        | (Omit<
+            Extract<EnvironmentCreateArgs, { hold: "plugin" }>,
+            "pluginId"
+          > & {
+            pluginId?: string;
+          }),
+    ): Promise<EnvironmentCreateResult>;
+  };
   threads: Omit<
     BbSdk["threads"],
     | "getPluginMetadata"

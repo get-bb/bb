@@ -44,7 +44,9 @@ interface CreateCall {
   pathKey: string;
 }
 
-function installProviders() {
+function installProviders(
+  args: { adopt?: () => EnvironmentRow | null } = {},
+) {
   const calls: CreateCall[] = [];
   const pool: PluginEnvironmentProviderRecord = {
     pluginId: POOL_PLUGIN,
@@ -63,9 +65,20 @@ function installProviders() {
           pathKey: context.pathKey,
         };
         calls.push(call);
+        const held = args.adopt?.() ?? null;
+        if (held !== null) {
+          try {
+            await context.adopt(held.id);
+          } catch (error) {
+            return {
+              status: "failed",
+              message: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
         return {
           status: "created",
-          path: `/tmp/holds/${context.pathKey}`,
+          path: held?.path ?? `/tmp/holds/${context.pathKey}`,
           ownsPath: true,
           mergeBaseBranch: "origin/main",
           resource: { branch: call.suggestedBranchName },
@@ -336,6 +349,111 @@ describe("environments created before threads", () => {
           command.type === "thread.start" && command.threadId === thread.id,
         5_000,
       );
+    });
+  });
+});
+
+describe("plugin holds", () => {
+  const providerThread = (
+    harness: TestAppHarness,
+    args: { hostId: string; projectId: string },
+  ) =>
+    createThreadFromRequest(harness.deps, {
+      startedOnBehalfOf: null,
+      environment: {
+        type: "provider",
+        environmentProviderId: POOL_PROVIDER,
+        machine: { type: "existing", hostId: args.hostId },
+        inputs: null,
+      },
+      input: textInput("take the held one"),
+      origin: "cli",
+      projectId: args.projectId,
+      providerId: "codex",
+      title: "Warm start",
+    });
+
+  it("refuses threads joining an environment a plugin holds", async () => {
+    await withTestHarness(async (harness) => {
+      installProviders();
+      const { project } = seed(harness);
+      const pooled = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      const refusal = await createThreadFromRequest(harness.deps, {
+        startedOnBehalfOf: null,
+        environment: { type: "reuse", environmentId: pooled.id },
+        input: textInput("join"),
+        origin: "cli",
+        projectId: project.id,
+        providerId: "codex",
+      }).catch((error: unknown) => error);
+      expect(refusal).toMatchObject({
+        status: 409,
+        body: {
+          code: "environment_held",
+          message: `Environment ${pooled.id} is held by ${POOL_PLUGIN}`,
+        },
+      });
+    });
+  });
+
+  it("hands a held environment to a thread when its plugin's provider adopts it", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      installProviders({ adopt: () => handOff });
+      const { host, project } = seed(harness);
+      const pooled = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      const setupBefore = setupRows(harness);
+      handOff = pooled;
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.environmentId)
+        .toBe(pooled.id);
+      const branch = `bb/warm-start-${thread.id}`;
+      expect(getEnvironment(harness.db, pooled.id)).toMatchObject({
+        heldBy: null,
+        status: "ready",
+        createPending: false,
+        resource: { branch },
+        mergeBaseBranch: "origin/main",
+      });
+      expect(setupRows(harness)).toEqual(setupBefore);
+    });
+  });
+
+  it("keeps another plugin's hold when a provider tries to adopt it", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      installProviders({ adopt: () => handOff });
+      const { host, project } = seed(harness);
+      const foreign = await readyHeldEnvironment(
+        harness,
+        project.id,
+        "plugin:other-plugin",
+      );
+      handOff = foreign;
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.status)
+        .toBe("error");
+      expect(getEnvironment(harness.db, foreign.id)).toMatchObject({
+        heldBy: "plugin:other-plugin",
+        ownerThreadId: null,
+        status: "ready",
+      });
     });
   });
 });

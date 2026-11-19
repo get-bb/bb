@@ -97,6 +97,14 @@ export interface PluginEnvironmentProviderSteps {
    * Without a call, core runs setup after create returns.
    */
   setup(path: string): Promise<void>;
+  /**
+   * Hands this operation a ready environment this plugin holds, at once and
+   * atomically: the hold is cleared, the environment becomes the one this
+   * create produces, and it keeps its setup. Rejects when the environment is
+   * not a ready one this plugin holds on the same project and machine; then
+   * nothing changed. A `created` result must name its path.
+   */
+  adopt(environmentId: string): Promise<void>;
 }
 
 export interface PluginEnvironmentProviderCreateContext<

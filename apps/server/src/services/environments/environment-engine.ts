@@ -58,6 +58,7 @@ import {
   getPreparingEnvironment,
   claimEnvironmentPath,
   bindEnvironmentPath,
+  adoptHeldEnvironment,
   listProviderLifecycleEnvironments,
   updatePreparingEnvironment,
   type DbConnection,
@@ -556,6 +557,7 @@ async function runCreate(
   });
   let adoptedExistingEnvironment = false;
   let existingProviderOwnsLifecycle = false;
+  let handedOff = false;
   const requested: { path: string | null } = {
     path: provisioning.status === "creating" ? null : provisioning.path,
   };
@@ -631,10 +633,25 @@ async function runCreate(
         environmentId: provisioning.id,
       });
   };
+  const adopt = async (environmentId: string): Promise<void> => {
+    signal.throwIfAborted();
+    if (requested.path !== null || adoptedExistingEnvironment)
+      throw new Error("adopt must come before setup and only once");
+    provisioning = adoptHeldEnvironment(
+      deps.db,
+      provisioning,
+      environmentId,
+      `plugin:${record.pluginId}`,
+    );
+    adoptedExistingEnvironment = true;
+    existingProviderOwnsLifecycle = true;
+    handedOff = true;
+  };
   const steps: ProviderSteps = {
     environment: providerEnvironment(provisioning),
     branchName: () => untilAborted(context.branchName(), signal),
     setup: requestSetup,
+    adopt,
   };
   let failure: string | null = null;
   try {
@@ -737,7 +754,15 @@ async function runCreate(
         if (existing !== null && existing.id !== provisioning.id)
           target.row = existing;
       }
-      if (setupPath !== null) {
+      if (handedOff) {
+        if (
+          provisioning.path === null ||
+          !areHostPathsEqual(producedPath, provisioning.path)
+        )
+          throw new Error(
+            `The provider adopted ${provisioning.id} but created ${producedPath}`,
+          );
+      } else if (setupPath !== null) {
         if (!areHostPathsEqual(producedPath, setupPath) || !created.ownsPath)
           throw new Error(
             `The provider requested setup at ${setupPath} but created ${producedPath}${created.ownsPath ? "" : " without owning it"}`,
@@ -777,8 +802,10 @@ async function runCreate(
           if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
             row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
             row.resource = produced.resource ?? null;
-          } else if (produced.mergeBaseBranch !== undefined) {
-            row.mergeBaseBranch = produced.mergeBaseBranch;
+          } else {
+            if (handedOff) row.resource = produced.resource ?? null;
+            if (produced.mergeBaseBranch !== undefined)
+              row.mergeBaseBranch = produced.mergeBaseBranch;
           }
           if (row.status === "creating") row.status = "provisioning";
           if (row.ownerThreadId === null) row.claimPath = null;

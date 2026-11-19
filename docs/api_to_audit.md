@@ -4385,10 +4385,10 @@ generations, expiry and cancellation races, bounded screenshot bytes, and
 cross-platform desktop startup. Cloud browsers and external provider
 registration are outside this surface.
 
-## Environments before threads and user holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`)
+## Environments before threads and holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`, provider `adopt`)
 
 `experimental_create({ projectId, hostId?, provider?: { id, inputs? }, name?,
-hold: "user" })` creates an environment before any thread. The creation
+hold })` creates an environment before any thread. The creation
 intent (project, machine, provider selection, name, holder) is stored on the
 environment row (`environments.held_by` plus the existing provider columns),
 and the engine runs create and setup from it on the same path thread
@@ -4401,11 +4401,25 @@ environments. Environment responses carry `heldBy` and `statusMessage`;
 version-1 providers and a located path that already has an environment are
 refused. Core's caller is `bb environment create`.
 
+`hold: "plugin"` holds it for the calling plugin (or `pluginId` outside a
+plugin): threads cannot join it ("held by <plugin>"), and a create that
+returns its path without adopting it fails. A version-2 provider of that
+plugin hands one to a new thread with `adopt(environmentId)`
+(`adoptHeldEnvironment` in `packages/db/src/data/environments.ts`), which in
+one transaction clears the hold, moves the thread's reservation onto the held
+environment and drops the reservation; setup does not run again, and the
+create must return the held environment's path. A refused adopt changes
+nothing. Its only caller is the Worktree plugin's warm pool, which renames a
+member's placeholder branch under the git ref lock, then adopts it, and
+renames the branch back when core refuses.
+
 Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
 
 Before stabilizing, decide whether a hold needs release or re-hold (reuse
-after the last thread, or a UI "New workspace" flow), and whether `hold`
-should be optional.
+after the last thread, or a UI "New workspace" flow), what happens to
+environments held by an uninstalled plugin (today they stay until deleted),
+whether `pluginId` outside a plugin should be authenticated like RPC caller
+identity, and whether `hold` should be optional for user creates.
 
 ## Machine paths and environment cleanup
 

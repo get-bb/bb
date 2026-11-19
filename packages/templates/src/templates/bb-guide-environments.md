@@ -120,14 +120,16 @@ Making your repo work with bb:
                                           so the provider's defaults apply
     --name <name>                         Display name; a worktree branch is <prefix><name-slug>-<id>
   bb environment list                     List environments that are not destroyed; a held
-                                          environment shows "held by user"
+                                          environment shows "held by user" or "held by plugin:<id>"
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
     --host <id-or-name>                   Only environments on this machine
     --instance-key <key>                  Only the environment its provider named with
                                           this instance key (with --provider, the one
                                           row that provider's launch produced)
-    --held-by <holder>                    Only environments with this holder: user
+    --held-by <holder>                    Only environments with this holder: user or
+                                          plugin:<plugin-id>. A plugin-held environment
+                                          (such as a warm worktree) refuses joining threads
     --status <status>                     Only environments in this status: provisioning,
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)
