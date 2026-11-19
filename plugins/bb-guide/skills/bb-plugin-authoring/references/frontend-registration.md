@@ -284,8 +284,11 @@ title and icon for a picker. Keys are `bb--core/<id>` and `<pluginId>/<id>`.
 ### A control in the Browser toolbar
 
 `app.slots.experimental_browserToolbarAction` renders a component beside the
-address bar of every built-in Browser tab. The component receives the owning
-`threadId`, current `tabId`, top-level `url`, and `isCompactViewport` state.
+address bar of every built-in Browser tab. The component receives the tab's
+owner as `threadId`, current `tabId`, top-level `url`, and `isCompactViewport`
+state. `threadId` is a thread id only in a thread's side panel; on the New
+thread screen and plugin pages it is an opaque panel key. Pass it with `tabId`
+to `sdk.experimental_desktopBrowsers` calls; do not treat it as a thread.
 Use these host-provided values to scope actions to the visible tab; do not infer
 the active Browser from global state.
 
@@ -359,9 +362,6 @@ interface PluginThreadListProps {
   isCompactViewport: boolean;
   /** Closes the mobile drawer. Always call it after opening a thread. */
   onNavigate: () => void;
-  /** Deprecated compatibility value for the removed sidebar search field.
-      The host always supplies "". */
-  searchQuery: string;
 }
 ```
 
