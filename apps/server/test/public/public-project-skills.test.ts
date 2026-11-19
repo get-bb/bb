@@ -1438,7 +1438,16 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      const body = skillListResponseSchema.parse(await readJson(response));
+      const raw = await readJson(response);
+      expect(raw).toMatchObject({
+        skills: [
+          { name: "cursor-only", provider: "acp-cursor" },
+          { name: "bb-cli", provider: null },
+          { name: "review", provider: "claude-code" },
+          { name: "pstack:poteto", provider: null },
+        ],
+      });
+      const body = skillListResponseSchema.parse(raw);
       expect(
         body.skills.map((skill) => ({
           name: skill.name,

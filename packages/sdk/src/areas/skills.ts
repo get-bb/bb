@@ -243,11 +243,13 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         ),
       );
       return {
-        skills: response.skills.map(({ provider, providers, ...skill }) => ({
+        skills: response.skills.map((skill) => ({
           ...skill,
           providers:
-            providers ??
-            (provider === null || provider === undefined ? [] : [provider]),
+            skill.providers ??
+            (skill.provider === null || skill.provider === undefined
+              ? []
+              : [skill.provider]),
         })),
       };
     },

@@ -48,6 +48,9 @@ export type SkillRegistration = Omit<SkillSummary, "providers"> & {
   provider: SkillProvider | null;
 };
 type IndexedSkillRegistration = SkillRegistration & { realPath: string };
+type ListedSkillWithLegacyProvider = SkillSummary & {
+  provider: SkillProvider | null;
+};
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -244,7 +247,7 @@ async function projectSkillIndex(
   args: { workspace: CommandWorkspace },
 ): Promise<{
   registrations: IndexedSkillRegistration[];
-  entries: SkillSummary[];
+  entries: ListedSkillWithLegacyProvider[];
 }> {
   const visibleProviderIds = new Set(
     (await listSystemProviderInfosForHost(deps, args.workspace.hostId)).map(
@@ -330,24 +333,29 @@ async function projectSkillIndex(
       registrations,
       (skill) =>
         `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`,
-    ).map(({ provider, realPath, ...skill }) => ({
-      ...skill,
-      providers:
+    ).map(({ provider, realPath, ...skill }): ListedSkillWithLegacyProvider => {
+      const providers =
         provider === null
           ? []
           : [
               ...(readersByFile.get(`${skill.name}\0${realPath}`) ?? [
                 provider,
               ]),
-            ].sort((left, right) => left.localeCompare(right)),
-    })),
+            ].sort((left, right) => left.localeCompare(right));
+      const [soleReader, ...otherReaders] = providers;
+      return {
+        ...skill,
+        providers,
+        provider: otherReaders.length === 0 ? (soleReader ?? null) : null,
+      };
+    }),
   };
 }
 
 export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
-): Promise<SkillSummary[]> {
+): Promise<ListedSkillWithLegacyProvider[]> {
   return (await projectSkillIndex(deps, args)).entries.sort(
     compareSkillSummaries,
   );

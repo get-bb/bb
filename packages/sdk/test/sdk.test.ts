@@ -2287,6 +2287,7 @@ describe("@bb/sdk", () => {
               id: `skill_${"c".repeat(64)}`,
               name: "shared-skill",
               description: null,
+              provider: null,
               providers: ["claude-code", "codex"],
               scope: "provider-user",
               pluginId: null,
@@ -2329,23 +2330,24 @@ describe("@bb/sdk", () => {
       projectId: "proj_123",
       environmentId: null,
     });
-    expect(listed.skills.map((skill) => "provider" in skill)).toEqual([
-      false,
-      false,
-      false,
-    ]);
-    expect(listed).toMatchObject({
+    expect(listed).toEqual({
       skills: [
-        { name: "local-skill", providers: [] },
-        {
+        expect.objectContaining({
+          name: "local-skill",
+          provider: null,
+          providers: [],
+        }),
+        expect.objectContaining({
           name: "released-codex-skill",
+          provider: "codex",
           providers: ["codex"],
           scope: "codex-user",
-        },
-        {
+        }),
+        expect.objectContaining({
           name: "shared-skill",
+          provider: null,
           providers: ["claude-code", "codex"],
-        },
+        }),
       ],
     });
     await expect(sdk.skills.registry.search()).resolves.toMatchObject({
