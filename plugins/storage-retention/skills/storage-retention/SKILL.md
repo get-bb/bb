@@ -49,9 +49,10 @@ The plugin deletes the thread, holds the end of the delete through the
 the file, then lets bb remove the rows. It skips pinned and running threads and
 threads another thread still points at as its parent, source or lifecycle owner
 (those follow once their children are moved). Cold storage is listed in the
-plugin panel (the five most recent, with search and Show more) and by
-`bb storage cold-list`, newest first, with `totalCount` and `totalBytes` for
-the matching threads and `hasMore`; pass the last thread ID as `--after` for
+plugin panel (a Cold storage row with the total count, size and last move,
+which opens a page with search, Show more, Restore and Delete) and by
+`bb storage cold-list`, newest first, with `totalCount`, `totalBytes`,
+`movingCount` and `lastStoredAt` for the matching threads and `hasMore`; pass the last thread ID as `--after` for
 the next page. Restore (or
 `bb storage restore --thread ID`) imports the file back, and a restored
 archived thread counts as archived from that moment. Each file is an ordinary

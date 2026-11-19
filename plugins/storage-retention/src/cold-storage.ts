@@ -206,8 +206,17 @@ export function createColdStorage(bb: BbPluginApi) {
       )
       .all(...filterParams, ...cursor.params, args.limit + 1);
     const totals = db
-      .prepare<(string | null)[], { count: number; bytes: number }>(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(file_bytes), 0) AS bytes
+      .prepare<
+        (string | null)[],
+        {
+          count: number;
+          bytes: number;
+          moving: number;
+          lastStoredAt: number | null;
+        }
+      >(
+        `SELECT COUNT(*) AS count, COALESCE(SUM(file_bytes), 0) AS bytes,
+           COUNT(*) - COUNT(stored_at) AS moving, MAX(stored_at) AS lastStoredAt
          FROM cold_threads WHERE ${filter}`,
       )
       .get(...filterParams)!;
@@ -216,6 +225,8 @@ export function createColdStorage(bb: BbPluginApi) {
       hasMore: rows.length > args.limit,
       totalCount: totals.count,
       totalBytes: totals.bytes,
+      movingCount: totals.moving,
+      lastStoredAt: totals.lastStoredAt,
     };
   }
 

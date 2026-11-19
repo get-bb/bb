@@ -58,6 +58,8 @@ export const coldThreadListSchema = z.object({
   hasMore: z.boolean(),
   totalCount: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
+  movingCount: z.number().int().nonnegative(),
+  lastStoredAt: z.number().nullable(),
 });
 export type ColdThreadList = z.infer<typeof coldThreadListSchema>;
 export const coldThreadCursorSchema = z
