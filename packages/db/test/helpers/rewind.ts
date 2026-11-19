@@ -169,6 +169,15 @@ export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
   }
 }
 
+export function dropEnvironmentHoldColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((existing) => existing.name === "held_by")) {
+    db.$client.exec("ALTER TABLE environments DROP COLUMN held_by");
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

@@ -14,9 +14,11 @@ import {
 } from "../lib/persisted-retry.js";
 import {
   assertEnvironmentPathAvailable,
+  assertNoOtherLiveThreadUsesPath,
   findBlockingEnvironmentPathClaim,
 } from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
+import { resolveHeldEnvironmentOperationContext } from "./environment-creation.js";
 import {
   refreshAttachedEnvironmentBranch,
   resolveProviderOperationContext,
@@ -154,7 +156,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 type Deps = ThreadProvisioningDeps;
 
 export interface ProviderOperationContext {
-  thread: ThreadResponse;
+  thread: ThreadResponse | null;
   project: Project;
   host: Host;
   machine: EnvironmentMachineSelection;
@@ -162,8 +164,12 @@ export interface ProviderOperationContext {
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;
-  environment: Environment | null;
+  previous: Environment | null;
 }
+
+export type ThreadProviderOperationContext = ProviderOperationContext & {
+  thread: ThreadResponse;
+};
 
 interface ActiveOperation {
   kind: "create" | "attach" | "remove";
@@ -359,15 +365,44 @@ const PROVIDER_OWNER_MISMATCH_MESSAGE =
 
 const RETIRED_CREATE_CONTEXT_FIELDS = { rebuild: false, previous: null };
 
+export function versionOneThreadlessRefusal(
+  record: PluginEnvironmentProviderRecord,
+): string {
+  return `${record.provider.displayName} can't create an environment before a thread exists`;
+}
+
+type ProviderOperationBase = Omit<
+  PluginEnvironmentProviderCreateContext,
+  "thread" | "suggestedBranchName"
+>;
+
 async function invokeCreate(
   record: PluginEnvironmentProviderRecord,
-  context: PluginEnvironmentProviderCreateContext,
+  provisioning: EnvironmentRow,
+  context: ProviderOperationContext,
+  operation: ProviderOperationBase,
 ): Promise<PluginEnvironmentProviderCreateResult> {
+  const provider = record.provider;
+  const suggestedBranchName = context.suggestedBranchName;
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment create",
-    () =>
-      record.provider.create({ ...RETIRED_CREATE_CONTEXT_FIELDS, ...context }),
+    () => {
+      if (provider.apiVersion === 2)
+        return provider.create({
+          ...operation,
+          environment: providerEnvironment(provisioning),
+          suggestedBranchName,
+        });
+      const thread = context.thread;
+      if (thread === null) throw new Error(versionOneThreadlessRefusal(record));
+      return provider.create({
+        ...RETIRED_CREATE_CONTEXT_FIELDS,
+        ...operation,
+        thread,
+        suggestedBranchName,
+      });
+    },
   );
   if (!invocation.ok) throw new Error(invocation.error);
   if (invocation.value === null)
@@ -375,11 +410,19 @@ async function invokeCreate(
   return createResultSchema.parse(invocation.value);
 }
 
+function providerEnvironment(row: EnvironmentRow) {
+  return { id: row.id, name: row.name, projectId: row.projectId };
+}
+
 async function invokeRestore(
   record: PluginEnvironmentProviderRecord,
-  context: PluginEnvironmentProviderRestoreContext,
+  provisioning: EnvironmentRow,
+  context: ProviderOperationContext,
+  operation: ProviderOperationBase & {
+    previous: PluginEnvironmentProviderRestoreContext["previous"];
+  },
 ): Promise<PluginEnvironmentProviderCreateResult> {
-  const restore = record.provider.restore;
+  const restore = providerRestoreCall(record, provisioning, context, operation);
   if (restore === null) {
     return {
       status: "failed",
@@ -389,12 +432,40 @@ async function invokeRestore(
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment restore",
-    () => restore(context),
+    restore,
   );
   if (!invocation.ok) throw new Error(invocation.error);
   if (invocation.value === null)
     throw new Error("The environment provider became unavailable.");
   return createResultSchema.parse(invocation.value);
+}
+
+function providerRestoreCall(
+  record: PluginEnvironmentProviderRecord,
+  provisioning: EnvironmentRow,
+  context: ProviderOperationContext,
+  operation: ProviderOperationBase & {
+    previous: PluginEnvironmentProviderRestoreContext["previous"];
+  },
+): (() => Promise<PluginEnvironmentProviderCreateResult>) | null {
+  const provider = record.provider;
+  if (provider.apiVersion === 2) {
+    const restore = provider.restore;
+    return restore === null
+      ? null
+      : () =>
+          restore({
+            ...operation,
+            environment: providerEnvironment(provisioning),
+          });
+  }
+  const restore = provider.restore;
+  if (restore === null) return null;
+  const thread = context.thread;
+  return () =>
+    thread === null
+      ? Promise.reject(new Error(versionOneThreadlessRefusal(record)))
+      : restore({ ...operation, thread });
 }
 
 async function runCreate(
@@ -411,11 +482,10 @@ async function runCreate(
   });
   try {
     const previous =
-      context.environment === null
+      context.previous === null
         ? null
-        : getEnvironment(deps.db, context.environment.id);
-    const operation = {
-      thread: context.thread,
+        : getEnvironment(deps.db, context.previous.id);
+    const operation: ProviderOperationBase = {
       project: context.project,
       host: context.host,
       projectCheckout: context.projectCheckout,
@@ -423,7 +493,7 @@ async function runCreate(
       inputs: context.inputs,
       pathKey: provisioning.environmentProviderInstanceKey ?? provisioning.id,
       attempt: provisioning.attempt,
-      experimental_claimPath: async (value: string) => {
+      experimental_claimPath: async (value, options) => {
         const path = z
           .string()
           .min(1)
@@ -432,6 +502,12 @@ async function runCreate(
           .parse(value);
         if (signal.aborted) return false;
         const normalizedPath = canonicalizeHostPath(path);
+        if (options?.exclusive === true)
+          assertNoOtherLiveThreadUsesPath(deps, {
+            hostId: context.host.id,
+            path: normalizedPath,
+            threadId: provisioning.ownerThreadId,
+          });
         if (
           findBlockingEnvironmentPathClaim(deps, {
             hostId: context.host.id,
@@ -455,7 +531,7 @@ async function runCreate(
             resource: provisioning.resource ?? undefined,
           }
         : previous?.status === "destroyed"
-          ? await invokeRestore(record, {
+          ? await invokeRestore(record, provisioning, context, {
               ...operation,
               previous: {
                 environment: toEnvironmentResponse(deps.db, previous),
@@ -465,11 +541,9 @@ async function runCreate(
                     : previous.resource,
               },
             })
-          : await invokeCreate(record, {
-              ...operation,
-              suggestedBranchName: context.suggestedBranchName,
-            });
+          : await invokeCreate(record, provisioning, context, operation);
     if (result.status === "created") {
+      const created = result;
       let adoptedExistingEnvironment = false;
       let existingProviderOwnsLifecycle = false;
       try {
@@ -523,6 +597,11 @@ async function runCreate(
               deps.db,
               provisioning,
               producedPath,
+              {
+                providerPluginId: record.pluginId,
+                resource: created.resource ?? null,
+                mergeBaseBranch: created.mergeBaseBranch,
+              },
             );
             adoptedExistingEnvironment = provisioning.id !== reservedId;
           },
@@ -577,6 +656,7 @@ async function runCreate(
             (row) => {
               if (result.status === "created") {
                 row.status = row.status === "ready" ? "ready" : "provisioning";
+                if (row.ownerThreadId === null) row.claimPath = null;
               } else {
                 row.status = "error";
                 row.statusMessage = result.message;
@@ -596,19 +676,21 @@ async function runCreate(
       row.statusMessage = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${errorMessage(error)}`;
     });
   } finally {
+    const threadId = context.thread?.id ?? null;
     if (
-      changed ||
-      getPreparingEnvironment(deps.db, context.thread.id)?.status === "ready"
+      threadId !== null &&
+      (changed ||
+        getPreparingEnvironment(deps.db, threadId)?.status === "ready")
     ) {
-      const row = getPreparingEnvironment(deps.db, context.thread.id);
-      const startup = getThreadProvisionContext(deps.db, context.thread.id);
+      const row = getPreparingEnvironment(deps.db, threadId);
+      const startup = getThreadProvisionContext(deps.db, threadId);
       if (
         row !== null &&
         startup !== null &&
         (row.status === "ready" || row.status === "provisioning")
       ) {
         appendThreadProvisioningEvent(deps, {
-          threadId: context.thread.id,
+          threadId,
           environmentId: row.id,
           provisioningId: startup.state.provisioningId,
           status: "active",
@@ -621,14 +703,14 @@ async function runCreate(
             },
           ],
         });
-        deps.hub.notifyThread(context.thread.id, ["events-appended"], {
+        deps.hub.notifyThread(threadId, ["events-appended"], {
           timelineSequence: getLatestThreadSequence(deps.db, {
-            threadId: context.thread.id,
+            threadId,
           }),
           eventTypes: ["system/thread-provisioning"],
         });
       }
-      requestEnvironmentProvisioningRecheck(context.thread.id);
+      requestEnvironmentProvisioningRecheck(threadId);
     }
   }
 }
@@ -933,6 +1015,11 @@ async function sweepProviderEnvironmentInSlot(
   }
   const cancelled = row.ownerThreadId !== null && row.teardownStatus !== null;
   if (!cancelled && row.ownerThreadId !== null) return;
+  if (!machineRemoving && row.heldBy !== null && row.teardownStatus === null) {
+    if (row.retireAt !== null)
+      writeEnvironment(deps, environmentId, { retireAt: null });
+    return;
+  }
   const record = getEnvironmentProvider(environmentProviderId);
   if (record === undefined) return;
   const now = Date.now();
@@ -1271,7 +1358,9 @@ export function refreshProviderRetirement(
   if (provider === undefined) return;
   const grace = provider.provider.policy.retireGraceMs;
   const retireAt =
-    grace === null || environmentHasLiveThreads(deps.db, environmentId)
+    grace === null ||
+    row.heldBy !== null ||
+    environmentHasLiveThreads(deps.db, environmentId)
       ? null
       : (row.retireAt ?? Date.now() + grace);
   if (row.retireAt === retireAt) return;
@@ -1588,23 +1677,6 @@ function settleEnvironmentProvisionOutcome(
         )
         .run();
   }
-  if (!initiator && !args.report.ok) {
-    const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-      args.deps,
-      {
-        environmentId: args.command.environmentId,
-        event: { type: "provision.failed" },
-      },
-    );
-    if (outcome.applied) {
-      args.deps.hub.notifyEnvironment(
-        args.command.environmentId,
-        outcome.changes,
-      );
-    }
-    return emptyCommandResultSideEffects();
-  }
-
   const boundThreads = args.deps.db
     .select()
     .from(threads)
@@ -1642,7 +1714,7 @@ function settleEnvironmentProvisionOutcome(
       "work-status-changed",
     ]);
     if (!initiator) {
-      return emptyCommandResultSideEffects();
+      return { postCommitActions: advanceJoinedThreads(args, boundThreads) };
     }
     const environmentProvisioningId = initiator.provisioningId;
 
@@ -1709,14 +1781,11 @@ function settleEnvironmentProvisionOutcome(
     return { postCommitActions };
   }
 
-  if (!initiator) {
-    return emptyCommandResultSideEffects();
-  }
-  const environmentProvisioningId = initiator.provisioningId;
   const failed = recordEnvironmentProvisioningFailureInTransaction(args.deps, {
     environmentId: args.command.environmentId,
     failureReason: args.report.errorMessage,
-    provisioningId: environmentProvisioningId,
+    provisioningId:
+      initiator?.provisioningId ?? `env-${args.command.environmentId}-setup`,
     failureEntry: {
       type: "step",
       key: "workspace-failed",
@@ -1737,6 +1806,37 @@ function settleEnvironmentProvisionOutcome(
     });
   }
   return { postCommitActions };
+}
+
+function advanceJoinedThreads(
+  args: SettleEnvironmentProvisionOutcomeArgs,
+  boundThreads: (typeof threads.$inferSelect)[],
+): CommandResultPostCommitAction[] {
+  if (!args.report.ok) return [];
+  const entries = buildCwdBranchEntries({
+    path: args.report.result.path,
+    branchName: args.report.result.branchName,
+    headSha: args.headSha,
+  });
+  return boundThreads
+    .filter(
+      (thread) =>
+        thread.deletedAt === null &&
+        thread.archivedAt === null &&
+        thread.status === "starting" &&
+        hasActiveThreadProvisioningContext(args.deps, thread),
+    )
+    .map((thread) => {
+      ensureWorkspaceReadyEventInTransaction(args.deps, {
+        threadId: thread.id,
+        environmentId: args.command.environmentId,
+        entries,
+      });
+      return {
+        run: (deps: CommandResultSideEffectsDeps) =>
+          advanceThreadProvisioning(deps, { threadId: thread.id }),
+      };
+    });
 }
 
 export function settleEnvironmentProvisionCancelCommandResult(
@@ -2033,6 +2133,18 @@ function recoverEnvironmentProvisionRequest(
   environment: EnvironmentRow,
 ): EnvironmentProvisionRequest | null {
   if (environment.path === null) return null;
+  const path = environment.path;
+  const command = (initiator: EnvironmentProvisionCommand["initiator"]) => ({
+    command: buildEnvironmentProvisionCommand({
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      initiator,
+      path,
+      setupScriptTimeoutMs: environment.providerOwnsPath
+        ? ENVIRONMENT_HOOK_TIMEOUT_MS
+        : null,
+    }),
+  });
   const owners = deps.db
     .select({ id: threads.id })
     .from(threads)
@@ -2047,22 +2159,14 @@ function recoverEnvironmentProvisionRequest(
   for (const owner of owners) {
     const context = getThreadProvisionContext(deps.db, owner.id);
     if (context?.state.environmentId !== environment.id) continue;
-    return {
-      command: buildEnvironmentProvisionCommand({
-        environmentId: environment.id,
-        hostId: environment.hostId,
-        initiator: {
-          threadId: owner.id,
-          provisioningId: context.state.provisioningId,
-        },
-        path: environment.path,
-        setupScriptTimeoutMs: environment.providerOwnsPath
-          ? ENVIRONMENT_HOOK_TIMEOUT_MS
-          : null,
-      }),
-    };
+    return command({
+      threadId: owner.id,
+      provisioningId: context.state.provisioningId,
+    });
   }
-  return null;
+  return environment.heldBy !== null && environment.ownerThreadId === null
+    ? command(null)
+    : null;
 }
 
 export async function advanceEnvironmentProvisioning(
@@ -2150,7 +2254,9 @@ export async function advanceEnvironmentProvisioning(
                   context.request.environmentIntent,
                   record,
                 )
-              : null);
+              : row.ownerThreadId === null && row.heldBy !== null
+                ? resolveHeldEnvironmentOperationContext(deps, row, record)
+                : null);
         } catch (error) {
           mutateProvisioning(deps, row, ["creating"], (current) => {
             current.status = "error";
@@ -2168,7 +2274,7 @@ export async function advanceEnvironmentProvisioning(
       .then(async () => {
         const current =
           row.ownerThreadId === null
-            ? null
+            ? getEnvironment(deps.db, row.id)
             : getPreparingEnvironment(deps.db, row.ownerThreadId);
         if (current !== null && current.status !== "creating")
           await advanceEnvironmentProvisioning(deps, {

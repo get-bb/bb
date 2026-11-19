@@ -56,7 +56,7 @@ import {
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
   sweepProviderLifecycles,
-  type ProviderOperationContext,
+  type ThreadProviderOperationContext,
 } from "../../../src/services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../../../src/services/environments/environment-response.js";
 import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -122,7 +122,7 @@ function setup(
     }),
     decisionTimeoutMs: 10_000,
   });
-  const context: ProviderOperationContext = {
+  const context: ThreadProviderOperationContext = {
     thread: toThreadResponseFromThread(harness.deps, { thread }),
     project,
     host: makeHost({ id: host.id, name: host.name }),
@@ -131,7 +131,7 @@ function setup(
     gitRemote: null,
     inputs: null,
     suggestedBranchName: "bb/test",
-    environment: null,
+    previous: null,
   };
   let lastEnvironmentId: string | null = null;
   const row = () => {
@@ -340,12 +340,14 @@ describe("core environment orchestration", () => {
         await fixture.settled();
         const environmentId =
           kind === "attached environment" ? fixture.attach() : null;
-        const create = vi.fn(fixture.record.provider.create);
+        const provider = fixture.record.provider;
+        if (provider.apiVersion !== 1) throw new Error("Expected version 1");
+        const create = vi.fn(provider.create);
         const remove = vi.fn(async () => ({ status: "removed" as const }));
         const replacement = {
           ...fixture.record,
           pluginId: "replacement",
-          provider: { ...fixture.record.provider, create, remove },
+          provider: { ...provider, create, remove },
         };
         setPluginEnvironmentProviderBridge({
           listEnvironmentProviders: () => [replacement],
@@ -835,6 +837,7 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
+        environmentProviderInstanceKey: (id) => id,
         ownerThreadId: competitor.id,
         status: "creating" as const,
         path: null,
@@ -877,6 +880,7 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
+        environmentProviderInstanceKey: (id) => id,
         ownerThreadId: competitor.id,
         status: "creating" as const,
         path: null,
@@ -1151,7 +1155,7 @@ describe("core environment orchestration", () => {
         reserveEnvironment(harness.db, {
           ...fixture.row(),
           ownerThreadId: second.id,
-          environmentProviderInstanceKey: second.id,
+          environmentProviderInstanceKey: () => second.id,
           path: "/tmp/second",
         });
         if (kind === "removal") {
@@ -1227,7 +1231,7 @@ describe("core environment orchestration", () => {
         environmentProviderPluginId: fixture.record.pluginId,
         attempt: 7,
         status: "creating",
-        environmentProviderInstanceKey: "durable-path-key",
+        environmentProviderInstanceKey: () => "durable-path-key",
         hostId: fixture.host.id,
         path: null,
         claimPath: null,
@@ -2341,11 +2345,18 @@ it("serializes concurrent branchless checkout attaches until the first thread is
       const competing = new Promise<void>((resolve) => {
         competingClaim = resolve;
       });
+      if (provider.apiVersion !== 2)
+        throw new Error("Expected the checkout provider on version 2");
       const fixture = setup(harness, {
         id: provider.id,
         create: (context) =>
           provider.create({
             ...context,
+            environment: {
+              id: "env_checkout",
+              name: null,
+              projectId: context.project.id,
+            },
             experimental_claimPath: async (path) => {
               const claimed = await context.experimental_claimPath(path);
               if (++claimAttempts === 2) competingClaim();

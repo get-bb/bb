@@ -35,6 +35,8 @@ function environment(overrides: Partial<Environment> = {}): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "worktree",
     ...overrides,
   } as Environment;

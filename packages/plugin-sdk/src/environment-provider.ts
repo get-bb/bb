@@ -51,37 +51,78 @@ export type PluginEnvironmentProviderAvailability =
   | { status: "setup-required"; message: string }
   | { status: "unavailable"; message: string };
 
-export interface PluginEnvironmentProviderCreateContext<
-  R extends PluginEnvironmentProviderRequirements =
-    PluginEnvironmentProviderRequirements,
-  S extends PluginEnvironmentProviderInputsSchema =
-    PluginEnvironmentProviderInputsSchema,
+/**
+ * The context shape a provider is written against. Version 1 contexts carry
+ * the `thread` that drives the operation and cannot create an environment
+ * before a thread exists. Version 2 contexts carry the `environment` being
+ * created instead, so core can also create environments without a thread.
+ */
+export type PluginEnvironmentProviderApiVersion = 1 | 2;
+
+/** The environment a version-2 create or restore produces a workspace for. */
+export interface PluginEnvironmentProviderEnvironment {
+  id: string;
+  name: string | null;
+  projectId: string;
+}
+
+export interface PluginEnvironmentProviderClaimPathOptions {
+  /**
+   * Also refuse while a live thread other than the one this operation serves
+   * uses an environment at the path: the claim then rejects with "Cannot
+   * checkout branch while another thread is using this workspace". Use it
+   * before changing what the path has checked out.
+   */
+  exclusive: boolean;
+}
+
+interface PluginEnvironmentProviderOperationContext<
+  R extends PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema,
 > extends PluginEnvironmentProviderValidateContext<R, S> {
-  thread: ThreadResponse;
-  suggestedBranchName: string;
   attempt: number;
   pathKey: string;
-  experimental_claimPath(path: string): Promise<boolean>;
+  experimental_claimPath(
+    path: string,
+    options?: PluginEnvironmentProviderClaimPathOptions,
+  ): Promise<boolean>;
   report: PluginEnvironmentProviderProgress;
   signal: AbortSignal;
 }
 
-/** Rebuilds a thread's destroyed environment; `inputs` are the ones it was created with. */
-export interface PluginEnvironmentProviderRestoreContext<
+interface PluginEnvironmentProviderSubjects {
+  1: { thread: ThreadResponse };
+  2: { environment: PluginEnvironmentProviderEnvironment };
+}
+
+type PluginEnvironmentProviderSubject<
+  V extends PluginEnvironmentProviderApiVersion,
+> = PluginEnvironmentProviderSubjects[V];
+
+export type PluginEnvironmentProviderCreateContext<
   R extends PluginEnvironmentProviderRequirements =
     PluginEnvironmentProviderRequirements,
   S extends PluginEnvironmentProviderInputsSchema =
     PluginEnvironmentProviderInputsSchema,
-> extends PluginEnvironmentProviderValidateContext<R, S> {
-  thread: ThreadResponse;
-  attempt: number;
-  pathKey: string;
-  experimental_claimPath(path: string): Promise<boolean>;
-  /** Resource is private to this provider; null after completed removal. */
-  previous: { environment: Environment; resource: JsonValue | null };
-  report: PluginEnvironmentProviderProgress;
-  signal: AbortSignal;
-}
+  V extends PluginEnvironmentProviderApiVersion = 1,
+> = PluginEnvironmentProviderOperationContext<R, S> &
+  PluginEnvironmentProviderSubject<V> & {
+    /** `<prefix><slug>-<id>` from the thread title and id, or from the environment name and id; `<prefix><id>` without one. */
+    suggestedBranchName: string;
+  };
+
+/** Rebuilds a thread's destroyed environment; `inputs` are the ones it was created with. */
+export type PluginEnvironmentProviderRestoreContext<
+  R extends PluginEnvironmentProviderRequirements =
+    PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema =
+    PluginEnvironmentProviderInputsSchema,
+  V extends PluginEnvironmentProviderApiVersion = 1,
+> = PluginEnvironmentProviderOperationContext<R, S> &
+  PluginEnvironmentProviderSubject<V> & {
+    /** Resource is private to this provider; null after completed removal. */
+    previous: { environment: Environment; resource: JsonValue | null };
+  };
 
 export type PluginEnvironmentProviderCreateResult =
   | {
@@ -109,21 +150,37 @@ export type PluginEnvironmentProviderRemoveResult =
   | { status: "removed" }
   | { status: "failed"; message: string };
 
-/** Core normalizes omitted policy members once at registration. */
-export interface PluginEnvironmentProviderPolicy {
-  /** Default five minutes; null keeps the environment indefinitely. */
-  retireGraceMs: number | null;
-  /** Default per-thread; replacement environments use a fresh key to avoid dead paths. */
-  pathKeys: "per-thread" | "per-attempt";
+interface PluginEnvironmentProviderPathKeys {
+  1: "per-thread";
+  2: "per-environment";
 }
 
-/** Resource operations only. Core owns durable launches, retries and retirement. */
-export interface PluginEnvironmentProviderDefinition<
-  R extends PluginEnvironmentProviderRequirements =
-    PluginEnvironmentProviderRequirements,
-  S extends PluginEnvironmentProviderInputsSchema =
-    PluginEnvironmentProviderInputsSchema,
+/** Core normalizes omitted policy members once at registration. */
+export interface PluginEnvironmentProviderPolicy<
+  V extends PluginEnvironmentProviderApiVersion = 1,
 > {
+  /** Default five minutes; null keeps the environment indefinitely. */
+  retireGraceMs: number | null;
+  /**
+   * Version 1 defaults to per-thread and version 2 to per-environment: one
+   * key for the environment's workspace, stable across retries. Core derives
+   * it from the driving thread when there is one and from the environment
+   * otherwise, so thread workspaces keep their names. Replacement
+   * environments use a fresh key to avoid dead paths.
+   */
+  pathKeys: PluginEnvironmentProviderPathKeys[V] | "per-attempt";
+}
+
+interface PluginEnvironmentProviderDefinitionShape<
+  R extends PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema,
+  V extends PluginEnvironmentProviderApiVersion,
+> {
+  /**
+   * The context shape `create` and `restore` receive. Omitted means 1. Bumps
+   * only for breaking context changes; additive fields keep the version.
+   */
+  apiVersion?: V;
   id: string;
   displayName: string;
   /** Short explanation shown in environment choices. */
@@ -132,7 +189,7 @@ export interface PluginEnvironmentProviderDefinition<
   icon: string;
   requires?: R;
   inputs?: S;
-  policy?: Partial<PluginEnvironmentProviderPolicy>;
+  policy?: Partial<PluginEnvironmentProviderPolicy<V>>;
   /** Experimental per-machine availability, probed in the background for pickers and again at thread creation: see docs/api_to_audit.md. */
   availability?(
     context: PluginEnvironmentProviderAvailabilityContext,
@@ -147,13 +204,33 @@ export interface PluginEnvironmentProviderDefinition<
   /** Pure path selection from parsed inputs. Core reuses a recorded environment on the selected host before calling create; null requests normal creation. */
   experimental_existingPath?(inputs: InputsValue<S>): string | null;
   create(
-    context: PluginEnvironmentProviderCreateContext<R, S>,
+    context: PluginEnvironmentProviderCreateContext<R, S, V>,
   ): Promise<PluginEnvironmentProviderCreateResult>;
-  /** Experimental: rebuild a destroyed environment when its thread asks for it back. Without it, core never rebuilds this provider's destroyed environments: see docs/api_to_audit.md. */
+  /** Experimental: rebuild a destroyed environment when a thread asks for it back. Without it, core never rebuilds this provider's destroyed environments: see docs/api_to_audit.md. */
   restore?(
-    context: PluginEnvironmentProviderRestoreContext<R, S>,
+    context: PluginEnvironmentProviderRestoreContext<R, S, V>,
   ): Promise<PluginEnvironmentProviderCreateResult>;
   remove(
     context: PluginEnvironmentProviderRemoveContext,
   ): Promise<PluginEnvironmentProviderRemoveResult>;
+}
+
+/**
+ * Resource operations only. Core owns durable launches, retries and
+ * retirement. Version 2 (`apiVersion: 2`) contexts carry the `environment`
+ * instead of a thread, so core can create environments before any thread
+ * exists; version 1 providers are refused there.
+ */
+export type PluginEnvironmentProviderDefinition<
+  R extends PluginEnvironmentProviderRequirements =
+    PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema =
+    PluginEnvironmentProviderInputsSchema,
+  V extends PluginEnvironmentProviderApiVersion = 1,
+> = PluginEnvironmentProviderDefinitionShape<R, S, V> &
+  PluginEnvironmentProviderVersionMarkers[V];
+
+interface PluginEnvironmentProviderVersionMarkers {
+  1: { apiVersion?: 1 };
+  2: { apiVersion: 2 };
 }

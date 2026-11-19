@@ -15,7 +15,10 @@
     },
     "server": "./server.ts",
     "host": "./host.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
   },
   "keywords": [
     "bb-plugin"

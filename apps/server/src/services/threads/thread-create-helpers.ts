@@ -26,7 +26,7 @@ type EnvironmentProvisionCommandInitiator =
 interface SuggestedBranchNameArgs {
   branchPrefix: string;
   title: string | null;
-  threadId: string;
+  id: string;
 }
 
 export function buildSuggestedBranchName(
@@ -35,8 +35,8 @@ export function buildSuggestedBranchName(
   const branchSlug =
     args.title === null ? null : sanitizeGeneratedBranchSlug(args.title);
   return branchSlug
-    ? `${args.branchPrefix}${branchSlug}-${args.threadId}`
-    : `${args.branchPrefix}${args.threadId}`;
+    ? `${args.branchPrefix}${branchSlug}-${args.id}`
+    : `${args.branchPrefix}${args.id}`;
 }
 
 export function requirePublicProjectForThreadCreate(

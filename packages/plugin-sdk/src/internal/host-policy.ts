@@ -36,6 +36,7 @@ import type {
   PluginCliOutputLimitError,
   PluginCliRegistration,
   PluginEnvironmentProviderDeclaration,
+  PluginEnvironmentProviderRequirements,
   PluginHookHandler,
   PluginHookName,
   PluginHttpAuthMode,
@@ -2472,7 +2473,7 @@ export type NormalizedPluginEnvironmentComposition = z.infer<
   typeof environmentCompositionSchema
 >;
 
-export interface NormalizedPluginEnvironmentProvider {
+interface NormalizedPluginEnvironmentProviderCommon {
   id: string;
   displayName: string;
   description: string | null;
@@ -2489,11 +2490,32 @@ export interface NormalizedPluginEnvironmentProvider {
   experimental_existingPath: NonNullable<
     PluginEnvironmentProviderDeclaration["experimental_existingPath"]
   > | null;
-  create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
-  policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
+
+type EnvironmentProviderVersionDefinition<V extends 1 | 2> =
+  import("../environment-provider.js").PluginEnvironmentProviderDefinition<
+    PluginEnvironmentProviderRequirements,
+    import("../environment-provider.js").PluginEnvironmentProviderInputsSchema,
+    V
+  >;
+
+interface NormalizedPluginEnvironmentProviderVersion<V extends 1 | 2> {
+  apiVersion: V;
+  create: EnvironmentProviderVersionDefinition<V>["create"];
+  restore: NonNullable<
+    EnvironmentProviderVersionDefinition<V>["restore"]
+  > | null;
+  policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy<V>;
+}
+
+/** Normalized once at registration; `apiVersion` selects the context shape core builds for create and restore. */
+export type NormalizedPluginEnvironmentProvider =
+  NormalizedPluginEnvironmentProviderCommon &
+    (
+      | NormalizedPluginEnvironmentProviderVersion<1>
+      | NormalizedPluginEnvironmentProviderVersion<2>
+    );
 
 type ProviderNoun = "environment provider" | "machine provider";
 
@@ -2584,8 +2606,17 @@ function normalizeProviderInputs(
   return { schema: inputs, jsonSchema: jsonSchema.data };
 }
 
+/** Either context version; `apiVersion` tells them apart at runtime. */
+export type AnyPluginEnvironmentProviderDeclaration =
+  | PluginEnvironmentProviderDeclaration
+  | PluginEnvironmentProviderDeclaration<
+      PluginEnvironmentProviderRequirements,
+      import("../environment-provider.js").PluginEnvironmentProviderInputsSchema,
+      2
+    >;
+
 export function validatePluginEnvironmentProviderDeclaration(
-  declaration: PluginEnvironmentProviderDeclaration,
+  declaration: AnyPluginEnvironmentProviderDeclaration,
 ): NormalizedPluginEnvironmentProvider {
   const { id, displayName } = requireProviderIdAndDisplayName(
     "environment provider",
@@ -2647,7 +2678,7 @@ export function validatePluginEnvironmentProviderDeclaration(
     declaration.restore,
     "a restore",
   );
-  return {
+  const common: NormalizedPluginEnvironmentProviderCommon = {
     id,
     displayName,
     description,
@@ -2658,16 +2689,34 @@ export function validatePluginEnvironmentProviderDeclaration(
     availability: declaration.availability ?? null,
     validate: declaration.validate ?? null,
     experimental_existingPath: declaration.experimental_existingPath ?? null,
+    remove: declaration.remove,
+  };
+  if (declaration.apiVersion === 2) {
+    return {
+      ...common,
+      apiVersion: 2,
+      create: declaration.create,
+      restore: declaration.restore ?? null,
+      policy: environmentProviderV2PolicySchema.parse(declaration.policy ?? {}),
+    };
+  }
+  if (declaration.apiVersion !== undefined && declaration.apiVersion !== 1) {
+    throw new Error(
+      `environment provider "${id}" declares apiVersion ${JSON.stringify(declaration.apiVersion)}; this bb supports 1 and 2`,
+    );
+  }
+  return {
+    ...common,
+    apiVersion: 1,
     create: declaration.create,
     restore: declaration.restore ?? null,
-    remove: declaration.remove,
     policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
   };
 }
 
 function normalizeEnvironmentProviderRequirements(
   id: string,
-  declaration: PluginEnvironmentProviderDeclaration,
+  declaration: Pick<PluginEnvironmentProviderDeclaration, "requires">,
 ): NormalizedPluginEnvironmentProviderRequirements {
   const requires = declaration.requires ?? {};
   if (
@@ -2707,6 +2756,15 @@ const environmentProviderPolicySchema = z
   .object({
     retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
     pathKeys: z.enum(["per-thread", "per-attempt"]).default("per-thread"),
+  })
+  .strict();
+
+const environmentProviderV2PolicySchema = z
+  .object({
+    retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
+    pathKeys: z
+      .enum(["per-environment", "per-attempt"])
+      .default("per-environment"),
   })
   .strict();
 

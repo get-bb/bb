@@ -808,6 +808,19 @@ Docs: `backend-events.md`.
    below.
 5. **Compatibility fields.** Retain the deprecated `managed`, `isWorktree`,
    `workspaceProvisionType` and display-kind fields for the agreed cycle.
+6. **Context versions (`apiVersion`).** Declarations are a union keyed on
+   `apiVersion`: omitted or 1 gets today's contexts with the driving
+   `thread`; 2 gets `environment: { id, name, projectId }` instead. Core keeps
+   one implementation and adapts at the call boundary
+   (`invokeCreate`/`providerRestoreCall` in
+   `apps/server/src/services/environments/environment-engine.ts`): it adds
+   `thread` for version 1 and refuses version-1 providers for environments
+   created without a thread. Path keys are derived the same way for both
+   (thread-based when a thread drives the create, environment-based
+   otherwise). Delete the version-1 adapter, the `per-thread` path-key value
+   and `PluginEnvironmentProviderDefinition`'s version parameter when this API
+   stabilizes; all first-party providers are on version 2. Core's thread
+   creation and thread-less creation both go through the same adapter.
 
 ## `@get-bb/plugin-sdk/environment-provider`
 
@@ -837,7 +850,12 @@ availability message ownership, create-time error presentation, the
 interaction between the `requires` floor and provider decisions, and whether
 the current decision timeout is appropriate. Stabilize `experimental_claimPath`
 after auditing restart, cancellation, competing checkout, and
-path-reservation behavior.
+path-reservation behavior. Its additive `{ exclusive: true }` option also
+rejects while another live thread works in an environment at the path; it
+replaced Project checkout's own thread-list check (`context.thread.id`), and
+core's path admission (`assertNoOtherLiveThreadUsesPath`) is the only
+implementation. Decide whether a refusal should resolve to a reason instead
+of rejecting.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
@@ -3911,6 +3929,35 @@ handling, debugger detachment, daemon/desktop disconnect and reconnect
 generations, expiry and cancellation races, bounded screenshot bytes, and
 cross-platform desktop startup. Cloud browsers and external provider
 registration are outside this surface.
+
+## Environments before threads and holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`)
+
+`experimental_create({ projectId, hostId?, provider?: { id, inputs? }, name?,
+hold })` creates an environment before any thread. The creation intent
+(project, machine, provider selection, name, holder) is stored on the
+environment row (`environments.held_by` plus the existing provider columns),
+and the engine runs create and setup from it on the same path thread
+provisioning uses, including the durable `environment:<id>:<key>:setup` row
+and resume after restart. `hold: "user"` (the only hold the CLI makes, through
+`bb environment create`) accepts joining threads; `hold: "plugin"` holds for
+the calling plugin, or `pluginId` outside a plugin, and refuses joins with
+"held by <plugin>". Both retirement places
+(`refreshProviderRetirement` and the lifecycle sweep) skip held environments.
+When the holding plugin's provider returns a held environment's path from
+`create`, `bindEnvironmentPath` adopts it and atomically clears the hold and
+takes the produced `resource` and `mergeBaseBranch`. Environment responses
+carry `heldBy` and `statusMessage`; `list` filters by `heldBy`. Composed
+providers (a new machine per thread) and version-1 providers are refused.
+Core's own caller is `bb environment create`; the Worktree plugin's warm pool
+is the plugin caller.
+
+Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
+
+Before stabilizing, decide whether a hold needs release or re-hold (reuse
+after the last thread, or a UI "New workspace" flow), what happens to
+environments held by an uninstalled plugin (today they stay until deleted),
+whether `pluginId` outside a plugin should be authenticated like RPC caller
+identity, and whether `hold` should be optional for user creates.
 
 ## Machine paths and environment cleanup
 

@@ -58,6 +58,8 @@ function makeEnvironment(overrides?: Partial<Environment>): Environment {
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: null,
     createdAt: 0,
     updatedAt: 0,

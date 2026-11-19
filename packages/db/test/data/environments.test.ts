@@ -433,6 +433,7 @@ describe("environment path claims", () => {
         fixture.db,
         { ...preparing, claimPath: "/tmp/shared-checkout" },
         "/tmp/shared-checkout",
+        { providerPluginId: "test-plugin", resource: null, mergeBaseBranch: undefined },
       );
 
       expect(bound).toMatchObject({

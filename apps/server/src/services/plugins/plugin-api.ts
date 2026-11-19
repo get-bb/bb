@@ -106,6 +106,7 @@ import {
   storePluginHook,
   validateBackgroundServiceRegistration,
   validatePluginEnvironmentProviderDeclaration,
+  type AnyPluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerDeclarationIconRefusal,
@@ -371,6 +372,13 @@ function wrapSdkForPlugin(
     environments: {
       ...sdk.environments,
       ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
+      experimental_create(args) {
+        return sdk.environments.experimental_create(
+          args.hold === "user"
+            ? args
+            : { ...args, pluginId: args.pluginId ?? pluginId },
+        );
+      },
     },
     threads: {
       ...sdk.threads,
@@ -1253,7 +1261,7 @@ export function createPluginApi(options: {
   const experimental_environments: PluginEnvironments = {
     register(
       declaration:
-        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | AnyPluginEnvironmentProviderDeclaration
         | NormalizedPluginEnvironmentComposition,
     ) {
       assertLive();

@@ -45,6 +45,7 @@ import {
   advanceEnvironmentProvisioning,
   cancelProviderEnvironmentCreation,
   type ProviderOperationContext,
+  type ThreadProviderOperationContext,
 } from "../environments/environment-engine.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import { scheduleEnvironmentProvisioning } from "./thread-environment-providers.js";
@@ -133,7 +134,7 @@ function refuseProviderSelection(
   );
 }
 
-function toProviderProjectCheckout(
+export function toProviderProjectCheckout(
   db: DbConnection,
   args: { checkout: ProjectSource | null; hostId: string; projectId: string },
 ): ProviderOperationContext["projectCheckout"] {
@@ -440,6 +441,7 @@ function reuseEnvironmentPlacement(
   deps: PlacementDeps,
   environment: EnvironmentRow,
 ): ThreadEnvironmentPlacement {
+  refusePluginHeldEnvironment(environment);
   if (
     environment.teardownStatus !== null ||
     (environment.status !== "ready" && environment.status !== "provisioning")
@@ -456,6 +458,15 @@ function reuseEnvironmentPlacement(
     environmentId: environment.id,
     environmentIntent: { type: "reuse", environmentId: environment.id },
   };
+}
+
+function refusePluginHeldEnvironment(environment: EnvironmentRow): void {
+  if (environment.heldBy === null || environment.heldBy === "user") return;
+  throw new ApiError(
+    409,
+    "environment_held",
+    `Environment ${environment.id} is held by ${environment.heldBy.slice("plugin:".length)}`,
+  );
 }
 
 export async function resolveThreadEnvironmentPlacement(
@@ -596,7 +607,7 @@ export async function resolveProviderOperationContext(
     { type: "provider" }
   >,
   record: NonNullable<ReturnType<typeof getEnvironmentProvider>>,
-): Promise<ProviderOperationContext | null> {
+): Promise<ThreadProviderOperationContext | null> {
   const project = requirePublicProject(deps.db, thread.projectId);
   let selection;
   try {
@@ -730,7 +741,7 @@ function buildProviderOperationContext(
     ProviderOperationContext,
     "host" | "inputs" | "machine" | "project" | "projectCheckout"
   > & { record: PluginEnvironmentProviderRecord; thread: Thread },
-): ProviderOperationContext {
+): ThreadProviderOperationContext {
   return {
     thread: toThreadResponseFromThread(deps, { thread: args.thread }),
     project: args.project,
@@ -744,9 +755,9 @@ function buildProviderOperationContext(
     suggestedBranchName: buildSuggestedBranchName({
       branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
       title: args.thread.title ?? args.thread.titleFallback,
-      threadId: args.thread.id,
+      id: args.thread.id,
     }),
-    environment: threadProvisionContextEnvironment(
+    previous: threadProvisionContextEnvironment(
       deps,
       args.thread.environmentId,
     ),
@@ -1098,7 +1109,7 @@ export type ProviderEnvironmentCreationDecision =
 export function prepareProviderEnvironment(
   deps: ThreadProvisioningDeps,
   record: PluginEnvironmentProviderRecord,
-  context: ProviderOperationContext,
+  context: ThreadProviderOperationContext,
   options: {
     advance?: boolean;
     contextReady?: boolean;
@@ -1109,10 +1120,11 @@ export function prepareProviderEnvironment(
   const now = Date.now();
   const policy = record.provider.policy;
   const previous =
-    context.environment === null
+    context.previous === null
       ? null
-      : getEnvironment(deps.db, context.environment.id);
-  let row = getPreparingEnvironment(deps.db, context.thread.id);
+      : getEnvironment(deps.db, context.previous.id);
+  const threadId = context.thread.id;
+  let row = getPreparingEnvironment(deps.db, threadId);
   if (
     (row !== null &&
       row.attempt > 0 &&
@@ -1180,10 +1192,9 @@ export function prepareProviderEnvironment(
   const start = row === null || row.teardownStatus === "removed";
   if (start) {
     const attempt = (row?.attempt ?? previous?.attempt ?? 0) + 1;
-    const pathKey =
-      policy.pathKeys === "per-attempt" || context.environment !== null
-        ? `${context.thread.id}-${attempt}`
-        : context.thread.id;
+    const perAttempt =
+      policy.pathKeys === "per-attempt" || context.previous !== null;
+    const pathKey = () => (perAttempt ? `${threadId}-${attempt}` : threadId);
     row = reserveEnvironment(deps.db, {
       projectId: context.project.id,
       ownerThreadId: context.thread.id,
@@ -1195,7 +1206,7 @@ export function prepareProviderEnvironment(
       hostId: context.host.id,
       statusMessage:
         options.statusMessage ??
-        `${context.environment === null ? "Preparing" : "Restoring"} ${record.provider.displayName}…`,
+        `${context.previous === null ? "Preparing" : "Restoring"} ${record.provider.displayName}…`,
       environmentProviderSelection: selected,
     });
     deps.hub.notifyEnvironment(row.id, ["environment-created"]);

@@ -6,7 +6,6 @@ import { promisify } from "node:util";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { expect, it } from "vitest";
@@ -63,7 +62,7 @@ it("keeps inherited commits out of a new checkout branch's diff", async () => {
     const provider = harness.registrations.environmentProviders.get(
       PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
     );
-    if (!provider) throw new Error("Missing provider");
+    if (provider?.apiVersion !== 2) throw new Error("Missing provider");
     const result = await provider.create({
       project: {
         id: "project-1",
@@ -77,7 +76,7 @@ it("keeps inherited commits out of a new checkout branch's diff", async () => {
       projectCheckout: { path: repo, experimental_ownsPath: false },
       gitRemote: null,
       inputs: { branch: { kind: "new", baseBranch: "origin/topic-base" } },
-      thread: makeThreadResponse(),
+      environment: { id: "env_test", name: null, projectId: "project-1" },
       suggestedBranchName: "bb/checkout-regression",
       attempt: 1,
       pathKey: "merge-base-regression",

@@ -247,3 +247,49 @@ appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
 public `serverUrl` is validated and displayed in Machines settings. Reading
 configuration never acquires access; the grant's URL is the one machines use.
+
+## Context versions and holds
+
+`apiVersion` picks the shape of the create and restore contexts. Version 2
+(`apiVersion: 2`) contexts carry `environment: { id, name, projectId }`, the
+environment being created, and no thread, so core can also create the
+environment before any thread exists (`bb environment create`,
+`bb.sdk.environments.experimental_create`). Omitting `apiVersion` means
+version 1: contexts carry the driving `thread` instead, and core refuses to
+create a version-1 provider's environment without a thread ("<provider> can't
+create an environment before a thread exists"). Version-1 source keeps
+type-checking and running; core adapts at the call boundary. The version only
+bumps for breaking context changes. `suggestedBranchName` is
+`<prefix><slug>-<id>` from the thread title and id, or from the environment's
+name and id when no thread exists. `experimental_claimPath(path, { exclusive:
+true })` rejects with "Cannot checkout branch while another thread is using
+this workspace" while a live thread other than the one this operation serves
+works in an environment at the path.
+
+Path keys are derived the same way for both versions: from the driving thread
+when there is one, so thread workspaces keep their names, and from the
+environment id otherwise.
+
+### Environments created before threads, and holds
+
+`bb.sdk.environments.experimental_create({ projectId, hostId?, provider?:
+{ id, inputs? }, name?, hold })` creates an environment no thread asked for.
+Its project, machine, provider selection, name and holder are stored on the
+environment, and core runs it, setup included, on the same create path
+threads use; restart resumes it on the same setup operation. `hold: "user"`
+keeps it until the user deletes it and lets threads join it. `hold: "plugin"`
+holds it for the calling plugin (or `pluginId`): a held environment is never
+retired for having no threads, and threads cannot join a plugin-held one
+("held by <plugin>"). When that plugin's own provider returns the held
+environment's path from `create`, core adopts it for the new thread and, in
+the same transaction, clears the hold and takes the produced `resource` and
+`mergeBaseBranch`; setup does not run again, and the environment then retires
+with its threads like any other. Nothing else changes a hold. Discard held
+environments with `sdk.environments.delete`. Environment responses carry
+`heldBy` (`"user"`, `"plugin:<id>"` or null) and `statusMessage`, and
+`sdk.environments.list({ heldBy })` filters by holder. Project deletion and
+machine removal remove held environments like any other. The Worktree
+plugin's warm pool is built on this: it creates held worktrees, hands one to a
+new default-base thread inside `create`, and deletes stale ones. Environment responses expose only
+the read-only lifecycle projection: phase, retireAt, and teardown
+status/attempt/message.

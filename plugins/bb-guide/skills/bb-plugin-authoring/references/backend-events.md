@@ -228,6 +228,7 @@ operation types.
 
 ```ts
 bb.experimental_environments.register({
+  apiVersion: 2,
   id: "personal-workspace",
   displayName: "Personal workspace",
   description: "Create a personal directory without a project.",
@@ -282,17 +283,17 @@ wait if their registered provider disappears. `bb.experimental_environments.rech
 asks core to re-ask this plugin's waiting provisioning now instead of at its
 scheduled time.
 
-`create` receives the resolved facts, thread, `suggestedBranchName`,
-monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds
-a fresh environment. It is one long call with no overall timeout and must be
-idempotent for `pathKey`: after a process or plugin restart, core calls it
-again with the same attempt and pathKey. Return `created` with `path`,
-explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
-message. When core reuses an environment row your provider already owns at
-that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
-clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
-on the same environment row after cleanup. `report.step` and `report.log`
-stream durable progress while the call runs.
+`create` receives the resolved facts, the `environment` (version 2) or thread,
+`suggestedBranchName`, monotonic attempt, `pathKey`, `report`, and an abort
+signal, and always builds a fresh environment. It is one long call with no
+overall timeout and must be idempotent for `pathKey`: after a process or plugin
+restart, core calls it again with the same attempt and pathKey. Return `created`
+with `path`, explicit `ownsPath` and optional `mergeBaseBranch`, or `failed`
+with a message. When core reuses an environment row your provider already owns
+at that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
+clears it, and omitting it keeps it; a failed create is terminal, and a retry is
+an explicit new attempt on the same environment row after cleanup. `report.step`
+and `report.log` stream durable progress while the call runs.
 
 `await context.experimental_claimPath(path)` on the create and restore
 contexts atomically reserves a directory on the selected host for this launch before
@@ -300,10 +301,9 @@ workspace mutations. It returns false if another unattached launch holds the
 host/path, this attempt is no longer creating, or this attempt already
 reserved another path; repeating the same claim succeeds. Core keeps the claim
 through attachment or completed cancellation cleanup, including after failed
-creation, and normalizes trailing slashes. Check existing attached threads
-after claiming and before mutating a shared checkout.
-`bb.sdk.environments.list({ hostId, path })` compares stored paths without
-contacting hosts.
+creation, and normalizes trailing slashes; `{ exclusive: true }` also rejects
+while another live thread works at the path. `bb.sdk.environments.list({ hostId,
+path })` compares stored paths without contacting hosts.
 
 A thread whose environment was destroyed gets it back only when the user asks
 for a restore and the provider declares the optional `restore`: it receives
@@ -322,11 +322,11 @@ with nullable `environment`, `hostId` and `path`, plus `pathKey`, `resource`,
 pathKey even when create never returned a path, and returns removed or
 failed(message). Failed removal persists and retries after 60 seconds.
 
-The optional `policy` sets `retireGraceMs` (five minutes by default; null
-keeps the environment indefinitely) and `pathKeys` (`"per-thread"` by default,
-or `"per-attempt"`). Retirement starts after the last live thread archives or
-is deleted; rebuilds use fresh path keys. Environment responses expose only
-the read-only lifecycle projection: phase, retireAt, and teardown
+The optional `policy` sets `retireGraceMs` (five minutes by default; null keeps
+the environment indefinitely) and `pathKeys` (`"per-environment"` by default, or
+`"per-attempt"`). Retirement starts after the last live thread archives or is
+deleted; rebuilds use fresh path keys. Environment responses expose only the
+read-only lifecycle projection: phase, retireAt, and teardown
 status/attempt/message.
 
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns

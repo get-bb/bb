@@ -6,7 +6,6 @@ import type {
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
@@ -300,14 +299,14 @@ it.each([false, true])(
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      if (!provider) throw new Error("Missing provider");
+      if (provider?.apiVersion !== 2) throw new Error("Missing provider");
       const result = await provider.create({
         project: PROJECT,
         host: HOST,
         projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: owned },
         gitRemote: null,
         inputs: {},
-        thread: makeThreadResponse(),
+        environment: { id: "env_test", name: null, projectId: PROJECT.id },
         suggestedBranchName: "bb/test",
         attempt: 1,
         pathKey: "fixture",
@@ -343,7 +342,7 @@ it.each(["branch", "timeout", "abort"] as const)(
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      if (!provider) throw new Error("Missing provider");
+      if (provider?.apiVersion !== 2) throw new Error("Missing provider");
       vi.useFakeTimers();
       const result = provider.create({
         project: PROJECT,
@@ -354,7 +353,7 @@ it.each(["branch", "timeout", "abort"] as const)(
           mode === "branch"
             ? { branch: { kind: "existing", name: "release" } }
             : {},
-        thread: makeThreadResponse(),
+        environment: { id: "env_test", name: null, projectId: PROJECT.id },
         suggestedBranchName: "bb/test",
         attempt: 1,
         pathKey: "blocked",
@@ -444,7 +443,7 @@ describe("checkout provider merge base", () => {
         const provider = harness.registrations.environmentProviders.get(
           PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
         );
-        if (!provider) throw new Error("Missing provider");
+        if (provider?.apiVersion !== 2) throw new Error("Missing provider");
         const result = await provider.create({
           project: PROJECT,
           host: HOST,
@@ -454,7 +453,7 @@ describe("checkout provider merge base", () => {
           },
           gitRemote: null,
           inputs,
-          thread: makeThreadResponse(),
+          environment: { id: "env_test", name: null, projectId: PROJECT.id },
           suggestedBranchName: "bb/thread-branch",
           attempt: 1,
           pathKey: "merge-base",
@@ -501,7 +500,7 @@ describe("restoring a destroyed checkout environment", () => {
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      const restore = provider?.restore;
+      const restore = provider?.apiVersion === 2 ? provider.restore : null;
       if (!restore) throw new Error("Missing restore");
       const result = await restore({
         project: PROJECT,
@@ -509,7 +508,7 @@ describe("restoring a destroyed checkout environment", () => {
         projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
         gitRemote: null,
         inputs: args.inputs,
-        thread: makeThreadResponse(),
+        environment: { id: "env_test", name: null, projectId: PROJECT.id },
         attempt: 2,
         pathKey: "restored",
         experimental_claimPath: async () => true,

@@ -36,7 +36,11 @@ export const checkoutInputsSchema = z.object({
 });
 
 type CheckoutOperation = Pick<
-  PluginEnvironmentProviderCreateContext<{ projectCheckout: true }>,
+  PluginEnvironmentProviderCreateContext<
+    { projectCheckout: true },
+    undefined,
+    2
+  >,
   | "attempt"
   | "experimental_claimPath"
   | "host"
@@ -44,7 +48,6 @@ type CheckoutOperation = Pick<
   | "projectCheckout"
   | "report"
   | "signal"
-  | "thread"
 >;
 
 function errorMessage(error: unknown): string {
@@ -63,10 +66,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     if (report !== undefined) reportHostProgress(report, event.payload);
   });
 
-  async function otherLiveThreadUsesPath(args: {
+  async function liveThreadUsesPath(args: {
     hostId: string;
     path: string;
-    threadId: string | null;
   }): Promise<boolean> {
     const rows = await bb.sdk.environments.list({
       hostId: args.hostId,
@@ -77,13 +79,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         environmentId: row.id,
         archived: false,
       });
-      if (
-        threads.some(
-          (thread) =>
-            thread.id !== args.threadId &&
-            LIVE_THREAD_STATUSES.has(thread.status),
-        )
-      ) {
+      if (threads.some((thread) => LIVE_THREAD_STATUSES.has(thread.status))) {
         return true;
       }
     }
@@ -166,7 +162,17 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     const hostId = context.host.id;
     const { path, branch, mergeBaseBranch } = target;
     const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
-    while (!(await context.experimental_claimPath(path))) {
+    for (;;) {
+      let claimed: boolean;
+      try {
+        claimed = await context.experimental_claimPath(path, {
+          exclusive: branch !== null,
+        });
+      } catch (error) {
+        if (context.signal.aborted) throw error;
+        return { status: "failed", message: errorMessage(error) };
+      }
+      if (claimed) break;
       context.signal.throwIfAborted();
       if (branch !== null || Date.now() >= claimDeadline) {
         return {
@@ -175,16 +181,6 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         };
       }
       await delay(50, undefined, { signal: context.signal });
-    }
-    if (
-      branch !== null &&
-      (await otherLiveThreadUsesPath({
-        hostId,
-        path,
-        threadId: context.thread.id,
-      }))
-    ) {
-      return { status: "failed", message: LIVE_THREAD_MESSAGE };
     }
     const operationId = `${context.pathKey}#${context.attempt}`;
     reports.set(operationId, context.report);
@@ -216,6 +212,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
   }
 
   bb.experimental_environments.register({
+    apiVersion: 2,
     id: PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
     displayName: "Project checkout",
     description: "Work in a project checkout on this machine.",
@@ -241,13 +238,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       if (branch === undefined) {
         return { action: "accept" };
       }
-      if (
-        await otherLiveThreadUsesPath({
-          hostId: context.host.id,
-          path,
-          threadId: null,
-        })
-      ) {
+      if (await liveThreadUsesPath({ hostId: context.host.id, path })) {
         return { action: "refuse", message: LIVE_THREAD_MESSAGE };
       }
       const blocker = await branchSwitchBlocker({

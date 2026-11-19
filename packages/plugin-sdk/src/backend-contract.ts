@@ -24,6 +24,8 @@ import type * as z from "zod";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  EnvironmentCreateArgs,
+  EnvironmentCreateResult,
   PluginThreadMetadataListArgs,
   PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
@@ -464,16 +466,29 @@ export type PluginEnvironmentProviderDeclaration<
   Inputs extends
     import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
     import("./environment-provider.js").PluginEnvironmentProviderInputsSchema,
+  ApiVersion extends
+    import("./environment-provider.js").PluginEnvironmentProviderApiVersion = 1,
 > = import("./environment-provider.js").PluginEnvironmentProviderDefinition<
   Requires,
-  Inputs
+  Inputs,
+  ApiVersion
 >;
 
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. `apiVersion: 2` providers receive the environment
+   * instead of a thread and can create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
+  register<
+    const Requires extends PluginEnvironmentProviderRequirements,
+    const Inputs extends
+      import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginEnvironmentProviderDeclaration<Requires, Inputs, 2>,
+  ): void;
   register<
     const Requires extends PluginEnvironmentProviderRequirements,
     const Inputs extends
@@ -2147,9 +2162,23 @@ export interface PluginStatusApi {
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
  * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
- * leaves the namespace unchanged.
+ * leaves the namespace unchanged. `environments.experimental_create` with
+ * `hold: "plugin"` holds the environment for this plugin unless `pluginId`
+ * names another.
  */
-export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+export type PluginBbSdk = Omit<BbSdk, "threads" | "environments"> & {
+  environments: Omit<BbSdk["environments"], "experimental_create"> & {
+    experimental_create(
+      args:
+        | Extract<EnvironmentCreateArgs, { hold: "user" }>
+        | (Omit<
+            Extract<EnvironmentCreateArgs, { hold: "plugin" }>,
+            "pluginId"
+          > & {
+            pluginId?: string;
+          }),
+    ): Promise<EnvironmentCreateResult>;
+  };
   threads: Omit<
     BbSdk["threads"],
     | "getPluginMetadata"

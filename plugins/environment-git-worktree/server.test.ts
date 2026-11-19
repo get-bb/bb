@@ -1,13 +1,14 @@
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderInputsSchema,
   PluginEnvironmentProviderProgress,
   PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
   type FakePluginHarness,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +16,17 @@ import { worktreeHostContract } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin, { worktreeInputsSchema } from "./server.js";
 
-type Project = PluginEnvironmentProviderCreateContext["project"];
+type CreateContext = PluginEnvironmentProviderCreateContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema,
+  2
+>;
+type RestoreContext = PluginEnvironmentProviderRestoreContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema,
+  2
+>;
+type Project = CreateContext["project"];
 type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];
 
 const HOST_ID = "host-a";
@@ -60,6 +71,7 @@ async function setup(
     GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
   );
   if (provider === undefined) throw new Error("Provider not registered");
+  if (provider.apiVersion !== 2) throw new Error("Expected version 2");
   const steps: string[] = [];
   const logs: string[] = [];
   const report: PluginEnvironmentProviderProgress = {
@@ -67,8 +79,8 @@ async function setup(
     log: (text) => logs.push(text),
   };
   const signal = new AbortController().signal;
-  const context: PluginEnvironmentProviderCreateContext = {
-    thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
+  const context: CreateContext = {
+    environment: { id: "env_1", name: null, projectId: PROJECT_ID },
     project: PROJECT,
     host: PROVISION_HOST,
     projectCheckout: { experimental_ownsPath: false, path: SOURCE_PATH },
@@ -87,9 +99,9 @@ async function setup(
 }
 
 function restoreContext(
-  context: PluginEnvironmentProviderCreateContext,
+  context: CreateContext,
   branchName: string | null,
-): PluginEnvironmentProviderRestoreContext {
+): RestoreContext {
   const { suggestedBranchName: _suggested, ...operation } = context;
   return {
     ...operation,
@@ -119,6 +131,8 @@ function restoreContext(
         environmentProviderSelection: null,
         environmentProviderInstanceKey: THREAD_ID,
         managed: true,
+        heldBy: null,
+        statusMessage: null,
         workspaceProvisionType: "managed-worktree",
         createdAt: 1,
         updatedAt: 2,
