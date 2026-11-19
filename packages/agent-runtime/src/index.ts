@@ -1,4 +1,4 @@
-export { CompetingTurnError, createAgentRuntime } from "./runtime.js";
+export { createAgentRuntime } from "./runtime.js";
 export { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 export type {
   AgentRuntime,
@@ -6,6 +6,7 @@ export type {
   AgentRuntimeOptions,
   AgentRuntimeProcessExitInfo,
   AgentRuntimeProviderSession,
+  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
   ReapedIdleProviderSession,
 } from "./types.js";

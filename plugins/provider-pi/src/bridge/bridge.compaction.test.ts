@@ -27,7 +27,7 @@ it("reports a refused manual compaction as skipped, after the compaction_end del
     instructionMode: "append",
     options: FULL_PERMISSION_OPTIONS,
   });
-  await harness.request(3, "turn/start", {
+  const response = await harness.request(3, "turn/start", {
     threadId: THREAD_ID,
     providerThreadId: THREAD_ID,
     clientRequestId: "creq_cmpctnpabc",
@@ -52,31 +52,39 @@ it("reports a refused manual compaction as skipped, after the compaction_end del
         ],
       },
     ],
+    apply: { settings: [], sessionOptions: [], providerOptions: [] },
     options: FULL_PERMISSION_OPTIONS,
   });
-  await harness.waitFor(
-    () =>
-      harness.deltasOf(THREAD_ID).filter((d) => d.kind === "turn.boundary")
-        .length >= 2,
-    "both turn boundaries",
-  );
+  expect(response.result).toEqual({ admission: "accepted" });
+  await harness.waitForTurnBoundary(THREAD_ID);
+  await harness.request(4, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId: THREAD_ID,
+    intent: "release",
+    activeTurnId: null,
+  });
 
   const kinds = harness
     .deltasOf(THREAD_ID)
+    .filter((d) => d.kind !== "contextWindow")
     .map((d) =>
       d.kind === "turn.boundary"
         ? `turn.boundary:${String(d.status)}`
-        : String(d.kind),
+        : d.kind === "item.close"
+          ? `item.close:${String(d.status)}`
+          : String(d.kind),
     );
   const warning = harness
     .deltasOf(THREAD_ID)
     .find((d) => d.kind === "provider.warning");
   expect(warning).toMatchObject({ category: "compaction-skipped" });
-  expect(kinds.indexOf("provider.warning")).toBeLessThan(
-    kinds.indexOf("turn.boundary:completed"),
-  );
-  expect(kinds.filter((k) => k.startsWith("turn.boundary"))).toEqual([
-    "turn.boundary:completed",
+  expect(kinds.slice(kinds.indexOf("input.accepted"))).toEqual([
+    "input.accepted",
+    "turn.open",
+    "turn.open",
+    "item.open",
+    "provider.warning",
+    "item.close:completed",
     "turn.boundary:completed",
   ]);
 }, 30_000);

@@ -501,7 +501,8 @@ describe("conformance turn/settles-without-activity", () => {
         }
         emit(threadId, [
           accepted,
-          { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+          { kind: "turn.open" },
+          { kind: "turn.boundary", status: "completed" },
         ]);
         return;
       }
@@ -550,7 +551,7 @@ describe("conformance turn/settles-without-activity", () => {
             params?.clientRequestId,
             promptText(params?.input) === "/clear",
           );
-          respond({});
+          respond({ admission: "accepted" });
           return;
         }
         case "thread/stop":

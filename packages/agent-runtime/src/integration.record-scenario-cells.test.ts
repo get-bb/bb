@@ -73,7 +73,7 @@ function createCtx(providerId: string, cell: string): Ctx {
     env.BB_PI_BRIDGE_SESSION_DIR = sessionDir;
   }
   const runtime = createAgentRuntime({
-    env,
+    getProcessEnv: () => env,
     workspacePath: workspace,
     onEvent: (event) => {
       events.push(event);

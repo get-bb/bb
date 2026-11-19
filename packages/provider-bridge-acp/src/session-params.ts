@@ -3,15 +3,15 @@ import type {
   PermissionMode,
   ReasoningLevel,
   ServiceTier,
+  SessionOptionSelections,
 } from "@bb/domain";
 import { withoutThreadIdentityEnv } from "@bb/provider-bridge-protocol/bridge-kit";
 import path from "node:path";
 
-import {
-  ACP_DEFAULT_MODEL_ID,
-  type AcpBridgeNativeReasoning,
-  type AcpBridgePermissionCli,
-  type AcpBridgeReasoningCli,
+import type {
+  AcpBridgeNativeReasoning,
+  AcpBridgePermissionCli,
+  AcpBridgeReasoningCli,
 } from "./bridge-protocol.js";
 import { cursorParameterizedSelection } from "./cursor-model-selection.js";
 import type { AcpLaunchSpec } from "./launch-spec.js";
@@ -23,6 +23,7 @@ export interface AcpSessionExecutionOptions {
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   permissionMode: PermissionMode;
+  sessionOptions?: SessionOptionSelections | undefined;
   skillRoots?: readonly AcpSkillRoot[] | undefined;
 }
 
@@ -40,6 +41,7 @@ export interface AcpAgentCommandParam {
 }
 
 export interface AcpModelListParams {
+  agentDisplayName?: string;
   listCommand?: AcpAgentCommandParam;
   agent?: AcpAgentCommandParam;
   optionsAgent?: AcpAgentCommandParam;
@@ -66,6 +68,7 @@ type AcpModelSelection =
 export interface AcpSessionParams {
   threadId: string;
   cwd: string;
+  launchSpec: AcpLaunchSpec;
   agent: { command: string; args: string[] };
   dialectId?: string | undefined;
   modelSelection?: AcpModelSelection | undefined;
@@ -78,6 +81,7 @@ export interface AcpSessionParams {
   workspaceWriteRoots: string[];
   envVars?: Record<string, string>;
   instructions?: string;
+  sessionOptions: SessionOptionSelections;
   dynamicTools?: readonly DynamicTool[];
 }
 
@@ -176,6 +180,17 @@ function buildAcpModelDiscoveryAgentCommand(
     : buildAcpAgentCommand(launchSpec, envVars);
 }
 
+export function acpLaunchSelectsModel(
+  launchSpec: AcpLaunchSpec,
+  parameterizedModelPicker: boolean,
+): boolean {
+  return (
+    !parameterizedModelPicker &&
+    buildAcpModelListCommand(launchSpec, {}) !== undefined &&
+    Boolean(launchSpec.modelCli?.selectFlag)
+  );
+}
+
 interface AcpModelListOptions {
   parameterizedModelPicker: boolean;
   primaryModels?: readonly string[];
@@ -198,6 +213,7 @@ export function buildAcpModelListParams(
   const listCommand = buildAcpModelListCommand(launchSpec, options.envVars);
   const agent = buildAcpModelDiscoveryAgentCommand(launchSpec, options.envVars);
   return {
+    agentDisplayName: launchSpec.displayName,
     ...(listCommand !== undefined ? { listCommand } : {}),
     ...(agent !== undefined ? { agent } : {}),
     optionsAgent: buildAcpAgentCommand(launchSpec, options.envVars),
@@ -250,14 +266,11 @@ function buildAcpModelSelection(
     launchSpec,
     withoutThreadIdentityEnv(options.envVars ?? {}),
   );
-  if (!model || model === ACP_DEFAULT_MODEL_ID) {
+  if (!model) {
     return undefined;
   }
-  if (
-    parameterizedModelPicker ||
-    !listCommand ||
-    !launchSpec.modelCli?.selectFlag
-  ) {
+  const selectFlag = launchSpec.modelCli?.selectFlag;
+  if (parameterizedModelPicker || !listCommand || !selectFlag) {
     const modelSelection =
       parameterizedModelPicker && dialectId === "cursor"
         ? cursorParameterizedSelection(model, options.reasoningLevel)
@@ -276,7 +289,7 @@ function buildAcpModelSelection(
   }
   return {
     listCommand,
-    selectFlag: launchSpec.modelCli.selectFlag,
+    selectFlag,
     model,
     ...(options.reasoningLevel !== undefined
       ? { reasoningLevel: options.reasoningLevel }
@@ -317,6 +330,7 @@ export function buildAcpSessionParams(
   return {
     threadId: args.threadId,
     cwd,
+    launchSpec,
     agent: {
       command: launchSpec.command,
       args: [...launchSpec.args],
@@ -342,6 +356,7 @@ export function buildAcpSessionParams(
     workspaceWriteRoots: [cwd, ...args.additionalWorkspaceWriteRoots],
     ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
     ...(instructions ? { instructions } : {}),
+    sessionOptions: { ...options.sessionOptions },
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
       : {}),

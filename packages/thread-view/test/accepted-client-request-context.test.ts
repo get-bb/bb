@@ -42,6 +42,8 @@ describe("accepted client request context", () => {
     const context: AcceptedClientRequestContext = {
       acceptedClientRequestEvents: [],
       rejectedClientRequestEvents: [],
+      requestedClientRequestEvents: [],
+      busyRetryGiveUpEvents: [],
     };
 
     const acceptedRequests = buildAcceptedClientRequestById({
@@ -84,6 +86,8 @@ describe("accepted client request context", () => {
         }),
       ],
       rejectedClientRequestEvents: [],
+      requestedClientRequestEvents: [],
+      busyRetryGiveUpEvents: [],
     };
 
     const acceptedRequests = buildAcceptedClientRequestById({

@@ -14,11 +14,13 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  countStoredTurnRejectionsWithReasonAfterSequence,
   environments,
   getActiveStoredTurnId,
   getEnvironment,
   getHost,
   getLatestSessionForHost,
+  getLatestStoredThreadEventOfTypes,
   getLatestThreadSequence,
   getThread,
   hasStoredProviderTurnCompletedSince,
@@ -40,6 +42,8 @@ import {
 import {
   STALE_TURN_ERROR_CODE,
   STEER_UNCONFIRMED_ERROR_CODE,
+  THREAD_BUSY_ERROR_CODE,
+  TURN_REJECTED_ERROR_CODE,
   TURN_START_UNCONFIRMED_ERROR_CODE,
 } from "@bb/host-daemon-contract";
 import type {
@@ -282,6 +286,32 @@ function turnRequestAnswer(
     command.target.mode !== "start"
   ) {
     return { kind: "stale" };
+  }
+  if (
+    command.type === "turn.submit" &&
+    report.errorCode === THREAD_BUSY_ERROR_CODE
+  ) {
+    const lastAccepted = getLatestStoredThreadEventOfTypes(deps.db, {
+      threadId: command.threadId,
+      types: ["turn/input/accepted"],
+      afterSequence: 0,
+    });
+    return {
+      kind: "busy",
+      busyStreak:
+        countStoredTurnRejectionsWithReasonAfterSequence(deps.db, {
+          threadId: command.threadId,
+          reason: THREAD_BUSY_ERROR_CODE,
+          afterSequence: lastAccepted?.sequence ?? 0,
+        }) + 1,
+      message: report.errorMessage,
+    };
+  }
+  if (
+    command.type === "turn.submit" &&
+    report.errorCode === TURN_REJECTED_ERROR_CODE
+  ) {
+    return { kind: "rejected", message: report.errorMessage };
   }
   const expectedTurnId = expectedTurnIdForCommand(command);
   return {

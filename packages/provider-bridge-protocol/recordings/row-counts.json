@@ -1,13 +1,13 @@
 {
   "acp-cursor/approval-allow": {
-    "events": 34,
-    "rows": 2,
+    "events": 35,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/approval-deny": {
-    "events": 32,
-    "rows": 2,
+    "events": 33,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
@@ -24,44 +24,44 @@
     "grammarDrops": 0
   },
   "acp-cursor/resume": {
-    "events": 26,
-    "rows": 4,
+    "events": 28,
+    "rows": 6,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/steer": {
-    "events": 71,
-    "rows": 2,
+    "events": 72,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/stop-interrupt": {
-    "events": 44,
-    "rows": 5,
+    "events": 46,
+    "rows": 7,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/subagent": {
-    "events": 53,
-    "rows": 2,
+    "events": 54,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/turn-tools": {
-    "events": 101,
-    "rows": 2,
+    "events": 102,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/user-question": {
-    "events": 29,
-    "rows": 2,
+    "events": 30,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/web-search": {
-    "events": 54,
-    "rows": 2,
+    "events": 55,
+    "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
   },
@@ -252,7 +252,7 @@
     "grammarDrops": 0
   },
   "pi/compaction": {
-    "events": 39,
+    "events": 40,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
@@ -276,7 +276,7 @@
     "grammarDrops": 0
   },
   "pi/steer": {
-    "events": 39,
+    "events": 40,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0

@@ -61,11 +61,11 @@ describe("runtime recovery hints", () => {
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath,
-        env: {
+        getProcessEnv: () => ({
           ...record.env,
           ...processLog.env,
           ...scriptedEchoProcessEnv(processScript),
-        },
+        }),
         onEvent: (event) => events.push(event),
         onProviderRecovery: (hint) => hints.push(hint),
         onStderr: (line) => stderr.push(line),
@@ -790,7 +790,8 @@ describe("runtime recovery hints", () => {
         processLog.read().filter((line) => line.startsWith("spawn:")).length ===
           2 &&
         record.last("thread/resume") !== undefined &&
-        runtime.listRunningProviders().length === 1,
+        runtime.listRunningProviders().length === 1 &&
+        runtime.getSessionPhase("t-restart") === "idle",
       runtime,
       timeoutMs: 5_000,
     });

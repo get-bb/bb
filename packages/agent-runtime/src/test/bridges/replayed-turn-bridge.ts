@@ -49,7 +49,7 @@ export function handleLine(line: string): void {
       id,
       result: {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-        capabilities: { grammarVersions: [2, 3] },
+        capabilities: { grammarVersions: [2, 3], sessionSettings: {} },
       },
     });
     return;
@@ -95,7 +95,7 @@ export function handleLine(line: string): void {
     turnCountByThreadId.set(threadId, turnCount);
     const providerTurnId = `turn-${turnCount}`;
     const key = { providerItemId: `msg-${turnCount}` };
-    writeMessage({ id, result: {} });
+    writeMessage({ id, result: { admission: "accepted" } });
     emitDeltas(threadId, [
       { kind: "turn.open", providerTurnId },
       {

@@ -24,7 +24,7 @@ it("auto-cancels extension dialogs in a helper session without a UI handler", as
       }
       if (message.type === "extension_ui_response") {
         fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(message) + "\\n");
-        channel.write(JSON.stringify({ kind: "ready" }) + "\\n");
+        channel.write(JSON.stringify({ kind: "ready", agentSettled: true }) + "\\n");
       }
     });
     input.on("close", () => process.exit(0));

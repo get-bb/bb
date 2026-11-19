@@ -289,26 +289,41 @@ describe("claude session option passthrough", () => {
 });
 
 describe("buildClaudeTurnParams", () => {
-  it("leaves live-setting knobs undefined when providerOptions omits them, so the session keeps its current values", () => {
-    const params = buildClaudeTurnParams({
+  it("fills the same provider defaults as session construction when providerOptions omits them", () => {
+    const options = {
+      permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
+      permissionEscalation: null,
+    } as const;
+    const turnParams = buildClaudeTurnParams({
       threadId: "thread-1",
       providerThreadId: "provider-1",
       input: [{ type: "text", text: "hi", mentions: [] }],
-      options: {
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
+      options,
     });
-    expect(params.workflowsEnabled).toBeUndefined();
-    expect(params.chromeEnabled).toBeUndefined();
-    expect(params.sandboxEnabled).toBeUndefined();
-    expect(params.fullAccessApprovalsEnabled).toBeUndefined();
-    expect(params.memoryEnabled).toBeUndefined();
-    expect(params.providerSubagentsEnabled).toBeUndefined();
-    expect(params.permissionEscalation).toBeNull();
-    expect(params).not.toHaveProperty("serviceTier");
+    const sessionParams = buildClaudeSessionParams({
+      threadId: "thread-1",
+      cwd: "/tmp/worktree",
+      instructionMode: "append",
+      options,
+    });
+    for (const key of [
+      "workflowsEnabled",
+      "chromeEnabled",
+      "disable1MContext",
+      "artifactsEnabled",
+      "sandboxEnabled",
+      "fullAccessApprovalsEnabled",
+      "commandDescriptionsEnabled",
+      "memoryEnabled",
+      "providerSubagentsEnabled",
+      "serviceTier",
+    ]) {
+      expect(turnParams[key]).toBeDefined();
+      expect(turnParams[key]).toEqual(sessionParams[key]);
+    }
+    expect(turnParams.permissionEscalation).toBeNull();
   });
 
   it("forwards fast service tier to Claude turns", () => {

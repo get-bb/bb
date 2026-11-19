@@ -79,6 +79,7 @@ it.skipIf(bunBinary() === null)(
               mentions: [],
             },
           ],
+          apply: { settings: [], sessionOptions: [], providerOptions: [] },
           options: FULL_PERMISSION_OPTIONS,
         },
       }),

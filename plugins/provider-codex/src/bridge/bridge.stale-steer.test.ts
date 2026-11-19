@@ -7,6 +7,7 @@ import { z } from "zod";
 import { handleLine } from "./bridge.js";
 import {
   FULL_ACCESS_SESSION_OPTIONS,
+  NO_SESSION_SETTINGS_CHANGE,
   stubFakeCodexAppServer,
 } from "./fake-codex-app-server-harness.js";
 
@@ -55,6 +56,7 @@ async function steerOpenTurn(args: {
     .object({ providerThreadId: z.string() })
     .parse((await harness.waitForResponse(1)).result);
   harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
     threadId: THREAD_ID,
     providerThreadId,
     clientRequestId: "creq_trnstart23",
@@ -105,22 +107,59 @@ it("keeps other Codex steer rejections as bridge errors", async () => {
   ).toEqual({ code: BRIDGE_ERROR, message });
 }, 30_000);
 
-it("reports a permission-changing steer for a turn that already ended as a stale turn", async () => {
-  const message = "The turn to steer is no longer active";
-  expect(
-    await steerOpenTurn({
-      steerError: null,
-      expectedTurnId: "turn-fx-ended",
-      options: {
-        permissionMode: "auto",
-        permissionScope: "workspace",
-        approvalReviewer: "automatic",
-        permissionEscalation: "ask",
+it("answers busy when Codex cannot steer the running compact or review turn", async () => {
+  const message = "cannot steer a compact turn";
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      steerError: {
+        code: -32600,
+        message,
+        data: {
+          message,
+          codexErrorInfo: { activeTurnNotSteerable: { turnKind: "compact" } },
+        },
       },
     }),
-  ).toEqual({
-    code: NO_ACTIVE_TURN,
-    message,
-    data: { recovery: { kind: "staleTurn", message, retryable: false } },
+  );
+  stubFakeCodexAppServer(scriptPath);
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result);
+  harness.sendRequest(2, "turn/start", {
+    apply: NO_SESSION_SETTINGS_CHANGE,
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_trnstart24",
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  harness.sendRequest(3, "turn/steer", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    expectedTurnId: "turn-fx-1",
+    clientRequestId: "creq_trnsteer24",
+    input: [{ type: "text", text: "one more thing", mentions: [] }],
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  const steered = await harness.waitForResponse(3);
+
+  expect(steered.result).toEqual({
+    admission: "busy",
+    message: expect.stringContaining("compact"),
+  });
+  expect(
+    harness.messages.some(
+      (entry) =>
+        entry.method === "thread/delta" &&
+        JSON.stringify(entry.params).includes("creq_trnsteer24"),
+    ),
+  ).toBe(false);
 }, 30_000);

@@ -89,6 +89,8 @@ describe.skipIf(!corpusAvailable())(
             acceptedClientRequestContext: {
               acceptedClientRequestEvents: [],
               rejectedClientRequestEvents: [],
+              requestedClientRequestEvents: [],
+              busyRetryGiveUpEvents: [],
             },
             options: {
               completedTurnDisplay: "collapse",

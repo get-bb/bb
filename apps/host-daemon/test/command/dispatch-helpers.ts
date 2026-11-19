@@ -110,7 +110,6 @@ interface FakeRuntimeState {
   startedThreadId: string | undefined;
   steeredClientRequestId: ClientTurnRequestId | undefined;
   steeredTurnId: string | undefined;
-  steeredTurnInstructions: string | undefined;
   stoppedThreadId: string | undefined;
   unarchivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   unarchivedProviderId: string | undefined;
@@ -190,7 +189,6 @@ export function createFakeRuntime() {
     startedThreadId: undefined,
     steeredClientRequestId: undefined,
     steeredTurnId: undefined,
-    steeredTurnInstructions: undefined,
     stoppedThreadId: undefined,
     unarchivedBridgeLaunch: undefined,
     unarchivedProviderId: undefined,
@@ -272,7 +270,6 @@ export function createFakeRuntime() {
     async steerTurn(args) {
       state.steeredTurnId = args.expectedTurnId;
       state.steeredClientRequestId = args.clientRequestId;
-      state.steeredTurnInstructions = args.instructions;
       return { status: "steered" };
     },
     async stopThread(args) {
@@ -303,6 +300,9 @@ export function createFakeRuntime() {
     },
     listRunningProviders() {
       return state.runningProviders;
+    },
+    getSessionPhase() {
+      return "idle";
     },
     getActiveTurnId(threadId) {
       return activeTurnsByThreadId.get(threadId) ?? null;

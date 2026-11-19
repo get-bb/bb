@@ -6,6 +6,7 @@ import {
   type ProviderRateLimitState,
   type ProviderRateLimitStatus,
   type ProviderRuntimeEvent,
+  type OpenWorkItem,
   type ThreadDelta,
   type ThreadEventPlanStep,
   type ThreadEventTokenUsageBreakdown,
@@ -60,6 +61,7 @@ import {
 import {
   hasCompletionBlockingClaudeTasks,
   buildInterruptedClaudeTaskDeltas,
+  listOpenClaudeTasks,
   translateClaudeTaskMessage,
   type ClaudeTaskMap,
 } from "./task-translation.js";
@@ -76,7 +78,6 @@ import {
   extractToolResults,
   extractToolUses,
   getNestedParentToolUseId,
-  resolveClaudeModelContextWindowHint,
 } from "./sdk-extraction.js";
 import { claudeCodeVisibilityMetadata } from "./visibility.js";
 
@@ -1462,12 +1463,13 @@ export function createClaudeDeltaTranslator(
     return statesByThreadId.get(threadId)?.mirror.turnOpen === true;
   }
 
-  function setClaudeModelContextWindowHint(
-    threadId: string,
-    model: string,
-  ): void {
-    stateFor({ threadId }).selectedModelContextWindow =
-      resolveClaudeModelContextWindowHint(model);
+  function forgetModelContextWindow(threadId: string): void {
+    stateFor({ threadId }).selectedModelContextWindow = null;
+  }
+
+  function listOpenWork(threadId: string): OpenWorkItem[] {
+    const state = statesByThreadId.get(threadId);
+    return state === undefined ? [] : listOpenClaudeTasks(state.tasksById);
   }
 
   function setClaudeReportedContextWindow(
@@ -1497,8 +1499,9 @@ export function createClaudeDeltaTranslator(
     configureCommandDescriptions: (enabled: boolean) => {
       commandDescriptionsEnabled = enabled;
     },
+    forgetModelContextWindow,
     hasOpenTurn,
-    setClaudeModelContextWindowHint,
+    listOpenWork,
     setClaudeReportedContextWindow,
     translate,
   };

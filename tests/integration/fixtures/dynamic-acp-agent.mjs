@@ -11,9 +11,7 @@ if (listMode) {
 
 const selectedModelFlagIndex = process.argv.indexOf("--model");
 const launchSelectedModel =
-  selectedModelFlagIndex >= 0
-    ? process.argv[selectedModelFlagIndex + 1]
-    : "acp-default";
+  selectedModelFlagIndex >= 0 ? process.argv[selectedModelFlagIndex + 1] : null;
 
 let nextSession = 1;
 const loadedSessions = new Map();
@@ -28,9 +26,7 @@ const acpModels = [
 const defaultAcpModel = acpModels[0].value;
 
 function initialSessionModel() {
-  return launchSelectedModel === "acp-default"
-    ? defaultAcpModel
-    : launchSelectedModel;
+  return launchSelectedModel ?? defaultAcpModel;
 }
 
 function write(message) {

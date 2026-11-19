@@ -41,8 +41,9 @@ export const threadContextWindowUsageSchema = z.object({
    * When the composer starts offering to compact before the next send: the
    * provider's prompt cache for this context expires then, so the next turn
    * would re-read it uncached. Present only while the `compactExpiredCache`
-   * experiment is on, the provider reported a cache lifetime and supports
-   * manual compaction, and the context holds at least 100k tokens.
+   * experiment is on, the provider reported a cache lifetime and offers
+   * manual compaction (declared, or a `compact` command in the thread's live
+   * commands), and the context holds at least 100k tokens.
    */
   compactionOfferAt: z.iso.datetime().optional(),
 });

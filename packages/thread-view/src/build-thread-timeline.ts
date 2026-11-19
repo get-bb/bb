@@ -53,6 +53,7 @@ import {
 } from "./build-event-projection.js";
 import {
   buildAcceptedClientRequestById,
+  buildBusyRetryingClientRequestIds,
   buildRejectedClientRequestById,
   type AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
@@ -231,6 +232,8 @@ function operationKindForMessage(
     case "warning":
     case "deprecation":
       return message.opType;
+    case "session-settings":
+      return "warning";
     case "provider-environment":
       return "generic";
     case "operation":
@@ -921,11 +924,16 @@ function convertSteerMessage(
   };
 }
 
+export interface PendingSteerMessages {
+  refused: EventProjectionUserMessage[];
+  steers: EventProjectionUserMessage[];
+}
+
 export function buildPendingSteerMessagesFromEvents(
   acceptedClientRequestContext: AcceptedClientRequestContext,
   events: ThreadEventWithMeta[],
   options: BuildEventProjectionMessagesOptions,
-): EventProjectionUserMessage[] {
+): PendingSteerMessages {
   const orderedEvents = getOrderedThreadEvents(events);
   const acceptedClientRequestById = buildAcceptedClientRequestById({
     context: acceptedClientRequestContext,
@@ -934,6 +942,11 @@ export function buildPendingSteerMessagesFromEvents(
   const rejectedClientRequestById = buildRejectedClientRequestById(
     acceptedClientRequestContext,
     orderedEvents,
+  );
+  const busyRetryingClientRequestIds = buildBusyRetryingClientRequestIds(
+    acceptedClientRequestContext,
+    orderedEvents,
+    acceptedClientRequestById,
   );
   const inWindowRejectedClientRequestIds = new Set(
     orderedEvents.flatMap(({ event }) =>
@@ -985,6 +998,7 @@ export function buildPendingSteerMessagesFromEvents(
     }
     explicitRejectionNeedsCompanionError = false;
   }
+  const refusedMessages: EventProjectionUserMessage[] = [];
   const pendingSteerMessages: EventProjectionUserMessage[] = [];
 
   for (const { event, meta } of orderedEvents) {
@@ -1011,12 +1025,15 @@ export function buildPendingSteerMessagesFromEvents(
       acceptedClientRequest === undefined &&
       rejectedMeta
     ) {
-      pendingSteerMessages.push(
+      refusedMessages.push(
         ...parseRejectedUsersFromClientRequest({
           decoded: event,
           requestMeta: meta,
           meta: rejectedMeta,
           options,
+          requestStatus: busyRetryingClientRequestIds.has(event.requestId)
+            ? "pending"
+            : "rejected",
         }),
       );
       continue;
@@ -1026,12 +1043,13 @@ export function buildPendingSteerMessagesFromEvents(
       acceptedClientRequest === undefined &&
       legacyRejectedMeta
     ) {
-      pendingSteerMessages.push(
+      refusedMessages.push(
         ...parseRejectedUsersFromClientRequest({
           decoded: event,
           requestMeta: meta,
           meta: legacyRejectedMeta,
           options,
+          requestStatus: "rejected",
         }),
       );
       continue;
@@ -1048,7 +1066,7 @@ export function buildPendingSteerMessagesFromEvents(
     pendingSteerMessages.push(...pendingSteers);
   }
 
-  return pendingSteerMessages;
+  return { refused: refusedMessages, steers: pendingSteerMessages };
 }
 
 function isReconnectSystemRow(row: TimelineRow): boolean {
@@ -1215,15 +1233,19 @@ export function buildThreadTimelineFromProjection(
   },
 ): ThreadTimelineFromEventsResult {
   const { projection } = args;
-  const steerRows = buildPendingSteerMessagesFromEvents(
+  const steerMessages = buildPendingSteerMessagesFromEvents(
     args.acceptedClientRequestContext,
     args.events,
     args.options,
-  )
-    .filter((message) => !isSuppressedSystemMessage(message))
-    .map((message) =>
-      convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
-    );
+  );
+  const toRows = (messages: readonly EventProjectionUserMessage[]) =>
+    messages
+      .filter((message) => !isSuppressedSystemMessage(message))
+      .map((message) =>
+        convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
+      );
+  const refusedRows = toRows(steerMessages.refused);
+  const steerRows = toRows(steerMessages.steers);
   const rows = buildTimelineRows(
     projection,
     {
@@ -1235,7 +1257,10 @@ export function buildThreadTimelineFromProjection(
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
     },
-    steerRows.filter((row) => row.turnRequest.status !== "pending"),
+    [
+      ...refusedRows,
+      ...steerRows.filter((row) => row.turnRequest.status !== "pending"),
+    ],
   );
 
   return {

@@ -100,7 +100,7 @@ function skipped(
 
 interface Settings {
   model: string;
-  reasoningLevel: string;
+  reasoningLevel: string | null;
   permissionMode: string;
   env: Record<string, string>;
 }
@@ -123,7 +123,7 @@ const executionOptionsSchema = (): z.ZodType<Settings> =>
   z
     .object({
       model: z.string(),
-      reasoningLevel: z.string(),
+      reasoningLevel: z.string().nullable().default(null),
       permissionMode: z.string(),
       envVars: z.record(z.string(), z.string()).default({}),
     })
@@ -335,7 +335,10 @@ function changedDimensions(
   const changes: Array<{ dimension: SettingDimension; values: string[] }> = [];
   if (before.model !== after.model)
     changes.push({ dimension: "model", values: [after.model] });
-  if (before.reasoningLevel !== after.reasoningLevel)
+  if (
+    after.reasoningLevel !== null &&
+    before.reasoningLevel !== after.reasoningLevel
+  )
     changes.push({ dimension: "reasoning", values: [after.reasoningLevel] });
   const envValues = Object.entries(after.env)
     .filter(([name, value]) => value !== "" && before.env[name] !== value)

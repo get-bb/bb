@@ -1308,6 +1308,22 @@ export function createCodexEventTranslator(
     return !tracked.terminal || tracked.pendingFollowups > 0;
   }
 
+  function listOpenSubAgents(
+    parentProviderThreadId: string,
+  ): CodexOpenSubAgent[] {
+    return [...trackedSubAgentsByCallId.values()]
+      .filter(
+        (tracked) =>
+          tracked.parentProviderThreadId === parentProviderThreadId &&
+          isTrackedSubAgentOpen(tracked),
+      )
+      .map((tracked) => ({
+        callId: tracked.callId,
+        agentPath: tracked.agentPath,
+        agentThreadId: tracked.agentThreadId,
+      }));
+  }
+
   function completeCodexTrackedSubAgent(args: {
     status: "completed" | "failed" | "interrupted";
     tracked: CodexTrackedSubAgent;
@@ -1714,6 +1730,7 @@ export function createCodexEventTranslator(
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
+    listOpenSubAgents,
     openTurnFromStartResponse,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
@@ -1725,6 +1742,12 @@ interface CodexSubAgentActivityEvent {
   item: CodexSubAgentActivityItem;
   providerThreadId: string;
   turnId: string;
+}
+
+export interface CodexOpenSubAgent {
+  callId: string;
+  agentPath: string;
+  agentThreadId: string;
 }
 
 interface CodexTrackedSubAgent {

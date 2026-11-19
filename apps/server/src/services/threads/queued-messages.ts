@@ -49,11 +49,7 @@ import {
   toThreadQueuedMessage,
 } from "./thread-queued-messages.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import {
-  getActiveTurnId,
-  isActiveTurnMainRunIdle,
-  isManualCompactionActive,
-} from "./thread-events.js";
+import { getActiveTurnId, isActiveTurnMainRunIdle } from "./thread-events.js";
 import { attemptDispatch, threadTargetHostId } from "./dispatch-attempt.js";
 import {
   QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
@@ -608,11 +604,10 @@ async function sendClaimedQueuedMessageGroup(
   const thread = getThread(deps.db, args.threadId);
   if (
     thread &&
-    (isManualCompactionActive(deps, thread) ||
-      (args.mode === "auto" &&
-        !sendNow &&
-        queuedMessages.some(isOrdinaryTurnEndQueuedMessage) &&
-        isThreadQueueAutoSendPaused(deps.db, thread.id)))
+    args.mode === "auto" &&
+    !sendNow &&
+    queuedMessages.some(isOrdinaryTurnEndQueuedMessage) &&
+    isThreadQueueAutoSendPaused(deps.db, thread.id)
   ) {
     releaseQueuedMessageClaims(deps, queuedMessages);
     return toThreadQueuedMessage(queuedMessages[0]!);
@@ -691,10 +686,7 @@ export async function sendNextQueuedMessageIfPresent(
   }
 
   const thread = getThread(deps.db, args.threadId);
-  if (
-    !isQueuedMessageAutoSendCandidate(thread) ||
-    isManualCompactionActive(deps, thread)
-  ) {
+  if (!isQueuedMessageAutoSendCandidate(thread)) {
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     return false;
   }

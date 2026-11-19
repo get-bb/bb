@@ -321,11 +321,18 @@ const threadEventTokenUsageSchema = z.object({
   promptCacheTtlMs: promptCacheTtlMsSchema.optional(),
 });
 
-export const threadEventWarningCategorySchema = z.enum([
+const providerWarningCategoryValues = [
   "deprecation",
   "config",
   "general",
   "compaction-skipped",
+] as const;
+export const providerWarningCategorySchema = z.enum(
+  providerWarningCategoryValues,
+);
+export const threadEventWarningCategorySchema = z.enum([
+  ...providerWarningCategoryValues,
+  "session-settings",
 ]);
 export type ThreadEventWarningCategory = z.infer<
   typeof threadEventWarningCategorySchema
