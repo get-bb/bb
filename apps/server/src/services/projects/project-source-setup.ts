@@ -1,6 +1,9 @@
 import { createCloneProgressReporter } from "./clone-progress.js";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
-import { registerEnvironmentProgressReport } from "../environments/environment-hooks.js";
+import {
+  progressSinkForReport,
+  registerEnvironmentProgressReport,
+} from "../environments/environment-hooks.js";
 import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import {
   createProjectSource,
@@ -97,7 +100,7 @@ export async function cloneProjectSourceOnHost(
       : registerEnvironmentProgressReport(deps, {
           hostId: args.hostId,
           operationId,
-          report: progress.report,
+          onProgress: progressSinkForReport(progress.report),
         });
   try {
     const resolved = await runLiveHostCommand(deps, {

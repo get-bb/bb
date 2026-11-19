@@ -757,8 +757,11 @@ export const environmentHookProgressMessageSchema = z
     entry: z
       .object({
         type: z.enum(["step", "output"]),
+        key: z.string().min(1),
         text: z.string(),
         status: z.enum(["started", "completed", "failed"]).nullable(),
+        startedAt: z.number().nullable(),
+        metadata: z.record(z.string(), z.unknown()).nullable(),
       })
       .strict(),
   })

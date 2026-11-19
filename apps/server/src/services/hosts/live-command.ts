@@ -1,5 +1,3 @@
-import { getEnvironment } from "@bb/db";
-import { resolveHostEnvironment } from "./host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonCommand,
@@ -249,25 +247,9 @@ export async function runLiveHostCommand<
   try {
     const call = callHostOnlineRpcForWork;
     const sourceCommand: HostDaemonCommand = args.command;
-    const command = {
-      ...args.command,
-      ...(sourceCommand.type === "environment.attach"
-        ? {
-            contributedEnv:
-              sourceCommand.setupScriptTimeoutMs === null
-                ? []
-                : await resolveHostEnvironment(deps, {
-                    hostId: args.hostId,
-                    projectId:
-                      getEnvironment(deps.db, sourceCommand.environmentId)
-                        ?.projectId ?? null,
-                  }),
-          }
-        : {}),
-    };
     noteTurnTraceCommandSent({ command: sourceCommand, hostId: args.hostId });
     const result = await call(deps, {
-      command,
+      command: args.command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,
     });
@@ -293,29 +275,45 @@ export async function runLiveHostCommand<
     ) {
       throw normalized;
     }
-    const failureReport = buildLiveHostCommandFailureReport({
+    await settleLiveHostCommandFailure(deps, {
       command: args.command,
-      completedAt: Date.now(),
-      error: normalized,
       execution,
+      error: normalized,
     });
-    try {
-      await applyLiveHostCommandReport(deps, {
-        command: args.command,
-        execution,
-        report: failureReport,
-      });
-    } catch (settlementError) {
-      deps.logger.error(
-        {
-          err: settlementError,
-          commandType: args.command.type,
-          originalError: normalized,
-        },
-        "Live command failure settlement failed",
-      );
-    }
     throw normalized;
+  }
+}
+
+export async function settleLiveHostCommandFailure<
+  TType extends HostDaemonSettledCommandType,
+>(
+  deps: CommandResultSideEffectsDeps,
+  args: {
+    command: HostDaemonCommandForType<TType>;
+    execution: HostDaemonCommandExecutionRecord;
+    error: Error;
+  },
+): Promise<void> {
+  try {
+    await applyLiveHostCommandReport(deps, {
+      command: args.command,
+      execution: args.execution,
+      report: buildLiveHostCommandFailureReport({
+        command: args.command,
+        completedAt: Date.now(),
+        error: args.error,
+        execution: args.execution,
+      }),
+    });
+  } catch (settlementError) {
+    deps.logger.error(
+      {
+        err: settlementError,
+        commandType: args.command.type,
+        originalError: args.error,
+      },
+      "Live command failure settlement failed",
+    );
   }
 }
 

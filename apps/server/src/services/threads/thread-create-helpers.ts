@@ -71,7 +71,6 @@ interface EnvironmentProvisionCommandArgs {
   hostId: string;
   initiator: EnvironmentProvisionCommandInitiator;
   path: string;
-  setupScriptTimeoutMs: number | null;
 }
 
 export function buildEnvironmentProvisionCommand(
@@ -79,11 +78,9 @@ export function buildEnvironmentProvisionCommand(
 ): EnvironmentProvisionCommand {
   return {
     type: "environment.attach" as const,
-    contributedEnv: [],
     environmentId: args.environmentId,
     initiator: args.initiator,
     path: args.path,
-    setupScriptTimeoutMs: args.setupScriptTimeoutMs,
   };
 }
 

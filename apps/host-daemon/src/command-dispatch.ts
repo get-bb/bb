@@ -555,7 +555,14 @@ const commandHandlers: CommandHandlerMap = {
         options.emitEnvironmentHookProgress?.({
           type: "environment.hook.progress",
           operationId: command.operationId,
-          entry: { type: "output", text, status: null },
+          entry: {
+            type: "output",
+            key: "clone-output",
+            text,
+            status: null,
+            startedAt: null,
+            metadata: null,
+          },
         }),
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined
