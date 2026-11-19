@@ -29,7 +29,7 @@ export async function forkToNewWorkspace(
           : {
               machine: { type: "existing", hostId: environment.hostId },
             }),
-        inputs: null,
+        inputs: {},
       },
     });
     navigate.toThread(fork.id);
