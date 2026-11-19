@@ -2795,7 +2795,13 @@ export interface ExperimentalPageProps {
  * bundled with bb, then the first in slot order. The component stays mounted
  * while the route moves between the routes it owns, so switching threads
  * re-renders it with a new `location` instead of remounting it. A crashing
- * page falls back to bb's.
+ * page falls back to bb's. `#msg=` message links scroll a `ThreadChat` that
+ * shows the route's thread to that message.
+ *
+ * Split panes belong to bb's workspace: on a plugin page, opening a thread in
+ * a split (`bb thread open --split`, Open in split) opens it like a plain
+ * link. On macOS desktop, a page that hides the sidebar gets bb's draggable
+ * title band above it, which keeps the window controls clear.
  */
 export interface ExperimentalPageRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -4971,7 +4977,7 @@ export interface ThreadChatMessageAction {
  * a control changes no setting: sends keep the thread's environment and the
  * mode `permissionPolicy` resolves.
  */
-export type ThreadChatControl = "environment" | "permissionMode";
+export type ExperimentalThreadChatControl = "environment" | "permissionMode";
 
 /**
  * Props of the host-owned `ThreadChat` component — one thread's chat
@@ -4998,10 +5004,12 @@ export interface ThreadChatProps {
   /** Bump to focus the composer (ignored by `variant: "timeline"`). */
   focusRequest?: number;
   /**
-   * Controls to leave out of the composer (see {@link ThreadChatControl}).
+   * Controls to leave out of the composer (see
+   * {@link ExperimentalThreadChatControl}). Experimental: see
+   * docs/api_to_audit.md.
    * Omitted, every control shows. Ignored by `variant: "timeline"`.
    */
-  hiddenControls?: readonly ThreadChatControl[];
+  experimental_hiddenControls?: readonly ExperimentalThreadChatControl[];
   /**
    * Who controls the permission mode sends run with. "inherit" (default)
    * pins every send to the thread's own resolved default and renders the

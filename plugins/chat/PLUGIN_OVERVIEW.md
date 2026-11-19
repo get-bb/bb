@@ -15,7 +15,7 @@ Hidden pickers keep bb's defaults: new chats use your last project and its defau
 
 ## How it works
 
-The plugin draws bb's New thread screen and thread pages at bb's own URLs. Links, notification taps, quick-palette search (Cmd/Ctrl+K) and `bb thread open` all open the chat page. Settings, Plugins and Skills still use bb's own pages.
+The plugin draws bb's New thread screen and thread pages at bb's own URLs. Links, notification taps, quick-palette search (Cmd/Ctrl+K) and `bb thread open` all open the chat page. Message links scroll to their message. Opening a thread in a split opens it as a normal chat, since splits belong to bb's workspace. Settings, Plugins and Skills still use bb's own pages.
 
 Chats are ordinary bb threads, so they show up in bb's workspace too. Disable the plugin to get bb's workspace back: `bb plugin disable bb--chat`.
 

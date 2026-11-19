@@ -193,6 +193,7 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 
 interface SidebarStateBridgeProps {
   usesDesktopChrome: boolean;
+  isSidebarPresent: boolean;
   children: ReactNode;
 }
 
@@ -201,6 +202,7 @@ type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({
   usesDesktopChrome,
+  isSidebarPresent,
   children,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
@@ -215,6 +217,7 @@ function SidebarStateBridge({
     [setOpen],
   );
   useAppCommandHandler("sidebar.toggle", () => {
+    if (!isSidebarPresent) return false;
     handleOpenChange(!open);
     return true;
   });
@@ -222,11 +225,13 @@ function SidebarStateBridge({
     <SidebarProvider
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
       collapsedRailWidth={
-        hasRail ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH : undefined
+        hasRail && isSidebarPresent
+          ? NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH
+          : undefined
       }
       framed={usesDesktopChrome}
       data-testid="app-layout-root"
-      open={open}
+      open={open && isSidebarPresent}
       onOpenChange={handleOpenChange}
     >
       {children}
@@ -830,7 +835,10 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       <ProjectActionsProvider>
         <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
           <ThreadActionsProvider>
-            <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
+            <SidebarStateBridge
+              usesDesktopChrome={usesDesktopChrome}
+              isSidebarPresent={showsSidebar}
+            >
               {canonicalThreadRoutePath !== null ? (
                 <Navigate
                   to={{

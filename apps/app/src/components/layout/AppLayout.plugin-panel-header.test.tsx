@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 import { corePages } from "@/views/core-pages";
+import type { PluginPageSlot } from "@/lib/plugin-slots";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
@@ -93,9 +94,11 @@ function mockPluginSlotSnapshot() {
       },
     ],
     settingsSections: [],
-    pages: corePages,
+    pages: [...corePages, ...extraPages.current],
   };
 }
+
+const extraPages: { current: PluginPageSlot[] } = { current: [] };
 
 vi.mock("@/lib/plugin-slots", () => ({
   useBuiltinPluginIds: () => new Set<string>(),
@@ -249,8 +252,55 @@ describe("AppLayout plugin panel header", () => {
 
   afterEach(() => {
     cleanup();
+    extraPages.current = [];
     setCompactSecondaryPanelPresentation("closed");
     vi.clearAllMocks();
+  });
+
+  it.each([false, true])(
+    "drops the sidebar and its toggle on routes a page draws without one (compact %s)",
+    (compact) => {
+      viewportState.compact = compact;
+      extraPages.current = [
+        {
+          pluginId: "chat",
+          id: "chat",
+          title: "Chat",
+          routes: ["home"],
+          chrome: { sidebar: "hidden" },
+          component: () => null,
+          generation: 1,
+        },
+      ];
+      render(
+        <MemoryRouter initialEntries={["/"]}>
+          <AppLayout>
+            <div>Page</div>
+          </AppLayout>
+        </MemoryRouter>,
+      );
+
+      expect(screen.queryByTestId("app-sidebar")).toBeNull();
+      expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+    },
+  );
+
+  it("keeps the sidebar on routes a sidebar-hiding page does not claim", () => {
+    extraPages.current = [
+      {
+        pluginId: "chat",
+        id: "chat",
+        title: "Chat",
+        routes: ["home"],
+        chrome: { sidebar: "hidden" },
+        component: () => null,
+        generation: 1,
+      },
+    ];
+    renderPluginPanelRoute();
+
+    expect(screen.getByTestId("app-sidebar")).not.toBeNull();
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();
   });
 
   it("leaves the compact header to the plugin page panel host", () => {

@@ -1361,7 +1361,8 @@ While enabled, it draws bb's New thread screen and thread pages as a
 conversation list and a chat, and hides the sidebar, the project, environment
 and permission pickers, and the thread header controls and panels. It owns those
 pages through `app.slots.experimental_page`, so links, notification taps,
-quick-palette search, and `bb thread open` open its chat page. Settings,
+quick-palette search, and `bb thread open` open its chat page; `--split` opens
+it the same way, because split panes belong to bb's workspace. Settings,
 Plugins, and Skills keep bb's pages. It has no settings; disable it with
 `bb plugin disable bb--chat` to return to bb's workspace.
 

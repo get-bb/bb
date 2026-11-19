@@ -62,7 +62,7 @@ import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import type {
   JsonValue,
   PluginThreadActionsInlineItem,
-  ThreadChatControl,
+  ExperimentalThreadChatControl,
 } from "@get-bb/plugin-sdk";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
 import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
@@ -211,7 +211,7 @@ import { usePaneContext } from "./PaneContext";
 import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const NO_HIDDEN_THREAD_CONTROLS: readonly ThreadChatControl[] = [];
+const NO_HIDDEN_THREAD_CONTROLS: readonly ExperimentalThreadChatControl[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];

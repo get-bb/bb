@@ -2834,7 +2834,7 @@ Docs: `frontend-core-slots.md`.
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
 
-## `app.slots.experimental_page`, `NewThreadComposerProps.hiddenControls` and `ThreadChatProps.hiddenControls` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_page`, `NewThreadComposerProps.hiddenControls` and `ThreadChatProps.experimental_hiddenControls` (`@get-bb/plugin-sdk/app`)
 
 `experimental_page({ id, title, description?, routes, chrome, component })`
 draws bb's page for whole routes: `"home"` (`/`) and `"thread"`
@@ -2854,7 +2854,8 @@ sidebar chrome from the same resolution. Owners are remembered after boot so a
 reload holds a blank page instead of flashing bb's workspace; with nothing
 remembered, bb's page renders on the first commit.
 
-`hiddenControls` leaves controls out without changing what is submitted:
+`hiddenControls` (`experimental_hiddenControls` on the stable `ThreadChat`)
+leaves controls out without changing what is submitted:
 `experimental_NewThreadComposer` takes `"project" | "environment" |
 "permissionMode"`, which are hidden in `NewThreadPromptBox`, the box core's New thread
 screen renders. `ThreadChat` takes `"environment" | "permissionMode"` (the
@@ -2870,13 +2871,16 @@ Caller: the bundled, off-by-default Chat plugin (`plugins/chat`, `bb--chat`).
    page should be able to claim split panes.
 2. **Arbitration.** Installed beats bundled, then slot order, with no user
    preference. Confirm that is enough once two page plugins exist.
-3. **Message links.** `#msg=` links open the right thread on a plugin page;
-   scrolling to the message inside `ThreadChat` is not covered.
+3. **Split opens.** Split panes are bb's workspace. On a plugin page, `bb
+thread open --split` and Open in split open the thread like a plain link.
+   Decide whether pages should be able to host splits.
 4. **Chrome.** Only the sidebar is controllable. The command palette stays,
    because the Chat plugin uses it for search. Revisit when a caller needs
    more.
-5. **Desktop window chrome.** A page with the sidebar hidden owns the
-   top-left corner. Confirm the macOS traffic-light reserve is exposed to it.
+5. **Desktop window chrome.** On macOS desktop, a page with the sidebar
+   hidden gets bb's draggable title band (`AppPageHeader`) above it so the
+   traffic lights stay clear. Confirm a full-height page never needs to draw
+   into that band.
 
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 

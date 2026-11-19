@@ -11,7 +11,7 @@ import {
   type NewThreadComposerControl,
   type NewThreadRequest,
   type PluginSidebarThread,
-  type ThreadChatControl,
+  type ExperimentalThreadChatControl,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -24,7 +24,7 @@ const NEW_CHAT_HIDDEN_CONTROLS: readonly NewThreadComposerControl[] = [
   "environment",
   "permissionMode",
 ];
-const THREAD_HIDDEN_CONTROLS: readonly ThreadChatControl[] = [
+const THREAD_HIDDEN_CONTROLS: readonly ExperimentalThreadChatControl[] = [
   "environment",
   "permissionMode",
 ];
@@ -236,7 +236,7 @@ export function ChatPage({ location }: ExperimentalPageProps) {
           <ThreadChat
             threadId={location.threadId}
             variant="full"
-            hiddenControls={THREAD_HIDDEN_CONTROLS}
+            experimental_hiddenControls={THREAD_HIDDEN_CONTROLS}
             className="min-h-0 flex-1"
           />
         ) : (

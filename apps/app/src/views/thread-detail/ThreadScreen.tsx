@@ -9,7 +9,7 @@ import {
 } from "react";
 import type {
   ExperimentalMessageActionSurface,
-  ThreadChatControl,
+  ExperimentalThreadChatControl,
 } from "@get-bb/plugin-sdk";
 import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
@@ -122,7 +122,7 @@ export interface ThreadScreenComposerHost {
   onCreateNewThreadInEnvironment: (() => void) | null;
   onOpenThreadInfo: (() => void) | null;
   permissionPolicy: ThreadComposerPermissionPolicy;
-  hiddenControls: readonly ThreadChatControl[];
+  hiddenControls: readonly ExperimentalThreadChatControl[];
 }
 
 interface ThreadScreenProps {

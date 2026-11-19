@@ -1,7 +1,7 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
-  ThreadChatControl,
+  ExperimentalThreadChatControl,
   ThreadChatMessageAction,
   ThreadChatProps,
 } from "@get-bb/plugin-sdk";
@@ -71,7 +71,7 @@ export function PluginThreadChat({
   layout = "contained",
   focusRequest,
   permissionPolicy = "inherit",
-  hiddenControls,
+  experimental_hiddenControls: hiddenControls,
   className,
   leadingContent,
   messageActions,
@@ -102,7 +102,7 @@ interface PluginThreadChatBodyProps {
   layout: "contained" | "document";
   focusRequest: number | undefined;
   permissionPolicy: "inherit" | "editable";
-  hiddenControls: readonly ThreadChatControl[] | undefined;
+  hiddenControls: readonly ExperimentalThreadChatControl[] | undefined;
   leadingContent: ReactNode;
   messageActions: readonly ThreadChatMessageAction[] | undefined;
 }

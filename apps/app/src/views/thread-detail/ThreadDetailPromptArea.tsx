@@ -43,7 +43,7 @@ import type {
 } from "@bb/server-contract";
 import type {
   ExperimentalComposerSelection,
-  ThreadChatControl,
+  ExperimentalThreadChatControl,
 } from "@get-bb/plugin-sdk";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
@@ -201,7 +201,7 @@ interface ThreadDetailPromptAreaProps {
   composerId: string;
   isPrimaryComposer: boolean;
   permissionPolicy: ThreadComposerPermissionPolicy;
-  hiddenControls: readonly ThreadChatControl[];
+  hiddenControls: readonly ExperimentalThreadChatControl[];
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
