@@ -1629,6 +1629,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     expect(unit).toContain("Restart=always");
     expect(unit).toContain("RestartSec=2");
     expect(unit).toContain("OOMPolicy=continue");
+    expect(unit).toContain("ManagedOOMPreference=avoid");
     expect(unit).toContain("WantedBy=default.target");
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user show-environment\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
@@ -1835,6 +1836,7 @@ fi
       expect(unit).toContain(
         `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
       );
+      expect(unit).toContain("ManagedOOMPreference=avoid");
       expect(unit).toContain(
         container ? "WantedBy=default.target" : "WantedBy=multi-user.target",
       );

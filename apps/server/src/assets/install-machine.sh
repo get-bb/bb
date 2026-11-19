@@ -1176,6 +1176,7 @@ Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
 OOMPolicy=continue
+ManagedOOMPreference=avoid
 
 [Install]
 WantedBy=$service_target
