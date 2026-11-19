@@ -45,8 +45,6 @@ import {
 } from "@/components/promptbox/ComposerBox";
 import { usePromptModePermissionDisplay } from "@/components/promptbox/usePromptModePermissionDisplay";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
-import { WidgetVoiceReadyPrompt } from "@/components/promptbox/WidgetVoiceReadyPrompt";
-import { voiceUnsupportedMessage } from "@/hooks/voice-input-support";
 import {
   EnvironmentPickerUI,
   type EnvironmentPickerMachines,
@@ -146,7 +144,6 @@ interface NewThreadPromptBoxUIProps {
 
   project?: NewThreadProjectConfig;
   execution: ExecutionControlsProps;
-  widgetVoiceReady?: boolean;
 }
 
 function getNewThreadPromptPlaceholder(isProjectless: boolean): string {
@@ -175,7 +172,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   modeConfig,
   project,
   execution,
-  widgetVoiceReady = false,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   useEffect(() => {
@@ -232,7 +228,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           project={project}
           execution={execution}
           voice={voice}
-          widgetVoiceReady={widgetVoiceReady}
           onComposerLayoutChange={setComposerLayout}
           onFocusCommand={controller.focus}
         />
@@ -271,15 +266,9 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   project,
   execution,
   voice,
-  widgetVoiceReady = false,
   onComposerLayoutChange,
   onFocusCommand,
 }: DefaultNewThreadComposerProps) {
-  const [showWidgetVoiceReady, setShowWidgetVoiceReady] =
-    useState(widgetVoiceReady);
-  useEffect(() => {
-    setShowWidgetVoiceReady(widgetVoiceReady);
-  }, [widgetVoiceReady]);
   const isProjectlessPrompt = project?.value === null;
   const placeholder =
     placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -302,21 +291,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       data-promptbox-shell=""
       className="w-full"
     >
-      {showWidgetVoiceReady ? (
-        <div className="mb-2">
-          <WidgetVoiceReadyPrompt
-            onDismiss={() => setShowWidgetVoiceReady(false)}
-            onStart={() => {
-              void voice.start();
-              setShowWidgetVoiceReady(false);
-            }}
-            supported={voice.isSupported}
-            unsupportedMessage={voiceUnsupportedMessage(
-              voice.unsupportedReason ?? null,
-            )}
-          />
-        </div>
-      ) : null}
       <div
         className={`mb-2 hidden gap-2 has-[>:not(:empty)]:grid ${PROMPT_STACK_TRACK_CLASS}`}
       >

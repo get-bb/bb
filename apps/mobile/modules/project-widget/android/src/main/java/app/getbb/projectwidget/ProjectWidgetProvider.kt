@@ -31,7 +31,7 @@ class ProjectWidgetProvider : AppWidgetProvider() {
     fun configure(context: Context, id: Int, targetJson: String) {
       val target = JSONObject(targetJson)
       require(target.getString("profileId").isNotBlank() && target.getString("projectId").isNotBlank())
-      require(target.getString("projectName").isNotBlank() && target.getString("action") in setOf("photo", "thread", "voice"))
+      require(target.getString("projectName").isNotBlank() && target.getString("action") in setOf("photo", "thread"))
       icon(target.getString("icon"))
       check(preferences(context).edit().putString(id.toString(), targetJson).commit())
       update(context, AppWidgetManager.getInstance(context), id, target)
@@ -52,7 +52,6 @@ class ProjectWidgetProvider : AppWidgetProvider() {
       val name = target.getString("projectName")
       val action = when (target.getString("action")) {
         "photo" -> R.string.bb_project_widget_photo
-        "voice" -> R.string.bb_project_widget_voice
         else -> R.string.bb_project_widget_composer
       }
       val launch = Intent(context, ProjectWidgetLaunchActivity::class.java)

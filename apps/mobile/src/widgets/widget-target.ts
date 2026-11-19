@@ -21,7 +21,7 @@ const widgetTargetBase = {
 
 const composerWidgetTargetSchema = z.object({
   ...widgetTargetBase,
-  action: z.enum(["thread", "voice"]),
+  action: z.literal("thread"),
 });
 
 const photoWidgetTargetSchema = z

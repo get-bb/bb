@@ -21,12 +21,11 @@ export function LegacyProjectComposeRedirect({
   useEffect(() => {
     setRootComposeProjectId(projectId);
     setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
-    void navigate(`${getRootComposeRoutePath()}${location.search}`, {
+    void navigate(getRootComposeRoutePath(), {
       replace: true,
       state: location.state,
     });
   }, [
-    location.search,
     location.state,
     navigate,
     projectId,

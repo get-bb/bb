@@ -334,14 +334,6 @@ function TargetPicker({
             onPress={() => setAction("photo")}
             disabled={saving}
           />
-          <GroupedRow
-            title="Voice input"
-            subtitle="Open a new thread ready to record"
-            selected={action === "voice"}
-            trailing={action === "voice" ? "checkmark" : undefined}
-            onPress={() => setAction("voice")}
-            disabled={saving}
-          />
         </GroupedSection>
       ) : null}
       {project && action === "photo" ? (

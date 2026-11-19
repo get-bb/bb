@@ -245,10 +245,8 @@ change its settings.
 
 **Composer** opens the new-thread composer for the project. The thread is
 created when you send, using the machine, model and branch chosen in the
-composer. **Voice input** opens the same composer; servers with the
-`widgetVoice` composer handoff also show a **Ready to record** prompt. Both
-work with released servers, because they use the existing `/projects/<id>`
-composer route. **Photo** also asks for a machine and optionally a provider,
+composer. It works with released servers because it uses the existing
+`/projects/<id>` composer route. **Photo** also asks for a machine and optionally a provider,
 model, reasoning level or base branch (an explicit branch creates a
 worktree). It opens the camera, lets you retake or cancel, and starts the
 thread with the photo after you confirm.
@@ -257,8 +255,7 @@ For a device smoke test, add two widgets to different projects or saved
 servers and choose distinct icons. Confirm each tap opens the composer for the
 intended project on the intended server. Test warm and cold app launches.
 Add a camera widget, cancel one capture, then capture and confirm a second
-photo. Check that the second thread starts with the photo. Tap a voice widget
-and check that the composer offers recording. Cancel another widget during
+photo. Check that the second thread starts with the photo. Cancel another widget during
 setup and check that the launcher removes its pending placement.
 
 ### Android production setup

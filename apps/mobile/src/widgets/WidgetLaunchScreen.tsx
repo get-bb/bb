@@ -97,9 +97,7 @@ function WidgetComposerLaunch({
   const router = useRouter();
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const composePath = getProjectComposeRoutePath(target.projectId);
-  const path =
-    target.action === "voice" ? `${composePath}?widgetVoice=1` : composePath;
+  const path = getProjectComposeRoutePath(target.projectId);
 
   useEffect(() => {
     let cancelled = false;
