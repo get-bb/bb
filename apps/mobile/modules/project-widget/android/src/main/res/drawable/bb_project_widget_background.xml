@@ -1,4 +1,5 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-  <solid android:color="@color/bb_project_widget_background" />
-  <corners android:radius="16dp" />
+  <solid android:color="@android:color/white" />
+  <stroke android:width="2dp" android:color="@android:color/black" />
+  <corners android:radius="20dp" />
 </shape>

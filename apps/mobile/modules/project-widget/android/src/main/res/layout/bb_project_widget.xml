@@ -14,5 +14,6 @@
     android:minHeight="56dp"
     android:scaleType="fitCenter"
     android:importantForAccessibility="no"
-    android:src="@drawable/bb_widget_icon_message" />
+    android:src="@drawable/bb_widget_icon_message"
+    android:tint="@android:color/black" />
 </LinearLayout>
