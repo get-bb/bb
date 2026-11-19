@@ -968,6 +968,67 @@ describe("third-party marketplaces", () => {
     ).toBeUndefined();
   });
 
+  it("stops reading, listing, and installing from a disabled marketplace", async () => {
+    const fetched: string[] = [];
+    const documents = marketplaceFetch({
+      [OFFICIAL_URL]: manifest("bb-community", [
+        entry({ id: "official-notes" }),
+      ]),
+      [ACME_URL]: manifest("acme-plugins", [
+        entry({ source: { npm: { package: "bb-plugin-notes" } } }),
+      ]),
+    });
+    const catalog = service({
+      fetch: async (url, init) => {
+        fetched.push(url);
+        return documents(url, init);
+      },
+    });
+    await refreshCuratedMarketplace(catalog, 1_000);
+    await catalog.addMarketplace({ source: ACME_URL, subdirectory: null });
+
+    await expect(
+      catalog.setMarketplaceEnabled("bb-official", false),
+    ).rejects.toThrow("cannot be disabled");
+    expect(
+      await catalog.setMarketplaceEnabled("bb-community", false),
+    ).toMatchObject({ name: "bb-community", enabled: false, canDisable: true });
+    await catalog.setMarketplaceEnabled("acme-plugins", false);
+    fetched.length = 0;
+
+    expect(await catalog.search("")).toEqual([]);
+    expect(catalog.status().pluginCount).toBe(0);
+    expect(
+      (await catalog.refreshMarketplaces()).map((result) => result.name),
+    ).toEqual(["bb-official"]);
+    await expect(
+      catalog.refreshMarketplaces({ name: "bb-community" }),
+    ).rejects.toThrow('marketplace "bb-community" is disabled');
+    await expect(
+      catalog.install({ entryId: "notes", marketplace: "acme-plugins" }),
+    ).rejects.toThrow('marketplace "acme-plugins" is disabled');
+    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
+      'unknown plugin catalog entry "notes"',
+    );
+    catalog.startPeriodicRefresh();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    catalog.stopPeriodicRefresh();
+    expect(fetched).toEqual([]);
+    expect(
+      catalog.listMarketplaces().map((row) => [row.name, row.enabled]),
+    ).toEqual([
+      ["bb-official", true],
+      ["bb-community", false],
+      ["acme-plugins", false],
+    ]);
+
+    await catalog.setMarketplaceEnabled("acme-plugins", true);
+    await expect.poll(() => fetched).toContain(ACME_URL);
+    expect((await catalog.search("")).map((result) => result.entryId)).toEqual([
+      "notes",
+    ]);
+  });
+
   it("leaves bb-community serving when a third-party refresh fails", async () => {
     const warnings: string[] = [];
     let acmeFails = false;

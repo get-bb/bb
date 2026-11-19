@@ -307,7 +307,8 @@ Sidebar preferences
 every window, device, and the CLI. The same registry stores which thread Info
 panel sections are collapsed (`infoPanel.collapsedSections`), whether a
 thread pane's thread context card stays pinned open (`threadContextCard.pinned`),
-whether the sidebar update button includes provider CLI updates
+which of its sections are folded (`threadContextCard.collapsedSections`), whether
+the sidebar update button includes provider CLI updates
 (`sidebar.updates.providerCli`), and which updates its card's Skip button hid
 (`sidebar.updates.skipped`). The button stays hidden until an update outside
 that list arrives; `bb settings ui reset sidebar.updates.skipped` shows it

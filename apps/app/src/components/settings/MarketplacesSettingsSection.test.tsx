@@ -14,6 +14,8 @@ const OFFICIAL = {
   displayName: "BB Community",
   description: null,
   official: true,
+  enabled: true,
+  canDisable: true,
   sourceKind: "https",
   source: "https://getbb.app/marketplace/v1/marketplace.json",
   resolvedCommit: null,
@@ -57,6 +59,12 @@ function stubFetch(
         init?.method === "DELETE"
       ) {
         return Response.json({ ok: true, convertedPluginIds: ["notes"] });
+      }
+      if (url.startsWith("/api/v1/marketplaces/") && init?.method === "PATCH") {
+        return Response.json({
+          ok: true,
+          marketplace: { ...OFFICIAL, enabled: false },
+        });
       }
       return Response.json({ error: "not found" }, { status: 404 });
     }),
@@ -230,5 +238,55 @@ describe("MarketplacesSettingsSection", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("disables bb-community from its switch and shows a disabled row", async () => {
+    const requests = stubFetch([OFFICIAL]);
+    const { wrapper } = createQueryClientTestHarness();
+    const { unmount } = render(<MarketplacesSettingsSection />, { wrapper });
+
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Enable BB Community" }),
+    );
+    await vi.waitFor(() => {
+      const patch = requests.find(
+        (request) =>
+          request.url === "/api/v1/marketplaces/bb-community" &&
+          request.init?.method === "PATCH",
+      );
+      expect(JSON.parse(String(patch?.init?.body))).toEqual({
+        enabled: false,
+      });
+    });
+    unmount();
+
+    stubFetch([{ ...OFFICIAL, enabled: false }]);
+    render(<MarketplacesSettingsSection />, {
+      wrapper: createQueryClientTestHarness().wrapper,
+    });
+    expect(await screen.findByText(/Disabled. Not refreshed/)).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Refresh BB Community",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("has no switch for a marketplace that cannot be disabled", async () => {
+    stubFetch([
+      {
+        ...OFFICIAL,
+        name: "bb-official",
+        displayName: "BB Official",
+        canDisable: false,
+      },
+    ]);
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesSettingsSection />, { wrapper });
+
+    await screen.findByText("BB Official");
+    expect(screen.queryByRole("switch")).toBe(null);
   });
 });

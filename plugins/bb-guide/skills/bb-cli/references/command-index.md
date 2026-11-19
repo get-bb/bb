@@ -293,6 +293,8 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 
 - `bb marketplace`
 - `bb marketplace add`
+- `bb marketplace disable`
+- `bb marketplace enable`
 - `bb marketplace list`
 - `bb marketplace refresh`
 - `bb marketplace remove`

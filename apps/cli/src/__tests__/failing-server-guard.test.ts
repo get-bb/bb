@@ -204,6 +204,8 @@ const marketplace = {
   displayName: "Acme Plugins",
   description: "Plugins the Acme team maintains.",
   official: false,
+  enabled: true,
+  canDisable: true,
   sourceKind: "https",
   source: "https://acme.test/marketplace.json",
   resolvedCommit: null,
