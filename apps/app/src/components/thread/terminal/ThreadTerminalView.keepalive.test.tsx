@@ -7,6 +7,7 @@ import {
   applyTerminalSessionClose,
   applyTerminalSessionMissing,
 } from "@/hooks/cache-owners/terminal-cache-owner";
+import { applyAppThemeCss } from "@/lib/themes";
 import { QueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { ThreadTerminalView } from "./ThreadTerminalView";
@@ -88,6 +89,19 @@ async function mountTerminal(keepAlive: boolean) {
   return { view, xterm };
 }
 
+function captureOpenedTerminals(): Terminal[] {
+  const opened: Terminal[] = [];
+  const open = Terminal.prototype.open;
+  vi.spyOn(Terminal.prototype, "open").mockImplementation(function (
+    this: Terminal,
+    parent: HTMLElement,
+  ) {
+    opened.push(this);
+    open.call(this, parent);
+  });
+  return opened;
+}
+
 it("closes the socket of a parked terminal and resumes it when the same session remounts", async () => {
   const first = await mountTerminal(true);
   const transport = state.transports[0]!;
@@ -104,15 +118,7 @@ it("closes the socket of a parked terminal and resumes it when the same session 
 });
 
 it("keeps the selection of a parked terminal when the same session remounts", async () => {
-  const opened: Terminal[] = [];
-  const open = Terminal.prototype.open;
-  vi.spyOn(Terminal.prototype, "open").mockImplementation(function (
-    this: Terminal,
-    parent: HTMLElement,
-  ) {
-    opened.push(this);
-    open.call(this, parent);
-  });
+  const opened = captureOpenedTerminals();
   const first = await mountTerminal(true);
   const terminal = opened[0]!;
   await new Promise<void>((resolve) => terminal.write("hello", resolve));
@@ -122,6 +128,41 @@ it("keeps the selection of a parked terminal when the same session remounts", as
   renderTerminal(true);
   expect(opened).toHaveLength(1);
   expect(terminal.getSelection()).toBe("hello");
+});
+
+it("does not rebuild the theme of a parked terminal when it remounts with the same theme", async () => {
+  const opened = captureOpenedTerminals();
+  const first = await mountTerminal(true);
+  const terminal = opened[0]!;
+  const theme = terminal.options.theme;
+  first.view.unmount();
+  const computedStyle = vi.spyOn(window, "getComputedStyle");
+  renderTerminal(true);
+  await act(async () => {});
+  expect(terminal.options.theme).toBe(theme);
+  expect(
+    computedStyle.mock.calls.some(
+      ([element]) => element === document.documentElement,
+    ),
+  ).toBe(false);
+});
+
+it("applies a theme change made while the terminal was parked when it remounts", async () => {
+  const opened = captureOpenedTerminals();
+  const first = await mountTerminal(true);
+  const terminal = opened[0]!;
+  first.view.unmount();
+  document.documentElement.style.setProperty("--sidebar", "rgb(1, 2, 3)");
+  try {
+    applyAppThemeCss(":root { --parked-theme-change: 1; }");
+    renderTerminal(true);
+    await waitFor(() =>
+      expect(terminal.options.theme?.background).toBe("rgb(1, 2, 3)"),
+    );
+  } finally {
+    document.documentElement.style.removeProperty("--sidebar");
+    applyAppThemeCss("");
+  }
 });
 
 it("disposes a parked terminal that closes as exited and creates a new one on return", async () => {

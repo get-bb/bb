@@ -706,6 +706,7 @@ interface TerminalRuntimeLive {
   setControlActive: (active: boolean) => void;
   setSearchAddon: (addon: SearchAddon | null) => void;
   setTerminalReady: (ready: boolean) => void;
+  themeKey: string;
   updateHoveredTerminalLink: (target: TerminalLinkTarget | null) => void;
 }
 
@@ -716,6 +717,7 @@ interface TerminalRuntimeParts {
   live: RefObject<TerminalRuntimeLive>;
   searchAddon: SearchAddon;
   terminal: XTermTerminal;
+  themeKey: string;
   transport: TerminalWebSocketTransport;
 }
 
@@ -732,6 +734,7 @@ class TerminalRuntime implements ParkedTerminalRuntime {
   readonly fitAddon: FitAddon;
   readonly searchAddon: SearchAddon;
   readonly terminal: XTermTerminal;
+  themeKey: string;
   readonly transport: TerminalWebSocketTransport;
 
   constructor(parts: TerminalRuntimeParts) {
@@ -741,6 +744,7 @@ class TerminalRuntime implements ParkedTerminalRuntime {
     this.live = parts.live;
     this.searchAddon = parts.searchAddon;
     this.terminal = parts.terminal;
+    this.themeKey = parts.themeKey;
     this.transport = parts.transport;
   }
 }
@@ -913,6 +917,7 @@ function mountThreadTerminal({
     const element = document.createElement("div");
     element.style.width = "100%";
     element.style.height = "100%";
+    const themeKey = liveRef.current.themeKey;
     const terminal = new Terminal({
       allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
       convertEol: true,
@@ -1084,6 +1089,7 @@ function mountThreadTerminal({
       live: liveRef,
       searchAddon: loadedSearchAddon,
       terminal,
+      themeKey,
       transport,
     });
 
@@ -1250,6 +1256,7 @@ export function ThreadTerminalView({
     systemConfig.data?.generalSettings.terminalCopyOnSelect === true;
   const preferredTheme = usePreferredTheme();
   const appThemeEpoch = useAppThemeEpoch();
+  const themeKey = `${preferredTheme}:${appThemeEpoch}`;
   const appNavigation = useAppNavigationHost();
   const appNavigationRef = useRef(appNavigation);
   useEffect(() => {
@@ -1451,6 +1458,7 @@ export function ThreadTerminalView({
     setControlActive,
     setSearchAddon,
     setTerminalReady,
+    themeKey,
     updateHoveredTerminalLink,
   };
   const liveRef = useRef(live);
@@ -1623,15 +1631,16 @@ export function ThreadTerminalView({
   }, [session]);
 
   useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
+    const runtime = runtimeRef.current;
+    if (!runtime || runtime.themeKey === themeKey) {
       return;
     }
-    applyTerminalFontFamily(terminal, readTerminalFontFamily(), () =>
+    runtime.themeKey = themeKey;
+    applyTerminalFontFamily(runtime.terminal, readTerminalFontFamily(), () =>
       scheduleFitRef.current?.(),
     );
-    terminal.options.theme = buildTerminalTheme();
-  }, [preferredTheme, appThemeEpoch]);
+    runtime.terminal.options.theme = buildTerminalTheme();
+  }, [themeKey]);
 
   const connectionNoticeText =
     session.status === "disconnected"
