@@ -304,10 +304,7 @@ describe.concurrent("worktree host entry", () => {
     await expect(git(created.path, "rebase", onto)).rejects.toThrow();
     await writeFile(join(created.path, "conflict.txt"), "resolved\n");
     await git(created.path, "add", ".");
-    await execFileAsync("git", ["rebase", "--continue"], {
-      cwd: created.path,
-      env: { ...process.env, GIT_EDITOR: "true" },
-    });
+    await git(created.path, "-c", "core.editor=true", "rebase", "--continue");
     const gitDir = (
       await git(created.path, "rev-parse", "--absolute-git-dir")
     ).trim();
