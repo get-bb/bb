@@ -3374,22 +3374,18 @@ export function normalizeInteractionRequest(
       `ui.requestInput title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
     );
   }
-  let payload: JsonValue;
+  let json: string;
   try {
-    const json = JSON.stringify(request.payload);
-    if (json === undefined) throw new Error();
-    if (
-      Buffer.byteLength(json, "utf8") > PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
-    ) {
-      throw new Error("ui.requestInput payload exceeds 64 KiB");
-    }
-    payload = JSON.parse(json) as JsonValue;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("64 KiB")) {
-      throw error;
-    }
+    const serialized = JSON.stringify(request.payload);
+    if (serialized === undefined) throw new Error();
+    json = serialized;
+  } catch {
     throw new Error("ui.requestInput payload must be JSON-serializable");
   }
+  if (Buffer.byteLength(json, "utf8") > PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES) {
+    throw new Error("ui.requestInput payload exceeds 64 KiB");
+  }
+  const payload = JSON.parse(json) as JsonValue;
   const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
   if (
     !Number.isInteger(timeoutMs) ||
