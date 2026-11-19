@@ -186,6 +186,9 @@ describe("composed machine thread lifecycle", () => {
           operationId: clone.command.operationId,
           entry: {
             type: "output",
+            key: "fixture",
+            startedAt: null,
+            metadata: null,
             text: "Receiving objects: 42%",
             status: null,
           },

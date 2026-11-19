@@ -352,10 +352,15 @@ cache. The app requests user items while the table of contents is visible and
 assistant items only while its Agent messages tab is open. Active
 threads reuse completed outline items from a bounded in-memory cache (16 threads,
 8 million characters) and reproject only the tail; history rewrites, context
-clears, metadata or display changes, and writes from another database connection
-force a rebuild. Background tasks in the kept history do not prevent reuse, but
-a later event for one of them, like a child event of a kept tool call, forces a
-rebuild. Eviction only affects performance.
+clears, provider or display changes, and writes from another database connection
+force a rebuild. A change of the thread's status or title does not: the kept
+items come only from turns that have completed, whose streamed text
+`turn/completed` has already frozen, and from user messages, which render the
+same under every status; the checkpoint never passes a steer that is still
+pending, and the title only names operation rows, which the outline drops. The
+tail is always projected with the current status. Background tasks in the kept
+history do not prevent reuse, but a later event for one of them, like a child
+event of a kept tool call, forces a rebuild. Eviction only affects performance.
 
 ## Catch-up feedback
 

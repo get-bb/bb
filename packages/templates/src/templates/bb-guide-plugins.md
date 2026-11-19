@@ -111,8 +111,8 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  git: source, --subdirectory <path> reads
                                  marketplace.json from that directory of the
                                  repository instead of its root
-  bb marketplace list            Name, source, entry count, and last refresh
-                                 (--json for raw rows)
+  bb marketplace list            Name, source, entry count, and last refresh,
+                                 or "disabled" (--json for raw rows)
   bb marketplace refresh [name]  Re-read one catalog or all of them. Never
                                  installs, updates, or runs plugin code; a
                                  failed refresh keeps the last valid catalog
@@ -122,6 +122,15 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  updating from their recorded source.
                                  bb-official and bb-community cannot be
                                  removed
+  bb marketplace disable <name>  Turn a marketplace off but keep it listed:
+                                 bb stops refreshing its catalog (no network
+                                 requests) and leaves its plugins out of
+                                 search and installs. Installed plugins keep
+                                 running and update from their recorded
+                                 source. Works for bb-community and added
+                                 marketplaces; bb-official cannot be disabled
+  bb marketplace enable <name>   Turn a disabled marketplace back on and
+                                 refresh its catalog
 
 Installed plugins and their settings also appear under Settings → Installed
 plugins.
@@ -250,7 +259,9 @@ that bb measures through anonymous telemetry, so they undercount; third-party
 marketplaces have none. Builtins show "Built in", and a plugin under 25
 installs that was published in the last 30 days shows "New".
 `bb plugin search --json` returns the raw `installs`, `installedByDefault`,
-and long-form `overview` fields.
+and long-form `overview` fields. `bb marketplace disable bb-community` stops
+those requests and hides its plugins; `bb marketplace enable bb-community`
+brings them back.
 
 Anyone can host a third-party marketplace:
 
@@ -341,7 +352,8 @@ caret range admits patches only (`^0.2.0` stops before 0.3.0). Each update
 check also reports one newer release outside that range, for git semver and
 npm range sources. A plugin installed from a marketplace is offered only a
 release its entry's current range admits, and that range is proposed; if the
-marketplace no longer lists the plugin, none is offered. Other plugins are
+marketplace no longer lists the plugin, none is offered. A plugin from a removed
+or disabled marketplace is offered its newest stable release instead. Other plugins are
 offered their newest stable release with `^<version>`. Pinned sources are never
 offered one, and --range still takes any release you choose. `bb plugin outdated` prints the release, the
 proposed range, whether it may break (a new major, or a new minor on 0.x),

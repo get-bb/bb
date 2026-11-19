@@ -7,7 +7,9 @@ import type {
 import type {
   HostGlobalSkillsStatusResult,
   HostInstallGlobalSkill,
+  HostPlatform,
 } from "@bb/host-daemon-contract";
+import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -50,9 +52,34 @@ interface InstallGlobalCliSkillsArgs {
   hostIds: readonly string[];
 }
 
+interface GlobalCliSkill {
+  install: HostInstallGlobalSkill;
+  windowsTreeHash: string | null;
+}
+
+function windowsReportedFileMode(mode: number): number {
+  return (mode & 0o200) === 0 ? 0o444 : 0o666;
+}
+
+function windowsReportedTreeHash(
+  skillTreeRegistry: GlobalSkillInstallDeps["skillTreeRegistry"],
+  treeHash: string,
+): string | null {
+  const manifest = skillTreeRegistry.manifest(treeHash);
+  if (manifest === undefined) return null;
+  return hashSkillTreeFiles(
+    manifest.files.map((file) => ({
+      path: file.path,
+      mode: windowsReportedFileMode(file.mode),
+      sizeBytes: file.sizeBytes,
+      sha256: file.sha256,
+    })),
+  );
+}
+
 async function resolveGlobalCliSkills(
   deps: GlobalSkillInstallDeps,
-): Promise<HostInstallGlobalSkill[]> {
+): Promise<GlobalCliSkill[]> {
   return (
     await resolveServerOwnedSkillCatalogEntries({
       builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
@@ -66,9 +93,15 @@ async function resolveGlobalCliSkills(
     GLOBAL_CLI_SKILL_NAMES.includes(runtimeSource.name)
       ? [
           {
-            name: runtimeSource.name,
-            treeHash: runtimeSource.treeHash,
-            entryPath: runtimeSource.entryPath,
+            install: {
+              name: runtimeSource.name,
+              treeHash: runtimeSource.treeHash,
+              entryPath: runtimeSource.entryPath,
+            },
+            windowsTreeHash: windowsReportedTreeHash(
+              deps.skillTreeRegistry,
+              runtimeSource.treeHash,
+            ),
           },
         ]
       : [],
@@ -77,16 +110,25 @@ async function resolveGlobalCliSkills(
 
 function resolveMachineSkillStatus(args: {
   entries: HostGlobalSkillsStatusResult["entries"];
-  skills: readonly HostInstallGlobalSkill[];
+  platform: HostPlatform | null;
+  skills: readonly GlobalCliSkill[];
 }): CliSkillMachineStatus {
   const expectedByName = new Map(
-    args.skills.map((skill) => [skill.name, skill.treeHash]),
+    args.skills.map((skill) => [
+      skill.install.name,
+      args.platform === "win32"
+        ? skill.windowsTreeHash
+        : skill.install.treeHash,
+    ]),
   );
   const relevant = args.entries.filter((entry) =>
     expectedByName.has(entry.name),
   );
   if (relevant.length === 0 || relevant.every((e) => e.treeHash === null)) {
     return "missing";
+  }
+  if (relevant.some((entry) => expectedByName.get(entry.name) === null)) {
+    return "unknown";
   }
   return relevant.every(
     (entry) => entry.treeHash === expectedByName.get(entry.name),
@@ -113,13 +155,14 @@ export async function readGlobalCliSkillStatus(
           timeoutMs: STATUS_TIMEOUT_MS,
           command: {
             type: "host.global_skills_status",
-            names: skills.map((skill) => skill.name),
+            names: skills.map((skill) => skill.install.name),
           },
         });
         return {
           ...base,
           status: resolveMachineSkillStatus({
             entries: result.entries,
+            platform: deps.hub.getDaemonPlatformForHost(host.id),
             skills,
           }),
         };
@@ -171,7 +214,10 @@ export async function installGlobalCliSkills(
         const result = await callHostOnlineRpcForWork(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: { type: "host.install_global_skills", skills },
+          command: {
+            type: "host.install_global_skills",
+            skills: skills.map((skill) => skill.install),
+          },
         });
         return {
           ok: true as const,

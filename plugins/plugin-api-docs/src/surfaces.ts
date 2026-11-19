@@ -317,12 +317,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "thread-context-card",
         title: "Thread context card",
         summary:
-          "Add a row or a titled section to the context card of every thread pane. With this, a plugin can:",
+          "Add a row or a section to the context card of every thread pane. With this, a plugin can:",
         bullets: [
           "Keep a pull request, change counts, or related threads in view while messages scroll",
-          "Sit among bb's own rows in the Info tab's groups, drawn with the same row",
+          "Sit among bb's own rows and sections in the Info tab's groups, drawn with the same row and section",
           "Hide a matching context segment while the pane shows the card",
-          "Leave the card, placement, and the header button to bb",
+          "Leave the card, placement, section folding, and the header button to bb",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadContextCardRow",

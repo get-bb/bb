@@ -389,6 +389,7 @@ export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

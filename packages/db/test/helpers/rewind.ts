@@ -169,6 +169,15 @@ export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
   }
 }
 
+export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "enabled")) {
+    db.$client.exec("ALTER TABLE plugin_marketplaces DROP COLUMN enabled");
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

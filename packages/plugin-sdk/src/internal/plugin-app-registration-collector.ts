@@ -251,6 +251,23 @@ function checkStaleNavPanelKeys(
   }
 }
 
+function readLegacyCardSectionTitle(
+  kind: string,
+  registration: ExperimentalThreadContextCardSectionRegistration,
+  onWarning: (message: string) => void,
+): string | null {
+  const title = "title" in registration ? registration.title : undefined;
+  if (typeof title !== "string" || title === "") return null;
+  onWarning(
+    `${kind}: "title" is retired; render experimental_InfoSection from the component instead.`,
+  );
+  return title;
+}
+
+export interface CollectedThreadContextCardSectionRegistration extends ExperimentalThreadContextCardSectionRegistration {
+  legacyTitle: string | null;
+}
+
 export type CollectedPluginProviderIconRegistration = Omit<
   PluginProviderIconRegistration,
   "providerKind"
@@ -367,7 +384,7 @@ export interface CollectedPluginAppRegistrations {
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
-  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
+  threadContextCardSections: CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -1122,10 +1139,14 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.threadContextCardSection, id);
         collected.threadContextCardSections.push({
           id,
-          title: requireNonEmptyString(kind, "title", registration.title),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),
+          legacyTitle: readLegacyCardSectionTitle(
+            kind,
+            registration,
+            onWarning,
+          ),
         });
       },
       experimental_threadAction(registration) {
