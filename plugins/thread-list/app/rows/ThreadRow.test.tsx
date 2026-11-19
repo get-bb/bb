@@ -1322,6 +1322,48 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
   });
 
+  it.each([
+    { name: "a thread row", options: DEFAULT_OPTIONS },
+    {
+      name: "a compact parent row",
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: true,
+        isCollapsed: false,
+        childCount: 1,
+        hiddenThreads: [],
+        onToggleCollapsed: vi.fn(),
+      } satisfies ThreadRowOptions,
+    },
+  ])(
+    "lays out $name whose metadata line has no items like Metadata off",
+    ({ options }) => {
+      const itemsVariant = "has-[[data-thread-row-metadata][data-has-items]]:";
+      const ungatedClasses = (element: Element) =>
+        [...element.classList]
+          .filter((name) => !name.includes(itemsVariant))
+          .sort();
+      const layout = () => {
+        const link = screen.getByRole("link", { name: "Open Thread" });
+        const row = link.closest("[data-sidebar-rename-row]");
+        expect(row).not.toBeNull();
+        return {
+          row: ungatedClasses(row!),
+          content: ungatedClasses(link.parentElement!),
+        };
+      };
+      const slot = renderThreadRow({ options });
+      const metadataOff = layout();
+
+      act(() => getDefaultStore().set(sidebarShowRowMetadataAtom, true));
+      const line = slot.container.querySelector("[data-thread-row-metadata]");
+      expect(line?.hasAttribute("data-has-items")).toBe(false);
+      expect(layout()).toEqual(metadataOff);
+      expect(ungatedClasses(line!.parentElement!)).toContain("hidden");
+    },
+  );
+
   it("routes a click on other plugins' metadata like the rest of the row", () => {
     getDefaultStore().set(sidebarShowRowMetadataAtom, true);
     const slot = renderThreadRow({});
