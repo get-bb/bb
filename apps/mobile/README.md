@@ -241,8 +241,8 @@ Add a server in bb, then add the **Thread shortcut** widget from the Android lau
 Choose a saved server, project, machine, icon and action. Select a provider,
 model, reasoning level or base branch to override the defaults. An explicit
 branch creates a worktree for the thread. Each 1×1 widget keeps its own target.
-Remove and add a widget again to change its settings or refresh a renamed
-project's label.
+The tile shows the chosen icon. TalkBack announces the project and action.
+Remove and add a widget again to change its settings.
 
 **Composer** opens an empty thread with the selected settings. The first
 prompt starts the agent. The empty thread stays in the project if you leave

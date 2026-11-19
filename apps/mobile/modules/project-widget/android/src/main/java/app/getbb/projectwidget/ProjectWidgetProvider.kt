@@ -53,14 +53,13 @@ class ProjectWidgetProvider : AppWidgetProvider() {
       val action = when (target.getString("action")) {
         "photo" -> R.string.bb_project_widget_photo
         "voice" -> R.string.bb_project_widget_voice
-        else -> R.string.bb_project_widget_label
+        else -> R.string.bb_project_widget_composer
       }
       val launch = Intent(context, ProjectWidgetLaunchActivity::class.java)
         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
       val tap = PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_IMMUTABLE)
       val views = RemoteViews(context.packageName, R.layout.bb_project_widget)
       views.setImageViewResource(R.id.bb_project_widget_icon, icon(target.getString("icon")))
-      views.setTextViewText(R.id.bb_project_widget_label, name)
       views.setContentDescription(R.id.bb_project_widget, context.getString(action, name))
       views.setOnClickPendingIntent(R.id.bb_project_widget, tap)
       manager.updateAppWidget(id, views)

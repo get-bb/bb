@@ -19,9 +19,9 @@ interface ProjectWidgetModule {
 const queryClient = new QueryClient();
 const WidgetIconPreview =
   process.env.EXPO_OS === "android"
-    ? requireNativeView<
-        ViewProps & { icon: WidgetTarget["icon"]; projectName: string }
-      >("BBProjectWidget")
+    ? requireNativeView<ViewProps & { icon: WidgetTarget["icon"] }>(
+        "BBProjectWidget",
+      )
     : null;
 const iconPreviewStyle = {
   width: "100%",
@@ -495,11 +495,7 @@ function TargetPicker({
                     importantForAccessibility="no-hide-descendants"
                     style={iconPreviewStyle}
                   >
-                    <WidgetIconPreview
-                      icon={item}
-                      projectName={project?.name ?? "Project"}
-                      style={{ flex: 1 }}
-                    />
+                    <WidgetIconPreview icon={item} style={{ flex: 1 }} />
                   </View>
                 )}
               </Pressable>

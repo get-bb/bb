@@ -5,27 +5,14 @@
   android:background="@drawable/bb_project_widget_background"
   android:gravity="center"
   android:orientation="vertical"
-  android:paddingStart="4dp"
-  android:paddingTop="2dp"
-  android:paddingEnd="4dp"
-  android:paddingBottom="2dp">
+  android:padding="4dp">
   <ImageView
     android:id="@+id/bb_project_widget_icon"
-    android:layout_width="32dp"
-    android:layout_height="32dp"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:minWidth="56dp"
+    android:minHeight="56dp"
+    android:scaleType="fitCenter"
     android:importantForAccessibility="no"
     android:src="@drawable/bb_widget_icon_message" />
-  <TextView
-    android:id="@+id/bb_project_widget_label"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="3dp"
-    android:ellipsize="end"
-    android:gravity="center"
-    android:importantForAccessibility="no"
-    android:singleLine="true"
-    android:text="@string/bb_project_widget_title"
-    android:textColor="@android:color/white"
-    android:textSize="11sp"
-    android:textStyle="bold" />
 </LinearLayout>
