@@ -24,7 +24,7 @@ export function skillScopeLabel(
     const root = skill.scope === "provider-user" ? "user" : "project";
     const provider = skill.provider;
     const providerLabel =
-      providerDisplayName ?? (provider === null ? "Provider" : provider);
+      providerDisplayName ?? (provider === null ? "Shared" : provider);
     return `${providerLabel} · ${root}`;
   }
   return SKILL_ROOT_LABELS[skill.scope];

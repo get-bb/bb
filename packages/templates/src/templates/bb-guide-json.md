@@ -125,7 +125,7 @@ the most-parsed commands ends with the same shape.
     {plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)
 
   bb skill list --json
-    {skills: [{id, name, description, scope, provider, filePath}]}    (wrapped in .skills)
+    {skills: [{id, name, description, scope, provider, providers, filePath}]}    (wrapped in .skills; provider is null and providers lists every reader when several providers read the skill)
 
   bb marketplace list --json
     bare array

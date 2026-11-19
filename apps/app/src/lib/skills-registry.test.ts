@@ -32,6 +32,7 @@ function installedSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     name: "useful-skill",
     description: "A useful skill.",
     provider: null,
+    providers: [],
     scope: "bb-user",
     pluginId: null,
     filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",

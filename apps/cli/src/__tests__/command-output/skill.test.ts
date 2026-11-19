@@ -27,7 +27,8 @@ describe("bb skill commands", () => {
           name: "review",
           description: "Review the current diff",
           provider: "codex",
-          scope: "codex-user",
+          providers: ["codex"],
+          scope: "provider-user",
           filePath: "/home/user/.agents/skills/review/SKILL.md",
           manageable: true,
           registrySkillId: null,
@@ -44,6 +45,49 @@ describe("bb skill commands", () => {
     });
     expect(collectLogLines(vi.mocked(console.log)).join("\n")).toContain(
       "review",
+    );
+  });
+
+  it("labels a skill that several providers read as shared, not bb", async () => {
+    const skill = {
+      description: null,
+      pluginId: null,
+      manageable: true,
+      registrySkillId: null,
+    };
+    stubServerApi({
+      "v1.projects.:id.skills.$get": vi.fn(async () => ({
+        skills: [
+          {
+            ...skill,
+            id: `skill_${"a".repeat(64)}`,
+            name: "multi-provider",
+            provider: null,
+            providers: ["claude-code", "codex"],
+            scope: "provider-user",
+            filePath: "/home/user/.agents/skills/multi-provider/SKILL.md",
+          },
+          {
+            ...skill,
+            id: `skill_${"b".repeat(64)}`,
+            name: "bb-owned",
+            provider: null,
+            providers: [],
+            scope: "bb-user",
+            filePath: "/home/user/.bb/skills/bb-owned/SKILL.md",
+          },
+        ],
+      })),
+    });
+
+    await runCommand(["skill", "list"], register);
+
+    const rows = collectLogLines(vi.mocked(console.log)).join("\n").split("\n");
+    expect(rows.find((row) => row.includes("multi-provider"))).toMatch(
+      /provider-user\s+shared\s/u,
+    );
+    expect(rows.find((row) => row.includes("bb-owned"))).toMatch(
+      /bb-user\s+bb\s/u,
     );
   });
 

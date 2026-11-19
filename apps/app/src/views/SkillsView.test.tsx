@@ -47,11 +47,14 @@ afterEach(() => {
 });
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
+  const provider =
+    overrides.provider === undefined ? "claude-code" : overrides.provider;
   return {
     id: `skill_${"a".repeat(64)}`,
     name: "code-review",
     description: "Review the current diff.",
-    provider: "claude-code",
+    provider,
+    providers: provider === null ? [] : [provider],
     scope: "provider-user",
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
@@ -646,6 +649,50 @@ describe("SkillsOverview", () => {
     ).toBe("true");
   });
 
+  it("files a skill several providers read under Shared and under each of those providers", async () => {
+    renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[
+          makeSkill({
+            name: "shared-skill",
+            provider: null,
+            providers: ["claude-code", "codex"],
+            scope: "provider-user",
+            filePath: "/home/u/.agents/skills/shared-skill/SKILL.md",
+          }),
+          makeSkill({
+            id: `skill_${"b".repeat(64)}`,
+            name: "bb-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+          makeSkill({
+            id: `skill_${"c".repeat(64)}`,
+            name: "cursor-skill",
+            provider: "acp-cursor",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Shared" }));
+    expect(await screen.findByText("shared-skill")).toBeTruthy();
+    expect(screen.queryByText("bb-skill")).toBeNull();
+    expect(screen.queryByText("cursor-skill")).toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Shared" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex" }));
+    expect(await screen.findByText("shared-skill")).toBeTruthy();
+    expect(screen.queryByText("bb-skill")).toBeNull();
+    expect(screen.queryByText("cursor-skill")).toBeNull();
+  });
+
   it("shows provider skills when the library has no bb skills", async () => {
     renderDom(
       <SkillsOverview
@@ -895,9 +942,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         createDraftKind: "skill",
       });
       expect(
-        fetchMock.mock.calls.some(
-          ([input]) =>
-            requestPath(input).startsWith("/api/v1/skills-registry/install"),
+        fetchMock.mock.calls.some(([input]) =>
+          requestPath(input).startsWith("/api/v1/skills-registry/install"),
         ),
       ).toBe(false);
     },

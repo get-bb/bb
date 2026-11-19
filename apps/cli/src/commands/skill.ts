@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
+import type {
+  RegistryRanking,
+  RegistrySkill,
+  SkillSummary,
+} from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -159,6 +163,17 @@ async function enrichRegistryEntries(
   });
 }
 
+function skillProviderLabel(
+  skill: Pick<SkillSummary, "provider" | "providers" | "scope">,
+): string {
+  if (skill.provider !== null) return skill.provider;
+  return skill.providers.length > 1 ||
+    skill.scope === "shared-user" ||
+    skill.scope === "shared-project"
+    ? "shared"
+    : "bb";
+}
+
 export function registerSkillCommands(
   program: Command,
   getUrl: () => string,
@@ -188,7 +203,7 @@ export function registerSkillCommands(
               entry.id,
               entry.name,
               entry.scope,
-              entry.provider ?? "bb",
+              skillProviderLabel(entry),
               entry.manageable ? "yes" : "no",
               entry.filePath,
             ]),

@@ -52,6 +52,7 @@ function toSharedSkill(
       name: skill.name,
       description: skill.description,
       provider: null,
+      providers: [],
       scope: sourceType,
       pluginId: null,
       filePath: skill.filePath,

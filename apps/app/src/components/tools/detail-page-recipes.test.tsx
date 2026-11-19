@@ -313,6 +313,7 @@ describe("Plugin detail recipe", () => {
             name: "review",
             description: "Reviews pull requests.",
             provider: null,
+            providers: [],
             scope: "plugin",
             pluginId: "github",
             filePath: "/plugins/github/skills/review/SKILL.md",

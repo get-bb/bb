@@ -139,6 +139,7 @@ export function assembleSkillList(
         name: skill.name,
         description: skill.description,
         provider: mapped.provider,
+        providers: mapped.provider === null ? [] : [mapped.provider],
         scope: mapped.scope,
         pluginId:
           skill.rootKind === "plugin"
@@ -176,6 +177,7 @@ async function listServerOwnedSkills(deps: AppDeps): Promise<SkillSummary[]> {
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
+        providers: [],
         scope: "bb-user",
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
@@ -204,6 +206,7 @@ async function listBbPluginSkills(deps: AppDeps): Promise<SkillSummary[]> {
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
+        providers: [],
         scope: "plugin",
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
@@ -301,13 +304,29 @@ async function projectSkillIndex(
       ...skill,
       realPath: identities.get(skill.id)?.realPath ?? skill.filePath,
     }));
+  const listingIdentity = (skill: IndexedSkillSummary) =>
+    `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`;
+  const providersByIdentity = new Map<string, Set<SkillProvider>>();
+  for (const skill of registrations) {
+    if (skill.provider === null) continue;
+    const key = listingIdentity(skill);
+    const providers = providersByIdentity.get(key) ?? new Set();
+    providers.add(skill.provider);
+    providersByIdentity.set(key, providers);
+  }
   return {
     registrations,
-    entries: firstPerIdentity(
-      registrations,
-      (skill) =>
-        `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`,
-    ),
+    entries: firstPerIdentity(registrations, listingIdentity).map((skill) => {
+      if (skill.provider === null) return skill;
+      const providers = [
+        ...(providersByIdentity.get(listingIdentity(skill)) ?? []),
+      ].sort((left, right) => left.localeCompare(right));
+      return {
+        ...skill,
+        provider: providers.length > 1 ? null : skill.provider,
+        providers,
+      };
+    }),
   };
 }
 
