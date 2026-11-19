@@ -4,6 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
+  signedMachineProxyTarget,
   startMachineAuthProxy,
   type MachineAuthProxy,
 } from "./machine-auth-proxy.js";
@@ -562,5 +563,41 @@ describe("startMachineAuthProxy", () => {
         port,
       }),
     ).rejects.toMatchObject({ code: "EADDRINUSE" });
+  });
+});
+
+describe("signedMachineProxyTarget", () => {
+  it("leaves the server machine's own loopback route unsigned", () => {
+    const target = { url: "http://127.0.0.1:38886", headers: {} };
+    expect(signedMachineProxyTarget({ hostKey: "host-key", target })).toEqual(
+      target,
+    );
+  });
+
+  it("signs agents' requests to a direct LAN or tailnet route with the host key", () => {
+    expect(
+      signedMachineProxyTarget({
+        hostKey: "host-key",
+        target: { url: "http://192.168.1.5:38886", headers: {} },
+      }),
+    ).toEqual({
+      url: "http://192.168.1.5:38886",
+      headers: { authorization: "Bearer host-key" },
+    });
+  });
+
+  it("keeps the route's own credential alongside the host key", () => {
+    expect(
+      signedMachineProxyTarget({
+        hostKey: "host-key",
+        target: {
+          url: "https://bee.getbb.app",
+          headers: { "x-bb-connect-machine": "machine-credential" },
+        },
+      }).headers,
+    ).toEqual({
+      authorization: "Bearer host-key",
+      "x-bb-connect-machine": "machine-credential",
+    });
   });
 });

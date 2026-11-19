@@ -6,6 +6,7 @@ import http, {
 import https from "node:https";
 import type { AddressInfo, Socket } from "node:net";
 import type { Duplex } from "node:stream";
+import { isLoopbackHostname } from "@bb/config/loopback";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -36,6 +37,22 @@ function resolveProxyTarget(
 export interface MachineAuthProxy {
   serverUrl: string;
   close(): Promise<void>;
+}
+
+export function signedMachineProxyTarget(args: {
+  hostKey: string;
+  target: MachineAuthProxyTarget;
+}): MachineAuthProxyTarget {
+  if (
+    Object.keys(args.target.headers).length === 0 &&
+    isLoopbackHostname(new URL(args.target.url).hostname)
+  ) {
+    return args.target;
+  }
+  return {
+    url: args.target.url,
+    headers: { authorization: `Bearer ${args.hostKey}`, ...args.target.headers },
+  };
 }
 
 const BROWSER_REQUEST_HEADERS = ["origin", "sec-fetch-site"] as const;

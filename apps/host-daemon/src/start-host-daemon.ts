@@ -29,6 +29,7 @@ import {
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
+  signedMachineProxyTarget,
   startMachineAuthProxy,
   type MachineAuthProxy,
 } from "./machine-auth-proxy.js";
@@ -145,9 +146,15 @@ export async function startHostDaemon(
       persist: persistServerRoutes(dataDir),
       logger,
     });
-    if (options.serverHeaders !== undefined || routes.candidates().length > 1) {
+    const proxyTarget = () =>
+      signedMachineProxyTarget({ hostKey, target: routes.active() });
+    if (
+      options.serverHeaders !== undefined ||
+      routes.candidates().length > 1 ||
+      Object.keys(proxyTarget().headers).length > 0
+    ) {
       machineAuthProxy = await startMachineAuthProxy({
-        target: () => routes.active(),
+        target: proxyTarget,
       });
     }
     setParcelWatcherBackend(
