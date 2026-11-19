@@ -22,11 +22,6 @@ import {
   declineWebSocketCompression,
   WEB_SOCKET_COMPRESSION,
 } from "./ws/compression.js";
-import { createGateKeyStore } from "./services/connect-next/gate-keys.js";
-import {
-  createTunnelIngressManager,
-  type TunnelIngressManager,
-} from "./services/connect-next/tunnel-ingress.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
@@ -176,7 +171,6 @@ interface ServerApp {
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
   serverMove: ServerMoveCoordinator;
-  tunnelIngress: TunnelIngressManager;
 }
 
 interface CloseWebSocketServerArgs {
@@ -217,7 +211,6 @@ interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   performanceDiagnosticsEnabled?: () => boolean;
   staticDir?: string;
-  tunnelIngressNow?: () => number;
 }
 
 interface StaticResponseHeadersArgs {
@@ -467,18 +460,6 @@ export function createApp(
     app,
   });
   wss.options.perMessageDeflate = WEB_SOCKET_COMPRESSION;
-  const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
-  const tunnelIngress = createTunnelIngressManager({
-    app,
-    injectWebSocket,
-    keys: createGateKeyStore({
-      url: () => deps.config.connectGateKeysUrl,
-      logger: deps.logger,
-      now: tunnelIngressNow,
-    }),
-    loopbackOrigin: () => `http://127.0.0.1:${deps.config.serverPort}`,
-    logger: deps.logger,
-  });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
   const bbAppArtifactService =
@@ -798,7 +779,6 @@ export function createApp(
         }),
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
-    openTunnelIngress: (audience) => tunnelIngress.open(audience),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
@@ -1096,6 +1076,5 @@ export function createApp(
     pluginService,
     pluginCatalogService,
     serverMove,
-    tunnelIngress,
   };
 }

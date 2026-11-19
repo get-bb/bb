@@ -35,7 +35,6 @@ import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
-import { Route as DotwellKnownBbConnectGateKeysDotjsonRouteImport } from "./routes/[.]well-known.bb-connect-gate-keys[.]json";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./routes/[.]well-known.apple-app-site-association";
 import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
@@ -186,12 +185,6 @@ const DotwellKnownOauthAuthorizationServerRoute =
     path: "/.well-known/oauth-authorization-server",
     getParentRoute: () => rootRouteImport,
   } as any);
-const DotwellKnownBbConnectGateKeysDotjsonRoute =
-  DotwellKnownBbConnectGateKeysDotjsonRouteImport.update({
-    id: "/.well-known/bb-connect-gate-keys.json",
-    path: "/.well-known/bb-connect-gate-keys.json",
-    getParentRoute: () => rootRouteImport,
-  } as any);
 const DotwellKnownAssetlinksDotjsonRoute =
   DotwellKnownAssetlinksDotjsonRouteImport.update({
     id: "/.well-known/assetlinks.json",
@@ -303,7 +296,6 @@ export interface FileRoutesByFullPath {
   "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
-  "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
@@ -350,7 +342,6 @@ export interface FileRoutesByTo {
   "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
-  "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
@@ -398,7 +389,6 @@ export interface FileRoutesById {
   "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
-  "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
@@ -447,7 +437,6 @@ export interface FileRouteTypes {
     | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
-    | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
@@ -494,7 +483,6 @@ export interface FileRouteTypes {
     | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
-    | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
@@ -541,7 +529,6 @@ export interface FileRouteTypes {
     | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
-    | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog_/$slug"
@@ -589,7 +576,6 @@ export interface RootRouteChildren {
   UninstallRoute: typeof UninstallRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
-  DotwellKnownBbConnectGateKeysDotjsonRoute: typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
@@ -803,13 +789,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/.well-known/bb-connect-gate-keys.json": {
-      id: "/.well-known/bb-connect-gate-keys.json";
-      path: "/.well-known/bb-connect-gate-keys.json";
-      fullPath: "/.well-known/bb-connect-gate-keys.json";
-      preLoaderRoute: typeof DotwellKnownBbConnectGateKeysDotjsonRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     "/.well-known/assetlinks.json": {
       id: "/.well-known/assetlinks.json";
       path: "/.well-known/assetlinks.json";
@@ -970,8 +949,6 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
-  DotwellKnownBbConnectGateKeysDotjsonRoute:
-    DotwellKnownBbConnectGateKeysDotjsonRoute,
   DotwellKnownOauthAuthorizationServerRoute:
     DotwellKnownOauthAuthorizationServerRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,

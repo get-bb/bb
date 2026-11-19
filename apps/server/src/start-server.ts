@@ -196,7 +196,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appVersion: serverConfig.BB_APP_VERSION,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     marketplaceUrl: serverConfig.BB_MARKETPLACE_URL,
-    connectGateKeysUrl: serverConfig.BB_CONNECT_GATE_KEYS_URL,
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,
     featureFlags: serverConfig.featureFlags,
@@ -374,7 +373,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pluginCatalogService,
     pluginService,
     serverMove,
-    tunnelIngress,
   } = createApp(
     {
       appUpdate,
@@ -589,7 +587,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           resolve();
         });
       });
-      await tunnelIngress.closeAll();
       await closeWebSockets();
       await closeServer;
       await walCheckpointer.stop();

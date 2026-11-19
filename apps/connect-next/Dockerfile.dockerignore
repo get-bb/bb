@@ -1,6 +1,0 @@
-*
-!apps/connect-next/src
-!packages/tunnel-contract/src
-!packages/connect-db/src
-!packages/text-utils/src
-**/*.test.ts
