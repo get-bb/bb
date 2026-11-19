@@ -17,6 +17,7 @@ import {
 } from "../../../src/services/machines/server-access.js";
 import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
 import { listPublicHostsWithStatus } from "../../../src/services/lib/entity-lookup.js";
+import { createApp } from "../../../src/server.js";
 import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
@@ -546,5 +547,107 @@ it("defaults to the provider of the earliest-installed plugin, not load order", 
       "keep-awake",
       "direct",
     ]);
+  });
+});
+
+describe("server access addresses across restarts and failures", () => {
+  const address = "https://mini.tail1234.ts.net:8443";
+  const tailnetRequest = {
+    headers: { host: "mini.tail1234.ts.net:8443", origin: address },
+  };
+
+  it("admits the last available address from the first request after a restart, before plugins load", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => ({ status: "available", serverUrl: address }),
+      });
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () =>
+        expect(
+          (await h.app.request("http://localhost/health", tailnetRequest))
+            .status,
+        ).toBe(200),
+      );
+
+      const restarted = createApp(h.deps);
+      try {
+        expect(restarted.pluginService.getApi("keep-awake")).toBeUndefined();
+        for (const path of ["/health", "/api/v1/threads"]) {
+          expect(
+            (
+              await restarted.app.request(
+                `http://localhost${path}`,
+                tailnetRequest,
+              )
+            ).status,
+          ).toBe(200);
+        }
+        expect(
+          (
+            await restarted.app.request("http://localhost/health", {
+              headers: { host: "other.tail1234.ts.net" },
+            })
+          ).status,
+        ).toBe(403);
+      } finally {
+        await restarted.pluginService.stop();
+      }
+    });
+  });
+
+  it("keeps an address through a failed availability check and drops it on a real answer", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      let availability: () => Awaited<
+        ReturnType<ServerAccessProviderDeclaration["availability"]>
+      > = () => ({ status: "available", serverUrl: address });
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => availability(),
+      });
+      const status = async () =>
+        (await h.app.request("http://localhost/health", tailnetRequest)).status;
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () => expect(await status()).toBe(200));
+
+      availability = () => {
+        throw new Error("tailscale status timed out");
+      };
+      await serverAccessStatus(h.deps);
+      expect(await status()).toBe(200);
+
+      availability = () => ({
+        status: "unavailable",
+        message: "Tailscale is stopped",
+      });
+      await serverAccessStatus(h.deps);
+      expect(await status()).toBe(403);
+    });
+  });
+
+  it("drops the address when its plugin is disabled", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => ({ status: "available", serverUrl: address }),
+      });
+      const status = async () =>
+        (await h.app.request("http://localhost/health", tailnetRequest)).status;
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () => expect(await status()).toBe(200));
+
+      await h.pluginService.setEnabled("keep-awake", false);
+
+      await vi.waitFor(async () => expect(await status()).toBe(403));
+    });
   });
 });

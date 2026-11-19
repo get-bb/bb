@@ -10,7 +10,10 @@ import {
   windowsInstallerFailureScript,
 } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
-import { refreshServerAccessOrigins } from "./services/machines/server-access.js";
+import {
+  refreshServerAccessOrigins,
+  restoreServerAccessOrigins,
+} from "./services/machines/server-access.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
@@ -832,6 +835,7 @@ export function createApp(
     ),
   );
   setServerAccessBridge(pluginService.serverAccessProviders);
+  restoreServerAccessOrigins(deps);
   setServerAccessRecheckHandler(() => {
     refreshServerAccessOrigins(deps);
     deps.hub.notifySystem(["config-changed"]);

@@ -4071,7 +4071,11 @@ Registers a server access provider: `availability` (optionally with a public
 enrollment and runtime traffic. While a provider reports `available` with a
 `serverUrl`, core's Host and Origin guards admit that URL's origin, as they do
 for `BB_APP_URL`; core refreshes the set when configuration is read, on
-`recheck()`, and when plugins change. Without a saved default, core uses the
+`recheck()`, and when plugins change. Core stores the set and restores it at
+startup, before plugins load, so the first request after a restart passes. A
+failed or timed-out check keeps the provider's address; a definite
+`setup-required` or `unavailable` answer, or disabling or removing the
+plugin, drops it. Without a saved default, core uses the
 provider of the earliest-installed plugin. Callers: the bb connect plugin and
 the Tailscale official plugin (`plugins/tailscale`), whose Serve address is
 admitted this way.
