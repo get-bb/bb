@@ -857,6 +857,15 @@ and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
 
+Only providers that are enabled and installed on the host are indexed, the
+same set `bb provider list` shows. Each listed skill's `providers` names every
+one of them that reads its file. Several providers can read the same file, for
+example one under `~/.agents/skills` or `~/.claude/skills`, or a Claude Code
+plugin skill that Grok also loads. The Skills page lists such a skill once as
+Shared, and under each of those providers in the Provider filter; `bb skill
+list` prints `shared`. bb skills and configured shared roots have an empty
+`providers` list and are listed as bb.
+
 ## Multi-machine
 
 Multi-machine execution lets this server dispatch work to host daemons on

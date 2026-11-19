@@ -220,7 +220,8 @@ BB indexes the documented native skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. It includes user roots,
 project roots, and compatibility roots such as `.agents/skills`. These skills
 appear in the selected provider's `/` command menu. The Skills page and
-`bb skill list` show native skills for Claude Code, Codex, and Cursor. BB also
+`bb skill list` show the native skills of every enabled, installed provider,
+and list a skill file that several of them read once, as Shared. BB also
 reads configured Pi, omp, Grok, and Hermes skill directories, plus enabled
 provider plugin skills.
 

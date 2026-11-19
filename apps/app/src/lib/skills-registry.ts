@@ -77,7 +77,6 @@ export function resolveInstalledRegistrySkill(
     installedSkills.find((installedSkill) => {
       return (
         installedSkill.scope === "bb-user" &&
-        installedSkill.provider === null &&
         installedSkill.manageable &&
         installedSkill.registrySkillId === registrySkill.id
       );

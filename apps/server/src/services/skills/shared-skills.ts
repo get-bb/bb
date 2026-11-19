@@ -6,23 +6,26 @@ import {
   type ProviderNativeRoots,
 } from "@bb/domain";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
-import type { SkillSummary } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { hostPathDirname } from "../lib/host-path.js";
 import type { SharedInjectedSkillSource } from "./injected-skills.js";
+import type { SkillRegistration } from "./skill-listing.js";
 
 export interface ResolvedSharedSkills {
   runtimeSources: SharedInjectedSkillSource[];
-  summaries: SkillSummary[];
+  summaries: SkillRegistration[];
   identities: ReadonlyMap<string, { contentSha256: string; realPath: string }>;
 }
 
 function toSharedSkill(
   deps: Pick<LoggedWorkSessionDeps, "logger">,
   skill: DiscoveredSkill,
-): { runtimeSource: SharedInjectedSkillSource; summary: SkillSummary } | null {
+): {
+  runtimeSource: SharedInjectedSkillSource;
+  summary: SkillRegistration;
+} | null {
   const sourceType = skill.rootKind;
   if (sourceType !== "shared-user" && sourceType !== "shared-project") {
     return null;
@@ -97,7 +100,7 @@ export function toResolvedSharedSkills(
   skills: readonly DiscoveredSkill[],
 ): ResolvedSharedSkills {
   const resolved: Array<NonNullable<ReturnType<typeof toSharedSkill>>> = [];
-  const summaries: SkillSummary[] = [];
+  const summaries: SkillRegistration[] = [];
   const names = new Set<string>();
   for (const skill of skills) {
     const entry = toSharedSkill(deps, skill);
