@@ -10,6 +10,7 @@ import {
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   findAutomaticReplacement,
+  findPinnedReplacement,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
 import {
@@ -67,9 +68,7 @@ export function resolveSidebarNavigation({
   lastResolved: LastResolvedSidebarNavigation | null;
 }): ResolvedSidebarNavigation {
   const isAutomatic = preference === AUTOMATIC_REPLACEMENT_PROVIDER;
-  const pinned = isAutomatic
-    ? undefined
-    : slots.find((slot) => replacementProviderKey(slot) === preference);
+  const pinned = findPinnedReplacement(slots, preference);
   if (pinned) return resolvedPlugin(pinned, slots, builtinPluginIds);
   const automatic = findAutomaticReplacement(slots, builtinPluginIds);
   if (!settled) {

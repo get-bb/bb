@@ -330,16 +330,19 @@ The thread list is drawn by `sidebar.threadListProvider`, which defaults to
 Thread list plugin (`thread-list/thread-list`), or the bundled plugin when
 there is none, so installing a thread list plugin switches to it. Select one
 with `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>`, or
-reset to restore Automatic. The bundled Thread list plugin keeps its own
-layout (organization mode, sort, grouping, hidden and collapsed groups) and
-copies the legacy `sidebar.*` layout keys from here only once; change its
-layout with `bb thread-list prefs` (see `bb guide plugins`).
+reset to restore Automatic. A selected list whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. The bundled Thread list
+plugin keeps its own layout (organization mode, sort, grouping, hidden and
+collapsed groups) and copies the legacy `sidebar.*` layout keys from here only
+once; change its layout with `bb thread-list prefs` (see `bb guide plugins`).
 
 The composer's input box is drawn by `composer.provider`, which defaults to
 `__automatic__`: the first composer plugin you installed, or the bundled
 Composer plugin (`bb--composer/composer`) when there is none. Pick one with
 `bb settings ui set composer.provider <plugin-id>/<slot-id>`, or reset to
-restore Automatic. With no composer plugin enabled, no composer is shown.
+restore Automatic. A selected composer whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. With no composer plugin
+enabled, no composer is shown.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible

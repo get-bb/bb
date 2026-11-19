@@ -982,6 +982,8 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
+A provider key whose plugin is disabled or uninstalled behaves as
+`__automatic__` until the plugin returns.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
