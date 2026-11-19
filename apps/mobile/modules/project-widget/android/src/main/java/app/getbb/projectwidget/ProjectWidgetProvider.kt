@@ -37,7 +37,7 @@ class ProjectWidgetProvider : AppWidgetProvider() {
       update(context, AppWidgetManager.getInstance(context), id, target)
     }
 
-    private fun icon(name: String): Int = when (name) {
+    internal fun icon(name: String): Int = when (name) {
       "message" -> R.drawable.bb_widget_icon_message
       "camera" -> R.drawable.bb_widget_icon_camera
       "microphone" -> R.drawable.bb_widget_icon_microphone

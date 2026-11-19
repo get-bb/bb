@@ -14,5 +14,11 @@ class ProjectWidgetModule : Module() {
       val activity = appContext.currentActivity as? ProjectWidgetActivity
       checkNotNull(activity).configure(widgetId, targetJson)
     }.runOnQueue(Queues.MAIN)
+
+    View(ProjectWidgetIconPreview::class) {
+      Prop("icon") { view: ProjectWidgetIconPreview, icon: String ->
+        view.setIcon(icon)
+      }
+    }
   }
 }

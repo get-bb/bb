@@ -1,9 +1,9 @@
 import "../../global.css";
 import "@/lib/polyfills";
 import { QueryClient, useQuery } from "@tanstack/react-query";
-import { requireNativeModule } from "expo";
+import { requireNativeModule, requireNativeView } from "expo";
 import { useEffect, useState } from "react";
-import { ScrollView } from "react-native";
+import { ScrollView, type ViewProps } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { getProfileStore } from "@/lib/native";
 import { useProfileStoreState, type ServerProfile } from "@/lib/profiles";
@@ -17,6 +17,13 @@ interface ProjectWidgetModule {
 }
 
 const queryClient = new QueryClient();
+const WidgetIconPreview =
+  process.env.EXPO_OS === "android"
+    ? requireNativeView<ViewProps & { icon: WidgetTarget["icon"] }>(
+        "BBProjectWidget",
+      )
+    : null;
+const iconPreviewStyle = { width: 36, height: 36 };
 const iconLabels: Record<WidgetTarget["icon"], string> = {
   message: "Message",
   camera: "Camera",
@@ -436,14 +443,15 @@ function TargetPicker({
       <GroupedSection title="Widget action">
         <GroupedRow
           title="New thread"
+          subtitle="Start with a blank composer"
           selected={action === "thread"}
           trailing={action === "thread" ? "checkmark" : undefined}
           onPress={() => setAction("thread")}
           disabled={saving}
         />
         <GroupedRow
-          title="Attach a photo"
-          subtitle="Open a new thread with the camera"
+          title="Photo"
+          subtitle="Start by taking a photo"
           selected={action === "photo"}
           trailing={action === "photo" ? "checkmark" : undefined}
           onPress={() => setAction("photo")}
@@ -451,7 +459,7 @@ function TargetPicker({
         />
         <GroupedRow
           title="Voice input"
-          subtitle="Open a new thread and dictate your first prompt"
+          subtitle="Start with voice input ready"
           selected={action === "voice"}
           trailing={action === "voice" ? "checkmark" : undefined}
           onPress={() => setAction("voice")}
@@ -463,6 +471,15 @@ function TargetPicker({
           <GroupedRow
             key={item}
             title={iconLabels[item]}
+            leading={
+              WidgetIconPreview && (
+                <WidgetIconPreview
+                  icon={item}
+                  importantForAccessibility="no"
+                  style={iconPreviewStyle}
+                />
+              )
+            }
             selected={icon === item}
             trailing={icon === item ? "checkmark" : undefined}
             onPress={() => setIcon(item)}
