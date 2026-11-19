@@ -413,13 +413,35 @@ function matchFileRows(
 ): void {
   const used = new Set<number>();
   const identityCounts = new Map<string, number>();
+  const rowsByPath = new Map<string, number[]>();
+  for (let index = record.fileRows.length - 1; index >= 0; index--) {
+    for (const path of record.fileRows[index]!.matchKeys) {
+      const candidates = rowsByPath.get(path);
+      if (candidates === undefined) {
+        rowsByPath.set(path, [index]);
+      } else {
+        candidates.push(index);
+      }
+    }
+  }
   record.fileRowIndexes = item.changes.map((change) => {
     const matchKeys = fileChangeMatchKeys(change);
-    const existing = record.fileRows.findIndex(
-      (row, index) =>
-        !used.has(index) &&
-        row.matchKeys.some((key) => matchKeys.includes(key)),
-    );
+    let existing = -1;
+    for (const path of matchKeys) {
+      const candidates = rowsByPath.get(path);
+      if (candidates === undefined) continue;
+      let candidate = candidates.at(-1);
+      while (candidate !== undefined && used.has(candidate)) {
+        candidates.pop();
+        candidate = candidates.at(-1);
+      }
+      if (
+        candidate !== undefined &&
+        (existing === -1 || candidate < existing)
+      ) {
+        existing = candidate;
+      }
+    }
     if (existing !== -1) {
       used.add(existing);
       const row = record.fileRows[existing]!;
