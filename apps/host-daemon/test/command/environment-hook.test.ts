@@ -361,3 +361,73 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
     );
   }
 });
+
+it("reports a failing setup as setup_script_failed with keyed transcript entries", async () => {
+  const path = await makeTempDir("bb-hook-setup-failure-");
+  await writeFile(
+    join(path, ".bb-env-setup.sh"),
+    "printf 'script diagnostic\\n'\nexit 7\n",
+  );
+  const options = createHarness().dispatchOptions({ dataDir: path });
+  const entries: Array<{ key: string; status: string | null }> = [];
+  options.emitEnvironmentHookProgress = (message) =>
+    entries.push({ key: message.entry.key, status: message.entry.status });
+
+  await expect(
+    dispatchOnlineRpcCommand(
+      {
+        type: "environment.hook.run",
+        contributedEnv: [],
+        resumeOnly: false,
+        operationId: "setup-failure",
+        path,
+        kind: "setup",
+        timeoutMs: 5000,
+      },
+      options,
+      new AbortController().signal,
+    ),
+  ).rejects.toMatchObject({
+    code: "setup_script_failed",
+    message: expect.stringContaining("failed with exit code 7"),
+  });
+  expect(entries).toEqual([
+    { key: "setup-started", status: "started" },
+    { key: "setup-output-1", status: null },
+    { key: "setup-failed", status: "failed" },
+  ]);
+});
+
+it("runs a finished hook again when the server asks for a fresh run", async () => {
+  const path = await makeTempDir("bb-hook-rerun-");
+  await writeFile(
+    join(path, ".bb-env-setup.sh"),
+    "echo run >> marker\ntest -f fixed\n",
+  );
+  const options = createHarness().dispatchOptions({ dataDir: path });
+  const command = {
+    type: "environment.hook.run" as const,
+    contributedEnv: [],
+    resumeOnly: false,
+    operationId: "rerun",
+    path,
+    kind: "setup" as const,
+    timeoutMs: 5000,
+  };
+  const run = (resumeOnly: boolean) =>
+    dispatchOnlineRpcCommand(
+      { ...command, resumeOnly },
+      options,
+      new AbortController().signal,
+    );
+
+  await expect(run(false)).rejects.toMatchObject({
+    code: "setup_script_failed",
+  });
+  await expect(run(true)).rejects.toMatchObject({
+    code: "setup_script_failed",
+  });
+  await writeFile(join(path, "fixed"), "");
+  await expect(run(false)).resolves.toEqual({});
+  expect(await readFile(join(path, "marker"), "utf8")).toBe("run\nrun\n");
+});

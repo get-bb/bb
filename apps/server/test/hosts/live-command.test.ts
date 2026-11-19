@@ -1,11 +1,4 @@
-import {
-  createEnvironment,
-  getEnvironment,
-  updateHost,
-} from "@bb/db";
-import { rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import { createEnvironment, getEnvironment } from "@bb/db";
 import { buildEnvironmentProvisionCommand } from "../../src/services/threads/thread-create-helpers.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -92,7 +85,6 @@ it("preserves provisioning when the host transport disappears", async () => {
       hostId: host.id,
       initiator: null,
       path: "/tmp/preserve-disconnected-setup",
-      setupScriptTimeoutMs: null,
     });
     vi.spyOn(harness.hub, "requestHostOnlineRpc").mockRejectedValue(
       new ApiError(502, "host_unavailable", "Host is not connected"),
@@ -109,129 +101,5 @@ it("preserves provisioning when the host transport disappears", async () => {
     expect(getEnvironment(harness.db, environment.id)?.status).toBe(
       "provisioning",
     );
-  });
-});
-
-it("resolves fresh setup values at dispatch without retaining them in the request", async () => {
-  await withTestHarness(async (harness) => {
-    const { host } = seedHostSession(harness.deps);
-    updateHost(harness.db, harness.hub, host.id, {
-      machineProviderId: "manual",
-    });
-    const { project } = seedProjectWithSource(harness.deps, {
-      hostId: host.id,
-    });
-    const environment = createEnvironment(harness.db, harness.hub, {
-      projectId: project.id,
-      hostId: host.id,
-      providerOwnsPath: true,
-    });
-    const command = buildEnvironmentProvisionCommand({
-      environmentId: environment.id,
-      hostId: host.id,
-      initiator: null,
-      path: "/tmp/setup-values",
-      setupScriptTimeoutMs: 1000,
-    });
-    const original = JSON.stringify(command);
-    const request = vi
-      .spyOn(harness.hub, "requestHostOnlineRpc")
-      .mockImplementation(async ({ message }) => ({
-        type: "host-rpc.response",
-        requestId: message.requestId,
-        commandType: "environment.attach",
-        ok: true,
-        result: {
-          path: command.path,
-          isGitRepo: false,
-          isWorktree: false,
-          branchName: null,
-          defaultBranch: null,
-        },
-      }));
-    for (const value of ["first-secret", "refreshed-secret"]) {
-      await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
-        variables: [{ name: "SETUP_VALUE", value, note: null }],
-      });
-      await runLiveHostCommand(harness.deps, {
-        command,
-        hostId: host.id,
-        timeoutMs: 1000,
-      });
-      expect(request.mock.lastCall?.[0].message.command).toMatchObject({
-        contributedEnv: [
-          expect.objectContaining({ name: "SETUP_VALUE", value }),
-        ],
-      });
-      expect(JSON.stringify(command)).toBe(original);
-      expect(
-        JSON.stringify(getEnvironment(harness.db, environment.id)),
-      ).not.toContain(value);
-      expect(
-        JSON.stringify(
-          harness.db.$client.prepare("SELECT * FROM app_settings_values").all(),
-        ),
-      ).not.toContain(value);
-    }
-    await runLiveHostCommand(harness.deps, {
-      command: { ...command, setupScriptTimeoutMs: null },
-      hostId: host.id,
-      timeoutMs: 1000,
-    });
-    expect(request.mock.lastCall?.[0].message.command).toMatchObject({
-      contributedEnv: [],
-    });
-    await writeFile(join(harness.config.dataDir, "host-id"), host.id);
-    await runLiveHostCommand(harness.deps, {
-      command,
-      hostId: host.id,
-      timeoutMs: 1000,
-    });
-    expect(request.mock.lastCall?.[0].message.command).toMatchObject({
-      contributedEnv: [
-        expect.objectContaining({
-          name: "SETUP_VALUE",
-          value: "refreshed-secret",
-        }),
-      ],
-    });
-  });
-});
-
-it("fails provisioning if saved setup variables cannot be decrypted", async () => {
-  await withTestHarness(async (harness) => {
-    const { host } = seedHostSession(harness.deps);
-    updateHost(harness.db, harness.hub, host.id, {
-      machineProviderId: "manual",
-    });
-    const { project } = seedProjectWithSource(harness.deps, {
-      hostId: host.id,
-    });
-    const environment = createEnvironment(harness.db, harness.hub, {
-      projectId: project.id,
-      hostId: host.id,
-      providerOwnsPath: true,
-    });
-    await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
-      variables: [{ name: "SETUP_VALUE", value: "private-value", note: null }],
-    });
-    await rm(join(harness.config.dataDir, "machine-environment-key"));
-    const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
-    const command = buildEnvironmentProvisionCommand({
-      environmentId: environment.id,
-      hostId: host.id,
-      initiator: null,
-      path: "/tmp/setup-values",
-      setupScriptTimeoutMs: 1000,
-    });
-    await expect(
-      runLiveHostCommand(harness.deps, {
-        command,
-        hostId: host.id,
-        timeoutMs: 1000,
-      }),
-    ).rejects.toThrow("Machine environment encryption key is unavailable");
-    expect(request).not.toHaveBeenCalled();
-    expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
   });
 });
