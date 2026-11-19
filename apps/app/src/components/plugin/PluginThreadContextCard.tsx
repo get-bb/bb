@@ -264,43 +264,7 @@ const SHOW_EMPTY_STATE_CLASS =
 
 const LEGACY_FRAME_SCOPE = { kind: "legacyFrame" } as const;
 
-function LegacyThreadContextCardSection({
-  sectionKey,
-  title,
-  children,
-}: {
-  sectionKey: string;
-  title: string;
-  children: ReactNode;
-}) {
-  const collapse = useThreadContextCardSectionCollapse(sectionKey);
-  const bodyId = useId();
-  return (
-    <section
-      data-thread-context-card-section=""
-      aria-label={title}
-      className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
-    >
-      <InfoSectionHeading
-        label={title}
-        collapse={collapse}
-        bodyId={bodyId}
-        className={THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS}
-      />
-      <div id={bodyId} hidden={collapse.collapsed}>
-        <div data-thread-context-card-body="" className="contents">
-          <ThreadContextCardSectionScopeContext.Provider
-            value={LEGACY_FRAME_SCOPE}
-          >
-            {children}
-          </ThreadContextCardSectionScopeContext.Provider>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ThreadContextCardSectionSlot({
+function ThreadContextCardSectionView({
   sectionKey,
   legacyTitle,
   children,
@@ -309,31 +273,43 @@ function ThreadContextCardSectionSlot({
   legacyTitle: string | null;
   children: ReactNode;
 }) {
+  const collapse = useThreadContextCardSectionCollapse(sectionKey);
+  const bodyId = useId();
   const scope = useMemo(
-    () => ({ kind: "foldable" as const, sectionKey }),
-    [sectionKey],
+    () =>
+      legacyTitle === null
+        ? { kind: "foldable" as const, sectionKey }
+        : LEGACY_FRAME_SCOPE,
+    [legacyTitle, sectionKey],
   );
-  if (legacyTitle !== null) {
-    return (
-      <LegacyThreadContextCardSection
-        sectionKey={sectionKey}
-        title={legacyTitle}
-      >
+  const body = (
+    <div data-thread-context-card-body="" className="contents">
+      <ThreadContextCardSectionScopeContext.Provider value={scope}>
         {children}
-      </LegacyThreadContextCardSection>
-    );
-  }
+      </ThreadContextCardSectionScopeContext.Provider>
+    </div>
+  );
   return (
-    <div
+    <section
       data-thread-context-card-section=""
       className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
     >
-      <div data-thread-context-card-body="" className="contents">
-        <ThreadContextCardSectionScopeContext.Provider value={scope}>
-          {children}
-        </ThreadContextCardSectionScopeContext.Provider>
-      </div>
-    </div>
+      {legacyTitle === null ? (
+        body
+      ) : (
+        <>
+          <InfoSectionHeading
+            label={legacyTitle}
+            collapse={collapse}
+            bodyId={bodyId}
+            className={THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS}
+          />
+          <div id={bodyId} hidden={collapse.collapsed}>
+            {body}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -391,39 +367,38 @@ function ThreadContextCardContent({
       ) : null}
       {state.sections.map((entry) => {
         const Component = entry.slot.component;
-        if (entry.owner === "core") {
-          const sectionKey = threadContextSegmentKey({
-            pluginId: CORE_THREAD_CONTEXT_OWNER,
-            id: entry.slot.id,
-          });
-          return (
-            <ThreadContextCardSectionSlot
-              key={sectionKey}
-              sectionKey={sectionKey}
-              legacyTitle={null}
-            >
-              <Component {...props} />
-            </ThreadContextCardSectionSlot>
-          );
-        }
-        const { pluginId, id, generation, legacyTitle } = entry.slot;
+        const pluginId =
+          entry.owner === "core"
+            ? CORE_THREAD_CONTEXT_OWNER
+            : entry.slot.pluginId;
         return (
-          <ThreadContextCardSectionSlot
-            key={`${pluginId}/${id}/${generation}/${props.threadId}`}
-            sectionKey={threadContextSegmentKey({ pluginId, id })}
-            legacyTitle={legacyTitle}
+          <ThreadContextCardSectionView
+            key={
+              entry.owner === "core"
+                ? `core/${entry.slot.id}`
+                : `${pluginId}/${entry.slot.id}/${entry.slot.generation}/${props.threadId}`
+            }
+            sectionKey={threadContextSegmentKey({
+              pluginId,
+              id: entry.slot.id,
+            })}
+            legacyTitle={entry.owner === "core" ? null : entry.slot.legacyTitle}
           >
-            <PluginSlotMount
-              pluginId={pluginId}
-              slotKind="threadContextCardSection"
-              slotId={id}
-              instanceId={props.threadId}
-              crashResetKey={String(generation)}
-              crashFallback={null}
-            >
+            {entry.owner === "core" ? (
               <Component {...props} />
-            </PluginSlotMount>
-          </ThreadContextCardSectionSlot>
+            ) : (
+              <PluginSlotMount
+                pluginId={pluginId}
+                slotKind="threadContextCardSection"
+                slotId={entry.slot.id}
+                instanceId={props.threadId}
+                crashResetKey={String(entry.slot.generation)}
+                crashFallback={null}
+              >
+                <Component {...props} />
+              </PluginSlotMount>
+            )}
+          </ThreadContextCardSectionView>
         );
       })}
       <div
