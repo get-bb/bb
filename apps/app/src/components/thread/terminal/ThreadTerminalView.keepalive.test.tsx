@@ -79,6 +79,15 @@ function renderTerminal(keepAlive: boolean) {
   );
 }
 
+function nextFrame(): Promise<void> {
+  return act(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      }),
+  );
+}
+
 async function mountTerminal(keepAlive: boolean) {
   const view = renderTerminal(keepAlive);
   const xterm = await waitFor(() => {
@@ -110,11 +119,39 @@ it("closes the socket of a parked terminal and resumes it when the same session 
   expect(transport.suspend).toHaveBeenCalledTimes(1);
   expect(transport.dispose).not.toHaveBeenCalled();
   const second = renderTerminal(true);
+  await nextFrame();
   expect(second.container.querySelector(".xterm")).toBe(first.xterm);
   expect(state.transports).toHaveLength(1);
   expect(transport.start).toHaveBeenCalledTimes(2);
   expect(transport.setVisible).toHaveBeenLastCalledWith(true);
   expect(transport.dispose).not.toHaveBeenCalled();
+});
+
+it("attaches a remounted parked terminal in the next animation frame, not in the React commit", async () => {
+  const first = await mountTerminal(true);
+  const transport = state.transports[0]!;
+  first.view.unmount();
+  const second = renderTerminal(true);
+  expect(second.container.querySelector(".xterm")).toBeNull();
+  expect(transport.start).toHaveBeenCalledTimes(1);
+  await nextFrame();
+  expect(second.container.querySelector(".xterm")).toBe(first.xterm);
+  expect(transport.start).toHaveBeenCalledTimes(2);
+});
+
+it("keeps a terminal parked when its view unmounts before the attach frame", async () => {
+  const first = await mountTerminal(true);
+  const transport = state.transports[0]!;
+  first.view.unmount();
+  renderTerminal(true).unmount();
+  await nextFrame();
+  expect(transport.dispose).not.toHaveBeenCalled();
+  expect(transport.start).toHaveBeenCalledTimes(1);
+  const third = renderTerminal(true);
+  await nextFrame();
+  expect(third.container.querySelector(".xterm")).toBe(first.xterm);
+  expect(state.transports).toHaveLength(1);
+  expect(transport.start).toHaveBeenCalledTimes(2);
 });
 
 it("keeps the selection of a parked terminal when the same session remounts", async () => {
@@ -126,6 +163,7 @@ it("keeps the selection of a parked terminal when the same session remounts", as
   expect(terminal.getSelection()).toBe("hello");
   first.view.unmount();
   renderTerminal(true);
+  await nextFrame();
   expect(opened).toHaveLength(1);
   expect(terminal.getSelection()).toBe("hello");
 });
@@ -138,7 +176,7 @@ it("does not rebuild the theme of a parked terminal when it remounts with the sa
   first.view.unmount();
   const computedStyle = vi.spyOn(window, "getComputedStyle");
   renderTerminal(true);
-  await act(async () => {});
+  await nextFrame();
   expect(terminal.options.theme).toBe(theme);
   expect(
     computedStyle.mock.calls.some(
@@ -199,7 +237,7 @@ it("does not read document.fonts.ready again when a parked terminal remounts", a
     expect(fontSet.readReads).toBe(1);
     first.view.unmount();
     renderTerminal(true);
-    await act(async () => {});
+    await nextFrame();
     expect(fontSet.readReads).toBe(1);
   } finally {
     Reflect.deleteProperty(document, "fonts");
@@ -216,7 +254,7 @@ it("measures the font again on remount when fonts loaded while the terminal was 
     const clearTextureAtlas = vi.spyOn(Terminal.prototype, "clearTextureAtlas");
     expect(clearTextureAtlas).not.toHaveBeenCalled();
     renderTerminal(true);
-    await act(async () => {});
+    await nextFrame();
     expect(clearTextureAtlas).toHaveBeenCalledTimes(1);
   } finally {
     Reflect.deleteProperty(document, "fonts");

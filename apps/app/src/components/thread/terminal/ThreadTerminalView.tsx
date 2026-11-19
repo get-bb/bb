@@ -751,6 +751,23 @@ class TerminalRuntime implements ParkedTerminalRuntime {
   }
 }
 
+function applyTerminalTheme(
+  runtime: TerminalRuntime,
+  themeKey: string,
+  scheduleFit: TerminalFitScheduler,
+): void {
+  if (runtime.themeKey === themeKey) {
+    return;
+  }
+  runtime.themeKey = themeKey;
+  applyTerminalFontFamily(
+    runtime.terminal,
+    readTerminalFontFamily(),
+    scheduleFit,
+  );
+  runtime.terminal.options.theme = buildTerminalTheme();
+}
+
 function takeParkedThreadTerminalRuntime(
   terminalId: string,
 ): TerminalRuntime | null {
@@ -835,6 +852,7 @@ function mountThreadTerminal({
     };
     fitTerminal();
     runtime.scheduleFit = scheduleFit;
+    applyTerminalTheme(runtime, live.themeKey, scheduleFit);
     if (runtime.fontsLoadedWhileParked) {
       runtime.fontsLoadedWhileParked = false;
       forceTerminalFontMeasurement(runtime.terminal);
@@ -1157,10 +1175,14 @@ function mountThreadTerminal({
   }
 
   const reused = keepAlive ? takeParkedThreadTerminalRuntime(sessionId) : null;
+  let pendingAttachFrame: number | null = null;
   if (reused !== null) {
-    attachRuntime(reused);
-    reused.terminal.refresh(0, reused.terminal.rows - 1);
-    reused.transport.start();
+    pendingAttachFrame = window.requestAnimationFrame(() => {
+      pendingAttachFrame = null;
+      attachRuntime(reused);
+      reused.terminal.refresh(0, reused.terminal.rows - 1);
+      reused.transport.start();
+    });
   } else {
     void mountTerminal(container).catch((error) => {
       if (!disposed) {
@@ -1186,17 +1208,27 @@ function mountThreadTerminal({
     runtimeRef.current = null;
     live.setSearchAddon(null);
     scheduleFitRef.current = null;
+    const keepRuntime = (runtime: TerminalRuntime) =>
+      keepAlive &&
+      !runtime.ended &&
+      live.sessionStatusRef.current === "running";
+    if (pendingAttachFrame !== null && reused !== null) {
+      window.cancelAnimationFrame(pendingAttachFrame);
+      pendingAttachFrame = null;
+      if (keepRuntime(reused)) {
+        parkTerminalRuntime(sessionId, reused);
+      } else {
+        reused.dispose();
+      }
+      return;
+    }
     const runtime = attached;
     attached = null;
     if (runtime === null) {
       return;
     }
     runtime.scheduleFit = null;
-    if (
-      keepAlive &&
-      !runtime.ended &&
-      live.sessionStatusRef.current === "running"
-    ) {
+    if (keepRuntime(runtime)) {
       runtime.element.remove();
       runtime.parked = true;
       runtime.transport.suspend();
@@ -1645,14 +1677,9 @@ export function ThreadTerminalView({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime || runtime.themeKey === themeKey) {
-      return;
+    if (runtime) {
+      applyTerminalTheme(runtime, themeKey, () => scheduleFitRef.current?.());
     }
-    runtime.themeKey = themeKey;
-    applyTerminalFontFamily(runtime.terminal, readTerminalFontFamily(), () =>
-      scheduleFitRef.current?.(),
-    );
-    runtime.terminal.options.theme = buildTerminalTheme();
   }, [themeKey]);
 
   const connectionNoticeText =
