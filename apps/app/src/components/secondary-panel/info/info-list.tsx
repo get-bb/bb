@@ -22,7 +22,7 @@ export function infoListCollapses(
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none";
 
-function InfoCountPill({ count }: { count: number }) {
+export function InfoCountPill({ count }: { count: number }) {
   return (
     <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal text-muted-foreground tabular-nums">
       {count}

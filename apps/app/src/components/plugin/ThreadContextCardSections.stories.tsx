@@ -13,6 +13,7 @@ import {
   type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
+import { SurfaceInfoSection } from "./ThreadContextCardSection";
 
 export default {
   title: "Thread context card/Sections",
@@ -24,6 +25,7 @@ interface StorySection {
   pluginId: string;
   id: string;
   title: string;
+  legacyTitle?: true;
   rows: ReadonlyArray<{ icon: IconName; label: string; trailing?: string }>;
 }
 
@@ -79,6 +81,7 @@ const SECTIONS: readonly StorySection[] = [
     pluginId: "story-brain",
     id: "ledger",
     title: "Brain",
+    legacyTitle: true,
     rows: [{ icon: "BookOpen", label: "Code red follow-through" }],
   },
   {
@@ -96,37 +99,40 @@ const SECTIONS: readonly StorySection[] = [
 function sectionComponent(
   section: StorySection,
 ): ComponentType<ExperimentalThreadContextCardProps> {
+  const rows = section.rows.map((row) => (
+    <ThreadContextCardRow
+      key={row.label}
+      icon={row.icon}
+      label={row.label}
+      trailing={row.trailing}
+      onClick={noop}
+    />
+  ));
   return function StorySectionBody() {
+    if (section.legacyTitle) return <>{rows}</>;
     return (
-      <>
-        {section.rows.map((row) => (
-          <ThreadContextCardRow
-            key={row.label}
-            icon={row.icon}
-            label={row.label}
-            trailing={row.trailing}
-            onClick={noop}
-          />
-        ))}
-      </>
+      <SurfaceInfoSection label={section.title} count={section.rows.length}>
+        {rows}
+      </SurfaceInfoSection>
     );
   };
 }
 
 function ChildThreadsBody() {
   return (
-    <ThreadContextCardRow
-      icon="ChildThread"
-      label="Write the retry reporter hook"
-      onClick={noop}
-    />
+    <SurfaceInfoSection label="Child threads" count={1}>
+      <ThreadContextCardRow
+        icon="ChildThread"
+        label="Write the retry reporter hook"
+        onClick={noop}
+      />
+    </SurfaceInfoSection>
   );
 }
 
 const CORE_SECTIONS: readonly CoreThreadContextCardSection[] = [
   {
     id: "childThreads",
-    title: "Child threads",
     group: "1_related",
     order: 10,
     component: ChildThreadsBody,
@@ -147,9 +153,9 @@ function SectionsFixture({
           threadContextCardSections: [
             {
               id: section.id,
-              title: section.title,
               group: "2_plugins",
               component: sectionComponent(section),
+              legacyTitle: section.legacyTitle ? section.title : null,
             },
           ],
         }),

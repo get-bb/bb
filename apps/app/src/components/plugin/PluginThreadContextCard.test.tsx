@@ -20,6 +20,7 @@ import {
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
+import { SurfaceInfoSection } from "./ThreadContextCardSection";
 import {
   ThreadContextCard,
   ThreadContextCardHeaderButton,
@@ -38,6 +39,20 @@ function section(label: string) {
       <p data-testid="section">
         {label} for {threadId}
       </p>
+    );
+  };
+}
+
+function titledSection(label: string, body = label) {
+  return function TitledSection({
+    threadId,
+  }: ExperimentalThreadContextCardProps) {
+    return (
+      <SurfaceInfoSection label={label}>
+        <p data-testid="section">
+          {body} for {threadId}
+        </p>
+      </SurfaceInfoSection>
     );
   };
 }
@@ -78,10 +93,9 @@ const CORE: CoreThreadContextCardRow[] = [
 const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   {
     id: "childThreads",
-    title: "Child threads",
     group: "1_related",
     order: 10,
-    component: section("Core children"),
+    component: titledSection("Child threads", "Core children"),
   },
 ];
 
@@ -187,9 +201,9 @@ describe("thread context card", () => {
         threadContextCardSections: [
           {
             id: "deploys",
-            title: "Deploys",
             group: "2_deploys",
-            component: section("Deploys body"),
+            component: titledSection("Deploys", "Deploys body"),
+            legacyTitle: null,
           },
         ],
       }),
@@ -354,7 +368,10 @@ describe("thread context card", () => {
   });
 });
 
+type SectionStyle = "infoSection" | "legacyTitle";
+
 function registerSections(
+  style: SectionStyle,
   sections: Array<{ id: string; title: string }>,
   pluginId = "first",
 ) {
@@ -363,10 +380,13 @@ function registerSections(
     makePluginRegistrationSet({
       threadContextCardSections: sections.map(({ id, title }, index) => ({
         id,
-        title,
         group: "2_deploys",
         order: index,
-        component: section(`${title} body`),
+        component:
+          style === "infoSection"
+            ? titledSection(title, `${title} body`)
+            : section(`${title} body`),
+        legacyTitle: style === "legacyTitle" ? title : null,
       })),
     }),
   );
@@ -382,63 +402,99 @@ function expandedStates(name: string) {
     .map((node) => node.getAttribute("aria-expanded"));
 }
 
-describe("thread context card sections fold", () => {
-  it("starts sections open and folds one from its title, keeping its body mounted", () => {
-    registerSections([{ id: "deploys", title: "Deploys" }]);
+function bodyShown(text: string) {
+  const node = screen.queryByText(text);
+  return node !== null && node.closest("[hidden]") === null;
+}
+
+describe.each<SectionStyle>(["infoSection", "legacyTitle"])(
+  "thread context card sections drawn with %s",
+  (style) => {
+    it("start open and fold from their title", () => {
+      registerSections(style, [{ id: "deploys", title: "Deploys" }]);
+      renderPane();
+
+      expect(expandedStates("Deploys")).toEqual(["true"]);
+      expect(bodyShown("Deploys body for thr_1")).toBe(true);
+
+      fireEvent.click(toggleFor("Deploys"));
+      expect(expandedStates("Deploys")).toEqual(["false"]);
+      expect(bodyShown("Deploys body for thr_1")).toBe(false);
+      expect(expandedStates("Child threads")).toEqual(["true"]);
+
+      fireEvent.click(toggleFor("Deploys"));
+      expect(expandedStates("Deploys")).toEqual(["true"]);
+      expect(bodyShown("Deploys body for thr_1")).toBe(true);
+    });
+
+    it("remember folded sections across a remount and in every thread", () => {
+      registerSections(style, [{ id: "deploys", title: "Deploys" }]);
+      const store = createStore();
+      const first = renderPane({ store, threadIds: ["thr_1", "thr_2"] });
+
+      fireEvent.click(toggleFor("Deploys", 0));
+      expect(expandedStates("Deploys")).toEqual(["false", "false"]);
+      expect(expandedStates("Child threads")).toEqual(["true", "true"]);
+
+      first.unmount();
+      renderPane({ store, threadIds: ["thr_3"] });
+      expect(expandedStates("Deploys")).toEqual(["false"]);
+    });
+
+    it("key folds by owner and id, so plugins and bb can share an id", () => {
+      registerSections(style, [{ id: "status", title: "First status" }]);
+      registerSections(
+        style,
+        [{ id: "status", title: "Second status" }],
+        "second",
+      );
+      registerSections(
+        style,
+        [{ id: "childThreads", title: "Plugin children" }],
+        "core",
+      );
+      renderPane();
+
+      fireEvent.click(toggleFor("First status"));
+      fireEvent.click(toggleFor("Plugin children"));
+      expect(expandedStates("First status")).toEqual(["false"]);
+      expect(expandedStates("Second status")).toEqual(["true"]);
+      expect(expandedStates("Plugin children")).toEqual(["false"]);
+      expect(expandedStates("Child threads")).toEqual(["true"]);
+    });
+  },
+);
+
+describe("legacy titled thread context card sections", () => {
+  it("keep a folded body mounted so an empty section stays hidden", () => {
+    registerSections("legacyTitle", [{ id: "deploys", title: "Deploys" }]);
     renderPane();
-    const toggle = toggleFor("Deploys");
-    const wrapper = document.getElementById(
-      toggle.getAttribute("aria-controls") ?? "",
-    );
-    const body = screen
-      .getByRole("region", { name: "Deploys" })
-      .querySelector("[data-thread-context-card-body]");
 
-    expect(expandedStates("Child threads")).toEqual(["true"]);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(wrapper?.hasAttribute("hidden")).toBe(false);
-
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(body?.closest("[hidden]")).toBe(wrapper);
-    expect(body?.textContent).toContain("Deploys body for thr_1");
-    expect(toggle.closest("[hidden]")).toBeNull();
-    expect(expandedStates("Child threads")).toEqual(["true"]);
-
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(wrapper?.hasAttribute("hidden")).toBe(false);
+    fireEvent.click(toggleFor("Deploys"));
+    expect(
+      screen.getByText("Deploys body for thr_1").closest("[hidden]"),
+    ).not.toBeNull();
   });
 
-  it("remembers folded sections across a remount and in every thread", () => {
-    registerSections([{ id: "deploys", title: "Deploys" }]);
-    const store = createStore();
-    const first = renderPane({ store, threadIds: ["thr_1", "thr_2"] });
-
-    fireEvent.click(toggleFor("Deploys", 0));
-    expect(expandedStates("Deploys")).toEqual(["false", "false"]);
-    expect(expandedStates("Child threads")).toEqual(["true", "true"]);
-
-    first.unmount();
-    renderPane({ store, threadIds: ["thr_3"] });
-    expect(expandedStates("Deploys")).toEqual(["false"]);
-  });
-
-  it("keys sections by owner and id, so plugins and bb can share an id", () => {
-    registerSections([{ id: "status", title: "First status" }], "first");
-    registerSections([{ id: "status", title: "Second status" }], "second");
-    registerSections(
-      [{ id: "childThreads", title: "Plugin children" }],
-      "core",
+  it("draw one title when the component also renders an InfoSection", () => {
+    setPluginSlotRegistrations(
+      "first",
+      makePluginRegistrationSet({
+        threadContextCardSections: [
+          {
+            id: "deploys",
+            group: "2_deploys",
+            component: titledSection("Inner deploys", "Deploys body"),
+            legacyTitle: "Deploys",
+          },
+        ],
+      }),
     );
     renderPane();
 
-    fireEvent.click(toggleFor("First status"));
-    fireEvent.click(toggleFor("Plugin children"));
-    expect(expandedStates("First status")).toEqual(["false"]);
-    expect(expandedStates("Second status")).toEqual(["true"]);
-    expect(expandedStates("Plugin children")).toEqual(["false"]);
-    expect(expandedStates("Child threads")).toEqual(["true"]);
+    expect(expandedStates("Deploys")).toEqual(["true"]);
+    expect(screen.queryByText("Inner deploys")).toBeNull();
+    expect(bodyShown("Deploys body for thr_1")).toBe(true);
   });
 });
 

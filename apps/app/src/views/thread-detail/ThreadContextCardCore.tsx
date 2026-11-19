@@ -8,6 +8,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { InfoRowTime } from "@bb/shared-ui/info-list-row";
 import type { ThreadResponse } from "@bb/server-contract";
 import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
+import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection";
 import type {
   CoreThreadContextCardRow,
   CoreThreadContextCardSection,
@@ -50,37 +51,39 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadContextCardProps) {
   );
   if (children.length === 0) return null;
   return (
-    <InfoList
-      items={children}
-      getKey={(child) => child.id}
-      limit={4}
-      renderItem={(child) => {
-        const title = getThreadDisplayTitle(child);
-        return (
-          <li className="list-none">
-            <ThreadContextCardRow
-              leading={
-                <ThreadListEntryStatusGlyph
-                  thread={child}
-                  idle={<Icon name="ChildThread" aria-hidden />}
-                />
-              }
-              label={<ThreadTitle title={title} />}
-              title={title}
-              trailing={<InfoRowTime timestamp={child.updatedAt} />}
-              onClick={() =>
-                void navigate(
-                  getThreadRoutePath({
-                    projectId: child.projectId,
-                    threadId: child.id,
-                  }),
-                )
-              }
-            />
-          </li>
-        );
-      }}
-    />
+    <SurfaceInfoSection label="Child threads" count={children.length}>
+      <InfoList
+        items={children}
+        getKey={(child) => child.id}
+        limit={4}
+        renderItem={(child) => {
+          const title = getThreadDisplayTitle(child);
+          return (
+            <li className="list-none">
+              <ThreadContextCardRow
+                leading={
+                  <ThreadListEntryStatusGlyph
+                    thread={child}
+                    idle={<Icon name="ChildThread" aria-hidden />}
+                  />
+                }
+                label={<ThreadTitle title={title} />}
+                title={title}
+                trailing={<InfoRowTime timestamp={child.updatedAt} />}
+                onClick={() =>
+                  void navigate(
+                    getThreadRoutePath({
+                      projectId: child.projectId,
+                      threadId: child.id,
+                    }),
+                  )
+                }
+              />
+            </li>
+          );
+        }}
+      />
+    </SurfaceInfoSection>
   );
 }
 
@@ -98,7 +101,6 @@ export const CORE_THREAD_CONTEXT_CARD_SECTIONS: readonly CoreThreadContextCardSe
   [
     {
       id: "childThreads",
-      title: "Child threads",
       group: experimental_THREAD_INFO_SECTION_GROUPS.related,
       order: 10,
       component: ChildThreadsSection,

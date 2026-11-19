@@ -3350,7 +3350,11 @@ blocks: `experimental_InfoSection` (heading, count pill, collapse),
 `experimental_InfoList` (the "N more" list), and `experimental_InfoListRow`.
 Inside a section slot, `experimental_InfoSection` collapses, and the state is
 stored in the `infoPanel.collapsedSections` preference under the core id or
-`<pluginId>/<id>`.
+`<pluginId>/<id>`. Inside a thread context card section it draws the card's
+foldable title instead (see the card's entry below); `experimental_InfoSection`
+is `SurfaceInfoSection`
+(`apps/app/src/components/plugin/ThreadContextCardSection.tsx`), which picks
+the frame from the section scope it renders in.
 
 **Core callers.** `ThreadMetadataContent` renders the Info tab only through
 `ThreadInfoRows` and `ThreadInfoSections`
@@ -3403,13 +3407,15 @@ those presentations in `WithoutThreadContextCard`.
 
 The card's counterparts of the Info tab's row and section slots. A row
 registration is `{ id, group, order?, component }` and draws in the card's top
-block; a section is `{ id, title, group, order?, component }` and draws below
-the rows. Components receive
+block; a section is `{ id, group, order?, component }`, the same shape as an
+Info tab section, and draws below the rows. Components receive
 `{ threadId, projectId, environment }` (`environment` is `{ id }` from the
-thread, null only without one) and render `experimental_ThreadContextCardRow`
-rows (`{ icon?, leading?, label, trailing?, title?, disabled?, onClick?,
-action? }`), or null; `action` is a second control beside the main one, such
-as a menu.
+thread, null only without one). A row renders
+`experimental_ThreadContextCardRow` rows (`{ icon?, leading?, label,
+trailing?, title?, disabled?, onClick?, action? }`), or null; `action` is a
+second control beside the main one, such as a menu. A section renders one
+`experimental_InfoSection` (`label`, `count?`, `accessory?`, `trailing?`), or
+null to hide it, with rows inside.
 
 `ThreadDetailView` wraps each thread page and split pane in
 `ThreadContextCardProvider`
@@ -3417,16 +3423,25 @@ as a menu.
 where the pane's kind is `card`. Rows and sections each merge bb's with plugin
 registrations and sort by `group`, `order` (unset last), then
 registration order with core first on a tie. Rows share one block with no
-heading; sections follow, each under its title and a divider. A section's
-title is a disclosure button (`aria-expanded`, `aria-controls` the body),
-open by default; the folded keys (`pluginId/sectionId`, and `bb--core/id` for
-bb's own, the reserved owner its thread context segments use, so no plugin id
-can collide) live in the synced `threadContextCard.collapsedSections`
-preference, shared by every thread. The body stays mounted but `hidden` while
-folded, so `:has` still sees whether the component renders anything and the
-plugin keeps its subscriptions. Every plugin
-row and section mounts in its own crash boundary keyed by thread, and CSS `:has` hides a
-block whose components render no element. `ThreadContextCard` sits in
+heading; sections follow, each with a divider above it. Each section renders
+inside a scope (`ThreadContextCardSectionScopeContext`) that makes
+`experimental_InfoSection` draw its label as a disclosure button
+(`aria-expanded`, `aria-controls` the body), open by default; its children
+unmount while folded, as in the Info tab, and the section's own component stays
+mounted. The folded keys (`pluginId/sectionId`, and `bb--core/id` for bb's
+own, the reserved owner its thread context segments use, so no plugin id can
+collide) live in the synced `threadContextCard.collapsedSections` preference,
+shared by every thread and separate from the Info tab's. Every plugin row and
+section mounts in its own crash boundary keyed by thread, and CSS `:has` hides
+a block whose components render no element.
+
+Registrations from plugins built before SDK 0.6.163 pass a `title`, which the
+type no longer has. The registration collector reads it at the boundary,
+warns once per registration, and keeps it as the internal `legacyTitle`. bb
+draws that title as the fold button itself, keeps the body mounted but
+`hidden` while folded (so `:has` still sees whether the component renders
+anything), and makes an `experimental_InfoSection` inside the body render only
+its children, so a half-migrated plugin shows one title. `ThreadContextCard` sits in
 `ThreadScreen`'s scroll overlay, sibling to the scroll viewport, and measures
 the overlay: `gutter` when the card fits beside the 760px transcript column,
 `shift` when padding the scroll content by the card's width keeps the column
@@ -3446,7 +3461,9 @@ card row or section hides itself in `useVisible` while the kind is `card`.
 (related group) are `CORE_THREAD_CONTEXT_CARD_ROWS` and
 `CORE_THREAD_CONTEXT_CARD_SECTIONS` in
 `apps/app/src/views/thread-detail/ThreadContextCardCore.tsx`, drawn with
-`ThreadContextCardRow`, the component behind `experimental_ThreadContextCardRow`.
+`ThreadContextCardRow`, the component behind `experimental_ThreadContextCardRow`,
+and the section with `SurfaceInfoSection`, the component behind
+`experimental_InfoSection`.
 bb's parent segment hides through `useThreadContextKind`, the function behind
 `experimental_useThreadContextKind`. The Git plugin registers its `changes`
 row (full `+N −M` counts; it opens the Diff tab, where the merge base is
@@ -3457,8 +3474,9 @@ and marks it ready or draft, at the card's width, flush with its edges); both
 hide their segments with `experimental_useThreadContextKind`. A row's `action`
 replaces its `trailing` while the row is hovered or focused or the action's
 menu is open, and always shows on touch screens. Contract tests:
-`PluginThreadContextCard.test.tsx` and
-`ThreadPromptContextBanner.segments.test.tsx`.
+`PluginThreadContextCard.test.tsx` (one table run against both section
+styles), `plugin-app-thread-context-card-section.test.ts` (the legacy `title`)
+and `ThreadPromptContextBanner.segments.test.tsx`.
 
 Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 `frontend-hooks-and-ui.md`, `frontend-components.md`, `docs/configuration.md`
@@ -3484,8 +3502,11 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 7. **Folding.** Sections start open and the person folds the ones they don't
    need. Decide whether a folded section needs a one-line summary beside its
    title, and whether a section that needs the person (a pending question) may
-   unfold itself. The body stays mounted while folded, so a plugin's
+   unfold itself. The section's component stays mounted while folded, so its
    subscriptions run for every card, open or not.
+8. **Legacy titles.** Once no maintained plugin registers a card section with
+   `title`, delete `legacyTitle`, `readLegacyCardSectionTitle`,
+   `LegacyThreadContextCardSection` and its mounted-while-folded body.
 
 ## `app.slots.experimental_threadHeaderRow` (`@get-bb/plugin-sdk/app`)
 

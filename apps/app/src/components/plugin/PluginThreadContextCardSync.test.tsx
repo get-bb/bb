@@ -19,6 +19,7 @@ import {
   ThreadContextCardProvider,
   type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
+import { SurfaceInfoSection } from "./ThreadContextCardSection";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -45,10 +46,13 @@ const COLLAPSED_SECTIONS: UiPreferenceKey =
 const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   {
     id: "childThreads",
-    title: "Child threads",
     group: "1_related",
     order: 10,
-    component: () => <p>Core children</p>,
+    component: () => (
+      <SurfaceInfoSection label="Child threads">
+        <p>Core children</p>
+      </SurfaceInfoSection>
+    ),
   },
 ];
 
