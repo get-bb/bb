@@ -1,3 +1,5 @@
+/// <reference types="node" />
+import { threadCpuUsage } from "node:process";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   ApprovalPendingInteractionResolution,
@@ -3237,6 +3239,92 @@ describe("buildThreadTimelineFromEvents", () => {
       path: "src/old.ts",
       movePath: "src/new.ts",
     });
+  });
+
+  it("matches each later file change to the earliest unclaimed row sharing a path", () => {
+    const update = (path: string, movePath?: string): ThreadEventFileChange =>
+      movePath === undefined
+        ? { path, kind: "update" }
+        : { path, kind: "update", movePath };
+    const turnStarted = turnStartedEvent({ seq: 0 });
+    const startedEvent = fileChangeItemEvent({
+      changes: [update("a.ts"), update("a.ts"), update("b.ts"), update("c.ts")],
+      seq: 1,
+      type: "item/started",
+    });
+    const initialIds = collectFileChangeRows(
+      buildTimelineRows([turnStarted, startedEvent]),
+    ).map((row) => row.id);
+    const finalRows = collectFileChangeRows(
+      buildTimelineRows([
+        turnStarted,
+        startedEvent,
+        fileChangeItemEvent({
+          changes: [
+            update("c.ts", "a.ts"),
+            update("b.ts"),
+            update("a.ts"),
+            update("d.ts"),
+          ],
+          seq: 2,
+          type: "item/completed",
+        }),
+      ]),
+    );
+
+    const finalIds = finalRows.map((row) => row.id);
+    expect(finalIds.slice(0, 3)).toEqual([
+      initialIds[0],
+      initialIds[2],
+      initialIds[1],
+    ]);
+    expect(initialIds).not.toContain(finalIds[3]);
+    expect(finalIds).toHaveLength(4);
+  });
+
+  it("matches a large file change's rows in time linear in its file count", () => {
+    const changes = (count: number): ThreadEventFileChange[] =>
+      Array.from({ length: count }, (_, index) => ({
+        path: `src/file-${index}.ts`,
+        kind: "update",
+      }));
+    const cpuUsToBuild = (count: number): number => {
+      const events = [
+        turnStartedEvent({ seq: 0 }),
+        fileChangeItemEvent({
+          changes: changes(count),
+          seq: 1,
+          type: "item/started",
+        }),
+        fileChangeItemEvent({
+          changes: changes(count).reverse(),
+          seq: 2,
+          type: "item/completed",
+        }),
+      ];
+      expect(collectFileChangeRows(buildTimelineRows(events))).toHaveLength(
+        count,
+      );
+      let fastest = Number.POSITIVE_INFINITY;
+      for (let sample = 0; sample < 3; sample += 1) {
+        const started = threadCpuUsage();
+        let builds = 0;
+        let elapsedCpuUs = 0;
+        do {
+          buildTimelineRows(events);
+          builds += 1;
+          const cpu = threadCpuUsage(started);
+          elapsedCpuUs = cpu.user + cpu.system;
+        } while (elapsedCpuUs < 100_000);
+        fastest = Math.min(fastest, elapsedCpuUs / builds);
+      }
+      return fastest;
+    };
+
+    const smallCpuUs = cpuUsToBuild(500);
+    const largeCpuUs = cpuUsToBuild(4000);
+
+    expect(largeCpuUs).toBeLessThan(smallCpuUs * 24);
   });
 
   it("relativizes absolute file-change paths against the workspace root", () => {

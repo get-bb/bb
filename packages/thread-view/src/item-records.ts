@@ -413,13 +413,39 @@ function matchFileRows(
 ): void {
   const used = new Set<number>();
   const identityCounts = new Map<string, number>();
+  const rowsByKey = new Map<string, { indexes: number[]; next: number }>();
+  record.fileRows.forEach((row, index) => {
+    for (const key of new Set(row.matchKeys)) {
+      const rows = rowsByKey.get(key);
+      if (rows === undefined) {
+        rowsByKey.set(key, { indexes: [index], next: 0 });
+      } else {
+        rows.indexes.push(index);
+      }
+    }
+  });
+  const firstUnusedRowIndex = (key: string): number => {
+    const rows = rowsByKey.get(key);
+    if (rows === undefined) {
+      return -1;
+    }
+    while (
+      rows.next < rows.indexes.length &&
+      used.has(rows.indexes[rows.next]!)
+    ) {
+      rows.next += 1;
+    }
+    return rows.indexes[rows.next] ?? -1;
+  };
   record.fileRowIndexes = item.changes.map((change) => {
     const matchKeys = fileChangeMatchKeys(change);
-    const existing = record.fileRows.findIndex(
-      (row, index) =>
-        !used.has(index) &&
-        row.matchKeys.some((key) => matchKeys.includes(key)),
-    );
+    let existing = -1;
+    for (const key of matchKeys) {
+      const index = firstUnusedRowIndex(key);
+      if (index !== -1 && (existing === -1 || index < existing)) {
+        existing = index;
+      }
+    }
     if (existing !== -1) {
       used.add(existing);
       const row = record.fileRows[existing]!;
