@@ -99,11 +99,12 @@ function sessionCookie(response: Response): string {
 describe("who may reach the API", () => {
   it("refuses a LAN peer without a credential, even when it claims a gate verdict", async () => {
     const target = await createHarness();
-    for (const headers of [
+    const forged: Record<string, string>[] = [
       {},
       { "x-bb-gate-auth": "session" },
       { "x-bb-gate-auth": "machine", "x-bb-gate-machine-id": "m1" },
-    ]) {
+    ];
+    for (const headers of forged) {
       const response = await send(target, "/api/v1/projects", {
         peer: LAN_PEER,
         headers,
@@ -116,7 +117,7 @@ describe("who may reach the API", () => {
     );
     const shell = await send(target, "/", { peer: LAN_PEER });
     const html = await shell.text();
-    expect(html).toContain('id="bb-access"');
+    expect(html).toContain('{"authenticated":false}');
     expect(html).not.toContain('id="bb-plugin-list"');
   });
 
@@ -159,7 +160,11 @@ describe("who may reach the API", () => {
 
   it("lets the server machine in with no setup, including the dev proxy's forwarded headers", async () => {
     const target = await createHarness();
-    for (const request of [
+    const local: {
+      peer: string;
+      host: string;
+      headers: Record<string, string>;
+    }[] = [
       { peer: "127.0.0.1", host: "127.0.0.1:3334", headers: {} },
       { peer: "::ffff:127.0.0.1", host: "localhost:3334", headers: {} },
       {
@@ -171,7 +176,8 @@ describe("who may reach the API", () => {
           "x-forwarded-proto": "http",
         },
       },
-    ]) {
+    ];
+    for (const request of local) {
       const response = await send(target, "/api/v1/projects", request);
       expect(response.status, JSON.stringify(request)).toBe(200);
     }
@@ -296,7 +302,9 @@ describe("pairing", () => {
       peer: LAN_PEER,
       headers: { cookie },
     });
-    expect(await shell.text()).toContain('id="bb-plugin-list"');
+    const signedInHtml = await shell.text();
+    expect(signedInHtml).toContain('{"authenticated":true}');
+    expect(signedInHtml).toContain('id="bb-plugin-list"');
 
     const replay = await send(target, "/api/v1/access/pairings/redeem", {
       peer: LAN_PEER,

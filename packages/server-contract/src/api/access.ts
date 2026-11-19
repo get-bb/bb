@@ -4,7 +4,7 @@ import { z } from "zod";
 export const APP_SHELL_ACCESS_ELEMENT_ID = "bb-access";
 
 export const appShellAccessStateSchema = z
-  .object({ authenticated: z.literal(false) })
+  .object({ authenticated: z.boolean() })
   .strict();
 export type AppShellAccessState = z.infer<typeof appShellAccessStateSchema>;
 

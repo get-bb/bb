@@ -1102,15 +1102,18 @@ export function createApp(
   );
 
   if (options?.staticDir) {
-    registerStaticAppRoutes(app, options.staticDir, (context) =>
-      isAuthenticatedAccess(getRequestAccess(context))
-        ? renderJsonScriptElement(APP_SHELL_PLUGIN_LIST_ELEMENT_ID, {
-            plugins: pluginService.list(),
-          } satisfies PluginListResponse)
-        : renderJsonScriptElement(APP_SHELL_ACCESS_ELEMENT_ID, {
-            authenticated: false,
-          } satisfies AppShellAccessState),
-    );
+    registerStaticAppRoutes(app, options.staticDir, (context) => {
+      const authenticated = isAuthenticatedAccess(getRequestAccess(context));
+      const accessState = renderJsonScriptElement(APP_SHELL_ACCESS_ELEMENT_ID, {
+        authenticated,
+      } satisfies AppShellAccessState);
+      return authenticated
+        ? `${accessState}${renderJsonScriptElement(
+            APP_SHELL_PLUGIN_LIST_ELEMENT_ID,
+            { plugins: pluginService.list() } satisfies PluginListResponse,
+          )}`
+        : accessState;
+    });
   } else {
     app.get("/", (context) => context.text("bb server"));
   }
