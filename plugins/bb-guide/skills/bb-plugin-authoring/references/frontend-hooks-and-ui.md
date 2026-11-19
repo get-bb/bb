@@ -209,8 +209,7 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer, ...callback context })` (see
-  [Callback context](#callback-context)). `plusMenu` rows also appear in the sent-message
+  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows also appear in the sent-message
   editor (scope `thread`), where the other customizations do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
@@ -222,8 +221,7 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   `plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
   `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
   A composer command is listed and rebindable like any plugin command and shares
-  the `app.commands` ID namespace, but `run` receives `composer` (beside the
-  [callback context](#callback-context)) for the
+  the `app.commands` ID namespace, but `run` receives `composer` (beside the [callback context](#callback-context)) for the
   composer that handles it, through the same path as bb's own "Focus composer"
   command: the composer holding the caret, or with the caret outside every
   composer, the focused pane's primary composer. Its shortcut is inactive while
@@ -330,20 +328,16 @@ compile in plugin builds.
 
 ## Callback context
 
-Callbacks run outside your components, so they cannot call hooks. Every
-callback's context therefore extends `ExperimentalPluginActionContext`
-`{ sdk, navigate, panel }`: your `useSdk()` client, your
-`useBbNavigate()`, and the [panel controller](#panel-controller) of the
-surface that invoked it. This covers `app.commands` (and `isAvailable`),
-`messageAction`, `experimental_threadAction`'s `item` and
-`experimental_bulkItem`, action tabs' and
-`experimental_newThreadPanelAction`'s `run`, sidebar footer actions,
-composer commands, and `plusMenu`/`sendMenu` rows. `navigate` and
-`panel` act on the focused surface for commands, thread actions
-and sidebar footer actions; on the thread view that showed the message for
-message actions; on the launching surface for panel actions; and on the
-surface showing the composer for composer callbacks.
-Experimental: see `docs/api_to_audit.md`.
+Callbacks run outside your components and cannot call hooks, so every callback's
+context extends `ExperimentalPluginActionContext` `{ sdk, navigate, panel }`: your
+`useSdk()`, your `useBbNavigate()`, and the [panel controller](#panel-controller)
+of the surface that invoked it. That covers `app.commands`, `messageAction`,
+`experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
+sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
+`navigate` and `panel` act on the focused surface for commands, thread actions
+and footer actions; on the message's thread view for message actions; on the
+launching surface for panel actions; and on the composer's surface for composer
+callbacks. Experimental: see `docs/api_to_audit.md`.
 
 ## Panel controller
 
