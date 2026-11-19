@@ -92,6 +92,11 @@ account, so a plan upgrade or an early reset takes effect on the next turn. Use
 For an OAuth account in error, `refresh` also forces a new token with the stored
 refresh token and clears the error when that succeeds, so a spurious error does
 not require logging in again.
+When a usage request fails (an HTTP error, a response that cannot be read, or a
+network error), the account keeps its last reading and its observation time.
+The failure does not affect routing. The plugin log gets one warning per
+account and failure reason. Provider usage shows the failure on that account
+until a refresh succeeds, and `refresh` exits with `usage_refresh_failed`.
 When the token endpoint rejects an OAuth refresh token (HTTP 400 or 401), the
 pool stores a SHA-256 fingerprint of that token, never sends it again on its
 own, even after a restart, and keeps serving the stored access token. The

@@ -42,6 +42,12 @@ const oauthErrorSchema = z.object({
 
 export class OAuthRefreshError extends Error {}
 
+export const UNREADABLE_USAGE_MESSAGE = "the usage response could not be read";
+
+export function usageStatusMessage(status: number): string {
+  return `the usage endpoint returned HTTP ${status}`;
+}
+
 export class TransientOAuthRefreshError extends OAuthRefreshError {
   constructor(
     message: string,

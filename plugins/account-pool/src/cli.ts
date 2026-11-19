@@ -640,6 +640,13 @@ export function registerPoolCli(
                 code: "account_not_found",
               });
             }
+            const failure = operations.usageRefreshFailure(id);
+            if (account.error === null && failure !== null) {
+              throw new PluginCliError(
+                `Could not refresh usage for ${id}: ${failure}.`,
+                { code: "usage_refresh_failed" },
+              );
+            }
             return {
               exitCode: 0,
               stdout: input.options.json
