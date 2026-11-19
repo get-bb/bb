@@ -164,6 +164,22 @@ function dirname(value: string): string {
   return index < 0 ? "" : value.slice(0, index);
 }
 
+function documentLinkPath(notePath: string, href: string): string | null {
+  if (/^(?:[a-z][a-z0-9+.-]*:|[\/#?])/i.test(href) || href.includes("\\"))
+    return null;
+  try {
+    const target = new URL(
+      href,
+      `https://docs.invalid/${encodePath(notePath)}`,
+    );
+    if (target.search || target.hash) return null;
+    const path = decodeURIComponent(target.pathname.slice(1));
+    return /\.(md|mdx|markdown)$/i.test(path) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeRelative(base: string, relative: string): string {
   if (!relative.startsWith(".")) return relative.replace(/^\//, "");
   const stack = base ? base.split("/") : [];
@@ -439,12 +455,16 @@ function TiptapEditor(props: {
   notePath: string;
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onMarkdownChange(markdown: string): void;
+  onOpenDocument?(path: string): void;
   value: string;
   baseMarkdown?: string | null;
   inline?: boolean;
   disabled?: boolean;
   active?: boolean;
 }) {
+  const navigate = useBbNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const {
     previewBaseUrl,
     notePath,
@@ -550,6 +570,26 @@ function TiptapEditor(props: {
           role: "textbox",
           "aria-label": "Document content",
           "aria-multiline": "true",
+        },
+        handleDOMEvents: {
+          click(_view, event) {
+            if (event.button !== 0 || !(event.target instanceof Element))
+              return false;
+            const href = event.target.closest("a[href]")?.getAttribute("href");
+            if (!href) return false;
+            if (
+              /^https?:\/\//i.test(href) &&
+              navigateRef.current.openUrl(href)
+            ) {
+              event.preventDefault();
+              return true;
+            }
+            const path = documentLinkPath(latest.current.notePath, href);
+            if (path === null || !latest.current.onOpenDocument) return false;
+            event.preventDefault();
+            latest.current.onOpenDocument(path);
+            return true;
+          },
         },
         handleKeyDown(view, event) {
           if (!inline || !isNonImeKey(event, "Escape")) return false;
@@ -1226,6 +1266,11 @@ function InlineDocument({
                 )}
                 <TiptapEditor
                   value={state.draft}
+                  onOpenDocument={(path) =>
+                    navigate.toPluginPanel("docs", {
+                      subPath: `${document.vaultId}/${path}`,
+                    })
+                  }
                   baseMarkdown={pending?.baseContent ?? null}
                   inline
                   disabled={state.busy || state.missing || truncated}
@@ -1423,6 +1468,7 @@ function SavedDocumentEditor({
   session,
   onUpload,
   onSaveCopy,
+  onOpenDocument,
   errorHint = "",
   active = true,
 }: {
@@ -1430,6 +1476,7 @@ function SavedDocumentEditor({
   session: DocumentSession;
   onUpload(file: File): Promise<{ markdownPath: string }>;
   onSaveCopy?(): void;
+  onOpenDocument?(path: string): void;
   errorHint?: string;
   active?: boolean;
 }) {
@@ -1455,6 +1502,7 @@ function SavedDocumentEditor({
       />
       <TiptapEditor
         value={state.draft}
+        onOpenDocument={onOpenDocument}
         active={active}
         disabled={state.busy || state.missing}
         previewBaseUrl={state.base?.previewBaseUrl ?? ""}
@@ -1510,6 +1558,7 @@ function NotePane({
       state={state}
       session={session}
       active={active}
+      onOpenDocument={onOpen}
       onSaveCopy={() =>
         void saveCopy().then((created) => {
           if (created !== null) onOpen(created);
