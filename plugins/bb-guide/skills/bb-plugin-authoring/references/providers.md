@@ -131,10 +131,15 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
 ```
 
 The server calls the resolver for every matching start, resume, fork, and turn
-command, and when it lists the provider's models on a host. Its
-`ExperimentalPluginProviderEnvContext` has `threadId`, `projectId`, and
-`hostId`; `threadId` and `projectId` are `null` for model listing, which serves
-no thread. Return at most 32 `ExperimentalPluginProviderEnvEntry` values.
+command, and when it lists the provider's models or commands, checks its
+health or installation, or runs an install or update on a host. Its `ExperimentalPluginProviderEnvContext` has
+`threadId`, `projectId`, and `hostId`; `threadId` and `projectId` are `null`
+for these host-scoped requests, which serve no thread.
+First-party bridges start their CLI with these values, so a contributed
+executable path or home directory (`BB_CLAUDE_CODE_EXECUTABLE`,
+`BB_CODEX_BRIDGE_APP_SERVER_COMMAND`, `CODEX_HOME`, `BB_PI_BRIDGE_COMMAND`)
+selects the CLI that threads, the model picker, and the installation status
+all use. Return at most 32 `ExperimentalPluginProviderEnvEntry` values.
 Names must match `[A-Z_][A-Z0-9_]*`; `reason` is required. A
 literal `value` is forwarded as-is. `{ serverPath: "/..." }` is expanded by
 the selected host against its authenticated `BB_SERVER_URL`, which is the
@@ -224,7 +229,13 @@ Implement, following `docs/provider-bridge-protocol.md`:
 
 The bridge package also exports helpers for JSON-RPC transport, child process
 and environment setup, installation and version checks, tool presentation,
-bounded output, and recording. Launch the provider CLI by name with
+bounded output, and recording. Build every provider CLI's environment with
+`experimental_buildProviderCliEnv(envVars)`: the bridge's own environment
+without bridge-only runtime variables, plus the request's `envVars` (thread
+identity, `BB_*`, and plugin contributions). Pass the same env to the launch
+lookup and to the maintenance probes (`experimental_resolveExecutablePath`,
+`experimental_readCliVersion`, `experimental_commandOutput`, which take it as
+an optional last argument and otherwise use the bridge's own environment). Launch the provider CLI by name with
 `experimental_spawnPortableProcess` (it resolves `PATH`/`PATHEXT` and npm
 `.cmd` shims on Windows) and end it with `experimental_killPortableProcess`
 (it terminates the whole process tree on Windows). Read

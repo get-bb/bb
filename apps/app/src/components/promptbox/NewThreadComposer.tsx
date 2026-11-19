@@ -107,6 +107,7 @@ import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import type { CommandSuggestionSource } from "@/hooks/useCommandSuggestions";
 import {
+  sendPromptDraft,
   usePromptDraftController,
   usePromptDraftInputEmpty,
   type PromptDraftController,
@@ -750,14 +751,14 @@ async function submitNewThreadRequest({
   isSubmittingRef.current = true;
   setIsSubmitting(true);
   setAttachmentError(null);
-  const clearedSubmittedDraft =
-    promptDraft.clearIfCurrentMatches(submittedDraft);
   recordTelemetryEvent({
     name: "new_thread_submit",
     properties: { outcome: "started" },
   });
   try {
-    await onSubmit(request);
+    await sendPromptDraft(promptDraft, submittedDraft, async () => {
+      await onSubmit(request);
+    });
     recordTelemetryEvent({
       name: "new_thread_submit",
       properties: { outcome: "accepted" },
@@ -771,9 +772,6 @@ async function submitNewThreadRequest({
         failure_reason: operationFailureReason(submitError),
       },
     });
-    if (clearedSubmittedDraft) {
-      promptDraft.restoreIfEmpty(submittedDraft);
-    }
     throw submitError;
   } finally {
     isSubmittingRef.current = false;
@@ -1672,7 +1670,7 @@ export function NewThreadComposer({
   );
 
   const initialPromptDraft = useInitialPromptDraft(seed?.initialPrompt ?? null);
-  const seedInitialPrompt = promptDraft.restoreIfEmpty;
+  const seedInitialPrompt = promptDraft.seedIfEmpty;
   const focusPromptBox = useCallback(() => {
     setLocalPromptBoxFocusRequest((current) => (current ?? 0) + 1);
   }, []);

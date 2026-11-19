@@ -5,6 +5,7 @@ import {
   type HostDaemonOnlineRpcResponseMessage,
   type HostDaemonOnlineRpcResult,
   type HostDaemonRpcResultForCommand,
+  type HostDaemonServerWsMessage,
 } from "@bb/host-daemon-contract";
 import type { AvailableModel } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
@@ -61,6 +62,12 @@ export interface RegisterHostRpcResponderArgs {
   handle: (
     request: HostDaemonOnlineRpcRequestMessage,
   ) => HostRpcHandlerResult | Promise<HostRpcHandlerResult>;
+  onMachineEnvironment?: (
+    message: Extract<
+      HostDaemonServerWsMessage,
+      { type: "machine-environment.replace" }
+    >,
+  ) => void;
   hostId: string;
   sessionId: string;
   restoreCommandCaptureAfterResponse?: boolean;
@@ -147,6 +154,13 @@ export function registerHostRpcResponder(
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
       if (message.type === "provider-session-policy.replace") return;
+      if (
+        message.type === "machine-environment.replace" &&
+        args.onMachineEnvironment
+      ) {
+        args.onMachineEnvironment(message);
+        return;
+      }
       if (message.type !== "host-rpc.request") {
         throw new Error(`Unexpected daemon websocket message ${message.type}`);
       }

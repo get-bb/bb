@@ -1878,6 +1878,77 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("leaves a withdrawn approval's item for the provider to settle", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-withdrawn",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const writes = () =>
+        harness.db
+          .select()
+          .from(eventTable)
+          .where(eq(eventTable.threadId, thread.id))
+          .orderBy(eventTable.sequence)
+          .all()
+          .filter(
+            (row) =>
+              row.type === "system/interaction/lifecycle" ||
+              row.type.startsWith("item/"),
+          )
+          .map((row) => row.type);
+      const request = {
+        threadId: thread.id,
+        turnId: "turn-withdrawn",
+        providerId: "codex",
+        providerThreadId: "provider-thread-withdrawn",
+        providerRequestId: "request-withdrawn",
+      };
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          ...request,
+          payload: createCommandApprovalPayload({ itemId: "item-withdrawn" }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${created.reason}`);
+      }
+
+      const withdrawn =
+        harness.deps.pendingInteractions.interruptWithdrawnProviderRequest({
+          ...request,
+          reason: "The agent stopped waiting for this answer",
+        });
+
+      expect(withdrawn).toMatchObject({
+        id: created.interaction.id,
+        status: "interrupted",
+      });
+      expect(writes()).toEqual([
+        "system/interaction/lifecycle",
+        "item/started",
+        "system/interaction/lifecycle",
+      ]);
+      expect(
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("carries a provider's plugin-defined request to the plugin form and its answer back as a request answer", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

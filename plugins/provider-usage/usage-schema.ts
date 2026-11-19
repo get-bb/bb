@@ -44,6 +44,7 @@ export const usageProviderSchema = z.strictObject({
   strings: z.strictObject({ iconTint: z.nullable(iconTintSchema) }),
   signInHint: nonemptyStringSchema,
   expiredHint: nonemptyStringSchema,
+  refreshError: z.optional(nonemptyStringSchema),
   usage: z.nullable(providerUsageSchema),
 });
 

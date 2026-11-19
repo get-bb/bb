@@ -27,6 +27,7 @@ import {
   PluginCard,
 } from "@/components/plugin/management/PluginCard";
 import { CatalogEntryIconChip } from "@/components/plugin/management/plugin-ui";
+import { terminalOutputToPlainText } from "@bb/text-utils";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -36,7 +37,6 @@ import {
 import {
   ONBOARDING_STEPS,
   signInSiteName,
-  stripTerminalSequences,
   type AgentSetupState,
   type AgentSignInView,
   type OnboardingStepId,
@@ -837,7 +837,7 @@ export function OnboardingPluginCard({
 
 export function AgentInstallErrorDetails({ log }: { log: string }) {
   const [open, setOpen] = useState(false);
-  const text = stripTerminalSequences(log);
+  const text = terminalOutputToPlainText(log);
   if (text.trim().length === 0) return null;
   return (
     <div className="mt-3">

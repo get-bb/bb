@@ -18,8 +18,10 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
 
   bb plugin search <query>       Search the store: the bundled official
                                  plugins plus every registered marketplace.
-                                 Matches id, name, description, category, or
-                                 tag; status shows installed, compatible,
+                                 Matches id, name, description, category,
+                                 marketplace, or tag; entries with the same id
+                                 and source in several marketplaces share one
+                                 row. Status shows installed, compatible,
                                  requires newer bb, or `id in use by <source>`
   bb plugin install <entry>      Install an official plugin by name (docs,
                                  memory, tasks, github, ...),
@@ -67,7 +69,8 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
   bb plugin enable|disable <id>  Load or unload an installed plugin. A
                                  builtin you never toggled follows bb's
                                  default; an explicit choice persists across
-                                 releases
+                                 releases. Enable exits 1 with the load error
+                                 when the plugin does not start
   bb plugin safe-mode [on|off]   Show or change safe mode. `on` stops every
                                  plugin you installed (official store plugins
                                  included) without changing its enabled
@@ -267,8 +270,14 @@ specific marketplace with <entry-id>@<marketplace>:
 
   bb plugin install thread-hover-cards@acme-plugins
 
-A bare id resolves across every marketplace: one match installs, several
-matches fail and list the id@marketplace choices. Other source forms bypass
+A bare id resolves across every marketplace: one match installs, and several
+matches with the same source (normalized Git URL and subdirectory, or npm
+package and registry) install from the highest-ranked marketplace (bundled,
+then bb-community, then the rest by name), using its ref or version range.
+Matches with different sources fail and list the id@marketplace choices. A
+plugin installed from any of those same-source listings counts as installed
+for all of them, and the store shows one listing with a picker for which
+marketplace to install from. Other source forms bypass
 catalog resolution. Before installing from a third-party marketplace, bb shows
 the marketplace, the entry's author, and the true source, including the exact
 release tag and commit a range lands on. `--yes` skips the prompt, not the

@@ -151,6 +151,12 @@ resolved with a `null` thread and project and expanded like a session's
 `options.envVars`. A bridge whose catalog depends on credentials or routing,
 such as Codex behind the Account Pooler, launches its listing process with
 these values so the picker matches what new threads can use.
+`commands/list`, `provider/health`, and `provider/installation/*` carry the
+same host-scoped `envVars`, so a contributed executable such as
+`BB_CLAUDE_CODE_EXECUTABLE` is the one bb lists commands from, reports as
+installed, and updates. `provider/usage` carries no `envVars`: it reports the
+machine's own sign-in, which routing env such as the Account Pooler's would
+replace.
 
 Still experimental on the declaration (see api_to_audit.md):
 
@@ -271,8 +277,8 @@ bridge published as `bb/session-options`
 
 **Bridge → runtime**: notifications `thread/delta` (one streaming dialect, one
 usage dialect), `thread/identity`, `session/replaced`, `provider/recovery`,
-`provider/raw`, and `error`, plus the request channels `item/tool/call` and
-`interaction/request`.
+`provider/raw`, `notifications/cancelled`, and `error`, plus the request
+channels `item/tool/call` and `interaction/request`.
 
 Recovery is typed, never text-matched:
 
@@ -422,10 +428,31 @@ back as `{ kind: "request_answer", value }` — the form's submitted value,
 capped at 64 KiB (`PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES`, the same cap on the
 request's `data`). The server accepts a request only while the plugin named
 by the prefix is loaded; a request for an unknown plugin is refused with an
-error the bridge sees. A provider's request has no cancel; backing out stops
-the turn, as with a provider's question. `value` is untrusted input to the
+error the bridge sees. The user cannot cancel a provider's request; backing out
+stops the turn, as with a provider's question. When the provider stops waiting
+on its own (a hook answered it, it timed out, or the provider resolved it), the
+bridge sends `notifications/cancelled` (`BRIDGE_NOTIFICATION_METHODS.requestCancelled`)
+with `{ requestId }`, the JSON-RPC id of its `interaction/request`, and
+does not expect a response. bb closes the card as interrupted, and the next
+queued message can dispatch. `value` is untrusted input to the
 bridge: no form schema exists for the server to validate it against, so a
 bridge parses it as it would any client-supplied JSON.
+
+**Answering without the user.** Sometimes a bridge must answer the provider
+with something the user did not choose: it cannot show the request, the
+runtime answers `interaction/request` with an error (bb stopped waiting), the
+resolution does not parse, the answer does not fit the provider's question,
+or the bridge withdraws a question it can no longer deliver. Every such answer
+sends the `provider.warning` delta that
+`experimental_unansweredInteractionWarning({ cause, answer })` builds, whatever
+the provider receives. A JSON-RPC error alone is not enough, because some
+providers report an error to the model as the user declining. Answer with the
+protocol's error where it has one, carrying
+`experimental_unansweredInteractionErrorMessage(cause)`, and with its cancel
+otherwise. A stopped turn needs no warning: the server marks the open question
+interrupted with the stop's reason. `src/contract-tests/unanswered-interactions.test.ts`
+in `@bb/provider-bridge-protocol` runs every first-party bridge through each
+case, one row per question kind the bridge routes.
 
 ## 5. Projection and rendering
 

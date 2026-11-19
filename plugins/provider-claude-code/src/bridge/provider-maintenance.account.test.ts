@@ -28,6 +28,8 @@ vi.mock("node:fs/promises", () => ({
         JSON.stringify({
           oauthAccount: {
             accountUuid: "4f6c1d2e-8a9b-4c3d-9e1f-2a3b4c5d6e7f",
+            organizationType: "claude_pro",
+            organizationRateLimitTier: "default_claude_ai",
           },
         }),
       );
@@ -50,7 +52,7 @@ import {
 
 const signedIn: AccountInfo = {
   email: "claude@example.com",
-  subscriptionType: "Claude Ultra",
+  subscriptionType: "max",
   apiProvider: "firstParty",
 };
 const signedOut: AccountInfo = {
@@ -79,13 +81,13 @@ describe("Claude Code account status", () => {
     const profile = path.resolve("/profiles/work");
     vi.stubEnv("CLAUDE_CONFIG_DIR", profile);
 
-    expect(await getClaudeProviderUsage()).toEqual({
+    expect(await getClaudeProviderUsage(process.env)).toEqual({
       supported: true,
       usage: {
         status: "ok",
         accountEmail: "claude@example.com",
-        planLabel: "Ultra",
-        plan: { id: "ultra", multiplier: null },
+        planLabel: "Pro",
+        plan: { id: "pro", multiplier: null },
         windows: [
           {
             kind: "five-hour",
@@ -112,7 +114,7 @@ describe("Claude Code account status", () => {
         rate_limits: null,
       };
 
-      expect(await getClaudeProviderUsage()).toEqual({
+      expect(await getClaudeProviderUsage(process.env)).toEqual({
         supported: true,
         usage: { status: "unauthenticated" },
       });
@@ -120,16 +122,16 @@ describe("Claude Code account status", () => {
   );
 
   it("reports health from the account Claude Code signs in with", async () => {
-    expect(await getClaudeProviderHealth()).toMatchObject({
+    expect(await getClaudeProviderHealth(process.env)).toMatchObject({
       health: {
         status: "ready",
         accountEmail: "claude@example.com",
-        planLabel: "Ultra",
+        planLabel: "Pro",
       },
     });
 
     state.account = signedOut;
-    expect(await getClaudeProviderHealth()).toMatchObject({
+    expect(await getClaudeProviderHealth(process.env)).toMatchObject({
       health: { status: "unauthenticated", accountEmail: null },
     });
   });

@@ -45,7 +45,7 @@ does not prove reachability.
   bb machine reconcile <id-or-name>       Reconcile compute with core’s recorded state
   bb machine suspend <id-or-name>         Suspend a provider-managed machine
   bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
-  bb machine retry-cleanup <id-or-name>   Retry failed teardown now
+  bb machine retry-cleanup <id-or-name>   Retry failed teardown now with a fresh retry budget
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
     --force                               Finish removing a disconnected machine whose
                                           environment cleanup failed; the provider's
@@ -91,8 +91,22 @@ environment setup. `bb machine reconcile` / `hosts.experimental_reconcile` is an
 explicit request, not a timer: for a machine core records as suspended, it runs
 the provider's save-and-stop operation, and the CLI polls until completion.
 Active machines and lifecycle operations already in progress are left alone.
-Retry cleanup is accepted only for a retiring machine whose provider teardown
-failed. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
+Failed provider teardown retries after 1, 2, 4, and 8 minutes. After five
+failed attempts the machine needs recovery: its lifecycle message starts with
+"Needs recovery", `lifecycle.teardown.needsRecovery` is true, `bb machine list`
+prints a retry-cleanup hint, and teardown keeps retrying once an hour so an
+orphaned cloud machine is still deleted. A machine waiting on an environment
+whose cleanup needs recovery also needs recovery: it shows that environment's
+message, `lifecycle.teardown.blockedByEnvironmentId` names the environment, and
+`bb machine list` tells you to run `bb environment cleanup <id> --recover`. Retry cleanup is
+accepted only for a retiring machine whose provider teardown failed; it resets
+the five-attempt budget and retries now. `bb machine remove` and
+`bb machine retry-cleanup` (`hosts.delete`, `hosts.experimental_retryCleanup`)
+answer `progress: "complete"` once the machine is gone and `"in-progress"` while
+teardown is still running; both exit 0. When the provider teardown or
+environment cleanup fails they fail with `machine_teardown_failed` (HTTP 502)
+and exit non-zero; the machine stays removing and bb keeps retrying the
+teardown on that schedule. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
 finishes removing a persistent machine that is disconnected and whose
 environment cleanup failed, for example because the computer no longer exists:
 it marks the machine's environments destroyed without running their teardown on
@@ -114,6 +128,22 @@ under the selected data directory. Startup errors, crashes, and other output
 that bypasses the logger are appended to `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log`; a file over 10 MB is renamed to `-stdio.1.log`
 when its service starts. Follow them with `tail -F`.
+
+Server sweeps
+
+The server retries background sweep items that fail (for example an
+environment cleanup step or a retention pass) after 1, 2, 4, 8, 16, 32, and 60
+minutes. After eight failed attempts an item needs recovery: it keeps retrying
+once an hour, and the first success clears it. `bb server sweeps retry` gives it
+a fresh budget and runs it on the next sweep. Other items keep running.
+
+  bb server sweeps                        List failing sweep items and their state
+    --json                                Print machine-readable JSON output
+  bb server sweeps retry                  Run every item that needs recovery again
+    --json                                Print machine-readable JSON output
+
+SDK: `experimental_server.sweepFailures()` and
+`experimental_server.retrySweepFailures()`.
 
 Updates commands
 
@@ -145,9 +175,13 @@ CLI counterpart of Settings → Updates.
                                           for 15 minutes
   bb updates app dismiss                  Mark the last update result as seen
 
-`--when-idle`, `cancel`, and `auto on|off` need the `updateWhenIdle` experiment (on for early
-adopters; `bb settings experiment updateWhenIdle true`); while it is off they
-fail with a message naming it. `bb updates app apply --when-idle` updates at
+The sidebar update button counts provider CLI updates alongside bb and plugin
+updates. To leave them out, for example when an organization manages agent
+CLIs, turn off "Show provider CLI updates in the sidebar" on Settings → Updates
+or run `bb settings ui set sidebar.updates.providerCli false`. Settings →
+Updates and `bb updates` still list them.
+
+`bb updates app apply --when-idle` updates at
 once when no thread is running.
 Otherwise the server schedules the update and the command returns, so an agent
 can run it from its own thread; the server starts the update after every thread
@@ -164,10 +198,10 @@ until a newer one appears; you can still update to it by hand. Without
 `--when-idle` or `--yes`,
 apply asks before interrupting running threads and fails without a terminal.
 Updating restarts bb, which interrupts running threads; with the
-`resumeThreadsAfterRestart` experiment on they resume after the update, and
+`resumeThreadsAfterRestart` general setting on they resume after the update, and
 the prompt and the `threads_running` error say so.
 
-With `updateWhenIdle` on, once bb decides to restart into an update, new sends
+Once bb decides to restart into an update, new sends
 wait in the thread's queue (`sending after bb restarts to update` in
 `bb thread queue`) and go out after the restart, behind any resume; if the
 update is deferred, cancelled, or fails they go out at once.
@@ -176,7 +210,10 @@ update is deferred, cancelled, or fails they go out at once.
 that hosting app through its native updater. It never updates the desktop you
 are viewing from unless that desktop hosts this server.
 
-`bb updates apply` covers provider CLIs only. `bb updates app apply` updates
+`bb updates apply` covers provider CLIs only. It exits non-zero, with or
+without `--json`, when an install fails or a connected machine's provider
+status cannot be read; `bb machine provider-cli install` exits non-zero when
+its install fails. `bb updates app apply` updates
 bb itself when it was started from `npx bb-app` (or a global `bb-app`) without
 `--no-in-app-updates`: it installs the new version next to the running one and
 restarts into it. It does not roll back if the new version fails to start.
@@ -248,7 +285,8 @@ fresh provider availability and the effective selection; failed or timed-out
 checks report unavailable. Machines use this access for ongoing runtime
 requests, including account-pool endpoints. A machine on bb connect access holds
 a getbb.app machine credential that `bb machine remove` revokes; if that
-revocation fails, revoke the machine in the getbb.app dashboard.
+revocation fails, the machine is still removed and the response carries a
+warning (printed to stderr) to revoke the machine in the getbb.app dashboard.
 
 Remote access through getbb.app comes from the bundled bb account and Connect
 plugins: `bb account login|status|logout` signs this server in (bb-account
@@ -431,3 +469,5 @@ Git config. `bb settings general machineGitCredentialsEnabled false` (the
 automatic GH_TOKEN switch in Settings → Environment variables) stops forwarding
 the server's gh credentials; `true` enables it again. This does not log the
 server out or suppress an explicit custom GH_TOKEN.
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

@@ -31,6 +31,7 @@ import {
   TimelineTitleView,
   type TimelineTitleActionResolver,
 } from "./TimelineTitleView.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface ExpandableTimelineRowProps {
   reasoningExpansionKey?: string;
@@ -187,7 +188,7 @@ function ExpandableTimelineRowComponent({
       if (event.target !== event.currentTarget) {
         return;
       }
-      if (event.key !== "Enter" && event.key !== " ") {
+      if (!isNonImeKey(event, "Enter") && event.key !== " ") {
         return;
       }
       event.preventDefault();

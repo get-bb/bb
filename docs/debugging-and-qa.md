@@ -18,6 +18,17 @@ including updater, Connect, and startup errors. View → Local Logs is available
 on every desktop platform and when attached to an existing server; it follows
 local desktop, server, and daemon files in the selected data directory.
 
+When the renderer of any desktop window (app windows, dialogs, Local Logs,
+bb Connect sign-in, browser popups) goes away, `desktop.log` records
+`renderer gone (reason …, exit code …)` with the window title. The desktop
+reloads the page after 500 ms, 2 s and 8 s; a fourth crash within five minutes,
+or a renderer that cannot launch, shows a "This window stopped working" page
+whose Reload button (or Cmd+R in app windows) restores the crashed URL with a
+fresh retry budget. A crashed find bar is dropped and recreated on the next
+find. To reproduce, attach to the main process with
+`BB_DESKTOP_ELECTRON_ARGS="--inspect=<port>"` and call
+`webContents.forcefullyCrashRenderer()` on a window.
+
 ## Desktop Browser Tab Recovery
 
 When the desktop app connects to a BB Connect server, it installs and renews
@@ -680,13 +691,8 @@ Local machine enrollment follows the same origin: local `http:` server URLs
 produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
 enrollment remains HTTPS-only.
 
-For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
-`NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
-worker's `GATE_SECRET` (the account API answers 404 without it),
-`BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
 `BB_CLOUD_DEV_STATE_DIR` moves the local Durable Object state away from
-`.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
-see [connect-next.md](connect-next.md#local-end-to-end-run).
+`.wrangler/cloud-dev`.
 
 The AI gateway answers `503 unavailable` until an OpenRouter key is present.
 Export `OPENROUTER_API_KEY` in the shell before `pnpm cloud:dev` to pass it

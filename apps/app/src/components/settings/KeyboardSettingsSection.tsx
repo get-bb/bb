@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/settings-section";
 import { ShortcutPill } from "@bb/shared-ui/shortcut-pill";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 const SETTINGS_SHORTCUT_PILL_CLASS =
@@ -100,7 +101,7 @@ const ShortcutRecorder = memo(
       if (!recording) return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         setError(null);
         onRecordingChange(null);
         return;

@@ -19,6 +19,7 @@ import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { useSidebarReorderDnd } from "@bb/shared-ui/use-sidebar-reorder-dnd";
 import { SidebarTouchSensor } from "./sidebarTouchSensor";
 import { useSidebarSortable } from "@bb/shared-ui/sortable-motion";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const BADGE_CLASS =
   "flex size-4 cursor-pointer items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground outline-none after:absolute after:-inset-1.5 after:content-[''] hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:cursor-default disabled:opacity-40";
@@ -60,7 +61,7 @@ export function SidebarFooterCustomize({ onDone }: { onDone: () => void }) {
       className="rounded-lg bg-sidebar-accent/40 py-1"
       data-testid="sidebar-footer-customize-inline"
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented) return;
+        if (!isNonImeKey(event, "Escape") || event.defaultPrevented) return;
         event.preventDefault();
         onDone();
       }}

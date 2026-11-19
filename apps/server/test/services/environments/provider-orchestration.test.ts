@@ -1563,7 +1563,7 @@ describe("core environment orchestration", () => {
           });
           await expect(
             sdk.environments.experimental_cleanup({ environmentId }),
-          ).resolves.toEqual({ ok: true });
+          ).resolves.toEqual({ ok: true, progress: "in-progress" });
           await expect
             .poll(
               () => getEnvironment(harness.db, environmentId)?.teardownStatus,
@@ -2060,6 +2060,51 @@ it.each([false, true])(
     });
   },
 );
+
+it("fails explicit cleanup recovery whose provider removal fails again", async () => {
+  await withTestHarness(async (harness) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fixture = setup(harness, {
+      create: async () => ({
+        status: "created",
+        path: "/tmp/recover-fails",
+        ownsPath: false,
+        resource: { allocation: "retained" },
+      }),
+      remove: async () => ({
+        status: "failed",
+        message: "provider still unavailable",
+      }),
+    });
+    fixture.ask();
+    await fixture.settled();
+    await expect(
+      cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
+    ).rejects.toThrow("provider still unavailable");
+    for (let attempt = 2; attempt <= 5; attempt++) {
+      vi.setSystemTime(fixture.row().retireAt!);
+      await sweepProviderLifecycles(harness.deps);
+    }
+    expect(fixture.row().retireAt).toBeNull();
+    harness.db
+      .update(threads)
+      .set({ status: "idle", archivedAt: Date.now() })
+      .where(eq(threads.id, fixture.thread.id))
+      .run();
+
+    const response = await harness.app.request(
+      `/api/v1/environments/${fixture.row().id}/cleanup?recover=true`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      code: "environment_teardown_failed",
+      message: expect.stringContaining("provider still unavailable"),
+    });
+    expect(fixture.row()).toMatchObject({ teardownStatus: "failed" });
+  });
+});
 
 it("skips environments blocked on a foreign plugin owner until that plugin provides them again", async () => {
   await withTestHarness(async (harness) => {

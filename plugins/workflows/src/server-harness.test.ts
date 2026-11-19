@@ -1,10 +1,17 @@
+import type { PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makePluginAgentConfigurationContext,
+  makeQueueEntry,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { getCall, getRunRequired, migrations } from "./data.js";
+import {
+  getCall,
+  getCallByChildThread,
+  getRunRequired,
+  migrations,
+} from "./data.js";
 import plugin from "./server.js";
 import { createWorkflowService } from "./service.js";
 
@@ -46,37 +53,6 @@ describe("workflows plugin", () => {
     await Promise.all(hosts.map((host) => host.dispose()));
     hosts.length = 0;
   });
-
-  it.each([
-    ["workflows", "decline"],
-    ["automations", "allow"],
-    [null, "allow"],
-  ] as const)(
-    "answers provider retry consent for origin %s with %s",
-    async (originPluginId, kind) => {
-      const { bb, harness } = createFakePluginHost({
-        pluginId: "workflows",
-        sdk: {
-          threads: { get: async () => makeThreadResponse({ originPluginId }) },
-        },
-      });
-      hosts.push(harness);
-      await plugin(bb);
-      expect(
-        harness.registrations.experimental_publishedRpcMethods,
-      ).toContainEqual(
-        expect.objectContaining({ method: "provider-retry.v1.consent" }),
-      );
-      await expect(
-        harness.callRpc("provider-retry.v1.consent", {
-          threadId: "thread-1",
-          requestId: "failed-request",
-          reason: "Provider overloaded",
-          sendAt: Date.now(),
-        }),
-      ).resolves.toMatchObject({ kind });
-    },
-  );
 
   it("loads with defaults and needs-configuration when persisted settings are invalid", async () => {
     const { bb, harness } = createFakePluginHost({
@@ -356,7 +332,8 @@ describe("workflows plugin", () => {
         ],
       });
 
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-1" } as never,
         lastAssistantText: "done",
       });
@@ -579,7 +556,8 @@ describe("workflows plugin", () => {
           { threadId: "child-3", projectId: "project-test" },
         ),
       ).resolves.toMatchObject({ isError: true });
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-3" } as never,
         lastAssistantText: null,
       });
@@ -595,7 +573,8 @@ describe("workflows plugin", () => {
           mode: "auto",
         });
       });
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-3" } as never,
         lastAssistantText: "still not JSON",
       });
@@ -622,7 +601,8 @@ describe("workflows plugin", () => {
         expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(4);
       });
       for (let failure = 1; failure <= 2; failure += 1) {
-        await harness.emitThreadEvent("thread.idle", {
+        await harness.emitThreadEvent("experimental_thread.settled", {
+          outcome: "completed",
           thread: { id: "child-4" } as never,
           lastAssistantText: null,
         });
@@ -637,7 +617,8 @@ describe("workflows plugin", () => {
           ).toHaveLength(failure);
         });
       }
-      await harness.emitThreadEvent("thread.idle", {
+      await harness.emitThreadEvent("experimental_thread.settled", {
+        outcome: "completed",
         thread: { id: "child-4" } as never,
         lastAssistantText: null,
       });
@@ -750,6 +731,182 @@ describe("workflows plugin", () => {
       await worker.done;
     },
     STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS,
+  );
+
+  const SETTLED_CALLS: Record<
+    PluginThreadSettledEvent["outcome"],
+    {
+      event: (
+        thread: PluginThreadSettledEvent["thread"],
+      ) => PluginThreadSettledEvent;
+      call: Record<string, unknown>;
+      run: "succeeded" | "failed";
+    }
+  > = {
+    completed: {
+      event: (thread) => ({
+        outcome: "completed",
+        thread,
+        lastAssistantText: "worker output",
+      }),
+      call: { status: "succeeded", resultJson: '"worker output"' },
+      run: "succeeded",
+    },
+    failed: {
+      event: (thread) => ({
+        outcome: "failed",
+        thread,
+        error: "HTTP 400: stub failure",
+      }),
+      call: { status: "failed", error: "HTTP 400: stub failure" },
+      run: "failed",
+    },
+    cancelled: {
+      event: (thread) => ({
+        outcome: "cancelled",
+        thread,
+        entry: makeQueueEntry({
+          threadId: thread.id,
+          originPluginId: "workflows",
+        }),
+      }),
+      call: {
+        status: "failed",
+        error: "The workflow worker's message was deleted before it ran",
+      },
+      run: "failed",
+    },
+    archived: {
+      event: (thread) => ({ outcome: "archived", thread }),
+      call: { status: "failed", error: "Workflow worker was archived" },
+      run: "failed",
+    },
+    deleted: {
+      event: (thread) => ({ outcome: "deleted", thread }),
+      call: { status: "failed", error: "Workflow worker was deleted" },
+      run: "failed",
+    },
+  };
+
+  it.each(
+    Object.entries(SETTLED_CALLS).flatMap(([outcome, expected]) =>
+      (["before", "after"] as const).map((timing) => ({
+        outcome,
+        timing,
+        expected,
+      })),
+    ),
+  )(
+    "settles a call whose worker settles as $outcome $timing spawn returns",
+    async ({ timing, expected }) => {
+      let worker = makeThreadResponse({ id: "child-settled" });
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "workflows",
+        sdk: {
+          threads: {
+            get: async () =>
+              ({
+                id: "thread-test",
+                environmentId: "environment-1",
+                providerId: "codex",
+              }) as never,
+            defaultExecutionOptions: async () => ({
+              model: "gpt-test",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              serviceTier: "default",
+              source: "default",
+            }),
+            spawn: async () => {
+              worker = makeThreadResponse({
+                id: "child-settled",
+                createdAt: Date.now(),
+              });
+              if (timing === "before") {
+                void harness.emitThreadEvent(
+                  "experimental_thread.settled",
+                  expected.event(worker),
+                );
+                await new Promise((resolve) => setImmediate(resolve));
+              }
+              return worker;
+            },
+            send: async () => ({ ok: true }),
+            stop: async () => ({ ok: true }),
+            archive: async () => ({ ok: true }),
+          },
+          providers: {
+            list: async () => [
+              {
+                id: "codex",
+                displayName: "Codex",
+                logoUrl: null,
+                available: true,
+                capabilities: {
+                  supportsThreadArchive: true,
+                  supportsThreadRename: true,
+                  supportsServiceTier: true,
+                  supportsNativeUserQuestion: false,
+                  supportsFork: true,
+                  permissionModes: ["full"],
+                },
+                composerActions: [],
+              },
+            ],
+            models: async () => ({
+              providers: [],
+              selectedOnlyModels: [],
+              modelLoadError: null,
+              models: [
+                {
+                  id: "gpt-test",
+                  model: "gpt-test",
+                  displayName: "GPT Test",
+                  description: "test",
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: "medium", description: "test" },
+                  ],
+                  defaultReasoningEffort: "medium",
+                  isDefault: true,
+                },
+              ],
+            }),
+          },
+        },
+      });
+      hosts.push(harness);
+      await plugin(bb);
+      const started = JSON.parse(
+        (await harness.callAgentTool("bb_workflow_run", {
+          source: `export const meta = { name: "settled-worker", description: "One worker" };
+    return await agent("Finish at once");`,
+        })) as string,
+      ) as { runId: string };
+
+      const service = harness.runService("workflow-worker");
+      try {
+        const db = bb.storage.database();
+        await eventually(() => {
+          expect(getCall(db, started.runId, 0)?.childThreadId).toBe(
+            "child-settled",
+          );
+        });
+        if (timing === "after") {
+          await harness.emitThreadEvent(
+            "experimental_thread.settled",
+            expected.event(worker),
+          );
+        }
+        await eventually(() => {
+          expect(getCall(db, started.runId, 0)).toMatchObject(expected.call);
+          expect(getRunRequired(db, started.runId).status).toBe(expected.run);
+        });
+        expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+      } finally {
+        service.controller.abort();
+        await service.done;
+      }
+    },
   );
 
   it("rejects cyclic and unsafe host values before persistence", async () => {
@@ -886,6 +1043,9 @@ describe("workflow resume cache integration", () => {
     }
 
     async function finish(threadId: string, output: string): Promise<void> {
+      await eventually(() =>
+        expect(getCallByChildThread(db, threadId)).not.toBeNull(),
+      );
       service.onThreadIdle(threadId, output);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }

@@ -401,6 +401,11 @@ function AccountUsage({
           {email}
         </p>
       ) : null}
+      {account.refreshError ? (
+        <p className="col-span-full text-2xs text-subtle-foreground">
+          {account.refreshError} Showing last update.
+        </p>
+      ) : null}
       {message !== null ? (
         <p className="col-span-full text-2xs text-subtle-foreground">
           {message}

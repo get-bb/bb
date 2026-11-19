@@ -86,6 +86,7 @@ import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
+import { useProviderCliStatusRecheckOnFocus } from "@/hooks/useProviderCliStatusRecheckOnFocus";
 import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
@@ -116,7 +117,7 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import { useAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
@@ -536,7 +537,7 @@ function RootComposeSurface({
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
   const setPromptDraft = composerActions.restoreDraft;
-  const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
+  const seedPromptDraftIfEmpty = promptDraft.seedIfEmpty;
 
   useEffect(() => {
     const initialPrompt = readInitialPromptFromSearch(location.search);
@@ -611,7 +612,7 @@ function RootComposeSurface({
     if (shouldReplaceInitialPromptFromLocationState(location.state)) {
       setPromptDraft(nextDraft);
     } else {
-      restorePromptDraftIfEmpty(nextDraft);
+      seedPromptDraftIfEmpty(nextDraft);
     }
     void navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -621,7 +622,7 @@ function RootComposeSurface({
     location.search,
     location.state,
     navigate,
-    restorePromptDraftIfEmpty,
+    seedPromptDraftIfEmpty,
     setPromptDraft,
     stateInitialDraft,
   ]);
@@ -676,6 +677,10 @@ function RootComposeSurface({
       ? selectedProviderCliStatus
       : null;
   const isProviderCliBlocked = blockingProviderCliStatus !== null;
+  useProviderCliStatusRecheckOnFocus({
+    hostId: rootProjectHostId,
+    blocked: isProviderCliBlocked,
+  });
   const selectedProviderCliIssue = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return null;
@@ -957,7 +962,6 @@ function RootComposeSurface({
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
     close: closeWorkspacePanel,
     destinations: panelDestinations,
-    isFocused: isFocusedPane,
   });
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
     panel,
@@ -1422,7 +1426,10 @@ function RootComposeSurface({
       <PluginComposerHostProvider value={pluginComposerHost}>
         <AttachmentOpenerContext.Provider value={openAttachment}>
           <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-            <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+            <AppNavigationSurfaceProvider
+              capabilities={appNavigationCapabilities}
+              isFocused={isFocusedPane}
+            >
               <AppPanelTabsPublisher
                 publish={panel.publishTabs}
                 activeTabId={activeFixedSecondaryTabId}
@@ -1473,7 +1480,7 @@ function RootComposeSurface({
               >
                 {promptBox}
               </RootComposeSecondaryContent>
-            </AppNavigationHostProvider>
+            </AppNavigationSurfaceProvider>
           </UrlOpenRoutingProvider>
         </AttachmentOpenerContext.Provider>
       </PluginComposerHostProvider>

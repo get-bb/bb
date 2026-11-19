@@ -195,11 +195,15 @@ function GeneralSettingsStory({
   desktopBrowserAvailable?: boolean;
 }) {
   const state = useSettingsStoryState();
+  const [resumeThreadsAfterRestart, setResumeThreadsAfterRestart] =
+    useState(false);
   const [terminalCopyOnSelect, setTerminalCopyOnSelect] = useState(true);
 
   return (
     <>
       <GeneralSettingsSection
+        resumeThreadsAfterRestart={resumeThreadsAfterRestart}
+        onResumeThreadsAfterRestartChange={setResumeThreadsAfterRestart}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
         keepHistoryAfterContextClear={state.keepHistoryAfterContextClear}

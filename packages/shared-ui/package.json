@@ -239,6 +239,11 @@
       "types": "./src/components/ui/workflow-progress.tsx",
       "default": "./src/components/ui/workflow-progress.tsx"
     },
+    "./hooks/use-browser-dimming-modal": {
+      "source": "./src/hooks/useBrowserDimmingModal.ts",
+      "types": "./src/hooks/useBrowserDimmingModal.ts",
+      "default": "./src/hooks/useBrowserDimmingModal.ts"
+    },
     "./hooks/use-compact-viewport": {
       "source": "./src/components/ui/hooks/use-compact-viewport.tsx",
       "types": "./src/components/ui/hooks/use-compact-viewport.tsx",
@@ -273,6 +278,11 @@
       "source": "./src/lib/utils.ts",
       "types": "./src/lib/utils.ts",
       "default": "./src/lib/utils.ts"
+    },
+    "./lib/ime-keyboard": {
+      "source": "./src/lib/ime-keyboard.ts",
+      "types": "./src/lib/ime-keyboard.ts",
+      "default": "./src/lib/ime-keyboard.ts"
     },
     "./lib/portal-scope": {
       "source": "./src/lib/portal-scope.ts",
@@ -553,6 +563,7 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "typecheck": "tsrs --noEmit",
+    "lint": "oxlint src",
     "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
     "test": "vitest run --config vitest.config.ts"
   },

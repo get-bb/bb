@@ -297,7 +297,10 @@ describe("client telemetry events", () => {
         capture.mockClear();
         const response = await post(harness, event);
         expect(response.status).toBe(200);
-        await expect(readJson(response)).resolves.toEqual({ ok: true });
+        await expect(readJson(response)).resolves.toEqual({
+          ok: true,
+          progress: "complete",
+        });
         expect(capture).toHaveBeenCalledExactlyOnceWith(event);
       }
     });
@@ -405,7 +408,10 @@ describe("client telemetry events", () => {
         capture.mockClear();
         const response = await post(harness, event);
         expect(response.status).toBe(200);
-        await expect(readJson(response)).resolves.toEqual({ ok: true });
+        await expect(readJson(response)).resolves.toEqual({
+          ok: true,
+          progress: "complete",
+        });
         expect(capture).toHaveBeenCalledExactlyOnceWith(event);
       }
     });

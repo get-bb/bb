@@ -1,3 +1,4 @@
+import { sliceUtf16Head } from "@bb/text-utils";
 export const INITIAL_PROMPT_MAX_LENGTH = 8000;
 
 export const INITIAL_PROMPT_SEARCH_PARAM = "initialPrompt";
@@ -13,7 +14,7 @@ export function readInitialPromptFromSearch(search: string): string | null {
   if (raw === null) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
-  return trimmed.slice(0, INITIAL_PROMPT_MAX_LENGTH);
+  return sliceUtf16Head(trimmed, INITIAL_PROMPT_MAX_LENGTH);
 }
 
 export function stripInitialPromptFromSearch(search: string): string {

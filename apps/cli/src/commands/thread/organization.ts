@@ -1,3 +1,4 @@
+import { outputJson, printJsonResult } from "../../command-result.js";
 import { Command } from "commander";
 import { updateThreadTabsRequestSchema } from "@bb/server-contract";
 import {
@@ -24,7 +25,6 @@ import {
 import {
   collectOption,
   confirmDestructiveAction,
-  outputJson,
   parseReasoningLevel,
   requireThreadIdOrSelf,
 } from "../helpers.js";
@@ -114,10 +114,6 @@ function parsePositiveInteger(
     throw new Error(`${flag} must be at most ${maximum}.`);
   }
   return value;
-}
-
-function printHumanJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
 }
 
 const MAX_QUEUE_TEXT_WIDTH = 40;
@@ -279,8 +275,7 @@ export function registerOrganizationCommands(
             THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
           ),
         });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        printJsonResult(result);
       }),
     );
 
@@ -295,8 +290,7 @@ export function registerOrganizationCommands(
           threadId: id,
           limit: parsePositiveInteger(opts.limit, "--limit"),
         });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        printJsonResult(result);
       }),
     );
 
@@ -682,8 +676,7 @@ export function registerOrganizationCommands(
         const result = await createCliBbSdk(getUrl()).threads.tabs.get({
           threadId,
         });
-        if (outputJson(opts, result)) return;
-        printHumanJson(result);
+        printJsonResult(result);
       }),
     );
   tabs

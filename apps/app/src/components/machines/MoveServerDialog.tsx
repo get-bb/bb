@@ -29,6 +29,7 @@ import {
   serverMoveBlockedItems,
   serverMoveStartAllowed,
 } from "./server-move";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 type StartServerMoveMutation = ReturnType<typeof useStartServerMove>;
 
@@ -384,7 +385,7 @@ function ServerAddressField({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
+            if (!isNonImeKey(event, "Enter")) return;
             event.preventDefault();
             if (canCheck) onCheck();
           }}

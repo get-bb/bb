@@ -443,6 +443,7 @@ function sendModelList(
 ): number {
   const { modelLines, cwd, selectedModel, ...launch } = args;
   return sendRequest("model/list", {
+    envVars: {},
     ...(selectedModel === undefined ? {} : { selectedModel }),
     ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
@@ -772,8 +773,8 @@ describe("acp bridge", () => {
     ).toEqual(["low", "medium", "high"]);
   });
 
-  it("answers a minimal model/list (no params) with the synthetic default", async () => {
-    const modelListId = sendRequest("model/list", {});
+  it("answers a minimal model/list (no launch spec) with the synthetic default", async () => {
+    const modelListId = sendRequest("model/list", { envVars: {} });
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [
         { id: "acp-default", isDefault: true, supportedServiceTiers: [] },
@@ -3358,6 +3359,37 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("permission:no");
   });
 
+  it("tells the runtime it stopped waiting on a forwarded permission when the session stops", async () => {
+    const { providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      options: executionOptions({ permissionMode: "accept-edits" }),
+      input: [{ type: "text", text: "request-permission", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded permission request",
+    );
+
+    await stopThread(providerThreadId);
+
+    expect(
+      output.messages.filter(
+        (message) => message.method === "notifications/cancelled",
+      ),
+    ).toEqual([
+      expect.objectContaining({ params: { requestId: forwarded.id } }),
+    ]);
+  });
+
   it("presents an external-directory write permission as a file-change approval", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
       permissionMode: "accept-edits",
@@ -4047,6 +4079,57 @@ describe("acp bridge", () => {
     expect(loggedPrompts(promptLog)).toEqual(["/compact"]);
     expect(agentMessageTexts()).not.toContain("echo:/compact");
   });
+
+  function contextCompactionItems(type: string): Record<string, unknown>[] {
+    return threadEvents().filter(
+      (event) =>
+        event.type === type &&
+        (event.item as { type?: string } | undefined)?.type ===
+          "contextCompaction",
+    );
+  }
+
+  it("shows one compaction row when the agent also reports /compact with compaction_update", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_COMPACT_UPDATE_STATUS: "completed" },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(contextCompactionItems("item/started")).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "failed",
+      { status: "failed", error: { message: "summary model rejected" } },
+    ],
+    ["cancelled", { status: "interrupted" }],
+  ])(
+    "settles /compact from a %s compaction_update the agent sends with end_turn",
+    async (updateStatus, turn) => {
+      const { providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_COMPACT_UPDATE_STATUS: updateStatus,
+          FAKE_ACP_COMPACT_UPDATE_ERROR: "summary model rejected",
+        },
+      });
+
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: compactCommandInput(),
+      });
+      expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+      expect(await waitForTurnCompleted()).toMatchObject(turn);
+      expect(threadEventsOfType("thread/compacted")).toEqual([]);
+      expect(contextCompactionItems("item/started")).toHaveLength(1);
+    },
+  );
 
   it("fails the compaction turn legibly when the agent rejects the request", async () => {
     const { providerThreadId } = await startThread({
@@ -5375,6 +5458,70 @@ describe("acp bridge: work the agent starts on its own", () => {
     }
   });
 
+  it("opens a turn for a compaction the agent starts on its own and keeps it open until the compaction ends", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-unprompted-compaction");
+      await waitForTurnStartedCount(2);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(turnStatuses()).toEqual(["completed"]);
+
+      await waitFor(
+        () =>
+          threadEventsOfType("thread/compacted").length === 1
+            ? true
+            : undefined,
+        "agent compaction end",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      const compactionItems = (type: string) =>
+        threadEventsOfType(type).filter(
+          (event) =>
+            (event.item as { type?: string } | undefined)?.type ===
+            "contextCompaction",
+        );
+      expect(compactionItems("item/started")).toHaveLength(1);
+      expect(compactionItems("item/completed")).toHaveLength(1);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles a completion-only compaction even when stale progress follows", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(
+        providerThreadId,
+        "then-unprompted-finished-compaction",
+      );
+      await waitForTurnStartedCount(2);
+      await waitFor(
+        () =>
+          threadEventsOfType("thread/compacted").length === 1
+            ? true
+            : undefined,
+        "agent compaction end",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the agent's turn open while a tool it announced is running, and settles it as interrupted when the user sends a message", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
@@ -5543,6 +5690,152 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
     }
   });
 
+  const lostSessionErrors = [
+    {
+      agent: "an agent using the ACP resource-not-found code",
+      error: { code: -32002, message: "Resource not found" },
+    },
+    {
+      agent: "OpenCode",
+      error: {
+        code: -32602,
+        message: "Invalid params: session not found: ses_lost",
+        data: { sessionId: "ses_lost" },
+      },
+    },
+    {
+      agent: "Copilot",
+      error: { code: -32602, message: "Session ses_lost not found" },
+    },
+    {
+      agent: "Cursor",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: { details: "Session ses_lost not found" },
+      },
+    },
+    {
+      agent: "Copilot with a stuck session lock",
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: {
+          details:
+            "session lock unavailable during is_session_generation_current: acquisition timed out",
+        },
+      },
+    },
+  ];
+
+  function lostSessionAgentEnv(error: object): {
+    envVars: Record<string, string>;
+    launchCount: () => number;
+    requestLog: string;
+  } {
+    const launchLog = join(workspaceDir, "launches.log");
+    const requestLog = join(workspaceDir, "requests.log");
+    return {
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_LOST_SESSION_ERROR: JSON.stringify(error),
+        FAKE_ACP_LOST_SESSION_FILE: join(workspaceDir, "lost-session"),
+        FAKE_ACP_LAUNCH_LOG: launchLog,
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+      launchCount: () =>
+        readFileSync(launchLog, "utf8").split("\n").filter(Boolean).length,
+      requestLog,
+    };
+  }
+
+  async function turnStatus(
+    providerThreadId: string,
+    input: unknown[],
+  ): Promise<unknown> {
+    const completedBefore = threadEventsOfType("turn/completed").length;
+    const turnId = sendTurnRequest("turn/start", providerThreadId, { input });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    const completed = await waitFor(
+      () => threadEventsOfType("turn/completed")[completedBefore],
+      "next turn/completed thread event",
+    );
+    return completed["status"];
+  }
+
+  it.each(lostSessionErrors)(
+    "rebuilds the session before the next turn after $agent reports it lost",
+    async ({ error }) => {
+      const agent = lostSessionAgentEnv(error);
+      const { providerThreadId } = await startThread({
+        envVars: agent.envVars,
+      });
+      const text = (value: string) => [
+        { type: "text", text: value, mentions: [] },
+      ];
+
+      expect(await turnStatus(providerThreadId, text("first"))).toBe("failed");
+      expect(await turnStatus(providerThreadId, text("second"))).toBe(
+        "completed",
+      );
+
+      expect(agentMessageTexts()).toEqual(["echo:second"]);
+      expect(agent.launchCount()).toBe(2);
+      expect(
+        loggedAcpRequests(agent.requestLog).filter(
+          (request) => request.method === "session/load",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          params: expect.objectContaining({ sessionId: providerThreadId }),
+        }),
+      ]);
+      expect(notifications("session/replaced")).toHaveLength(1);
+      expect(notifications("session/replaced")[0]?.params).toMatchObject({
+        providerThreadId,
+        reason:
+          "The ACP agent lost its session; the session was rebuilt before continuing.",
+        contextLost: false,
+      });
+    },
+  );
+
+  it("rebuilds the session before the next turn after a compaction finds it lost", async () => {
+    const agent = lostSessionAgentEnv(lostSessionErrors[1]!.error);
+    const { providerThreadId } = await startThread({ envVars: agent.envVars });
+
+    expect(await turnStatus(providerThreadId, compactCommandInput())).toBe(
+      "failed",
+    );
+    expect(
+      await turnStatus(providerThreadId, [
+        { type: "text", text: "after compaction", mentions: [] },
+      ]),
+    ).toBe("completed");
+
+    expect(agentMessageTexts()).toEqual(["echo:after compaction"]);
+    expect(agent.launchCount()).toBe(2);
+    expect(notifications("session/replaced")).toHaveLength(1);
+  });
+
+  it("keeps the session when a prompt fails for another reason", async () => {
+    const agent = lostSessionAgentEnv({
+      code: -32603,
+      message: "Internal error",
+      data: { details: "upstream model overloaded" },
+    });
+    const { providerThreadId } = await startThread({ envVars: agent.envVars });
+    const text = (value: string) => [
+      { type: "text", text: value, mentions: [] },
+    ];
+
+    expect(await turnStatus(providerThreadId, text("first"))).toBe("failed");
+    expect(await turnStatus(providerThreadId, text("second"))).toBe("failed");
+
+    expect(agent.launchCount()).toBe(1);
+    expect(notifications("session/replaced")).toEqual([]);
+  });
+
   it("restores a session with session/resume when the agent offers it, without replaying history", async () => {
     const requestLog = join(workspaceDir, "requests.log");
     const envVars = {
@@ -5685,6 +5978,17 @@ describe("acp bridge: questions the agent asks", () => {
     });
   });
 
+  it("tells the agent it shows session compaction updates", async () => {
+    const requestLog = join(workspaceDir, "requests.log");
+    await startThread({ envVars: { FAKE_ACP_REQUEST_LOG: requestLog } });
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect(initialize?.params?.["clientCapabilities"]).toMatchObject({
+      session: { compaction: {} },
+    });
+  });
+
   it("shows a form question as a user question and returns typed answers to the agent", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
@@ -5803,12 +6107,12 @@ describe("acp bridge: questions the agent asks", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain(
-      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 10 questions and this form has 11"}',
+      'elicitation:{"error":"Error: The user did not answer: bb could not show the question (bb shows at most 10 questions and this form has 11)."}',
     );
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
-      summary: "The agent asked a question bb could not show",
+      summary: "bb answered the agent without you",
       details:
-        "bb answered the agent with an error because bb shows at most 10 questions and this form has 11.",
+        "bb answered the agent with an error because it could not show the question: bb shows at most 10 questions and this form has 11.",
     });
     expect(
       output.messages.filter(

@@ -41,7 +41,6 @@ export function spawnPortableProcess(
     detached: request.detached,
     env: request.env,
     stdio: request.stdio,
-    windowsHide: true,
   });
 }
 

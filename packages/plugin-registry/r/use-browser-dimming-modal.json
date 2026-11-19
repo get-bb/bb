@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "registry/hooks/useBrowserDimmingModal.ts",
-      "content": "export function useBrowserDimmingModal(_active: boolean): void {}\n\nexport function useIsBrowserDimmingModalOpen(): boolean {\n  return false;\n}\n",
+      "content": "import { useLayoutEffect, useSyncExternalStore } from \"react\";\n\nconst countKey = Symbol.for(\"bb.browser-dimming-modal-count.v1\");\nconst changeEvent = \"bb:browser-dimming-modal-change\";\n\nfunction changeCount(delta: number): void {\n  const owner: Window & { [countKey]?: number } = window;\n  owner[countKey] = (owner[countKey] ?? 0) + delta;\n  window.dispatchEvent(new Event(changeEvent));\n}\n\nfunction isOpen(): boolean {\n  const owner: Window & { [countKey]?: number } = window;\n  return (owner[countKey] ?? 0) > 0;\n}\n\nfunction subscribe(listener: () => void): () => void {\n  window.addEventListener(changeEvent, listener);\n  return () => window.removeEventListener(changeEvent, listener);\n}\n\nexport function useBrowserDimmingModal(active: boolean): void {\n  useLayoutEffect(() => {\n    if (!active) return;\n    changeCount(1);\n    return () => changeCount(-1);\n  }, [active]);\n}\n\nexport function useIsBrowserDimmingModalOpen(): boolean {\n  return useSyncExternalStore(subscribe, isOpen, () => false);\n}\n",
       "type": "registry:hook",
       "target": "hooks/useBrowserDimmingModal.ts"
     }

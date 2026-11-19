@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.156",
+  "version": "0.6.164",
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
@@ -99,6 +99,12 @@
       "import": "./dist/internal/thread-status.js",
       "default": "./dist/internal/thread-status.js"
     },
+    "./internal/thread-event-gate": {
+      "source": "./src/internal/thread-event-gate.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-thread-event-gate.d.ts",
+      "import": "./dist/internal/thread-event-gate.js",
+      "default": "./dist/internal/thread-event-gate.js"
+    },
     "./internal/file-navigation-validation": {
       "source": "./src/internal/file-navigation-validation.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts",
@@ -180,6 +186,7 @@
     "@bb/server-contract": "workspace:*",
     "@bb/skill-index": "workspace:*",
     "@bb/test-helpers": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/better-sqlite3": "^7.6.13",

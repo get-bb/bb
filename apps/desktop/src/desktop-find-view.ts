@@ -71,6 +71,7 @@ export interface DesktopFindViewManager {
 }
 
 export interface CreateDesktopFindViewManagerArgs {
+  logger: { warn(message: string): void };
   preloadPath: string;
 }
 
@@ -111,6 +112,7 @@ export function findBarViewBounds(
 }
 
 export function createDesktopFindViewManager({
+  logger,
   preloadPath,
 }: CreateDesktopFindViewManagerArgs): DesktopFindViewManager {
   const entriesByHostId = new Map<number, FindViewEntry>();
@@ -158,6 +160,18 @@ export function createDesktopFindViewManager({
     };
     entriesByHostId.set(hostWindow.webContents.id, entry);
     entriesByViewId.set(view.webContents.id, entry);
+    view.webContents.on("render-process-gone", (_event, details) => {
+      if (entriesByViewId.get(entry.viewWebContentsId) !== entry) {
+        return;
+      }
+      logger.warn(
+        `[desktop] find bar renderer gone (reason ${details.reason}, exit code ${details.exitCode}); recreating it on next open`,
+      );
+      if (entry.visible) {
+        closeEntry(entry);
+      }
+      detachEntry(entry);
+    });
     hostWindow.contentView.addChildView(view);
     observeHost(hostWindow);
     return entry;
@@ -185,16 +199,20 @@ export function createDesktopFindViewManager({
     }
   }
 
-  function destroyEntry(entry: FindViewEntry): void {
+  function detachEntry(entry: FindViewEntry): void {
     entriesByHostId.delete(entry.hostWebContentsId);
     entriesByViewId.delete(entry.viewWebContentsId);
-    observedHostIds.delete(entry.hostWebContentsId);
     if (!entry.hostWindow.isDestroyed()) {
       entry.hostWindow.contentView.removeChildView(entry.view);
     }
     if (!entry.view.webContents.isDestroyed()) {
       entry.view.webContents.close();
     }
+  }
+
+  function destroyEntry(entry: FindViewEntry): void {
+    detachEntry(entry);
+    observedHostIds.delete(entry.hostWebContentsId);
   }
 
   function entryForEvent(event: IpcMainEvent): FindViewEntry | null {

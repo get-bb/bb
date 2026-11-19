@@ -4,6 +4,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 
 export type ProviderHealthResult = HostDaemonOnlineRpcResult<"provider.health">;
@@ -52,18 +53,23 @@ export function requestProviderHealth(
   const key = requestKey(args);
   const existing = requests.get(key);
   if (existing !== undefined) return existing;
-  const request = callHostRetryableOnlineRpc(deps, {
-    hostId: args.hostId,
-    timeoutMs: args.timeoutMs,
-    command: {
-      type: "provider.health",
-      providerId: args.providerId,
-      bridgeLaunch: args.bridgeLaunch,
-      ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
-    },
-  }).finally(() => {
-    if (requests.get(key) === request) requests.delete(key);
-  });
+  const request = resolveHostProviderEnv(args.hostId, args.providerId)
+    .then((contributedEnv) =>
+      callHostRetryableOnlineRpc(deps, {
+        hostId: args.hostId,
+        timeoutMs: args.timeoutMs,
+        command: {
+          type: "provider.health",
+          providerId: args.providerId,
+          bridgeLaunch: args.bridgeLaunch,
+          ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
+          contributedEnv,
+        },
+      }),
+    )
+    .finally(() => {
+      if (requests.get(key) === request) requests.delete(key);
+    });
   requests.set(key, request);
   return request;
 }

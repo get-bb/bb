@@ -1,5 +1,123 @@
 # Changelog
 
+## 0.50.0
+
+A speed and steadiness release. bb can now update itself once no thread is running, opens and reloads faster, long answers stream without slowing the app down, and the thread view, sidebar and composer redraw only what changed. Messages sent just as a turn ends are no longer lost or answered one message late, and a server restart or a dropped machine connection no longer fails a running turn. Deleting threads, forking long threads, and pruning no longer stall the server.
+
+### Reliability
+
+- **Messages sent at the end of a turn arrive:** a steer or new message sent just as a turn finishes is no longer dropped or rejected as a competing turn. bb holds the turn until the message reaches the agent, keeps the newer turn when a steer misses its target, and retries Codex steers that arrive after their turn ended. In Claude Code, the turn stays open until every message pushed into it has run, so replies no longer drift one message behind. A message sent to an idle thread just as the agent starts a turn on its own, for example when a background task finishes, joins that turn.
+- **Turns survive restarts and dropped connections:** bb now records which messages, steers and stops are still on their way to the agent. A server restart or a dropped machine connection no longer marks a running turn failed while the agent answers it, loses the next message, leaves a stopped thread showing as working, or forgets a steer. A stop that arrives after a reconnect no longer interrupts a turn the agent started in the meantime.
+- A queued message on an idle thread sends right away instead of waiting up to 10 seconds, and a steered send with Enter set to queue shows once instead of twice. A queued message a plugin is holding, such as a saved draft, no longer holds up the messages behind it.
+- A long turn that has just finished is no longer stopped as "a turn that never started."
+- Editing a sent message no longer warns "The message being edited is no longer available" after the edit succeeds.
+- **Automations and Workflows wait for provider retry:** when provider retry is already retrying a failed turn, an automation no longer also re-runs it in a new thread, and a workflow no longer replaces its worker. The automation records a skipped run that says which retry is in hand.
+- **No more server stalls from large jobs:** deleting threads, including storage retention's delete-after policy and project deletion, now runs in small background batches. Before, it blocked the server for 250 ms to 1.5 s per thread. Forking a long thread copies its history without blocking (one fork used to take 5 seconds). `bb thread show`, `bb thread commands` and `bb thread options` no longer build a timeline page on every call. On one self-hosted server, polling these on an active thread stalled the server and disconnected every device. Startup no longer spends up to 6 seconds checking interrupted commands, and several database queries that slowed down as threads got longer now use indexes.
+- Event pruning no longer makes open apps reload a thread's timeline, and one failing thread no longer holds up background cleanup for every other thread.
+- Scrolling back through a long thread no longer shows rows out of order or fails to load when an earlier steer was rejected.
+- **Updates survive a dropped connection:** provider CLI updates, skill installs and old server copy deletions run as server jobs. A bb connect blip, a reload or a backgrounded phone no longer reports a finished update as "Connection lost during update," and the Updates row keeps tracking the job.
+- **Environments:** two threads created at once on the same checkout wait for each other instead of failing with "Cannot checkout branch while another thread is using this workspace." A deleted environment no longer gets stuck after you unarchive its thread, cleanup keeps going while one machine is slow to remove a worktree, and bb checks a worktree for its own refs and unfinished git operations before removing it. A new branch in a project checkout starts from `origin/main` when your local `main` is behind it, as worktrees already did.
+- Deleting thread storage no longer floods the machine with `lsof` processes after a reconnect or project deletion.
+- The machine daemon starts after a Mac boots with its clock behind, which can happen after the battery runs flat.
+- `bb-app start` recovers when the server rejects the machine's saved key, instead of exiting and restarting in a loop.
+- The daemon's server connection and bb connect tunnel now go through `HTTP(S)_PROXY`.
+- `bb` commands inside script automations reach the server the automation runs on instead of whatever is listening on port 38886.
+- In-app updates of source checkouts build with the newly installed turbo.
+- **Desktop:** fix a main-process crash when showing a browser tab that never finished loading. On first launch, bb opens once this computer has connected, so the setup guide's first checks no longer fail.
+
+### Performance
+
+- **Live timeline updates:** an open thread's changes now arrive over the live connection, instead of bb reloading the latest part of the timeline after each update.
+- **Plugin styles stay in their plugin:** each plugin's stylesheet now only matches that plugin's own UI, which makes style updates cheaper when many plugins are installed.
+- **Faster loading:** the page bb serves now includes the plugin list, so plugins start loading without a second request, and plugins the first screen doesn't need load after it paints. Boot JavaScript is 26 KB smaller. Reloading or closing a tab no longer unmounts every plugin first, which took up to 760 ms on a slow machine.
+- **Long answers stream smoothly:** each update sends only the new text instead of the whole message so far (up to about 27 KB per update), and the finished part of the message no longer re-renders. Messages with a `<` in them, as in code, now also render only their new part.
+- **A lighter thread view:** timeline updates no longer re-render the header, composer and every message (about 183 component renders per update before). Typing re-renders only the composer. Scrolling no longer forces layout as new rows appear, and older messages start loading three screen heights ahead, so a fast scroll up doesn't hit a blank "Loading older messages…" edge. Switching threads renders the new thread as part of the navigation.
+- **A lighter sidebar:** a change to one thread, a rename, or a split layout change redraws only the rows it affects.
+- **Faster pickers:** the model, project, machine, branch and permission pickers no longer restyle the whole page when they open, which took 290–530 ms with plugins installed. Opening and closing the right panel also does less work.
+- **No more one-frame jumps on resize:** about 30 layouts that depend on a measured size now update in the same frame as the resize, including the thread context card when the right panel opens.
+- **Cheaper timelines on the server:** phone and desktop views of a thread share one timeline build, live updates cost closer to the rows that changed, and expanding turn details or loading the outline no longer re-reads whole turns.
+- **Fewer leftover branches:** removing a worktree now also deletes the `bb/*` branch bb created for it, unless that branch has work you would lose. One repository had 3,953 leftover branches, and git reads every branch on each status check and branch listing.
+- Skills download in parallel when a session starts (64 skills: 65 seconds down to 11).
+- Very long lines of agent output no longer stall the daemon (a 32 MB line took 1 second to read, now 20 ms).
+
+### Usability
+
+- **Update bb automatically:** turn on **Restart and update bb automatically** in Settings → Updates, or run `bb updates app auto on`, and bb checks for updates every hour and installs one once no thread is running, so an update never cuts off an agent's work. Messages you send while bb restarts wait in the queue and go out once it's back. **Skip this version** holds a version back until a newer one appears, and `bb updates app apply --when-idle` updates once when running threads finish. Automatic updates are off until you turn them on.
+- **Resume interrupted threads after a restart:** a new setting in Settings → General. When an update, crash or restart cuts off a running thread or stops a background command it's waiting on, bb resumes the thread a few seconds after it comes back and tells the agent what was cut off. It's off by default; turn it on from the CLI with `bb settings general resumeThreadsAfterRestart true`. If you had turned on the experiment, it stays on.
+- **Notifications clear once you've read the thread:** reading a thread on any device removes its notifications from your phones and open bb windows. Phones need an app version that supports it.
+- **Thread details under the title:** check **Metadata** in the thread list's Organize → Rows menu, and plugins such as GitHub PR Status show details like a thread's pull request on a line under its title.
+- **One update button:** the sidebar's separate bb, CLI and plugin update chips are now one button. Its card lists what's pending, with **Restart now** and **Update all**, and keeps failed updates listed so you can try again. On touch screens, the card opens in a drawer sized for phone text. Source checkouts list a pending bb update whenever the card is open.
+- **Plugin releases outside the saved range:** Settings → Updates now offers plugin releases that the range saved at install excludes, such as a new 0.x minor version. Review and take one without removing and reinstalling the plugin. Update all doesn't apply these, and a failed update rolls back to the previous release and range.
+- **`/handoff`** starts a handoff from the composer, and deleting the `Continue from` pill cancels it.
+- **Storage cleanup:** remove worktrees created outside bb by how long they've gone unused, remove all development instances or archived-thread storage at once, and clean up leftover worktrees in one step. Interrupted teardowns are recovered every hour when nothing is running in them and they have no uncommitted changes, and each kept checkout says why it was kept. Cleanup status survives reloads and connection blips. From the CLI, use `bb storage cleanup --kind externalWorktrees --unused-for <days>` and `--kind worktrees --include-uncommitted`. Recovering interrupted cleanups now works on macOS.
+- **Setup guide:** every new install gets the redesigned setup guide. Each agent appears as soon as it's checked, and the agent step keeps loading while slower checks finish. An agent that doesn't answer gets its own row with Retry. The repository scan waits for your answer to macOS's Desktop and Documents access prompts, and bb connect's Set up button waits until its status has loaded.
+- Clicking a changed file that's outside the workspace, or that has no diff to show, opens the file instead of an unrelated diff.
+- The Diff tab compares against `origin/main` when your local `main` is behind it, so commits already on the remote no longer show as branch changes.
+- Messages sent by plugins, such as scheduled wake-ups, no longer mark the thread as read.
+- `bb thread show` puts the archive state on its status line, for example `Status: idle (archived …)`, and `bb thread archive` says when a thread was already archived.
+- Opening a thread in one window or browser no longer re-expands sidebar groups you collapsed in another.
+- Sidebar threads show their provider's icon when that provider is only installed on another machine.
+- The sidebar usage panel sizes to the window instead of cutting off the last account, and usage rows show the right provider icons.
+- A voice recording with no speech ends quietly instead of showing "Voice input failed."
+- Slash command names stay visible when a command has a long argument hint.
+- Plugin settings pages use the same width and cards as bb's own settings.
+- **Mobile:** sidebar and right panel swipes no longer get stuck partway, and on Android a long-press menu no longer opens after you stop a scroll. On a phone, the right panel opens straight into its final loading layout, and the sidebar button no longer floats over it while you swipe it open. The Android app uses the system's overlay scrollbars, so content no longer shifts sideways when it starts scrolling.
+
+### Experiments
+
+New for early adopters:
+
+- **Keep machines connected through network drops:** when a machine loses its connection to the server for under 30 seconds, it picks up where it left off instead of reconnecting from scratch, so its terminals and running requests carry on.
+- **Faster styles inside plugins:** each plugin's styles are keyed so the browser can skip them inside other plugins' UI, such as the sidebar and composer. Applies after a reload.
+- **Lower agent CPU priority:** agents, setup scripts and the builds and tests they run get a lower CPU priority, and on macOS the bb server and daemon get app-level scheduling, so bb stays responsive when agents keep the CPU busy. Terminals keep normal priority. Takes effect after bb restarts.
+- **Background database checkpoints:** bb copies recent writes into its database files on a background thread, so heavy writing doesn't pause the server.
+
+**Thread context card** is now on for early adopters.
+
+### Agents
+
+- **Claude Code:** bb's background metadata checks no longer connect to your MCP servers, which used to see a dropped connection every turn. A Claude Code startup failure, for example after waking from sleep, no longer breaks later turns with "No conversation found with session ID." A hook that answers `ask` without a reason no longer breaks the session with "content cannot be empty." A skill picked mid-sentence keeps its word in the sentence. With Account Pooler, the model picker lists the pooled accounts' Claude models, including new ones.
+- **Codex:** Stop works when a turn hasn't started 5 seconds after Codex accepted it. Codex 0.145 and later no longer warn that `[features].multi_agent` is deprecated.
+- **Pi:** after pi exits, the next message continues the conversation instead of failing with "No active Pi session." If pi's session file is missing or corrupt, bb starts a fresh session and says the earlier context was lost. A prompt handled by a pi extension command finishes right away instead of leaving the thread working for 2 minutes.
+- **ACP agents:** bb no longer switches your agent through every model to read their reasoning levels, so agents that save the selected model as your default stay on yours. Forking a thread whose session is still running works, including with Kimi Code. On Linux, bb's tools stay available to agents with large tool lists. Kimi Code titles no longer start with `<system_instructions>`, running commands show their updated input, and messages and commands that are still running are finished properly when a turn fails or compacts. An agent that exits while bb restores its session no longer breaks every later message. On Windows, a missing agent command is reported as missing. Bob, Kimi Code, Kiro, Muse Code and OpenCode 2 get their own icons.
+- Provider warnings now appear where they happened in the turn, not after its final answer.
+- Subagent details expand and load in delegated tool calls. A subagent's warnings and errors stay inside its delegation instead of showing as extra "Worked for" rows or out-of-order errors.
+- A child thread's question asked through a form, as `AskUserQuestion` does on Codex, Pi and ACP agents, now notifies its parent.
+- A Personal thread that moved into a folder can start Personal child threads.
+
+### Bug fixes
+
+- Fix model submenus closing as soon as you open them from the keyboard or with a click, and → in a submenu changing the reasoning level.
+- Fix the archive confirmation leaving out the stop-work warning when a running child thread would be archived with its parent.
+- Fix **Move to section** on a pinned thread briefly putting it back in Pinned when the move failed.
+- Fix file search skipping lowercase names when the query has non-English capital letters.
+- Fix the Settings → Updates row crashing against an older server.
+- Fix a plugin update being unreviewable after an earlier failed activation, and plugins that track a branch reporting updates for changes elsewhere in their repository.
+- Fix a dismissed plugin warning coming back after a reload or restart, and error toasts showing raw HTTP errors.
+- Fix a saved plugin setting briefly showing its old value.
+- Fix the conversation outline showing messages from before a rewind or edit after the server restarts.
+- Fix `bb thread send` hiding the original error when its recovery lookup failed.
+- Fix the desktop find bar's clipped shadow.
+- **Browser automation:** fix large outputs losing their result or closing the session, runs longer than 30 seconds failing, and sessions closing when saving activity fails.
+
+### Plugins
+
+- **New surfaces:** `app.slots.experimental_threadHeaderRow` and `experimental_threadHeaderTitle` for content under and in a thread's header, `headerTitle` and `hideFromNavigation` on nav panels, `threads.experimental_headState` for a thread's to-dos, commands, options and context usage without a timeline read, and `hosts.experimental_startProviderCliInstall` and `experimental_providerCliInstallJobs` for provider CLI installs.
+- `experimental_useRpcQuery` and `experimental_useRpcKeyedQuery` return the same result and `refetch` across renders until the data changes.
+- `bb.sdk.environments.pullRequest`, `markPullRequestReady`, `markPullRequestDraft` and `mergePullRequest`, removed in 0.47.0, work again through the GitHub PR Status plugin, with a build warning that names the replacement. Plugins such as genui and linear that still call them work again.
+- The timeline's `summaryOnly` option is removed. Use `threads.experimental_headState` instead.
+- A plugin's queued message keeps its owner when another plugin's dispatch hook runs first, and finished plugin calls no longer leak memory.
+- The published `bb-app` and `@get-bb/plugin-sdk` packages now declare their MIT license.
+
+### Security
+
+- **OpenCode 2 asks before running commands again:** in Accept edits, OpenCode 2 ran shell commands without asking, because it no longer reads the permission settings bb passed it. bb now sets the rules on each session, and the session fails to start rather than run unguarded if they can't be set.
+- **"Allow for session" stays in the session:** with Cursor, approving a command for the session saved it to Cursor's global allowlist, so every later thread ran it without asking. bb now keeps the approval for that thread's session only.
+
+### Thanks
+
+Thank you to [@MGrin](https://github.com/MGrin), [@MarcoFlare](https://github.com/MarcoFlare), [@MateoCerquetella](https://github.com/MateoCerquetella), [@dillonzq](https://github.com/dillonzq), [@dpolishuk](https://github.com/dpolishuk), [@galligan](https://github.com/galligan), [@hemaaanth](https://github.com/hemaaanth), [@kongenpei](https://github.com/kongenpei), [@lanjak](https://github.com/lanjak), [@pascal-de-ladurantaye](https://github.com/pascal-de-ladurantaye), [@salemsayed](https://github.com/salemsayed), and [@smsunarto](https://github.com/smsunarto) for contributions to this release.
+
 ## 0.49.0
 
 A reliability release: threads get unstuck on their own, retries and automations ride out provider outages, reconnecting machines catch up on what they missed, and the server no longer stalls on database maintenance or long threads. bb also loads pages and creates threads faster. This release includes everything from 0.48.1, which shipped without notes.

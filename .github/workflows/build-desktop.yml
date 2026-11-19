@@ -77,7 +77,10 @@ jobs:
           fi
 
           if [[ -n "$REQUESTED_VERSION" ]]; then
-            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            current_version="$(node -p "require('./apps/desktop/package.json').version")"
+            if [[ "$REQUESTED_VERSION" != "$current_version" ]]; then
+              node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            fi
           fi
 
           version="$(node -p "require('./apps/desktop/package.json').version")"
@@ -212,7 +215,10 @@ jobs:
           fi
 
           if [[ -n "$REQUESTED_VERSION" ]]; then
-            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            current_version="$(node -p "require('./apps/desktop/package.json').version")"
+            if [[ "$REQUESTED_VERSION" != "$current_version" ]]; then
+              node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            fi
           fi
 
           version="$(node -p "require('./apps/desktop/package.json').version")"
@@ -301,7 +307,10 @@ jobs:
           fi
 
           if [[ -n "$REQUESTED_VERSION" ]]; then
-            node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            current_version="$(node -p "require('./apps/desktop/package.json').version")"
+            if [[ "$REQUESTED_VERSION" != "$current_version" ]]; then
+              node scripts/bump-version.mjs "$REQUESTED_VERSION"
+            fi
           fi
 
           version="$(node -p "require('./apps/desktop/package.json').version")"

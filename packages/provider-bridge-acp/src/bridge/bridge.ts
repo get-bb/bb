@@ -30,7 +30,6 @@ import type {
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
-  PROVIDER_TOOL_CALL_CANCELLED_METHOD,
   BridgeRecoveryError,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
@@ -40,12 +39,15 @@ import {
   experimental_defineProviderBridge,
   mimeTypeFromExtension,
   runBridgeRequest,
-  withoutBridgeRuntimeEnv,
+  buildProviderCliEnv,
+  unansweredInteractionErrorMessage,
+  unansweredInteractionWarning,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeJsonRpcResponse,
   BridgeToolCallContent,
   BridgeToolCallImage,
+  UnansweredInteractionCause,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execPortableFile } from "@bb/process-utils";
 import { randomBytes } from "node:crypto";
@@ -122,8 +124,11 @@ import {
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
   acpAgentMessageChunkUpdateSchema,
+  acpCompactionUpdateSchema,
   extractAcpContentText,
+  readOpenCodeCompactionUpdate,
   acpUsageUpdateSchema,
+  type AcpCompactionUpdate,
   type AcpConfigStateResult,
   type AcpSessionModels,
   type AcpUsageUpdate,
@@ -141,6 +146,7 @@ import {
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
 import type { AcpAgentCapabilities } from "../client/capabilities.js";
+import { ACP_RESOURCE_NOT_FOUND_CODE } from "../client/acp-client.js";
 import {
   createAcpSessionModel,
   type AcpSessionModel,
@@ -187,6 +193,7 @@ interface AcpSessionPolicy {
 interface PendingAcpPermission {
   responder: AcpAgentRequestResponder;
   options: AcpPermissionOption[];
+  withdrawal: AbortController;
 }
 
 interface AcpPendingTurnInput {
@@ -200,6 +207,8 @@ interface AcpNativeConfigState {
   configOptions: readonly AcpConfigOption[] | undefined;
   models: AcpSessionModels | undefined;
 }
+
+type AcpSessionRebuildCause = "cancel-error" | "lost-session";
 
 interface AcpThreadSession {
   bbThreadId: string;
@@ -222,11 +231,14 @@ interface AcpThreadSession {
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | "agent" | null;
   compactionAgentMessage: string;
+  compactionUpdateOutcome: AcpCompactionUpdateOutcome | undefined;
+  openAgentCompactionIds: Set<string>;
+  finishedAgentCompactionIds: Set<string>;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
   turnStartedAtMs: number | undefined;
-  restartAfterCancelError: boolean;
+  rebuildBeforeNextPrompt: AcpSessionRebuildCause | null;
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
@@ -235,7 +247,7 @@ interface AcpThreadSession {
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
-  pendingElicitations: Set<AcpAgentRequestResponder>;
+  pendingElicitations: Map<AcpAgentRequestResponder, AbortController>;
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
@@ -290,6 +302,8 @@ const SESSION_BUSY_QUIET_MS = 2_000;
 const SESSION_BUSY_MAX_WAITS = 300;
 const SESSION_BUSY_MAX_RETRIES = 3;
 const ACP_SESSION_BUSY_ERROR_CODE = -32003;
+const ACP_LOST_SESSION_MESSAGE =
+  /\bsession\b(?:\s+\S+)?\s+not found|\bsession lock unavailable\b/i;
 const ACP_SESSION_SETUP_TIMEOUT_MS = 300_000;
 const ACP_SESSION_CONFIG_TIMEOUT_MS = 60_000;
 const ACP_AUTHENTICATE_TIMEOUT_MS = 120_000;
@@ -332,8 +346,10 @@ function sendRuntimeRequest(
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
       abort = () => {
-        pendingRuntimeRequests.delete(requestId);
-        sendNotification(PROVIDER_TOOL_CALL_CANCELLED_METHOD, { requestId });
+        if (!pendingRuntimeRequests.delete(requestId)) return;
+        sendNotification(BRIDGE_NOTIFICATION_METHODS.requestCancelled, {
+          requestId,
+        });
         rejectResponse(new Error("ACP dynamic tool call cancelled"));
       };
       signal?.addEventListener("abort", abort, { once: true });
@@ -863,10 +879,7 @@ async function loadAgentModelCatalog(
 ): Promise<AgentModelCatalog | null> {
   const stdout = await execPortableFile(listCommand.command, listCommand.args, {
     cwd: listCommand.cwd ?? process.cwd(),
-    env: {
-      ...withoutBridgeRuntimeEnv(process.env),
-      ...(listCommand.envVars ?? {}),
-    },
+    env: buildProviderCliEnv(listCommand.envVars),
     maxBuffer: 1024 * 1024,
     timeout: MODEL_LIST_TIMEOUT_MS,
   }).then(
@@ -1049,10 +1062,7 @@ async function loadDeclaredSessionOptions(
   if (cached !== null) {
     return cached;
   }
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...(agent.envVars ?? {}),
-  };
+  const childEnv = buildProviderCliEnv(agent.envVars);
   const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
@@ -1157,10 +1167,7 @@ async function loadSessionDiscoveredModels(
     return cachedSessionDiscoveredModels.models;
   }
 
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...(agent.envVars ?? {}),
-  };
+  const childEnv = buildProviderCliEnv(agent.envVars);
   const connection = createBridgeAgentConnection({
     command: agent.command,
     args: agent.args,
@@ -1905,83 +1912,145 @@ function pickPermissionOptionId(
   }
 }
 
-function respondPermission(
-  pending: PendingAcpPermission,
-  decision: "allow_once" | "allow_for_session" | "deny" | null,
+function answerWithoutUser(
+  session: AcpThreadSession,
+  responder: AcpAgentRequestResponder,
+  cause: UnansweredInteractionCause,
 ): void {
-  if (decision === null) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-    return;
-  }
+  sendThreadDeltas(session.bbThreadId, [
+    unansweredInteractionWarning({ cause, answer: { kind: "error" } }),
+  ]);
+  responder.error(
+    cause.kind === "unshowable-request" ? -32602 : -32603,
+    unansweredInteractionErrorMessage(cause),
+  );
+}
+
+function runtimeErrorCause(error: unknown): UnansweredInteractionCause {
+  return {
+    kind: "runtime-error",
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function respondPermission(
+  session: AcpThreadSession,
+  pending: PendingAcpPermission,
+  decision: "allow_once" | "allow_for_session" | "deny",
+): void {
   const optionId = pickPermissionOptionId(pending.options, decision);
   if (optionId === undefined) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    answerWithoutUser(session, pending.responder, {
+      kind: "unmappable-answer",
+      detail: `the agent offered no option for ${decision.replaceAll("_", " ")}`,
+    });
     return;
   }
   pending.responder.result({ outcome: { outcome: "selected", optionId } });
 }
 
-function cancelPendingPermissions(session: AcpThreadSession): void {
-  for (const pending of session.pendingPermissions) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-  }
+function withdrawPendingQuestions(
+  session: AcpThreadSession,
+  detail: string,
+): void {
+  const cause: UnansweredInteractionCause = { kind: "withdrawn", detail };
+  const permissions = [...session.pendingPermissions];
+  const elicitations = [...session.pendingElicitations];
   session.pendingPermissions.clear();
-  for (const responder of session.pendingElicitations) {
-    responder.result({ action: "cancel" });
-  }
   session.pendingElicitations.clear();
+  for (const pending of permissions) {
+    answerWithoutUser(session, pending.responder, cause);
+    pending.withdrawal.abort();
+  }
+  for (const [responder, withdrawal] of elicitations) {
+    answerWithoutUser(session, responder, cause);
+    withdrawal.abort();
+  }
 }
+
+function cancelPendingPermissions(session: AcpThreadSession): void {
+  const permissions = [...session.pendingPermissions];
+  const elicitations = [...session.pendingElicitations];
+  session.pendingPermissions.clear();
+  session.pendingElicitations.clear();
+  for (const pending of permissions) {
+    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    pending.withdrawal.abort();
+  }
+  for (const [responder, withdrawal] of elicitations) {
+    responder.result({ action: "cancel" });
+    withdrawal.abort();
+  }
+}
+
+const COMPACTION_QUESTION_CAUSE: UnansweredInteractionCause = {
+  kind: "unshowable-request",
+  detail: "the agent asked while bb was compacting the conversation",
+};
 
 function handleElicitationRequest(
   session: AcpThreadSession,
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
-  if (
-    session.stopping ||
-    session.cancelRequested ||
-    session.activePromptKind === "compaction"
-  ) {
+  if (session.stopping || session.cancelRequested) {
     responder.result({ action: "cancel" });
+    return;
+  }
+  if (session.activePromptKind === "compaction") {
+    answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
   const plan = planAcpElicitation(params);
   if (plan.kind === "unsupported") {
-    emitForSession(session, ACP_WARNING_METHOD, {
-      threadId: session.bbThreadId,
-      summary: "The agent asked a question bb could not show",
-      details: `bb answered the agent with an error because ${plan.reason}.`,
+    answerWithoutUser(session, responder, {
+      kind: "unshowable-request",
+      detail: plan.reason,
     });
-    responder.error(-32602, `bb cannot show this form: ${plan.reason}`);
     return;
   }
   if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
-  session.pendingElicitations.add(responder);
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: null,
-    payload: plan.payload,
-  })
+  const withdrawal = new AbortController();
+  session.pendingElicitations.set(responder, withdrawal);
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: null,
+      payload: plan.payload,
+    },
+    withdrawal.signal,
+  )
     .then((result) => {
       if (!session.pendingElicitations.delete(responder)) {
         return;
       }
       const resolution =
         userQuestionPendingInteractionResolutionSchema.safeParse(result);
-      responder.result(
-        resolution.success
-          ? plan.toResponse(resolution.data)
-          : { action: "cancel" },
-      );
+      if (!resolution.success) {
+        answerWithoutUser(session, responder, {
+          kind: "unreadable-resolution",
+        });
+        return;
+      }
+      const response = plan.toResponse(resolution.data);
+      if ("unmappable" in response) {
+        answerWithoutUser(session, responder, {
+          kind: "unmappable-answer",
+          detail: response.unmappable,
+        });
+        return;
+      }
+      responder.result(response);
     })
-    .catch(() => {
+    .catch((error: unknown) => {
       if (!session.pendingElicitations.delete(responder)) {
         return;
       }
-      responder.result({ action: "cancel" });
+      answerWithoutUser(session, responder, runtimeErrorCause(error));
     });
 }
 
@@ -1996,12 +2065,12 @@ function handlePermissionRequest(
     return;
   }
 
-  if (
-    session.stopping ||
-    session.cancelRequested ||
-    session.activePromptKind === "compaction"
-  ) {
+  if (session.stopping || session.cancelRequested) {
     responder.result({ outcome: { outcome: "cancelled" } });
+    return;
+  }
+  if (session.activePromptKind === "compaction") {
+    answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
 
@@ -2029,10 +2098,11 @@ function handlePermissionRequest(
   const pending: PendingAcpPermission = {
     responder,
     options: parsed.data.options,
+    withdrawal: new AbortController(),
   };
 
   if (session.policy.permissionMode === "full") {
-    respondPermission(pending, "allow_once");
+    respondPermission(session, pending, "allow_once");
     return;
   }
 
@@ -2070,19 +2140,23 @@ function handlePermissionRequest(
   });
   const grantKey = acpSessionGrantKey(payload);
   if (grantKey !== null && session.sessionGrants.has(grantKey)) {
-    respondPermission(pending, "allow_once");
+    respondPermission(session, pending, "allow_once");
     return;
   }
   if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
   session.pendingPermissions.add(pending);
-  void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-    providerThreadId: session.providerThreadId,
-    threadId: session.bbThreadId,
-    turnId: null,
-    payload,
-  })
+  void sendRuntimeRequest(
+    BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+    {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: null,
+      payload,
+    },
+    pending.withdrawal.signal,
+  )
     .then((result) => {
       if (!session.pendingPermissions.delete(pending)) {
         return;
@@ -2094,16 +2168,22 @@ function handlePermissionRequest(
             resolution: resolution.data,
           })
         : null;
-      if (response?.decision === "allow_for_session" && grantKey !== null) {
+      if (response === null) {
+        answerWithoutUser(session, pending.responder, {
+          kind: "unreadable-resolution",
+        });
+        return;
+      }
+      if (response.decision === "allow_for_session" && grantKey !== null) {
         session.sessionGrants.add(grantKey);
       }
-      respondPermission(pending, response?.decision ?? null);
+      respondPermission(session, pending, response.decision);
     })
-    .catch(() => {
+    .catch((error: unknown) => {
       if (!session.pendingPermissions.delete(pending)) {
         return;
       }
-      respondPermission(pending, null);
+      answerWithoutUser(session, pending.responder, runtimeErrorCause(error));
     });
 }
 
@@ -2370,11 +2450,10 @@ async function startAgentSession(
   }
   const agentLabel = [params.agent.command, ...params.agent.args].join(" ");
   let session: AcpThreadSession;
-  const childEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
+  const childEnv = buildProviderCliEnv({
     ...params.envVars,
     ...dialectLaunchEnv(dialect.id, params.permissionMode),
-  };
+  });
   const connection = createBridgeAgentConnection({
     command: params.agent.command,
     args: launch.args,
@@ -2432,11 +2511,14 @@ async function startAgentSession(
     pendingInstructions: params.instructions,
     activePromptKind: null,
     compactionAgentMessage: "",
+    compactionUpdateOutcome: undefined,
+    openAgentCompactionIds: new Set(),
+    finishedAgentCompactionIds: new Set(),
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
     turnStartedAtMs: undefined,
-    restartAfterCancelError: false,
+    rebuildBeforeNextPrompt: null,
     loading: false,
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
@@ -2445,7 +2527,7 @@ async function startAgentSession(
     turnSettled: undefined,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
-    pendingElicitations: new Set(),
+    pendingElicitations: new Map(),
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
@@ -2787,6 +2869,7 @@ function setActivePromptKind(
   }
   if (kind === null) {
     clearAgentTurnQuietTimer(session);
+    session.openAgentCompactionIds.clear();
     if (session.promptWorkOpen) {
       session.promptWorkOpen = false;
       session.model.promptSettled({ stopReason: "end_turn" });
@@ -2807,6 +2890,7 @@ function agentTurnHasOpenWork(session: AcpThreadSession): boolean {
   return (
     session.pendingPermissions.size > 0 ||
     session.pendingElicitations.size > 0 ||
+    session.openAgentCompactionIds.size > 0 ||
     session.model.hasUnfinishedToolCalls()
   );
 }
@@ -3124,6 +3208,23 @@ function finishTurn(
   });
 }
 
+function isLostSessionError(error: unknown): boolean {
+  return (
+    error instanceof AcpAgentResponseError &&
+    (error.code === ACP_RESOURCE_NOT_FOUND_CODE ||
+      ACP_LOST_SESSION_MESSAGE.test(error.message))
+  );
+}
+
+function scheduleRebuildIfSessionLost(
+  session: AcpThreadSession,
+  error: unknown,
+): void {
+  if (isLostSessionError(error)) {
+    session.rebuildBeforeNextPrompt ??= "lost-session";
+  }
+}
+
 function isSessionBusyError(error: unknown): boolean {
   return (
     error instanceof AcpAgentResponseError &&
@@ -3162,6 +3263,7 @@ const TURN_OUTPUT_UPDATE_KINDS = new Set([
   "tool_call",
   "tool_call_update",
   "plan",
+  "compaction_update",
 ]);
 
 function isTurnOutputUpdate(update: unknown): boolean {
@@ -3249,7 +3351,10 @@ function runTurn(
           }
         }
       } catch (error) {
-        session.restartAfterCancelError = session.cancelRequested;
+        session.rebuildBeforeNextPrompt = session.cancelRequested
+          ? "cancel-error"
+          : null;
+        scheduleRebuildIfSessionLost(session, error);
         session.promptRequestPending = false;
         dropTurnInput(pending, "ACP turn failed before the prompt was sent");
         dropQueuedTurnInputs(
@@ -3372,10 +3477,10 @@ function reconcileExecutionSettings(
     launchModelChanged;
   const restart =
     session.connection.exited ||
-    session.restartAfterCancelError ||
+    session.rebuildBeforeNextPrompt !== null ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
-  cancelPendingPermissions(session);
+  withdrawPendingQuestions(session, "a new prompt started before you answered");
   session.policy = {
     permissionMode: options.permissionMode,
     workspaceWriteRoots,
@@ -3430,9 +3535,11 @@ async function rebuildAgentSession(
   const previousProviderThreadId = session.providerThreadId;
   const reason = session.connection.exited
     ? "The ACP agent exited unexpectedly; its session was rebuilt before continuing."
-    : session.restartAfterCancelError
+    : session.rebuildBeforeNextPrompt === "cancel-error"
       ? "The ACP agent failed during cancellation; its session was rebuilt before continuing."
-      : "Execution settings changed; the ACP session was rebuilt to apply them.";
+      : session.rebuildBeforeNextPrompt === "lost-session"
+        ? "The ACP agent lost its session; the session was rebuilt before continuing."
+        : "Execution settings changed; the ACP session was rebuilt to apply them.";
   const queuedInputs = session.queuedInputs.splice(0);
   const continuingTurn = session.activePromptKind === "turn";
   if (continuingTurn) {
@@ -3510,6 +3617,7 @@ function startCompaction(
   setActivePromptKind(session, "compaction");
   session.awaitingFirstPrompt = false;
   session.compactionAgentMessage = "";
+  session.compactionUpdateOutcome = undefined;
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -3536,10 +3644,11 @@ function startCompaction(
       }
       finish(
         result.stopReason === "end_turn"
-          ? compactionOutcomeForEndTurn(
-              session.dialect,
-              session.compactionAgentMessage,
-            )
+          ? (session.compactionUpdateOutcome ??
+              compactionOutcomeForEndTurn(
+                session.dialect,
+                session.compactionAgentMessage,
+              ))
           : result.stopReason === "cancelled"
             ? { status: "interrupted" }
             : {
@@ -3549,6 +3658,7 @@ function startCompaction(
       );
     })
     .catch((error: unknown) => {
+      scheduleRebuildIfSessionLost(session, error);
       finish({
         status: "failed",
         error: error instanceof Error ? error.message : String(error),
@@ -3571,24 +3681,37 @@ function finishCompaction(
   session.turnSettled = undefined;
 }
 
+const ACP_QUESTION_HANDLERS = new Map<
+  string,
+  (
+    session: AcpThreadSession,
+    params: unknown,
+    responder: AcpAgentRequestResponder,
+  ) => void
+>([
+  ["session/request_permission", handlePermissionRequest],
+  ["elicitation/create", handleElicitationRequest],
+]);
+
+export const ACP_QUESTION_REQUEST_METHODS = [...ACP_QUESTION_HANDLERS.keys()];
+
 function handleAgentRequest(
   session: AcpThreadSession,
   method: string,
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
+  const question = ACP_QUESTION_HANDLERS.get(method);
+  if (question !== undefined) {
+    question(session, params, responder);
+    return;
+  }
   switch (method) {
-    case "session/request_permission":
-      handlePermissionRequest(session, params, responder);
-      return;
     case "fs/read_text_file":
       void handleFsReadTextFile(params, responder);
       return;
     case "fs/write_text_file":
       void handleFsWriteTextFile(session, params, responder);
-      return;
-    case "elicitation/create":
-      handleElicitationRequest(session, params, responder);
       return;
     default:
       handleDialectRequest(session, method, params, responder);
@@ -3669,7 +3792,17 @@ function handleAgentNotification(
       };
     }
   }
+  const compactionUpdate =
+    session.dialect.id === "opencode"
+      ? readOpenCodeCompactionUpdate(parsed.data.update)
+      : undefined;
+  const update = compactionUpdate ?? parsed.data.update;
+  const parsedCompaction = acpCompactionUpdateSchema.safeParse(update);
   if (session.activePromptKind === "compaction") {
+    if (parsedCompaction.success) {
+      recordCompactionUpdateOutcome(session, parsedCompaction.data);
+      return;
+    }
     const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
       parsed.data.update,
     );
@@ -3677,8 +3810,55 @@ function handleAgentNotification(
       session.compactionAgentMessage +=
         extractAcpContentText(chunk.data.content) ?? "";
     }
+  } else if (parsedCompaction.success) {
+    trackAgentCompaction(session, parsedCompaction.data);
   }
-  emitSessionUpdate(session, parsed.data.update, rawUpdate);
+  emitSessionUpdate(session, update, rawUpdate);
+}
+
+type AcpCompactionUpdateOutcome =
+  | { status: "failed"; error: string }
+  | { status: "interrupted" };
+
+const TERMINAL_COMPACTION_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+function recordCompactionUpdateOutcome(
+  session: AcpThreadSession,
+  update: AcpCompactionUpdate,
+): void {
+  if (update.status === "failed") {
+    session.compactionUpdateOutcome = {
+      status: "failed",
+      error: update.error || "The agent reported that compaction failed",
+    };
+  } else if (update.status === "cancelled") {
+    session.compactionUpdateOutcome = { status: "interrupted" };
+  }
+}
+
+function trackAgentCompaction(
+  session: AcpThreadSession,
+  update: AcpCompactionUpdate,
+): void {
+  if (session.awaitingFirstPrompt && session.activePromptKind === null) {
+    return;
+  }
+  if (session.finishedAgentCompactionIds.has(update.compactionId)) {
+    return;
+  }
+  if (TERMINAL_COMPACTION_STATUSES.has(update.status)) {
+    session.finishedAgentCompactionIds.add(update.compactionId);
+    session.openAgentCompactionIds.delete(update.compactionId);
+  } else {
+    session.openAgentCompactionIds.add(update.compactionId);
+  }
+  if (session.activePromptKind === null) {
+    openAgentTurn(session);
+  }
 }
 
 type DecodedAcpBridgeRequest =
@@ -3868,6 +4048,7 @@ function decodeDialectId(
 
 function maintenanceTarget(
   providerOptions: Record<string, unknown> | undefined,
+  envVars: Readonly<Record<string, string>> | undefined,
 ): {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
@@ -3883,7 +4064,7 @@ function maintenanceTarget(
     maintenance: dialect.maintenance,
     command: launchSpec?.command ?? null,
     dialectId: dialect.id,
-    env: { ...process.env, ...launchSpec?.env },
+    env: buildProviderCliEnv({ ...launchSpec?.env, ...envVars }),
   };
 }
 
@@ -3920,7 +4101,7 @@ async function handleRequest(
         inModelListWorkspace(
           buildAcpModelListParams(
             decodeLaunchSpec(request.params.providerOptions),
-            modelPicker,
+            { ...modelPicker, envVars: request.params.envVars ?? {} },
           ),
           await resolveModelListWorkspace(request.params.cwd),
         ),
@@ -3934,7 +4115,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderHealth(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3943,7 +4127,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderUsage(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3952,7 +4139,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationStatus(
-          maintenanceTarget(request.params.providerOptions),
+          maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
         ),
       );
       return;
@@ -3961,7 +4151,10 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationRun({
-          ...maintenanceTarget(request.params.providerOptions),
+          ...maintenanceTarget(
+            request.params.providerOptions,
+            request.params.envVars,
+          ),
           action: request.params.action,
         }),
       );
@@ -4055,10 +4248,15 @@ async function handleRequest(
       const reconciled = reconcileExecutionSettings(session, params.options);
       session = reconciled instanceof Promise ? await reconciled : reconciled;
       if (params.options.sessionOptions !== undefined) {
-        await applySessionOptionSelections(
-          session,
-          params.options.sessionOptions,
-        );
+        try {
+          await applySessionOptionSelections(
+            session,
+            params.options.sessionOptions,
+          );
+        } catch (error) {
+          scheduleRebuildIfSessionLost(session, error);
+          throw error;
+        }
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,

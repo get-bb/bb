@@ -20,6 +20,7 @@ export type SidebarUpdateRow =
   | {
       kind: "provider";
       key: string;
+      fingerprint: string;
       provider: ProviderCliKey;
       label: string;
       detail: string;
@@ -29,6 +30,7 @@ export type SidebarUpdateRow =
   | {
       kind: "plugin";
       key: string;
+      fingerprint: string;
       pluginId: string;
       icon: string | null;
       label: string;
@@ -42,12 +44,14 @@ export interface SidebarBbUpdate {
   currentVersion: string | null;
   installsWhenIdle: boolean;
   restarting: boolean;
-  restartLabel: string | null;
+  canRestart: boolean;
 }
 
 export interface SidebarUpdateModel {
   bb: SidebarBbUpdate | null;
   rows: SidebarUpdateRow[];
+  fingerprints: string[];
+  visible: boolean;
   startableCount: number;
   retryOnly: boolean;
   updating: boolean;
@@ -93,6 +97,7 @@ function providerRows(
       return {
         kind: "provider" as const,
         key: jobKey,
+        fingerprint: `provider:${machine.host.id}:${issue.fingerprint}`,
         provider: issue.provider,
         label: issue.status.displayName,
         detail: multipleMachines
@@ -128,6 +133,7 @@ function pluginRows(
       {
         kind: "plugin" as const,
         key: `plugin:${item.plugin.id}`,
+        fingerprint: `plugin:${item.plugin.id}:${item.version}`,
         pluginId: item.plugin.id,
         icon: item.plugin.icon,
         label: item.plugin.name ?? item.plugin.id,
@@ -141,26 +147,42 @@ function pluginRows(
 
 export function buildSidebarUpdateModel(input: {
   bb: SidebarBbUpdate | null;
+  bbFingerprint: string | null;
+  skippedFingerprints: readonly string[];
   machines: readonly UpdateInventoryMachine[];
   plugins: UpdateInventoryPlugins | null;
+  showProviderCliUpdates: boolean;
   providerJobs: ProviderCliJobs;
   pluginJobs: readonly PluginUpdateJob[];
 }): SidebarUpdateModel {
   const rows = [
-    ...providerRows(input.machines, input.providerJobs),
+    ...(input.showProviderCliUpdates
+      ? providerRows(input.machines, input.providerJobs)
+      : []),
     ...pluginRows(input.plugins, input.pluginJobs),
   ];
   const startable = rows.filter((row) =>
     row.kind === "provider" ? row.start !== null : row.startable,
   );
+  const fingerprints = [
+    ...(input.bbFingerprint === null ? [] : [input.bbFingerprint]),
+    ...rows.map((row) => row.fingerprint),
+  ];
+  const skipped = new Set(input.skippedFingerprints);
+  const updating =
+    input.bb?.restarting === true ||
+    rows.some((row) => row.state === "updating");
   return {
     bb: input.bb,
     rows,
+    fingerprints,
+    visible:
+      fingerprints.length > 0 &&
+      (updating ||
+        fingerprints.some((fingerprint) => !skipped.has(fingerprint))),
     startableCount: startable.length,
     retryOnly:
       startable.length > 0 && startable.every((row) => row.state === "failed"),
-    updating:
-      input.bb?.restarting === true ||
-      rows.some((row) => row.state === "updating"),
+    updating,
   };
 }

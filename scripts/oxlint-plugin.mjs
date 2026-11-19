@@ -76,6 +76,58 @@ const noBlockingChildProcessCall = {
   },
 };
 
+const rawChildProcessModules = new Set([
+  "node:child_process",
+  "child_process",
+  "cross-spawn",
+  "execa",
+]);
+
+const noRawChildProcess = {
+  create(context) {
+    function check(node, typeOnly) {
+      if (typeOnly) return;
+      if (node?.type !== "Literal" || typeof node.value !== "string") return;
+      if (!rawChildProcessModules.has(node.value)) return;
+      context.report({
+        node,
+        message: `${node.value} spawns outside the host spawn policy. Use the @bb/process-utils helpers (spawnHostProcess, execHostFile, forkHostProcess, spawnManagedProcess, execPortableFile), or @get-bb/plugin-sdk/process in a plugin, so PATH, proxy, and windowsHide come from one owner.`,
+      });
+    }
+    return {
+      ImportDeclaration(node) {
+        check(
+          node.source,
+          node.importKind === "type" ||
+            (node.specifiers.length > 0 &&
+              node.specifiers.every(
+                (specifier) => specifier.importKind === "type",
+              )),
+        );
+      },
+      ExportNamedDeclaration(node) {
+        check(node.source, node.exportKind === "type");
+      },
+      ExportAllDeclaration(node) {
+        check(node.source, node.exportKind === "type");
+      },
+      ImportExpression(node) {
+        check(node.source, false);
+      },
+      TSImportEqualsDeclaration(node) {
+        if (node.moduleReference.type !== "TSExternalModuleReference") return;
+        check(node.moduleReference.expression, node.importKind === "type");
+      },
+      CallExpression(node) {
+        const callee = calleeName(node.callee);
+        if (callee === "require" || callee === "process.getBuiltinModule") {
+          check(node.arguments[0], false);
+        }
+      },
+    };
+  },
+};
+
 function findJsxAttribute(node, name) {
   return node.attributes.find(
     (attribute) =>
@@ -288,12 +340,59 @@ const noRawResizeObserver = {
   },
 };
 
+const imeSensitiveKeys = new Set(["Enter", "Escape"]);
+const imeSafeKeyMessage = (key) =>
+  `Match ${key} with isNonImeKey(event, "${key}") from @bb/shared-ui/lib/ime-keyboard (@/lib/ime-keyboard in plugins). A raw key check fires on the keystroke that confirms or cancels Chinese, Japanese, or Korean input-method composition; Safari reports that keystroke with isComposing false and keyCode 229.`;
+
+function isKeyMember(node) {
+  return (
+    node.type === "MemberExpression" &&
+    !node.computed &&
+    node.property.type === "Identifier" &&
+    node.property.name === "key"
+  );
+}
+
+function imeSensitiveKeyLiteral(node) {
+  return node.type === "Literal" && imeSensitiveKeys.has(node.value)
+    ? node.value
+    : null;
+}
+
+const imeSafeKeyHandlers = {
+  create(context) {
+    return {
+      BinaryExpression(node) {
+        if (!["===", "!==", "==", "!="].includes(node.operator)) return;
+        const key = isKeyMember(node.left)
+          ? imeSensitiveKeyLiteral(node.right)
+          : isKeyMember(node.right)
+            ? imeSensitiveKeyLiteral(node.left)
+            : null;
+        if (key !== null) {
+          context.report({ node, message: imeSafeKeyMessage(key) });
+        }
+      },
+      SwitchCase(node) {
+        const key =
+          node.test === null ? null : imeSensitiveKeyLiteral(node.test);
+        const switchStatement = node.parent;
+        if (key !== null && isKeyMember(switchStatement.discriminant)) {
+          context.report({ node, message: imeSafeKeyMessage(key) });
+        }
+      },
+    };
+  },
+};
+
 export const rules = {
   "forkable-plugin-imports": forkablePluginImports,
+  "ime-safe-key-handlers": imeSafeKeyHandlers,
   "no-blocking-child-process-call": noBlockingChildProcessCall,
   "no-comments": noComments,
   "no-native-title-on-button": noNativeTitleOnButton,
   "no-native-title-with-aria-label": noNativeTitleWithAriaLabel,
+  "no-raw-child-process": noRawChildProcess,
   "no-raw-resize-observer": noRawResizeObserver,
 };
 

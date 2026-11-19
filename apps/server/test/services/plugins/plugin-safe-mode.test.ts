@@ -150,7 +150,7 @@ describe("plugin safe mode", () => {
     await service.setEnabled("alpha", false);
     await service.setSafeMode(true);
 
-    await expect(service.setEnabled("alpha", true)).resolves.toMatchObject({
+    expect((await service.setEnabled("alpha", true))?.plugin).toMatchObject({
       enabled: true,
       status: "disabled",
       statusDetail: "safe mode is on",

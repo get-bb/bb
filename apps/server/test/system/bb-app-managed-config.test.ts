@@ -63,7 +63,6 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     customModels: [],
     dataDir: "/tmp/bb-test",
     marketplaceUrl: "https://marketplace.invalid/marketplace.json",
-    connectGateKeysUrl: "https://gate-keys.invalid/bb-connect-gate-keys.json",
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 38887,
     inheritedSkillsRootPaths: [],

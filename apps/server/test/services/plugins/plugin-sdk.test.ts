@@ -118,24 +118,7 @@ describe("plugin bb.sdk bind gate", () => {
     ),
     replaceDeclarationsForOwner: vi.fn(),
     clearDeclarationsForOwner: vi.fn(),
-    setNextTunnelConfig: vi.fn(),
-    listNextTunnelStatuses: vi.fn(() => [
-      {
-        hostId: "host-1",
-        hostName: "Sawyer Air",
-        status: {
-          state: "connected" as const,
-          label: "sawyer-air",
-          lastError: null,
-          nextRetryAt: null,
-          since: 1,
-          shares: [],
-        },
-      },
-    ]),
-    onNextTunnelStatusChange: vi.fn((_listener: () => void) => nextUnsubscribe),
   };
-  const nextUnsubscribe = vi.fn();
   const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
     label: "sawyer-air",
     baseDomain: "getbb.app",
@@ -192,9 +175,6 @@ describe("plugin bb.sdk bind gate", () => {
     sharedPorts.validateSharedPortDeclaration.mockClear();
     sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
-    sharedPorts.setNextTunnelConfig.mockClear();
-    sharedPorts.onNextTunnelStatusChange.mockClear();
-    nextUnsubscribe.mockClear();
     ensureSharedPortTunnel.mockClear();
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
@@ -394,47 +374,6 @@ describe("plugin bb.sdk bind gate", () => {
     expect(sharedPorts.clearDeclarationsForOwner).toHaveBeenCalledWith(
       "shares",
     );
-  });
-
-  it("routes next machine tunnels through the server control plane under the plugin's id", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-next",
-      serverSource: `export default function plugin() {}`,
-    });
-    await service.installPath(rootDir);
-    const api = requireApi(service, "next");
-    const config = {
-      domain: "next.getbb.app",
-      server: {
-        protocol: "wss" as const,
-        host: "tunnel.next.getbb.app",
-        port: 443,
-      },
-    };
-    api.hosts.internal_DO_NOT_USE_setNextTunnels(config);
-    expect(sharedPorts.setNextTunnelConfig).toHaveBeenCalledWith(
-      "next",
-      config,
-    );
-    expect(api.hosts.internal_DO_NOT_USE_nextTunnelStatuses()).toEqual([
-      {
-        hostId: "host-1",
-        hostName: "Sawyer Air",
-        state: "connected",
-        label: "sawyer-air",
-        lastError: null,
-        nextRetryAt: null,
-        since: 1,
-        shares: [],
-      },
-    ]);
-    const listener = vi.fn();
-    api.hosts.internal_DO_NOT_USE_onNextTunnelStatusChange(listener);
-    expect(sharedPorts.onNextTunnelStatusChange).toHaveBeenCalledWith(listener);
-
-    await service.stop();
-    expect(nextUnsubscribe).toHaveBeenCalled();
-    expect(sharedPorts.clearDeclarationsForOwner).toHaveBeenCalledWith("next");
   });
 
   it("binds typed host calls and ignores worker exits from stale generations", async () => {
@@ -1397,7 +1336,11 @@ describe("plugin bb.sdk against a running server", () => {
       await reportQueuedCommandSuccess(server, stop, {
         providerCheckpointId: null,
       });
-      await expect(stopPromise).resolves.toEqual({ ok: true });
+      await expect(stopPromise).resolves.toEqual({
+        ok: true,
+        progress: "complete",
+        status: "idle",
+      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

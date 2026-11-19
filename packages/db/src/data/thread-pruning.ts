@@ -4,6 +4,7 @@ import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import {
   advanceLiveEventPruning,
   emptyResolvedItemPruningProbe,
+  RESOLVED_ITEM_PRUNING_KINDS,
 } from "./resolved-item-pruning.js";
 import { pruneRateLimitSnapshotWindow } from "./rate-limit-pruning.js";
 import { and, eq, gt, gte, inArray, lt, notInArray, sql, type SQLWrapper } from "drizzle-orm";
@@ -39,7 +40,7 @@ const VERSION_BY_POLICY: Record<ThreadPruningPolicy, number> = {
   "rate-limits": 1,
   usage: 1,
   "turn-diffs": 1,
-  "resolved-items": 1,
+  "resolved-items": 2,
 };
 export const PRUNABLE_THREAD_EVENT_TYPES = [
   "provider/rateLimits/updated",
@@ -419,16 +420,20 @@ function advanceThreadPruningTransaction(
           if (complete || cursor.sequence >= cursor.upperSequence)
             action = "thread-complete";
         } else if (policy === "resolved-items") {
+          const kind = RESOLVED_ITEM_PRUNING_KINDS[cursor.step];
+          if (kind === undefined)
+            throw new Error("Invalid resolved-item pruning step");
           const batch = advanceLiveEventPruning(tx, {
             threadId,
-            kind: cursor.step === 0 ? "deltas" : "background",
+            kind,
             limit: batchSize,
             deadline,
           });
           scanned = batch.scanned;
           removed = batch.removed;
           if (batch.complete) {
-            if (cursor.step === 0) cursor.step = 1;
+            if (cursor.step < RESOLVED_ITEM_PRUNING_KINDS.length - 1)
+              cursor.step += 1;
             else action = "thread-complete";
           }
         } else {
@@ -596,7 +601,7 @@ function advanceThreadPruningTransaction(
     result.threadId !== null &&
     !TIMELINE_PRESERVING_POLICIES.has(policy)
   )
-    bumpThreadEventRewriteGeneration(result.threadId);
+    bumpThreadEventRewriteGeneration(db, result.threadId);
   return result;
 }
 

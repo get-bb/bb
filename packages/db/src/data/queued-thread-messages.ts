@@ -1,3 +1,4 @@
+import { nextPersistedRetryAt } from "../persisted-retry.js";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -190,11 +191,14 @@ function queuedMessageTransitionPatch(
       return { claimedAt: null, claimToken: null };
     case "drain.failed": {
       const failureCount = row.failureCount + 1;
-      const delayMs = transition.retryDelaysMs[failureCount - 1];
       return {
         failureReason: transition.failureReason,
         failureCount,
-        nextAttemptAt: delayMs === undefined ? null : now + delayMs,
+        nextAttemptAt: nextPersistedRetryAt(
+          transition.retryDelaysMs,
+          failureCount,
+          now,
+        ),
       };
     }
   }

@@ -13,6 +13,7 @@ import {
   type LimitDraftCommit,
 } from "./limits.js";
 import type { concurrencyLimitRpcContract } from "./server.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 type ConfigurationView = StandardSchemaV1InferOutput<
   (typeof concurrencyLimitRpcContract)["getConfiguration"]["output"]
@@ -170,7 +171,7 @@ function ConcurrencyLimitSettings() {
           onBlur={commitGlobal}
           onChange={(event) => changeDraft(GLOBAL_FIELD, event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
+            if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
           }}
         />
       </div>
@@ -224,7 +225,8 @@ function ConcurrencyLimitSettings() {
                       changeDraft(host.id, event.target.value)
                     }
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
+                      if (isNonImeKey(event, "Enter"))
+                        event.currentTarget.blur();
                     }}
                   />
                 </div>

@@ -45,6 +45,32 @@ Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
 Before stabilization, audit drive/UNC ambiguity, separator and case rules,
 relative escapes, and whether more callers need resolution rather than joining.
 
+## UTF-16-safe cuts (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`, `@get-bb/plugin-sdk/host`)
+
+`experimental_sliceUtf16Head(value, maxChars)` keeps at most `maxChars` UTF-16
+code units from the start of `value`, and `experimental_sliceUtf16Tail(value,
+maxChars)` (`@get-bb/plugin-sdk/host` only) keeps them from the end. When the
+cut would land inside a surrogate pair, the whole pair is dropped, so the
+result never holds a lone surrogate (half an emoji). A negative `maxChars`
+returns an empty string. The root and `/app` exports serve server and app
+code; `/host` serves host workers and provider bridges, whose root SDK runtime
+is a stub.
+
+These re-export `sliceUtf16Head` / `sliceUtf16Tail` from `@bb/text-utils`,
+the helpers core uses to cap child-thread output, plugin instructions,
+restart-resume notes, timeline output, terminal titles and queued-message
+failure reasons; the `/app` export is that function, installed by
+`plugin-sdk-app-impl.tsx`. Plugin callers: Account Pool, Ask User Question,
+Automations, Browser Automation, Concurrency Limit, Docs, GitHub, MCP, Push
+Notifications, Secrets, and the Claude Code and Codex providers. Agent
+Annotations keeps an inline copy because its page script is stringified into
+the browser. Docs: Plugin Guide, The bb SDK
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether callers need grapheme-safe cuts (joined
+emoji, combining marks) rather than surrogate-safe ones, and whether
+`/app` and the root need the tail variant.
+
 ## Application link approvals (`@get-bb/plugin-sdk/app`)
 
 `experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
@@ -291,6 +317,29 @@ Before stabilizing, audit compact and embedded placement, variable-height
 metadata and scroll anchoring, unmount cleanup, asynchronous updates,
 origin filtering, and render isolation during streaming and across messages.
 
+## `PluginMessageActionRegistration.experimental_surfaces` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.161.
+
+`app.slots.messageAction({ ..., experimental_surfaces })` limits the action to
+some thread timelines. `"thread-view"` is bb's thread view, including split panes;
+`"embedded-chat"` is an embedded `ThreadChat` in any variant. Omitted, the action
+shows on both. An empty array or any other value fails registration. Type:
+`ExperimentalMessageActionSurface`.
+
+Each `ThreadScreen` host states its surface (`ThreadScreenTimelineHost.messageActionSurface`),
+and the timeline reads the slots through `useSurfaceMessageActionSlots`
+(`apps/app/src/lib/message-action-surface.tsx`), so every surface filters the same way.
+
+Caller: the bundled Side chat plugin's "Reply in side chat" declares
+`["thread-view"]`. Its side chat tab only exists in the thread view's panel, and a
+side chat is itself an embedded `ThreadChat`, so the action stays out of side
+chats and other plugins' embedded chats.
+
+Before stabilizing, decide whether surfaces should instead follow panel
+capability (whether the surface's panel can host the tab the action opens), and
+whether more surfaces (New thread previews, plugin documents) need names.
+
 ## `app.commands.register`
 
 Unprefixed by explicit request. Registers frontend commands
@@ -304,6 +353,31 @@ Audit command identity, availability outside the palette, shortcut conflicts,
 and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
+
+## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
+
+`experimental_matchesShortcutKey(event, key)` says whether a keydown presses
+`key`, compared the way bb compares keys for its own and plugins' keybindings.
+The caller checks modifiers. Letter, digit and punctuation keys match by
+physical position (`event.code`) when the layout types a non-Latin character
+there (or, with Alt held, anything but an ASCII letter or digit); otherwise
+they match the typed character with Shift removed from US punctuation, so
+Latin layouts such as Dvorak and AZERTY keep their own letters. Without Alt,
+the typed character also matches, which keeps shortcuts saved under a
+non-Latin character working.
+
+Docs: `frontend-renderer-slots.md`.
+
+Core callers: `matchesAppShortcut` in `@bb/domain` (app commands, plugin
+commands, the desktop embedded browser and shortcut conflicts), the desktop
+reload shortcut and the terminal copy/paste keys all call the same
+`matchesAppShortcutKey`; the SDK function is that function. Plugin callers:
+the Composer's paste-as-plain-text check, Prompt Library's Mod+S and Tasks'
+single-key shortcuts.
+
+Before stabilizing, decide whether plugins also need a full-chord matcher that
+resolves `mod` per platform, and whether settings should label shortcuts with
+the active layout's characters (`navigator.keyboard.getLayoutMap()`).
 
 ## Discoverable RPC
 
@@ -673,8 +747,9 @@ every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
 `turn.failed` carries ids and failure facts after a thread lands in `error`,
 including `originPluginId`, the plugin that sent the failed message. Provider
-retry uses it to ask only that plugin whether to re-run the turn
-(`provider-retry.v1.consent`); Automations is the one sender that answers.
+retry uses it to decide and queue retries, then publishes the decision through
+its `decision.get` RPC; Automations and Workflows wait for that decision before
+re-running failed work.
 
 Docs: `backend-events.md`.
 
@@ -1085,8 +1160,7 @@ Docs: `backend-sdk.md`.
 `experimental_useExperiment(key)` returns whether the bb experiment `key` is
 on, from the same live system config core reads (Settings → Experiments,
 `bb settings experiment`). It is false while config loads and for unknown
-keys. Callers: the built-in thread list, which gates row metadata on
-`threadRowMetadata`, and push notifications, which reads
+keys. Caller: push notifications, which reads
 `skipFocusedThreadNotifications`.
 
 **Audit before stabilizing.**
@@ -1273,82 +1347,6 @@ sends nothing for non-public plugins or when usage data is off. Each plugin's
 use is sent at most once per day. Forks of these plugins inherit the call, so
 removing it later means leaving a no-op stub.
 
-## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
-
-Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
-
-`internal_DO_NOT_USE_openTunnelIngress({ audience })` resolves to
-`{ baseUrl, close() }` for a listener on `127.0.0.1` with an ephemeral port.
-Every HTTP request and WebSocket upgrade on it must carry an
-`x-bb-gate-assertion` (`@bb/tunnel-contract/next`) signed by the bb connect
-next gate for `audience`, the request method and the exact path and query;
-anything else gets a 401 JSON body `{ code: "gate_assertion_invalid", reason }`
-and never reaches the app. A verified request loses every inbound
-`x-bb-gate-*` header, gets `x-bb-gate-auth` (and the machine id or OAuth
-grant headers) from the claims only, has Host and the public Origin rewritten
-to the server's loopback origin, and is dispatched in-process into the same
-app as `loopbackBaseUrl` (HTTP, `/ws`, plugin WebSockets). The ingress never
-counts as a loopback caller. Gate keys come from `BB_CONNECT_GATE_KEYS_URL`.
-Opening an audience again shares its listener; it stops, and drops its
-WebSockets, when every handle closes. Handles close when the plugin is
-disabled or unloaded.
-
-Core callers: none. The Cloudflare bb connect path still replays requests to
-the main loopback port; the `connect-next` plugin is the only caller.
-`createFakePluginHost` lists every opened handle in
-`inspection.internal_DO_NOT_USE_tunnelIngresses`.
-
-Docs: `backend-foundation.md`; the request rules are in [connect-next.md](connect-next.md) (Server ingress).
-
-**Audit before stabilizing.** Decide whether the Cloudflare tunnel client
-moves onto the same ingress so core and both connect plugins share one path.
-Decide whether `target` (share ports) belongs here or stays refused. Confirm
-the audience should stay free-form or become a typed server id, and whether a
-plugin may open audiences for servers other than its own.
-
-## `bb.hosts.internal_DO_NOT_USE_setNextTunnels`, `internal_DO_NOT_USE_nextTunnelStatuses`, `internal_DO_NOT_USE_onNextTunnelStatusChange`
-
-Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
-
-`internal_DO_NOT_USE_setNextTunnels(config | null)` turns bb connect next machine
-tunnels on (an `InternalDoNotUsePluginNextTunnelConfig`,
-`{ domain, server: { protocol, host, port } }`) or off. The server keeps one
-config owned by the calling plugin (another plugin's non-null call throws
-while it is set; a null call from a non-owner is a no-op), clears it when the
-owner is disabled or uninstalled, and sends it as `connect-next.replace` (and
-`connectNext` in the session-open response) to every connected daemon that
-holds a bb connect machine credential and opened its session with protocol
-247 or newer. A protocol-246 daemon is still accepted and only gets its
-Cloudflare shares. Each daemon runs frpc with one proxy per port declared
-through `declareSharedPorts` at `<label>--<port>.<domain>` while it shares at
-least one port, and refuses a config whose domain is not its trusted
-enrollment's base domain or `next.<base domain>`, or whose tunnel host is not
-`tunnel.<domain>`, or that is not `wss` for an https enrollment, so a plugin
-cannot send the machine credential elsewhere.
-`internal_DO_NOT_USE_nextTunnelStatuses()` returns each connected daemon's last
-`connect-next.status` report as `InternalDoNotUsePluginHostNextTunnelStatus`
-(dropped when its session ends), and
-`internal_DO_NOT_USE_onNextTunnelStatusChange(listener)` calls `listener` on any
-change and returns an unsubscribe function that disposal also runs.
-`createFakePluginHost` exposes the last config as
-`inspection.internal_DO_NOT_USE_nextTunnelConfig`, and
-`internal_DO_NOT_USE_setNextTunnelStatuses(statuses)` replaces the reported
-statuses and calls every listener.
-
-Core callers: none. Product policy (on or off, which domain) belongs to the
-`connect-next` plugin, which calls all three; core's Cloudflare machine tunnel
-needs no config because the daemon derives its gate from its enrollment.
-
-Docs: `backend-foundation.md`; the wire and daemon behavior are in
-[connect-next.md](connect-next.md) (Machine tunnels).
-
-**Audit before stabilizing.** Decide whether the config should be per host
-instead of global, whether the status should be pushed through `bb.realtime`
-instead of a listener, and whether the compatibility window for protocol 246
-can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
-current version only). Decide whether the Cloudflare machine tunnel should
-move onto the same frpc runner once next replaces it.
-
 ## `app.slots.internal_DO_NOT_USE_setupGuideSection` (`@get-bb/plugin-sdk/app`)
 
 Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
@@ -1454,6 +1452,23 @@ hook; confirm the `{ threadId | null }` scope is the right key once bridges
 multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
+## Provider CLI environment (`experimental_buildProviderCliEnv`) (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_buildProviderCliEnv(envVars)` returns the environment for a
+provider CLI the bridge starts: the bridge process environment without
+`ELECTRON_RUN_AS_NODE` and `BB_PROVIDER_BRIDGE_RECORD_DIR`, plus the request's
+`envVars` filtered to valid shell names. Request `envVars` win. Core callers:
+the Claude Code, Codex, Pi and ACP bridges build their session, model-list,
+health and installation-probe envs with it, and read their launch overrides
+(`BB_CLAUDE_CODE_EXECUTABLE`, `BB_CODEX_BRIDGE_APP_SERVER_COMMAND`,
+`BB_PI_BRIDGE_COMMAND`) from its result.
+
+**Audit before stabilizing.** Decide whether inherited `BB_*` names other than
+the declared passthrough should be dropped here rather than relying on the
+runtime's bridge allowlist, and whether the result should carry the
+HostToolchain PATH merge so callers that do not spawn through
+`experimental_spawnPortableProcess` get the same PATH.
+
 ## Portable provider spawn (`experimental_spawnPortableProcess`, `experimental_killPortableProcess`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 `experimental_spawnPortableProcess({ command, args, cwd?, env?, stdio?, detached? })`
@@ -1468,6 +1483,26 @@ process handle (an awaited stop that reports whether the tree is confirmed
 gone) instead of a raw `ChildProcess` plus a fire-and-forget kill. Confirm
 argument quoting for `.cmd` targets with untrusted arguments, and whether
 `detached` belongs in the public shape.
+
+## `experimental_serializeJsonRpcLine` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_serializeJsonRpcLine(message)` returns `JSON.stringify(message)`
+unless the line holds an escaped lone surrogate; then it serializes again with
+every lone surrogate in a string replaced by U+FFFD. A lone surrogate is
+valid in JavaScript but not in UTF-8, and Codex's serde-based app-server
+rejects its `\ud83d` escape and drops the whole message without answering,
+so a bridge writing to a provider's stdin uses this instead of
+`JSON.stringify`. The result has no trailing newline.
+
+Core callers: `bridge-kit/runtime-json-rpc.ts` serializes every request,
+result and error the daemon sends to a bridge with it, and the ACP message
+stream writes to ACP agents with it. Plugin callers: the Codex provider's
+app-server writer. Docs: Plugin Guide, Agent providers
+(`plugins/plugin-api-docs/src/surfaces.ts`).
+
+Before stabilization, decide whether bridges should get a whole stdin writer
+(newline, closed-stdin handling) instead of a serializer, and whether the
+Claude Code bridge's SDK transport needs the same guard.
 
 ## `experimental_BridgeRecoveryError`
 
@@ -1499,7 +1534,10 @@ a user-installed CLI.
   `readCliVersion` runs `--version` with stdin closed and returns the first
   valid SemVer token or null. `commandOutput` returns trimmed stdout+stderr
   or null. The others are `versionFrom`, `npmLatestVersion` and
-  `probeNpmGlobalPackage`.
+  `probeNpmGlobalPackage`. Every probe takes an optional env to search and run
+  with; without one it uses the bridge's own environment, as before. First-party
+  bridges pass `experimental_buildProviderCliEnv(params.envVars)` so a probe
+  sees the same CLI a session starts.
 - Decisions: `compareVersions` uses SemVer precedence and throws `TypeError`
   on invalid input. `npmGlobalInstallSource` returns `npmGlobal`, `external`
   or `notInstalled`. `installationVerification` passes an install on
@@ -1551,6 +1589,36 @@ file read, search, web search, web fetch and plan-steps rows, and
    sets `suppress: true` (the todo banner reads the snapshot); codex keeps its
    own uncollapsed variant. Decide which default a third-party bridge should
    get.
+
+## `experimental_unansweredInteractionWarning`, `experimental_unansweredInteractionErrorMessage` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_unansweredInteractionWarning` builds the `provider.warning` delta
+a bridge sends whenever it answers a provider question or permission request
+with something the user did not choose, whatever the provider receives.
+`experimental_unansweredInteractionErrorMessage` is the matching JSON-RPC error
+or deny text for the agent. The five causes are an unshowable request, a
+runtime error (bb stopped waiting), an unreadable resolution, an answer that
+does not fit the question, and a question the bridge withdrew. The `answer`
+names what the provider got (an error or a protocol value such as `cancel`).
+Summary and details wording is bb's, and the delta is vouched to the open turn.
+Core callers: the ACP bridge (`packages/provider-bridge-acp`), the Pi
+extension-dialog coordinator, every Codex question request, and Claude Code's
+canUseTool denials. The `unanswered-interactions` contract test in
+`@bb/provider-bridge-protocol` runs each bridge's question kinds (ACP, Pi and
+Codex rows come from the kinds each bridge routes) through every cause and a
+stopped turn.
+
+**Audit before stabilizing.**
+
+1. **The cause list is closed.** A third-party bridge with a sixth way to
+   answer without the user has no cause to name. Decide whether `cause` takes
+   free text before freezing the union.
+2. **The wording is a product decision**, as with the presentation builders:
+   English summary and details persist on the warning row, and the error text
+   reaches the model.
+3. **Error versus cancel stays the bridge's call.** Decide whether the kit
+   should pick the provider answer too (it cannot without knowing each
+   protocol) or keep only the warning and the message.
 
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
@@ -3470,8 +3538,7 @@ draw without waiting.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
-plugin-built list makes, only while the `threadRowMetadata` experiment is on
-and the user turns on Organize → Rows → Metadata (`showRowMetadata`); both are
+plugin-built list makes, when the user turns on Organize → Rows → Metadata (`showRowMetadata`); the preference is
 off by default. The row grows to two lines only
 while an item draws something, the line is hidden while the row is renamed or
 customized, and clicks on it go through the row's own click handling. The
@@ -3855,7 +3922,8 @@ retention and bypassing cleanup backoff. It rejects live threads and unmanaged
 environments and succeeds for already-removed ones. Acceptance is not
 completion: read the environment lifecycle fields for progress (CLI:
 `bb environment cleanup`). After five failed attempts, automatic removal stops
-with a "Needs recovery" message in the existing lifecycle fields.
+with a "Needs recovery" message and `lifecycle.teardown.needsRecovery: true`,
+and cleanup without `recover` rejects with `environment_needs_recovery`.
 The additive `recover: true` option acknowledges interrupted hooks and retries
 failed cleanup after an explicit inspection. Core's cleanup route and the CLI
 use this same path. Linux checks cwd and mapped paths for processes owned by
@@ -3914,6 +3982,28 @@ workspace. Omitting it keeps message routing.
 
 Stabilize after plugin consumers verify nested paths, source identity, missing
 files, containment and line locations.
+
+## Message Markdown (`MarkdownProps.experimental_message`)
+
+Requires SDK 0.6.158.
+
+The Markdown component accepts the `{ id, threadId, turnId, projectId }` of the
+chat message it shows, the same shape message directives and code-fence
+renderers receive. With it, the code-fence renderers and message directives
+plugins register render in the Markdown as they do in the thread timeline, and
+receive that object as their `message`. A plugin that draws its own view of a
+thread can then show a reply's inline UI, chips and embeds. Without it, or
+when `id` or `threadId` is blank, fences render as code and directives as their
+source text, as before. `openWorkspaceFile` is null.
+
+Core caller: the thread timeline. `ThreadTimelineRows` provides the registries
+through the same `MessageSlotRegistriesProvider`, and `ConversationMessageContent`
+mounts fences and directives through the same `useMessageDirectives` and
+`MessageCodeFences` (`apps/app/src/components/ui/message-markdown-slots.tsx`).
+
+Stabilize after plugin consumers verify streaming text (the host passes
+`streaming: false`), workspace file opening, and fence state keyed by a plugin
+message id across remounts.
 
 ## `PluginFileOpenerProps.experimental_lineRange` (`@get-bb/plugin-sdk/app`)
 
@@ -4063,14 +4153,37 @@ opened it or marked it read, or the user sent it a turn. Marking a thread
 unread does not fire it. Core's own read path is the trigger: every
 `lastReadAt` write raises the `read-state-changed` thread change, and the hub
 emits the event from there, so the payload is the same read state the
-sidebar's unread dot uses. Push-notifications uses it, behind the
-`dismissReadNotifications` experiment, to remove the thread's delivered
+sidebar's unread dot uses. Push-notifications uses it to remove the thread's delivered
 notifications from phones and from open web and desktop clients.
 
 Docs: `backend-sdk.md`, `backend-events.md`.
 
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
+
+## Thread settled outcomes
+
+`experimental_thread.settled` delivers one `PluginThreadSettledEvent`, a union
+over every way a thread's work ends: `completed` (with `lastAssistantText`),
+`failed` (with `error`), `cancelled` (with the removed queued `entry`, so
+`entry.originPluginId` names whose message it was), `archived` and `deleted`.
+Core emits it from the same seams as `thread.idle`, `thread.failed`,
+`thread.archived`, `thread.deleted` and `message.cancelled`
+(`apps/server/src/services/plugins/plugin-service.ts`), so it is never a
+second, drifting source. Like every thread event it reaches the spawning
+plugin only after that plugin's `threads.spawn` / `threads.fork` returns.
+Automations (agent runs), Workflows (worker calls) and Tasks (delegated
+thread status) close their records from it with one exhaustive `switch`; each
+has a test table typed `Record<outcome, …>`, so a new outcome fails their
+typecheck until handled. The fake plugin host follows the four thread events
+with it; tests emit the `cancelled` outcome directly.
+
+Docs: `backend-events.md`.
+
+Stabilization requires deciding whether it replaces `thread.idle` /
+`thread.failed` for record keeping, whether `cancelled` should also cover rows
+dropped by other paths (a failed drain), and per-message correlation for
+plugins that send several messages to one thread.
 
 ## Host deletion notifications
 
@@ -4169,6 +4282,25 @@ and failure recovery at every step, including a server restart mid-move;
 behavior when the target runs a provider-managed machine; and whether
 `startMove` should return immediately or expose progress through a durable
 operation id instead of the in-memory status.
+
+## Server sweep failures (`bb.sdk.experimental_server.sweepFailures`, `retrySweepFailures`)
+
+`experimental_server.sweepFailures()` returns every failing item of the
+server's periodic sweeps as `{ sweep, itemKey, attempts, firstFailedAt,
+lastError, retryAt, needsRecovery }`. An item retries after 1, 2, 4, 8, 16,
+32, and 60 minutes. From its eighth failure it reports `needsRecovery: true`
+and keeps retrying hourly (`retryAt` is the next probe); its first success
+deletes the record. `retrySweepFailures()` deletes every needs-recovery record
+and returns `{ retried }`, so those items run on the next pass with a fresh
+budget. Backing-off items are listed but not retried early. Both refuse machine credentials. Core's caller is
+`bb server sweeps [retry]`; the delays come from
+`apps/server/src/services/lib/persisted-retry.ts`, the owner every persisted
+retry schedule uses.
+
+Before stabilization, audit: whether sweep and item keys are stable names a
+plugin may depend on, per-item retry instead of all-at-once, whether a
+needs-recovery item should surface in the app (Settings or a notification), and
+whether plugin backends should be able to clear core sweep state at all.
 
 ## `app.experimental_icons.register` and `experimental_Icon`
 
@@ -4486,9 +4618,7 @@ launcher a `defer` decision, and the desktop service hands the download back.
 downloading by `activity.phase`. Scheduling again while one is pending returns
 it unchanged. Both refuse like `applyAppUpdate` when the update is unsupported,
 blocked, unavailable, or already running, and 403 for machine credentials.
-Both return 403 `update_when_idle_experiment_disabled` while the
-`updateWhenIdle` experiment is off, and turning it off drops a waiting update.
-While it is on, the server sends `app-update-changed` whenever the running
+The server sends `app-update-changed` whenever the running
 thread count changes, so `runningThreadCount` stays current for clients.
 `experimental_cancelScheduledAppUpdate()` clears the schedule, and a scheduled
 update that is already downloading defers instead of restarting; it is a no-op
@@ -4513,7 +4643,7 @@ automatically" switch, and Skip this version on a waiting update) and
 Stabilize after deciding whether the schedule should persist across server
 restarts, whether threads waiting on a user decision should count as running,
 and whether the settle window should be configurable, and once the
-`updateWhenIdle` experiment ships on for everyone; then rename project-wide and
+update scheduling API has completed its audit; then rename project-wide and
 remove this entry.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`

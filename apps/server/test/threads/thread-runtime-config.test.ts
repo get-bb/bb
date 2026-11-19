@@ -1457,5 +1457,51 @@ describe("thread runtime config", () => {
         expect(instructions).not.toContain("x".repeat(32_769));
       });
     });
+
+    it("cuts long plugin instructions without splitting an emoji", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-emoji";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-emoji",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-emoji",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "emoji",
+              provider: () => `${"x".repeat(32_767)}\u{1F600} beyond the cap`,
+            },
+          ],
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          {
+            thread,
+            model: "test-model",
+            environment: {
+              hostId: environment.hostId,
+              id: environment.id,
+              path: environment.path,
+              status: environment.status,
+            },
+          },
+        );
+
+        expect(runtimeConfig.instructions).not.toMatch(/[\uD800-\uDFFF]/u);
+        expect(runtimeConfig.instructions).toContain("x".repeat(32_767));
+        expect(runtimeConfig.instructions).not.toContain("beyond the cap");
+      });
+    });
   });
 });

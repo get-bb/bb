@@ -83,6 +83,7 @@ export interface AgentRuntimeOptions {
 
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
+    signal: AbortSignal,
   ) => Promise<PendingInteractionResolution>;
 
   onStderr?: (line: string, threadId?: string) => void;
@@ -294,19 +295,24 @@ export interface ListModelsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
-  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 export interface ListCommandsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd: string;
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
-interface ProviderMaintenanceArgs {
+interface ProviderUsageArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
+}
+
+interface ProviderMaintenanceArgs extends ProviderUsageArgs {
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
@@ -350,7 +356,7 @@ export interface AgentRuntime {
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
-  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
+  providerUsage(args: ProviderUsageArgs): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,

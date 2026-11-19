@@ -15,6 +15,7 @@ import {
   type CodexOpenAiApiKeyCredentials,
 } from "./codex-auth.js";
 import { AiServiceFailure } from "./failure.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 type InferenceCompleteCommand = CodexAiCompleteInput;
 type VoiceTranscribeCommand = CodexAiTranscribeInput;
@@ -346,7 +347,7 @@ async function readErrorText(
     maxBytes: CODEX_ERROR_TEXT_MAX_BYTES,
     overflowBehavior: "truncate",
   }).catch(() => "");
-  return text.length > 400 ? `${text.slice(0, 400)}...` : text;
+  return text.length > 400 ? `${sliceUtf16Head(text, 400)}...` : text;
 }
 
 type FailureCodes = [generic: CodexAiFailureCode, detail: string];
@@ -769,7 +770,7 @@ export async function completeCodexInference(
   signal: AbortSignal,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(process.env);
   const request = buildCodexResponsesRequest(command);
   const response = await fetchResponses({ auth, command, deadline, request });
 
@@ -884,7 +885,7 @@ export async function transcribeCodexVoice(
   signal: AbortSignal,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(process.env);
   const response = await fetchTranscription({ auth, command, deadline });
 
   if (!response.ok) {

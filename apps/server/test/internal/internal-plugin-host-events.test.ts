@@ -16,11 +16,11 @@ describe("internal plugin host events", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "plugin-host.worker-exited",
             pluginId: "keep-awake",
             generation: "generation-1",
-          }),
+          },
         },
         { handleHostWorkerExit, handleHostSignal: vi.fn() },
       );
@@ -46,13 +46,13 @@ describe("internal plugin host events", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "plugin-host.signal",
             pluginId: "fixture",
             generation: "generation-1",
             signal: "changed",
             payload: { sequence: 3 },
-          }),
+          },
         },
         { handleHostSignal, handleHostWorkerExit: vi.fn() },
       );

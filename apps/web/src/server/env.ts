@@ -12,14 +12,11 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   LANDING_POSTHOG_KEY?: string;
-  POSTHOG_FLAGS_SECRET_KEY?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
   MARKETPLACE?: R2Bucket;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
   PRESENCE_WRITES?: string;
-  NEXT_BASE_DOMAIN?: string;
-  GATE_PUBLIC_KEYS?: string;
 }
 
 export function getEnv(): Env {

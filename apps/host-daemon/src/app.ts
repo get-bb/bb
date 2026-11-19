@@ -1,4 +1,3 @@
-import path from "node:path";
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import {
   readAgentCpuPriority,
@@ -36,12 +35,7 @@ import {
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
 import { WatchManager } from "./watch-manager.js";
-import {
-  ConnectTunnelClient,
-  resolveTrustedConnectGate,
-} from "./connect-tunnel/index.js";
-import { MachineNextTunnel, machineNextFrpDir } from "./connect-next/index.js";
-import { defaultTrustedCertificates, resolveFrpc } from "@bb/frp-client";
+import { ConnectTunnelClient } from "./connect-tunnel/index.js";
 import { TerminalManager } from "./terminals/terminal-manager.js";
 import {
   createServerClient,
@@ -183,17 +177,26 @@ export interface HostDaemonApp {
   runtimeManager: RuntimeManager;
   watchManager: WatchManager;
   connectTunnel: ConnectTunnelClient;
-  machineNextTunnel: MachineNextTunnel;
   terminalManager: TerminalManager;
   router: CommandRouter;
   connection: ServerConnection;
 }
 
-interface PendingInteractiveInterruptRequest {
-  providerId: string;
-  reason: string;
-  threadIds: readonly string[];
-}
+type PendingInteractiveInterruptRequest =
+  | {
+      kind: "threads";
+      providerId: string;
+      reason: string;
+      threadIds: readonly string[];
+    }
+  | {
+      kind: "withdrawn";
+      reason: string;
+      request: HostDaemonInteractiveRequestKey;
+    };
+
+const WITHDRAWN_INTERACTIVE_REQUEST_REASON =
+  "The agent stopped waiting for this answer";
 
 export function startIdleProviderSessionReaper(
   args: StartIdleProviderSessionReaperArgs,
@@ -352,11 +355,40 @@ export async function createHostDaemonApp(
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
   ): string {
-    return [
-      request.providerId,
-      request.reason,
-      [...request.threadIds].sort().join(","),
-    ].join("|");
+    switch (request.kind) {
+      case "threads":
+        return [
+          request.kind,
+          request.providerId,
+          request.reason,
+          [...request.threadIds].sort().join(","),
+        ].join("|");
+      case "withdrawn":
+        return [
+          request.kind,
+          request.request.threadId,
+          request.request.providerId,
+          request.request.providerThreadId,
+          request.request.providerRequestId,
+        ].join("|");
+    }
+  }
+
+  function sendInteractiveInterrupt(
+    request: PendingInteractiveInterruptRequest,
+  ): Promise<unknown> {
+    switch (request.kind) {
+      case "threads":
+        return runSessionRequest({
+          source: "interruptInteractiveRequests",
+          request: () => serverClient.interruptInteractiveRequests(request),
+        });
+      case "withdrawn":
+        return runSessionRequest({
+          source: "withdrawInteractiveRequest",
+          request: () => serverClient.withdrawInteractiveRequest(request),
+        });
+    }
   }
 
   function clearInteractiveInterruptRetry(): void {
@@ -411,17 +443,15 @@ export async function createHostDaemonApp(
 
         const [key, request] = nextEntry;
         try {
-          await runSessionRequest({
-            source: "interruptInteractiveRequests",
-            request: () => serverClient.interruptInteractiveRequests(request),
-          });
+          await sendInteractiveInterrupt(request);
           pendingInteractiveInterrupts.delete(key);
           interactiveInterruptRetryDelayMs =
             INTERACTIVE_INTERRUPT_RETRY_DELAY_MS;
         } catch (error) {
           const logFields = {
-            providerId: request.providerId,
-            threadIds: request.threadIds,
+            ...(request.kind === "threads"
+              ? { providerId: request.providerId, threadIds: request.threadIds }
+              : request.request),
             ...runtimeErrorLogFields(error),
           };
           if (isRejectedInteractiveInterrupt(error)) {
@@ -479,9 +509,22 @@ export async function createHostDaemonApp(
       }),
     onRegistrationFailure: ({ error, request }) => {
       enqueueInteractiveInterrupt({
+        kind: "threads",
         providerId: request.providerId,
         reason: `Failed to register interactive request while provider was waiting: ${error.message}`,
         threadIds: [request.threadId],
+      });
+    },
+    onRequestWithdrawn: (request) => {
+      enqueueInteractiveInterrupt({
+        kind: "withdrawn",
+        reason: WITHDRAWN_INTERACTIVE_REQUEST_REASON,
+        request: {
+          threadId: request.threadId,
+          providerId: request.providerId,
+          providerThreadId: request.providerThreadId,
+          providerRequestId: request.providerRequestId,
+        },
       });
     },
   });
@@ -554,28 +597,6 @@ export async function createHostDaemonApp(
         { connectTunnelStatus: status },
         "Machine tunnel status",
       );
-    },
-  });
-  const machineNextTunnel = new MachineNextTunnel({
-    frpDir: machineNextFrpDir(options.dataDir),
-    trustedBaseDomain: () => {
-      try {
-        return resolveTrustedConnectGate(options.serverUrl).baseDomain;
-      } catch {
-        return null;
-      }
-    },
-    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
-    ensureIdentity: () => connectTunnel.ensureTunnelIdentity(),
-    resolveBinary: () =>
-      resolveFrpc({
-        dataDir: path.dirname(machineNextFrpDir(options.dataDir)),
-        env: process.env,
-      }),
-    trustedCertificates: () => defaultTrustedCertificates(process.env),
-    logger: options.logger,
-    onStatusChange: (status) => {
-      sendServerMessage({ type: "connect-next.status", status });
     },
   });
   const skillTreeTransport: SkillTreeTransport = {
@@ -661,10 +682,29 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onInteractiveRequest: async (request) => {
+    onInteractiveRequest: async (request, signal) => {
       try {
-        return await interactiveRequestRegistry.registerAndWait(request);
+        return await interactiveRequestRegistry.registerAndWait(
+          request,
+          signal,
+        );
       } catch (error) {
+        if (
+          error instanceof InteractiveRequestRegistryError &&
+          error.code === "interactive_request_withdrawn"
+        ) {
+          options.logger.info(
+            {
+              threadId: request.threadId,
+              providerThreadId: request.providerThreadId,
+              turnId: request.turnId,
+              providerRequestId: request.providerRequestId,
+              kind: request.payload.kind,
+            },
+            "Interactive provider request withdrawn by the provider",
+          );
+          throw error;
+        }
         if (
           error instanceof InteractiveRequestRegistryError &&
           (error.code === "interactive_request_rejected" ||
@@ -723,6 +763,7 @@ export async function createHostDaemonApp(
       });
 
       enqueueInteractiveInterrupt({
+        kind: "threads",
         providerId: info.providerId,
         threadIds,
         reason,
@@ -916,8 +957,11 @@ export async function createHostDaemonApp(
     onInteractiveRequestsEnded: ({ reason, requests }) =>
       interactiveRequestRegistry.endRequests(requests, reason),
     onServerMoved: (notice) => serverMove.handleServerMoved(notice),
-    onMachineEnvironment: (environment) =>
-      machineEnvironment.replace(environment.entries),
+    onMachineEnvironment: (environment) => {
+      if (machineEnvironment.replace(environment.entries)) {
+        void runtimeManager.invalidateProviderMaintenanceRuntime();
+      }
+    },
     onIdleProviderSessionTimeout: (value) =>
       idleProviderSessionReaper.setTimeoutMinutes(value),
     onAgentCpuPriority: (enabled) => {
@@ -951,13 +995,6 @@ export async function createHostDaemonApp(
         generation: message.generation,
         ports: message.ports,
       });
-      void machineNextTunnel.setPorts(connectTunnel.status().ports);
-    },
-    onConnectNextReplace: (message) => {
-      machineNextTunnel.replace({
-        generation: message.generation,
-        config: message.config,
-      });
     },
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
@@ -976,12 +1013,6 @@ export async function createHostDaemonApp(
         );
       }
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
-      machineNextTunnel.replaceAuthoritative(session.connectNext);
-      void machineNextTunnel.setPorts(connectTunnel.status().ports);
-      sendServerMessage({
-        type: "connect-next.status",
-        status: machineNextTunnel.status(),
-      });
       await pluginHostManager.reconcileGenerations(
         session.pluginHostGenerations,
       );
@@ -1014,8 +1045,6 @@ export async function createHostDaemonApp(
     setSession: (session) => {
       sessionState.value = session?.sessionId ?? null;
       desktopBrowserBroker.setConnected(session !== null);
-      if (session === null) machineNextTunnel.sessionLost();
-      else machineNextTunnel.sessionRestored();
       if (session === null) {
         terminalManager.releaseOutputFlowControl();
         clearInteractiveInterruptRetry();
@@ -1072,7 +1101,6 @@ export async function createHostDaemonApp(
       await options.closeMachineAuthProxy?.();
       await localApi?.close();
       connectTunnel.shutdown();
-      await machineNextTunnel.shutdown();
       await watchManager.shutdown();
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
@@ -1123,7 +1151,6 @@ export async function createHostDaemonApp(
     runtimeManager,
     watchManager,
     connectTunnel,
-    machineNextTunnel,
     terminalManager,
     router,
     connection,

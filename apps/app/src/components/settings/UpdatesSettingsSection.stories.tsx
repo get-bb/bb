@@ -18,12 +18,12 @@ import {
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ReleaseNotesPanel } from "./ReleaseNotesPanel";
 import {
-  AutoAppUpdateSetting,
   BbAppUpdateRows,
   BbUpdatesCard,
   MachineUpdateRow,
   PluginUpdatesSection,
   ProviderCliUpdatesSection,
+  UpdatePreferencesSection,
 } from "./UpdatesSettingsSection";
 
 export default {
@@ -498,11 +498,6 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-              <AutoAppUpdateSetting
-                label="Restart and update bb automatically"
-                checked
-                onCheckedChange={noop}
-              />
             </BbUpdatesCard>
           </div>
         </StoryRow>
@@ -530,11 +525,6 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
-              />
-              <AutoAppUpdateSetting
-                label="Restart and update bb automatically"
-                checked
-                onCheckedChange={noop}
               />
             </BbUpdatesCard>
           </div>
@@ -1483,6 +1473,42 @@ export function PluginSectionVariations() {
             updatingPluginIds={NO_JOBS}
             checking
             onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function PreferenceSectionVariations() {
+  return (
+    <StoryCard className="max-w-5xl" labelWidth="240px">
+      <h2 className="px-4 py-3 text-sm font-semibold">Update preferences</h2>
+      <StoryRow
+        label="Self-updating bb"
+        hint="Automatic restarts on, provider CLI updates left out of the sidebar."
+      >
+        <div className="w-full">
+          <UpdatePreferencesSection
+            autoAppUpdate={{
+              label: "Restart and update bb automatically",
+              checked: true,
+              onCheckedChange: noop,
+            }}
+            showProviderCliUpdates={false}
+            onShowProviderCliUpdatesChange={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="bb cannot update itself"
+        hint="Development and unsupported installs hide the automatic restart switch."
+      >
+        <div className="w-full">
+          <UpdatePreferencesSection
+            autoAppUpdate={null}
+            showProviderCliUpdates
+            onShowProviderCliUpdatesChange={noop}
           />
         </div>
       </StoryRow>

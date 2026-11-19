@@ -231,7 +231,7 @@ export function withParentToolCallId<TItem extends ThreadEventItem>(
 }
 
 export function buildShellEnvOverrides(
-  envVars?: Record<string, string>,
+  envVars?: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const [key, value] of Object.entries(envVars ?? {})) {

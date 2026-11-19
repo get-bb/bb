@@ -10,13 +10,6 @@
 // Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
 //         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
 //         session cookie's HMAC with it)
-// Secret: wrangler secret put GATE_SECRET [--env staging]
-//         (bearer token of the bb connect next Fly gate for
-//         POST https://connect.getbb.app/api/gate/resolve and /api/gate/presence;
-//         must equal the Fly app's GATE_SECRET. Unset = both answer 404.)
-// Var: NEXT_BASE_DOMAIN — the bb connect next domain (next.getbb.app); MCP
-//         OAuth tokens for https://<label>.<NEXT_BASE_DOMAIN>/mcp resolve only
-//         through /api/gate/resolve.
 // Optional var: ASSETLINKS_SHA256_FINGERPRINTS — comma-separated Android
 //         signing-cert fingerprints for /.well-known/assetlinks.json (bb
 //         mobile app links). Unset until the Android app is signed.
@@ -37,7 +30,6 @@
   // custom domains on bb-web and take precedence over this route.
   "vars": {
     "BASE_DOMAIN": "getbb.app",
-    "NEXT_BASE_DOMAIN": "next.getbb.app",
     "PRESENCE_WRITES": "on-change",
     "WORKER_HELD_RESPONSES": "on",
   },
@@ -60,7 +52,6 @@
       },
       "vars": {
         "BASE_DOMAIN": "vibecodethis.site",
-        "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
         "WORKER_HELD_RESPONSES": "on",
         "PRESENCE_WRITES": "on-change",
       },

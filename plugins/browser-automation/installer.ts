@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { experimental_sliceUtf16Tail as sliceUtf16Tail } from "@get-bb/plugin-sdk/host";
 
 export const runtimePlatforms = [
   "linux-x64",
@@ -242,7 +243,9 @@ async function runCommand(
 
 function tail(text: string): string {
   const trimmed = text.trim();
-  return trimmed.length > 1_500 ? `…${trimmed.slice(-1_500)}` : trimmed;
+  return trimmed.length > 1_500
+    ? `…${sliceUtf16Tail(trimmed, 1_500)}`
+    : trimmed;
 }
 
 const signaturesSchema = z

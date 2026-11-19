@@ -986,23 +986,6 @@ export function listRunningAutomationRunsByThread(
   ).all(threadId) as AutomationRunRow[];
 }
 
-export function getLatestAutomationRunForThread(
-  db: Db,
-  threadId: string,
-): AutomationRunRow | null {
-  return optionalRunRow(
-    statement(
-      db,
-      `SELECT
-           ${AUTOMATION_RUN_COLUMNS}
-         FROM automation_runs
-         WHERE thread_id = ?
-         ORDER BY started_at DESC, id DESC
-         LIMIT 1`,
-    ).get(threadId),
-  );
-}
-
 export function listAutomationRuns(
   db: Db,
   args: {

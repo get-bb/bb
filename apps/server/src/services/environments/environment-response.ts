@@ -12,6 +12,7 @@ import {
   type WorkspaceProvisionType,
 } from "@bb/domain";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "./environment-provider-ids.js";
+import { teardownNeedsRecovery } from "../lib/persisted-retry.js";
 
 const DEPRECATED_WORKSPACE_PROVISION_TYPE_BY_PROVIDER_ID = new Map<
   string,
@@ -116,6 +117,7 @@ function toEnvironmentResponseWithHostLifecycle(
           : {
               status: row.teardownStatus,
               attempt: row.teardownAttempt,
+              needsRecovery: teardownNeedsRecovery(row),
               ...(row.teardownMessage === null
                 ? {}
                 : { message: row.teardownMessage }),

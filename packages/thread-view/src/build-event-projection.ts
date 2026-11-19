@@ -6,17 +6,7 @@ import {
   requireThreadEventScopeTurnId,
 } from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
-import {
-  parseBackgroundTaskLifecycleEvent,
-  upsertBackgroundTaskMessage,
-} from "./background-task-projection.js";
 import { getEventParentToolCallId, getEventTurnId } from "./event-decode.js";
-import {
-  parseExecLifecycleEvent,
-  parseToolCallLifecycleEvent,
-} from "./exec-lifecycle.js";
-import { parseFileEditFromItemEvent } from "./file-edit-parsing.js";
-import { parseWebActivityLifecycleEvent } from "./web-activity-lifecycle.js";
 import { parseOperationMessage } from "./parse-operation-message.js";
 import { normalizeProvisioningFailures } from "./normalize-provisioning-failures.js";
 import { parseErrorMessage } from "./parse-error-message.js";
@@ -31,7 +21,6 @@ import {
   type ThreadEventWithMeta,
 } from "./group-event-projection-turns.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
-import { shouldSuppressLowValueToolCall } from "./tool-call-suppression.js";
 import {
   buildAcceptedClientRequestById,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
@@ -46,17 +35,15 @@ import {
   parseProviderUserMessage,
   shouldPreservePendingMessages,
 } from "./user-message-parsing.js";
-import { isTerminalBufferedTextFlushEvent } from "./assistant-buffering.js";
 import {
-  flushToolActivityBeforeNonToolMessage,
-  onExecBegin,
-  onExecEnd,
-  onExecOutput,
-} from "./tool-activity-projection.js";
+  applyItemEvent,
+  classifyItemEvent,
+  freezeTextAndFlushOutputAtStop,
+} from "./item-records.js";
 import {
-  onWebActivityBegin,
-  onWebActivityEnd,
-} from "./tool-activity-web-projection.js";
+  collectItemRecordMessages,
+  selectItemRecordActiveThinking,
+} from "./item-record-messages.js";
 import {
   finalizeOpenCompactionsForTurn,
   onCompactionBegin,
@@ -64,7 +51,6 @@ import {
   upsertPermissionGrantLifecycleMessage,
   upsertPluginFormLifecycleMessage,
   upsertUserQuestionLifecycleMessage,
-  upsertFileEdit,
   upsertProvisioningOperation,
   upsertThreadOperationMessage,
 } from "./operation-projection.js";
@@ -80,8 +66,6 @@ import { getMessageStartedAt } from "./format-helpers.js";
 import {
   createProjectionState,
   finalizeProjectionState,
-  flushProjectionBufferedOutputs,
-  flushProjectionBufferedOutputsAfterTurnCompleted,
   interruptedTurnFinalizationChangesState,
   onThreadInterrupted,
   onTurnCompleted,
@@ -89,8 +73,6 @@ import {
   type CompactionTurnFinalization,
   type ProjectionState,
 } from "./event-projection-state.js";
-import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
-import { projectAssistantAndReasoningEvent } from "./assistant-event-projection.js";
 
 type ProjectedUserMessage = Extract<EventProjectionMessage, { kind: "user" }>;
 interface ClientTurnRequestedWithMeta {
@@ -124,7 +106,6 @@ interface BuildDetailedProjectionArgs {
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   delegatedTurnIds: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
-  externalUserBoundarySeqsByTurnId: BuildEventProjectionOptions["externalUserBoundarySeqsByTurnId"];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
@@ -436,7 +417,6 @@ function appendProjectedUserMessage(
     return;
   }
   state.seenUserKeys.add(key);
-  flushToolActivityBeforeNonToolMessage(state);
   state.messages.push(projectedClientUser);
 }
 
@@ -541,8 +521,9 @@ function foldProjectionEvent(
   state: ProjectionState,
   lookups: ProjectionFoldLookups,
   options: BuildEventProjectionMessagesOptions | undefined,
-  { event: decoded, meta }: ThreadEventWithMeta,
+  entry: ThreadEventWithMeta,
 ): void {
+  const { event: decoded, meta } = entry;
   const {
     acceptedClientRequestById,
     acceptedRootClientTurnIds,
@@ -613,7 +594,10 @@ function foldProjectionEvent(
     }
   }
 
-  if (isTerminalBufferedTextFlushEvent(eventType)) {
+  if (
+    eventType === "system/thread/interrupted" ||
+    eventType === "turn/completed"
+  ) {
     if (decoded.type === "turn/completed") {
       const completedTurnId = requireThreadEventScopeTurnId({
         type: decoded.type,
@@ -625,14 +609,22 @@ function foldProjectionEvent(
         turnId: completedTurnId,
         status: decoded.status,
       });
-      flushProjectionBufferedOutputsAfterTurnCompleted(state, completedTurnId);
+      freezeTextAndFlushOutputAtStop(state.items, completedTurnId, {
+        seq: meta.seq,
+        createdAt: meta.createdAt,
+        interrupted: decoded.status !== "completed",
+      });
     } else {
       onThreadInterrupted({
         meta,
         state,
         threadId: decoded.threadId,
       });
-      flushProjectionBufferedOutputs(state);
+      freezeTextAndFlushOutputAtStop(state.items, null, {
+        seq: meta.seq,
+        createdAt: meta.createdAt,
+        interrupted: true,
+      });
     }
   }
 
@@ -713,122 +705,44 @@ function foldProjectionEvent(
 
   const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
   if (legacyUserMessage) {
-    flushToolActivityBeforeNonToolMessage(state);
     state.messages.push(legacyUserMessage);
     return;
   }
 
-  if (
-    projectAssistantAndReasoningEvent({
-      decoded,
-      eventParentToolCallId,
-      eventTurnId,
-      meta,
-      state,
-    })
-  ) {
-    return;
-  }
-
-  if (parseBackgroundTaskLifecycleEvent(decoded)) {
-    flushToolActivityBeforeNonToolMessage(state);
-    upsertBackgroundTaskMessage(state, meta, decoded);
-    return;
-  }
-
-  const execEvent = parseExecLifecycleEvent(
-    decoded,
-    meta,
-    eventParentToolCallId,
-  );
-  if (execEvent) {
-    if (execEvent.kind === "begin") {
-      onExecBegin(state, meta, decoded.threadId, eventTurnId, execEvent.call);
-    } else if (execEvent.kind === "output") {
-      onExecOutput(
-        state,
-        meta,
-        execEvent.output,
-        execEvent.appendOutput,
-        execEvent.replaceOutput,
-      );
+  const itemEventRole = classifyItemEvent(decoded);
+  if (itemEventRole?.kind === "compaction") {
+    const payload = {
+      key: eventTurnId ?? itemEventRole.itemId,
+      ...(eventParentToolCallId
+        ? { parentToolCallId: eventParentToolCallId }
+        : {}),
+    };
+    if (itemEventRole.completes) {
+      onCompactionEnd(state, meta, decoded.threadId, eventTurnId, {
+        ...payload,
+        kind: "end",
+      });
     } else {
-      onExecEnd(state, meta, decoded.threadId, eventTurnId, execEvent.call);
+      onCompactionBegin(state, meta, decoded.threadId, eventTurnId, {
+        ...payload,
+        kind: "begin",
+      });
     }
     return;
   }
-
-  if (shouldSuppressLowValueToolCall(decoded)) {
-    return;
-  }
-
-  const toolCallEvent = parseToolCallLifecycleEvent(
-    decoded,
-    meta,
-    eventParentToolCallId,
-  );
-  if (toolCallEvent) {
-    if (
-      toolCallEvent.kind !== "output" &&
-      toolCallEvent.call.kind === "delegation" &&
-      eventTurnId
-    ) {
-      state.delegationTurnIdsByCallId.set(
-        toolCallEvent.call.callId,
-        eventTurnId,
-      );
+  if (itemEventRole !== null) {
+    if (itemEventRole.kind === "ignored") {
+      return;
     }
-    if (toolCallEvent.kind === "begin") {
-      onExecBegin(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        toolCallEvent.call,
-      );
-    } else if (toolCallEvent.kind === "output") {
-      onExecOutput(
-        state,
-        meta,
-        toolCallEvent.output,
-        toolCallEvent.appendOutput,
-        toolCallEvent.replaceOutput,
-      );
-    } else {
-      onExecEnd(state, meta, decoded.threadId, eventTurnId, toolCallEvent.call);
+    const turnClosed =
+      eventTurnId !== undefined && state.closedTurnIds.has(eventTurnId);
+    const record = applyItemEvent(state.items, entry, itemEventRole, {
+      parentToolCallId: eventParentToolCallId,
+      turnClosed,
+    });
+    if (record?.textKind && record.turnId && !turnClosed) {
+      state.openTurnIds.add(record.turnId);
     }
-    return;
-  }
-
-  const webActivityEvent = parseWebActivityLifecycleEvent(
-    decoded,
-    eventParentToolCallId,
-  );
-  if (webActivityEvent) {
-    if (webActivityEvent.kind === "begin") {
-      onWebActivityBegin(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        webActivityEvent,
-      );
-    } else {
-      onWebActivityEnd(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        webActivityEvent,
-      );
-    }
-    return;
-  }
-
-  const fileEdit = parseFileEditFromItemEvent(decoded, eventParentToolCallId);
-  if (fileEdit) {
-    flushToolActivityBeforeNonToolMessage(state);
-    upsertFileEdit(state, meta, decoded.threadId, eventTurnId, fileEdit);
     return;
   }
 
@@ -838,24 +752,13 @@ function foldProjectionEvent(
     eventParentToolCallId,
   );
   if (compactionEvent) {
-    flushToolActivityBeforeNonToolMessage(state);
-    if (compactionEvent.kind === "begin") {
-      onCompactionBegin(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        compactionEvent,
-      );
-    } else {
-      onCompactionEnd(
-        state,
-        meta,
-        decoded.threadId,
-        eventTurnId,
-        compactionEvent,
-      );
-    }
+    onCompactionEnd(
+      state,
+      meta,
+      decoded.threadId,
+      eventTurnId,
+      compactionEvent,
+    );
     return;
   }
 
@@ -865,7 +768,6 @@ function foldProjectionEvent(
     threadName: options?.threadName ?? "",
   });
   if (operation) {
-    flushToolActivityBeforeNonToolMessage(state);
     if (
       operation.kind === "operation" &&
       operation.opType === "thread-provisioning"
@@ -895,7 +797,6 @@ function foldProjectionEvent(
 
   const error = parseErrorMessage(decoded, meta);
   if (error) {
-    flushToolActivityBeforeNonToolMessage(state);
     state.messages.push(error);
     return;
   }
@@ -916,6 +817,15 @@ function nestDelegatedTurnMessages(
   });
 }
 
+function shouldSettleStreamingText(
+  options: BuildEventProjectionMessagesOptions | undefined,
+): boolean {
+  return (
+    options?.threadStatus !== undefined &&
+    !shouldPreservePendingMessages(options.threadStatus)
+  );
+}
+
 function finishFlatProjection(
   state: ProjectionState,
   orderedEvents: ThreadEventWithMeta[],
@@ -933,7 +843,9 @@ function finishFlatProjection(
   enrichBackgroundAgentModels(messages, callMessageById);
   return {
     activeThinking: includeActiveThinking
-      ? buildProjectionActiveThinking(state, options?.threadStatus)
+      ? options?.threadStatus === "active"
+        ? selectItemRecordActiveThinking(state.items)
+        : null
       : null,
     activeWorkflows: selectActiveWorkflowMessages(messages),
     activeBackgroundCommands: selectActiveBackgroundCommandMessages(
@@ -956,6 +868,12 @@ function buildFlatProjectionData(
   for (const event of args.events) {
     foldProjectionEvent(state, lookups, args.options, event);
   }
+  state.messages.push(
+    ...collectItemRecordMessages(
+      state.items,
+      shouldSettleStreamingText(args.options),
+    ),
+  );
   return finishFlatProjection(
     state,
     args.events,
@@ -970,7 +888,6 @@ function buildDetailedProjection(
   const projection = groupEventProjectionTurns({
     delegatedTurnIds: args.delegatedTurnIds,
     events: args.events,
-    externalUserBoundarySeqsByTurnId: args.externalUserBoundarySeqsByTurnId,
     messages: args.messages,
   });
   const semanticProjection = normalizeEventProjection({
@@ -1005,7 +922,6 @@ function buildFullEventProjection(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events,
-    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1041,7 +957,6 @@ export function buildEventProjectionEntries(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
-    externalUserBoundarySeqsByTurnId: options.externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1096,33 +1011,30 @@ function copyProjectionStateForFinish(
   state: ProjectionState,
   options: BuildEventProjectionOptions,
 ): ProjectionState {
+  const itemMessages = collectItemRecordMessages(
+    state.items,
+    shouldSettleStreamingText(options),
+  );
+  const { items, ...rest } = state;
   if (
     !shouldPreservePendingMessages(options.threadStatus) ||
-    interruptedTurnFinalizationChangesState(state)
+    interruptedTurnFinalizationChangesState(state, itemMessages)
   ) {
-    return structuredClone(state);
+    const copy: ProjectionState = { ...structuredClone(rest), items };
+    copy.messages.push(...itemMessages.map((message) => ({ ...message })));
+    return copy;
   }
-  const { toolActivity } = state;
   return {
     ...state,
-    messages: state.messages.map((message) =>
+    messages: [...state.messages, ...itemMessages].map((message) =>
       message.kind === "workflow" ? { ...message } : message,
     ),
-    toolActivity: {
-      ...toolActivity,
-      execHistoryCellIndexByCallId: new Map(
-        toolActivity.execHistoryCellIndexByCallId,
-      ),
-      finalizedExecCallIds: new Set(toolActivity.finalizedExecCallIds),
-      historyCells: [...toolActivity.historyCells],
-    },
   };
 }
 
 export function finishEventProjectionFold(
   fold: EventProjectionFold,
   events: ThreadEventWithMeta[],
-  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>,
 ): EventProjection {
   const orderedEvents = getOrderedThreadEvents(events);
   const flatProjection = finishFlatProjection(
@@ -1137,7 +1049,6 @@ export function finishEventProjectionFold(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     delegatedTurnIds: flatProjection.delegatedTurnIds,
     events: orderedEvents,
-    externalUserBoundarySeqsByTurnId,
     messages: flatProjection.messages,
     turnMessageDetail: fold.options.turnMessageDetail,
   });

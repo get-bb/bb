@@ -1,3 +1,4 @@
+import { outputJson, type JsonOutputOptions } from "../command-result.js";
 import { Command } from "commander";
 import {
   builtInThemes,
@@ -11,7 +12,6 @@ import {
 } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
 interface ThemeShowCommandOptions extends JsonOutputOptions {
   css?: boolean;

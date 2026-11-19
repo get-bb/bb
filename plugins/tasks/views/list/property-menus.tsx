@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 import {
+  experimental_matchesShortcutKey as matchesShortcutKey,
+  type ExperimentalShortcutKeyEvent,
+} from "@get-bb/plugin-sdk/app";
+import {
   TASK_STATUSES,
   type Label,
   type Project,
@@ -47,6 +51,15 @@ export const PRIORITY_MENU_ORDER: readonly TaskPriority[] = [
   "medium",
   "low",
 ];
+
+const SHORTCUT_DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+function shortcutDigit(event: ExperimentalShortcutKeyEvent): string {
+  return (
+    SHORTCUT_DIGITS.find((digit) => matchesShortcutKey(event, digit)) ??
+    event.key
+  );
+}
 
 export function statusForShortcut(key: string): TaskStatus | null {
   if (!/^[0-9]$/.test(key)) return null;
@@ -153,7 +166,7 @@ export function StatusEditor({
         className="min-w-56"
         mobileTitle="Change status"
         onKeyDown={(event) => {
-          const status = statusForShortcut(event.key);
+          const status = statusForShortcut(shortcutDigit(event));
           if (status !== null && isBareKey(event)) {
             event.preventDefault();
             select(status);
@@ -213,7 +226,7 @@ export function PriorityEditor({
         className="min-w-52"
         mobileTitle="Set priority"
         onKeyDown={(event) => {
-          const priority = priorityForShortcut(event.key);
+          const priority = priorityForShortcut(shortcutDigit(event));
           if (priority !== null && isBareKey(event)) {
             event.preventDefault();
             select(priority);

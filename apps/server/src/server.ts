@@ -22,11 +22,6 @@ import {
   declineWebSocketCompression,
   WEB_SOCKET_COMPRESSION,
 } from "./ws/compression.js";
-import { createGateKeyStore } from "./services/connect-next/gate-keys.js";
-import {
-  createTunnelIngressManager,
-  type TunnelIngressManager,
-} from "./services/connect-next/tunnel-ingress.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
@@ -76,6 +71,7 @@ import {
 } from "./services/plugins/plugin-server-access-registry.js";
 import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
+import { requestHostDerivedStateRefreshForPluginChange } from "./services/hosts/host-derived-state.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -102,9 +98,8 @@ import {
   onClientSocketOpen,
 } from "./ws/client-protocol.js";
 import {
-  onDaemonSocketClose,
-  onDaemonSocketMessage,
-  onDaemonSocketOpen,
+  createDaemonSocketEvents,
+  endDaemonSessionChannels,
   validateDaemonWebSocket,
 } from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "@bb/process-utils";
@@ -117,7 +112,10 @@ import {
   createBbAppArtifactService,
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM,
+} from "@bb/host-daemon-contract";
 import {
   createPluginCatalogService,
   type PluginCatalogService,
@@ -140,6 +138,7 @@ import { apiJsonCompression } from "./api-response-compression.js";
 import { APP_SURFACE_WEB, type AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { registerServerMoveRoutes } from "./routes/server-move.js";
+import { registerServerSweepRoutes } from "./routes/server-sweeps.js";
 import {
   INTERNAL_SERVER_MOVE_PENDING_PATH,
   registerInternalServerMoveRoutes,
@@ -172,7 +171,6 @@ interface ServerApp {
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
   serverMove: ServerMoveCoordinator;
-  tunnelIngress: TunnelIngressManager;
 }
 
 interface CloseWebSocketServerArgs {
@@ -213,7 +211,6 @@ interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   performanceDiagnosticsEnabled?: () => boolean;
   staticDir?: string;
-  tunnelIngressNow?: () => number;
 }
 
 interface StaticResponseHeadersArgs {
@@ -316,6 +313,8 @@ export function registerStaticAppRoutes(
     const headers = new Headers();
     headers.set("cache-control", STATIC_INDEX_CACHE_CONTROL);
     headers.set("etag", etag);
+    headers.set("content-security-policy", "frame-ancestors 'none'");
+    headers.set("x-frame-options", "DENY");
     if (requestMatchesEntityTag(ifNoneMatchHeader, etag)) {
       return new Response(null, { status: 304, headers });
     }
@@ -461,18 +460,6 @@ export function createApp(
     app,
   });
   wss.options.perMessageDeflate = WEB_SOCKET_COMPRESSION;
-  const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
-  const tunnelIngress = createTunnelIngressManager({
-    app,
-    injectWebSocket,
-    keys: createGateKeyStore({
-      url: () => deps.config.connectGateKeysUrl,
-      logger: deps.logger,
-      now: tunnelIngressNow,
-    }),
-    loopbackOrigin: () => `http://127.0.0.1:${deps.config.serverPort}`,
-    logger: deps.logger,
-  });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
   const bbAppArtifactService =
@@ -792,12 +779,13 @@ export function createApp(
         }),
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
-    openTunnelIngress: (audience) => tunnelIngress.open(audience),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
+      requestHostDerivedStateRefreshForPluginChange(deps);
     },
+    onPluginsChanged: () => requestHostDerivedStateRefreshForPluginChange(deps),
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
         kind: "plugin-unregistered",
@@ -938,6 +926,7 @@ export function createApp(
   );
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
+  registerServerSweepRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -1038,30 +1027,23 @@ export function createApp(
     "/internal/ws",
     upgradeWebSocket(async (context) => {
       declineWebSocketCompression(context);
-      const websocketContext = await validateDaemonWebSocket(deps, {
+      const target = await validateDaemonWebSocket(deps, {
         authorizationHeader: context.req.header("authorization"),
         protocolHeader: context.req.header("sec-websocket-protocol"),
+        resumeFrom:
+          context.req.query(HOST_DAEMON_WS_RESUME_FROM_QUERY_PARAM) ?? null,
         sessionId: context.req.query("sessionId") ?? null,
       });
+      const events = createDaemonSocketEvents(
+        deps,
+        target,
+        pluginService,
+        serverMove,
+      );
       return {
-        onOpen: (_event, socket) =>
-          onDaemonSocketOpen(deps, {
-            ...websocketContext,
-            socket,
-          }),
-        onMessage: (event, socket) =>
-          onDaemonSocketMessage(
-            deps,
-            {
-              hostId: websocketContext.hostId,
-              raw: event.data,
-              sessionId: websocketContext.sessionId,
-              socket,
-            },
-            pluginService,
-            serverMove,
-          ),
-        onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
+        onOpen: (_event, socket) => events.onOpen(socket),
+        onMessage: (event, socket) => events.onMessage(socket, event.data),
+        onClose: (event, socket) => events.onClose(socket, event.reason),
       };
     }),
   );
@@ -1078,16 +1060,21 @@ export function createApp(
 
   return {
     app,
-    closeWebSockets: () =>
-      closeWebSocketServer({
+    closeWebSockets: () => {
+      endDaemonSessionChannels(
+        deps.hub,
+        WEB_SOCKET_SHUTDOWN_CODE,
+        WEB_SOCKET_SHUTDOWN_REASON,
+      );
+      return closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,
         reason: WEB_SOCKET_SHUTDOWN_REASON,
         server: wss,
-      }),
+      });
+    },
     injectWebSocket,
     pluginService,
     pluginCatalogService,
     serverMove,
-    tunnelIngress,
   };
 }

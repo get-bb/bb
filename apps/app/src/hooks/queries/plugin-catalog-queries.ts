@@ -4,6 +4,7 @@ import type {
   PluginCatalogAuthor,
   PluginCatalogCollection,
   PluginCatalogCollectionMembership,
+  PluginCatalogListing,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
   PluginMarketplaceRefreshResult,
@@ -240,6 +241,7 @@ export interface PluginCatalogSearchEntry {
   publisherKey: string;
   publisherLabel: string;
   official: boolean;
+  listings: PluginCatalogListing[];
   author: PluginCatalogAuthor | null;
   installed: boolean;
   installedByDefault: boolean;
@@ -247,6 +249,14 @@ export interface PluginCatalogSearchEntry {
   installs: number | null;
   compatible: boolean;
   incompatibleReason: string | null;
+}
+
+export function catalogEntryListings(
+  entry: Pick<PluginCatalogSearchEntry, "entryId" | "marketplace" | "listings">,
+): Pick<PluginCatalogListing, "marketplace" | "entryId">[] {
+  return entry.listings.length === 0
+    ? [{ marketplace: entry.marketplace, entryId: entry.entryId }]
+    : entry.listings;
 }
 
 function toPluginCatalogSearchEntry(
@@ -275,6 +285,7 @@ function toPluginCatalogSearchEntry(
     publisherKey: data.publisherKey,
     publisherLabel: data.publisherLabel,
     official: data.official,
+    listings: data.listings,
     author: data.author,
     installed: data.installed,
     installedByDefault: data.installedByDefault,

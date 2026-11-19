@@ -11,6 +11,7 @@ import {
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
   writeRegistrySkillProvenance,
 } from "./registry-skill-provenance.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILLS_INSTALL_TIMEOUT_MS = 120_000;
@@ -28,7 +29,7 @@ interface InstallCommandResult {
 
 function appendBounded(current: string, chunk: unknown): string {
   if (current.length >= MAX_INSTALL_OUTPUT_BYTES) return current;
-  return `${current}${String(chunk)}`.slice(0, MAX_INSTALL_OUTPUT_BYTES);
+  return sliceUtf16Head(`${current}${String(chunk)}`, MAX_INSTALL_OUTPUT_BYTES);
 }
 
 function registrySkillsCliInvocation(args: {

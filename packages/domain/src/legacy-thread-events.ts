@@ -1,5 +1,6 @@
 import type { ThreadEventItemPresentation } from "./item-presentation.js";
 import type { ThreadEventType } from "./provider-event.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const LEGACY_CODEX_GOAL_EXTENSION_KIND = "provider-codex/goal";
 
@@ -205,7 +206,7 @@ export function formatToolCallCommand(
   const compact = entries
     .map(([k, v]) => {
       const vs = typeof v === "string" ? v.trim() : JSON.stringify(v);
-      const display = vs.length > 40 ? `${vs.slice(0, 37)}...` : vs;
+      const display = vs.length > 40 ? `${sliceUtf16Head(vs, 37)}...` : vs;
       return `${k}: ${display}`;
     })
     .join(", ");

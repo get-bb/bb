@@ -82,7 +82,6 @@ export async function waitForWindowsInstaller(
 ): Promise<WindowsInstallerWaitResult> {
   const child = spawn(args.command.executablePath, args.command.args, {
     stdio: ["ignore", "pipe", "ignore"],
-    windowsHide: true,
   });
   let result: WindowsInstallerWaitResult = "unknown";
   const lines = createInterface({ input: child.stdout });

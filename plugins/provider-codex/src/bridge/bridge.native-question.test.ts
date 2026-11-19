@@ -144,7 +144,7 @@ it.each([
       if (cancelled) {
         expect(response).toMatchObject({
           id: "fx-req-1",
-          error: { message: "Question cancelled" },
+          error: { message: expect.stringContaining("Question cancelled") },
         });
         expect(response).not.toHaveProperty("result");
         return;

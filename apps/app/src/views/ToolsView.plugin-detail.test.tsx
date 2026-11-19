@@ -59,7 +59,9 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
+import { createPluginPanelController } from "@/lib/plugin-panel-controller";
+import type { ExperimentalOpenTabOptions } from "@get-bb/plugin-sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 
@@ -94,6 +96,10 @@ function browseTabs(): { tabs: string[]; activePluginId: string | null } {
     activePluginId: active?.detailKey ?? null,
   };
 }
+
+vi.mock("@/components/ScreenPaintSignal", () => ({
+  ScreenPaintSignal: () => null,
+}));
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -136,6 +142,7 @@ const GITHUB_CATALOG_ENTRY = {
   publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
+  listings: [],
   author: null,
   installed: false,
   conflictingInstallSource: null,
@@ -200,6 +207,7 @@ function renderPluginDetail(
         {options.withBanners ? (
           <PluginDetailBanners
             plugin={plugin}
+            catalogEntry={null}
             catalogEntries={[]}
             onOpenPlugin={vi.fn()}
           />
@@ -740,6 +748,58 @@ describe("PluginDetail official catalog lifecycle", () => {
         "Included with BB; disable this plugin instead.",
       ),
     ).not.toHaveLength(0);
+  });
+
+  it("installs a plugin listed by two marketplaces from the one the user picks", () => {
+    const onInstall = vi.fn();
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: "acme-github",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherLabel: "BB Community",
+      official: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+          official: false,
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    renderWithQueryClient(
+      <CatalogPluginDetail
+        entry={entry}
+        onInstall={onInstall}
+        catalogEntries={[entry]}
+        onOpenPlugin={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Acme Plugins/u }));
+    fireEvent.click(screen.getByRole("button", { name: /^Install/u }));
+
+    expect(onInstall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketplace: "acme",
+        publisherLabel: "Acme Plugins",
+        official: false,
+      }),
+    );
   });
 
   it("copies the public marketplace link for a BB Community catalog entry", async () => {
@@ -1477,6 +1537,13 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(screen.getByRole("textbox", { name: searchLabel })).toBe(search);
 
+      const detailLocation = installed
+        ? "/plugins/github?view=installed&query=Local+GitHub"
+        : "/plugins/github";
+      await waitFor(() => {
+        expect(screen.getByTestId("location").textContent).toBe(detailLocation);
+      });
+
       fireEvent.click(
         screen.getByRole("button", { name: `Close ${pluginName}` }),
       );
@@ -1496,9 +1563,7 @@ describe("BB Official plugin detail routing", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
       await waitFor(() => {
-        expect(screen.getByTestId("location").textContent).toBe(
-          installed ? "/plugins/github?view=installed" : "/plugins/github",
-        );
+        expect(screen.getByTestId("location").textContent).toBe(detailLocation);
       });
     },
   );
@@ -1873,6 +1938,7 @@ describe("PluginDetail banner precedence", () => {
     render(
       <PluginDetailBanners
         plugin={collision}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
@@ -1891,6 +1957,50 @@ describe("PluginDetail banner precedence", () => {
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
   });
 
+  it("names the other marketplaces that list an installed plugin's source", () => {
+    const listing = {
+      entryId: "acme-github",
+      source: "git:https://github.com/acme/bb-github.git@^1.0.0",
+      official: false,
+    };
+    const entry = {
+      ...GITHUB_CATALOG_ENTRY,
+      ...listing,
+      pluginId: managedPlugin.id,
+      marketplace: "acme",
+      marketplaceDisplayName: "Acme Plugins",
+      installed: true,
+      listings: [
+        {
+          ...listing,
+          marketplace: "bb-community",
+          marketplaceDisplayName: "BB Community",
+          publisherLabel: "BB Community",
+          official: true,
+        },
+        {
+          ...listing,
+          marketplace: "acme",
+          marketplaceDisplayName: "Acme Plugins",
+          publisherLabel: "Acme Plugins",
+        },
+      ],
+    } satisfies PluginCatalogSearchEntry;
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailBanners
+        plugin={managedPlugin}
+        catalogEntry={entry}
+        catalogEntries={[entry]}
+        onOpenPlugin={vi.fn()}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Also listed in BB Community")).toBeTruthy();
+    expect(screen.queryByText(/Acme Plugins/u)).toBeNull();
+  });
+
   it("does not promote cumulative handler diagnostics into a page banner", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
@@ -1899,6 +2009,7 @@ describe("PluginDetail banner precedence", () => {
           ...managedPlugin,
           handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
         }}
+        catalogEntry={null}
         catalogEntries={[]}
         onOpenPlugin={vi.fn()}
       />,
@@ -2700,5 +2811,66 @@ describe("plugin detail source and settings", () => {
     expect(screen.getByTestId("location").textContent).toBe(
       "/threads/thr_1?panel=files",
     );
+  });
+});
+
+describe("Plugins view panel controller", () => {
+  it("gives plugin commands a panel that declines plugin tabs without changing the view's tabs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/plugins") {
+          return Response.json({ enabled: true, plugins: [] });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return Response.json({ results: [], collections: [] });
+        }
+        return Response.json({ error: "not found" }, { status: 404 });
+      }),
+    );
+    renderWithQueryClient(
+      <Provider store={createStore()}>
+        <MemoryRouter initialEntries={["/plugins"]}>
+          <AppCommandProvider>
+            <RoutedPluginsView />
+          </AppCommandProvider>
+        </MemoryRouter>
+      </Provider>,
+    );
+    await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
+    const panel = createPluginPanelController(
+      "contract",
+      getFocusedAppPanelController,
+    );
+    const before = panel.getTabs();
+    const declined: ExperimentalOpenTabOptions[] = [
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "thread" },
+          availability: "action",
+        },
+      },
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "thread" },
+          availability: "fixed",
+        },
+      },
+      {
+        tab: {
+          id: "probe",
+          context: { kind: "nav-panel", panelId: "plugins" },
+          availability: "action",
+        },
+      },
+    ];
+    for (const options of declined) {
+      expect(panel.openTab(options)).toBe(false);
+      expect(panel.toggleTab(options)).toBe(false);
+    }
+    expect(panel.getTabs()).toEqual(before);
   });
 });

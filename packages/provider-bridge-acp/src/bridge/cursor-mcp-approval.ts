@@ -84,7 +84,7 @@ async function resolveCursorProjectRoot(args: {
     execFile(
       "git",
       ["rev-parse", "--show-toplevel"],
-      { cwd: args.cwd, env: args.env, windowsHide: true },
+      { cwd: args.cwd, env: args.env },
       (error, stdout) => {
         const root = stdout.trim();
         resolveRoot(error === null && root !== "" ? root : resolve(args.cwd));

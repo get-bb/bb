@@ -57,32 +57,44 @@ describe("item sweeps", () => {
     expect(failuresOf(deps, "test-isolation")).toEqual([]);
   });
 
-  it("doubles the delay on each failure and logs an error from the fifth", async () => {
+  it("doubles the delay on each failure, needs recovery after the eighth, then retries hourly until a success clears it", async () => {
     const deps = setup();
     const error = vi.spyOn(deps.logger, "error");
+    let failing = true;
+    let calls = 0;
     const sweep = defineItemSweep({
       name: "test-escalation",
       concurrency: 1,
       list: () => ["a"],
       key: (item) => item,
       process: () => {
-        throw new Error("still broken");
+        calls += 1;
+        if (failing) throw new Error("still broken");
       },
     });
     const delays: number[] = [];
     let now = NOW;
-    for (let attempt = 1; attempt <= 5; attempt += 1) {
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
       await sweep.run(deps, now);
-      const failure = failuresOf(deps, "test-escalation")[0];
-      if (failure === undefined) throw new Error("missing failure record");
-      delays.push(failure.retryAt - now);
-      now = failure.retryAt;
+      const retryAt = failuresOf(deps, "test-escalation")[0]?.retryAt;
+      if (retryAt === undefined) throw new Error("missing retry");
+      delays.push(retryAt - now);
+      now = retryAt;
     }
-    expect(delays).toEqual([60_000, 120_000, 240_000, 480_000, 960_000]);
-    expect(error).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ attempts: 5, itemKey: "a" }),
-      "Sweep item keeps failing; other items continue",
+    expect(delays).toEqual(
+      [1, 2, 4, 8, 16, 32, 60, 60, 60, 60].map((minutes) => minutes * 60_000),
     );
+    expect(error).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ attempts: 8, itemKey: "a" }),
+      "Sweep item needs recovery; retrying hourly until it succeeds or bb server sweeps retry",
+    );
+    await sweep.run(deps, now - 1);
+    expect(calls).toBe(10);
+
+    failing = false;
+    await sweep.run(deps, now);
+    expect(calls).toBe(11);
+    expect(failuresOf(deps, "test-escalation")).toEqual([]);
     error.mockRestore();
   });
 

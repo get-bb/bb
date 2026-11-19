@@ -1,3 +1,4 @@
+import { outputJson, printJsonResult } from "../../command-result.js";
 import {
   GIT_PLUGIN_ID,
   type WorkspaceDiffTarget,
@@ -34,11 +35,7 @@ import {
 } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import {
-  getErrorMessage,
-  outputJson,
-  requireThreadIdOrSelf,
-} from "../helpers.js";
+import { getErrorMessage, requireThreadIdOrSelf } from "../helpers.js";
 import {
   type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
@@ -540,7 +537,7 @@ export function registerShowCommand(
                 ),
                 afterSeq: opts.afterSeq,
               });
-          console.log(JSON.stringify(events.rows, null, 2));
+          printJsonResult(events.rows);
           if (events.hasMore) {
             const lastSeq = events.rows[events.rows.length - 1]?.seq;
             console.error(
@@ -589,10 +586,13 @@ export function registerShowCommand(
           page = older.timelinePage;
         }
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
-        const text = formatThreadTimelineText(rows, {
-          verbose: format === "verbose",
-          color,
-        });
+        const text = formatThreadTimelineText(
+          [...rows, ...timeline.pendingSteers],
+          {
+            verbose: format === "verbose",
+            color,
+          },
+        );
         const notice =
           page.olderCursor !== null
             ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
@@ -730,7 +730,7 @@ async function printThreadLogMessage(
     after: context,
   });
   if (format === "json") {
-    console.log(JSON.stringify(result, null, 2));
+    printJsonResult(result);
     return;
   }
   const color = process.stdout.isTTY === true && !process.env.NO_COLOR;

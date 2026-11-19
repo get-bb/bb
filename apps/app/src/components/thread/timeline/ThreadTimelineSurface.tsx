@@ -50,7 +50,6 @@ export interface ThreadTimelineSurfaceProps {
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
-  includePluginMessageActions?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -147,7 +146,6 @@ export function ThreadTimelineSurface({
   onMessageAddToChat,
   onSelectionAddToChat,
   consumerMessageActions,
-  includePluginMessageActions,
   onLoadOlderRows,
   onTitleAction,
   projectId,
@@ -227,7 +225,6 @@ export function ThreadTimelineSurface({
             onMessageAddToChat={onMessageAddToChat}
             onSelectionAddToChat={onSelectionAddToChat}
             consumerMessageActions={consumerMessageActions}
-            includePluginMessageActions={includePluginMessageActions}
             onTitleAction={onTitleAction}
             projectId={projectId}
             resolveMentionLink={resolveMentionLink}

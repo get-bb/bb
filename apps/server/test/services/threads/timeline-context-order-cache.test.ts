@@ -126,218 +126,15 @@ function reasoningDelta(turnId: string): RowSpec {
 }
 
 describe("timeline grouping context cache", () => {
-  it.each([
-    {
-      name: "user text",
-      initiator: "user",
-      input: [{ type: "text", text: "hello" }],
-      boundary: 2,
-    },
-    {
-      name: "agent text",
-      initiator: "agent",
-      input: [{ type: "text", text: "hello" }],
-      boundary: null,
-    },
-    {
-      name: "system text",
-      initiator: "system",
-      input: [{ type: "text", text: "hello" }],
-      boundary: null,
-    },
-    {
-      name: "hidden user text",
-      initiator: "user",
-      input: [{ type: "text", text: "hello", visibility: "agent-only" }],
-      boundary: null,
-    },
-    {
-      name: "empty user text",
-      initiator: "user",
-      input: [{ type: "text", text: "" }],
-      boundary: null,
-    },
-    {
-      name: "user image",
-      initiator: "user",
-      input: [{ type: "image", url: "https://example.com/image.png" }],
-      boundary: 2,
-    },
-    {
-      name: "user local image",
-      initiator: "user",
-      input: [{ type: "localImage", path: "/tmp/image.png" }],
-      boundary: 2,
-    },
-    {
-      name: "user file after hidden text",
-      initiator: "user",
-      input: [
-        { type: "text", text: "hidden", visibility: "agent-only" },
-        { type: "localFile", path: "/tmp/input.txt" },
-      ],
-      boundary: 2,
-    },
-  ])(
-    "preserves request association and visibility for $name",
-    ({ initiator, input, boundary }) => {
-      withTestThread((testThread) => {
-        const maxSeq = appendRows(testThread, [
-          turnStarted("turn-1"),
-          {
-            type: "client/turn/requested",
-            data: {
-              requestId: "request-2",
-              initiator,
-              input,
-              target: { kind: "new-turn" },
-            },
-          },
-          accepted("request-2", "turn-2"),
-        ]);
-        const context = getTimelineGroupingContext(testThread.db, {
-          threadId: testThread.thread.id,
-          sequenceStart: 0,
-          maxSeq,
-        });
-        expect(context.orderingBoundarySequence).toBe(boundary);
-        expect([...context.acceptedTurnIds]).toEqual([["request-2", "turn-2"]]);
-      });
-    },
-  );
-
-  it("preserves the parented cutoff before a late accepted steer", () => {
+  it("associates accepted requests with their turns", () => {
     withTestThread((testThread) => {
-      const steer = userRequest("steer");
       const maxSeq = appendRows(testThread, [
-        turnStarted("turn-a"),
-        turnCompleted("turn-a"),
-        {
-          ...steer,
-          data: {
-            ...steer.data,
-            target: { kind: "steer", expectedTurnId: "turn-a" },
-          },
-        },
-        turnStarted("turn-b"),
-        userRequest("request-before-parent"),
-        accepted("request-before-parent", "turn-b"),
-        turnCompleted("turn-b"),
-        rootToolCall("parent", "turn-a", "item/started"),
-        userRequest("request-inside-parent"),
-        child("parent", 1),
-        accepted("steer", "turn-a"),
-      ]);
-      expect(
-        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-      ).toBe(9);
-      expect(
-        expectCachedEqualsCold(
-          testThread,
-          appendRows(testThread, [child("parent", 2)]),
-        ).orderingBoundarySequence,
-      ).toBe(9);
-    });
-  });
-
-  it("keeps the earliest boundary when a late accepted steer is scanned first", () => {
-    withTestThread((testThread) => {
-      const steer = userRequest("steer");
-      const maxSeq = appendRows(testThread, [
-        turnStarted("turn-a"),
-        turnCompleted("turn-a"),
-        {
-          ...steer,
-          data: {
-            ...steer.data,
-            target: { kind: "steer", expectedTurnId: "turn-a" },
-          },
-        },
-        turnStarted("turn-b"),
-        userRequest("request-before-parent"),
-        turnCompleted("turn-b"),
-        rootToolCall("parent", "turn-a", "item/started"),
-        userRequest("request-inside-parent"),
-        child("parent", 1),
-        accepted("steer", "turn-a"),
-      ]);
-      expect(
-        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-      ).toBe(5);
-      expect(
-        expectCachedEqualsCold(
-          testThread,
-          appendRows(testThread, [child("parent", 2)]),
-        ).orderingBoundarySequence,
-      ).toBe(5);
-    });
-  });
-
-  it.each([
-    { childTurnCompletes: false, boundary: 7 },
-    { childTurnCompletes: true, boundary: null },
-  ])(
-    "counts a delegated child turn that is open when a user message arrives (child turn completes: $childTurnCompletes)",
-    ({ childTurnCompletes, boundary }) => {
-      withTestThread((testThread) => {
-        const maxSeq = appendRows(testThread, [
-          userRequest("first"),
-          turnStarted("turn-a"),
-          accepted("first", "turn-a"),
-          rootToolCall("parent", "turn-a", "item/started"),
-          {
-            parentToolCallId: "parent",
-            turnId: "child-turn",
-            type: "turn/started",
-          },
-          ...(childTurnCompletes
-            ? [{ ...turnCompleted("child-turn"), parentToolCallId: "parent" }]
-            : []),
-          turnCompleted("turn-a"),
-          userRequest("second"),
-          turnStarted("turn-b"),
-          accepted("second", "turn-b"),
-        ]);
-        expect(
-          expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-        ).toBe(boundary);
-      });
-    },
-  );
-
-  it("updates parented boundaries without rereading unchanged request and turn history", () => {
-    withTestThread((testThread) => {
-      const beforeChildren = appendRows(testThread, [
         turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        child("call-1", 1),
-        turnCompleted("turn-1"),
-        userRequest("request-1"),
+        userRequest("request-2"),
+        accepted("request-2", "turn-2"),
       ]);
-      expect(
-        expectCachedEqualsCold(testThread, beforeChildren)
-          .orderingBoundarySequence,
-      ).toBeNull();
-      const statements = captureStatementSql(testThread.db, () => {
-        for (let index = 0; index < 20; index += 1) {
-          const maxSeq = appendRows(testThread, [
-            {
-              ...delta("nested-call-1", "child text"),
-              parentToolCallId: "call-1",
-            },
-          ]);
-          expect(
-            expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-          ).toBe(5);
-        }
-        expect(
-          expectCachedEqualsCold(testThread, beforeChildren)
-            .orderingBoundarySequence,
-        ).toBeNull();
-      });
-      expect(
-        statements.filter((source) => source.includes("'$.clientRequestId'")),
-      ).toEqual([]);
+      const context = expectCachedEqualsCold(testThread, maxSeq);
+      expect([...context.acceptedTurnIds]).toEqual([["request-2", "turn-2"]]);
     });
   });
 
@@ -355,7 +152,6 @@ describe("timeline grouping context cache", () => {
         testThread,
         appendRows(testThread, [child("call-1", 2)]),
       );
-      expect(warm.orderingBoundarySequence).toBe(6);
 
       const maxSeq = appendRows(testThread, [
         delta("turn-1", "Hello"),
@@ -367,65 +163,25 @@ describe("timeline grouping context cache", () => {
       const statements = captureStatementSql(testThread.db, () => {
         expect(expectCachedEqualsCold(testThread, maxSeq)).toBe(warm);
       });
-      expect(statements).toEqual([
-        expect.stringContaining('"parent_tool_call_id" is not null'),
-      ]);
+      expect(statements).toEqual([expect.stringContaining("LIMIT 1")]);
     });
   });
 
   it.each([
     {
-      name: "a user request arrives while a turn is still running",
-      seed: [turnStarted("turn-1")],
-      appended: [userRequest("request-1")],
-      before: null,
-      after: 3,
-    },
-    {
-      name: "an accepted steer claims the request for its turn",
-      seed: [
-        turnStarted("turn-1"),
-        userRequest("request-1"),
-        turnCompleted("turn-1"),
-      ],
+      name: "a request is accepted",
+      seed: [turnStarted("turn-1"), userRequest("request-1")],
       appended: [accepted("request-1", "turn-1")],
-      before: 2,
-      after: null,
     },
     {
-      name: "a late root turn/started admits a delegating parent",
-      seed: [
-        rootToolCall("call-1", "turn-2", "item/started"),
-        userRequest("request-1"),
-        child("call-1", 1),
-      ],
+      name: "a root turn starts",
+      seed: [turnStarted("turn-1"), turnCompleted("turn-1")],
       appended: [turnStarted("turn-2")],
-      before: null,
-      after: 2,
     },
     {
-      name: "a user request inside an open parent span",
-      seed: [
-        turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        child("call-1", 1),
-      ],
-      appended: [userRequest("request-1"), child("call-1", 2)],
-      before: null,
-      after: 5,
-    },
-    {
-      name: "a parented child extends a span past a user request",
-      seed: [
-        turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        child("call-1", 1),
-        turnCompleted("turn-1"),
-        userRequest("request-1"),
-      ],
-      appended: [child("call-1", 2)],
-      before: null,
-      after: 5,
+      name: "a root turn completes",
+      seed: [turnStarted("turn-1")],
+      appended: [turnCompleted("turn-1")],
     },
   ])("recomputes when $name", (testCase) => {
     withTestThread((testThread) => {
@@ -433,16 +189,12 @@ describe("timeline grouping context cache", () => {
         testThread,
         appendRows(testThread, testCase.seed),
       );
-      expect(warm.orderingBoundarySequence).toBe(testCase.before);
-
       const maxSeq = appendRows(testThread, [
         delta("turn-1", "before"),
         ...testCase.appended,
         delta("turn-1", "after"),
       ]);
-      expect(
-        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-      ).toBe(testCase.after);
+      expect(expectCachedEqualsCold(testThread, maxSeq)).not.toEqual(warm);
     });
   });
 
@@ -459,7 +211,6 @@ describe("timeline grouping context cache", () => {
           turnStarted("turn-2"),
         ]),
       );
-      expect(warm.orderingBoundarySequence).toBe(3);
 
       const reusedMaxSeq = appendRows(testThread, [
         rootToolCall("call-1", "turn-2", "item/started"),
@@ -506,18 +257,17 @@ describe("timeline grouping context cache", () => {
           child("call-1", 1),
         ]);
         expect(
-          expectCachedEqualsCold(testThread, warmMaxSeq)
-            .orderingBoundarySequence,
-        ).toBe(4);
+          expectCachedEqualsCold(testThread, warmMaxSeq).clientRequests.size,
+        ).toBe(1);
 
-        remove(testThread, warmMaxSeq);
+        remove(testThread, warmMaxSeq - 1);
         const maxSeq = appendRows(testThread, [
           delta("turn-1", "replacement"),
           delta("turn-1", " text"),
         ]);
         expect(
-          expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
-        ).toBeNull();
+          expectCachedEqualsCold(testThread, maxSeq).clientRequests.size,
+        ).toBe(0);
       });
     },
   );
@@ -535,18 +285,16 @@ describe("timeline grouping context cache", () => {
       );
       expect(expectCachedEqualsCold(testThread, olderMaxSeq)).toBe(latest);
 
-      expect(latest.orderingBoundarySequence).toBe(2);
+      expect(latest.acceptedTurnIds.size).toBe(0);
       const acceptedMaxSeq = appendRows(testThread, [
         accepted("request-1", "turn-1"),
       ]);
       expect(
-        expectCachedEqualsCold(testThread, acceptedMaxSeq)
-          .orderingBoundarySequence,
-      ).toBeNull();
+        expectCachedEqualsCold(testThread, acceptedMaxSeq).acceptedTurnIds.size,
+      ).toBe(1);
       expect(
-        expectCachedEqualsCold(testThread, olderMaxSeq)
-          .orderingBoundarySequence,
-      ).toBe(2);
+        expectCachedEqualsCold(testThread, olderMaxSeq).acceptedTurnIds.size,
+      ).toBe(0);
     });
   });
 
@@ -557,7 +305,7 @@ describe("timeline grouping context cache", () => {
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const random = createRandom(seed);
       withTestThread((testThread) => {
-        let previousBoundary: number | null = null;
+        let previousContext = "";
         for (let step = 0; step < 40; step += 1) {
           prunedRows += applyRandomStep(testThread, random, step);
           const latest = getLatestThreadSequence(testThread.db, {
@@ -579,9 +327,13 @@ describe("timeline grouping context cache", () => {
               sequenceStart,
             );
             comparisons += 1;
-            if (cached.orderingBoundarySequence !== previousBoundary) {
+            const serialized = JSON.stringify([
+              cached.turnBlocks,
+              [...cached.acceptedTurnIds],
+            ]);
+            if (serialized !== previousContext) {
               changedContexts += 1;
-              previousBoundary = cached.orderingBoundarySequence;
+              previousContext = serialized;
             }
           }
         }

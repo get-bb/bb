@@ -20,7 +20,7 @@ export function feedRawDaemonWebSocketMessage(
 ): void {
   onDaemonSocketMessage(args.harness.deps, {
     hostId: args.hostId,
-    raw: JSON.stringify(args.rawMessage),
+    message: args.rawMessage,
     sessionId: args.sessionId,
     socket: args.socket,
   });

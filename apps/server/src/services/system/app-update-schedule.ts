@@ -94,7 +94,6 @@ export function createScheduledAppUpdateService(args: {
   autoUpdate: AutoAppUpdateStore;
   countRunningThreads: () => number;
   inner: AppUpdateService;
-  isEnabled: () => boolean;
   logger: ServerLogger;
   notifyChanged: () => void;
   now?: () => Date;
@@ -112,7 +111,6 @@ export function createScheduledAppUpdateService(args: {
   let startInFlight = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let notifiedRunningThreadCount: number | null = null;
-  let enabled = args.isEnabled();
   let threadChangePending = false;
   let queue: Promise<unknown> = Promise.resolve();
   let idleSince: number | null = Date.now();
@@ -216,10 +214,6 @@ export function createScheduledAppUpdateService(args: {
       const runningThreadCount = args.countRunningThreads();
       observeRunningThreads(runningThreadCount);
       if (runningThreadCount > 0) return;
-      if (!enabled) {
-        dropWhenDisabled();
-        return;
-      }
       if (remainingIdleMs(schedule) > 0) {
         checkIdle(0);
         return;
@@ -251,17 +245,8 @@ export function createScheduledAppUpdateService(args: {
     settleTimer ??= setTimeout(startWhenSettled, remainingIdleMs(waiting));
   }
 
-  function dropWhenDisabled(): void {
-    if (!forget()) return;
-    args.logger.info(
-      "Dropped the scheduled bb update because the updateWhenIdle experiment is off",
-    );
-    args.notifyChanged();
-  }
-
   const handleThreadChanges = (): void => {
     threadChangePending = false;
-    if (!enabled) return;
     const runningThreadCount = args.countRunningThreads();
     if (runningThreadCount !== notifiedRunningThreadCount) {
       notifiedRunningThreadCount = runningThreadCount;
@@ -319,12 +304,7 @@ export function createScheduledAppUpdateService(args: {
 
   const checkForUpdate = (): Promise<void> =>
     serialize(async () => {
-      if (
-        !enabled ||
-        !args.autoUpdate.get() ||
-        waiting !== null ||
-        starting !== null
-      ) {
+      if (!args.autoUpdate.get() || waiting !== null || starting !== null) {
         return;
       }
       const status = withSchedule(
@@ -368,16 +348,9 @@ export function createScheduledAppUpdateService(args: {
 
   const unsubscribe = args.onChangedMessage((message) => {
     if (message.entity === "system") {
-      if (message.changes.includes("config-changed")) {
-        const wasEnabled = enabled;
-        enabled = args.isEnabled();
-        if (!enabled) dropWhenDisabled();
-        else if (!wasEnabled) idleSince = Date.now();
-      }
       return;
     }
     if (
-      !enabled ||
       threadChangePending ||
       message.entity !== "thread" ||
       !message.changes.some(

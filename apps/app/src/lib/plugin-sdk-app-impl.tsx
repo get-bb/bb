@@ -1,4 +1,6 @@
 import { applicationLinkApprovals } from "./application-url";
+import { matchesAppShortcutKey } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import {
   LazyPluginMarkdown,
   LazyPluginDiff,
@@ -185,6 +187,8 @@ export const pluginSdkAppImplementation = {
   experimental_VoiceRecordingBar: VoiceRecordingBar,
   experimental_FailedVoiceRecordings: FailedVoiceRecordings,
   experimental_ShortcutHint: AppCommandShortcutHint,
+  experimental_matchesShortcutKey: matchesAppShortcutKey,
+  experimental_sliceUtf16Head: sliceUtf16Head,
   experimental_ImageLightbox: ImageLightbox,
   experimental_PromptMentionIcon: ComposerMentionIcon,
   experimental_describePromptMention: describePromptMention,

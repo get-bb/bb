@@ -4,6 +4,8 @@ import type {
   ServerMoveStartRequest,
   ServerMoveStatus,
   ServerMoveStatusResponse,
+  ServerSweepFailuresResponse,
+  ServerSweepRetryResponse,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -16,6 +18,9 @@ export type {
   ServerMoveStatus,
   ServerMoveStatusResponse,
   ServerMoveStep,
+  ServerSweepFailure,
+  ServerSweepFailuresResponse,
+  ServerSweepRetryResponse,
 } from "@bb/server-contract";
 
 export interface ServerMoveCheckArgs extends ServerMoveCheckRequest {
@@ -27,6 +32,10 @@ export interface ServerMoveStatusArgs {
 }
 
 export interface ServerExportArgs {
+  signal?: AbortSignal;
+}
+
+export interface ServerSweepFailuresArgs {
   signal?: AbortSignal;
 }
 
@@ -42,6 +51,10 @@ export interface ExperimentalServerArea {
   moveStatus(args?: ServerMoveStatusArgs): Promise<ServerMoveStatusResponse>;
   cancelMove(): Promise<ServerMoveStatus>;
   export(args?: ServerExportArgs): Promise<ServerExportResult>;
+  sweepFailures(
+    args?: ServerSweepFailuresArgs,
+  ): Promise<ServerSweepFailuresResponse>;
+  retrySweepFailures(): Promise<ServerSweepRetryResponse>;
 }
 
 const EXPORT_FILE_NAME_PATTERN = /filename="([^"]+)"/u;
@@ -97,6 +110,19 @@ export function createServerArea(
     },
     async cancelMove() {
       return transport.readJson(transport.api.v1.server.move.cancel.$post());
+    },
+    async sweepFailures(input) {
+      return transport.readJson(
+        transport.api.v1.server["sweep-failures"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async retrySweepFailures() {
+      return transport.readJson(
+        transport.api.v1.server["sweep-failures"].retry.$post(),
+      );
     },
     async export(input) {
       const response = await transport.resolve(

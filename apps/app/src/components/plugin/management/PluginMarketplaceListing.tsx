@@ -50,7 +50,10 @@ export function PluginMarketplaceByline({
       {entry.category === undefined ||
       pluginCatalogCategoryIconName(entry.categoryId) === undefined ? null : (
         <span className="flex min-w-0 shrink-[100] items-center gap-1">
-          <PluginCategoryIcon categoryId={entry.categoryId} className="size-3" />
+          <PluginCategoryIcon
+            categoryId={entry.categoryId}
+            className="size-3"
+          />
           <Link
             to={{
               pathname: getPluginsRoutePath(),
@@ -65,6 +68,24 @@ export function PluginMarketplaceByline({
           </Link>
         </span>
       )}
+    </span>
+  );
+}
+
+export function PluginMarketplaceBadges({
+  entry,
+}: {
+  entry: Pick<PluginCatalogSearchEntry, "listings">;
+}) {
+  if (entry.listings.length < 2) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {entry.listings.map((listing) => (
+        <PluginNameTag
+          key={listing.marketplace}
+          tag={{ label: listing.marketplaceDisplayName, tone: "neutral" }}
+        />
+      ))}
     </span>
   );
 }

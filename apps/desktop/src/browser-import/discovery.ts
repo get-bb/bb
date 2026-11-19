@@ -23,6 +23,7 @@ import {
   type BrowserImportPathContext,
   type BrowserImportSourceDefinition,
 } from "./sources.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 const MAX_DIRECTORIES = 2_000;
 const MAX_SOURCES = 100;
@@ -239,7 +240,7 @@ async function detectProfiles(
         continue;
       if (detectCookieStorage(path) !== format) continue;
       claimed.add(actual);
-      found.push({ ...profile, name: profile.name.slice(0, 256) });
+      found.push({ ...profile, name: sliceUtf16Head(profile.name, 256) });
       break;
     }
     if (found.length >= MAX_PROFILES) break;
@@ -308,7 +309,7 @@ export async function discoverBrowserImportSources(
       const name = known?.name ?? directoryName;
       sources.push({
         id: `storage-${createHash("sha256").update(`${engine}\0${root}`).digest("hex")}`,
-        name: `${name.slice(0, 48)} (${engine === "chromium" ? "Chromium" : "Firefox"})`,
+        name: `${sliceUtf16Head(name, 48)} (${engine === "chromium" ? "Chromium" : "Firefox"})`,
         engine,
         platforms: [context.platform],
         userDataDirectory: () => root,

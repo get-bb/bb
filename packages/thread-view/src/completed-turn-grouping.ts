@@ -173,7 +173,11 @@ function groupCompletedTurnSummaryMessages(
   summaryMessages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
 ): CompletedTurnSummaryItem[] {
-  const externalBoundarySeqs = turn.externalUserBoundarySeqs ?? [];
+  const externalBoundarySeqs = (turn.externalUserBoundarySeqs ?? []).filter(
+    (sequence) =>
+      terminalMessage === undefined ||
+      sequence < terminalMessage.sourceSeqStart,
+  );
   const visibleResponseIds = findVisibleResponseMessageIds(
     summaryMessages,
     terminalMessage,

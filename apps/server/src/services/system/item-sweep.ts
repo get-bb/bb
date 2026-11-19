@@ -2,13 +2,16 @@ import {
   deleteSweepItemFailures,
   getSweepItemFailure,
   listSweepItemFailures,
+  persistedRetryExhausted,
   upsertSweepItemFailure,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
+import {
+  SWEEP_ITEM_RETRY_DELAYS_MS,
+  nextSlowPersistedRetryAt,
+} from "../lib/persisted-retry.js";
 
-const RETRY_BASE_MS = 60_000;
-const RETRY_MAX_MS = 60 * 60_000;
-const REPEATED_FAILURE_ATTEMPTS = 5;
+const FORGET_UNLISTED_FAILURE_AFTER_MS = 60 * 60_000;
 const ITEM_DETACH_AFTER_MS = 60_000;
 const YIELD_AFTER_MS = 8;
 
@@ -60,38 +63,40 @@ export function defineSingleItemSweep(definition: {
   });
 }
 
-function sweepRetryDelayMs(attempts: number): number {
-  return Math.min(
-    RETRY_MAX_MS,
-    RETRY_BASE_MS * 2 ** Math.min(attempts - 1, 16),
-  );
-}
-
 function recordSweepFailure(
   deps: SweepDeps,
   args: { error: unknown; itemKey: string; now: number; sweep: string },
 ): void {
   const previous = getSweepItemFailure(deps.db, args);
   const attempts = (previous?.attempts ?? 0) + 1;
-  const retryInMs = sweepRetryDelayMs(attempts);
+  const retryAt = nextSlowPersistedRetryAt(
+    SWEEP_ITEM_RETRY_DELAYS_MS,
+    attempts,
+    args.now,
+  );
   upsertSweepItemFailure(deps.db, {
     attempts,
     firstFailedAt: previous?.firstFailedAt ?? args.now,
     itemKey: args.itemKey,
     lastError:
       args.error instanceof Error ? args.error.message : String(args.error),
-    retryAt: args.now + retryInMs,
+    retryAt,
     sweep: args.sweep,
   });
   const log = {
     attempts,
     err: args.error,
     itemKey: args.itemKey,
-    retryInMs,
+    retryAt,
     sweep: args.sweep,
   };
-  if (attempts >= REPEATED_FAILURE_ATTEMPTS) {
-    deps.logger.error(log, "Sweep item keeps failing; other items continue");
+  if (attempts === SWEEP_ITEM_RETRY_DELAYS_MS.length + 1) {
+    deps.logger.error(
+      log,
+      "Sweep item needs recovery; retrying hourly until it succeeds or bb server sweeps retry",
+    );
+  } else if (persistedRetryExhausted(SWEEP_ITEM_RETRY_DELAYS_MS, attempts)) {
+    deps.logger.warn(log, "Sweep item still needs recovery; retrying hourly");
   } else {
     deps.logger.warn(log, "Sweep item failed; retrying later");
   }
@@ -185,7 +190,7 @@ async function runItemSweep<T>(
     itemKeys: [...failures.values()]
       .filter(
         (failure) =>
-          failure.retryAt <= now - RETRY_MAX_MS &&
+          failure.retryAt <= now - FORGET_UNLISTED_FAILURE_AFTER_MS &&
           !listedKeys.has(failure.itemKey) &&
           !inFlight.has(failure.itemKey),
       )

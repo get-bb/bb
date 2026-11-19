@@ -83,8 +83,6 @@ import type {
   PluginHttpHandler,
   PluginHosts,
   PluginSharedPortTunnelIdentity,
-  InternalDoNotUsePluginHostNextTunnelStatus,
-  InternalDoNotUsePluginNextTunnelConfig,
   PluginInteractionRequest,
   PluginInteractionResult,
   PluginKvStorage,
@@ -116,6 +114,7 @@ import type {
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
+  PluginThreadSettledEvent,
   PluginUi,
   PluginRpcError,
   ExperimentalPluginRpcCaller,
@@ -128,6 +127,10 @@ import {
   type FakeSdkHarness,
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
+import {
+  createThreadEventGate,
+  threadOfEvent,
+} from "../internal/thread-event-gate.js";
 
 /**
  * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
@@ -331,14 +334,6 @@ export interface FakePluginRegistrations {
   aiServiceRegistrations: PluginAiServiceDeclaration[];
 }
 
-/** One handle opened through `bb.server.internal_DO_NOT_USE_openTunnelIngress`. */
-export interface InternalDoNotUseFakeTunnelIngress {
-  readonly audience: string;
-  readonly baseUrl: string;
-  /** True once the plugin closed the handle or the host disposed it. */
-  readonly closed: boolean;
-}
-
 /** Read-only state for assertions after a plugin registers or handles work. */
 export interface FakePluginInspectionState {
   readonly pluginId: string;
@@ -367,21 +362,10 @@ export interface FakePluginInspectionState {
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
   readonly registrations: FakePluginRegistrations;
-  /** Every `bb.server.internal_DO_NOT_USE_openTunnelIngress` handle, in order. */
-  readonly internal_DO_NOT_USE_tunnelIngresses: readonly InternalDoNotUseFakeTunnelIngress[];
   readonly sharedPortDeclarations: Array<{
     hostId: string;
     ports: number[];
   }>;
-  /** The last `bb.hosts.internal_DO_NOT_USE_setNextTunnels` config, or null. */
-  readonly internal_DO_NOT_USE_nextTunnelConfig: InternalDoNotUsePluginNextTunnelConfig | null;
-  /**
-   * Replace what `bb.hosts.internal_DO_NOT_USE_nextTunnelStatuses` returns and call
-   * every `internal_DO_NOT_USE_onNextTunnelStatusChange` listener.
-   */
-  internal_DO_NOT_USE_setNextTunnelStatuses(
-    statuses: readonly InternalDoNotUsePluginHostNextTunnelStatus[],
-  ): void;
   /** Calls made through bb.hosts.experimental_client, after input validation. */
   readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
@@ -477,7 +461,14 @@ export interface FakePluginBehaviorDrivers {
   /**
    * Deliver a thread lifecycle event to every `bb.events.on` handler. Handlers run
    * sequentially; errors are caught and logged like the host's
-   * fire-and-forget dispatch, and returned for assertions.
+   * fire-and-forget dispatch, and returned for assertions. As on the server,
+   * an event for a thread whose `createdAt` is at or after the start of a
+   * pending `bb.sdk.threads.spawn` or `bb.sdk.threads.fork` waits until that
+   * call has returned to the plugin, and the promise resolves once the
+   * handlers have run. `thread.idle`, `thread.failed`, `thread.archived` and
+   * `thread.deleted` are followed by their `experimental_thread.settled`
+   * event as on the server; `message.cancelled` is not, because the fake has
+   * no thread to attach, so emit the `cancelled` outcome directly.
    */
   emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
@@ -682,8 +673,6 @@ interface FakePluginPersistentState {
   storageRoot: string;
   storedSettings: Map<string, PluginSettingValue>;
 }
-
-const FAKE_TUNNEL_INGRESS_FIRST_PORT = 41_000;
 
 const fakeHostDisposers = new WeakMap<
   FakePluginHarness,
@@ -1193,44 +1182,14 @@ function createFakePluginHostInternal(
       assertLive();
       return dataDir;
     },
-    async internal_DO_NOT_USE_openTunnelIngress(ingressOptions) {
-      assertLive();
-      const audience: unknown = ingressOptions?.audience;
-      if (typeof audience !== "string" || audience.length === 0) {
-        throw new Error(
-          "bb.server.internal_DO_NOT_USE_openTunnelIngress needs a non-empty audience",
-        );
-      }
-      const shared = tunnelIngresses.find(
-        (entry) => entry.audience === audience && !entry.closed,
-      );
-      const entry = {
-        audience,
-        baseUrl:
-          shared?.baseUrl ??
-          `http://127.0.0.1:${FAKE_TUNNEL_INGRESS_FIRST_PORT + tunnelIngresses.length}`,
-        closed: false,
-      };
-      tunnelIngresses.push(entry);
-      const close = async (): Promise<void> => {
-        entry.closed = true;
-        const index = disposeHooks.indexOf(close);
-        if (index !== -1) disposeHooks.splice(index, 1);
-      };
-      disposeHooks.push(close);
-      return { baseUrl: entry.baseUrl, close };
-    },
   };
-  const tunnelIngresses: Array<{
-    audience: string;
-    baseUrl: string;
-    closed: boolean;
-  }> = [];
 
   // --- sdk ---
+  const threadEventGate = createThreadEventGate();
   const { sdk, harness: sdkHarness } = createFakeSdk({
     pluginId,
     overrides: options.sdk,
+    trackThreadCreation: (call) => threadEventGate.track(call),
   });
 
   // --- thread events / dispose ---
@@ -1254,8 +1213,64 @@ function createFakePluginHostInternal(
     "message.dispatched": [],
     "turn.failed": [],
     "message.cancelled": [],
+    "experimental_thread.settled": [],
     "thread.unarchived": [],
   };
+  function deliverThreadEvent<E extends PluginThreadEventName>(
+    event: E,
+    payload: PluginThreadEventPayloads[E],
+  ): Promise<{ errors: unknown[] }> {
+    const thread = threadOfEvent(event, payload);
+    return new Promise((resolve) => {
+      threadEventGate.deliver(
+        thread === null
+          ? null
+          : { threadId: thread.threadId, createdAt: () => thread.createdAt },
+        () => {
+          void (async () => {
+            const errors: unknown[] = [];
+            for (const handler of [...threadEventHandlers[event]]) {
+              try {
+                await handler(payload);
+              } catch (error) {
+                errors.push(error);
+                emitLog(
+                  "warn",
+                  `${event} handler failed: ${errorMessage(error)}`,
+                );
+              }
+            }
+            resolve({ errors });
+          })();
+        },
+      );
+    });
+  }
+
+  function settledEventFor<E extends PluginThreadEventName>(
+    event: E,
+    payload: PluginThreadEventPayloads[E],
+  ): PluginThreadSettledEvent | null {
+    const delivered: {
+      [K in PluginThreadEventName]?: PluginThreadEventPayloads[K];
+    } = {
+      [event]: payload,
+    };
+    if (delivered["thread.idle"] !== undefined) {
+      return { outcome: "completed", ...delivered["thread.idle"] };
+    }
+    if (delivered["thread.failed"] !== undefined) {
+      return { outcome: "failed", ...delivered["thread.failed"] };
+    }
+    if (delivered["thread.archived"] !== undefined) {
+      return { outcome: "archived", ...delivered["thread.archived"] };
+    }
+    if (delivered["thread.deleted"] !== undefined) {
+      return { outcome: "deleted", ...delivered["thread.deleted"] };
+    }
+    return null;
+  }
+
   const hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
@@ -1331,9 +1346,6 @@ function createFakePluginHostInternal(
 
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
-  let nextTunnelConfig: InternalDoNotUsePluginNextTunnelConfig | null = null;
-  let nextTunnelStatuses: InternalDoNotUsePluginHostNextTunnelStatus[] = [];
-  const nextTunnelListeners = new Set<() => void>();
   const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
   const hostWorkerExitSubscriptions: FakeHostWorkerExitSubscription[] = [];
   const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
@@ -1481,29 +1493,9 @@ function createFakePluginHostInternal(
         sharedPortDeclarations[existingIndex] = replacement;
       }
     },
-    internal_DO_NOT_USE_setNextTunnels(config) {
-      assertLive();
-      nextTunnelConfig =
-        config === null
-          ? null
-          : { domain: config.domain, server: { ...config.server } };
-    },
-    internal_DO_NOT_USE_nextTunnelStatuses() {
-      assertLive();
-      return structuredClone(nextTunnelStatuses);
-    },
-    internal_DO_NOT_USE_onNextTunnelStatusChange(listener) {
-      assertLive();
-      nextTunnelListeners.add(listener);
-      return () => {
-        nextTunnelListeners.delete(listener);
-      };
-    },
   };
   disposeHooks.push(() => {
     sharedPortDeclarations.length = 0;
-    nextTunnelConfig = null;
-    nextTunnelListeners.clear();
   });
 
   const events: PluginEvents = {
@@ -1756,15 +1748,7 @@ function createFakePluginHostInternal(
     get recheckCount() {
       return requestedDrains;
     },
-    internal_DO_NOT_USE_tunnelIngresses: tunnelIngresses,
     sharedPortDeclarations,
-    get internal_DO_NOT_USE_nextTunnelConfig() {
-      return nextTunnelConfig;
-    },
-    internal_DO_NOT_USE_setNextTunnelStatuses(statuses) {
-      nextTunnelStatuses = structuredClone([...statuses]);
-      for (const listener of [...nextTunnelListeners]) listener();
-    },
     experimental_hostRpcCalls: hostRpcCalls,
     sdk: sdkHarness,
     registrations: {
@@ -1818,6 +1802,8 @@ function createFakePluginHostInternal(
             threadEventHandlers["message.dispatched"].length,
           "turn.failed": threadEventHandlers["turn.failed"].length,
           "message.cancelled": threadEventHandlers["message.cancelled"].length,
+          "experimental_thread.settled":
+            threadEventHandlers["experimental_thread.settled"].length,
           "thread.unarchived": threadEventHandlers["thread.unarchived"].length,
         };
       },
@@ -2250,14 +2236,13 @@ function createFakePluginHostInternal(
     },
 
     async emitThreadEvent(event, payload) {
-      const errors: unknown[] = [];
-      for (const handler of [...threadEventHandlers[event]]) {
-        try {
-          await handler(payload);
-        } catch (error) {
-          errors.push(error);
-          emitLog("warn", `${event} handler failed: ${errorMessage(error)}`);
-        }
+      const { errors } = await deliverThreadEvent(event, payload);
+      const settled = settledEventFor(event, payload);
+      if (settled !== null) {
+        errors.push(
+          ...(await deliverThreadEvent("experimental_thread.settled", settled))
+            .errors,
+        );
       }
       return { errors };
     },

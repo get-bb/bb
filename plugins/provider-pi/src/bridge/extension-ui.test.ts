@@ -139,42 +139,6 @@ it("maps a boolean answer to confirmed for a confirm dialog", async () => {
   expect(await extensionUiReplyOf(threadId)).toContain('"confirmed":true');
 }, 90_000);
 
-it.each([42, "not-an-option"])(
-  "answers an invalid select value %j as cancelled",
-  async (value) => {
-    const threadId = "thr_ui_badvalue";
-    const providerThreadId = await startThread(threadId);
-    turnStart(
-      threadId,
-      providerThreadId,
-      '/ui {"method":"select","title":"Pick","options":["A","B"]}',
-    );
-    const interaction = await waitForInteractionRequest(threadId);
-    resolveInteraction(interaction.id, { kind: "request_answer", value });
-    expect(await extensionUiReplyOf(threadId)).toContain('"cancelled":true');
-  },
-  90_000,
-);
-
-it("answers an interaction error as cancelled", async () => {
-  const threadId = "thr_ui_error";
-  const providerThreadId = await startThread(threadId);
-  turnStart(
-    threadId,
-    providerThreadId,
-    '/ui {"method":"input","title":"Enter a value"}',
-  );
-  const interaction = await waitForInteractionRequest(threadId);
-  handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: interaction.id,
-      error: { code: -32000, message: "interaction cancelled" },
-    }),
-  );
-  expect(await extensionUiReplyOf(threadId)).toContain('"cancelled":true');
-}, 90_000);
-
 it("cancels a pending dialog when the thread is stopped mid-prompt", async () => {
   const threadId = "thr_ui_stop";
   const uiLogPath = join(harness.workspaceDir, "ui.log");
@@ -199,24 +163,6 @@ it("cancels a pending dialog when the thread is stopped mid-prompt", async () =>
     cancelled: true,
   });
   vi.unstubAllEnvs();
-}, 90_000);
-
-it("answers an invalid dialog request cancelled instead of forwarding it", async () => {
-  const threadId = "thr_ui_invalid";
-  const providerThreadId = await startThread(threadId);
-  turnStart(
-    threadId,
-    providerThreadId,
-    '/ui {"method":"select","title":"Pick"}',
-  );
-  await harness.waitForTurnBoundary(threadId);
-  expect(
-    harness.messages.some(
-      (message) =>
-        message.method === "interaction/request" &&
-        JSON.stringify(message.params ?? {}).includes(threadId),
-    ),
-  ).toBe(false);
 }, 90_000);
 
 it("drops fire-and-forget extension ui requests without a runtime round trip", async () => {

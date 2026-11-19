@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAtom } from "jotai";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type {
@@ -70,6 +71,7 @@ import {
   SettingsWithControl,
 } from "@/components/ui/settings-section";
 import { Switch } from "@bb/shared-ui/switch";
+import { showProviderCliUpdatesAtom } from "@/components/sidebar/sidebar-update-preferences";
 import { refreshHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateAppUpdateStatus } from "@/hooks/cache-owners/app-update-cache-owner";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
@@ -1086,18 +1088,36 @@ const UPDATER_NAMES: Record<string, string> = {
   pnpm: "pnpm",
 };
 
-export function providerCliUpdaterName(
-  status: ProviderCliStatusEntry["status"],
-): string | null {
-  const command = status.installAction?.command.trim().split(/\s+/u)[0];
-  if (command === undefined || command.length === 0) {
-    return null;
-  }
-  const executable = (command.split(/[\\/]/u).pop() ?? command).replace(
+function executableBaseName(path: string): string {
+  return (path.split(/[\\/]/u).pop() ?? path).replace(
     /\.(?:exe|cmd|bat)$/iu,
     "",
   );
-  if (executable === status.executableName) {
+}
+
+function firstShellWord(command: string): string | null {
+  const word = /^(?:'[^']*'|\\'|[^\s'])+/u.exec(command.trim())?.[0];
+  return word === undefined
+    ? null
+    : word.replace(
+        /'([^']*)'|\\(')/gu,
+        (_match, quoted: string | undefined, escaped: string | undefined) =>
+          quoted ?? escaped ?? "",
+      );
+}
+
+export function providerCliUpdaterName(
+  status: ProviderCliStatusEntry["status"],
+): string | null {
+  const command =
+    status.installAction === null
+      ? null
+      : firstShellWord(status.installAction.command);
+  if (command === null || command.length === 0) {
+    return null;
+  }
+  const executable = executableBaseName(command);
+  if (executable === executableBaseName(status.executableName)) {
     return "Built-in updater";
   }
   return UPDATER_NAMES[executable] ?? executable;
@@ -1523,28 +1543,51 @@ export function MachineUpdateRow({
   );
 }
 
-export function AutoAppUpdateSetting({
-  label,
-  checked,
-  onCheckedChange,
-}: {
+interface AutoAppUpdatePreference {
   label: string;
   checked: boolean;
   onCheckedChange: (enabled: boolean) => void;
+}
+
+const SHOW_PROVIDER_CLI_UPDATES_LABEL =
+  "Show provider CLI updates in the sidebar";
+
+export function UpdatePreferencesSection({
+  autoAppUpdate,
+  showProviderCliUpdates,
+  onShowProviderCliUpdatesChange,
+}: {
+  autoAppUpdate: AutoAppUpdatePreference | null;
+  showProviderCliUpdates: boolean;
+  onShowProviderCliUpdatesChange: (show: boolean) => void;
 }) {
   return (
-    <div className="py-3.5 pr-4 pl-13">
-      <SettingsWithControl
-        label={label}
-        description="Checks every hour and restarts bb into a new version once no thread has run for 15 minutes."
-      >
-        <Switch
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          aria-label={label}
-        />
-      </SettingsWithControl>
-    </div>
+    <SettingsSection title="Update preferences">
+      <div className="space-y-5">
+        {autoAppUpdate === null ? null : (
+          <SettingsWithControl
+            label={autoAppUpdate.label}
+            description="Checks every hour and restarts bb into a new version once no thread has run for 15 minutes."
+          >
+            <Switch
+              checked={autoAppUpdate.checked}
+              onCheckedChange={autoAppUpdate.onCheckedChange}
+              aria-label={autoAppUpdate.label}
+            />
+          </SettingsWithControl>
+        )}
+        <SettingsWithControl
+          label={SHOW_PROVIDER_CLI_UPDATES_LABEL}
+          description="Turn this off if your agent CLIs are updated outside bb. This page still lists their updates."
+        >
+          <Switch
+            checked={showProviderCliUpdates}
+            onCheckedChange={onShowProviderCliUpdatesChange}
+            aria-label={SHOW_PROVIDER_CLI_UPDATES_LABEL}
+          />
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -2059,6 +2102,9 @@ export function UpdatesSettingsSection() {
   const appUpdateStatus = useAppUpdateStatus();
   const appUpdateStart = useStartAppUpdate();
   const setAutoAppUpdate = useSetAutoAppUpdate();
+  const [showProviderCliUpdates, setShowProviderCliUpdates] = useAtom(
+    showProviderCliUpdatesAtom,
+  );
   const cancelScheduledAppUpdate = useCancelScheduledAppUpdate();
   const appUpdate = appUpdateStatus.data;
   const [openReleaseNotes, setOpenReleaseNotes] =
@@ -2073,8 +2119,6 @@ export function UpdatesSettingsSection() {
   );
 
   const startPluginUpdates = useStartPluginUpdates(inventory.plugins);
-  const experiments = useSystemConfig().data?.experiments;
-  const updateWhenIdleEnabled = experiments?.updateWhenIdle === true;
 
   const connectedHostIds = inventory.machines
     .filter((machine) => machine.host.status === "connected")
@@ -2286,24 +2330,6 @@ export function UpdatesSettingsSection() {
         ) : null}
         {serverAppRow}
         {releaseNotesPanel("server")}
-        {updateWhenIdleEnabled &&
-        appUpdate !== undefined &&
-        (appUpdate.support.kind === "supported" ||
-          appUpdate.desktopUpdateSupported === true) ? (
-          <AutoAppUpdateSetting
-            label={
-              serverRunsSeparately
-                ? "Restart and update the server automatically"
-                : "Restart and update bb automatically"
-            }
-            checked={
-              setAutoAppUpdate.isPending
-                ? (setAutoAppUpdate.variables ?? appUpdate.autoUpdate)
-                : appUpdate.autoUpdate
-            }
-            onCheckedChange={(enabled) => setAutoAppUpdate.mutate(enabled)}
-          />
-        ) : null}
       </BbUpdatesCard>
 
       <ProviderCliUpdatesSection
@@ -2332,6 +2358,25 @@ export function UpdatesSettingsSection() {
           onStartUpdates={startPluginUpdates}
         />
       )}
+      <UpdatePreferencesSection
+        autoAppUpdate={
+          appUpdate !== undefined &&
+          (appUpdate.support.kind === "supported" ||
+            appUpdate.desktopUpdateSupported === true)
+            ? {
+                label: serverRunsSeparately
+                  ? "Restart and update the server automatically"
+                  : "Restart and update bb automatically",
+                checked: setAutoAppUpdate.isPending
+                  ? (setAutoAppUpdate.variables ?? appUpdate.autoUpdate)
+                  : appUpdate.autoUpdate,
+                onCheckedChange: (enabled) => setAutoAppUpdate.mutate(enabled),
+              }
+            : null
+        }
+        showProviderCliUpdates={showProviderCliUpdates}
+        onShowProviderCliUpdatesChange={setShowProviderCliUpdates}
+      />
       {appUpdateStart.confirmDialog}
     </div>
   );

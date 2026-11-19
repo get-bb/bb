@@ -1,4 +1,10 @@
-import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  experimental_unansweredInteractionWarning,
+  type ThreadDelta,
+  type UnansweredInteractionCause,
+} from "@get-bb/plugin-sdk/provider-bridge";
+import type { z } from "zod";
 import {
   PI_EXTENSION_UI_KIND,
   piExtensionUiPayloadDataSchema,
@@ -21,7 +27,9 @@ const FIRE_AND_FORGET_METHODS = new Set([
 
 interface PendingExtensionUiRequest {
   scope: object;
+  threadId: string;
   request: PiExtensionUiRequest;
+  expiry: ReturnType<typeof setTimeout> | null;
   respond: (
     requestId: string | number,
     fields: PiExtensionUiResponseFields,
@@ -30,6 +38,8 @@ interface PendingExtensionUiRequest {
 
 export interface ExtensionUiCoordinatorOptions {
   sendInteractionRequest: (request: InteractionUiRequest) => void;
+  sendThreadDeltas: (threadId: string, deltas: ThreadDelta[]) => void;
+  sendRequestCancelled: (interactionId: string) => void;
 }
 
 export interface HandleExtensionUiRequestArgs {
@@ -76,11 +86,55 @@ function cardTitle(title: string): string {
   return `${shortened.trimEnd()}…`;
 }
 
+function firstIssue(error: z.ZodError): string {
+  const issue = error.issues[0];
+  if (issue === undefined) return "the dialog request is invalid";
+  const path = issue.path.join(".");
+  return path === "" ? issue.message : `${path}: ${issue.message}`;
+}
+
 export function createExtensionUiCoordinator(
   options: ExtensionUiCoordinatorOptions,
 ): ExtensionUiCoordinator {
   const pending = new Map<string, PendingExtensionUiRequest>();
   let nextRequestId = 0;
+
+  function cancelWithoutUser(args: {
+    threadId: string;
+    requestId: string | number;
+    respond: PendingExtensionUiRequest["respond"];
+    cause: UnansweredInteractionCause;
+  }): void {
+    options.sendThreadDeltas(args.threadId, [
+      experimental_unansweredInteractionWarning({
+        cause: args.cause,
+        answer: { kind: "value", value: "cancelled" },
+      }),
+    ]);
+    args.respond(args.requestId, { cancelled: true });
+  }
+
+  const take = (interactionId: string): PendingExtensionUiRequest | null => {
+    const entry = pending.get(interactionId);
+    if (!entry) {
+      return null;
+    }
+    pending.delete(interactionId);
+    if (entry.expiry !== null) {
+      clearTimeout(entry.expiry);
+    }
+    return entry;
+  };
+
+  const withdraw = (
+    interactionId: string,
+  ): PendingExtensionUiRequest | null => {
+    const entry = take(interactionId);
+    if (entry) {
+      options.sendRequestCancelled(interactionId);
+    }
+    return entry;
+  };
 
   return {
     handle(args) {
@@ -91,7 +145,15 @@ export function createExtensionUiCoordinator(
       if (!parsed.success) {
         const id = rawId(args.request);
         if (id !== null) {
-          args.respond(id, { cancelled: true });
+          cancelWithoutUser({
+            threadId: args.threadId,
+            requestId: id,
+            respond: args.respond,
+            cause: {
+              kind: "unshowable-request",
+              detail: firstIssue(parsed.error),
+            },
+          });
         }
         return;
       }
@@ -112,7 +174,12 @@ export function createExtensionUiCoordinator(
       const interactionId = `pi-ui-${nextRequestId}`;
       pending.set(interactionId, {
         scope: args.scope,
+        threadId: args.threadId,
         request,
+        expiry:
+          request.timeout === undefined
+            ? null
+            : setTimeout(() => withdraw(interactionId), request.timeout),
         respond: args.respond,
       });
       try {
@@ -131,34 +198,69 @@ export function createExtensionUiCoordinator(
             },
           },
         });
-      } catch {
-        pending.delete(interactionId);
-        args.respond(request.id, { cancelled: true });
+      } catch (error) {
+        take(interactionId);
+        cancelWithoutUser({
+          threadId: args.threadId,
+          requestId: request.id,
+          respond: args.respond,
+          cause: {
+            kind: "runtime-error",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
       }
     },
 
     handleRuntimeResponse(response) {
-      const entry = pending.get(String(response.id));
+      const entry = take(String(response.id));
       if (!entry) {
         return false;
       }
-      pending.delete(String(response.id));
+      const unanswered = {
+        threadId: entry.threadId,
+        requestId: entry.request.id,
+        respond: entry.respond,
+      };
+      if (response.error !== undefined) {
+        cancelWithoutUser({
+          ...unanswered,
+          cause: {
+            kind: "runtime-error",
+            message: response.error.message ?? "the interaction failed",
+          },
+        });
+        return true;
+      }
       const parsed = piExtensionUiResolutionSchema.safeParse(response.result);
-      entry.respond(
-        entry.request.id,
-        parsed.success
-          ? resolveExtensionUiResponseFields(entry.request, parsed.data)
-          : { cancelled: true },
+      if (!parsed.success) {
+        cancelWithoutUser({
+          ...unanswered,
+          cause: { kind: "unreadable-resolution" },
+        });
+        return true;
+      }
+      const fields = resolveExtensionUiResponseFields(
+        entry.request,
+        parsed.data,
       );
+      if ("unmappable" in fields) {
+        cancelWithoutUser({
+          ...unanswered,
+          cause: { kind: "unmappable-answer", detail: fields.unmappable },
+        });
+        return true;
+      }
+      entry.respond(entry.request.id, fields);
       return true;
     },
 
     cancelPendingForScope(scope) {
-      for (const [interactionId, entry] of pending) {
+      for (const [interactionId, entry] of [...pending]) {
         if (entry.scope !== scope) {
           continue;
         }
-        pending.delete(interactionId);
+        withdraw(interactionId);
         entry.respond(entry.request.id, { cancelled: true });
       }
     },

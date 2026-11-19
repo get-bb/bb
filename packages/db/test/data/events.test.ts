@@ -25,7 +25,6 @@ import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
-  getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   classifyStoredProviderThreadClaim,
@@ -75,10 +74,6 @@ import type {
 import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection, listEvents } from "../../src/testing.js";
-import {
-  getThreadConversationOutlineRecord,
-  upsertThreadConversationOutlineRecord,
-} from "../../src/data/thread-conversation-outlines.js";
 
 function turnInterruptionState(
   db: Parameters<typeof getActiveStoredTurnId>[0],
@@ -1705,184 +1700,6 @@ describe("events", () => {
     ).toEqual([{ sequence: 9 }, { sequence: 6 }]);
   });
 
-  it.each<{
-    name: string;
-    overrides?: Record<number, Partial<InsertEventInput>>;
-    range?: { maxSeq?: number; sequenceStart?: number };
-    expected: number | null;
-  }>([
-    { name: "a user request inside a tool call span", expected: 3 },
-    {
-      name: "a steer inside a tool call span",
-      overrides: {
-        3: {
-          data: JSON.stringify({
-            initiator: "user",
-            input: textInput("steer message"),
-            target: { kind: "steer", expectedTurnId: "turn-a" },
-          }),
-        },
-      },
-      expected: null,
-    },
-    {
-      name: "a delegation span",
-      overrides: { 2: { itemKind: "delegation" } },
-      expected: 3,
-    },
-    {
-      name: "a parent whose turn only starts as a nested turn",
-      overrides: { 1: { parentToolCallId: "call-outer" } },
-      expected: null,
-    },
-    {
-      name: "a parented tool call",
-      overrides: { 2: { parentToolCallId: "call-outer" } },
-      expected: null,
-    },
-    {
-      name: "an agent-initiated request",
-      overrides: {
-        3: {
-          data: JSON.stringify({
-            initiator: "agent",
-            input: textInput("agent message"),
-            target: { kind: "new-turn" },
-          }),
-        },
-      },
-      expected: null,
-    },
-    {
-      name: "a parent before sequenceStart",
-      range: { sequenceStart: 3 },
-      expected: null,
-    },
-    { name: "a child after maxSeq", range: { maxSeq: 3 }, expected: null },
-    {
-      name: "a root turn start after maxSeq",
-      overrides: { 1: { sequence: 5 } },
-      range: { maxSeq: 4 },
-      expected: null,
-    },
-  ])(
-    "finds the parented timeline boundary for $name",
-    ({ overrides = {}, range, expected }) => {
-      const { db, thread } = setup();
-      const rows: InsertEventInput[] = [
-        {
-          threadId: thread.id,
-          sequence: 1,
-          type: "turn/started",
-          ...createTurnEventFields({ turnId: "turn-a" }),
-          data: "{}",
-        },
-        {
-          threadId: thread.id,
-          sequence: 2,
-          type: "item/started",
-          scope: turnScope("turn-a"),
-          itemId: "call-a",
-          itemKind: "toolCall",
-          parentToolCallId: null,
-          data: "{}",
-        },
-        {
-          threadId: thread.id,
-          sequence: 3,
-          type: "client/turn/requested",
-          ...threadEventFields,
-          data: JSON.stringify({
-            initiator: "user",
-            input: textInput("user message"),
-            target: { kind: "new-turn" },
-          }),
-        },
-        {
-          threadId: thread.id,
-          sequence: 4,
-          type: "item/started",
-          scope: turnScope("nested-a"),
-          itemId: "child-a",
-          itemKind: "agentMessage",
-          parentToolCallId: "call-a",
-          data: "{}",
-        },
-      ];
-      insertEvents(
-        db,
-        noopNotifier,
-        rows.map((row) => ({ ...row, ...overrides[row.sequence] })),
-      );
-
-      expect(
-        getFirstParentedTimelineBoundarySequence(db, {
-          maxSeq: 10,
-          sequenceStart: 0,
-          ...range,
-          threadId: thread.id,
-        }),
-      ).toBe(expected);
-    },
-  );
-
-  it("updates the parented boundary when nested history appears or is removed", () => {
-    const { db, thread } = setup();
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "turn/started",
-        ...createTurnEventFields({ turnId: "root" }),
-        data: "{}",
-      },
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "item/started",
-        ...createTurnEventFields({ turnId: "root" }),
-        itemId: "parent",
-        itemKind: "toolCall",
-        data: "{}",
-      },
-      {
-        threadId: thread.id,
-        sequence: 3,
-        type: "client/turn/requested",
-        ...threadEventFields,
-        data: JSON.stringify({
-          initiator: "user",
-          input: textInput("next request"),
-          target: { kind: "new-turn" },
-        }),
-      },
-    ]);
-    const read = (maxSeq: number) =>
-      getFirstParentedTimelineBoundarySequence(db, {
-        threadId: thread.id,
-        sequenceStart: 0,
-        maxSeq,
-      });
-    expect(read(3)).toBeNull();
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 4,
-        type: "turn/started",
-        ...createTurnEventFields({ turnId: "child" }),
-        parentToolCallId: "parent",
-        data: JSON.stringify({ parentToolCallId: "parent" }),
-      },
-    ]);
-    expect(read(3)).toBeNull();
-    expect(read(4)).toBe(3);
-    db.$client
-      .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = 4")
-      .run(thread.id);
-    expect(read(4)).toBeNull();
-    db.$client.close();
-  });
-
   it("loads timeline event windows with sequence bounds and exclusions", () => {
     const { db, thread } = setup();
 
@@ -2602,50 +2419,6 @@ describe("events", () => {
         kind: "provider-codex/goal",
       }),
     ).toEqual([]);
-  });
-
-  it("drops only the rewound thread's stored conversation outline", () => {
-    const { db, project, thread } = setup();
-    const otherThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const message = (threadId: string, sequence: number) => ({
-      threadId,
-      sequence,
-      type: "system/manager/user_message" as const,
-      ...threadEventFields,
-      data: JSON.stringify({ text: `message ${sequence}` }),
-    });
-    insertEvents(db, noopNotifier, [
-      message(thread.id, 1),
-      message(thread.id, 2),
-      message(otherThread.id, 1),
-    ]);
-    for (const threadId of [thread.id, otherThread.id]) {
-      upsertThreadConversationOutlineRecord(db, {
-        threadId,
-        itemsJson: "[]",
-        projectionKey: "key",
-      });
-    }
-    const rewind = (threadId: string, cutoffSequence: number) =>
-      db.transaction((tx) =>
-        deleteThreadEventSuffixInTransaction(tx, {
-          cutoffSequence,
-          oldMaxSequence: cutoffSequence + 1,
-          threadId,
-        }),
-      );
-
-    expect(rewind(otherThread.id, 5).deletedEventCount).toBe(0);
-    expect(rewind(thread.id, 2).deletedEventCount).toBe(1);
-
-    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
-    expect(getThreadConversationOutlineRecord(db, otherThread.id)).toEqual({
-      itemsJson: "[]",
-      projectionKey: "key",
-    });
   });
 
   describe("repeated latest-state lookups", () => {

@@ -3,6 +3,7 @@ import { createInterface, type Interface } from "node:readline";
 import {
   experimental_killPortableProcess,
   experimental_recordProviderChildIo,
+  experimental_serializeJsonRpcLine,
   experimental_spawnPortableProcess,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
@@ -18,6 +19,7 @@ const CLOSED_STDIN_ERROR_CODES = new Set([
 ]);
 
 export interface CodexAppServerRequestResponder {
+  readonly requestId: string | number;
   result(value: unknown): void;
   error(code: number, message: string): void;
 }
@@ -71,6 +73,7 @@ export class CodexAppServerRpcError extends Error {
   constructor(
     message: string,
     readonly code: number | undefined,
+    readonly data?: unknown,
   ) {
     super(message);
     this.name = "CodexAppServerRpcError";
@@ -87,7 +90,7 @@ interface ParsedChildMessage {
   id?: string | number;
   method?: string;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: { code?: number; message?: string; data?: unknown };
   params?: unknown;
 }
 
@@ -217,7 +220,7 @@ export function createCodexAppServerConnection(
       }
       return;
     }
-    stdin.write(JSON.stringify(message) + "\n");
+    stdin.write(`${experimental_serializeJsonRpcLine(message)}\n`);
   }
 
   function finalizeExit(status: {
@@ -282,6 +285,7 @@ export function createCodexAppServerConnection(
               message.error.message ??
                 `codex app-server returned error code ${message.error.code ?? "unknown"}`,
               message.error.code,
+              message.error.data,
             ),
           );
         } else {
@@ -297,6 +301,7 @@ export function createCodexAppServerConnection(
       if (typeof id === "string" || typeof id === "number") {
         let settled = false;
         options.onRequest(message.method, message.params, {
+          requestId: id,
           result(value) {
             if (settled || finalized) return;
             settled = true;

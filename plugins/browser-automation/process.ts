@@ -10,7 +10,7 @@ const supervisor = `
 const { spawn } = require('node:child_process');
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: 'ignore', env });
+const child = spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: 'ignore', env, windowsHide: true });
 let stopping = false;
 function kill(signal) { if (child.pid) { try { process.kill(-child.pid, signal); } catch {} } }
 function stop() {

@@ -22,7 +22,11 @@ import { writeAgentCpuPriority } from "@bb/process-utils";
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppDeps } from "../types.js";
-import { HEARTBEAT_INTERVAL_MS, LEASE_TIMEOUT_MS } from "../constants.js";
+import {
+  HEARTBEAT_INTERVAL_MS,
+  HOST_RECONNECT_GRACE_MS,
+  LEASE_TIMEOUT_MS,
+} from "../constants.js";
 import { ApiError } from "../errors.js";
 import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
 import {
@@ -35,6 +39,7 @@ import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { HostEnvironmentSync } from "../services/hosts/host-environment-sync.js";
+import { requestHostDerivedStateRefresh } from "../services/hosts/host-derived-state.js";
 
 const sessionOpenCompatibilitySchema = z
   .object({
@@ -67,7 +72,9 @@ export function registerInternalSessionRoutes(
   plugins: PluginService,
   serverMove: ServerMoveSessionGate,
 ): void {
-  const machineEnvironment = new HostEnvironmentSync(deps);
+  const machineEnvironment = new HostEnvironmentSync(deps, (hostId) =>
+    requestHostDerivedStateRefresh(deps, hostId),
+  );
   let launcherAgentCpuPriority: boolean | null = null;
   const syncLauncherAgentCpuPriority = (): void => {
     const { agentCpuPriority } = getExperiments(deps.db);
@@ -236,17 +243,13 @@ export function registerInternalSessionRoutes(
         sessionId: session.id,
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
+        reconnectGraceMs: getExperiments(deps.db).resumeDaemonSessions
+          ? HOST_RECONNECT_GRACE_MS
+          : 0,
         watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
         ),
-        ...(deps.sharedPorts.hostSupportsNextTunnel(daemon.hostId)
-          ? {
-              connectNext: deps.sharedPorts.reconcileNextTunnelForHost(
-                daemon.hostId,
-              ),
-            }
-          : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
         endedInteractiveRequests,

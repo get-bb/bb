@@ -6,9 +6,15 @@ import {
 import { Command } from "commander";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
 import { action, CliExitError } from "../action.js";
+import type { HostProviderCliInstallResult } from "@bb/sdk";
 import { createCliBbSdk } from "../client.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+  reportOperation,
+} from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { confirmDestructiveAction } from "./helpers.js";
 
 function enrollmentExpiryNotice(expiresAt: number | null): string {
@@ -81,6 +87,21 @@ async function waitForMachineLifecycle(args: {
     host = await args.getHost();
   }
   return host;
+}
+
+export function providerCliInstallFailure(
+  events: HostProviderCliInstallResult,
+): string | null {
+  const completed = events.find((event) => event.type === "completed");
+  if (completed?.type === "completed" && completed.success) return null;
+  const errorEvent = events.find((event) => event.type === "error");
+  if (errorEvent?.type === "error") return errorEvent.message;
+  if (completed?.type === "completed") {
+    return completed.signal !== null
+      ? `The install was stopped by ${completed.signal}`
+      : `The install exited with code ${completed.exitCode ?? "unknown"}`;
+  }
+  return "The install did not report completion";
 }
 
 function parseProviderCliKey(value: string): string {
@@ -372,6 +393,7 @@ export function registerMachineCommands(
         }
         const { primaryHostId } = await sdk.system.config();
         printMachineTable(hosts, primaryHostId);
+        printMachineRecoveryHints(hosts);
       }),
     );
 
@@ -387,8 +409,7 @@ export function registerMachineCommands(
           target,
         });
         const host = await sdk.hosts.get({ hostId });
-        if (outputJson(opts, host)) return;
-        console.log(JSON.stringify(host, null, 2));
+        printJsonResult(host);
       }),
     );
 
@@ -482,8 +503,10 @@ export function registerMachineCommands(
           hostId,
           force: opts.force,
         });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} removed`);
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} removed`,
+          inProgress: `Machine ${hostId} is still being removed; check progress with bb machine show ${hostId}`,
+        });
       }),
     );
 
@@ -499,8 +522,10 @@ export function registerMachineCommands(
           target,
         });
         const result = await sdk.hosts.retryUpdate({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} update retry requested`);
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} updated`,
+          inProgress: `Machine ${hostId} update retry requested`,
+        });
       }),
     );
 
@@ -585,8 +610,10 @@ export function registerMachineCommands(
           target,
         });
         const result = await sdk.hosts.experimental_retryCleanup({ hostId });
-        if (outputJson(opts, result)) return;
-        console.log(`Machine ${hostId} cleanup retried`);
+        reportOperation(opts, result, {
+          complete: `Machine ${hostId} removed`,
+          inProgress: `Machine ${hostId} is still being removed; check progress with bb machine show ${hostId}`,
+        });
       }),
     );
 
@@ -608,8 +635,7 @@ export function registerMachineCommands(
           hostId,
           refresh: true,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
   providerCli
@@ -637,8 +663,18 @@ export function registerMachineCommands(
             provider: parseProviderCliKey(provider),
             actionKind: opts.action,
           });
-          if (outputJson(opts, events)) return;
-          for (const event of events) console.log(JSON.stringify(event));
+          const failure = providerCliInstallFailure(events);
+          reportCommandResult(opts, events, {
+            text: events.map((event) => JSON.stringify(event)),
+            failure:
+              failure === null
+                ? null
+                : {
+                    message: failure,
+                    code: "provider_cli_install_failed",
+                    hint: null,
+                  },
+          });
         },
       ),
     );
@@ -663,4 +699,17 @@ function printMachineTable(hosts: Host[], serverHostId: string | null): void {
     },
     rows,
   );
+}
+
+function printMachineRecoveryHints(hosts: readonly Host[]): void {
+  for (const host of hosts) {
+    const teardown = host.lifecycle.teardown;
+    if (teardown?.needsRecovery !== true) continue;
+    const blocker = teardown.blockedByEnvironmentId;
+    console.log(
+      blocker === null
+        ? `\n${host.name} (${host.id}): ${host.lifecycle.message ?? "Needs recovery."} Inspect the machine, then run bb machine retry-cleanup ${host.id}.`
+        : `\n${host.name} (${host.id}): waiting on environment ${blocker}, whose cleanup needs recovery. Inspect the workspace, then run bb environment cleanup ${blocker} --recover.`,
+    );
+  }
 }

@@ -57,7 +57,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
-  usePanelShelfState,
+  useFixedChromePanelShelfState,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 import { LazyProjectPathDialog } from "@/components/dialogs/LazyProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
@@ -134,6 +134,7 @@ import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
 import { HistoryCommandHandlers } from "./HistoryCommandHandlers";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -251,7 +252,7 @@ function SidebarTriggerOverlay({
   const isCompactViewport = useIsCompactViewport();
   const { openMobile } = useSidebar();
   const isFramed = useIsSidebarFramed();
-  const panelShelfState = usePanelShelfState({
+  const panelShelfState = useFixedChromePanelShelfState({
     isCompactViewport,
     isSidebarDrawerOpen: openMobile,
   });
@@ -793,7 +794,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         finishSidebarResize();
       }
     };

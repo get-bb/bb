@@ -9,6 +9,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export interface BrowserFindMatches {
   activeMatchOrdinal: number;
@@ -91,10 +92,7 @@ export function BrowserFindBar({
   const noMatches = matches !== null && matches.matches === 0;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing) {
-      return;
-    }
-    if (event.key === "Enter") {
+    if (isNonImeKey(event, "Enter")) {
       event.preventDefault();
       if (event.shiftKey) {
         onFindPrevious();
@@ -103,7 +101,7 @@ export function BrowserFindBar({
       }
       return;
     }
-    if (event.key === "Escape") {
+    if (isNonImeKey(event, "Escape")) {
       event.preventDefault();
       event.stopPropagation();
       onClose();

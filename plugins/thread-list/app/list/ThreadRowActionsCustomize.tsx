@@ -33,6 +33,7 @@ import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
 import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import { useSidebarSortable } from "@/components/ui/sortable-motion";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "@/components/ui/sidebar-row-classes";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 type RowActionSlot = string | null;
 
@@ -74,7 +75,7 @@ function finishOnEscape(
   onDone: (restoreFocus: boolean) => void,
 ) {
   if (
-    event.key !== "Escape" ||
+    !isNonImeKey(event, "Escape") ||
     !(event.target instanceof Node) ||
     !event.currentTarget.contains(event.target)
   )

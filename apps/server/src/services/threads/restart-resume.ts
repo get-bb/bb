@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   environments,
-  getExperiments,
+  getAppSettings,
   getThread,
   getUnfinishedCommandItemData,
   listCommandItemDataByItemIds,
@@ -27,6 +27,7 @@ import {
   type FailedTurnRecord,
 } from "./turn-failed.js";
 import { retryTurnAfterRestart } from "./turn-retry.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 type RestartResumeDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -57,7 +58,7 @@ function readCommand(data: string): string | null {
   }
   const command = parsed.data.item.command.trim();
   return command.length > MAX_NAMED_COMMAND_CHARS
-    ? `${command.slice(0, MAX_NAMED_COMMAND_CHARS)}…`
+    ? `${sliceUtf16Head(command, MAX_NAMED_COMMAND_CHARS)}…`
     : command;
 }
 
@@ -203,7 +204,7 @@ export function planRestartResumes(
   args: { hostId: string; ownerStoppedSinceMs: number },
 ): Map<string, string> {
   const continuations = new Map<string, string>();
-  if (!getExperiments(deps.db).resumeThreadsAfterRestart) {
+  if (!getAppSettings(deps.db).resumeThreadsAfterRestart) {
     return continuations;
   }
   const openRowsByThread = groupRowsByThread(

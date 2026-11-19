@@ -68,6 +68,7 @@ import {
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
   type ThreadQueuedMessage,
+  type ThreadStatus,
   appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
@@ -130,7 +131,8 @@ import {
   type HostDeleteQuery,
   type HostProviderCliStatusQuery,
   type EnvironmentCleanupQuery,
-  type HostActionResponse,
+  type HostRemovalResponse,
+  type OperationResponse,
   type HostCloneDefaultPathQuery,
   type HostCloneDefaultPathResponse,
   type HostFileListRequest,
@@ -140,13 +142,10 @@ import {
   type HostFileWriteRequest,
   type HostFileWriteResponse,
   type HostMkdirRequest,
-  type HostMkdirResponse,
   type HostMovePathRequest,
-  type HostMovePathResponse,
   type HostPathListRequest,
   type HostPathListResponse,
   type HostRemovePathRequest,
-  type HostRemovePathResponse,
   type CreateFilePreviewRequest,
   type CreateFilePreviewResponse,
   type HostPickFolderRequest,
@@ -418,6 +417,10 @@ import {
   type ServerMoveStatus,
   type ServerMoveStatusResponse,
 } from "./api/server-move.js";
+import type {
+  ServerSweepFailuresResponse,
+  ServerSweepRetryResponse,
+} from "./api/server-sweeps.js";
 import {
   updateUiPreferenceRequestSchema,
   type PathUiPreferenceKey,
@@ -518,7 +521,7 @@ export const publicApiRoutes = {
       path: "/projects/:id",
       method: "delete",
       request: noRequest<PathProjectId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     reorder: defineRoute({
       path: "/projects/:id/order",
@@ -564,7 +567,7 @@ export const publicApiRoutes = {
       path: "/projects/:id/sources/:sourceId",
       method: "delete",
       request: noRequest<PathProjectSourceId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     files: defineRoute({
       path: "/projects/:id/files",
@@ -670,7 +673,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathProjectId, CopyProjectAttachmentsRequest>(
         copyProjectAttachmentsRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     attachmentContent: defineRoute({
       path: "/projects/:id/attachments/content",
@@ -721,7 +724,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, HostMkdirRequest>(
         hostMkdirRequestSchema,
       ),
-      response: jsonResponse<HostMkdirResponse>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     move: defineRoute({
       path: "/files/move",
@@ -729,7 +732,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, HostMovePathRequest>(
         hostMovePathRequestSchema,
       ),
-      response: jsonResponse<HostMovePathResponse>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     remove: defineRoute({
       path: "/files/remove",
@@ -737,7 +740,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, HostRemovePathRequest>(
         hostRemovePathRequestSchema,
       ),
-      response: jsonResponse<HostRemovePathResponse>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     createPreview: defineRoute({
       path: "/files/previews",
@@ -813,7 +816,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserLeaseRequest>(
         desktopBrowserLeaseRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     closeTab: defineRoute({
       path: "/desktop-browsers/close",
@@ -821,7 +824,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
         desktopBrowserTabRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     revealTab: defineRoute({
       path: "/desktop-browsers/reveal",
@@ -829,7 +832,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
         desktopBrowserTabRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     captureTab: defineRoute({
       path: "/desktop-browsers/capture",
@@ -949,7 +952,7 @@ export const publicApiRoutes = {
       path: "/hosts/:id/retry-cleanup",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<HostActionResponse>(),
+      response: jsonResponse<HostRemovalResponse>(),
     }),
     delete: defineRoute({
       path: "/hosts/:id",
@@ -957,7 +960,7 @@ export const publicApiRoutes = {
       request: optionalQueryRequest<PathId, HostDeleteQuery>(
         hostDeleteQuerySchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<HostRemovalResponse>(),
     }),
     directory: defineRoute({
       path: "/hosts/:id/directory",
@@ -1097,6 +1100,18 @@ export const publicApiRoutes = {
       request: noRequest(),
       response: binaryResponse<Uint8Array>(),
     }),
+    sweepFailures: defineRoute({
+      path: "/server/sweep-failures",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ServerSweepFailuresResponse>(),
+    }),
+    retrySweepFailures: defineRoute({
+      path: "/server/sweep-failures/retry",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<ServerSweepRetryResponse>(),
+    }),
   },
 
   terminals: {
@@ -1179,7 +1194,7 @@ export const publicApiRoutes = {
       request: optionalQueryRequest<PathId, EnvironmentCleanupQuery>(
         environmentCleanupQuerySchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     list: defineRoute({
       path: "/environments",
@@ -1194,7 +1209,7 @@ export const publicApiRoutes = {
       method: "delete",
       request: noRequest<PathId>(),
       response: [
-        jsonResponse<{ ok: true }>(),
+        jsonResponse<OperationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
@@ -1462,7 +1477,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, DeleteThreadRequest>(
         deleteThreadRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     childSummary: defineRoute({
       path: "/threads/:id/child-summary",
@@ -1554,7 +1569,7 @@ export const publicApiRoutes = {
       path: "/threads/:id/queued-messages/:queuedMessageId/edit-hold",
       method: "delete",
       request: noRequest<PathThreadAndQueuedMessage>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     reorderQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId/order",
@@ -1585,37 +1600,37 @@ export const publicApiRoutes = {
       path: "/threads/:id/queued-messages/:queuedMessageId",
       method: "delete",
       request: noRequest<PathThreadAndQueuedMessage>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     stop: defineRoute({
       path: "/threads/:id/stop",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse & { status: ThreadStatus }>(),
     }),
     compact: defineRoute({
       path: "/threads/:id/compact",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     clearContext: defineRoute({
       path: "/threads/:id/context/clear",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     cancelPlan: defineRoute({
       path: "/threads/:id/plan/cancel",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     clearGoal: defineRoute({
       path: "/threads/:id/goal/clear",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     open: defineRoute({
       path: "/threads/:id/open",
@@ -1726,7 +1741,7 @@ export const publicApiRoutes = {
       path: "/threads/:id/unarchive",
       method: "post",
       request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     /**
      * Ask the environment provider to restore a thread's destroyed environment
@@ -1965,7 +1980,7 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, RecordTelemetryEventRequest>(
         recordTelemetryEventRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<OperationResponse>(),
     }),
     generalSettings: defineRoute({
       path: "/settings/general",

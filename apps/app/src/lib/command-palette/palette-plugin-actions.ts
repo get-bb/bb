@@ -1,6 +1,7 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
 import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
@@ -98,6 +99,15 @@ export interface BuildPluginComposerCommandActionsArgs {
     target: EventTarget | null,
   ) => boolean;
   dispatch: (command: PluginCommandId, target: EventTarget | null) => void;
+}
+
+export function buildFocusedSurfacePaletteActions(
+  args: Omit<BuildPluginPaletteActionsArgs, "panel">,
+): PaletteAction[] {
+  return buildPluginPaletteActions({
+    ...args,
+    panel: getFocusedAppPanelController(),
+  });
 }
 
 export function buildPluginComposerCommandActions(

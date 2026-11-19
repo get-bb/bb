@@ -1,7 +1,8 @@
+import { outputJson } from "../command-result.js";
 import { Command } from "commander";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 
 interface FileTargetOptions {
   host?: string;

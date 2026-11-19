@@ -94,6 +94,36 @@
     },
     {
       "files": [
+        "apps/**/*.{ts,tsx,mts,cts}",
+        "packages/**/*.{ts,tsx,mts,cts}",
+        "plugins/**/*.{ts,tsx,mts,cts}"
+      ],
+      "rules": {
+        "bb/no-raw-child-process": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/process-utils/src/**",
+        "packages/test-helpers/**",
+        "packages/provider-parity/**",
+        "apps/connect-next/**",
+        "apps/app/vite*.ts",
+        "**/test/**",
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*test-support.ts",
+        "**/test-fixture.ts",
+        "**/scripts/**",
+        "apps/desktop/src/bb-process.ts"
+      ],
+      "rules": {
+        "bb/no-raw-child-process": "off"
+      }
+    },
+    {
+      "files": [
         "packages/agent-runtime/src/**/*.ts",
         "packages/provider-bridge-acp/src/bridge/agent-connection.ts",
         "packages/config/src/verified-process-stop.ts",
@@ -246,6 +276,28 @@
       ],
       "rules": {
         "bb/no-raw-resize-observer": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/app/src/**/*.{ts,tsx}",
+        "apps/web/src/**/*.{ts,tsx}",
+        "packages/shared-ui/src/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "bb/ime-safe-key-handlers": "error"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx",
+        "**/__tests__/**"
+      ],
+      "rules": {
+        "bb/ime-safe-key-handlers": "off"
       }
     },
     {

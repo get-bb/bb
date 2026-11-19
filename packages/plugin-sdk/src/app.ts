@@ -253,6 +253,12 @@ export const experimental_ImageLightbox = runtimeComponent(
 export const experimental_PromptMentionIcon = runtimeComponent(
   "experimental_PromptMentionIcon",
 );
+export const experimental_matchesShortcutKey = runtimeFunction(
+  "experimental_matchesShortcutKey",
+);
+export const experimental_sliceUtf16Head = runtimeFunction(
+  "experimental_sliceUtf16Head",
+);
 export const experimental_describePromptMention = runtimeFunction(
   "experimental_describePromptMention",
 );

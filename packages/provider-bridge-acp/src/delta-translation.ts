@@ -17,6 +17,7 @@ import type {
   ThreadEventTurnStatus,
 } from "@bb/domain";
 import type {
+  DeltaItemKey,
   DeltaItemShape,
   DeltaNoTurnFallback,
   ThreadDelta,
@@ -61,6 +62,7 @@ import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
   acpAgentThoughtChunkUpdateSchema,
+  acpCompactionUpdateSchema,
   acpPlanUpdateSchema,
   acpToolCallUpdateEventSchema,
   acpUsageUpdateSchema,
@@ -208,6 +210,9 @@ export function createAcpDeltaTranslator(
 
   let lastUsageCost: ThreadUsageCost | undefined;
   let lastAgentTitle: string | undefined;
+
+  const openAgentCompactions = new Set<string>();
+  const finishedAgentCompactions = new Set<string>();
 
   let injectedToolsByName = new Map<string, AcpInjectedTool>();
   const injectedToolBindings = new Map<string, AcpInjectedTool>();
@@ -637,6 +642,85 @@ export function createAcpDeltaTranslator(
     ];
   }
 
+  function agentCompactionKey(compactionId: string): DeltaItemKey {
+    return {
+      channel: "compaction",
+      providerItemId: `compaction:${compactionId}`,
+    };
+  }
+
+  function agentCompactionFailure(
+    status: string,
+    error: string | undefined,
+  ): ThreadDelta | undefined {
+    switch (status) {
+      case "failed":
+        return {
+          kind: "provider.error",
+          message: "Context compaction failed",
+          detail: error ?? "The agent reported that context compaction failed",
+        };
+      case "cancelled":
+        return {
+          kind: "provider.error",
+          message: "Context compaction interrupted",
+          detail: error ?? "The agent cancelled context compaction",
+        };
+      default:
+        return undefined;
+    }
+  }
+
+  function translateCompactionUpdate(
+    update: AcpSessionUpdate,
+    context: AcpDeltaTranslationContext | undefined,
+    rawEvent: JsonRpcMessage,
+  ): ThreadDelta[] {
+    const parsed = acpCompactionUpdateSchema.safeParse(update);
+    if (!parsed.success) {
+      return suppressedUnhandled(rawEvent);
+    }
+    const { compactionId, status, error } = parsed.data;
+    const compactionKey = callKey(context, compactionId);
+    if (finishedAgentCompactions.has(compactionKey)) {
+      return [];
+    }
+    const deltas: ThreadDelta[] = [];
+    if (!openAgentCompactions.has(compactionKey)) {
+      openAgentCompactions.add(compactionKey);
+      deltas.push(closeThoughtStream(), closeAssistantStream(), {
+        kind: "item.open",
+        key: agentCompactionKey(compactionId),
+        item: { type: "compaction" },
+        presentation: COMPACTION_PRESENTATION,
+        noTurnFallback: noTurnFallbackFor(rawEvent),
+      });
+    }
+    const failure = agentCompactionFailure(status, error || undefined);
+    if (status !== "completed" && failure === undefined) {
+      return deltas;
+    }
+    openAgentCompactions.delete(compactionKey);
+    finishedAgentCompactions.add(compactionKey);
+    if (failure !== undefined) {
+      return [...deltas, failure];
+    }
+    return [
+      ...deltas,
+      {
+        kind: "item.close",
+        key: agentCompactionKey(compactionId),
+        status: "completed",
+        item: { type: "compaction" },
+        presentation: COMPACTION_PRESENTATION,
+      },
+      {
+        kind: "context.compacted",
+        noTurnFallback: noTurnFallbackFor(rawEvent),
+      },
+    ];
+  }
+
   function translateUpdate(
     update: AcpSessionUpdate,
     context: AcpDeltaTranslationContext | undefined,
@@ -876,6 +960,9 @@ export function createAcpDeltaTranslator(
           },
         ];
       }
+
+      case "compaction_update":
+        return translateCompactionUpdate(update, context, rawEvent);
 
       case "session_info_update": {
         const title = isJsonObject(update) ? update["title"] : undefined;

@@ -56,6 +56,16 @@ function installAgentAnnotations(
     return existing.state();
   }
 
+  function isNonImeKey(event: KeyboardEvent, key: string): boolean {
+    return event.key === key && !event.isComposing && event.keyCode !== 229;
+  }
+
+  function sliceUtf16Head(value: string, maxChars: number): string {
+    const end = Math.min(value.length, Math.max(0, maxChars));
+    const last = value.charCodeAt(end - 1);
+    return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+  }
+
   const attributePrefix = "data-bb-annotation-";
   const attributeKeys = [
     "id",
@@ -179,9 +189,9 @@ function installAgentAnnotations(
     const label =
       element.getAttribute("aria-label") ??
       (text.length > 0 && text.length <= 40 ? text : "");
-    const suffix = label.length > 0 ? ` "${label.slice(0, 40)}"` : "";
-    return `${element.tagName.toLowerCase()}${id}${classes}${suffix}`.slice(
-      0,
+    const suffix = label.length > 0 ? ` "${sliceUtf16Head(label, 40)}"` : "";
+    return sliceUtf16Head(
+      `${element.tagName.toLowerCase()}${id}${classes}${suffix}`,
       200,
     );
   }
@@ -218,7 +228,7 @@ function installAgentAnnotations(
       );
       current = parent;
     }
-    return segments.join(" > ").slice(0, 2000);
+    return sliceUtf16Head(segments.join(" > "), 2000);
   }
 
   function describe(element: Element) {
@@ -228,14 +238,14 @@ function installAgentAnnotations(
     for (const key of attributeKeys) {
       const value = element.getAttribute(key);
       if (value !== null && value.length > 0) {
-        attributes[key] = value.slice(0, 400);
+        attributes[key] = sliceUtf16Head(value, 400);
       }
     }
     const styles: Record<string, string> = {};
     for (const key of styleKeys) {
       const value = computed.getPropertyValue(key);
       if (value.length > 0) {
-        styles[key] = value.slice(0, 400);
+        styles[key] = sliceUtf16Head(value, 400);
       }
     }
     const visibleText =
@@ -246,7 +256,7 @@ function installAgentAnnotations(
       tagName: element.tagName.toLowerCase().slice(0, 64),
       name: elementName(element),
       selector: selectorFor(element),
-      text: collapse(visibleText).slice(0, 160),
+      text: sliceUtf16Head(collapse(visibleText), 160),
       attributes,
       rect: {
         x: Math.round(rect.left + scrollX),
@@ -353,7 +363,7 @@ function installAgentAnnotations(
     const annotation = {
       id,
       number,
-      comment: trimmed.slice(0, 4000),
+      comment: sliceUtf16Head(trimmed, 4000),
       element,
       pin,
       outline,
@@ -369,9 +379,9 @@ function installAgentAnnotations(
       annotation: {
         id,
         number,
-        comment: trimmed.slice(0, 4000),
+        comment: sliceUtf16Head(trimmed, 4000),
         url: location.href.slice(0, 4096),
-        title: document.title.slice(0, 1024),
+        title: sliceUtf16Head(document.title, 1024),
         viewport: { width: innerWidth, height: innerHeight },
         element: describe(element),
       },
@@ -394,7 +404,7 @@ function installAgentAnnotations(
   }
 
   function update(annotation: PinnedAnnotation, comment: string): void {
-    const trimmed = comment.trim().slice(0, 4000);
+    const trimmed = sliceUtf16Head(comment.trim(), 4000);
     if (trimmed.length === 0) {
       return;
     }
@@ -433,7 +443,7 @@ function installAgentAnnotations(
     const targetText = part("span", "target-text");
     targetText.textContent =
       element.getAttribute("aria-label") ??
-      collapse(element.textContent ?? "").slice(0, 160);
+      sliceUtf16Head(collapse(element.textContent ?? ""), 160);
     title.append(tag, targetText);
     header.append(title);
     const textarea = document.createElement("textarea");
@@ -477,10 +487,13 @@ function installAgentAnnotations(
     });
     textarea.addEventListener("keydown", (event) => {
       event.stopPropagation();
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         closeEditor();
-      } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      } else if (
+        isNonImeKey(event, "Enter") &&
+        (event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault();
         submit();
       }
@@ -489,7 +502,7 @@ function installAgentAnnotations(
     save.addEventListener("click", submit);
     panel.addEventListener("keydown", (event) => {
       event.stopPropagation();
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         closeEditor();
       }
@@ -530,7 +543,7 @@ function installAgentAnnotations(
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (!active || event.key !== "Escape" || event.target === host) {
+    if (!active || !isNonImeKey(event, "Escape") || event.target === host) {
       return;
     }
     event.preventDefault();
@@ -605,6 +618,12 @@ function installAgentAnnotations(
 }
 
 function probeReactComponents(annotationId: string) {
+  function sliceUtf16Head(value: string, maxChars: number): string {
+    const end = Math.min(value.length, Math.max(0, maxChars));
+    const last = value.charCodeAt(end - 1);
+    return value.slice(0, last >= 0xd800 && last <= 0xdbff ? end - 1 : end);
+  }
+
   const element = document.querySelector(
     `[data-bb-annotation-${annotationId}]`,
   );
@@ -636,7 +655,10 @@ function probeReactComponents(annotationId: string) {
         ? null
         : (type.displayName ?? candidate.displayName ?? candidate.name);
     if (typeof name === "string" && name.length > 0) {
-      components.push({ name: name.slice(0, 200), source: sourceOf(fiber) });
+      components.push({
+        name: sliceUtf16Head(name, 200),
+        source: sourceOf(fiber),
+      });
     }
     fiber = fiber.return;
   }
@@ -648,8 +670,8 @@ function probeReactComponents(annotationId: string) {
   }): string | null {
     const debugSource = node._debugSource;
     if (debugSource !== undefined && typeof debugSource.fileName === "string") {
-      return `${debugSource.fileName}:${String(debugSource.lineNumber)}`.slice(
-        0,
+      return sliceUtf16Head(
+        `${debugSource.fileName}:${String(debugSource.lineNumber)}`,
         1000,
       );
     }
@@ -668,9 +690,9 @@ function probeReactComponents(annotationId: string) {
           ),
       );
     const match = frameLine?.match(/\(?((?:https?|file):\/\/[^\s)]+)\)?$/);
-    return (
-      match?.[1]?.replace(/\?[^:]*(?=:\d+:\d+$)/, "").slice(0, 1000) ?? null
-    );
+    return match?.[1] === undefined
+      ? null
+      : sliceUtf16Head(match[1].replace(/\?[^:]*(?=:\d+:\d+$)/, ""), 1000);
   }
 }
 

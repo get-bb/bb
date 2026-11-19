@@ -156,7 +156,8 @@ Making your repo work with bb:
   worktree first if you want to keep them. Deleting the last thread, or an
   explicit environment or project deletion, skips the grace (including a
   never-retire policy). Failed teardown retries after 1, 2, 4, and 8 minutes, then stops after
-  five failed attempts with a "Needs recovery" message;
+  five failed attempts with a "Needs recovery" message and
+  `lifecycle.teardown.needsRecovery` set to true;
   `bb environment show <id>` reports the lifecycle phase, deadline, teardown
   attempt, and failure message.
 
@@ -164,11 +165,13 @@ Making your repo work with bb:
   to remove an unused provider-managed environment early. It is not a routine
   end-of-task step. It rejects live threads and unmanaged environments,
   succeeds if already removed, and completes asynchronously. It cannot bypass
-  "Needs recovery"; `bb environment list` includes the failure message.
+  "Needs recovery": it fails with `environment_needs_recovery` (HTTP 409), and
+  `bb environment list` includes the failure message.
 
   `bb environment cleanup <id> --recover [--json]` is an explicit acknowledgement
   after inspecting a failed environment. It marks interrupted hooks finished,
-  resets the retry budget, and retries removal. It also handles interrupted
+  resets the retry budget, and retries removal; it exits non-zero
+  (`environment_teardown_failed`) when that removal fails again. It also handles interrupted
   setup without a recorded hook operation. A teardown hook that never started
   still runs. A daemon reboot alone never proves a detached hook has stopped.
 

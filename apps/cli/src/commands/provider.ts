@@ -1,3 +1,4 @@
+import { outputJson } from "../command-result.js";
 import { Command } from "commander";
 import { collectDeclaredSessionOptions, type AvailableModel } from "@bb/domain";
 import type {
@@ -7,7 +8,6 @@ import type {
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineEnvironmentRouting } from "./machine.js";
 
 interface ProviderListCommandOptions {

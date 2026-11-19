@@ -1,3 +1,4 @@
+import { outputJson, reportCommandResult } from "../command-result.js";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { open, rename, rm, stat } from "node:fs/promises";
@@ -15,7 +16,7 @@ import type { ServerMoveStatus } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveBbCliVersion } from "../version.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 import { resolveMachineHostId } from "./machine.js";
 import {
   importServerArchive,
@@ -260,18 +261,29 @@ async function runServerMove(
       }),
     STOPPED_FOLLOWING_MESSAGE,
   );
-  outputJson(opts, outcome.status);
-  if (outcome.kind === "recovery") {
-    if (!opts.json) printServerMoveRecovery(outcome.status);
-    throw new CliExitError(
-      formatServerMoveRecoveryExit(outcome.status),
-      SERVER_MOVE_RECOVERY_EXIT_CODE,
-    );
-  }
-  if (outcome.kind === "ended") {
-    throw new CliExitError(formatServerMoveFailure(outcome.status), 1);
-  }
-  if (!opts.json) console.log(formatServerMovedMessage(outcome.status));
+  reportCommandResult(opts, outcome.status, {
+    text: () => {
+      if (outcome.kind === "recovery") printServerMoveRecovery(outcome.status);
+      else if (outcome.kind !== "ended") {
+        console.log(formatServerMovedMessage(outcome.status));
+      }
+    },
+    failure:
+      outcome.kind === "recovery"
+        ? {
+            message: formatServerMoveRecoveryExit(outcome.status),
+            code: "server_move_recovery_required",
+            hint: null,
+            exitCode: SERVER_MOVE_RECOVERY_EXIT_CODE,
+          }
+        : outcome.kind === "ended"
+          ? {
+              message: formatServerMoveFailure(outcome.status),
+              code: "server_move_failed",
+              hint: null,
+            }
+          : null,
+  });
 }
 
 export function registerServerCommands(
@@ -351,16 +363,20 @@ export function registerServerCommands(
           }
         }
         const status = await sdk.experimental_server.cancelMove();
-        if (outputJson(opts, status)) return;
-        if (status.state === "cancelled") {
-          console.log(
-            status.error?.step === "switch"
-              ? `Abandoned the server move to ${status.targetHostName}. The server stays on this computer.`
-              : `Cancelled the server move to ${status.targetHostName}. The server stays where it is.`,
-          );
-          return;
-        }
-        printServerMoveStatus(status);
+        reportCommandResult(opts, status, {
+          text: () => {
+            if (status.state !== "cancelled") {
+              printServerMoveStatus(status);
+              return;
+            }
+            console.log(
+              status.error?.step === "switch"
+                ? `Abandoned the server move to ${status.targetHostName}. The server stays on this computer.`
+                : `Cancelled the server move to ${status.targetHostName}. The server stays where it is.`,
+            );
+          },
+          failure: null,
+        });
       }),
     );
 
@@ -587,6 +603,59 @@ export function registerServerCommands(
         if (outputJson(opts, { dataDir, connectHoldRemoved })) return;
         console.log(
           `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
+        );
+      }),
+    );
+
+  const sweeps = server
+    .command("sweeps")
+    .description(
+      "List background sweep items that keep failing, including those that need recovery",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonCommandOptions) => {
+        const response =
+          await createCliBbSdk(getUrl()).experimental_server.sweepFailures();
+        if (outputJson(opts, response)) return;
+        if (response.failures.length === 0) {
+          console.log("No sweep items are failing.");
+          return;
+        }
+        for (const failure of response.failures) {
+          const next = new Date(failure.retryAt).toISOString();
+          const state = failure.needsRecovery
+            ? `needs recovery, retrying hourly (next at ${next})`
+            : `retrying at ${next}`;
+          console.log(
+            `${failure.sweep} ${failure.itemKey}: ${state} after ${String(failure.attempts)} attempts - ${failure.lastError}`,
+          );
+        }
+        if (response.failures.some((failure) => failure.needsRecovery)) {
+          console.log(
+            "Fix the cause, then run bb server sweeps retry to run the items that need recovery on the next sweep with a fresh retry budget.",
+          );
+        }
+      }),
+    );
+
+  sweeps
+    .command("retry")
+    .description(
+      "Give every sweep item that needs recovery a fresh retry budget; they run on the next sweep",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonCommandOptions) => {
+        const response =
+          await createCliBbSdk(
+            getUrl(),
+          ).experimental_server.retrySweepFailures();
+        if (outputJson(opts, response)) return;
+        console.log(
+          response.retried === 0
+            ? "No sweep items need recovery."
+            : `${String(response.retried)} sweep item(s) will run on the next sweep.`,
         );
       }),
     );

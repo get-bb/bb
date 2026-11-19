@@ -139,6 +139,9 @@ function screenElement(presentation: ThreadScreenPresentation) {
         environmentCheckout: undefined,
         environmentChrome: undefined,
         contextEnvironmentId: null,
+        focusRequest: null,
+        onCreateNewThreadInEnvironment: null,
+        onOpenThreadInfo: null,
         permissionPolicy: "snapshot",
       }}
       environment={null}
@@ -148,8 +151,12 @@ function screenElement(presentation: ThreadScreenPresentation) {
       thread={THREAD}
       timelineEnabled
       timelineHost={{
+        consumerMessageActions: [],
         environmentHostName: null,
-        includePluginMessageActions: false,
+        leadingContent: null,
+        messageActionSurface: "thread-view",
+        onForkMessage: null,
+        onTitleAction: null,
         unreadDividerAutoScroll: false,
         unreadDividerPlacement: null,
       }}
@@ -297,6 +304,39 @@ describe("ThreadScreen", () => {
       "The message being edited is no longer available.",
     );
     expect(latestSentMessageEdit()).toBeUndefined();
+  });
+
+  it("moves a changed edit into the composer when its message leaves the timeline", () => {
+    const draft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: THREAD.projectId,
+      threadId: THREAD.id,
+    });
+    draft.setDraft({
+      text: "newer composer text",
+      mentions: [],
+      attachments: [],
+    });
+    const view = renderScreen({ kind: "page" }, timelineWithRowIds(["msg_1"]));
+    startEditingMessage("msg_1");
+    act(() => {
+      latestSentMessageEdit()!.updateDraft((current) => ({
+        ...current,
+        text: "/compact keep it short",
+      }));
+    });
+
+    mocks.timeline = timelineWithRowIds(["msg_2"]);
+    view.rerender(screenElement({ kind: "page" }));
+
+    expect(latestSentMessageEdit()).toBeUndefined();
+    expect(draft.getCurrent().text).toBe(
+      "/compact keep it short\n\nnewer composer text",
+    );
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "Your message edit is in the composer",
+      { description: "The message being edited is no longer available." },
+    );
   });
 
   it("discards a failed edit whose message left the timeline while it was submitting", async () => {

@@ -13,6 +13,7 @@ import {
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   buildShellEnvOverrides,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
   createBridgeLineHandler,
@@ -73,6 +74,7 @@ import {
   type PiRpcSessionOptions,
   type ToolCallForwarder,
 } from "./rpc-session.js";
+import type { PiModelRef } from "./model-selection.js";
 import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
@@ -198,7 +200,7 @@ interface ThreadSession {
   providerThreadId: string;
   cwd: string;
   construction: PiSessionParams;
-  constructionModel: { provider: string; id: string } | undefined;
+  constructionModel: PiModelRef | undefined;
 }
 
 let sessionSerialCounter = 0;
@@ -215,6 +217,13 @@ const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
 
 const extensionUi: ExtensionUiCoordinator = createExtensionUiCoordinator({
   sendInteractionRequest: send,
+  sendThreadDeltas: (threadId, deltas) => sendThreadDeltas(threadId, deltas),
+  sendRequestCancelled: (requestId) =>
+    send({
+      jsonrpc: "2.0",
+      method: BRIDGE_NOTIFICATION_METHODS.requestCancelled,
+      params: { requestId },
+    }),
 });
 
 let configuredSkillPaths: string[] | null = null;
@@ -543,13 +552,19 @@ async function handleRequest(
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getPiProviderInstallationStatus(request.params.checkUpdates),
+        await getPiProviderInstallationStatus(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getPiProviderInstallationRun(request.params.action),
+        await getPiProviderInstallationRun(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":
@@ -612,9 +627,9 @@ function toPiSessionParams(
 
 async function handleModelList(
   id: string | number,
-  params: { cwd?: string },
+  params: { cwd?: string; envVars?: Record<string, string> },
 ): Promise<void> {
-  const gate = await getPiInstallGate();
+  const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
     sendError(
       id,
@@ -631,6 +646,7 @@ async function handleModelList(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
+      params.envVars ?? {},
     );
     contextWindows.learn(await catalog.rawModels());
     sendResult(id, await catalog.listModels());
@@ -645,9 +661,9 @@ async function handleModelList(
 
 async function handleProviderHealth(
   id: string | number,
-  params: { cwd?: string },
+  params: { cwd?: string; envVars?: Record<string, string> },
 ): Promise<void> {
-  const gate = await getPiInstallGate();
+  const gate = await getPiInstallGate(buildProviderCliEnv(params.envVars));
   if (!gate.ok) {
     sendResult(id, gate.result);
     return;
@@ -657,6 +673,7 @@ async function handleProviderHealth(
     const catalog = await getPiCatalog(
       params.cwd ?? process.cwd(),
       requireExtensionPath(),
+      params.envVars ?? {},
     );
     await catalog.probe();
     const models = await catalog.rawModels();
@@ -680,44 +697,15 @@ async function handleProviderHealth(
   }
 }
 
-async function resolvePiModel(
-  modelStr: string,
-  cwd: string,
-): Promise<{ provider: string; id: string }> {
-  const catalog = await getPiCatalog(cwd, requireExtensionPath());
-  const models = await catalog.rawModels();
-  const canonical = models.find(
-    (model) => `${model.provider}/${model.id}` === modelStr,
-  );
-  if (canonical) {
-    return { provider: canonical.provider, id: canonical.id };
-  }
-  const served = models.filter((model) => model.id === modelStr);
-  if (served.length > 1) {
-    throw new Error(
-      `Ambiguous Pi model "${modelStr}": served by ${served
-        .map((m) => String(m.provider))
-        .join(", ")}. Prefix it with the provider you want.`,
-    );
-  }
-  const match = served[0];
-  if (!match || typeof match.provider !== "string") {
-    throw new Error(`Failed to resolve Pi model "${modelStr}"`);
-  }
-  return { provider: match.provider, id: modelStr };
-}
-
-async function buildSessionOptions(args: {
+function buildSessionOptions(args: {
   params: PiSessionParams;
   providerThreadId: string;
   threadId: string;
   sessionSerial: number;
-}): Promise<PiRpcSessionOptions> {
+}): PiRpcSessionOptions {
   return {
     cwd: args.params.cwd,
-    ...(args.params.model
-      ? { model: await resolvePiModel(args.params.model, args.params.cwd) }
-      : {}),
+    ...(args.params.model ? { model: args.params.model } : {}),
     sessionFilePath: resolvePiSessionFilePath({
       ...piSessionPaths(),
       threadId: args.providerThreadId,
@@ -751,7 +739,7 @@ async function constructPiThreadSession(
   params: PiSessionParams,
 ): Promise<ThreadSession> {
   const sessionSerial = nextSessionSerial();
-  const sessionOptions = await buildSessionOptions({
+  const sessionOptions = buildSessionOptions({
     params,
     providerThreadId,
     threadId,
@@ -770,11 +758,12 @@ async function constructPiThreadSession(
     providerThreadId,
     cwd: params.cwd,
     construction: params,
-    constructionModel: sessionOptions.model,
+    constructionModel: undefined,
   };
   sessions.set(threadId, threadSession);
   try {
     await session.start();
+    threadSession.constructionModel = session.getSelectedModel();
     const liveModel = session.getLiveModel();
     if (
       liveModel &&
@@ -1026,9 +1015,9 @@ async function reconcileTurnOptions(
     return threadSession;
   }
   const nextModel =
-    changedModelRequest === undefined
+    changedModelRequest === undefined || piExited
       ? undefined
-      : await resolvePiModel(changedModelRequest, construction.cwd);
+      : await threadSession.session.resolveModel(changedModelRequest);
   const modelChanged =
     nextModel !== undefined &&
     (threadSession.constructionModel === undefined ||

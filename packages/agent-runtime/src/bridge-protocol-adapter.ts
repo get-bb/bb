@@ -228,7 +228,10 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.commandList,
-            params: cwdAndStaticProviderOptions(command.cwd),
+            params: {
+              ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
+            },
           };
         case "provider/health":
           return {
@@ -237,6 +240,7 @@ export function createBridgeProtocolAdapter(
             params: {
               providerId: options.id,
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "provider/usage":
@@ -259,6 +263,7 @@ export function createBridgeProtocolAdapter(
                 ? { requirement: command.requirement }
                 : {}),
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "provider/installation/run":
@@ -269,6 +274,7 @@ export function createBridgeProtocolAdapter(
               providerId: options.id,
               action: command.action,
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "skills/configure":

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { probeClaudeInitialization } from "./initialization-probe.js";
 import { isClaudeSkillPluginName } from "./skill-plugins.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 export const PROVIDER_COMMANDS_STATE_KIND = "bb/provider-commands";
 
@@ -88,7 +89,7 @@ function isInjectedSkill(name: string): boolean {
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength
     ? value
-    : `${value.slice(0, maxLength - 1).trimEnd()}…`;
+    : `${sliceUtf16Head(value, maxLength - 1).trimEnd()}…`;
 }
 
 export function toProviderCommandsState(
@@ -134,51 +135,61 @@ export function toProviderCommandsState(
 
 export async function listClaudeCodeBridgeCommands(
   cwd: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv,
 ): Promise<ClaudeProviderCommandsState> {
   const initialization = await probeClaudeInitialization({ env, cwd });
   return toProviderCommandsState(initialization.commands);
 }
 
 interface ClaudeCodeBridgeCommandListMemoOptions {
-  list?: (cwd: string) => Promise<ClaudeProviderCommandsState>;
+  list: (
+    cwd: string,
+    envVars: Readonly<Record<string, string>>,
+  ) => Promise<ClaudeProviderCommandsState>;
   now?: () => number;
   ttlMs: number;
 }
 
 export function createClaudeCodeBridgeCommandListMemo({
-  list = listClaudeCodeBridgeCommands,
+  list,
   now = Date.now,
   ttlMs,
 }: ClaudeCodeBridgeCommandListMemoOptions): (
   cwd: string,
+  envVars: Readonly<Record<string, string>>,
 ) => Promise<ClaudeProviderCommandsState> {
   const settled = new Map<
     string,
     { state: ClaudeProviderCommandsState; expiresAt: number }
   >();
   const pending = new Map<string, Promise<ClaudeProviderCommandsState>>();
-  return (cwd) => {
-    const cached = settled.get(cwd);
+  return (cwd, envVars) => {
+    const key = JSON.stringify([
+      cwd,
+      Object.entries(envVars).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ]);
+    const cached = settled.get(key);
     if (cached !== undefined && cached.expiresAt > now()) {
       return Promise.resolve(cached.state);
     }
-    settled.delete(cwd);
-    const inFlight = pending.get(cwd);
+    settled.delete(key);
+    const inFlight = pending.get(key);
     if (inFlight !== undefined) {
       return inFlight;
     }
-    const probe = list(cwd)
+    const probe = list(cwd, envVars)
       .then((state) => {
-        settled.set(cwd, { state, expiresAt: now() + ttlMs });
+        settled.set(key, { state, expiresAt: now() + ttlMs });
         return state;
       })
       .finally(() => {
-        if (pending.get(cwd) === probe) {
-          pending.delete(cwd);
+        if (pending.get(key) === probe) {
+          pending.delete(key);
         }
       });
-    pending.set(cwd, probe);
+    pending.set(key, probe);
     return probe;
   };
 }

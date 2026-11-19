@@ -13,6 +13,7 @@ import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
 import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import { cn } from "../../lib/utils.js";
+import { isNonImeKey } from "../../lib/ime-keyboard";
 
 export interface ResponsiveOverlayContextValue {
   isCompactViewport: boolean;
@@ -530,7 +531,7 @@ function registerOpenDrawer(
       if (topEntry === undefined || panel === null) {
         return;
       }
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         topEntry.dismissOnEscape(event);
         event.preventDefault();
       } else if (event.key === "Tab") {
