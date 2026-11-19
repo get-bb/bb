@@ -163,9 +163,11 @@ describe("ConnectTunnelClient", () => {
     });
 
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Sawyer Air",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch(labelRequests),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls }),
@@ -235,9 +237,11 @@ describe("ConnectTunnelClient", () => {
     });
 
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -339,9 +343,11 @@ describe("ConnectTunnelClient", () => {
 
     const statuses: ConnectTunnelStatus[] = [];
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -386,9 +392,11 @@ describe("ConnectTunnelClient", () => {
 
     const statuses: ConnectTunnelStatus[] = [];
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -423,9 +431,11 @@ describe("ConnectTunnelClient", () => {
       );
     });
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -471,9 +481,11 @@ describe("ConnectTunnelClient", () => {
       });
     });
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -506,7 +518,7 @@ describe("ConnectTunnelClient", () => {
 
   it("accepts a new low generation after an authoritative session reopen", () => {
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => null,
       hostName: "Machine A",
       logger,
     });
@@ -521,7 +533,7 @@ describe("ConnectTunnelClient", () => {
     let dialCount = 0;
     let fetchCount = 0;
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => null,
       hostName: "Machine A",
       logger,
       fetchFn: async () => {

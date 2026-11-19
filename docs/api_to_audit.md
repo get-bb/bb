@@ -4737,22 +4737,36 @@ Registers a server access provider: `availability` (optionally with a public
 `serverUrl`), `acquire({ key, hostId, signal })` returning a grant
 `{ id, serverUrl, headers? }` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. Machines attach the grant's headers to
-enrollment and runtime traffic. While a provider reports `available` with a
+enrollment and runtime traffic. The optional `routeKind`
+(`"local-network" | "private-overlay" | "relay" | "custom"`, default
+`"custom"`) sets the provider's default rank among the server's routes;
+providers of one kind rank by the earliest-installed plugin, not load order.
+Every turned-on provider is a route, each host holds a grant per provider, and
+the daemon session-open response and system configuration advertise the routes
+in the user's order (advertisement is behind the `serverRoutes` experiment;
+while it is off, routes are empty). Core's own Local network and Manual
+providers use the same ordering, enablement and advertisement path. New
+machines install on the first working `relay` or `custom` route;
+`local-network` and `private-overlay` serve as the install route only when
+nothing else is on. While a turned-on provider reports `available` with a
 `serverUrl`, core's Host and Origin guards admit that URL's origin, as they do
-for `BB_APP_URL`; core refreshes the set when configuration is read, on
-`recheck()`, and when plugins change. Core stores the set and restores it at
-startup, before plugins load, so the first request after a restart passes. A
-failed or timed-out check keeps the provider's address; a definite
-`setup-required` or `unavailable` answer, or disabling or removing the
-plugin, drops it. Without a saved default, core uses the
-provider of the earliest-installed plugin. Callers: the bb connect plugin and
-the Tailscale official plugin (`plugins/tailscale`), whose Serve address is
-admitted this way.
+for `BB_APP_URL` (plugin providers always; core's Local network and Manual
+routes only with `serverRoutes` on); core refreshes the set when configuration
+is read, on `recheck()`, and when plugins change. Core stores the set in
+`app_settings_values` (`serverAccessOrigins`) and restores it at startup,
+before plugins load, so the first request after a restart passes. A failed or
+timed-out check keeps the provider's address; a definite `setup-required` or
+`unavailable` answer, turning the route off, or disabling or removing the
+plugin drops it. Callers: the bb connect plugin (`relay`) and the Tailscale
+official plugin (`plugins/tailscale`, `private-overlay`), whose Serve address
+is admitted this way.
 
 Docs: `backend-machines.md`.
 
 Before stabilization, prove retry-safe acquire/release across process death,
-credential privacy and revocation, explicit and automatic defaults, expired
+credential privacy and revocation, route ordering and per-host grants with a
+second independent provider (such as a Tailscale provider), explicit and automatic
+defaults, expired
 codes, removal while a provider is unavailable, and both enrolment and runtime
 traffic with independent direct and Connect consumers. Prove that admitting
 an available provider's origin cannot be used to admit an attacker-controlled

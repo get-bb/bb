@@ -2961,9 +2961,17 @@ export function validateServerAccessProviderDeclaration(
   if (
     typeof declaration.id !== "string" ||
     !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
-    declaration.id === "direct"
+    declaration.id === "direct" ||
+    declaration.id === "local-network"
   )
     throw new Error("Invalid or reserved server access provider id");
+  if (
+    declaration.routeKind !== undefined &&
+    !["local-network", "private-overlay", "relay", "custom"].includes(
+      declaration.routeKind,
+    )
+  )
+    throw new Error("Invalid server access route kind");
   if (
     typeof declaration.displayName !== "string" ||
     !declaration.displayName.trim() ||

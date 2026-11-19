@@ -7,6 +7,7 @@ import {
   ServerResponseError,
   type FetchFn,
 } from "./server-client.js";
+import { ServerRouteResolver } from "./server-routes.js";
 
 function createLogger() {
   return {
@@ -14,6 +15,20 @@ function createLogger() {
     error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
+  };
+}
+
+function anchorRoutes(serverUrl: string, headers: Record<string, string> = {}) {
+  const routes = new ServerRouteResolver({
+    anchorUrl: serverUrl,
+    anchorHeaders: headers,
+    persisted: null,
+    logger: createLogger(),
+  });
+  return {
+    target: () => routes.active(),
+    guardedDownloadTarget: () => routes.guardedDownloadTarget(),
+    hasMachineCredential: () => routes.connectGate() !== null,
   };
 }
 
@@ -63,7 +78,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     const result = client.openSession({
@@ -137,7 +152,7 @@ describe("createServerClient", () => {
         getSessionId: () => "session-1",
         hostKey: "host-key",
         logger: createLogger(),
-        serverUrl: "http://old-server.example.test:38886",
+        ...anchorRoutes("http://old-server.example.test:38886"),
       });
 
       await expect(
@@ -186,6 +201,7 @@ describe("createServerClient", () => {
             leaseTimeoutMs: 30_000,
             reconnectGraceMs: 30_000,
             endedInteractiveRequests: [],
+            serverRoutes: { serverId: "srv_test", routes: [] },
           },
           { status: 201 },
         );
@@ -195,8 +211,7 @@ describe("createServerClient", () => {
         getSessionId: () => "session-1",
         hostKey: "host-key",
         logger: createLogger(),
-        ...(serverHeaders !== undefined ? { serverHeaders } : {}),
-        serverUrl: "https://bb.example.test",
+        ...anchorRoutes("https://bb.example.test", serverHeaders ?? {}),
       });
 
       await client.openSession({
@@ -222,28 +237,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "http://bb.example.test",
-    });
-
-    await expect(
-      client.fetchProjectAttachment({
-        maxBytes: 25,
-        projectId: "project-1",
-        threadId: "thread-1",
-        path: "network-tab.har",
-      }),
-    ).rejects.toBeInstanceOf(AbortError);
-    expect(fetchFn).not.toHaveBeenCalled();
-  });
-
-  it("refuses to fetch project attachments when the server URL is malformed", async () => {
-    const fetchFn = vi.fn<FetchFn>();
-    const client = createServerClient({
-      fetchFn,
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "not a url",
+      ...anchorRoutes("http://bb.example.test"),
     });
 
     await expect(
@@ -277,7 +271,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     const attachment = await client.fetchProjectAttachment({
@@ -319,7 +313,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "http://192.168.1.10:3000",
+      ...anchorRoutes("http://192.168.1.10:3000"),
     });
 
     await expect(client.fetchSkillTreeManifest(treeHash)).resolves.toEqual(
@@ -337,7 +331,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     await expect(
@@ -365,8 +359,9 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test", {
+        "x-bb-connect-machine": "bbcm_machine",
+      }),
     });
 
     await client.fetchSkillTreeManifest(treeHash);
@@ -387,7 +382,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     await expect(
@@ -415,7 +410,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "http://127.0.0.1:3334",
+      ...anchorRoutes("http://127.0.0.1:3334"),
     });
 
     const attachment = await client.fetchProjectAttachment({
@@ -472,7 +467,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     await expect(
@@ -542,7 +537,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger,
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     await expect(
@@ -586,7 +581,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger,
-      serverUrl: "https://bb.example.test",
+      ...anchorRoutes("https://bb.example.test"),
     });
 
     const result = client.registerInteractiveRequest(
@@ -617,7 +612,7 @@ describe("dynamic tool cancellation", () => {
       getSessionId: () => "session-1",
       hostKey: "key",
       logger: createLogger(),
-      serverUrl: "http://localhost",
+      ...anchorRoutes("http://localhost"),
     });
     await client.callTool(
       {

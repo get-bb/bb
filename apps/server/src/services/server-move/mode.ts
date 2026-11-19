@@ -30,7 +30,12 @@ export async function resolveServerMoveMode(
   plugins: ServerMoveModePlugins,
 ): Promise<ServerMoveModeResolution> {
   const access = await serverAccessStatus(deps);
-  if (access.defaultProviderId !== CONNECT_SERVER_ACCESS_PROVIDER_ID) {
+  if (
+    !access.providers.some(
+      (provider) =>
+        provider.id === CONNECT_SERVER_ACCESS_PROVIDER_ID && provider.enabled,
+    )
+  ) {
     return { mode: "direct" };
   }
   const connectPlugin = plugins

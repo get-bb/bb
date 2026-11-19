@@ -1453,14 +1453,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         tagline: "Connect machines to their server",
         title: "Machine server access",
         summary:
-          "Provide the connection machines use to reach their bb server. With this, a plugin can:",
+          "Provide a route machines and apps use to reach their bb server. With this, a plugin can:",
         bullets: [
           "Give new machines what they need to enroll, such as a tunnel URL",
-          "Appear as a choice in Machines settings and manual setup",
+          "Add a route, ranked by its kind, that machines switch to when it answers",
+          "Appear as a route in Machine access settings and `bb server access`",
         ],
         apiSymbols: [
           "PluginServerAccess",
           "ServerAccessProviderDeclaration",
+          "ServerAccessRouteKind",
           "ServerAccessGrant",
           "PluginHosts.declareSharedPorts",
           "PluginHosts.ensureSharedPortTunnel",

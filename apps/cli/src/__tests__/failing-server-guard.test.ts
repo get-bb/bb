@@ -323,6 +323,7 @@ const host = {
   },
   maxPermissionMode: "full",
   lastSeenAt: 1,
+  route: null,
   lastRejectedProtocolVersion: null,
   createdAt: 1,
   updatedAt: 2,

@@ -18,6 +18,7 @@ import { createCliBbSdk } from "../client.js";
 import { resolveBbCliVersion } from "../version.js";
 import { confirmDestructiveAction } from "./helpers.js";
 import { resolveMachineHostId } from "./machine.js";
+import { registerServerAccessCommands } from "./server-access.js";
 import {
   importServerArchive,
   isDefaultDataDir,
@@ -292,7 +293,10 @@ export function registerServerCommands(
 ): void {
   const server = program
     .command("server")
-    .description("Move, export, and import the bb server");
+    .description(
+      "Manage how devices reach the bb server, and move, export, or import it",
+    );
+  registerServerAccessCommands(server, getUrl);
 
   const move = server
     .command("move")

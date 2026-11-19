@@ -35,6 +35,7 @@ import {
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
+import type { ServerRouteTarget } from "./server-routes.js";
 import type { EventPostResult } from "./event-sink.js";
 import { runtimeErrorLogFields } from "./error-utils.js";
 import { resolveHostPlatform } from "./host-platform.js";
@@ -182,10 +183,11 @@ export type FetchFn = (
 ) => ReturnType<typeof fetch>;
 
 interface CreateServerClientOptions {
-  serverUrl: string;
+  target: () => ServerRouteTarget;
+  guardedDownloadTarget: () => ServerRouteTarget | null;
+  hasMachineCredential: () => boolean;
   hostKey: string;
   logger: HostDaemonLogger;
-  serverHeaders?: Record<string, string>;
   getSessionId: () => string;
   beforeInteractiveRequestRegistrationAttempt?: () => Promise<void>;
   fetchFn?: FetchFn;
@@ -333,19 +335,20 @@ export function createServerClient(
     return sessionId;
   }
 
-  function headers(): HeadersInit {
+  function headers(target: ServerRouteTarget): HeadersInit {
     return {
       authorization: `Bearer ${options.hostKey}`,
       "content-type": "application/json",
-      ...options.serverHeaders,
+      ...target.headers,
     };
   }
 
   function buildInternalUrl(
+    target: ServerRouteTarget,
     pathname: string,
     query?: Record<string, string | undefined>,
   ): string {
-    const url = new URL(`/internal${pathname}`, options.serverUrl);
+    const url = new URL(`/internal${pathname}`, target.url);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined) {
@@ -354,6 +357,14 @@ export function createServerClient(
       }
     }
     return url.toString();
+  }
+
+  function fetchActive(pathname: string, init: RequestInit): Promise<Response> {
+    const target = options.target();
+    return fetchFn(buildInternalUrl(target, pathname), {
+      ...init,
+      headers: headers(target),
+    });
   }
 
   async function createResponseError(
@@ -377,13 +388,12 @@ export function createServerClient(
     async openSession(
       args: OpenSessionArgs,
     ): Promise<HostDaemonSessionOpenResponse> {
+      const target = options.target();
       const payload: HostDaemonSessionOpenRequest = {
         hostId: args.hostId,
         instanceId: args.instanceId,
         hostName: args.hostName,
-        hasMachineCredential: Boolean(
-          options.serverHeaders?.["x-bb-connect-machine"]?.trim(),
-        ),
+        hasMachineCredential: options.hasMachineCredential(),
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
         localApiPort: args.localApiPort,
@@ -393,12 +403,16 @@ export function createServerClient(
         openThreadWork: args.openThreadWork,
         undeliveredEventThreadIds: args.undeliveredEventThreadIds,
         loadedEnvironments: await args.loadedEnvironments,
+        route: target.route,
       };
-      const response = await fetchFn(buildInternalUrl("/session/open"), {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify(payload),
-      });
+      const response = await fetchFn(
+        buildInternalUrl(target, "/session/open"),
+        {
+          method: "POST",
+          headers: headers(target),
+          body: JSON.stringify(payload),
+        },
+      );
 
       if (response.status !== 201) {
         throw await createResponseError("open session", response);
@@ -410,9 +424,10 @@ export function createServerClient(
     async fetchProjectAttachment(
       args: FetchProjectAttachmentArgs,
     ): Promise<FetchedProjectAttachment> {
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+      const target = options.guardedDownloadTarget();
+      if (target === null) {
         throw new AbortError(
-          `Refusing to fetch project attachment over insecure server URL: ${options.serverUrl}`,
+          `Refusing to fetch project attachment over insecure server URL: ${options.target().url}`,
         );
       }
 
@@ -423,10 +438,10 @@ export function createServerClient(
         path: args.path,
       };
       const response = await fetchFn(
-        buildInternalUrl("/session/project-attachment-content", query),
+        buildInternalUrl(target, "/session/project-attachment-content", query),
         {
           method: "GET",
-          headers: headers(),
+          headers: headers(target),
         },
       );
 
@@ -452,9 +467,9 @@ export function createServerClient(
     async fetchSkillTreeManifest(
       treeHash: string,
     ): Promise<HostDaemonSkillTreeManifest> {
-      const response = await fetchFn(
-        buildInternalUrl(`/skills/tree/${encodeURIComponent(treeHash)}`),
-        { method: "GET", headers: headers() },
+      const response = await fetchActive(
+        `/skills/tree/${encodeURIComponent(treeHash)}`,
+        { method: "GET" },
       );
       if (!response.ok) {
         throw await createResponseError("fetch skill tree manifest", response);
@@ -467,11 +482,9 @@ export function createServerClient(
       paths: readonly string[],
     ): Promise<AsyncIterable<Uint8Array>> {
       const payload: HostDaemonSkillTreeContentRequest = { paths: [...paths] };
-      const response = await fetchFn(
-        buildInternalUrl(
-          `/skills/tree/${encodeURIComponent(treeHash)}/content`,
-        ),
-        { method: "POST", headers: headers(), body: JSON.stringify(payload) },
+      const response = await fetchActive(
+        `/skills/tree/${encodeURIComponent(treeHash)}/content`,
+        { method: "POST", body: JSON.stringify(payload) },
       );
       if (!response.ok) {
         throw await createResponseError("fetch skill tree content", response);
@@ -485,11 +498,9 @@ export function createServerClient(
           `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
         );
       }
-      const response = await fetchFn(
-        buildInternalUrl(
-          `/plugins/${encodeURIComponent(args.pluginId)}/host/${encodeURIComponent(args.digest)}`,
-        ),
-        { method: "GET", headers: headers() },
+      const response = await fetchActive(
+        `/plugins/${encodeURIComponent(args.pluginId)}/host/${encodeURIComponent(args.digest)}`,
+        { method: "GET" },
       );
       if (!response.ok) {
         throw await createResponseError("fetch plugin host artifact", response);
@@ -510,9 +521,8 @@ export function createServerClient(
         sessionId: requireSessionId(),
         eventGroups: groupHostDaemonEvents(events),
       };
-      const response = await fetchFn(buildInternalUrl("/session/events"), {
+      const response = await fetchActive("/session/events", {
         method: "POST",
-        headers: headers(),
         body: JSON.stringify(payload),
       });
 
@@ -543,10 +553,9 @@ export function createServerClient(
           : {}),
         sessionId: requireSessionId(),
       };
-      const response = await fetchFn(buildInternalUrl("/session/tool-call"), {
+      const response = await fetchActive("/session/tool-call", {
         signal,
         method: "POST",
-        headers: headers(),
         body: JSON.stringify(payload),
       });
 
@@ -567,14 +576,10 @@ export function createServerClient(
             sessionId: requireSessionId(),
             interaction: request,
           };
-          const response = await fetchFn(
-            buildInternalUrl("/session/interactive-request"),
-            {
-              method: "POST",
-              headers: headers(),
-              body: JSON.stringify(payload),
-            },
-          );
+          const response = await fetchActive("/session/interactive-request", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
 
           if (!response.ok) {
             throw toRetryControlError(
@@ -617,11 +622,10 @@ export function createServerClient(
         threadIds: [...args.threadIds],
         reason: args.reason,
       };
-      const response = await fetchFn(
-        buildInternalUrl("/session/interactive-request/interrupt"),
+      const response = await fetchActive(
+        "/session/interactive-request/interrupt",
         {
           method: "POST",
-          headers: headers(),
           body: JSON.stringify(payload),
         },
       );
@@ -646,11 +650,10 @@ export function createServerClient(
         request: args.request,
         reason: args.reason,
       };
-      const response = await fetchFn(
-        buildInternalUrl("/session/interactive-request/withdraw"),
+      const response = await fetchActive(
+        "/session/interactive-request/withdraw",
         {
           method: "POST",
-          headers: headers(),
           body: JSON.stringify(payload),
         },
       );

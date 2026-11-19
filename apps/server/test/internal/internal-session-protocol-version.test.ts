@@ -224,6 +224,7 @@ describe("internal session protocol version", () => {
           turnCommandThreadIds: [],
           undeliveredEventThreadIds: [],
           loadedEnvironments: [],
+          route: null,
         },
       });
 
@@ -263,6 +264,7 @@ describe("internal session protocol version", () => {
           turnCommandThreadIds: [],
           undeliveredEventThreadIds: [],
           loadedEnvironments: [],
+          route: null,
         },
       });
       expect(await forcedRetry.json()).toMatchObject({
@@ -284,6 +286,7 @@ describe("internal session protocol version", () => {
           turnCommandThreadIds: [],
           undeliveredEventThreadIds: [],
           loadedEnvironments: [],
+          route: null,
         },
       });
       expect(await consumedRetry.json()).toMatchObject({
@@ -305,6 +308,7 @@ describe("internal session protocol version", () => {
           turnCommandThreadIds: [],
           undeliveredEventThreadIds: [],
           loadedEnvironments: [],
+          route: null,
         },
       });
       expect(accepted.status).toBe(201);
