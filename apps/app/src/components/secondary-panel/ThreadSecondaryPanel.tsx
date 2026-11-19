@@ -838,7 +838,7 @@ function ThreadSecondaryPanelContent({
   };
 
   const shouldEnableSidebarSplits =
-    !renderAsDrawer && splitPanelStateId !== undefined && areFixedTabsReady;
+    !renderAsDrawer && splitPanelStateId !== undefined;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
         ...fixedTabs.map((fixedTab) => ({
@@ -986,7 +986,11 @@ function ThreadSecondaryPanelContent({
         ],
       )}
     >
-      {panelSurface}
+      {shouldEnableSidebarSplits && !areFixedTabsReady ? (
+        <SecondaryPanelContentSkeleton />
+      ) : (
+        panelSurface
+      )}
       <IframeDragGuardOverlay
         active={isSecondaryPanelResizing}
         cursor="col-resize"
