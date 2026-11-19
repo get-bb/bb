@@ -2979,6 +2979,75 @@ describe("buildThreadTimelineFromEvents", () => {
     );
   });
 
+  it("claims the earliest file row across current and historical rename paths", () => {
+    const turnStarted = turnStartedEvent({ seq: 0 });
+    const started = fileChangeItemEvent({
+      seq: 1,
+      type: "item/started",
+      changes: [
+        "origin.ts",
+        "second.ts",
+        "duplicate.ts",
+        "duplicate.ts",
+        "stale.ts",
+      ].map((path) => ({ path, kind: "update" })),
+    });
+    const initial = collectFileChangeRows(
+      buildTimelineRows([turnStarted, started]),
+    );
+    const renamed = fileChangeItemEvent({
+      seq: 2,
+      type: "item/completed",
+      changes: [
+        { path: "renamed.ts", movePath: "origin.ts", kind: "update" },
+        { path: "second.ts", kind: "update" },
+        { path: "duplicate.ts", kind: "update" },
+        { path: "duplicate.ts", kind: "update" },
+      ],
+    });
+    const final = collectFileChangeRows(
+      buildTimelineRows([
+        turnStarted,
+        started,
+        renamed,
+        fileChangeItemEvent({
+          seq: 3,
+          type: "item/completed",
+          changes: [
+            { path: "second.ts", movePath: "renamed.ts", kind: "update" },
+            { path: "origin.ts", movePath: "new-origin.ts", kind: "update" },
+            { path: "duplicate.ts", kind: "update" },
+            { path: "duplicate.ts", kind: "update" },
+            { path: "stale.ts", kind: "update" },
+            { path: "second.ts", kind: "update" },
+            { path: "newer.ts", movePath: "new-origin.ts", kind: "update" },
+          ],
+        }),
+      ]),
+    );
+    expect(final).toHaveLength(7);
+    expect(final.find((row) => row.change.movePath === "renamed.ts")?.id).toBe(
+      initial[0]?.id,
+    );
+    expect(
+      final
+        .filter((row) => row.change.path === "duplicate.ts")
+        .map((row) => row.id),
+    ).toEqual([initial[2]?.id, initial[3]?.id]);
+    expect(final.find((row) => row.change.path === "stale.ts")?.id).toBe(
+      initial[4]?.id,
+    );
+    expect(
+      final.find(
+        (row) => row.change.path === "second.ts" && !row.change.movePath,
+      )?.id,
+    ).toBe(initial[1]?.id);
+    expect(initial.map((row) => row.id)).not.toContain(
+      final.find((row) => row.change.path === "origin.ts")?.id,
+    );
+    expect(new Set(final.map((row) => row.id)).size).toBe(7);
+  });
+
   it("projects a failed file change's error onto each of its rows", () => {
     const changes: ThreadEventFileChange[] = [
       { path: "src/a.ts", kind: "update" },
