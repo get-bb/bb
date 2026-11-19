@@ -109,7 +109,6 @@ export function createCliRunner(options: {
         detached: ownsProcessGroup,
         env: cliEnvironment(options.env, options.serverUrl()),
         stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
       });
       const stdout = new BoundedOutput();
       const stderr = new BoundedOutput();

@@ -183,6 +183,7 @@ export {
   bridgeRequestEnvelopeSchema,
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
+  buildProviderCliEnv as experimental_buildProviderCliEnv,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,

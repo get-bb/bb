@@ -191,6 +191,7 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.updates.providerCli": uiPreferenceEntry(
       "sidebar.updates.providerCli",
     ),
+    "sidebar.updates.skipped": uiPreferenceEntry("sidebar.updates.skipped"),
     "composer.provider": uiPreferenceEntry("composer.provider"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",

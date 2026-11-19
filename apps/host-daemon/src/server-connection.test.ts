@@ -70,7 +70,6 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     retiredEnvironmentIds: [],
     endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
-    connectNext: { generation: 0, config: null },
     pluginHostGenerations: [],
     sessionId: args.sessionId,
     watchSet: {

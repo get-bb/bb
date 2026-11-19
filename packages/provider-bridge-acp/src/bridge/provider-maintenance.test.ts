@@ -67,6 +67,7 @@ describe("ACP provider maintenance", () => {
           await getAcpProviderInstallationStatus({
             command,
             maintenance: CURSOR_ACP_MAINTENANCE,
+            env: process.env,
           }),
         ).toMatchObject({
           installed: true,
@@ -76,7 +77,11 @@ describe("ACP provider maintenance", () => {
           versionUnsupported: false,
         });
         expect(
-          await getAcpProviderHealth({ command, maintenance: undefined }),
+          await getAcpProviderHealth({
+            command,
+            maintenance: undefined,
+            env: process.env,
+          }),
         ).toMatchObject({
           supported: true,
           health: { status: "ready", installedVersion: version },

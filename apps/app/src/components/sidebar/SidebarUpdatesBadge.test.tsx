@@ -148,6 +148,7 @@ vi.mock("./sidebar-update-preferences", async () => {
   const { atom } = await import("jotai");
   return {
     showProviderCliUpdatesAtom: atom(() => preferences.showProviderCliUpdates),
+    skippedSidebarUpdatesAtom: atom<string[]>([]),
   };
 });
 
@@ -404,7 +405,7 @@ describe("SidebarUpdatesBadge", () => {
       ["linear1.0.0 → 1.2.0", "available"],
     ]);
     expect(
-      within(card).getByRole("button", { name: "Update all" }),
+      within(card).getByRole("button", { name: "Update 2 CLIs and plugins" }),
     ).toBeTruthy();
     expect(
       within(card).getByRole("link", { name: "Details" }).getAttribute("href"),
@@ -448,9 +449,7 @@ describe("SidebarUpdatesBadge", () => {
 
     const card = await openCard();
     expect(card.textContent).toContain("Installs when bb restarts");
-    expect(within(card).queryByRole("button", { name: "Update all" })).toBe(
-      null,
-    );
+    expect(within(card).queryByRole("button", { name: /^Update / })).toBe(null);
     expect(updateButton().getAttribute("aria-label")).toBe(
       "1 update available",
     );
@@ -461,7 +460,9 @@ describe("SidebarUpdatesBadge", () => {
     renderBadge({ appUpdateAvailable: true });
 
     const card = await openCard();
-    fireEvent.click(within(card).getByRole("button", { name: "Restart now" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Restart into bb 0.49.0 now" }),
+    );
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("2 threads are running.");
@@ -479,7 +480,9 @@ describe("SidebarUpdatesBadge", () => {
     renderBadge({ desktopUpdateReady: true });
 
     const card = await openCard();
-    fireEvent.click(within(card).getByRole("button", { name: "Restart now" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: /^Restart .* now$/ }),
+    );
     expect(desktopState.installUpdate).toHaveBeenCalledTimes(1);
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
   });
@@ -504,7 +507,9 @@ describe("SidebarUpdatesBadge", () => {
     });
 
     const card = await openCard();
-    fireEvent.click(within(card).getByRole("button", { name: "Update 2" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Update 2 CLIs and plugins" }),
+    );
 
     expect(startInstallMock).toHaveBeenCalledTimes(1);
     expect(startInstallMock).toHaveBeenCalledWith({
@@ -513,6 +518,69 @@ describe("SidebarUpdatesBadge", () => {
     });
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
     expect(applyAppUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("skips the current updates until a new one arrives", async () => {
+    appUpdateState.status = appUpdateStatus();
+    const codex = providerIssue("codex", "Codex");
+    const updates = {
+      appUpdateAvailable: true,
+      machines: [machine({ issues: [codex] })],
+      plugins: {
+        trackedCount: 1,
+        items: [
+          {
+            kind: "update" as const,
+            plugin: plugin("linear"),
+            version: "1.2.0",
+          },
+        ],
+      },
+    };
+    renderBadge(updates);
+
+    const card = await openCard();
+    fireEvent.click(within(card).getByRole("button", { name: "Skip" }));
+
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+
+    setLive({ inventory: inventory({ ...updates, plugins: null }) });
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+
+    setLive({
+      inventory: inventory({
+        ...updates,
+        plugins: {
+          trackedCount: 1,
+          items: [
+            { kind: "update", plugin: plugin("linear"), version: "1.3.0" },
+          ],
+        },
+      }),
+    });
+    expect(
+      screen.getByRole("link", { name: "3 updates available" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(await openCard()).getByRole("button", { name: "Skip" }),
+    );
+    expect(screen.queryByTestId("sidebar-update-button")).toBeNull();
+
+    appUpdateState.status = appUpdateStatus({
+      available: {
+        behindSince: null,
+        channel: "latest",
+        commit: null,
+        commitCount: null,
+        subjects: [],
+        version: "0.50.0",
+      },
+    });
+    setLive({ inventory: inventory({ ...updates, plugins: null }) });
+    expect(
+      screen.getByRole("link", { name: "2 updates available" }),
+    ).toBeTruthy();
   });
 
   it("leaves provider CLI updates out of the button when the preference hides them", async () => {
@@ -542,7 +610,9 @@ describe("SidebarUpdatesBadge", () => {
     );
     const card = await openCard();
     expect(rowStates(card)).toEqual([["linear1.0.0 → 1.2.0", "available"]]);
-    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Update 1 plugin" }),
+    );
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
     expect(startInstallMock).not.toHaveBeenCalled();
   });
@@ -576,7 +646,9 @@ describe("SidebarUpdatesBadge", () => {
     expect(onNavigate).not.toHaveBeenCalled();
     expect(within(card).getByText("bb 0.49.0")).toBeTruthy();
 
-    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Update 1 agent CLI" }),
+    );
     expect(startInstallMock).toHaveBeenCalledWith({
       hostId: "host-1",
       issue: codex,
@@ -683,7 +755,9 @@ describe("SidebarUpdatesBadge", () => {
       ["Codex1.0.0 → 1.1.0", "available"],
       ["linearFailed · try again", "failed"],
     ]);
-    fireEvent.click(within(card).getByRole("button", { name: "Update all" }));
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Update 3 CLIs and plugins" }),
+    );
     expect(startInstallMock).toHaveBeenCalledTimes(2);
     expect(startPluginUpdateMock).toHaveBeenCalledWith("linear");
   });
@@ -732,9 +806,7 @@ describe("SidebarUpdatesBadge", () => {
     expect(updateButton().getAttribute("aria-label")).toBe("Updating");
     const card = await openCard();
     expect(card.textContent).toContain("Restarting into the update…");
-    expect(within(card).queryByRole("button", { name: "Restart now" })).toBe(
-      null,
-    );
+    expect(within(card).queryByRole("button", { name: /^Restart/ })).toBe(null);
   });
 
   it("leaves out missing CLIs and names machines when a CLI is stale on several", async () => {

@@ -1540,6 +1540,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "UnansweredInteractionAnswer",
           "UnansweredInteractionWarningArgs",
           "experimental_readBoundedLines",
+          "experimental_buildProviderCliEnv",
           "experimental_resolveExecutablePath",
           "experimental_readCliVersion",
           "experimental_commandOutput",

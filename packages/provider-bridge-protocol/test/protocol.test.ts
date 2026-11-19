@@ -42,20 +42,37 @@ describe("handshake", () => {
 });
 
 describe("provider installation status", () => {
-  it("defaults legacy requests to update discovery and accepts local-only probes", () => {
+  it("accepts requests from runtimes and harnesses that send no envVars", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({ providerId: "codex" })
-        .checkUpdates,
+        .envVars,
+    ).toBeUndefined();
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        envVars: { CODEX_HOME: "/managed" },
+      }).envVars,
+    ).toEqual({ CODEX_HOME: "/managed" });
+  });
+
+  it("defaults legacy requests to update discovery and accepts local-only probes", () => {
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        envVars: {},
+      }).checkUpdates,
     ).toBe(true);
     expect(
       providerInstallationStatusParamsSchema.parse({
         providerId: "codex",
+        envVars: {},
         checkUpdates: false,
       }).checkUpdates,
     ).toBe(false);
     expect(
       providerInstallationStatusParamsSchema.safeParse({
         providerId: "codex",
+        envVars: {},
         checkUpdates: "false",
       }).success,
     ).toBe(false);
@@ -64,12 +81,14 @@ describe("provider installation status", () => {
     expect(
       providerInstallationStatusParamsSchema.parse({
         providerId: "codex",
+        envVars: {},
         requirement: "thread_rewind",
       }).requirement,
     ).toBe("thread_rewind");
     expect(
       providerInstallationStatusParamsSchema.safeParse({
         providerId: "codex",
+        envVars: {},
         requirement: "anything",
       }).success,
     ).toBe(false);

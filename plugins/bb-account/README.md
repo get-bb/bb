@@ -47,8 +47,7 @@ The unlisted methods serve the plugin's own UI and CLI and connect:
 `bb-account.v1.adoptConnectCredential`, `bb-account.v1.connectCredential`,
 `bb-account.v1.confirmRefusedCredential`, `login.start`, `login.poll`,
 `login.cancel`, `redeemCode`, and `signOut`. Only the connect plugin may call
-the three `bb-account.v1.*` methods, except that the `bb--connect-next` plugin may
-also read `connectCredential`.
+the three `bb-account.v1.*` methods.
 
 - `adoptConnectCredential` (`{credential, baseUrl, replaces}`) stores the
   pairing connect holds for older builds. It answers `changed` unless bb
@@ -57,8 +56,7 @@ also read `connectCredential`.
   `adopted` once it is stored. It never revokes anything.
 - `connectCredential` returns `{credential: {baseUrl, serverUrl, serverId,
 credential} | null}`. Connect dials the tunnel with it and keeps its copy
-  for older builds current; connect-next sends it to the Fly gate as frp's
-  `metas.credential`.
+  for older builds current.
 - `confirmRefusedCredential` (`{credential}`) is how connect reports that the
   gate refused the credential. If it is still the current one, bb account
   checks it with `GET /api/account/me` and signs out when getbb.app answers 401. It returns the account status.

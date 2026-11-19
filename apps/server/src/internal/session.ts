@@ -250,13 +250,6 @@ export function registerInternalSessionRoutes(
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
         ),
-        ...(deps.sharedPorts.hostSupportsNextTunnel(daemon.hostId)
-          ? {
-              connectNext: deps.sharedPorts.reconcileNextTunnelForHost(
-                daemon.hostId,
-              ),
-            }
-          : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
         endedInteractiveRequests,

@@ -38,7 +38,7 @@ function commandsSent(): string[] {
 }
 
 it(
-  "pins model and thinking at spawn and never sends set_model or set_thinking_level",
+  "applies the selected model and thinking to the running Pi on start, resume and fork",
   async () => {
     const threadId = "thr_settings";
     const start = await harness.request(1, "thread/start", {
@@ -47,9 +47,11 @@ it(
       instructionMode: "append",
       options: OPTIONS,
     });
-    const providerThreadId = (start.result as { providerThreadId?: unknown }).providerThreadId;
+    const providerThreadId = (start.result as { providerThreadId?: unknown })
+      .providerThreadId;
     expect(typeof providerThreadId).toBe("string");
-    if (typeof providerThreadId !== "string") throw new Error("missing providerThreadId");
+    if (typeof providerThreadId !== "string")
+      throw new Error("missing providerThreadId");
     expect(providerThreadId).toMatch(/^pi_/u);
     await harness.request(2, "turn/start", {
       threadId,
@@ -96,9 +98,8 @@ it(
 
     const sent = commandsSent();
     expect(sent.length).toBeGreaterThan(0);
-    expect(
-      sent.filter((c) => c === "set_model" || c === "set_thinking_level"),
-    ).toEqual([]);
+    expect(sent).toContain("set_model");
+    expect(sent).toContain("set_thinking_level");
     const contextWindows = harness.messages
       .filter((m) => m.method === "thread/delta")
       .flatMap(

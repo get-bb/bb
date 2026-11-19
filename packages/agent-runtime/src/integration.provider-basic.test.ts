@@ -33,7 +33,10 @@ for (const providerId of providers) {
     it("lists models", async () => {
       const ctx = createTestRuntime(providerId);
       try {
-        const { models } = await ctx.runtime.listModels({ providerId });
+        const { models } = await ctx.runtime.listModels({
+          providerId,
+          contributedEnv: [],
+        });
         expect(models.length).toBeGreaterThan(0);
         for (const model of models) {
           expect(model.id).toBeTruthy();

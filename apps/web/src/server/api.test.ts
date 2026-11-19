@@ -10,7 +10,6 @@ import {
   labelClaim,
   machine,
   MAX_PER_ACCOUNT,
-  NEXT_TUNNEL_STALE_MS,
   type ConnectDb,
   server,
   sha256Hex,
@@ -608,81 +607,6 @@ describe("getAccountState with tunnel objects as the liveness source", () => {
     expect(asked.sort()).toEqual(
       [airKey, goneKey, "sawyer", "sawyer-desktop"].sort(),
     );
-  });
-});
-
-describe("getAccountState with a bb connect next tunnel", () => {
-  it("shows servers and machines online while next holds a fresh tunnel, whatever the tunnel object says", async () => {
-    await seedUser("u1");
-    await claimHandle(deps, "u1", "sawyer");
-    await createServer(deps, "u1", "sawyer-next");
-    await createServer(deps, "u1", "sawyer-stale");
-    await createServer(deps, "u1", "sawyer-revoked");
-    const now = Date.now();
-    const stale = new Date(now - 60 * 60 * 1000);
-    const nextRows = {
-      sawyer: { nextTunnelGate: null, nextTunnelAt: new Date(now) },
-      "sawyer-next": { nextTunnelGate: "fly-a", nextTunnelAt: new Date(now) },
-      "sawyer-stale": {
-        nextTunnelGate: "fly-a",
-        nextTunnelAt: new Date(now - NEXT_TUNNEL_STALE_MS),
-      },
-      "sawyer-revoked": {
-        nextTunnelGate: "fly-a",
-        nextTunnelAt: new Date(now),
-      },
-    } as const;
-    for (const [subdomain, next] of Object.entries(nextRows)) {
-      await db
-        .update(server)
-        .set({
-          credentialHash: `hash-${subdomain}`,
-          revokedAt: subdomain === "sawyer-revoked" ? new Date(now) : null,
-          lastSeenAt: stale,
-          nextTunnelGate: next.nextTunnelGate,
-          nextTunnelRegion: next.nextTunnelGate === null ? null : "iad",
-          nextTunnelAt: next.nextTunnelAt,
-        })
-        .where(eq(server.subdomain, subdomain));
-    }
-    await db.insert(machine).values([
-      {
-        id: "machine-next",
-        userId: "u1",
-        subdomain: "air",
-        credentialHash: "hash-air",
-        lastSeenAt: stale,
-        nextTunnelGate: "fly-b",
-        nextTunnelRegion: "ams",
-        nextTunnelAt: new Date(now),
-        createdAt: new Date(1),
-      },
-      {
-        id: "machine-off",
-        userId: "u1",
-        subdomain: "off",
-        credentialHash: "hash-off",
-        lastSeenAt: stale,
-        createdAt: new Date(2),
-      },
-    ]);
-
-    const state = await getAccountState(
-      { ...deps, tunnelConnected: async () => false },
-      "u1",
-    );
-
-    expect(
-      Object.fromEntries(state.servers.map((s) => [s.subdomain, s.online])),
-    ).toEqual({
-      sawyer: false,
-      "sawyer-next": true,
-      "sawyer-stale": false,
-      "sawyer-revoked": false,
-    });
-    expect(
-      Object.fromEntries(state.machines.map((m) => [m.id, m.online])),
-    ).toEqual({ "machine-next": true, "machine-off": false });
   });
 });
 

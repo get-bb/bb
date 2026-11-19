@@ -33,30 +33,7 @@ declare module "hono" {
   }
 }
 
-const tunnelIngressRequests = new WeakSet<object>();
-
-export function markTunnelIngressRequest(incoming: object): void {
-  tunnelIngressRequests.add(incoming);
-}
-
-function isTunnelIngressContext(context: Context): boolean {
-  const env: unknown = context.env;
-  if (typeof env !== "object" || env === null || !("incoming" in env)) {
-    return false;
-  }
-  const incoming = env.incoming;
-  return (
-    typeof incoming === "object" &&
-    incoming !== null &&
-    tunnelIngressRequests.has(incoming)
-  );
-}
-
 export function captureTrustedRemoteAddress(context: Context): void {
-  if (isTunnelIngressContext(context)) {
-    context.set(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY, undefined);
-    return;
-  }
   try {
     context.set(
       TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
@@ -94,7 +71,6 @@ export function resolveRequestAccessRoute(
   ) {
     return null;
   }
-  if (isTunnelIngressContext(context)) return "connect";
   const address = getTrustedRemoteAddress(context);
   return address === undefined || isLoopbackAddress(address)
     ? "loopback"

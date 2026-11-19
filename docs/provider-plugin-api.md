@@ -151,6 +151,12 @@ resolved with a `null` thread and project and expanded like a session's
 `options.envVars`. A bridge whose catalog depends on credentials or routing,
 such as Codex behind the Account Pooler, launches its listing process with
 these values so the picker matches what new threads can use.
+`commands/list`, `provider/health`, and `provider/installation/*` carry the
+same host-scoped `envVars`, so a contributed executable such as
+`BB_CLAUDE_CODE_EXECUTABLE` is the one bb lists commands from, reports as
+installed, and updates. `provider/usage` carries no `envVars`: it reports the
+machine's own sign-in, which routing env such as the Account Pooler's would
+replace.
 
 Still experimental on the declaration (see api_to_audit.md):
 

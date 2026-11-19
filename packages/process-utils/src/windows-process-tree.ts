@@ -29,7 +29,7 @@ export function terminateWindowsProcessTrees(
           "taskkill.exe",
         ),
         [...pids.flatMap((pid) => ["/pid", String(pid)]), "/T", "/F"],
-        { windowsHide: true },
+        {},
         (error) => finish(error === null),
       );
       timer = setTimeout(() => {

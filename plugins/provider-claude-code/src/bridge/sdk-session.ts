@@ -131,7 +131,6 @@ function spawnRecordedClaudeProcess(args: {
     env: args.spawnOptions.env,
     signal: args.spawnOptions.signal,
     stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
   });
   child.stderr?.setEncoding("utf8").on("data", (data: string) => {
     args.onStderr(data);

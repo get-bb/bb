@@ -3,3 +3,7 @@ import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preferen
 export const showProviderCliUpdatesAtom = createSyncedPreferenceAtom(
   "sidebar.updates.providerCli",
 );
+
+export const skippedSidebarUpdatesAtom = createSyncedPreferenceAtom(
+  "sidebar.updates.skipped",
+);

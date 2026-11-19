@@ -56,11 +56,9 @@ import {
 export {
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS,
-  HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION,
   HOST_DAEMON_DESKTOP_BROKER_PROOF_PROTOCOL_VERSION,
   HOST_DAEMON_ENVIRONMENT_CLEANUP_INSPECTION_PROTOCOL_VERSION,
   HOST_DAEMON_PROTOCOL_VERSION,
-  hostDaemonSupportsConnectNext,
   hostDaemonSupportsDesktopBrokerProof,
   hostDaemonSupportsEnvironmentCleanupInspection,
   isCompatibleHostDaemonProtocolVersion,
@@ -939,6 +937,7 @@ const providerListCommandsCommandSchema = z
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).nullable(),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -948,6 +947,7 @@ const providerHealthCommandSchema = z
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -956,6 +956,7 @@ const providerInstallationStatusCommandSchema = z
     type: z.literal("provider.installation.status"),
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -965,6 +966,7 @@ const providerInstallationRunCommandSchema = z
     providerId: z.string().min(1),
     action: providerCliInstallActionKindSchema,
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
   })
   .strict();
 
@@ -1990,7 +1992,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

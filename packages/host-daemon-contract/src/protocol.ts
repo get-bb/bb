@@ -1,6 +1,4 @@
-export const HOST_DAEMON_PROTOCOL_VERSION = 269 as const;
-
-export const HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION = 247 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 271 as const;
 
 export const HOST_DAEMON_DESKTOP_BROKER_PROOF_PROTOCOL_VERSION = 248 as const;
 
@@ -15,12 +13,6 @@ export function isCompatibleHostDaemonProtocolVersion(
   protocolVersion: number,
 ): boolean {
   return HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS.includes(protocolVersion);
-}
-
-export function hostDaemonSupportsConnectNext(
-  protocolVersion: number,
-): boolean {
-  return protocolVersion >= HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION;
 }
 
 export function hostDaemonSupportsDesktopBrokerProof(

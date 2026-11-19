@@ -1,4 +1,3 @@
-import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
 import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
@@ -75,9 +74,6 @@ export interface PluginServiceDeps {
     | "validateSharedPortDeclaration"
     | "replaceDeclarationsForOwner"
     | "clearDeclarationsForOwner"
-    | "setNextTunnelConfig"
-    | "listNextTunnelStatuses"
-    | "onNextTunnelStatusChange"
   >;
   ensureSharedPortTunnel?: (
     hostId: string,
@@ -169,7 +165,6 @@ export interface PluginServiceDeps {
     pluginId: string;
     generation: string;
   }) => Promise<void>;
-  openTunnelIngress?: (audience: string) => Promise<TunnelIngressLease>;
 }
 
 export interface PluginAgentToolContribution {
