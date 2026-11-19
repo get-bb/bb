@@ -22,7 +22,7 @@ function register(
 
 function unusedLauncherServices(): Pick<
   PluginCommandContext,
-  "experimental_sdk" | "experimental_navigate"
+  "sdk" | "navigate"
 > {
   const unused = <T extends object>(name: string): T =>
     new Proxy({} as T, {
@@ -31,8 +31,8 @@ function unusedLauncherServices(): Pick<
       },
     });
   return {
-    experimental_sdk: unused<PluginBrowserBbSdk>("sdk"),
-    experimental_navigate: unused<BbNavigate>("navigate"),
+    sdk: unused<PluginBrowserBbSdk>("sdk"),
+    navigate: unused<BbNavigate>("navigate"),
   };
 }
 

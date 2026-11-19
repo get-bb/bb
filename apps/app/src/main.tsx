@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
-import { PluginActionServicesProvider } from "./lib/plugin-action-services-provider";
+import { PluginActionContextProvider } from "./lib/plugin-action-context-provider";
 import { App } from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { ApplicationUrlDialog } from "./components/ApplicationUrlDialog";
@@ -50,9 +50,9 @@ createRoot(document.getElementById("root")!, {
     <AppErrorBoundary>
       <QueryClientProvider client={appQueryClient}>
         <BrowserRouter>
-          <PluginActionServicesProvider>
+          <PluginActionContextProvider>
             <App />
-          </PluginActionServicesProvider>
+          </PluginActionContextProvider>
           <AppToaster />
           <ApplicationUrlDialog />
         </BrowserRouter>

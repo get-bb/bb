@@ -1,4 +1,5 @@
 import type {
+  ExperimentalPluginActionContext,
   PluginComposerApi,
   PluginMessageActionContext,
   ThreadChatMessageReference,
@@ -7,21 +8,15 @@ import type { PluginComposerHost } from "@/components/plugin/plugin-composer-hos
 import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { detachedComposerController } from "./plugin-composer-handle";
 import type { PluginMessageActionSlot } from "./plugin-slots";
-import type { AppPanelController } from "./app-fixed-tab-navigation";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "./plugin-panel-controller";
-import type { PluginActionServices } from "./plugin-navigation-hooks";
+import { createRetiredOpenPanel } from "./plugin-panel-controller";
 
 interface RunPluginMessageActionArgs {
   slot: PluginMessageActionSlot;
   threadId: string;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  panel: AppPanelController;
   composerHost: PluginComposerHost | null;
-  services: PluginActionServices;
+  actionContext: ExperimentalPluginActionContext;
 }
 
 function messageActionComposer(
@@ -44,25 +39,18 @@ export function runPluginMessageAction({
   threadId,
   message,
   selectedText,
-  panel,
   composerHost,
-  services,
+  actionContext,
 }: RunPluginMessageActionArgs): void {
-  const experimental_panel = createPluginPanelController(
-    slot.pluginId,
-    () => panel,
-  );
   const context: PluginMessageActionContext & {
     openPanel: ReturnType<typeof createRetiredOpenPanel>;
   } = {
+    ...actionContext,
     threadId,
     message,
     ...(selectedText !== undefined ? { selectedText } : {}),
-    experimental_panel,
-    openPanel: createRetiredOpenPanel(experimental_panel),
+    openPanel: createRetiredOpenPanel(actionContext.experimental_panel),
     composer: messageActionComposer(slot.pluginId, threadId, composerHost),
-    experimental_sdk: services.sdk,
-    experimental_navigate: services.navigate,
   };
   const warn = (error: unknown) => {
     console.warn(

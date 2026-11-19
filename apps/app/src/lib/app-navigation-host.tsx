@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type {
   ExperimentalFileOpenOptions,
@@ -148,6 +149,22 @@ export function AppNavigationSurfaceProvider({
       {children}
     </AppNavigationHostProvider>
   );
+}
+
+export function useAppNavigationHostRef(): RefObject<ResolvedAppNavigationHostCapabilities> {
+  return useRef(DEFAULT_APP_NAVIGATION_HOST);
+}
+
+export function AppNavigationHostCapture({
+  hostRef,
+}: {
+  hostRef: RefObject<ResolvedAppNavigationHostCapabilities>;
+}) {
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    hostRef.current = host;
+  });
+  return null;
 }
 
 export function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {

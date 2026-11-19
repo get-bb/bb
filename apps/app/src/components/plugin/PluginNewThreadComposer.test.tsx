@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { unavailablePluginActionServices } from "@/lib/plugin-action-services-provider";
+import { unavailablePluginActionContext } from "@/lib/plugin-action-context-provider";
+import { createPluginPanelController } from "@/lib/plugin-panel-controller";
 import {
   useEffect,
   useLayoutEffect,
@@ -1761,8 +1762,13 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      panel: getFocusedAppPanelController(),
-      services: unavailablePluginActionServices,
+      actionContext: (pluginId) => ({
+        ...unavailablePluginActionContext(pluginId),
+        experimental_panel: createPluginPanelController(
+          pluginId,
+          getFocusedAppPanelController,
+        ),
+      }),
     });
     await act(async () => {
       command.run();

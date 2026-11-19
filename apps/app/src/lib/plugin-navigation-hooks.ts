@@ -6,7 +6,11 @@ import {
   useNavigate,
   type NavigateFunction,
 } from "react-router-dom";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk";
+import type {
+  BbNavigate,
+  ExperimentalPluginActionContext,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
@@ -51,15 +55,10 @@ export function useSdk(): PluginBrowserBbSdk {
   return getPluginBoundSdk(sdk, pluginId, queryClient);
 }
 
-export interface PluginActionServices {
-  sdk: PluginBrowserBbSdk;
-  navigate: BbNavigate;
-}
-
-export type BindPluginActionServices = (
+export type BindPluginActionContext = (
   pluginId: string,
   host: () => ResolvedAppNavigationHostCapabilities,
-) => PluginActionServices;
+) => ExperimentalPluginActionContext;
 
 interface BbNavigateDeps {
   navigate: NavigateFunction;
@@ -184,7 +183,7 @@ function createBbNavigate(
   };
 }
 
-export function usePluginActionServices(): BindPluginActionServices {
+export function usePluginActionContextBinder(): BindPluginActionContext {
   const deps: BbNavigateDeps = {
     navigate: useNavigate(),
     onNavigate: useContext(RouteNavigationCallbackContext),
@@ -199,11 +198,15 @@ export function usePluginActionServices(): BindPluginActionServices {
     latest.current = deps;
   });
   const [bind] = useState(() => {
-    const bindServices: BindPluginActionServices = (pluginId, host) => ({
+    const bindContext: BindPluginActionContext = (pluginId, host) => ({
       sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
       navigate: createBbNavigate(pluginId, host, () => latest.current),
+      experimental_panel: createPluginPanelController(
+        pluginId,
+        () => host().panel,
+      ),
     });
-    return bindServices;
+    return bindContext;
   });
   return bind;
 }
@@ -211,7 +214,7 @@ export function usePluginActionServices(): BindPluginActionServices {
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const appNavigation = useAppNavigationHost();
-  const bind = usePluginActionServices();
+  const bind = usePluginActionContextBinder();
   return useMemo(
     () => bind(pluginId, () => appNavigation).navigate,
     [appNavigation, bind, pluginId],

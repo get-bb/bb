@@ -354,39 +354,51 @@ and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
 
-## Launcher SDK and navigation (`PluginCommandContext.experimental_sdk`/`experimental_navigate`, `PluginMessageActionContext.experimental_sdk`/`experimental_navigate`)
+## `ExperimentalPluginActionContext` (`@get-bb/plugin-sdk/app`)
 
-Requires SDK 0.6.166.
+Requires SDK 0.6.167.
 
-Command and message-action handlers receive the registering plugin's
-`useSdk()` client and `useBbNavigate()`, matching what thread actions already
-get as `sdk`/`navigate`. A command's navigate is bound to the focused surface
-(like its `experimental_panel`); a message action's to the thread view whose
-timeline showed the message.
+`{ sdk, navigate, experimental_panel }`: the registering plugin's `useSdk()`
+client, its `useBbNavigate()`, and the panel controller of the surface that
+invoked the callback. Every plugin callback context extends it:
+`PluginCommandContext`, `PluginMessageActionContext`,
+`PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`,
+`ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`,
+`PluginNewThreadPanelActionContext`, `PluginSidebarFooterActionContext`,
+`ExperimentalSidebarFooterActionContext`, and
+`ExperimentalComposerActionContext` (composer commands, `plusMenu` and
+`sendMenu` rows). `navigate` and `experimental_panel` act on the focused
+surface for commands, thread actions and sidebar footer actions; on the
+thread view that showed the message for message actions; on the launching
+surface for panel actions; and on the composer's surface for composer
+callbacks. Commands and message actions gained `sdk`/`navigate` here; thread
+actions already had them under the same names.
 
-Docs: `frontend-renderer-slots.md`.
+Docs: `frontend-hooks-and-ui.md#callback-context`.
 
-Core callers: `createBbNavigate` in `apps/app/src/lib/plugin-navigation-hooks.ts`
-is the one implementation behind `useBbNavigate`, thread-action items,
-commands and message actions. `PluginActionServicesProvider`
-(`apps/app/src/lib/plugin-action-services-provider.tsx`, mounted in
-`main.tsx`) binds it once for `CommandPalette` (palette and keyboard
-invocation) and `ThreadTimelineRows` (message actions), so neither subscribes
-to the router. Contract tests: the panel controller contract table in
-`ThreadDetailView.contract.test.tsx` runs the terminal, file preview and URL
-cases against message actions and palette commands too.
+Core callers: `usePluginActionContextBinder`
+(`apps/app/src/lib/plugin-navigation-hooks.ts`) is the one implementation
+behind `useBbNavigate` and every callback context, including bb's own thread
+actions (`thread-action-registry.tsx`). `PluginActionContextProvider`
+(`apps/app/src/lib/plugin-action-context-provider.tsx`, mounted in
+`main.tsx`) binds it once for `CommandPalette`, `ThreadTimelineRows`, panel
+action launchers, sidebar footer items and composer callbacks, so they do not
+subscribe to the router. Panel action launchers read their surface's host
+through `AppNavigationHostCapture`. Contract tests: the panel controller
+contract table in `ThreadDetailView.contract.test.tsx` runs the terminal,
+file preview and URL cases against message actions and palette commands.
 
 Plugin caller: Conductor's Run command and "Fork to new workspace" message
 action, which replaced an invisible `experimental_appOverlay` that copied
 `useSdk()`/`useBbNavigate()` into module globals.
 
-Before stabilizing, rename to `sdk`/`navigate` to match thread actions and
-decide whether `PluginNewThreadPanelActionContext` and `ExperimentalThreadTabActionContext`
-contexts should get them too.
+Before stabilizing, rename `experimental_panel` to `panel` across every
+context, and decide whether `BbContext` should describe the invoking surface
+too.
 
 ## `BbContext.experimental_pluginPanel` (`@get-bb/plugin-sdk/app`)
 
-Requires SDK 0.6.166.
+Requires SDK 0.6.167.
 
 `useBbContext().experimental_pluginPanel` is `{ pluginId, path, subPath }`
 (type `ExperimentalPluginPanelPage`) when the route shows a plugin nav panel,

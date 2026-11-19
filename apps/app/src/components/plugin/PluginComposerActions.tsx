@@ -27,6 +27,8 @@ import type {
   ResolvedComposerPlusMenuItem,
 } from "@/lib/plugin-slot-resolvers";
 import { useComposer, useComposerView } from "@/lib/plugin-sdk-hooks";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useResolvedComposerActions } from "./composer-slot-hooks";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -315,10 +317,16 @@ function PluginComposerPlusMenuEntryContent({
   const composer = useComposer();
   const view = useComposerView();
   const disabled = useComposerMenuItemDisabled(item, composer);
+  const bind = useBindPluginActionContext();
+  const host = useAppNavigationHost();
 
   const run = async () => {
     try {
-      await item.run({ composer, view } as { composer: PluginComposerApi });
+      await item.run({
+        ...bind(pluginId, () => host),
+        composer,
+        view,
+      } as Parameters<ComposerPlusMenuItem["run"]>[0]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(

@@ -38,9 +38,9 @@ import {
   useAppNavigationHost,
 } from "@/lib/app-navigation-host";
 import {
-  PluginActionServicesProvider,
-  useBindPluginActionServices,
-} from "@/lib/plugin-action-services-provider";
+  PluginActionContextProvider,
+  useBindPluginActionContext,
+} from "@/lib/plugin-action-context-provider";
 import { buildFocusedSurfacePaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { markPluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
@@ -89,8 +89,8 @@ const fixtures = vi.hoisted(() => ({
   router: null as ReturnType<
     typeof import("react-router-dom").createMemoryRouter
   > | null,
-  services: null as {
-    bind: import("@/lib/plugin-navigation-hooks").BindPluginActionServices;
+  binder: null as {
+    bind: import("@/lib/plugin-navigation-hooks").BindPluginActionContext;
     host: import("@/lib/app-navigation-host").ResolvedAppNavigationHostCapabilities;
   } | null,
 }));
@@ -218,8 +218,8 @@ async function mountThreadView(
       {
         path: "/",
         element: (
-          <PluginActionServicesProvider>
-            <PluginActionServicesProbe />
+          <PluginActionContextProvider>
+            <PluginActionContextBinderProbe />
             <ThreadActionCollectors
               coreRegistrations={[]}
               requestRename={() => undefined}
@@ -241,7 +241,7 @@ async function mountThreadView(
                 timelineEnabled={false}
               />
             </DefaultPaneContextProvider>
-          </PluginActionServicesProvider>
+          </PluginActionContextProvider>
         ),
       },
     ],
@@ -277,11 +277,11 @@ async function mountThreadView(
   }
   if (probeHost === "paletteCommand") {
     await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
-    const services = fixtures.services;
-    if (services === null) throw new Error("services probe has not rendered");
+    const binder = fixtures.binder;
+    if (binder === null) throw new Error("binder probe has not rendered");
     const [command] = buildFocusedSurfacePaletteActions({
-      bindServices: services.bind,
-      host: services.host,
+      bind: binder.bind,
+      host: binder.host,
       slots: getPluginSlotSnapshot().commandPaletteActions.flatMap((slot) =>
         slot.pluginId === CONTRACT_PLUGIN_ID && slot.target === "app"
           ? [slot]
@@ -307,31 +307,28 @@ async function mountThreadView(
     );
     await waitFor(() => expect(probe.current).not.toBeNull());
   }
-  const exposesNavigation = probeHost !== "newTabAction";
   return {
     panel: () => readContractPanel(probe),
-    navigation: exposesNavigation
-      ? {
-          navigate: () => readContractNavigate(probe),
-          open: {
-            terminal: makeTerminalSession({
-              id: "term_contract",
-              threadId: THREAD.id,
-              environmentId: ENVIRONMENT.id,
-              hostId: ENVIRONMENT.hostId,
-            }),
-            file: {
-              target: {
-                kind: "thread-storage",
-                threadId: THREAD.id,
-                path: "a.md",
-              },
-              location: null,
-            },
-            url: "https://example.com/contract",
+    navigation: {
+      navigate: () => readContractNavigate(probe),
+      open: {
+        terminal: makeTerminalSession({
+          id: "term_contract",
+          threadId: THREAD.id,
+          environmentId: ENVIRONMENT.id,
+          hostId: ENVIRONMENT.hostId,
+        }),
+        file: {
+          target: {
+            kind: "thread-storage",
+            threadId: THREAD.id,
+            path: "a.md",
           },
-        }
-      : null,
+          location: null,
+        },
+        url: "https://example.com/contract",
+      },
+    },
     snapshot: () => snapshotFromState(sink),
     tabs: () =>
       probeHost === "prompt" || probeHost === "headerRow"
@@ -364,7 +361,6 @@ const FULL_SUPPORT = {
   actionTabs: true,
   navigation: true,
 } as const;
-const PANEL_ONLY_SUPPORT = { ...FULL_SUPPORT, navigation: false } as const;
 
 describePanelControllerContract("thread view", FULL_SUPPORT, () =>
   mountThreadView("prompt"),
@@ -390,15 +386,15 @@ describePanelControllerContract(
 
 describePanelControllerContract(
   "thread new-tab plugin action",
-  PANEL_ONLY_SUPPORT,
+  FULL_SUPPORT,
   () => mountThreadView("newTabAction"),
 );
 
-function PluginActionServicesProbe() {
-  const bind = useBindPluginActionServices();
+function PluginActionContextBinderProbe() {
+  const bind = useBindPluginActionContext();
   const host = useAppNavigationHost();
   useLayoutEffect(() => {
-    fixtures.services = { bind, host };
+    fixtures.binder = { bind, host };
   });
   return null;
 }
@@ -469,20 +465,20 @@ beforeEach(() => {
           id: "probe-message",
           title: "Probe message",
           icon: "Zap",
-          run: ({ experimental_panel, experimental_navigate }) => {
+          run: ({ experimental_panel, navigate }) => {
             if (fixtures.probeHost === "messageAction") {
               fixtures.probe.current = experimental_panel;
-              fixtures.probe.navigate = experimental_navigate;
+              fixtures.probe.navigate = navigate;
             }
           },
         });
         app.commands.register({
           id: "probe-command",
           title: "Probe command",
-          run: ({ experimental_panel, experimental_navigate }) => {
+          run: ({ experimental_panel, navigate }) => {
             if (fixtures.probeHost === "paletteCommand") {
               fixtures.probe.current = experimental_panel;
-              fixtures.probe.navigate = experimental_navigate;
+              fixtures.probe.navigate = navigate;
             }
           },
         });
@@ -493,9 +489,11 @@ beforeEach(() => {
           title: "Launcher",
           icon: "Zap",
           component: ContractActionTab,
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "newTabAction")
+          run: ({ experimental_panel, navigate }) => {
+            if (fixtures.probeHost === "newTabAction") {
               fixtures.probe.current = experimental_panel;
+              fixtures.probe.navigate = navigate;
+            }
           },
         });
         app.slots.experimental_threadAction({

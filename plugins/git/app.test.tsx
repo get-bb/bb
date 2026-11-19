@@ -10,8 +10,8 @@ import gitApp from "./app.js";
 const app = await loadPluginApp(() => import("./app.js"));
 
 function unusedLauncherServices(): {
-  experimental_sdk: PluginBrowserBbSdk;
-  experimental_navigate: BbNavigate;
+  sdk: PluginBrowserBbSdk;
+  navigate: BbNavigate;
 } {
   const unused = <T extends object>(name: string): T =>
     new Proxy({} as T, {
@@ -20,8 +20,8 @@ function unusedLauncherServices(): {
       },
     });
   return {
-    experimental_sdk: unused<PluginBrowserBbSdk>("sdk"),
-    experimental_navigate: unused<BbNavigate>("navigate"),
+    sdk: unused<PluginBrowserBbSdk>("sdk"),
+    navigate: unused<BbNavigate>("navigate"),
   };
 }
 

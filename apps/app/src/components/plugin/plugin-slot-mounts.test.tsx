@@ -8,6 +8,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
+import { useAppNavigationHostRef } from "@/lib/app-navigation-host";
 import {
   startTransition,
   useInsertionEffect,
@@ -1964,13 +1965,13 @@ describe("plugin thread panel actions", () => {
     );
   }
 
-  function usePanelFor(
+  function useHostFor(
     actions: readonly Parameters<
       typeof createPanelActionDestination
     >[0]["action"][],
     openPluginPanel: (args: OpenPluginPanelArgs) => void,
   ) {
-    return useMemo(
+    const panel = useMemo(
       () =>
         createAppPanelController(() => ({
           activeTabId: null,
@@ -1981,6 +1982,11 @@ describe("plugin thread panel actions", () => {
         })),
       [actions, openPluginPanel],
     );
+    const hostRef = useAppNavigationHostRef();
+    useLayoutEffect(() => {
+      hostRef.current = { ...hostRef.current, panel };
+    });
+    return hostRef;
   }
 
   function ActionsProbe({
@@ -1992,7 +1998,7 @@ describe("plugin thread panel actions", () => {
   }) {
     const { actions } = useThreadFixedTabs({ threadId, environmentId: null });
     const entries = usePluginPanelActions({
-      panel: usePanelFor(actions, openPluginPanel),
+      hostRef: useHostFor(actions, openPluginPanel),
       threadId,
       environmentId: null,
       actions,
@@ -2196,12 +2202,12 @@ describe("plugin thread panel actions", () => {
       const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const threadEntries = usePluginPanelActions({
         actions,
-        panel: usePanelFor(actions, recordOpen),
+        hostRef: useHostFor(actions, recordOpen),
         threadId: "thr_9",
         environmentId: null,
       });
       const rootEntries = usePluginNewThreadPanelActions({
-        panel: usePanelFor(newThreadPanelActions, recordOpen),
+        hostRef: useHostFor(newThreadPanelActions, recordOpen),
         projectId: "proj_1",
       });
       return (
@@ -2276,7 +2282,7 @@ describe("plugin thread panel actions", () => {
       > | null>(null);
       const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const entries = usePluginNewThreadPanelActions({
-        panel: usePanelFor(newThreadPanelActions, (args) =>
+        hostRef: useHostFor(newThreadPanelActions, (args) =>
           setTab(createPluginPanelFixedPanelTab(args)),
         ),
         projectId: "proj_1",

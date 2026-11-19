@@ -6,10 +6,10 @@ const WORKTREE_PROVIDER_ID = "git-worktree";
 export async function forkToNewWorkspace(
   context: Pick<
     PluginMessageActionContext,
-    "threadId" | "message" | "experimental_sdk" | "experimental_navigate"
+    "threadId" | "message" | "sdk" | "navigate"
   >,
 ): Promise<void> {
-  const { experimental_sdk: sdk, experimental_navigate: navigate } = context;
+  const { sdk, navigate } = context;
   const source = await sdk.threads.get({ threadId: context.threadId });
   const environmentId = source.environmentId;
   const environment =

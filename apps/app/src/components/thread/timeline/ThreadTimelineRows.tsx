@@ -137,11 +137,10 @@ import {
   type MessageMetadataProps,
 } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
-import type { PluginActionServices } from "@/lib/plugin-navigation-hooks";
-import { useBindPluginActionServices } from "@/lib/plugin-action-services-provider";
+import type { ExperimentalPluginActionContext } from "@get-bb/plugin-sdk";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { useSurfaceMessageActionSlots } from "@/lib/message-action-surface";
-import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
 import {
   usePluginComposerHost,
   type PluginComposerHost,
@@ -198,8 +197,7 @@ interface TimelineRendererStaticContextValue {
         message: ThreadChatMessageReference,
       ) => void)
     | undefined;
-  panel: AppPanelController;
-  messageActionServices: (pluginId: string) => PluginActionServices;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -721,8 +719,7 @@ function buildRowPluginMessageActions(args: {
   timelineThreadId: string | undefined;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  panel: AppPanelController;
-  messageActionServices: (pluginId: string) => PluginActionServices;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
   const {
@@ -730,8 +727,7 @@ function buildRowPluginMessageActions(args: {
     timelineThreadId,
     message,
     selectedText,
-    panel,
-    messageActionServices,
+    messageActionContext,
     composerHost,
   } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
@@ -748,9 +744,8 @@ function buildRowPluginMessageActions(args: {
         threadId: timelineThreadId,
         message,
         selectedText,
-        panel,
         composerHost,
-        services: messageActionServices(slot.pluginId),
+        actionContext: messageActionContext(slot.pluginId),
       }),
   }));
 }
@@ -881,8 +876,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     messageMetadata,
     consumerMessageActions,
     reportProseSelection,
-    panel,
-    messageActionServices,
+    messageActionContext,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -911,8 +905,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: pluginMessageActions,
     timelineThreadId: threadId,
     message: messageReference,
-    panel,
-    messageActionServices,
+    messageActionContext,
     composerHost,
   });
   const rowConsumerActions =
@@ -2399,15 +2392,14 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
   const navigationHost = useAppNavigationHost();
-  const { panel } = navigationHost;
   const latestNavigationHost = useRef(navigationHost);
   useLayoutEffect(() => {
     latestNavigationHost.current = navigationHost;
   });
-  const bindPluginServices = useBindPluginActionServices();
-  const [messageActionServices] = useState(
+  const bindPluginActionContext = useBindPluginActionContext();
+  const [messageActionContext] = useState(
     () => (pluginId: string) =>
-      bindPluginServices(pluginId, () => latestNavigationHost.current),
+      bindPluginActionContext(pluginId, () => latestNavigationHost.current),
   );
   const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
@@ -2422,17 +2414,15 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         timelineThreadId,
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
-        panel,
-        messageActionServices,
+        messageActionContext,
         composerHost,
       }) ?? []
     );
   }, [
     activeSelection,
     composerHost,
-    messageActionServices,
+    messageActionContext,
     messageActionSlots,
-    panel,
     timelineThreadId,
   ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
@@ -2452,8 +2442,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
-      panel,
-      messageActionServices,
+      messageActionContext,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2474,8 +2463,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.consumerMessageActions,
       reportProseSelection,
       timelineThreadId,
-      panel,
-      messageActionServices,
+      messageActionContext,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,

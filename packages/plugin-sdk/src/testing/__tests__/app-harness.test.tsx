@@ -1538,8 +1538,8 @@ describe("loadPluginApp", () => {
       selectedText: "answer",
       experimental_panel,
       composer: null,
-      experimental_sdk: unused<PluginBrowserBbSdk>("sdk"),
-      experimental_navigate: unused<BbNavigate>("navigate"),
+      sdk: unused<PluginBrowserBbSdk>("sdk"),
+      navigate: unused<BbNavigate>("navigate"),
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({

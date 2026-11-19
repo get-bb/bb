@@ -140,14 +140,9 @@ export default definePluginApp((app) => {
     isAvailable: (context) => context.threadId !== null,
     async run(context) {
       if (context.threadId === null) return;
-      await runWorkspaceScript(
-        {
-          sdk: context.experimental_sdk,
-          navigate: context.experimental_navigate,
-        },
-        context.threadId,
-      ).catch((error: unknown) =>
-        reportFailure("Could not run the workspace script", error),
+      await runWorkspaceScript(context, context.threadId).catch(
+        (error: unknown) =>
+          reportFailure("Could not run the workspace script", error),
       );
     },
   });

@@ -1,19 +1,12 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
-import type { PluginCommandContext } from "@get-bb/plugin-sdk";
-import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
-import {
-  getFocusedAppNavigationSurface,
-  getFocusedAppPanelController,
-  type ResolvedAppNavigationHostCapabilities,
-} from "@/lib/app-navigation-host";
 import type {
-  BindPluginActionServices,
-  PluginActionServices,
-} from "@/lib/plugin-navigation-hooks";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "@/lib/plugin-panel-controller";
+  ExperimentalPluginActionContext,
+  PluginCommandContext,
+} from "@get-bb/plugin-sdk";
+import type { ResolvedAppNavigationHostCapabilities } from "@/lib/app-navigation-host";
+import type { BindPluginActionContext } from "@/lib/plugin-navigation-hooks";
+import { bindFocusedSurfaceActionContext } from "@/lib/plugin-action-context-provider";
+import { createRetiredOpenPanel } from "@/lib/plugin-panel-controller";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
@@ -31,8 +24,7 @@ export interface BuildPluginPaletteActionsArgs {
   slots: readonly AppCommandSlot[];
   threadId: string | null;
   projectId: string | null;
-  panel: AppPanelController | null;
-  services: (pluginId: string) => PluginActionServices;
+  actionContext: (pluginId: string) => ExperimentalPluginActionContext;
 }
 
 function describeError(error: unknown): string {
@@ -43,20 +35,14 @@ function actionContext(
   slot: AppCommandSlot,
   args: BuildPluginPaletteActionsArgs,
 ): PluginCommandContext {
-  const experimental_panel = createPluginPanelController(
-    slot.pluginId,
-    () => args.panel,
-  );
-  const services = args.services(slot.pluginId);
+  const shared = args.actionContext(slot.pluginId);
   const context: PluginCommandContext & {
     openPanel: ReturnType<typeof createRetiredOpenPanel>;
   } = {
+    ...shared,
     threadId: args.threadId,
     projectId: args.projectId,
-    experimental_panel,
-    openPanel: createRetiredOpenPanel(experimental_panel),
-    experimental_sdk: services.sdk,
-    experimental_navigate: services.navigate,
+    openPanel: createRetiredOpenPanel(shared.experimental_panel),
   };
   return context;
 }
@@ -114,18 +100,16 @@ export interface BuildPluginComposerCommandActionsArgs {
 }
 
 export function buildFocusedSurfacePaletteActions({
-  bindServices,
+  bind,
   host,
   ...args
-}: Omit<BuildPluginPaletteActionsArgs, "panel" | "services"> & {
-  bindServices: BindPluginActionServices;
+}: Omit<BuildPluginPaletteActionsArgs, "actionContext"> & {
+  bind: BindPluginActionContext;
   host: ResolvedAppNavigationHostCapabilities;
 }): PaletteAction[] {
   return buildPluginPaletteActions({
     ...args,
-    panel: getFocusedAppPanelController(),
-    services: (pluginId) =>
-      bindServices(pluginId, () => getFocusedAppNavigationSurface() ?? host),
+    actionContext: bindFocusedSurfaceActionContext(bind, host),
   });
 }
 

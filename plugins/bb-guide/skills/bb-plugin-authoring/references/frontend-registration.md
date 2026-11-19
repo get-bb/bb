@@ -75,7 +75,11 @@ export default definePluginApp((app) => {
     component: IssuePanel,
     run: async ({ threadId, experimental_panel }) => {
       experimental_panel.openTab({
-        tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
+        tab: {
+          id: "issue",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: `Issue for ${threadId}`,
       });
     },
@@ -159,9 +163,18 @@ not apply. Header buttons do not show `choices`. bb's Git plugin registers
 Commit this way.
 
 ```tsx
-app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
+app.slots.experimental_threadAction({
+  id: "deploy",
+  title: "Deploy",
+  icon: "Rocket",
+  group: "deploy",
+  placement: "header",
   useData: ({ threadIds }) => useDeployable(threadIds),
-  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) } : null });
+  item: ({ thread, data }) =>
+    data.has(thread.id)
+      ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) }
+      : null,
+});
 ```
 
 `app.slots.experimental_threadHeaderAction` is retired: existing callers keep
@@ -229,8 +242,9 @@ your preferences or a realtime channel there. It receives `{ threadIds }`, the
 sorted ids of every thread on screen or in an open menu; for per-thread state,
 keep an id-keyed cache and fetch only the ids not in it, in one batch (for
 example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
-`item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
-`useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
+`item` is pure: it gets `{ thread, data }` plus the
+[callback context](frontend-hooks-and-ui.md#callback-context)
+`{ sdk, navigate, experimental_panel }` and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
 of bb's groups through `experimental_THREAD_ACTION_GROUPS` (`open`, `state`,

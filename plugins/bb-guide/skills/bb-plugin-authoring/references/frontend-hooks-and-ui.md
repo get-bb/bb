@@ -209,7 +209,8 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer })`. `plusMenu` rows also appear in the sent-message
+  plus `run({ composer, ...callback context })` (see
+  [Callback context](#callback-context)). `plusMenu` rows also appear in the sent-message
   editor (scope `thread`), where the other customizations do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
@@ -221,7 +222,8 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   `plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
   `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
   A composer command is listed and rebindable like any plugin command and shares
-  the `app.commands` ID namespace, but `run` receives `{ composer }` for the
+  the `app.commands` ID namespace, but `run` receives `composer` (beside the
+  [callback context](#callback-context)) for the
   composer that handles it, through the same path as bb's own "Focus composer"
   command: the composer holding the caret, or with the caret outside every
   composer, the focused pane's primary composer. Its shortcut is inactive while
@@ -326,14 +328,29 @@ literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
 
+## Callback context
+
+Callbacks run outside your components, so they cannot call hooks. Every
+callback's context therefore extends `ExperimentalPluginActionContext`
+`{ sdk, navigate, experimental_panel }`: your `useSdk()` client, your
+`useBbNavigate()`, and the [panel controller](#panel-controller) of the
+surface that invoked it. This covers `app.commands` (and `isAvailable`),
+`messageAction`, `experimental_threadAction`'s `item` and
+`experimental_bulkItem`, action tabs' and
+`experimental_newThreadPanelAction`'s `run`, sidebar footer actions,
+composer commands, and `plusMenu`/`sendMenu` rows. `navigate` and
+`experimental_panel` act on the focused surface for commands, thread actions
+and sidebar footer actions; on the thread view that showed the message for
+message actions; on the launching surface for panel actions; and on the
+surface showing the composer for composer callbacks.
+Experimental: see `docs/api_to_audit.md`.
+
 ## Panel controller
 
 `experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
 surface the component renders in: the thread view, the plugin page, or the New
-thread screen. Every launcher context carries the same controller as
-`experimental_panel`: plugin commands, thread actions, message actions,
-New-thread panel actions, and action tabs' `run`. Commands and thread actions
-use the focused surface's controller.
+thread screen. Every [callback context](#callback-context) carries the same
+controller as `experimental_panel`.
 
 ```tsx
 const panel = experimental_useAppPanel();

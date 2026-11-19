@@ -44,7 +44,7 @@ import {
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { LocationProbe } from "@/test/location-probe";
-import { PluginActionServicesProvider } from "@/lib/plugin-action-services-provider";
+import { PluginActionContextProvider } from "@/lib/plugin-action-context-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { settleLazyModules } from "@/test/lazy-modules";
 
@@ -368,7 +368,7 @@ function renderPalette({
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <MemoryRouter>
           <QueryClientProvider client={new QueryClient()}>
-            <PluginActionServicesProvider>
+            <PluginActionContextProvider>
               <AppCommandProvider>
                 <button type="button" data-testid="origin">
                   origin
@@ -383,7 +383,7 @@ function renderPalette({
                 <CommandPalette threadId={null} projectId={null} />
                 <LocationProbe />
               </AppCommandProvider>
-            </PluginActionServicesProvider>
+            </PluginActionContextProvider>
           </QueryClientProvider>
         </MemoryRouter>
       </CompactViewportOverrideProvider>
@@ -2443,9 +2443,9 @@ describe("CommandPalette", () => {
             id: "open-issue",
             title: "Open issue",
             defaultShortcut: null,
-            run: ({ experimental_navigate }) => {
+            run: ({ navigate }) => {
               testState.calls.push("plugin-ran");
-              experimental_navigate.toPluginPanel("issues", {
+              navigate.toPluginPanel("issues", {
                 subPath: "LIN-1",
               });
             },

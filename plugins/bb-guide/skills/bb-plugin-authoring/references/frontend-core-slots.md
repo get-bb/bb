@@ -168,7 +168,8 @@ Slot props contracts (versioned, additive-only):
   Thread components receive `{ threadId }`; navigation-page components receive
   `{ subPath }`. `availability: "fixed"` pins one non-closable destination.
   `availability: "action"` adds a launcher; its component also receives persisted
-  JSON `params`, and optional `run` receives context plus `experimental_panel`.
+  JSON `params`, and optional `run` receives context plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context).
   Without `run`, selection opens with default params. Matching owner/id/params
   focuses an existing instance; different params open siblings. `useVisible`
   controls the fixed destination or action launcher, and never closes opened
@@ -179,7 +180,8 @@ Slot props contracts (versioned, additive-only):
   thread action tabs. It appears in that screen's right-panel Actions list
   and never appears beside an existing thread. Registration has the same
   `{ id, title, icon?, component, layout?, run? }` shape, but activating it
-  calls `run({ projectId, experimental_panel })` and its component receives
+  calls `run({ projectId, ...callback context })` (see
+  [Callback context](frontend-hooks-and-ui.md#callback-context)) and its component receives
   `{ projectId: string | null, params: JsonValue | null }`; `projectId` is
   null in projectless compose. Panel opening, JSON params, layout, persistence,
   deduplication, the `boolean` return, and error containment otherwise match
@@ -218,7 +220,8 @@ onChange }` — the control the New Thread environment picker renders beside
 - `experimental_sidebarFooter.register` → managed host-rendered icon items in
   the app sidebar footer. Both variants take `{ id, label, icon }`. An action
   adds `{ kind: "action", onActivate }`; its callback receives
-  `openPluginDetails()`. A disclosure adds
+  `openPluginDetails()` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context). A disclosure adds
   `{ kind: "disclosure", component }`; bb toggles that component above the
   row and passes it only `{ dismiss }`. A disclosure registration returns a
   controller that requests `open`, `close`, or `toggle`; an action registration
@@ -227,7 +230,8 @@ onChange }` — the control the New Thread environment picker renders beside
   Experimental: see `docs/api_to_audit.md`.
 - `sidebarFooterAction` → compatibility API for a host-rendered footer action.
   Registration remains `{ id, title, icon, run }`, and `run` still receives
-  `{ openSettings }`. New plugins should use
+  `{ openSettings }` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context). New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
 - `experimental_sidebarNavigation` → `{ isCompactViewport, placement,

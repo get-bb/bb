@@ -1,5 +1,8 @@
 import { toast } from "sonner";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
+import type {
+  ExperimentalPluginActionContext,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk/app";
 import {
   parseSettingsFile,
   SETTINGS_FILES,
@@ -20,11 +23,6 @@ function encodeBase64(text: string): string {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-interface RunServices {
-  sdk: PluginBrowserBbSdk;
-  navigate: BbNavigate;
 }
 
 async function readWorkspaceScripts(
@@ -52,7 +50,7 @@ async function readWorkspaceScripts(
 }
 
 export async function runWorkspaceScript(
-  { sdk, navigate }: RunServices,
+  { sdk, navigate }: Pick<ExperimentalPluginActionContext, "sdk" | "navigate">,
   threadId: string,
   workspaceThreadIds: readonly string[] = [threadId],
 ): Promise<void> {
