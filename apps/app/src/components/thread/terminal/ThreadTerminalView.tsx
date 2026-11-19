@@ -724,10 +724,12 @@ interface TerminalRuntimeParts {
 class TerminalRuntime implements ParkedTerminalRuntime {
   connectionNotice: TerminalConnectionNotice | null = null;
   ended = false;
+  fontsLoadedWhileParked = false;
   readonly lastStatusNotice: TerminalSessionStatusNoticeRef = {
     current: null,
   };
   parked = false;
+  scheduleFit: TerminalFitScheduler | null = null;
   live: RefObject<TerminalRuntimeLive>;
   readonly dispose: () => void;
   readonly element: HTMLDivElement;
@@ -798,7 +800,6 @@ function mountThreadTerminal({
   let attached: TerminalRuntime | null = null;
   let resizeAnimationFrame: number | null = null;
   let unobserveResize: (() => void) | null = null;
-  let stopObservingFonts: (() => void) | null = null;
   const reportDocumentVisibility = () => {
     attached?.transport.setVisible(document.visibilityState === "visible");
   };
@@ -833,12 +834,11 @@ function mountThreadTerminal({
       });
     };
     fitTerminal();
-    const fontSet = document.fonts;
-    if (fontSet !== undefined) {
-      stopObservingFonts = observeTerminalFontLoading(fontSet, () => {
-        forceTerminalFontMeasurement(runtime.terminal);
-        scheduleFit();
-      });
+    runtime.scheduleFit = scheduleFit;
+    if (runtime.fontsLoadedWhileParked) {
+      runtime.fontsLoadedWhileParked = false;
+      forceTerminalFontMeasurement(runtime.terminal);
+      scheduleFit();
     }
     scheduleFitRef.current = scheduleFit;
     const currentActiveElement = document.activeElement;
@@ -1068,12 +1068,25 @@ function mountThreadTerminal({
       url: buildTerminalWebSocketUrl({ terminalId: sessionId }),
     });
 
+    const fontSet = document.fonts;
+    const stopObservingFonts =
+      fontSet === undefined
+        ? () => undefined
+        : observeTerminalFontLoading(fontSet, () => {
+            if (runtime.scheduleFit === null) {
+              runtime.fontsLoadedWhileParked = true;
+              return;
+            }
+            forceTerminalFontMeasurement(terminal);
+            runtime.scheduleFit();
+          });
     const runtime = new TerminalRuntime({
       dispose: () => {
         if (runtimeDisposed) {
           return;
         }
         runtimeDisposed = true;
+        stopObservingFonts();
         clearConnectionNoticeTimeout();
         if (selectionAnimationFrame !== null) {
           window.cancelAnimationFrame(selectionAnimationFrame);
@@ -1163,7 +1176,6 @@ function mountThreadTerminal({
     live.controlActiveRef.current = false;
     live.setControlActive(false);
     live.setTerminalReady(false);
-    stopObservingFonts?.();
     if (resizeAnimationFrame !== null) {
       window.cancelAnimationFrame(resizeAnimationFrame);
     }
@@ -1179,6 +1191,7 @@ function mountThreadTerminal({
     if (runtime === null) {
       return;
     }
+    runtime.scheduleFit = null;
     if (
       keepAlive &&
       !runtime.ended &&

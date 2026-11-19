@@ -165,6 +165,64 @@ it("applies a theme change made while the terminal was parked when it remounts",
   }
 });
 
+function installFontSet() {
+  const listeners = new Set<() => void>();
+  const fontSet = {
+    readReads: 0,
+    get ready() {
+      fontSet.readReads += 1;
+      return Promise.resolve();
+    },
+    addEventListener: (_type: string, listener: () => void) => {
+      listeners.add(listener);
+    },
+    removeEventListener: (_type: string, listener: () => void) => {
+      listeners.delete(listener);
+    },
+    finishLoading: () => {
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+  };
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: fontSet,
+  });
+  return fontSet;
+}
+
+it("does not read document.fonts.ready again when a parked terminal remounts", async () => {
+  const fontSet = installFontSet();
+  try {
+    const first = await mountTerminal(true);
+    expect(fontSet.readReads).toBe(1);
+    first.view.unmount();
+    renderTerminal(true);
+    await act(async () => {});
+    expect(fontSet.readReads).toBe(1);
+  } finally {
+    Reflect.deleteProperty(document, "fonts");
+  }
+});
+
+it("measures the font again on remount when fonts loaded while the terminal was parked", async () => {
+  const fontSet = installFontSet();
+  try {
+    const first = await mountTerminal(true);
+    await act(async () => {});
+    first.view.unmount();
+    fontSet.finishLoading();
+    const clearTextureAtlas = vi.spyOn(Terminal.prototype, "clearTextureAtlas");
+    expect(clearTextureAtlas).not.toHaveBeenCalled();
+    renderTerminal(true);
+    await act(async () => {});
+    expect(clearTextureAtlas).toHaveBeenCalledTimes(1);
+  } finally {
+    Reflect.deleteProperty(document, "fonts");
+  }
+});
+
 it("disposes a parked terminal that closes as exited and creates a new one on return", async () => {
   const first = await mountTerminal(true);
   const transport = state.transports[0]!;
