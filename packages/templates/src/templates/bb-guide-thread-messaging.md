@@ -126,7 +126,10 @@ Queued messages:
   bb thread queue delete <thread-id> <message-id>
 
   The `Sender` column identifies agent threads and system notices; user messages
-  leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
+  leave it blank. A user message with a requesting thread shows
+  `Requested by <thread-id>`: a `bb thread spawn` from a thread with a running
+  turn. The turn stays the user's. The SDK and `--json` include `initiator` and
+  `senderThreadId`.
   SDK: `threads.queue.list` (all threads) and
   `threads.queuedMessages.list|send|update|delete` (one thread).
 

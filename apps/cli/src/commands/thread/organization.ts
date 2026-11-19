@@ -118,16 +118,20 @@ function parsePositiveInteger(
 
 const MAX_QUEUE_TEXT_WIDTH = 40;
 
+function queueSenderCell(row: ThreadQueuedMessagesResult[number]): string {
+  if (row.initiator === "system") return "System";
+  if (row.initiator === "agent") return row.senderThreadId ?? "Agent";
+  return row.senderThreadId === null
+    ? ""
+    : `Requested by ${row.senderThreadId}`;
+}
+
 function printQueueTable(rows: ThreadQueuedMessagesResult): void {
   const now = Date.now();
   const table = rows.map((row) => [
     row.id,
     row.threadId,
-    row.initiator === "user"
-      ? ""
-      : row.initiator === "system"
-        ? "System"
-        : (row.senderThreadId ?? "Agent"),
+    queueSenderCell(row),
     truncateCell(
       row.payload.kind === "retry" &&
         row.payload.reason === RESTART_RESUME_RETRY_REASON
