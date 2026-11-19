@@ -43,7 +43,11 @@ import {
   subscribeToShellCommands,
   type ShellLoadPhase,
 } from "@/lib/shell";
-import { firstParam, settingsSectionHref } from "@/screens/shell/hrefs";
+import {
+  addServerHref,
+  firstParam,
+  settingsSectionHref,
+} from "@/screens/shell/hrefs";
 import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text, toast } from "@/ui";
 import { describeError } from "@/lib/describe-error";
@@ -318,7 +322,9 @@ export function ProfileWebViewScreen() {
                   router.push(
                     profile === null
                       ? "/settings/servers"
-                      : `/connect?profileId=${encodeURIComponent(profile.id)}`,
+                      : profile.mode === "direct"
+                        ? addServerHref({ profileId: profile.id })
+                        : `/connect?profileId=${encodeURIComponent(profile.id)}`,
                   )
                 }
               >

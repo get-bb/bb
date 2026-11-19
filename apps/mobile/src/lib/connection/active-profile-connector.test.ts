@@ -12,6 +12,7 @@ import {
 } from "../realtime/fake-socket";
 import type { RealtimeSocketFactory } from "../realtime/socket";
 import { createProfileClientRegistry } from "../sdk/client-registry";
+import type { CookieStoreLike } from "../session/cookie-store";
 import type { StoredSession } from "../session/session-cache";
 import { createSessionScheduler } from "../session/session-scheduler";
 import {
@@ -21,6 +22,7 @@ import {
   AUTH_FAILURE_STREAK_WINDOW_MS,
   AUTH_FAILURE_VERIFY_DEBOUNCE_MS,
   CONNECT_FAILURE_VERIFY_INTERVAL_MS,
+  DIRECT_ACCESS_REVOKED_DETAIL,
   createActiveProfileConnector,
 } from "./active-profile-connector";
 
@@ -30,6 +32,7 @@ const direct: DirectServerProfile = {
   serverUrl: "http://127.0.0.1:41999",
   label: "Simulator",
   createdAt: 0,
+  access: null,
 };
 
 const connect: ConnectServerProfile = {
@@ -63,6 +66,7 @@ function fakeAppState(): AppStateLike & {
 }
 
 interface SetupOptions {
+  cookieStore?: CookieStoreLike;
   fallbackResponse?: () => Response;
   onSocket?: (socket: FakeSocket) => void;
   stored?: StoredSession;
@@ -94,6 +98,7 @@ function setup(options: SetupOptions = {}) {
   const connector = createActiveProfileConnector({
     registry,
     appState,
+    cookieStore: options.cookieStore ?? { set: async () => true },
     createSessionScheduler: () => {
       const scheduler = createSessionScheduler({
         cookieStore: { set: async () => true },
@@ -171,6 +176,64 @@ describe("createActiveProfileConnector", () => {
     expect(sockets.sockets).toHaveLength(1);
     expect(connector.getSnapshot()?.profile.label).toBe("Renamed");
     expect(connector.getSnapshot()?.client).toBe(snap?.client);
+  });
+
+  it("installs a signed-in direct profile's cookie before opening the socket", async () => {
+    let installCookie: () => void = () => {};
+    const installed: { name: string; value: string; webKit: boolean }[] = [];
+    const { sockets, connector } = setup({
+      cookieStore: {
+        set: (_url, cookie, webKit) => {
+          installed.push({ name: cookie.name, value: cookie.value, webKit });
+          return new Promise<void>((resolve) => {
+            installCookie = resolve;
+          });
+        },
+      },
+    });
+    connector.activate({
+      ...direct,
+      access: { token: "bbs_phone", cookieName: "bb_session_41999" },
+    });
+    expect(connector.getSnapshot()?.session.status).toBe("authenticating");
+    expect(sockets.sockets).toHaveLength(0);
+    installCookie();
+    await flush();
+    installCookie();
+    await flush();
+    expect(installed).toEqual([
+      { name: "bb_session_41999", value: "bbs_phone", webKit: false },
+      { name: "bb_session_41999", value: "bbs_phone", webKit: true },
+    ]);
+    expect(sockets.sockets).toHaveLength(1);
+    expect(connector.getSnapshot()?.session).toEqual({ status: "idle" });
+  });
+
+  it("asks a signed-in direct profile to sign in again once the server stops accepting it", async () => {
+    const { sockets, connector, fetchResponses, registry } = setup();
+    const signedIn = {
+      ...direct,
+      access: { token: "bbs_phone", cookieName: "bb_session_41999" },
+    };
+    connector.activate(signedIn);
+    await settle();
+    const socket = sockets.latest();
+    socket.open();
+    fetchResponses.push(
+      new Response(JSON.stringify({ code: "unauthenticated" }), {
+        status: 401,
+      }),
+      new Response(JSON.stringify({ authenticated: false }), { status: 200 }),
+    );
+    await registry
+      .getClientForProfile(signedIn)
+      .fetch(`${signedIn.serverUrl}/api/v1/projects`);
+    await settle();
+    expect(connector.getSnapshot()?.session).toEqual({
+      status: "auth-required",
+      detail: DIRECT_ACCESS_REVOKED_DETAIL,
+    });
+    expect(socket.closes).toHaveLength(1);
   });
 
   it("tears the previous socket down when switching profiles and when deactivating", () => {

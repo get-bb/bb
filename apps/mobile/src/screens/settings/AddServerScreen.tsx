@@ -4,10 +4,15 @@ import { View, type TextInputInstance } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
   PROFILE_LABEL_MAX_LENGTH,
-  probeServer,
+  checkDirectServer,
+  pairDirectServer,
   validateDirectServerUrl,
+  type DirectServerAccess,
+  type DirectServerCheck,
 } from "@/lib/profiles";
 import { describeError } from "@/lib/describe-error";
+import { describeThisDevice } from "@/lib/device-label";
+import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
 import { Button, GroupedRow, Input, Text, toast } from "@/ui";
 import { connectEnrollHref, rawPathHref } from "../shell/hrefs";
 import { GroupedScreen } from "./GroupedScreen";
@@ -18,6 +23,8 @@ type SubmitState =
   | { phase: "idle" }
   | { phase: "probing" }
   | { phase: "failed"; message: string }
+  | { phase: "needs-code"; serverUrl: string; message: string }
+  | { phase: "pairing"; serverUrl: string }
   | { phase: "saving" };
 
 function defaultLabel(serverUrl: string): string {
@@ -28,56 +35,76 @@ function defaultLabel(serverUrl: string): string {
   }
 }
 
+const pairingFetch = createMobileFetch((input, init) => fetch(input, init));
+
 const URL_HELP =
   "Use your server’s LAN or Tailscale address. Your phone must be able to reach it.";
 
 export function AddServerScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ serverUrl?: string; next?: string }>();
+  const params = useLocalSearchParams<{
+    serverUrl?: string;
+    next?: string;
+    profileId?: string;
+  }>();
   const colors = useBadgeColors();
-  const { profiles, addProfile, setActiveProfile } = useProfiles();
-  const [url, setUrl] = useState(params.serverUrl ?? "");
+  const { profiles, addProfile, updateProfile, setActiveProfile } =
+    useProfiles();
+  const repairProfile = profiles.find(
+    (profile) => profile.id === params.profileId && profile.mode === "direct",
+  );
+  const repair = repairProfile?.mode === "direct" ? repairProfile : null;
+  const [url, setUrl] = useState(params.serverUrl ?? repair?.serverUrl ?? "");
   const [label, setLabel] = useState("");
+  const [code, setCode] = useState("");
   const [urlTouched, setUrlTouched] = useState(false);
-  const [submit, setSubmit] = useState<SubmitState>({ phase: "idle" });
+  const [submit, setSubmit] = useState<SubmitState>(
+    repair === null
+      ? { phase: "idle" }
+      : {
+          phase: "needs-code",
+          serverUrl: repair.serverUrl,
+          message:
+            "Enter a new sign-in code. On the server machine run `bb access pair`, or open Settings → Devices on a signed-in browser.",
+        },
+  );
   const labelRef = useRef<TextInputInstance>(null);
 
   const validation = validateDirectServerUrl(url);
   const showUrlError = urlTouched && !validation.ok && url.trim().length > 0;
   const insecure = validation.ok && validation.warning === "insecure-http";
-  const busy = submit.phase === "probing" || submit.phase === "saving";
+  const busy =
+    submit.phase === "probing" ||
+    submit.phase === "pairing" ||
+    submit.phase === "saving";
+  const awaitingCode =
+    submit.phase === "needs-code" || submit.phase === "pairing";
   const firstRun = profiles.length === 0;
 
-  const onSubmit = async () => {
-    setUrlTouched(true);
-    if (!validation.ok) {
-      setSubmit({ phase: "failed", message: validation.message });
-      return;
-    }
-    const { serverUrl } = validation;
-    setSubmit({ phase: "probing" });
-    const probe = await probeServer(serverUrl, fetch);
-    if (!probe.ok) {
-      const where =
-        probe.stage === "health"
-          ? "Could not reach the server"
-          : "Reached the server, but it does not look like bb";
-      setSubmit({ phase: "failed", message: `${where}: ${probe.error}` });
-      return;
-    }
+  const save = async (
+    serverUrl: string,
+    access: DirectServerAccess | null,
+  ): Promise<void> => {
     setSubmit({ phase: "saving" });
     try {
-      const trimmedLabel = label.trim();
-      const profile = await addProfile({
-        mode: "direct",
-        serverUrl,
-        label: (trimmedLabel || defaultLabel(serverUrl)).slice(
-          0,
-          PROFILE_LABEL_MAX_LENGTH,
-        ),
-      });
-      await setActiveProfile(profile.id);
-      toast.success(`Added ${profile.label}`);
+      if (repair !== null) {
+        await updateProfile(repair.id, { access });
+        await setActiveProfile(repair.id);
+        toast.success(`Signed in to ${repair.label} again`);
+      } else {
+        const trimmedLabel = label.trim();
+        const profile = await addProfile({
+          mode: "direct",
+          serverUrl,
+          label: (trimmedLabel || defaultLabel(serverUrl)).slice(
+            0,
+            PROFILE_LABEL_MAX_LENGTH,
+          ),
+          access,
+        });
+        await setActiveProfile(profile.id);
+        toast.success(`Added ${profile.label}`);
+      }
       router.dismissTo("/");
       if (params.next?.startsWith("/")) router.push(rawPathHref(params.next));
     } catch (error) {
@@ -85,107 +112,202 @@ export function AddServerScreen() {
     }
   };
 
+  const settle = async (check: DirectServerCheck): Promise<void> => {
+    switch (check.kind) {
+      case "ready":
+        await save(check.serverUrl, check.access);
+        return;
+      case "needs-code":
+        setSubmit({
+          phase: "needs-code",
+          serverUrl: check.serverUrl,
+          message: check.message,
+        });
+        return;
+      case "failed":
+        setSubmit({ phase: "failed", message: check.message });
+        return;
+    }
+  };
+
+  const onSubmit = async () => {
+    setUrlTouched(true);
+    if (!validation.ok) {
+      setSubmit({ phase: "failed", message: validation.message });
+      return;
+    }
+    setSubmit({ phase: "probing" });
+    await settle(await checkDirectServer(validation.serverUrl, fetch));
+  };
+
+  const onPair = async () => {
+    if (submit.phase !== "needs-code") return;
+    const { serverUrl } = submit;
+    setSubmit({ phase: "pairing", serverUrl });
+    await settle(
+      await pairDirectServer({
+        serverUrl,
+        code,
+        label: `bb mobile on ${describeThisDevice()}`,
+        fetchImpl: pairingFetch,
+      }),
+    );
+  };
+
   return (
     <>
       <Stack.Screen
-        options={{ title: firstRun ? "Connect to a bb server" : "Add server" }}
+        options={{
+          title:
+            repair !== null
+              ? `Sign in to ${repair.label}`
+              : firstRun
+                ? "Connect to a bb server"
+                : "Add server",
+        }}
       />
       <GroupedScreen testID="add-server-screen">
-        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Mobile.">
-          <GroupedRow
-            title="Connect with bb connect"
-            badge={{ icon: "Globe", symbol: "globe", color: colors.blue }}
-            trailing="chevron"
-            onPress={() => router.push(connectEnrollHref())}
-            disabled={busy}
-            testID="add-server-connect"
-          />
-        </SettingsSection>
+        {repair === null ? (
+          <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Mobile.">
+            <GroupedRow
+              title="Connect with bb connect"
+              badge={{ icon: "Globe", symbol: "globe", color: colors.blue }}
+              trailing="chevron"
+              onPress={() => router.push(connectEnrollHref())}
+              disabled={busy}
+              testID="add-server-connect"
+            />
+          </SettingsSection>
+        ) : null}
 
-        <SettingsSection
-          title="Server URL"
-          footnote={
-            showUrlError ? (
-              <Text
-                variant="footnote"
-                tone="destructive"
-                testID="server-url-error"
-              >
-                {validation.message}
-              </Text>
-            ) : insecure ? (
-              <Text
-                variant="footnote"
-                tone="warning"
-                testID="server-url-warning"
-              >
-                Plain http is unencrypted: anyone on this network can read your
-                threads. Prefer https (Tailscale Serve) outside a trusted LAN.
-              </Text>
-            ) : (
-              URL_HELP
-            )
-          }
-        >
-          <View className="px-1">
-            <Input
-              value={url}
-              onChangeText={(next) => {
-                setUrl(next);
-                if (submit.phase === "failed") setSubmit({ phase: "idle" });
-              }}
-              onBlur={() => setUrlTouched(true)}
-              placeholder="https://bb.example.ts.net"
-              keyboardType="url"
-              textContentType="URL"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              returnKeyType="next"
-              submitBehavior="submit"
-              onSubmitEditing={() => labelRef.current?.focus()}
-              invalid={showUrlError}
-              mono
-              grouped
-              editable={!busy}
-              testID="server-url-input"
-            />
-          </View>
-          <View className="px-1">
-            <Input
-              ref={labelRef}
-              value={label}
-              onChangeText={setLabel}
-              placeholder={
-                validation.ok
-                  ? `Label (${defaultLabel(validation.serverUrl)})`
-                  : "Label (optional)"
-              }
-              maxLength={PROFILE_LABEL_MAX_LENGTH}
-              autoCapitalize="words"
-              returnKeyType="go"
-              onSubmitEditing={() => void onSubmit()}
-              grouped
-              editable={!busy}
-              testID="server-label-input"
-            />
-          </View>
-        </SettingsSection>
+        {repair === null ? (
+          <SettingsSection
+            title="Server URL"
+            footnote={
+              showUrlError ? (
+                <Text
+                  variant="footnote"
+                  tone="destructive"
+                  testID="server-url-error"
+                >
+                  {validation.message}
+                </Text>
+              ) : insecure ? (
+                <Text
+                  variant="footnote"
+                  tone="warning"
+                  testID="server-url-warning"
+                >
+                  Plain http is unencrypted: anyone on this network can read
+                  your threads. Prefer https (Tailscale Serve) outside a trusted
+                  LAN.
+                </Text>
+              ) : (
+                URL_HELP
+              )
+            }
+          >
+            <View className="px-1">
+              <Input
+                value={url}
+                onChangeText={(next) => {
+                  setUrl(next);
+                  if (
+                    submit.phase === "failed" ||
+                    submit.phase === "needs-code"
+                  ) {
+                    setSubmit({ phase: "idle" });
+                  }
+                }}
+                onBlur={() => setUrlTouched(true)}
+                placeholder="https://bb.example.ts.net"
+                keyboardType="url"
+                textContentType="URL"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => labelRef.current?.focus()}
+                invalid={showUrlError}
+                mono
+                grouped
+                editable={!busy}
+                testID="server-url-input"
+              />
+            </View>
+            <View className="px-1">
+              <Input
+                ref={labelRef}
+                value={label}
+                onChangeText={setLabel}
+                placeholder={
+                  validation.ok
+                    ? `Label (${defaultLabel(validation.serverUrl)})`
+                    : "Label (optional)"
+                }
+                maxLength={PROFILE_LABEL_MAX_LENGTH}
+                autoCapitalize="words"
+                returnKeyType="go"
+                onSubmitEditing={() => void onSubmit()}
+                grouped
+                editable={!busy}
+                testID="server-label-input"
+              />
+            </View>
+          </SettingsSection>
+        ) : null}
+
+        {awaitingCode ? (
+          <SettingsSection
+            title="Sign-in code"
+            footnote={
+              submit.phase === "needs-code" ? (
+                <Text variant="footnote" testID="server-code-help">
+                  {submit.message}
+                </Text>
+              ) : null
+            }
+          >
+            <View className="px-1">
+              <Input
+                value={code}
+                onChangeText={setCode}
+                placeholder="XXXXX-XXXXX"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="go"
+                onSubmitEditing={() => void onPair()}
+                mono
+                grouped
+                editable={!busy}
+                testID="server-code-input"
+              />
+            </View>
+          </SettingsSection>
+        ) : null}
 
         <View className="gap-2">
           <Button
-            onPress={() => void onSubmit()}
+            onPress={() => void (awaitingCode ? onPair() : onSubmit())}
             loading={busy}
-            disabled={url.trim().length === 0}
+            disabled={
+              awaitingCode ? code.trim().length === 0 : url.trim().length === 0
+            }
             icon="ArrowRight"
             iconPosition="right"
             testID="add-server-submit"
           >
             {submit.phase === "probing"
               ? "Checking server…"
-              : submit.phase === "saving"
-                ? "Saving…"
-                : "Connect"}
+              : submit.phase === "pairing"
+                ? "Signing in…"
+                : submit.phase === "saving"
+                  ? "Saving…"
+                  : awaitingCode
+                    ? "Sign in"
+                    : "Connect"}
           </Button>
           {submit.phase === "failed" ? (
             <Text

@@ -17,6 +17,7 @@ export function getActiveProfileConnector(): ActiveProfileConnector {
     instance = createActiveProfileConnector({
       registry: getAppProfileClientRegistry(),
       appState: nativeAppState,
+      cookieStore: nativeCookieStore,
       createSessionScheduler: () =>
         createSessionScheduler({
           cookieStore: nativeCookieStore,

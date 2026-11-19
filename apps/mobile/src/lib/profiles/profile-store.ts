@@ -82,10 +82,25 @@ function parseIndex(raw: string | null): ProfileIndex {
   return { ids: [], activeProfileId: null };
 }
 
+function upgradeStoredProfile(value: unknown): unknown {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "mode" in value &&
+    value.mode === "direct" &&
+    !("access" in value)
+  ) {
+    return { ...value, access: null };
+  }
+  return value;
+}
+
 function parseProfile(raw: string | null): ServerProfile | null {
   if (raw === null) return null;
   try {
-    const parsed = serverProfileSchema.safeParse(JSON.parse(raw));
+    const parsed = serverProfileSchema.safeParse(
+      upgradeStoredProfile(JSON.parse(raw)),
+    );
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -204,6 +219,9 @@ export function createProfileStore(deps: CreateProfileStoreDeps): ProfileStore {
           (patch.handle !== undefined || patch.credential !== undefined)
         ) {
           throw new Error("Direct profiles have no connect handle/credential");
+        }
+        if (existing.mode === "connect" && patch.access !== undefined) {
+          throw new Error("Connect profiles have no direct sign-in");
         }
         const merged = { ...existing, ...withoutUndefined(patch) };
         const profile = serverProfileSchema.parse(merged);

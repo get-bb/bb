@@ -20,6 +20,7 @@ async function setup() {
     mode: "direct",
     serverUrl: "http://192.168.1.20:38886",
     label: "Laptop",
+    access: null,
   });
   const connect = await store.addProfile({
     mode: "connect",

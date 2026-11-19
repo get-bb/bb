@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sessionCookieSpec } from "./cookie-store";
+import { directAccessCookieSpec, sessionCookieSpec } from "./cookie-store";
 
 const session = {
   cookie: {
@@ -65,5 +65,26 @@ describe("sessionCookieSpec", () => {
         ),
       ).toMatchObject({ domain });
     }
+  });
+});
+
+describe("directAccessCookieSpec", () => {
+  it("scopes the sign-in to the server host and marks it Secure only for https", () => {
+    const access = { token: "bbs_phone", cookieName: "bb_session_38886" };
+    const now = Date.UTC(2026, 10, 19);
+    expect(
+      directAccessCookieSpec(access, "http://192.168.1.20:38886", now),
+    ).toEqual({
+      name: "bb_session_38886",
+      value: "bbs_phone",
+      domain: "192.168.1.20",
+      path: "/",
+      secure: false,
+      httpOnly: true,
+      expires: "2027-12-24T00:00:00.000+00:00",
+    });
+    expect(
+      directAccessCookieSpec(access, "https://mac.tail.ts.net", now),
+    ).toMatchObject({ domain: "mac.tail.ts.net", secure: true });
   });
 });

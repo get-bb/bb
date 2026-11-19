@@ -15,7 +15,7 @@ import {
   useSheet,
   type ActionSheetAction,
 } from "@/ui";
-import { connectEnrollHref } from "../shell/hrefs";
+import { addServerHref, connectEnrollHref } from "../shell/hrefs";
 import { GroupedScreen } from "./GroupedScreen";
 import {
   HeaderIconButton,
@@ -78,18 +78,18 @@ export function ServersScreen() {
           },
         ]
       : []),
-    ...(profile.mode === "connect"
-      ? [
-          {
-            key: "reauth",
-            label: "Sign in again",
-            icon: "Lock" as const,
-            onPress: () => {
-              router.push(connectEnrollHref({ profileId: profile.id }));
-            },
-          },
-        ]
-      : []),
+    {
+      key: "reauth",
+      label: "Sign in again",
+      icon: "Lock" as const,
+      onPress: () => {
+        router.push(
+          profile.mode === "connect"
+            ? connectEnrollHref({ profileId: profile.id })
+            : addServerHref({ profileId: profile.id }),
+        );
+      },
+    },
     {
       key: "remove",
       label: "Remove",

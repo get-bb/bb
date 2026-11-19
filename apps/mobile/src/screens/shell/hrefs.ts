@@ -54,6 +54,14 @@ export function connectEnrollHref(params: ConnectEnrollHrefParams = {}): Href {
   });
 }
 
+export function addServerHref(params: {
+  profileId?: string;
+  serverUrl?: string;
+  next?: string;
+}): Href {
+  return untypedHref("/settings/servers/add", params);
+}
+
 type SettingsSectionRoute = "device" | "appearance" | "notifications";
 
 export function settingsSectionHref(section: SettingsSectionRoute): Href {

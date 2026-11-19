@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MOBILE_APP_SURFACE_HEADER } from "../sdk/app-surface";
 import { isLoopbackHost } from "./direct-url";
 
-export type ProbeStage = "health" | "config";
+export type ProbeStage = "health" | "config" | "sign-in";
 
 export type ProbeServerResult =
   | {
@@ -18,6 +18,10 @@ const probeConfigSchema = z.object({
 });
 
 const healthSchema = z.object({ ok: z.literal(true) });
+
+const signInRequiredSchema = z.object({
+  code: z.enum(["unauthenticated", "credential_requires_https"]),
+});
 
 export type ProbeFetch = (
   url: string,
@@ -40,34 +44,57 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+type GetJsonResult =
+  | { ok: true; body: unknown }
+  | { ok: false; error: string; status: number | null; body: unknown };
+
 async function getJson(
   fetchImpl: ProbeFetch,
   url: string,
   timeoutMs: number,
-): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+  accessToken: string | null,
+): Promise<GetJsonResult> {
   try {
     const response = await fetchImpl(url, {
       headers: {
         [MOBILE_APP_SURFACE_HEADER.name]: MOBILE_APP_SURFACE_HEADER.value,
+        ...(accessToken === null
+          ? {}
+          : { authorization: `Bearer ${accessToken}` }),
       },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      return { ok: false, error: `HTTP ${response.status}` };
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch {}
+      return {
+        ok: false,
+        error: `HTTP ${response.status}`,
+        status: response.status,
+        body,
+      };
     }
     try {
       return { ok: true, body: await response.json() };
     } catch {
-      return { ok: false, error: "Response was not JSON" };
+      return {
+        ok: false,
+        error: "Response was not JSON",
+        status: response.status,
+        body: null,
+      };
     }
   } catch (error) {
-    return { ok: false, error: describeError(error) };
+    return { ok: false, error: describeError(error), status: null, body: null };
   }
 }
 
 export async function probeServer(
   serverUrl: string,
   fetchImpl: ProbeFetch,
+  accessToken: string | null,
 ): Promise<ProbeServerResult> {
   const base = serverUrl.replace(/\/+$/u, "");
 
@@ -75,6 +102,7 @@ export async function probeServer(
     fetchImpl,
     `${base}/health`,
     DEFAULT_PROBE_TIMEOUT_MS,
+    null,
   );
   if (!health.ok) {
     return { ok: false, serverUrl: base, stage: "health", error: health.error };
@@ -92,8 +120,23 @@ export async function probeServer(
     fetchImpl,
     `${base}/api/v1/system/config`,
     DEFAULT_PROBE_TIMEOUT_MS,
+    accessToken,
   );
   if (!config.ok) {
+    const signIn = signInRequiredSchema.safeParse(config.body);
+    if (config.status === 401 && signIn.success) {
+      return {
+        ok: false,
+        serverUrl: base,
+        stage: "sign-in",
+        error:
+          signIn.data.code === "credential_requires_https"
+            ? "This phone's sign-in was made over HTTPS. Use the HTTPS address or sign in again."
+            : accessToken === null
+              ? "This bb needs a sign-in code."
+              : "This phone's sign-in was not accepted.",
+      };
+    }
     return { ok: false, serverUrl: base, stage: "config", error: config.error };
   }
   const parsed = probeConfigSchema.safeParse(config.body);

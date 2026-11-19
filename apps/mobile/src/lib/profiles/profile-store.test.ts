@@ -20,6 +20,7 @@ const direct = {
   mode: "direct" as const,
   serverUrl: "http://127.0.0.1:20304",
   label: "Simulator",
+  access: null,
 };
 const connect = {
   mode: "connect" as const,
@@ -30,6 +31,51 @@ const connect = {
 };
 
 describe("profile store", () => {
+  it("reads a direct profile saved before sign-ins existed as never signed in", async () => {
+    const storage = createMemorySecureStorage();
+    await storage.setItem(
+      PROFILE_INDEX_STORAGE_KEY,
+      JSON.stringify({ ids: ["old"], activeProfileId: "old" }),
+    );
+    await storage.setItem(
+      profileStorageKey("old"),
+      JSON.stringify({
+        id: "old",
+        mode: "direct",
+        serverUrl: "http://192.168.1.20:38886",
+        label: "Laptop",
+        createdAt: 1,
+      }),
+    );
+    const { store } = makeStore(storage);
+    const state = await store.load();
+    expect(state.loadError).toBeNull();
+    expect(state.profiles).toEqual([
+      {
+        id: "old",
+        mode: "direct",
+        serverUrl: "http://192.168.1.20:38886",
+        label: "Laptop",
+        createdAt: 1,
+        access: null,
+      },
+    ]);
+  });
+
+  it("stores a direct sign-in and refuses one on a connect profile", async () => {
+    const { store, storage } = makeStore();
+    const a = await store.addProfile(direct);
+    const b = await store.addProfile(connect);
+    const access = { token: "bbs_token", cookieName: "bb_session_38886" };
+    await store.updateProfile(a.id, { access });
+    expect(
+      JSON.parse(storage.entries.get(profileStorageKey(a.id))!),
+    ).toMatchObject({ access });
+    await expect(store.updateProfile(b.id, { access })).rejects.toThrow(
+      /no direct sign-in/u,
+    );
+  });
+
   it("persists one key per profile plus an index, and activates the first profile", async () => {
     const { store, storage } = makeStore();
     await store.load();
