@@ -336,7 +336,7 @@ export const skillSummarySchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   provider: skillProviderSchema.nullable(),
-  providers: z.array(skillProviderSchema),
+  providers: z.array(skillProviderSchema).default([]),
   scope: skillScopeSchema,
   pluginId: z.string().min(1).nullable(),
   filePath: z.string(),

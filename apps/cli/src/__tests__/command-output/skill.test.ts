@@ -29,6 +29,7 @@ describe("bb skill commands", () => {
           provider: "codex",
           providers: ["codex"],
           scope: "provider-user",
+          pluginId: null,
           filePath: "/home/user/.agents/skills/review/SKILL.md",
           manageable: true,
           registrySkillId: null,

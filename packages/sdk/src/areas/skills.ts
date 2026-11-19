@@ -7,6 +7,7 @@ import {
   registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
+  skillListResponseSchema,
   type DeleteSkillRequest,
   type RegistryRepositoryStars,
   type RegistrySkill,
@@ -225,13 +226,15 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       );
     },
     async list(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.$get(
-          {
-            param: { id: input.projectId },
-            query: { environmentId: input.environmentId ?? "" },
-          },
-          ...signalRequestArgs(input.signal),
+      return skillListResponseSchema.parse(
+        await transport.readJson(
+          transport.api.v1.projects[":id"].skills.$get(
+            {
+              param: { id: input.projectId },
+              query: { environmentId: input.environmentId ?? "" },
+            },
+            ...signalRequestArgs(input.signal),
+          ),
         ),
       );
     },

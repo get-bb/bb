@@ -857,7 +857,7 @@ and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
 
-Several providers can read the same skill, for example one under
+Several providers can read the same skill file, for example one under
 `~/.agents/skills` or `~/.claude/skills`, or a Claude Code plugin skill that
 Grok also loads. The Skills page, the SDK, and `bb skill list` list such a skill
 once with `provider: null` and every provider that reads it in `providers`; the

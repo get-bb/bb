@@ -1508,6 +1508,20 @@ describe("SkillDetailDialogView", () => {
       tooltipName: "Skill catalog fixture plugin.",
       providerIcon: "bb",
     },
+    {
+      skill: makeSkill({
+        name: "pstack:poteto",
+        provider: null,
+        providers: ["acp-cursor", "claude-code"],
+        scope: "plugin",
+        pluginId: "pstack",
+        manageable: false,
+      }),
+      accessibleLabel:
+        "pstack:poteto is included with Pstack plugin, read by Cursor, Claude Code",
+      tooltipName: "Pstack plugin, read by Cursor, Claude Code.",
+      providerIcon: "shared",
+    },
   ])("presents $skill.name as plugin-provided", async (example) => {
     renderSkillDetailDialog(example.skill);
 

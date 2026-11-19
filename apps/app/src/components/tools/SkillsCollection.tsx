@@ -34,7 +34,10 @@ import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 
-type ResourceProviderFilter = "bb" | "shared" | SkillProvider;
+type ResourceProviderFilter =
+  | "owner:bb"
+  | "owner:shared"
+  | `provider:${SkillProvider}`;
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
 type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
@@ -85,23 +88,37 @@ function skillOwnerLabel(
     : providerLabel(skill.provider, providerRoster);
 }
 
+function providerFilterId(provider: SkillProvider): ResourceProviderFilter {
+  return `provider:${provider}`;
+}
+
+function filterProviderId(
+  filter: ResourceProviderFilter,
+): SkillProvider | null {
+  return filter.startsWith("provider:")
+    ? filter.slice("provider:".length)
+    : null;
+}
+
 function skillOwnerFilterId(skill: SkillSummary): ResourceProviderFilter {
-  if (skill.provider !== null) return skill.provider;
-  return isSharedSkill(skill) ? "shared" : "bb";
+  if (skill.provider !== null) return providerFilterId(skill.provider);
+  return isSharedSkill(skill) ? "owner:shared" : "owner:bb";
 }
 
 function skillProviderFilterIds(skill: SkillSummary): ResourceProviderFilter[] {
   const owner = skillOwnerFilterId(skill);
-  return owner === "shared" ? [owner, ...skill.providers] : [owner];
+  return owner === "owner:shared"
+    ? [owner, ...skill.providers.map(providerFilterId)]
+    : [owner];
 }
 
 function providerFilterLabel(
-  provider: ResourceProviderFilter,
+  filter: ResourceProviderFilter,
   providerRoster: ProviderRoster,
 ): string {
-  if (provider === "bb") return "bb";
-  if (provider === "shared") return "Shared";
-  return providerLabel(provider, providerRoster);
+  if (filter === "owner:bb") return "bb";
+  if (filter === "owner:shared") return "Shared";
+  return providerLabel(filterProviderId(filter), providerRoster);
 }
 
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
@@ -130,7 +147,11 @@ function isResourceSkillSourceFilter(
 function isResourceProviderFilter(
   value: string,
 ): value is ResourceProviderFilter {
-  return value !== "";
+  return (
+    value === "owner:bb" ||
+    value === "owner:shared" ||
+    (value.startsWith("provider:") && value !== "provider:")
+  );
 }
 
 export function ProviderLogo({
@@ -253,10 +274,9 @@ function includedPluginDescription(
   skill: SkillSummary,
   providerRoster: ProviderRoster,
 ): string {
-  const owner = isSharedSkill(skill)
-    ? sharedProvidersLabel(skill, providerRoster)
-    : providerLabel(skill.provider, providerRoster);
-  return `${providerPluginDisplayName(skill)} (${owner} plugin)`;
+  return isSharedSkill(skill)
+    ? `${providerPluginDisplayName(skill)} plugin, read by ${sharedProvidersLabel(skill, providerRoster)}`
+    : `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider, providerRoster)} plugin)`;
 }
 
 function IncludedPluginTooltip({
@@ -276,7 +296,7 @@ function IncludedPluginTooltip({
       }
       name={
         shared
-          ? `${providerPluginDisplayName(skill)} plugin, read by ${sharedProvidersLabel(skill, providerRoster)}.`
+          ? `${includedPluginDescription(skill, providerRoster)}.`
           : `${providerPluginDisplayName(skill)} plugin.`
       }
       shared={shared}
@@ -442,35 +462,38 @@ export function SkillsOverview({
   );
   const providerOptions = useMemo(() => {
     const present = new Set<ResourceProviderFilter>([
-      "bb",
+      "owner:bb",
       ...providerCounts.keys(),
       ...providerFilters,
     ]);
     const ordered = [...present].sort((left, right) =>
-      left === "bb" || right === "bb"
-        ? Number(left !== "bb") - Number(right !== "bb")
+      left === "owner:bb" || right === "owner:bb"
+        ? Number(left !== "owner:bb") - Number(right !== "owner:bb")
         : providerFilterLabel(left, providerRoster).localeCompare(
             providerFilterLabel(right, providerRoster),
           ),
     );
-    return ordered.map((provider) => ({
-      id: provider,
-      label: providerFilterLabel(provider, providerRoster),
-      leading:
-        provider === "bb" ? (
-          <BbLogo className="size-4" />
-        ) : provider === "shared" ? (
-          <Icon name="Layers" className="size-4" />
-        ) : (
-          <ProviderLogo
-            providerId={provider}
-            provider={providerRoster.get(provider)}
-            className="size-4"
-          />
-        ),
-      disabled:
-        !providerCounts.has(provider) && !providerFilters.includes(provider),
-    }));
+    return ordered.map((filter) => {
+      const providerId = filterProviderId(filter);
+      return {
+        id: filter,
+        label: providerFilterLabel(filter, providerRoster),
+        leading:
+          providerId !== null ? (
+            <ProviderLogo
+              providerId={providerId}
+              provider={providerRoster.get(providerId)}
+              className="size-4"
+            />
+          ) : filter === "owner:shared" ? (
+            <Icon name="Layers" className="size-4" />
+          ) : (
+            <BbLogo className="size-4" />
+          ),
+        disabled:
+          !providerCounts.has(filter) && !providerFilters.includes(filter),
+      };
+    });
   }, [providerCounts, providerRoster, providerFilters]);
   if (sortMode === "provider" && providerBucketCount <= 1) {
     setSortMode("alpha");

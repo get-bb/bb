@@ -304,22 +304,30 @@ async function projectSkillIndex(
       ...skill,
       realPath: identities.get(skill.id)?.realPath ?? skill.filePath,
     }));
-  const listingIdentity = (skill: IndexedSkillSummary) =>
-    `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`;
-  const providersByIdentity = new Map<string, Set<SkillProvider>>();
-  for (const skill of registrations) {
-    if (skill.provider === null) continue;
-    const key = listingIdentity(skill);
-    const providers = providersByIdentity.get(key) ?? new Set();
-    providers.add(skill.provider);
-    providersByIdentity.set(key, providers);
+  const readersByFile = new Map<string, Set<SkillProvider>>();
+  for (const { provider, skills } of perProvider) {
+    for (const skill of skills) {
+      const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
+      if (mapped.provider !== null) {
+        const key = `${skill.name}\0${skill.realPath}`;
+        const readers = readersByFile.get(key) ?? new Set();
+        readers.add(provider);
+        readersByFile.set(key, readers);
+      }
+    }
   }
   return {
     registrations,
-    entries: firstPerIdentity(registrations, listingIdentity).map((skill) => {
+    entries: firstPerIdentity(
+      registrations,
+      (skill) =>
+        `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`,
+    ).map((skill) => {
       if (skill.provider === null) return skill;
       const providers = [
-        ...(providersByIdentity.get(listingIdentity(skill)) ?? []),
+        ...(readersByFile.get(`${skill.name}\0${skill.realPath}`) ?? [
+          skill.provider,
+        ]),
       ].sort((left, right) => left.localeCompare(right));
       return {
         ...skill,

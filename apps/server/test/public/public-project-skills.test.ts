@@ -1367,7 +1367,7 @@ describe("public project skills route", () => {
     });
   });
 
-  it("lists a skill that several providers read once, as shared, instead of under the first provider", async () => {
+  it("lists a skill file that several providers read once, as shared, instead of under the first provider", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-shared-provider-skills",
@@ -1399,15 +1399,31 @@ describe("public project skills route", () => {
         "provider-user",
         "/home/.cursor/skills/cursor-only/SKILL.md",
       );
+      const claudeCopy = discovered(
+        "review",
+        "provider-user",
+        "/home/.claude/skills/review/SKILL.md",
+      );
+      const codexCopy = {
+        ...discovered(
+          "review",
+          "provider-user",
+          "/home/.codex/skills/review/SKILL.md",
+        ),
+        contentSha256: claudeCopy.contentSha256,
+      };
       const stub = registerSkillRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
         skillsByProvider: {
           "acp-cursor": [readByProvider("acp-cursor", agentsSkill), cursorOnly],
           "acp-grok": [readByProvider("acp-grok", claudePluginSkill)],
-          "claude-code": [readByProvider("claude-code", claudePluginSkill)],
-          codex: [readByProvider("codex", agentsSkill)],
-          pi: [readByProvider("pi", agentsSkill)],
+          "claude-code": [
+            readByProvider("claude-code", claudePluginSkill),
+            claudeCopy,
+          ],
+          codex: [readByProvider("codex", agentsSkill), codexCopy],
+          pi: [readByProvider("codex", agentsSkill)],
         },
       });
 
@@ -1440,6 +1456,14 @@ describe("public project skills route", () => {
           scope: "provider-user",
           provider: "acp-cursor",
           providers: ["acp-cursor"],
+          pluginId: null,
+          manageable: true,
+        },
+        {
+          name: "review",
+          scope: "provider-user",
+          provider: "claude-code",
+          providers: ["claude-code"],
           pluginId: null,
           manageable: true,
         },

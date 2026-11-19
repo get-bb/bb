@@ -2300,7 +2300,9 @@ describe("@bb/sdk", () => {
 
     await expect(
       sdk.skills.list({ projectId: "proj_123", environmentId: null }),
-    ).resolves.toMatchObject({ skills: [{ name: "local-skill" }] });
+    ).resolves.toMatchObject({
+      skills: [{ name: "local-skill", providers: [] }],
+    });
     await expect(sdk.skills.registry.search()).resolves.toMatchObject({
       skills: [registrySkill],
     });
