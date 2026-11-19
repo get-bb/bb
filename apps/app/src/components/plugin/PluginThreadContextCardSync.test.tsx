@@ -39,7 +39,8 @@ vi.mock("@/components/ui/app-toast", () => ({
   appToast: { error: vi.fn() },
 }));
 
-const OPEN_SECTIONS: UiPreferenceKey = "threadContextCard.openSections";
+const COLLAPSED_SECTIONS: UiPreferenceKey =
+  "threadContextCard.collapsedSections";
 
 const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   {
@@ -55,7 +56,7 @@ const CORE_KEY = "bb--core/childThreads";
 
 function serverResponse(
   revision: number,
-  openSections: string[],
+  collapsedSections: string[],
 ): UiPreferencesResponse {
   const preferences = Object.fromEntries(
     Object.entries(defaultUiPreferences).map(([key, value]) => [
@@ -66,7 +67,7 @@ function serverResponse(
   return {
     preferences: {
       ...preferences,
-      [OPEN_SECTIONS]: { revision, value: openSections },
+      [COLLAPSED_SECTIONS]: { revision, value: collapsedSections },
     },
   };
 }
@@ -106,10 +107,10 @@ function renderCard(queryClient: QueryClient, store = createStore()) {
 }
 
 function toggle() {
-  return screen.getByRole("button", { name: /^Child threads/ });
+  return screen.getByRole("button", { name: "Child threads" });
 }
 
-describe("thread context card section open state at the sync boundary", () => {
+describe("thread context card section fold state at the sync boundary", () => {
   beforeEach(() => {
     mocks.list.mockReset();
     mocks.set.mockReset();
@@ -132,7 +133,7 @@ describe("thread context card section open state at the sync boundary", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps a section open when another client opened it first and the write conflicts", async () => {
+  it("keeps a section folded when another client folded it first and the write conflicts", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(
       uiPreferencesQueryOptions().queryKey,
@@ -146,7 +147,7 @@ describe("thread context card section open state at the sync boundary", () => {
     await waitForUiPreferenceWrites();
 
     expect(mocks.set).toHaveBeenCalledTimes(1);
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
   it("writes the requested state on top of the other client's changes after a conflict", async () => {
@@ -164,26 +165,26 @@ describe("thread context card section open state at the sync boundary", () => {
 
     expect(mocks.set).toHaveBeenLastCalledWith({
       expectedRevision: 2,
-      key: OPEN_SECTIONS,
+      key: COLLAPSED_SECTIONS,
       value: ["first/other", CORE_KEY],
     });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("keeps a section open when the first load already has it open", async () => {
+  it("keeps a section folded when the first load already has it folded", async () => {
     const queryClient = new QueryClient();
     mocks.list.mockResolvedValueOnce(serverResponse(3, [CORE_KEY]));
     renderCard(queryClient);
 
     fireEvent.click(toggle());
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
     await waitForUiPreferenceWrites();
 
     expect(mocks.set).not.toHaveBeenCalled();
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("closes only its own section when the first load has others open", async () => {
+  it("unfolds only its own section when the first load has others folded", async () => {
     const queryClient = new QueryClient();
     mocks.list.mockResolvedValueOnce(
       serverResponse(3, [CORE_KEY, "first/other"]),
@@ -194,10 +195,10 @@ describe("thread context card section open state at the sync boundary", () => {
     fireEvent.click(toggle());
     await waitForUiPreferenceWrites();
 
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
     expect(mocks.set).toHaveBeenLastCalledWith({
       expectedRevision: 4,
-      key: OPEN_SECTIONS,
+      key: COLLAPSED_SECTIONS,
       value: ["first/other"],
     });
   });

@@ -3403,7 +3403,7 @@ those presentations in `WithoutThreadContextCard`.
 
 The card's counterparts of the Info tab's row and section slots. A row
 registration is `{ id, group, order?, component }` and draws in the card's top
-block; a section is `{ id, title, group, order?, component, summary? }` and draws below
+block; a section is `{ id, title, group, order?, component }` and draws below
 the rows. Components receive
 `{ threadId, projectId, environment }` (`environment` is `{ id }` from the
 thread, null only without one) and render `experimental_ThreadContextCardRow`
@@ -3419,14 +3419,12 @@ registrations and sort by `group`, `order` (unset last), then
 registration order with core first on a tie. Rows share one block with no
 heading; sections follow, each under its title and a divider. A section's
 title is a disclosure button (`aria-expanded`, `aria-controls` the body),
-closed by default; the open keys (`pluginId/sectionId`, and `bb--core/id` for
+open by default; the folded keys (`pluginId/sectionId`, and `bb--core/id` for
 bb's own, the reserved owner its thread context segments use, so no plugin id
-can collide) live in the synced `threadContextCard.openSections` preference,
-shared by every thread. The body stays mounted but `hidden` while closed, so `:has` still sees
-whether the component renders anything and the plugin keeps its subscriptions.
-The optional `summary` component mounts in its own crash boundary
-(`threadContextCardSection/summary`) inside the title button while the section
-is closed, as inert text. Every plugin
+can collide) live in the synced `threadContextCard.collapsedSections`
+preference, shared by every thread. The body stays mounted but `hidden` while
+folded, so `:has` still sees whether the component renders anything and the
+plugin keeps its subscriptions. Every plugin
 row and section mounts in its own crash boundary keyed by thread, and CSS `:has` hides a
 block whose components render no element. `ThreadContextCard` sits in
 `ThreadScreen`'s scroll overlay, sibling to the scroll viewport, and measures
@@ -3483,10 +3481,10 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
    header button and the transcript's position do not depend on the thread.
 6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
    should share one group vocabulary.
-7. **Folding.** Sections start closed and the card can show only titles. Decide
-   whether a section that needs the person (a pending question) may open
-   itself, and whether `summary` should take over the segment summary a plugin
-   already registers. The body stays mounted while closed, so a plugin's
+7. **Folding.** Sections start open and the person folds the ones they don't
+   need. Decide whether a folded section needs a one-line summary beside its
+   title, and whether a section that needs the person (a pending question) may
+   unfold itself. The body stays mounted while folded, so a plugin's
    subscriptions run for every card, open or not.
 
 ## `app.slots.experimental_threadHeaderRow` (`@get-bb/plugin-sdk/app`)

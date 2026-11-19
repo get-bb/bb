@@ -53,7 +53,7 @@ export const UI_PREFERENCE_KEYS = [
   "composer.provider",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
-  "threadContextCard.openSections",
+  "threadContextCard.collapsedSections",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -168,10 +168,10 @@ export const uiPreferenceDefinitions = {
     true,
     "Whether a thread pane's thread context card stays open beside the transcript when the pane is wide enough; narrow panes always open it from the header.",
   ),
-  "threadContextCard.openSections": defineUiPreference(
+  "threadContextCard.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((keys) => [...new Set(keys)]),
     [],
-    "Thread context card sections that are open, as <pluginId>/<sectionId> for plugin sections or bb--core/<sectionId> for bb's own. Sections not listed start closed; the list is shared by every thread pane.",
+    "Thread context card sections that are folded, as <pluginId>/<sectionId> for plugin sections or bb--core/<sectionId> for bb's own. Sections not listed are open; the list is shared by every thread pane.",
   ),
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((ids) => [

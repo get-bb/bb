@@ -307,7 +307,7 @@ Sidebar preferences
 every window, device, and the CLI. The same registry stores which thread Info
 panel sections are collapsed (`infoPanel.collapsedSections`), whether a
 thread pane's thread context card stays pinned open (`threadContextCard.pinned`),
-which of its sections are open (`threadContextCard.openSections`), and whether
+which of its sections are folded (`threadContextCard.collapsedSections`), and whether
 the sidebar update button includes provider CLI updates
 (`sidebar.updates.providerCli`).
 

@@ -86,8 +86,8 @@ export function resolveThreadContextCardLayout(
 }
 
 const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
-const openSectionsAtom = createSyncedPreferenceAtom(
-  "threadContextCard.openSections",
+const collapsedSectionsAtom = createSyncedPreferenceAtom(
+  "threadContextCard.collapsedSections",
 );
 
 interface ThreadContextCardPaneState {
@@ -273,27 +273,22 @@ const SECTION_TOGGLE_CLASS = cn(
 function ThreadContextCardSectionView({
   sectionKey,
   title,
-  summary,
   children,
 }: {
   sectionKey: string;
   title: string;
-  summary: ReactNode;
   children: ReactNode;
 }) {
-  const [openKeys, setOpenKeys] = useAtom(openSectionsAtom);
-  const open = openKeys.includes(sectionKey);
+  const [collapsedKeys, setCollapsedKeys] = useAtom(collapsedSectionsAtom);
+  const open = !collapsedKeys.includes(sectionKey);
   const toggle = useCallback(() => {
-    const nextOpen = !open;
-    setOpenKeys((keys) => {
+    const nextCollapsed = open;
+    setCollapsedKeys((keys) => {
       const without = keys.filter((key) => key !== sectionKey);
-      return nextOpen ? [...without, sectionKey] : without;
+      return nextCollapsed ? [...without, sectionKey] : without;
     });
-  }, [open, sectionKey, setOpenKeys]);
-  const id = useId();
-  const bodyId = `${id}-body`;
-  const summaryId = `${id}-summary`;
-  const showSummary = !open && summary !== null;
+  }, [open, sectionKey, setCollapsedKeys]);
+  const bodyId = useId();
   return (
     <section
       data-thread-context-card-section=""
@@ -305,20 +300,10 @@ function ThreadContextCardSectionView({
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
-          aria-describedby={showSummary ? summaryId : undefined}
           onClick={toggle}
           className={SECTION_TOGGLE_CLASS}
         >
-          <span className="min-w-0 max-w-[65%] shrink-0 truncate">{title}</span>
-          {showSummary ? (
-            <span
-              id={summaryId}
-              inert
-              className="pointer-events-none h-5 min-w-0 flex-1 overflow-hidden truncate whitespace-nowrap font-normal text-subtle-foreground"
-            >
-              {summary}
-            </span>
-          ) : null}
+          <span className="min-w-0 truncate">{title}</span>
           <Icon
             name="ChevronDown"
             aria-hidden="true"
@@ -404,40 +389,17 @@ function ThreadContextCardContent({
               key={sectionKey}
               sectionKey={sectionKey}
               title={title}
-              summary={null}
             >
               <Component {...props} />
             </ThreadContextCardSectionView>
           );
         }
         const { pluginId, id, generation } = entry.slot;
-        const Summary = entry.slot.summary;
         return (
           <ThreadContextCardSectionView
             key={`${pluginId}/${id}/${generation}/${props.threadId}`}
             sectionKey={threadContextSegmentKey({ pluginId, id })}
             title={title}
-            summary={
-              Summary === undefined ? null : (
-                <PluginSlotMount
-                  pluginId={pluginId}
-                  slotKind="threadContextCardSection/summary"
-                  slotId={id}
-                  instanceId={props.threadId}
-                  crashResetKey={String(generation)}
-                  crashFallback={null}
-                  wrapRoot={false}
-                >
-                  <span
-                    data-bb-plugin-root=""
-                    data-bb-plugin={pluginId}
-                    className="contents"
-                  >
-                    <Summary {...props} />
-                  </span>
-                </PluginSlotMount>
-              )
-            }
           >
             <PluginSlotMount
               pluginId={pluginId}

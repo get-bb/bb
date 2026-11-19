@@ -25,7 +25,6 @@ interface StorySection {
   id: string;
   title: string;
   rows: ReadonlyArray<{ icon: IconName; label: string; trailing?: string }>;
-  summary?: string;
 }
 
 const SECTIONS: readonly StorySection[] = [
@@ -33,7 +32,6 @@ const SECTIONS: readonly StorySection[] = [
     pluginId: "story-pr-desk",
     id: "pull-requests",
     title: "Pull requests",
-    summary: "6 PRs · 1 needs you",
     rows: [
       {
         icon: "GitPullRequest",
@@ -63,7 +61,6 @@ const SECTIONS: readonly StorySection[] = [
     pluginId: "story-guild",
     id: "seat",
     title: "Guild",
-    summary: "builder@redesigns",
     rows: [
       { icon: "Users", label: "builder@redesigns", trailing: "working" },
       { icon: "ListTodo", label: "#311 Fold card sections" },
@@ -73,7 +70,6 @@ const SECTIONS: readonly StorySection[] = [
     pluginId: "story-wakeup",
     id: "wakeups",
     title: "Wake-ups",
-    summary: "2 pending · next in 12m",
     rows: [
       { icon: "Clock", label: "Check CI on the fork", trailing: "12m" },
       { icon: "Clock", label: "Review Sol feedback", trailing: "2h" },
@@ -89,7 +85,6 @@ const SECTIONS: readonly StorySection[] = [
     pluginId: "story-herd",
     id: "delegates",
     title: "Delegates",
-    summary: "2 running · 1 done",
     rows: [
       { icon: "Fork", label: "bb-card-fold", trailing: "running" },
       { icon: "Fork", label: "kit-segment", trailing: "running" },
@@ -118,14 +113,6 @@ function sectionComponent(
   };
 }
 
-function summaryComponent(
-  text: string,
-): ComponentType<ExperimentalThreadContextCardProps> {
-  return function StorySectionSummary() {
-    return <>{text}</>;
-  };
-}
-
 function ChildThreadsBody() {
   return (
     <ThreadContextCardRow
@@ -147,11 +134,9 @@ const CORE_SECTIONS: readonly CoreThreadContextCardSection[] = [
 ];
 
 function SectionsFixture({
-  openTitles,
-  withSummaries,
+  foldedTitles,
 }: {
-  openTitles: readonly string[];
-  withSummaries: boolean;
+  foldedTitles: readonly string[];
 }) {
   const [store] = useState(createStore);
   useEffect(() => {
@@ -165,18 +150,15 @@ function SectionsFixture({
               title: section.title,
               group: "2_plugins",
               component: sectionComponent(section),
-              ...(withSummaries && section.summary !== undefined
-                ? { summary: summaryComponent(section.summary) }
-                : {}),
             },
           ],
         }),
       );
     }
     const frame = requestAnimationFrame(() => {
-      for (const title of openTitles) {
+      for (const title of foldedTitles) {
         const toggle = document.querySelector<HTMLButtonElement>(
-          `section[aria-label="${title}"] button[aria-expanded="false"]`,
+          `section[aria-label="${title}"] button[aria-expanded="true"]`,
         );
         toggle?.click();
       }
@@ -187,7 +169,7 @@ function SectionsFixture({
         removePluginSlotRegistrations(section.pluginId);
       }
     };
-  }, [openTitles, withSummaries]);
+  }, [foldedTitles]);
   return (
     <JotaiProvider store={store}>
       <div className="p-6">
@@ -208,17 +190,13 @@ function SectionsFixture({
   );
 }
 
-const NO_OPEN: readonly string[] = [];
-const ONE_OPEN: readonly string[] = ["Pull requests"];
+const NONE_FOLDED: readonly string[] = [];
+const PULL_REQUESTS_FOLDED: readonly string[] = ["Pull requests"];
 
-export function AllClosed() {
-  return <SectionsFixture openTitles={NO_OPEN} withSummaries />;
+export function AllOpen() {
+  return <SectionsFixture foldedTitles={NONE_FOLDED} />;
 }
 
-export function OneOpen() {
-  return <SectionsFixture openTitles={ONE_OPEN} withSummaries />;
-}
-
-export function ClosedWithoutSummaries() {
-  return <SectionsFixture openTitles={NO_OPEN} withSummaries={false} />;
+export function PullRequestsFolded() {
+  return <SectionsFixture foldedTitles={PULL_REQUESTS_FOLDED} />;
 }
