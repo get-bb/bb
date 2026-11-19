@@ -1234,7 +1234,7 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
 
 /** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
 /**
- * `experimental_panel` is the New thread screen's side panel. Address this
+ * `panel` is the New thread screen's side panel. Address this
  * action's tab as `{ id, context: { kind: "thread" }, availability: "action" }`.
  */
 export interface PluginNewThreadPanelActionContext extends ExperimentalPluginActionContext {
@@ -1279,7 +1279,7 @@ export interface PluginPendingInteractionRegistration {
 
 /**
  * Context handed to a `sidebarFooterAction`'s `run`. `navigate` and
- * `experimental_panel` act on the focused surface, as for commands.
+ * `panel` act on the focused surface, as for commands.
  */
 export interface PluginSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /**
@@ -1311,7 +1311,7 @@ export interface PluginSidebarFooterActionRegistration {
 
 /**
  * Context handed to an experimental sidebar-footer action. `navigate` and
- * `experimental_panel` act on the focused surface, as for commands.
+ * `panel` act on the focused surface, as for commands.
  */
 export interface ExperimentalSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /** Navigate to this plugin's detail page in Tools. */
@@ -2457,7 +2457,7 @@ export interface PluginThreadActionDataInput {
 
 /** What a registration's `item` receives for each thread it is shown for. */
 /**
- * `experimental_panel` is the focused surface's side panel, as for plugin
+ * `panel` is the focused surface's side panel, as for plugin
  * commands. Thread menus are not inside a side panel, so calls return false
  * when the focused surface has no such tab.
  */
@@ -3635,12 +3635,12 @@ export interface ExperimentalPluginActionContext {
    */
   navigate: BbNavigate;
   /** The side panel of the surface that invoked the callback. */
-  experimental_panel: ExperimentalPanelController;
+  panel: ExperimentalPanelController;
 }
 
 /**
  * Context handed to a composer command's or composer menu item's `run`.
- * `navigate` and `experimental_panel` act on the surface showing the
+ * `navigate` and `panel` act on the surface showing the
  * composer.
  */
 export interface ExperimentalComposerActionContext extends ExperimentalPluginActionContext {
@@ -3696,7 +3696,7 @@ export interface PluginMessageActionRegistration {
 
 /**
  * Current context for palette and keyboard command invocations. `navigate`
- * and `experimental_panel` act on the focused surface: the thread view or
+ * and `panel` act on the focused surface: the thread view or
  * New thread screen in focus, or the focused plugin page. On the New thread
  * screen, a `{ context: { kind: "thread" }, availability: "action" }` tab
  * resolves against `experimental_newThreadPanelAction` with the same id, so

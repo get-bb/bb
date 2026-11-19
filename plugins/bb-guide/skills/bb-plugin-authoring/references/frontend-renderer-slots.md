@@ -217,14 +217,14 @@ message, Original }` — render fenced code blocks of chosen languages in
   component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, composer }` plus the
   [callback context](frontend-hooks-and-ui.md#callback-context)
-  `{ sdk, navigate, experimental_panel }`:
+  `{ sdk, navigate, panel }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
   an internal timeline row); `experimental_messageSeq` is the recorded message
   sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
-  `navigate` and `experimental_panel` act on that thread view (terminals,
+  `navigate` and `panel` act on that thread view (terminals,
   files and URLs open in its side panel). Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
@@ -234,10 +234,10 @@ message, Original }` — render fenced code blocks of chosen languages in
   receive `{ threadId, projectId }` plus the
   [callback context](frontend-hooks-and-ui.md#callback-context), where
   `threadId` and `projectId` are null on surfaces without one, and
-  `navigate` and `experimental_panel` act on the focused surface. `isAvailable` is called for palette listing and keyboard invocation — keep
+  `navigate` and `panel` act on the focused surface. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
-  `experimental_panel` declines (returning false) when the focused surface has
+  `panel` declines (returning false) when the focused surface has
   no such tab.
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this

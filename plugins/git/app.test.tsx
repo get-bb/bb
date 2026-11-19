@@ -73,14 +73,14 @@ it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
     command.isAvailable?.({
       threadId: null,
       projectId: null,
-      experimental_panel: panel,
+      panel,
       ...unusedLauncherServices(),
     }),
   ).toBe(false);
   await command.run({
     threadId: "thr-1",
     projectId: null,
-    experimental_panel: panel,
+    panel,
     ...unusedLauncherServices(),
   });
   expect(panel.toggleTab).toHaveBeenCalledWith({

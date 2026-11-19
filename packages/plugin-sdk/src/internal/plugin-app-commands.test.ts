@@ -94,7 +94,7 @@ describe("app.commands.register", () => {
       const context = {
         threadId: "thread-1",
         projectId: "project-1",
-        experimental_panel: makePanelController({
+        panel: makePanelController({
           openTab: vi.fn(() => true),
           toggleTab: vi.fn(() => true),
           close: vi.fn(() => true),

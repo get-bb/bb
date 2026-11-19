@@ -1520,7 +1520,7 @@ describe("loadPluginApp", () => {
           throw new Error(`${name} is not used by this test`);
         },
       });
-    const experimental_panel = makePanelController({
+    const panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
@@ -1536,7 +1536,7 @@ describe("loadPluginApp", () => {
         experimental_messageSeq: 12,
       },
       selectedText: "answer",
-      experimental_panel,
+      panel,
       composer: null,
       sdk: unused<PluginBrowserBbSdk>("sdk"),
       navigate: unused<BbNavigate>("navigate"),

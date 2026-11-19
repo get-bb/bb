@@ -40,6 +40,7 @@ import {
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
+  withRetiredPanelAlias,
 } from "@/lib/plugin-panel-controller";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
@@ -198,14 +199,12 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
     latest.current = deps;
   });
   const [bind] = useState(() => {
-    const bindContext: BindPluginActionContext = (pluginId, host) => ({
-      sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
-      navigate: createBbNavigate(pluginId, host, () => latest.current),
-      experimental_panel: createPluginPanelController(
-        pluginId,
-        () => host().panel,
-      ),
-    });
+    const bindContext: BindPluginActionContext = (pluginId, host) =>
+      withRetiredPanelAlias({
+        sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
+        navigate: createBbNavigate(pluginId, host, () => latest.current),
+        panel: createPluginPanelController(pluginId, () => host().panel),
+      });
     return bindContext;
   });
   return bind;

@@ -2023,8 +2023,8 @@ describe("plugin thread panel actions", () => {
             id: "issue",
             title: "Issue",
             component: PanelProbe,
-            run: ({ threadId, experimental_panel }) => {
-              experimental_panel.openTab({
+            run: ({ threadId, panel }) => {
+              panel.openTab({
                 tab: {
                   id: "issue",
                   context: { kind: "thread" },
@@ -2092,9 +2092,9 @@ describe("plugin thread panel actions", () => {
             id: "cyclic",
             title: "Cyclic",
             component: PanelProbe,
-            run: ({ experimental_panel }) => {
+            run: ({ panel }) => {
               declines.push(
-                experimental_panel.openTab({
+                panel.openTab({
                   tab: {
                     id: "cyclic",
                     context: { kind: "thread" },
@@ -2109,9 +2109,9 @@ describe("plugin thread panel actions", () => {
             id: "coerced",
             title: "Coerced",
             component: PanelProbe,
-            run: ({ experimental_panel }) => {
+            run: ({ panel }) => {
               declines.push(
-                experimental_panel.openTab({
+                panel.openTab({
                   tab: {
                     id: "coerced",
                     context: { kind: "thread" },
@@ -2150,7 +2150,7 @@ describe("plugin thread panel actions", () => {
             component: PanelProbe,
             run: (context) => {
               accepted.push(
-                context.experimental_panel.openTab({
+                context.panel.openTab({
                   tab: {
                     id: "issue",
                     context: { kind: "thread" },
@@ -2172,7 +2172,7 @@ describe("plugin thread panel actions", () => {
             component: NewThreadPanelProbe,
             run: (context) => {
               accepted.push(
-                context.experimental_panel.openTab({
+                context.panel.openTab({
                   tab: {
                     id: "setup",
                     context: { kind: "thread" },
@@ -2260,8 +2260,8 @@ describe("plugin thread panel actions", () => {
             title: "Set up thread",
             icon: "Wand",
             component: NewThreadPanelProbe,
-            run: ({ projectId, experimental_panel }) => {
-              experimental_panel.openTab({
+            run: ({ projectId, panel }) => {
+              panel.openTab({
                 tab: {
                   id: "setup",
                   context: { kind: "thread" },

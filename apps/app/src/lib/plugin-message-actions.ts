@@ -49,7 +49,7 @@ export function runPluginMessageAction({
     threadId,
     message,
     ...(selectedText !== undefined ? { selectedText } : {}),
-    openPanel: createRetiredOpenPanel(actionContext.experimental_panel),
+    openPanel: createRetiredOpenPanel(actionContext.panel),
     composer: messageActionComposer(slot.pluginId, threadId, composerHost),
   };
   const warn = (error: unknown) => {

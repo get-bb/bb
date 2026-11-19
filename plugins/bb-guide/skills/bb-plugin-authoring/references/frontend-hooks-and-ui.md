@@ -332,14 +332,14 @@ compile in plugin builds.
 
 Callbacks run outside your components, so they cannot call hooks. Every
 callback's context therefore extends `ExperimentalPluginActionContext`
-`{ sdk, navigate, experimental_panel }`: your `useSdk()` client, your
+`{ sdk, navigate, panel }`: your `useSdk()` client, your
 `useBbNavigate()`, and the [panel controller](#panel-controller) of the
 surface that invoked it. This covers `app.commands` (and `isAvailable`),
 `messageAction`, `experimental_threadAction`'s `item` and
 `experimental_bulkItem`, action tabs' and
 `experimental_newThreadPanelAction`'s `run`, sidebar footer actions,
 composer commands, and `plusMenu`/`sendMenu` rows. `navigate` and
-`experimental_panel` act on the focused surface for commands, thread actions
+`panel` act on the focused surface for commands, thread actions
 and sidebar footer actions; on the thread view that showed the message for
 message actions; on the launching surface for panel actions; and on the
 surface showing the composer for composer callbacks.
@@ -350,7 +350,8 @@ Experimental: see `docs/api_to_audit.md`.
 `experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
 surface the component renders in: the thread view, the plugin page, or the New
 thread screen. Every [callback context](#callback-context) carries the same
-controller as `experimental_panel`.
+controller as `panel`. Plugins built against `experimental_panel` keep
+working; the plugin build warns with the new name.
 
 ```tsx
 const panel = experimental_useAppPanel();
@@ -405,7 +406,7 @@ with the replacement:
 
 | Retired                                                                               | Replacement                                                                                                                         |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`                            |
 | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                      | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
 | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`            | `experimental_useAppPanel().openTab(options)`                                                                                       |
 | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })`       |

@@ -1745,9 +1745,9 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ experimental_panel }) => {
+          run: ({ panel }) => {
             accepted.push(
-              experimental_panel.openTab({
+              panel.openTab({
                 tab: {
                   id: "inspect-project",
                   context: { kind: "thread" },
@@ -1764,7 +1764,7 @@ describe("PluginNewThreadComposer seeding", () => {
       projectId: null,
       actionContext: (pluginId) => ({
         ...unavailablePluginActionContext(pluginId),
-        experimental_panel: createPluginPanelController(
+        panel: createPluginPanelController(
           pluginId,
           getFocusedAppPanelController,
         ),

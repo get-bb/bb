@@ -42,7 +42,7 @@ function actionContext(
     ...shared,
     threadId: args.threadId,
     projectId: args.projectId,
-    openPanel: createRetiredOpenPanel(shared.experimental_panel),
+    openPanel: createRetiredOpenPanel(shared.panel),
   };
   return context;
 }

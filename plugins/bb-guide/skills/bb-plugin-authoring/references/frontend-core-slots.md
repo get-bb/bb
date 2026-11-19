@@ -333,8 +333,8 @@ app.slots.experimental_tab({
   title: "Issue",
   icon: "FileText",
   component: IssuePanel,
-  run: ({ threadId, experimental_panel }) => {
-    experimental_panel.openTab({
+  run: ({ threadId, panel }) => {
+    panel.openTab({
       tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
       params: { threadId },
     });

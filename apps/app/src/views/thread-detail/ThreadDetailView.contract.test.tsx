@@ -465,9 +465,9 @@ beforeEach(() => {
           id: "probe-message",
           title: "Probe message",
           icon: "Zap",
-          run: ({ experimental_panel, navigate }) => {
+          run: ({ panel, navigate }) => {
             if (fixtures.probeHost === "messageAction") {
-              fixtures.probe.current = experimental_panel;
+              fixtures.probe.current = panel;
               fixtures.probe.navigate = navigate;
             }
           },
@@ -475,9 +475,9 @@ beforeEach(() => {
         app.commands.register({
           id: "probe-command",
           title: "Probe command",
-          run: ({ experimental_panel, navigate }) => {
+          run: ({ panel, navigate }) => {
             if (fixtures.probeHost === "paletteCommand") {
-              fixtures.probe.current = experimental_panel;
+              fixtures.probe.current = panel;
               fixtures.probe.navigate = navigate;
             }
           },
@@ -489,9 +489,9 @@ beforeEach(() => {
           title: "Launcher",
           icon: "Zap",
           component: ContractActionTab,
-          run: ({ experimental_panel, navigate }) => {
+          run: ({ panel, navigate }) => {
             if (fixtures.probeHost === "newTabAction") {
-              fixtures.probe.current = experimental_panel;
+              fixtures.probe.current = panel;
               fixtures.probe.navigate = navigate;
             }
           },
@@ -502,9 +502,9 @@ beforeEach(() => {
           icon: "Info",
           group: "probe",
           placement: "header",
-          item: ({ navigate, experimental_panel }) => {
+          item: ({ navigate, panel }) => {
             if (fixtures.probeHost === "threadAction") {
-              fixtures.probe.current = experimental_panel;
+              fixtures.probe.current = panel;
               fixtures.probe.tabs = undefined;
               fixtures.probe.navigate = navigate;
             }

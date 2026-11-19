@@ -8,7 +8,10 @@ import {
   usePluginActionContextBinder,
   type BindPluginActionContext,
 } from "@/lib/plugin-navigation-hooks";
-import { createPluginPanelController } from "@/lib/plugin-panel-controller";
+import {
+  createPluginPanelController,
+  withRetiredPanelAlias,
+} from "@/lib/plugin-panel-controller";
 
 function unavailable<T extends object>(pluginId: string, name: string): T {
   return new Proxy({} as T, {
@@ -26,14 +29,15 @@ export function unavailablePluginActionContext(
   return {
     sdk: unavailable(pluginId, "sdk"),
     navigate: unavailable(pluginId, "navigate"),
-    experimental_panel: unavailable(pluginId, "experimental_panel"),
+    panel: unavailable(pluginId, "panel"),
   };
 }
 
-const bindPanelOnly: BindPluginActionContext = (pluginId, host) => ({
-  ...unavailablePluginActionContext(pluginId),
-  experimental_panel: createPluginPanelController(pluginId, () => host().panel),
-});
+const bindPanelOnly: BindPluginActionContext = (pluginId, host) =>
+  withRetiredPanelAlias({
+    ...unavailablePluginActionContext(pluginId),
+    panel: createPluginPanelController(pluginId, () => host().panel),
+  });
 
 const PluginActionContextBinderContext =
   createContext<BindPluginActionContext>(bindPanelOnly);

@@ -10,7 +10,7 @@ what it shows: `info`, `file` (`path`), `browser` (`url`), `terminal`
 `ExperimentalTabReference`, and action `params`), or `plugin-details`
 (`pluginId`). A key identifies a tab only while it is open; do not store it.
 Code that is not a component, such as a command or thread action, reads the
-same list once with `ctx.experimental_panel.getTabs()`, from the focused
+same list once with `ctx.panel.getTabs()`, from the focused
 surface for commands.
 
 Act on a tab with the panel controller from `experimental_useAppPanel()`:

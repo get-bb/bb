@@ -73,8 +73,8 @@ export default definePluginApp((app) => {
     id: "issue",
     title: "Open issue",
     component: IssuePanel,
-    run: async ({ threadId, experimental_panel }) => {
-      experimental_panel.openTab({
+    run: async ({ threadId, panel }) => {
+      panel.openTab({
         tab: {
           id: "issue",
           context: { kind: "thread" },
@@ -244,7 +244,7 @@ keep an id-keyed cache and fetch only the ids not in it, in one batch (for
 example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `item` is pure: it gets `{ thread, data }` plus the
 [callback context](frontend-hooks-and-ui.md#callback-context)
-`{ sdk, navigate, experimental_panel }` and returns the action for that thread, or
+`{ sdk, navigate, panel }` and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
 of bb's groups through `experimental_THREAD_ACTION_GROUPS` (`open`, `state`,

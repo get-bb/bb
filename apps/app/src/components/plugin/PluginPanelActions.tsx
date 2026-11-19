@@ -141,16 +141,16 @@ export function runPluginPanelAction({
   context,
   actionContext,
 }: RunPluginPanelActionArgs): void {
-  const { experimental_panel } = actionContext;
+  const { panel } = actionContext;
   const ownTab = {
     id: action.id,
     context: action.context,
     availability: "action",
   } as const;
-  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  const openPanel = createRetiredOpenPanel(panel, ownTab);
   runPanelActionLauncher(action, "threadPanelAction", () => {
     if (action.run === undefined) {
-      experimental_panel.openTab({ tab: ownTab });
+      panel.openTab({ tab: ownTab });
       return;
     }
     if (isThreadTab(action) && context.kind === "thread") {
@@ -182,16 +182,16 @@ function runPluginNewThreadPanelAction({
   projectId: string | null;
   actionContext: ExperimentalPluginActionContext;
 }): void {
-  const { experimental_panel } = actionContext;
+  const { panel } = actionContext;
   const ownTab = {
     id: action.id,
     context: { kind: "thread" },
     availability: "action",
   } as const;
-  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  const openPanel = createRetiredOpenPanel(panel, ownTab);
   runPanelActionLauncher(action, "experimental_newThreadPanelAction", () => {
     if (action.run === undefined) {
-      experimental_panel.openTab({ tab: ownTab });
+      panel.openTab({ tab: ownTab });
       return;
     }
     const runContext = { ...actionContext, projectId, openPanel };

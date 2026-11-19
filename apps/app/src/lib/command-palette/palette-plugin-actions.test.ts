@@ -39,7 +39,7 @@ function build(
     projectId: "proj_1",
     actionContext: (pluginId) => ({
       ...unavailablePluginActionContext(pluginId),
-      experimental_panel: createPluginPanelController(pluginId, () => panel),
+      panel: createPluginPanelController(pluginId, () => panel),
     }),
   });
 }
@@ -97,7 +97,7 @@ describe("buildPluginPaletteActions", () => {
     warn.mockRestore();
   });
 
-  it("routes experimental_panel and the retired openPanel to the focused surface's controller, or declines without one", () => {
+  it("routes panel and the retired openPanel to the focused surface's controller, or declines without one", () => {
     const panel: AppPanelController = {
       ...UNAVAILABLE_APP_PANEL_CONTROLLER,
       openTab: vi.fn(() => true),
@@ -116,8 +116,8 @@ describe("buildPluginPaletteActions", () => {
       },
     ) => {
       results.push(
-        context.experimental_panel.toggleTab({ tab: issueTab }),
-        context.experimental_panel.close(),
+        context.panel.toggleTab({ tab: issueTab }),
+        context.panel.close(),
         context.openPanel?.({ actionId: "issue-panel" }) ?? false,
       );
     };

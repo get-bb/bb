@@ -1382,9 +1382,9 @@ describe("ThreadTimelineRows actions", () => {
       context: { kind: "thread" },
       availability: "action",
     } as const;
-    expect(
-      context.experimental_panel.toggleTab({ tab: panelTab, params: { a: 1 } }),
-    ).toBe(true);
+    expect(context.panel.toggleTab({ tab: panelTab, params: { a: 1 } })).toBe(
+      true,
+    );
     expect(context.openPanel({ actionId: "panel", params: { a: 1 } })).toBe(
       true,
     );
