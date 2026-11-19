@@ -1936,8 +1936,23 @@ function ColdStorageSummary({
     <section className="space-y-3">
       <SectionHeading
         title="Cold storage"
-        description="Archived threads moved out of bb’s database into files. Open it to search, restore or delete them."
+        description="Search, restore or delete the threads moved here."
       />
+      <div
+        role="note"
+        className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs leading-snug text-subtle-foreground"
+      >
+        <Icon name="Info" className="mt-px size-3.5 shrink-0" />
+        <p>
+          <span className="text-foreground">
+            Cold storage moves archived threads out of bb’s database into
+            compressed files.
+          </span>{" "}
+          That keeps bb fast as your history grows. Moved threads leave your
+          archive and search; restoring one brings it back with its full
+          history.
+        </p>
+      </div>
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <button
           type="button"
