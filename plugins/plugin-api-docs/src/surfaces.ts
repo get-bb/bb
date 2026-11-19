@@ -894,6 +894,32 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The screen bb opens on, holding the new-thread composer and a side panel. A plugin can add a section below the composer, and an action in that panel that opens its own tab.",
     surfaces: [
       {
+        id: "page",
+        title: "Whole pages",
+        summary:
+          "Replace bb's New thread screen and thread pages. With this, a plugin can:",
+        bullets: [
+          "Own bb's real URLs, so links, notification taps, and search open your page",
+          "Hide bb's sidebar on those pages and draw your own navigation",
+          "Build on bb's chat and prompt box, without the environment, project, and permission controls",
+          "Stay mounted while the user switches threads",
+        ],
+        apiSymbols: [
+          "PluginAppSlots.experimental_page",
+          "ExperimentalPageRegistration",
+          "ExperimentalPageProps",
+          "ExperimentalPageLocation",
+          "ExperimentalPageRoute",
+          "ExperimentalPageChrome",
+          "NewThreadComposerProps.hiddenControls",
+          "NewThreadComposerControl",
+          "ThreadChatProps.hiddenControls",
+          "ThreadChatControl",
+        ],
+        firstParty: ["Chat"],
+        experimental: true,
+      },
+      {
         id: "homepage-section",
         title: "Home-screen sections",
         summary: "Add a section to bb's home page. With this, a plugin can:",

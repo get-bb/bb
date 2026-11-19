@@ -135,6 +135,7 @@ import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
 import { HistoryCommandHandlers } from "./HistoryCommandHandlers";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { usePageChrome, usePageLocation } from "@/lib/page-owner";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -490,6 +491,8 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const routeContent = paneContentForPathname(location.pathname);
+  const pageChrome = usePageChrome(usePageLocation()?.kind ?? null);
+  const showsSidebar = pageChrome?.sidebar !== "hidden";
   const pluginPanelRoute =
     routeContent?.kind === "plugin-panel" ? routeContent : null;
   const pluginPanelEntry = pluginPanelRoute
@@ -842,14 +845,16 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                 <BackToAppCommandHandler routePath={backToAppRoutePath} />
               ) : null}
               <HistoryCommandHandlers />
-              <AppLayoutSidebar
-                routeSidebar={routeSidebar}
-                isSettingsActive={isGlobalSettingsView}
-                onResizeMouseDown={handleResizeMouseDown}
-                isResizing={isSidebarResizing}
-                settingsRoutePath={settingsRoutePath}
-                backToAppRoutePath={backToAppRoutePath}
-              />
+              {showsSidebar ? (
+                <AppLayoutSidebar
+                  routeSidebar={routeSidebar}
+                  isSettingsActive={isGlobalSettingsView}
+                  onResizeMouseDown={handleResizeMouseDown}
+                  isResizing={isSidebarResizing}
+                  settingsRoutePath={settingsRoutePath}
+                  backToAppRoutePath={backToAppRoutePath}
+                />
+              ) : null}
               <SidebarInset>
                 <div
                   ref={setContentShell}
@@ -879,10 +884,12 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                   </main>
                 </div>
               </SidebarInset>
-              <SidebarTriggerOverlay
-                reserveMacosTrafficLights={reserveMacosTrafficLights}
-                usesDesktopChrome={usesDesktopChrome}
-              />
+              {showsSidebar ? (
+                <SidebarTriggerOverlay
+                  reserveMacosTrafficLights={reserveMacosTrafficLights}
+                  usesDesktopChrome={usesDesktopChrome}
+                />
+              ) : null}
             </SidebarStateBridge>
             <PluginAppOverlays />
             <ThreadRowMetadataCollectors />

@@ -1,5 +1,6 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
 import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
+import { corePages } from "@/views/core-pages";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useCallback, useSyncExternalStore } from "react";
 import type {
@@ -34,6 +35,7 @@ import type {
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
   PluginTimelineRendererRegistration,
+  ExperimentalPageRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   type CollectedPluginCommandRegistration,
@@ -65,6 +67,7 @@ export interface PluginRegistrationSet {
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
   threadLists?: readonly PluginThreadListRegistration[];
+  pages?: readonly ExperimentalPageRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
   threadHeaderActions?: readonly LegacyThreadHeaderActionRegistration[];
   threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
@@ -139,6 +142,8 @@ export type PluginSidebarFooterItemSlot = CollectedSidebarFooterItem &
   PluginSlotBase;
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
+export interface PluginPageSlot
+  extends ExperimentalPageRegistration, PluginSlotBase {}
 export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
@@ -205,6 +210,7 @@ export interface PluginSlotSnapshot {
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterItems: readonly PluginSidebarFooterItemSlot[];
   threadLists: readonly PluginThreadListSlot[];
+  pages: readonly PluginPageSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   threadContextSegments: readonly PluginThreadContextSegmentSlot[];
@@ -246,6 +252,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   pendingInteractions: [],
   sidebarFooterItems: [],
   threadLists: [],
+  pages: corePages,
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
   threadContextSegments: [],
@@ -295,6 +302,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "pendingInteractions",
   "sidebarFooterItems",
   "threadLists",
+  "pages",
   "experimentalSidebarNavigations",
   "threadHeaderActions",
   "threadContextSegments",
@@ -391,6 +399,7 @@ function flattenRegistrations(
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterItems: stamp<CollectedSidebarFooterItem>(sidebarFooterItems),
     threadLists: stamp(set.threadLists),
+    pages: stamp(set.pages),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadHeaderActions: stamp(set.threadHeaderActions),
     threadContextSegments: stamp(set.threadContextSegments),
@@ -441,6 +450,9 @@ function collectKind<K extends SlotKind>(
   }
   if (kind === "messageMetadata") {
     for (const slot of coreMessageMetadata) collected.push(slot);
+  }
+  if (kind === "pages") {
+    for (const slot of corePages) collected.push(slot);
   }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);

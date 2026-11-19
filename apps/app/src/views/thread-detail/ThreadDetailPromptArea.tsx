@@ -41,7 +41,10 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalComposerSelection,
+  ThreadChatControl,
+} from "@get-bb/plugin-sdk";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   readExecutionSelection,
@@ -198,6 +201,7 @@ interface ThreadDetailPromptAreaProps {
   composerId: string;
   isPrimaryComposer: boolean;
   permissionPolicy: ThreadComposerPermissionPolicy;
+  hiddenControls: readonly ThreadChatControl[];
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -488,6 +492,7 @@ export function ThreadDetailPromptArea({
   composerId,
   isPrimaryComposer,
   permissionPolicy,
+  hiddenControls,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -1866,9 +1871,10 @@ export function ThreadDetailPromptArea({
     ],
   );
 
+  const hidesEnvironment = hiddenControls.includes("environment");
   const environmentSummary = useMemo(
     () =>
-      thread.environmentId !== null ? (
+      thread.environmentId !== null && !hidesEnvironment ? (
         <ThreadEnvironmentSummary
           projectName={projectName}
           environmentLabel={environmentLabel}
@@ -1889,13 +1895,14 @@ export function ThreadDetailPromptArea({
       environmentLabel,
       environmentMachineProvider,
       environmentProviderName,
+      hidesEnvironment,
       onCreateNewThreadInEnvironment,
       projectName,
       thread.environmentId,
     ],
   );
   const compactEnvironmentSummary = useMemo(() => {
-    if (!onOpenThreadInfo) return null;
+    if (!onOpenThreadInfo || hidesEnvironment) return null;
     if (environmentCheckout) {
       return (
         <ThreadDetailsButton
@@ -1920,6 +1927,7 @@ export function ThreadDetailPromptArea({
     environmentCompactLabel,
     environmentIcon,
     environmentLabel,
+    hidesEnvironment,
     onOpenThreadInfo,
   ]);
   const activePromptModeCard = useMemo(
@@ -2470,6 +2478,7 @@ export function ThreadDetailPromptArea({
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
       permissionReadOnly={isPermissionSnapshot}
+      hidesPermissionControl={hiddenControls.includes("permissionMode")}
       sessionOptionsControl={sessionOptionsControl}
       typeahead={typeaheadConfig}
       promptActions={promptActions}

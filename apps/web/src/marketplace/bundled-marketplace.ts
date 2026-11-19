@@ -37,6 +37,7 @@ export const OFF_BY_DEFAULT_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "prompt-library",
   "storage-retention",
   "workflows",
+  "chat",
 ]);
 
 export type BundledPluginSetup =

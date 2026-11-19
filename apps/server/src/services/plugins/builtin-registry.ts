@@ -221,6 +221,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "chat",
+    pluginId: "bb--chat",
+    defaultEnabled: false,
+  },
+  {
     name: "workflows",
     pluginId: "workflows",
     defaultEnabled: false,

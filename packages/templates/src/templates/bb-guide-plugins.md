@@ -163,6 +163,11 @@ Each bundled plugin documents its commands and behavior in its own skill.
   overloads, server or connection errors, and subscription-window limits.
   `bb provider-retry status|explain|retry|cancel`; see the `provider-retry`
   skill.
+- Chat (builtin, disabled by default): enable with
+  `bb plugin enable bb--chat`. Replaces the New thread screen and thread
+  pages with a conversation list and a chat, and hides the sidebar, the new
+  thread pickers, and the thread panels. Settings stay reachable from the
+  list. Disable it to get bb's workspace back.
 - Thread list (builtin): owns the sidebar's layout preferences, synced to
   every window. `bb thread-list prefs list|get|set|reset`; see the
   `thread-list` skill.

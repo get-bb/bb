@@ -168,6 +168,7 @@ function buildPromptAreaElement({
         composerId="thread-detail-follow-up-composer"
         isPrimaryComposer
         permissionPolicy={permissionPolicy}
+        hiddenControls={[]}
         canRestoreEnvironment={false}
         environmentGoneStatus={environmentGoneStatus}
         providerCommands={null}

@@ -2762,6 +2762,55 @@ export interface PluginThreadListRegistration {
 }
 
 /**
+ * A canonical bb route a page can own. `"home"` is `/`, bb's New thread
+ * screen. `"thread"` is a thread's route, `/projects/:projectId/threads/:threadId`
+ * or `/threads/:threadId`.
+ */
+export type ExperimentalPageRoute = "home" | "thread";
+
+/** The route an `experimental_page` component is drawing. */
+export type ExperimentalPageLocation =
+  | { kind: "home" }
+  | { kind: "thread"; projectId: string; threadId: string };
+
+/** Layout chrome bb draws around a page on the routes it owns. */
+export interface ExperimentalPageChrome {
+  /** `"hidden"` removes bb's sidebar and its toggle; the page fills the window. */
+  sidebar: "shown" | "hidden";
+}
+
+/** Props passed to an `experimental_page` component. */
+export interface ExperimentalPageProps {
+  location: ExperimentalPageLocation;
+}
+
+/**
+ * Draw bb's page for whole routes. The page renders at bb's canonical URLs,
+ * so every way bb opens a thread (`useBbNavigate().toThread`, notification
+ * taps, quick-palette search, `bb thread open`, copied links) lands on it.
+ * bb's own New thread screen and thread split panes are registered through
+ * this slot too, and draw any route no plugin claims.
+ *
+ * Exclusive per route: a page from a plugin the user installed wins over one
+ * bundled with bb, then the first in slot order. The component stays mounted
+ * while the route moves between the routes it owns, so switching threads
+ * re-renders it with a new `location` instead of remounting it. A crashing
+ * page falls back to bb's.
+ */
+export interface ExperimentalPageRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in capability details. */
+  title: string;
+  /** Optional one-line description shown in capability details. */
+  description?: string;
+  /** The routes this page draws. At least one. */
+  routes: readonly ExperimentalPageRoute[];
+  chrome: ExperimentalPageChrome;
+  component: ComponentType<ExperimentalPageProps>;
+}
+
+/**
  * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
  * plugin panels, and More, plus optional controls in the sidebar header.
  * Exclusive: bb's bundled Navigation plugin registers Rail
@@ -3991,6 +4040,12 @@ export interface PluginAppSlots {
    */
   experimental_threadList(registration: PluginThreadListRegistration): void;
   /**
+   * Draw bb's page for whole routes (see
+   * {@link ExperimentalPageRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_page(registration: ExperimentalPageRegistration): void;
+  /**
    * Draw the sidebar navigation and its header controls (see
    * {@link ExperimentalSidebarNavigationRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -4910,6 +4965,15 @@ export interface ThreadChatMessageAction {
 }
 
 /**
+ * A composer control of `ThreadChat` a caller can hide. `"environment"` is the
+ * environment and branch summary beside the composer, with its New thread in
+ * this environment action; `"permissionMode"` is the permission picker. Hiding
+ * a control changes no setting: sends keep the thread's environment and the
+ * mode `permissionPolicy` resolves.
+ */
+export type ThreadChatControl = "environment" | "permissionMode";
+
+/**
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
@@ -4933,6 +4997,11 @@ export interface ThreadChatProps {
   layout?: "contained" | "document";
   /** Bump to focus the composer (ignored by `variant: "timeline"`). */
   focusRequest?: number;
+  /**
+   * Controls to leave out of the composer (see {@link ThreadChatControl}).
+   * Omitted, every control shows. Ignored by `variant: "timeline"`.
+   */
+  hiddenControls?: readonly ThreadChatControl[];
   /**
    * Who controls the permission mode sends run with. "inherit" (default)
    * pins every send to the thread's own resolved default and renders the
@@ -5136,6 +5205,17 @@ export interface NewThreadRequest {
 }
 
 /**
+ * A row control of `experimental_NewThreadComposer` a caller can hide. Hiding a
+ * control keeps bb's resolved value for it: the seeded or remembered project,
+ * the project's default environment, and the provider's default permission
+ * mode are still submitted.
+ */
+export type NewThreadComposerControl =
+  | "project"
+  | "environment"
+  | "permissionMode";
+
+/**
  * Props of the host-owned `experimental_NewThreadComposer` component — bb's
  * full new-thread compose surface (prompt editor with @-mentions and expand,
  * attachments, provider/model/reasoning picker, voice, submit, and the row
@@ -5233,6 +5313,11 @@ export interface NewThreadComposerProps {
   layout?: "contained" | "document";
   /** Bump to focus the editor. */
   focusRequest?: number;
+  /**
+   * Controls to leave out of the row beneath the editor (see
+   * {@link NewThreadComposerControl}). Omitted, every control shows.
+   */
+  hiddenControls?: readonly NewThreadComposerControl[];
   className?: string;
   /**
    * Where the draft persists. Drafts survive reloads and are shared by every

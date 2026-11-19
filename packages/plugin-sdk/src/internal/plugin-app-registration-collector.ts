@@ -47,6 +47,9 @@ import type {
   ExperimentalSidebarNavigationPlacement,
   ExperimentalSidebarNavigationRegistration,
   PluginThreadListRegistration,
+  ExperimentalPageRegistration,
+  ExperimentalPageRoute,
+  ExperimentalPageChrome,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
@@ -375,6 +378,7 @@ export interface CollectedPluginAppRegistrations {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
+  pages: ExperimentalPageRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
   threadHeaderActions: LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
@@ -442,6 +446,42 @@ function collectTitledComponent<C>(
     ...(description !== undefined ? { description } : {}),
     component: requireComponent<C>(kind, registration.component),
   };
+}
+
+const PAGE_ROUTES: readonly ExperimentalPageRoute[] = ["home", "thread"];
+
+function isPageRoute(value: unknown): value is ExperimentalPageRoute {
+  return PAGE_ROUTES.some((route) => route === value);
+}
+
+function requirePageRoutes(
+  kind: string,
+  routes: unknown,
+): ExperimentalPageRoute[] {
+  if (!Array.isArray(routes) || routes.length === 0) {
+    throw new Error(`${kind}: "routes" must name at least one route`);
+  }
+  const collected: ExperimentalPageRoute[] = [];
+  for (const route of routes) {
+    if (!isPageRoute(route)) {
+      throw new Error(
+        `${kind}: "routes" entries must be one of ${PAGE_ROUTES.map((value) => `"${value}"`).join(", ")}`,
+      );
+    }
+    if (!collected.includes(route)) collected.push(route);
+  }
+  return collected;
+}
+
+function requirePageChrome(
+  kind: string,
+  chrome: ExperimentalPageChrome | undefined,
+): ExperimentalPageChrome {
+  const sidebar = chrome?.sidebar;
+  if (sidebar !== "shown" && sidebar !== "hidden") {
+    throw new Error(`${kind}: "chrome.sidebar" must be "shown" or "hidden"`);
+  }
+  return { sidebar };
 }
 
 function collectPanelAction<C, Run>(
@@ -521,6 +561,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
     threadLists: [],
+    pages: [],
     experimentalSidebarNavigations: [],
     threadHeaderActions: [],
     threadContextSegments: [],
@@ -563,6 +604,7 @@ export function collectPluginAppRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
     threadList: new Set<string>(),
+    page: new Set<string>(),
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
@@ -994,6 +1036,19 @@ export function collectPluginAppRegistrations(
             registration,
           ),
         );
+      },
+      experimental_page(registration) {
+        const kind = "slots.experimental_page";
+        const collectedRegistration = collectTitledComponent(
+          kind,
+          seenIds.page,
+          registration,
+        );
+        collected.pages.push({
+          ...collectedRegistration,
+          routes: requirePageRoutes(kind, registration.routes),
+          chrome: requirePageChrome(kind, registration.chrome),
+        });
       },
       experimental_sidebarNavigation(registration) {
         const kind = "slots.experimental_sidebarNavigation";

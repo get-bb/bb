@@ -2214,8 +2214,13 @@ export function ComposeScreenWireframe({
             <TrafficLights />
           </div>
           <div className="flex min-h-[485px] items-stretch">
-            <div className="min-w-0 flex-1 px-6 pb-6 pt-4">
-              <div className="mx-auto w-full max-w-[560px] space-y-2.5">
+            <RegionMark
+              id="page"
+              label="A plugin page in place of bb's New thread and thread screens"
+              className="min-w-0 flex-1 px-6 pb-6 pt-4"
+              chip="corner"
+            >
+              <div className="relative z-[2] mx-auto w-full max-w-[560px] space-y-2.5">
                 <MockHomeComposer />
 
                 <Mark
@@ -2241,7 +2246,7 @@ export function ComposeScreenWireframe({
                   </span>
                 </Mark>
               </div>
-            </div>
+            </RegionMark>
 
             <div className="w-[210px] shrink-0 border-l border-border-seam bg-sidebar p-2">
               <span className="block px-1.5 pb-1.5 pt-1 text-xs text-subtle-foreground/75">

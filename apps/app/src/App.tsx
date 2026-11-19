@@ -83,8 +83,9 @@ import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
 import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
-import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
-import { ThreadTimelineLoadingSkeleton } from "./components/thread/timeline/ThreadTimelineLoadingSkeleton";
+import { loadCoreWorkspacePage } from "./views/core-pages";
+import { PageRoute } from "./views/PageRoute";
+import { useRememberPageOwners } from "./lib/page-owner";
 import { trackCriticalLoad } from "./lib/split-prefetch";
 
 const SettingsView = lazy(() =>
@@ -112,11 +113,7 @@ const MachineSettingsView = lazy(() =>
     default: m.MachineSettingsView,
   })),
 );
-const splitWorkspaceRouteModule = trackCriticalLoad(
-  import("./views/SplitWorkspaceRoute"),
-);
-splitWorkspaceRouteModule.catch(() => {});
-const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
+loadCoreWorkspacePage();
 
 function NavigatePreservingLocation({ pathname }: { pathname: string }) {
   const location = useLocation();
@@ -420,23 +417,7 @@ export function AppRoutes() {
           />
           <Route path={PLUGINS_ROUTE_PATH} element={<PluginsRoute />} />
           <Route path={PLUGIN_DETAIL_ROUTE_PATH} element={<PluginsRoute />} />
-          <Route
-            path="*"
-            element={
-              <Suspense
-                fallback={
-                  <RouteLoadingSkeleton
-                    isBoundedPane={false}
-                    variant={isRootComposeView ? "root-compose" : "default"}
-                  >
-                    {isThreadView ? <ThreadTimelineLoadingSkeleton /> : null}
-                  </RouteLoadingSkeleton>
-                }
-              >
-                <SplitWorkspaceRoute />
-              </Suspense>
-            }
-          />
+          <Route path="*" element={<PageRoute />} />
         </Routes>
         <ScreenPaintSignal />
       </Suspense>
@@ -466,6 +447,7 @@ export function App() {
   usePluginFrontendBoot();
   useCodeRendererPreloads();
   useRememberPluginNavPanelChrome();
+  useRememberPageOwners();
 
   return (
     <QuickCreateProjectProvider>

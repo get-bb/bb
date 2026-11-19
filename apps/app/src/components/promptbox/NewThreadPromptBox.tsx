@@ -13,7 +13,10 @@ import type {
   SystemEnvironmentProvider,
   SystemMachineProvider,
 } from "@bb/server-contract";
-import type { ComposerView } from "@get-bb/plugin-sdk";
+import type {
+  ComposerView,
+  NewThreadComposerControl,
+} from "@get-bb/plugin-sdk";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
@@ -144,7 +147,10 @@ interface NewThreadPromptBoxUIProps {
 
   project?: NewThreadProjectConfig;
   execution: ExecutionControlsProps;
+  hiddenControls?: readonly NewThreadComposerControl[];
 }
+
+const NO_HIDDEN_CONTROLS: readonly NewThreadComposerControl[] = [];
 
 function getNewThreadPromptPlaceholder(isProjectless: boolean): string {
   return isProjectless
@@ -172,6 +178,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   modeConfig,
   project,
   execution,
+  hiddenControls,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   useEffect(() => {
@@ -227,6 +234,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           modeConfig={modeConfig}
           project={project}
           execution={execution}
+          hiddenControls={hiddenControls}
           voice={voice}
           onComposerLayoutChange={setComposerLayout}
           onFocusCommand={controller.focus}
@@ -265,6 +273,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   modeConfig,
   project,
   execution,
+  hiddenControls = NO_HIDDEN_CONTROLS,
   voice,
   onComposerLayoutChange,
   onFocusCommand,
@@ -329,7 +338,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         className="mt-1 flex select-none items-center justify-between gap-2 px-3.5 max-md:mt-0 max-md:gap-1 max-md:px-1"
       >
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          {project ? (
+          {project && !hiddenControls.includes("project") ? (
             <ProjectSelector
               projects={project.projects}
               value={project.value}
@@ -342,27 +351,31 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               className="shrink-0"
             />
           ) : null}
-          <EnvironmentSlot
-            projectless={project?.value === null}
-            environment={modeConfig.environment}
-            worktree={modeConfig.worktree}
-            environmentProviderInputsSlot={
-              modeConfig.environmentProviderInputsSlot
-            }
-            machineProviderInputsSlot={modeConfig.machineProviderInputsSlot}
-          />
+          {hiddenControls.includes("environment") ? null : (
+            <EnvironmentSlot
+              projectless={project?.value === null}
+              environment={modeConfig.environment}
+              worktree={modeConfig.worktree}
+              environmentProviderInputsSlot={
+                modeConfig.environmentProviderInputsSlot
+              }
+              machineProviderInputsSlot={modeConfig.machineProviderInputsSlot}
+            />
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {modeConfig.sessionOptionsControl}
-          <PermissionModePicker
-            value={modeConfig.permission.value}
-            options={modeConfig.permission.options}
-            onChange={modeConfig.permission.onChange}
-            supported={modeConfig.permission.supported}
-            disabled={permissionPickerDisabledByPlanMode}
-            showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
-            displayOverride={permissionDisplayOverride}
-          />
+          {hiddenControls.includes("permissionMode") ? null : (
+            <PermissionModePicker
+              value={modeConfig.permission.value}
+              options={modeConfig.permission.options}
+              onChange={modeConfig.permission.onChange}
+              supported={modeConfig.permission.supported}
+              disabled={permissionPickerDisabledByPlanMode}
+              showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
+              displayOverride={permissionDisplayOverride}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -143,6 +143,7 @@ function screenElement(presentation: ThreadScreenPresentation) {
         onCreateNewThreadInEnvironment: null,
         onOpenThreadInfo: null,
         permissionPolicy: "snapshot",
+        hiddenControls: [],
       }}
       environment={null}
       presentation={presentation}

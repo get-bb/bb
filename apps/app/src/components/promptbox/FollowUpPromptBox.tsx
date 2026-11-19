@@ -171,6 +171,7 @@ export interface FollowUpPromptBoxProps {
   compactBeforeSend?: CompactBeforeSendOffer | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
+  hidesPermissionControl?: boolean;
   sessionOptionsControl?: ReactNode;
   executionReadOnly?: boolean;
   permissionReadOnly?: boolean;
@@ -244,6 +245,7 @@ function FollowUpPromptBoxWithComposer({
   compactBeforeSend = null,
   execution,
   permission,
+  hidesPermissionControl = false,
   sessionOptionsControl = null,
   executionReadOnly,
   permissionReadOnly,
@@ -821,7 +823,7 @@ function FollowUpPromptBoxWithComposer({
           </div>
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
             {sessionOptionsControl}
-            {permissionControl}
+            {hidesPermissionControl ? null : permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />
             ) : null}

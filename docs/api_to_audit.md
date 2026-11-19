@@ -2834,6 +2834,50 @@ Docs: `frontend-core-slots.md`.
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
 
+## `app.slots.experimental_page`, `NewThreadComposerProps.hiddenControls` and `ThreadChatProps.hiddenControls` (`@get-bb/plugin-sdk/app`)
+
+`experimental_page({ id, title, description?, routes, chrome, component })`
+draws bb's page for whole routes: `"home"` (`/`) and `"thread"`
+(`/projects/:projectId/threads/:threadId`, `/threads/:threadId`). The page
+renders at bb's canonical URLs, so `toThread`, notification taps, quick-palette
+search, `bb thread open` and copied links all land on it. `chrome.sidebar:
+"hidden"` drops bb's sidebar and its toggle on those routes. The component gets
+`{ location }` and stays mounted while the route moves between the routes it
+owns.
+
+Core path: bb's own workspace (New thread screen and split thread panes) is
+the `corePages` registration in `apps/app/src/views/core-pages.tsx`, collected
+through `definePluginApp` like `coreTabs`. The catch-all route renders
+`PageRoute` (`apps/app/src/views/PageRoute.tsx`), which resolves the owner with
+`resolvePageOwner` (`apps/app/src/lib/page-owner.ts`), and `AppLayout` reads the
+sidebar chrome from the same resolution. Owners are remembered after boot so a
+reload holds a blank page instead of flashing bb's workspace; with nothing
+remembered, bb's page renders on the first commit.
+
+`hiddenControls` leaves controls out without changing what is submitted:
+`experimental_NewThreadComposer` takes `"project" | "environment" |
+"permissionMode"`, which are hidden in `NewThreadPromptBox`, the box core's New thread
+screen renders. `ThreadChat` takes `"environment" | "permissionMode"` (the
+environment summary and the permission picker), which are hidden through
+`ThreadScreenComposerHost.hiddenControls`, which core's thread pane also builds.
+
+Caller: the bundled, off-by-default Chat plugin (`plugins/chat`, `bb--chat`).
+
+**Audit before stabilizing.**
+
+1. **Route set.** Only `home` and `thread` are claimable. Decide whether
+   archived lists, project compose, and plugin panels should be, and whether a
+   page should be able to claim split panes.
+2. **Arbitration.** Installed beats bundled, then slot order, with no user
+   preference. Confirm that is enough once two page plugins exist.
+3. **Message links.** `#msg=` links open the right thread on a plugin page;
+   scrolling to the message inside `ThreadChat` is not covered.
+4. **Chrome.** Only the sidebar is controllable. The command palette stays,
+   because the Chat plugin uses it for search. Revisit when a caller needs
+   more.
+5. **Desktop window chrome.** A page with the sidebar hidden owns the
+   top-left corner. Confirm the macOS traffic-light reserve is exposed to it.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** Only examples use it. No shipped consumer

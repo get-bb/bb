@@ -7,7 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ExperimentalMessageActionSurface } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalMessageActionSurface,
+  ThreadChatControl,
+} from "@get-bb/plugin-sdk";
 import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
 import { defaultAppSettings, type Environment } from "@bb/domain";
@@ -119,6 +122,7 @@ export interface ThreadScreenComposerHost {
   onCreateNewThreadInEnvironment: (() => void) | null;
   onOpenThreadInfo: (() => void) | null;
   permissionPolicy: ThreadComposerPermissionPolicy;
+  hiddenControls: readonly ThreadChatControl[];
 }
 
 interface ThreadScreenProps {
@@ -645,6 +649,7 @@ export function ThreadScreen({
       }
       isPrimaryComposer={presentation.kind === "page"}
       permissionPolicy={composer.permissionPolicy}
+      hiddenControls={composer.hiddenControls}
       contextWindowUsage={timeline.contextWindowUsage}
       environmentCheckout={composer.environmentCheckout}
       environmentCompactLabel={chrome?.environmentCompactLabel}
@@ -762,7 +767,15 @@ function ThreadScreenPanelShell({
   const footer = (
     <div className={cn("relative", surfaceClassName)}>
       <OverflowFade placement="above" tone={tone} />
-      <div className="px-4 pb-4 pt-2">{promptArea}</div>
+      <div
+        className={cn(
+          "px-4 pb-4 pt-2",
+          measure === "page" && "mx-auto w-full",
+          measure === "page" && maxWidthClassName,
+        )}
+      >
+        {promptArea}
+      </div>
     </div>
   );
   if (layout === "document") {

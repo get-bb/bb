@@ -139,6 +139,7 @@ function buildPromptArea({
         composerId="thread-detail-follow-up-composer"
         isPrimaryComposer
         permissionPolicy="editable"
+        hiddenControls={[]}
         canRestoreEnvironment={false}
         environmentGoneStatus={null}
         providerCommands={null}

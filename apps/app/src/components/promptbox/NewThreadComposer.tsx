@@ -222,6 +222,7 @@ interface NewThreadComposerPromptOptions {
   onRequestMachineSetup?: (host: Host) => void;
   locks?: NewThreadComposerLocks;
   mentionMenuPlacement: NewThreadPromptBoxProps["mentionMenuPlacement"];
+  hiddenControls?: NewThreadPromptBoxProps["hiddenControls"];
 }
 
 type ParsedEnvironment = ReturnType<typeof parseEnvironmentValue>;
@@ -2137,6 +2138,7 @@ export function NewThreadComposer({
           disabledReason={disabledReason ?? undefined}
           placeholder={options.placeholder}
           mentionMenuPlacement={options.mentionMenuPlacement}
+          hiddenControls={options.hiddenControls}
           autoFocus={options.autoFocus}
           pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}
           textEffects={options.textEffects ?? textEffects}

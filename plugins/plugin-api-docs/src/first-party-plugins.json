@@ -145,6 +145,11 @@
     "icon": "SideChat"
   },
   {
+    "id": "bb--chat",
+    "name": "Chat",
+    "icon": "MessageSquare"
+  },
+  {
     "id": "bb--storage-retention",
     "name": "Storage & retention [Experimental]",
     "icon": null

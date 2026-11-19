@@ -24,6 +24,7 @@ export function PluginNewThreadComposer({
   placeholder,
   layout = "contained",
   focusRequest,
+  hiddenControls,
   className,
   draftKey,
   onSubmit,
@@ -93,6 +94,7 @@ export function PluginNewThreadComposer({
               isCreating: quickCreateProject.isCreating,
             },
             mentionMenuPlacement: layout === "contained" ? "top" : "bottom",
+            hiddenControls,
           })}
         </div>
       )}

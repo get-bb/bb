@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
+import { corePages } from "@/views/core-pages";
 import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import {
   COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
@@ -92,6 +93,7 @@ function mockPluginSlotSnapshot() {
       },
     ],
     settingsSections: [],
+    pages: corePages,
   };
 }
 
