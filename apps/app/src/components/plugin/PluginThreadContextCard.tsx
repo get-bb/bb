@@ -32,11 +32,12 @@ import {
   type PluginThreadContextCardSectionSlot,
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
+import { InfoSectionHeading } from "@/components/secondary-panel/info/info-list";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
+  THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS,
   ThreadContextCardSectionScopeContext,
-  ThreadContextCardSectionTitle,
-  useThreadContextCardSectionFold,
+  useThreadContextCardSectionCollapse,
 } from "./ThreadContextCardSection";
 import {
   CORE_THREAD_CONTEXT_OWNER,
@@ -256,7 +257,7 @@ const EMPTY_BLOCK_CLASS =
   "[&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))]:hidden";
 
 const SECTION_DIVIDER_CLASS =
-  "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-1 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-1";
+  "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-2 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-2";
 
 const SHOW_EMPTY_STATE_CLASS =
   "contents [&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))>[data-thread-context-card-empty]]:flex";
@@ -272,7 +273,7 @@ function LegacyThreadContextCardSection({
   title: string;
   children: ReactNode;
 }) {
-  const { open, toggle } = useThreadContextCardSectionFold(sectionKey);
+  const collapse = useThreadContextCardSectionCollapse(sectionKey);
   const bodyId = useId();
   return (
     <section
@@ -280,13 +281,13 @@ function LegacyThreadContextCardSection({
       aria-label={title}
       className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
     >
-      <ThreadContextCardSectionTitle
+      <InfoSectionHeading
         label={title}
-        open={open}
+        collapse={collapse}
         bodyId={bodyId}
-        onToggle={toggle}
+        className={THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS}
       />
-      <div id={bodyId} hidden={!open}>
+      <div id={bodyId} hidden={collapse.collapsed}>
         <div data-thread-context-card-body="" className="contents">
           <ThreadContextCardSectionScopeContext.Provider
             value={LEGACY_FRAME_SCOPE}

@@ -22,7 +22,7 @@ export function infoListCollapses(
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none";
 
-export function InfoCountPill({ count }: { count: number }) {
+function InfoCountPill({ count }: { count: number }) {
   return (
     <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal text-muted-foreground tabular-nums">
       {count}
@@ -46,19 +46,25 @@ export interface InfoSectionHeadingProps {
 export const INFO_SECTION_TITLE_CLASS =
   "m-0 flex min-w-0 items-center text-xs font-medium leading-5 text-muted-foreground";
 
-function InfoSectionHeading({
+export function InfoSectionHeading({
   label,
   count,
   accessory,
   trailing,
   collapse,
   bodyId,
-}: InfoSectionHeadingProps & { bodyId: string }) {
+  className,
+}: InfoSectionHeadingProps & { bodyId: string; className?: string }) {
   const countPill =
     count === undefined ? null : <InfoCountPill count={count} />;
   const collapsed = collapse?.collapsed ?? false;
   return (
-    <div className="mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3">
+    <div
+      className={cn(
+        "mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-center">
         {collapse ? (
           <h3 className={INFO_SECTION_TITLE_CLASS}>
