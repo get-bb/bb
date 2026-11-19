@@ -12,7 +12,7 @@
     "name": "Tailscale",
     "description": "Reach this bb privately at https://<machine>.<tailnet>.ts.net through Tailscale Serve, set up in one click.",
     "branding": {
-      "icon": "Lock"
+      "icon": "./icons/tailscale.svg"
     },
     "server": "./src/server.ts",
     "app": "./app.tsx"
