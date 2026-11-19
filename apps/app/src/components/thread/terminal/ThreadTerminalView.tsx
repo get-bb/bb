@@ -420,6 +420,7 @@ const TERMINAL_RECONNECTED_NOTICE_DURATION_MS = 1_500;
 interface WriteTerminalStatusArgs {
   terminal: XTermTerminal;
   text: string;
+  onParsed?: () => void;
 }
 
 interface WriteTerminalSessionStatusNoticeArgs {
@@ -460,6 +461,14 @@ interface CaptureTerminalContextMenuStateArgs {
 
 interface TerminalReplayWriteState {
   suppressedWriteCount: number;
+  suppressingReply: boolean;
+}
+
+interface TerminalReplayState {
+  nextSeq: number;
+  version: number;
+  screen: HTMLElement;
+  renderSubscription: IDisposable | null;
 }
 
 type TerminalSessionStatusNotice = "exited";
@@ -471,9 +480,8 @@ interface HandleTerminalServerMessageArgs {
   acknowledgeOutput: (nextSeq: number) => void;
   message: TerminalServerMessage;
   onSessionChange?: (session: TerminalSession) => void;
-  replayNextSeq: number | null;
+  replay: TerminalReplayState;
   replayWriteState: TerminalReplayWriteState;
-  setReplayNextSeq: (nextSeq: number) => void;
   terminal: XTermTerminal;
 }
 
@@ -505,16 +513,13 @@ export function encodeTerminalInputChunks(value: string): string[] {
   return chunks;
 }
 
-export function forwardTerminalData({
+function forwardTerminalData({
   data,
   onInput,
   replayWriteState,
   sessionStatus,
 }: ForwardTerminalDataArgs): void {
-  if (
-    replayWriteState.suppressedWriteCount > 0 ||
-    sessionStatus !== "running"
-  ) {
+  if (replayWriteState.suppressingReply || sessionStatus !== "running") {
     return;
   }
 
@@ -564,8 +569,72 @@ function buildTerminalSelection({
 function writeTerminalStatus({
   terminal,
   text,
+  onParsed,
 }: WriteTerminalStatusArgs): void {
-  terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
+  terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`, onParsed);
+}
+
+function hideTerminalReplay(replay: TerminalReplayState): void {
+  replay.version += 1;
+  replay.renderSubscription?.dispose();
+  replay.renderSubscription = null;
+  replay.screen.style.visibility = "hidden";
+}
+
+function revealTerminalReplay(
+  replay: TerminalReplayState,
+  terminal: XTermTerminal,
+  version: number,
+): void {
+  if (
+    version !== replay.version ||
+    replay.screen.style.visibility !== "hidden"
+  ) {
+    return;
+  }
+  replay.renderSubscription?.dispose();
+  replay.renderSubscription = terminal.onRender(() => {
+    replay.renderSubscription?.dispose();
+    replay.renderSubscription = null;
+    if (version === replay.version) {
+      replay.screen.style.removeProperty("visibility");
+    }
+  });
+  terminal.refresh(0, terminal.rows - 1);
+}
+
+function observeTerminalReplayQueries(
+  terminal: XTermTerminal,
+  replayWriteState: TerminalReplayWriteState,
+): void {
+  const observeQuery = () => {
+    replayWriteState.suppressingReply =
+      replayWriteState.suppressedWriteCount > 0;
+    queueMicrotask(() => {
+      replayWriteState.suppressingReply = false;
+    });
+    return false;
+  };
+  for (const identifier of [
+    { final: "c" },
+    { prefix: ">", final: "c" },
+    { final: "n" },
+    { prefix: "?", final: "n" },
+    { prefix: ">", final: "q" },
+    { intermediates: "$", final: "p" },
+    { prefix: "?", intermediates: "$", final: "p" },
+    { final: "t" },
+    { prefix: "?", final: "u" },
+  ]) {
+    terminal.parser.registerCsiHandler(identifier, observeQuery);
+  }
+  terminal.parser.registerDcsHandler(
+    { intermediates: "$", final: "q" },
+    observeQuery,
+  );
+  for (const identifier of [4, 10, 11, 12]) {
+    terminal.parser.registerOscHandler(identifier, observeQuery);
+  }
 }
 
 function writeTerminalSessionStatusNotice({
@@ -630,6 +699,7 @@ export function writeTerminalOutput({
   replayWriteState.suppressedWriteCount += 1;
   terminal.write(data, () => {
     replayWriteState.suppressedWriteCount -= 1;
+    replayWriteState.suppressingReply = false;
     onParsed();
   });
 }
@@ -638,15 +708,22 @@ function handleTerminalServerMessage({
   acknowledgeOutput,
   message,
   onSessionChange,
-  replayNextSeq,
+  replay,
   replayWriteState,
-  setReplayNextSeq,
   terminal,
 }: HandleTerminalServerMessageArgs): void {
   switch (message.type) {
     case "attached":
       onSessionChange?.(message.session);
-      setReplayNextSeq(message.nextSeq);
+      replay.nextSeq = message.nextSeq;
+      if (message.replayStartSeq < message.nextSeq) {
+        hideTerminalReplay(replay);
+      } else if (replay.screen.style.visibility === "hidden") {
+        const version = replay.version;
+        terminal.write("", () =>
+          revealTerminalReplay(replay, terminal, version),
+        );
+      }
       return;
     case "pong":
       return;
@@ -655,22 +732,32 @@ function handleTerminalServerMessage({
       return;
     case "output": {
       const nextSeq = message.chunk.seq + 1;
+      const version = replay.version;
       writeTerminalOutput({
         data: decodeBase64Bytes(message.chunk.dataBase64),
-        isReplay: replayNextSeq !== null && message.chunk.seq < replayNextSeq,
-        onParsed: () => acknowledgeOutput(nextSeq),
+        isReplay: message.chunk.seq < replay.nextSeq,
+        onParsed: () => {
+          acknowledgeOutput(nextSeq);
+          if (nextSeq >= replay.nextSeq) {
+            revealTerminalReplay(replay, terminal, version);
+          }
+        },
         replayWriteState,
         terminal,
       });
       return;
     }
-    case "error":
+    case "error": {
+      const version = replay.version;
       writeTerminalStatus({
         terminal,
         text: `Terminal error: ${message.message}`,
+        onParsed: () => revealTerminalReplay(replay, terminal, version),
       });
       return;
-    case "exited":
+    }
+    case "exited": {
+      const version = replay.version;
       onSessionChange?.(message.session);
       writeTerminalStatus({
         terminal,
@@ -678,8 +765,10 @@ function handleTerminalServerMessage({
           message.session.exitCode === null
             ? "Terminal exited"
             : `Terminal exited with code ${message.session.exitCode}`,
+        onParsed: () => revealTerminalReplay(replay, terminal, version),
       });
       return;
+    }
   }
 }
 
@@ -909,9 +998,9 @@ function mountThreadTerminal({
     }
 
     let runtimeDisposed = false;
-    let replayNextSeq: number | null = null;
     const replayWriteState: TerminalReplayWriteState = {
       suppressedWriteCount: 0,
+      suppressingReply: false,
     };
     let connectionNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let selectionAnimationFrame: number | null = null;
@@ -1004,6 +1093,17 @@ function mountThreadTerminal({
     }
     containerElement.appendChild(element);
     terminal.open(element);
+    const screen = element.querySelector<HTMLElement>(".xterm-screen");
+    if (screen === null) {
+      throw new Error("Terminal screen is unavailable");
+    }
+    const replay: TerminalReplayState = {
+      nextSeq: 0,
+      version: 0,
+      screen,
+      renderSubscription: null,
+    };
+    observeTerminalReplayQueries(terminal, replayWriteState);
     const lateImeInputDisposable = forwardLateImeInput(terminal);
 
     let reconnecting = false;
@@ -1066,19 +1166,19 @@ function mountThreadTerminal({
           acknowledgeOutput: (nextSeq) => transport.acknowledgeOutput(nextSeq),
           message,
           onSessionChange: live().onSessionChangeRef.current,
-          replayNextSeq,
+          replay,
           replayWriteState,
-          setReplayNextSeq: (nextSeq) => {
-            replayNextSeq = nextSeq;
-          },
           terminal,
         });
       },
       onSequenceGap: () => {
-        terminal.reset();
-        writeTerminalStatus({
+        hideTerminalReplay(replay);
+        writeTerminalOutput({
           terminal,
-          text: "Some terminal output was unavailable after reconnect",
+          data: "\x1bc\r\n\x1b[2mSome terminal output was unavailable after reconnect\x1b[0m\r\n",
+          isReplay: true,
+          onParsed: () => undefined,
+          replayWriteState,
         });
       },
       shouldReconnect: () =>
@@ -1110,6 +1210,7 @@ function mountThreadTerminal({
           window.cancelAnimationFrame(selectionAnimationFrame);
           selectionAnimationFrame = null;
         }
+        replay.renderSubscription?.dispose();
         lateImeInputDisposable.dispose();
         transport.dispose();
         terminal.dispose();
