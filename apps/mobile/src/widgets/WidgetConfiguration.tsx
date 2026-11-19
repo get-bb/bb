@@ -482,7 +482,7 @@ function TargetPicker({
                   checked: icon === item,
                   disabled: saving,
                 }}
-                className="items-center gap-1 rounded-xl border-2 p-2"
+                className="items-center rounded-xl border-2 p-2"
                 style={{
                   borderColor: icon === item ? tokens.primary : "transparent",
                 }}
@@ -502,9 +502,6 @@ function TargetPicker({
                     />
                   </View>
                 )}
-                <Text variant="caption" numberOfLines={1}>
-                  {iconLabels[item]}
-                </Text>
               </Pressable>
             </View>
           ))}
