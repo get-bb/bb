@@ -378,16 +378,29 @@ export function observeTerminalFontLoading(
   onFontsLoaded: () => void,
 ): () => void {
   let disposed = false;
+  const measuredFontFaces = new WeakSet<FontFace>();
   const refresh = () => {
     if (!disposed) {
       onFontsLoaded();
     }
   };
-  fontSet.addEventListener("loadingdone", refresh);
+  const handleLoadingDone = (event: FontFaceSetLoadEvent) => {
+    let loadedNewFontFace = false;
+    for (const fontFace of event.fontfaces) {
+      if (!measuredFontFaces.has(fontFace)) {
+        measuredFontFaces.add(fontFace);
+        loadedNewFontFace = true;
+      }
+    }
+    if (loadedNewFontFace) {
+      refresh();
+    }
+  };
+  fontSet.addEventListener("loadingdone", handleLoadingDone);
   void fontSet.ready.then(refresh);
   return () => {
     disposed = true;
-    fontSet.removeEventListener("loadingdone", refresh);
+    fontSet.removeEventListener("loadingdone", handleLoadingDone);
   };
 }
 

@@ -392,12 +392,22 @@ function createTerminalFontSet() {
     finishLoading = () => resolve(fontSet as FontFaceSet);
   });
   const fontSet = Object.assign(events, { ready });
-  return { fontSet, finishLoading };
+  const finishLoadingFontFaces = (fontfaces: FontFace[]) => {
+    fontSet.dispatchEvent(
+      Object.assign(new Event("loadingdone"), { fontfaces }),
+    );
+  };
+  return { fontSet, finishLoading, finishLoadingFontFaces };
+}
+
+function createFontFace(family: string): FontFace {
+  return { family } as FontFace;
 }
 
 describe("terminal font loading", () => {
   it("refreshes fonts imported after the initial ready promise resolves", async () => {
-    const { fontSet, finishLoading } = createTerminalFontSet();
+    const { fontSet, finishLoading, finishLoadingFontFaces } =
+      createTerminalFontSet();
     finishLoading();
     await fontSet.ready;
     const refresh = vi.fn();
@@ -405,29 +415,50 @@ describe("terminal font loading", () => {
     await fontSet.ready;
     expect(refresh).toHaveBeenCalledOnce();
 
-    fontSet.dispatchEvent(new Event("loadingdone"));
+    finishLoadingFontFaces([createFontFace("Terminal Theme Mono")]);
     expect(refresh).toHaveBeenCalledTimes(2);
 
-    fontSet.dispatchEvent(new Event("loadingdone"));
+    finishLoadingFontFaces([createFontFace("Terminal Theme Mono Bold")]);
     expect(refresh).toHaveBeenCalledTimes(3);
     dispose();
   });
 
+  it("stops when each measurement reports the loaded font faces again", async () => {
+    const { fontSet, finishLoading, finishLoadingFontFaces } =
+      createTerminalFontSet();
+    const loadedFontFace = createFontFace("Inter Variable");
+    let measurements = 0;
+    const dispose = observeTerminalFontLoading(fontSet, () => {
+      measurements += 1;
+      if (measurements < 50) {
+        finishLoadingFontFaces([loadedFontFace]);
+      }
+    });
+
+    finishLoading();
+    await fontSet.ready;
+
+    expect(measurements).toBe(2);
+    dispose();
+  });
+
   it("ignores a pending ready callback after the terminal is disposed", async () => {
-    const { fontSet, finishLoading } = createTerminalFontSet();
+    const { fontSet, finishLoading, finishLoadingFontFaces } =
+      createTerminalFontSet();
     const refresh = vi.fn();
     const dispose = observeTerminalFontLoading(fontSet, refresh);
 
     dispose();
     finishLoading();
     await fontSet.ready;
-    fontSet.dispatchEvent(new Event("loadingdone"));
+    finishLoadingFontFaces([createFontFace("Terminal Theme Mono")]);
 
     expect(refresh).not.toHaveBeenCalled();
   });
 
   it("removes the font listener when the terminal is disposed", async () => {
-    const { fontSet, finishLoading } = createTerminalFontSet();
+    const { fontSet, finishLoading, finishLoadingFontFaces } =
+      createTerminalFontSet();
     const removeEventListener = vi.spyOn(fontSet, "removeEventListener");
     const refresh = vi.fn();
     const dispose = observeTerminalFontLoading(fontSet, refresh);
@@ -436,7 +467,7 @@ describe("terminal font loading", () => {
     refresh.mockClear();
 
     dispose();
-    fontSet.dispatchEvent(new Event("loadingdone"));
+    finishLoadingFontFaces([createFontFace("Terminal Theme Mono")]);
 
     expect(refresh).not.toHaveBeenCalled();
     expect(removeEventListener).toHaveBeenCalledWith(
