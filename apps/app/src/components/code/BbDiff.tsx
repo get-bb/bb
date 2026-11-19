@@ -22,6 +22,9 @@ const DIFF_VIEW_STYLE = {
   "--diffs-line-height": "18px",
 } as CSSProperties;
 
+const DIFF_CODE_WITHOUT_VERTICAL_SCROLLBAR_GUTTER_CSS =
+  "[data-code]{scrollbar-gutter:auto}";
+
 const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
 
 function BbDiff({
@@ -107,6 +110,7 @@ function BbDiff({
       onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
       onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
+      unsafeCSS: DIFF_CODE_WITHOUT_VERTICAL_SCROLLBAR_GUTTER_CSS,
     }),
     [
       codeTheme,

@@ -2240,16 +2240,18 @@ export interface ExperimentalThreadContextCardRowRegistration {
 }
 
 /**
- * A titled section of the thread context card, below its rows; the card's
- * counterpart of `experimental_threadInfoSection`. bb draws the title and a
- * divider above it, and hides the section while its component renders
- * nothing. A crash removes only this section for that thread.
+ * A section of the thread context card, below its rows; the card's
+ * counterpart of `experimental_threadInfoSection`. Render one
+ * `experimental_InfoSection`, or null to hide the section for this thread. In
+ * the card, bb draws the section's label as a button that folds it and a
+ * divider above it. Sections start open; bb remembers the ones the person folds
+ * by `pluginId/id` across threads and restarts. While folded, the component
+ * stays mounted and the `experimental_InfoSection` children unmount. A crash
+ * removes only this section for that thread.
  */
 export interface ExperimentalThreadContextCardSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Heading bb draws above the section's rows. */
-  title: string;
   /**
    * Sections sort by `group` (string compare), then by `order` within a group
    * (unset sorts last), then by registration order, with bb's own sections
@@ -4054,7 +4056,7 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadContextCardRowRegistration,
   ): void;
   /**
-   * Add a titled section to the thread context card of every thread pane (see
+   * Add a section to the thread context card of every thread pane (see
    * {@link ExperimentalThreadContextCardSectionRegistration}). Experimental:
    * see docs/api_to_audit.md.
    */
@@ -6248,10 +6250,12 @@ export interface PluginSdkApp {
    */
   experimental_Diff: ComponentType<DiffProps>;
   /**
-   * The thread Info tab's section frame (see
+   * The section frame of the thread Info tab and the thread context card (see
    * {@link ExperimentalInfoSectionProps}), the one bb's own sections use.
-   * Inside an `experimental_threadInfoSection` it collapses, and the host
-   * remembers that per registration. Experimental: see docs/api_to_audit.md.
+   * Inside an `experimental_threadInfoSection` it collapses, and inside an
+   * `experimental_threadContextCardSection` it folds in the card's style; the
+   * host remembers either per registration. Experimental: see
+   * docs/api_to_audit.md.
    */
   experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
   /**

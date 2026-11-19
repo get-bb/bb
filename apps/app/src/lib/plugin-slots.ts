@@ -30,7 +30,6 @@ import type {
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
   ExperimentalThreadContextCardRowRegistration,
-  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
@@ -49,6 +48,7 @@ import {
   type CollectedManagedSidebarFooterItem,
   type CollectedSidebarFooterItem,
   type CollectedSidebarNavigationRegistration,
+  type CollectedThreadContextCardSectionRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 export interface PluginRegistrationSet {
@@ -74,7 +74,7 @@ export interface PluginRegistrationSet {
   threadHeaderRows?: readonly ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles?: readonly ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
-  threadContextCardSections?: readonly ExperimentalThreadContextCardSectionRegistration[];
+  threadContextCardSections?: readonly CollectedThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
@@ -159,7 +159,7 @@ export interface PluginThreadHeaderTitleSlot
 export interface PluginThreadContextCardRowSlot
   extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardSectionSlot
-  extends ExperimentalThreadContextCardSectionRegistration, PluginSlotBase {}
+  extends CollectedThreadContextCardSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot

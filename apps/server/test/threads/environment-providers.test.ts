@@ -16,6 +16,7 @@ import {
 import {
   createEnvironment,
   createProjectSource,
+  environmentHookOperations,
   ensurePersonalProject,
   getEnvironment,
   getHost,
@@ -44,6 +45,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
+import { eq } from "drizzle-orm";
+import { reportEnvironmentHookProgress } from "../../src/services/environments/environment-hooks.js";
 import {
   listEnvironmentProviders,
   setPluginEnvironmentProviderBridge,
@@ -70,6 +73,7 @@ import {
 } from "../../src/services/threads/thread-startup-store.js";
 import {
   registerTestHostRpcCapture,
+  listQueuedCommands,
   listQueuedThreadCommands,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
@@ -1110,9 +1114,25 @@ describe("environment providers are asked inside provisioning", () => {
         "host-target-provider-setup",
       );
       const producedPath = "/tmp/environment-providers-owned-setup";
+      const hooks: Array<{ kind: string; path: string }> = [];
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
+        onEnvironmentHook: async (command) => {
+          hooks.push({ kind: command.kind, path: command.path });
+          reportEnvironmentHookProgress(harness.deps, host.id, {
+            type: "environment.hook.progress",
+            operationId: command.operationId,
+            entry: {
+              type: "step",
+              key: "setup-started",
+              text: "Running .bb-env-setup.sh",
+              status: "started",
+              startedAt: 1,
+              metadata: null,
+            },
+          });
+        },
       });
       installTarget({
         provision: () => ({
@@ -1148,10 +1168,13 @@ describe("environment providers are asked inside provisioning", () => {
         providerOwnsPath: true,
         status: "provisioning",
       });
-      expect(queued.command).toMatchObject({
-        path: producedPath,
-        setupScriptTimeoutMs: 15 * 60 * 1_000,
-      });
+      expect(queued.command).toMatchObject({ path: producedPath });
+      expect(hooks).toEqual([{ kind: "setup", path: producedPath }]);
+      expect(
+        provisioningEvents(harness, created.id).flatMap((event) =>
+          event.entries.map((entry) => entry.key),
+        ),
+      ).toContain("setup-started");
 
       await reportQueuedCommandSuccess(harness, queued, {
         branchName: "feature/provider-setup",
@@ -1176,6 +1199,9 @@ describe("environment providers are asked inside provisioning", () => {
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
+        onEnvironmentHook: async () => {
+          throw new Error(".bb-env-setup.sh failed with exit code 7");
+        },
       });
       installTarget({
         provision: () => ({
@@ -1191,19 +1217,27 @@ describe("environment providers are asked inside provisioning", () => {
       const created = await createTargetThread(harness, {
         projectId: project.id,
       });
-      const queued = await waitForQueuedCommand(
-        harness,
-        (candidate) => candidate.command.type === "environment.attach",
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, created.id)?.status).toBe("error"),
       );
-      if (queued.command.type !== "environment.attach") {
-        throw new Error("Expected environment.attach command");
-      }
-      const environmentId = queued.command.environmentId;
-
-      await reportQueuedCommandError(harness, queued, {
-        errorCode: "setup_script_failed",
-        errorMessage: ".bb-env-setup.sh failed with exit code 7",
+      const environmentId = getThread(harness.db, created.id)?.environmentId;
+      if (environmentId == null) throw new Error("Expected an environment");
+      expect(
+        harness.db
+          .select()
+          .from(environmentHookOperations)
+          .where(
+            eq(
+              environmentHookOperations.id,
+              `environment:${environmentId}:${getEnvironment(harness.db, environmentId)?.environmentProviderInstanceKey}:setup`,
+            ),
+          )
+          .get(),
+      ).toMatchObject({
+        finishedAt: expect.any(Number),
+        error: ".bb-env-setup.sh failed with exit code 7",
       });
+      expect(listQueuedCommands(harness, "environment.attach")).toEqual([]);
       await vi.waitFor(() => {
         expect(getThread(harness.db, created.id)).toMatchObject({
           environmentId,

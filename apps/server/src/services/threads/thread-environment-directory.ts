@@ -238,7 +238,6 @@ async function provisionUnmanagedEnvironmentForPath(
     hostId: args.currentEnvironment.hostId,
     initiator: null,
     path: args.path,
-    setupScriptTimeoutMs: null,
   });
 
   try {
