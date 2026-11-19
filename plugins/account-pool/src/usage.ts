@@ -132,6 +132,10 @@ function usageWindow(
     : { slot, windowMinutes: CLAUDE_WINDOWS[slot].minutes, ...normalized };
 }
 
+export function isUsagePayload(payload: unknown): boolean {
+  return usagePayloadSchema.safeParse(payload).success;
+}
+
 export function quotaFromUsage(
   accountId: string,
   payload: object,

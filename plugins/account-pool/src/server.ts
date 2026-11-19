@@ -166,6 +166,10 @@ export function createAccountPoolPlugin(
         bb.log.warn(
           `Account Pooler ${provider} transport failed: ${transportErrorCode(error)}.`,
         ),
+      onUsageRefreshFailed: (provider, accountId, message) =>
+        bb.log.warn(
+          `Account Pooler ${provider} account ${accountId} usage refresh failed: ${message}.`,
+        ),
       onAccountsChanged: () =>
         bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
       onOAuthRefresh: (provider, accountId, outcome, detail) => {

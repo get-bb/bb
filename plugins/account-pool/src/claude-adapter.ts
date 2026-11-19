@@ -7,6 +7,8 @@ import {
   mountedUpstreamUrl,
   oauthSecretDueForRefresh,
   parseOAuthRefreshResponse,
+  UNREADABLE_USAGE_MESSAGE,
+  usageStatusMessage,
 } from "./provider-adapter.js";
 import {
   epochMilliseconds,
@@ -14,7 +16,7 @@ import {
   quotaFromHeaders,
 } from "./quota.js";
 import { parseRequestBody } from "./request-body.js";
-import { quotaFromUsage } from "./usage.js";
+import { isUsagePayload, quotaFromUsage } from "./usage.js";
 
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const OAUTH_BETA = "oauth-2025-04-20";
@@ -117,42 +119,51 @@ export function createClaudeAdapter(options: {
         },
         signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
       });
+      let failure: string | null = null;
       if (response.ok) {
         const payload = await response.json().catch(() => null);
-        if (typeof payload === "object" && payload !== null) {
-          const quota = quotaFromUsage(
-            context.account.id,
-            payload,
-            context.quotas.get(context.account.id),
-            context.now(),
-          );
-          if (quota !== null) context.quotas.put(quota);
-        }
+        const quota =
+          typeof payload === "object" && payload !== null
+            ? quotaFromUsage(
+                context.account.id,
+                payload,
+                context.quotas.get(context.account.id),
+                context.now(),
+              )
+            : null;
+        if (quota !== null) context.quotas.put(quota);
+        else if (!isUsagePayload(payload)) failure = UNREADABLE_USAGE_MESSAGE;
       } else {
         await response.body?.cancel();
+        failure = usageStatusMessage(response.status);
       }
-      if (context.account.accountUuid !== null) return;
-      const profile = await context.fetch(options.profileUrl, {
-        headers: {
-          authorization: `Bearer ${secret.accessToken}`,
-          "anthropic-beta": OAUTH_BETA,
-          accept: "application/json",
-        },
-        signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
-      });
-      if (!profile.ok) {
-        await profile.body?.cancel();
-        return;
+      if (context.account.accountUuid === null) {
+        const profile = await context.fetch(options.profileUrl, {
+          headers: {
+            authorization: `Bearer ${secret.accessToken}`,
+            "anthropic-beta": OAUTH_BETA,
+            accept: "application/json",
+          },
+          signal: AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
+        });
+        if (profile.ok) {
+          const parsed = profileResponseSchema.safeParse(
+            await profile.json().catch(() => null),
+          );
+          const accountUuid = parsed.success
+            ? (parsed.data.account?.uuid ?? null)
+            : null;
+          if (accountUuid !== null) {
+            await context.accounts.setAccountUuid(
+              context.account.id,
+              accountUuid,
+            );
+          }
+        } else {
+          await profile.body?.cancel();
+        }
       }
-      const parsed = profileResponseSchema.safeParse(
-        await profile.json().catch(() => null),
-      );
-      const accountUuid = parsed.success
-        ? (parsed.data.account?.uuid ?? null)
-        : null;
-      if (accountUuid !== null) {
-        await context.accounts.setAccountUuid(context.account.id, accountUuid);
-      }
+      if (failure !== null) throw new Error(failure);
     },
     errorResponse(status, message, headers) {
       const type =
