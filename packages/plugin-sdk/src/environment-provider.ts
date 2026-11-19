@@ -114,7 +114,7 @@ export interface PluginEnvironmentProviderRenameBranchContext {
   environment: Environment;
   /** Resource is private to this provider, as last returned by create or a rename. */
   resource: JsonValue | null;
-  /** The branch the environment's checkout is on when core asks, read from git just before the call. */
+  /** The branch the environment's checkout is on when core asks, read from git just before the call. It may be a branch the user or agent made, so rename only a branch this provider created for this environment and answer `kept` otherwise. */
   from: string;
   to: string;
   report: PluginEnvironmentProviderProgress;

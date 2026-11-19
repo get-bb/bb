@@ -4435,7 +4435,9 @@ hook once with `{ environment, resource, from, to, report, signal }` when create
 has returned and title generation has settled. `from` is the branch the
 environment's checkout is on, read from git just before the call, so a create
 that binds to an existing row reports that row's branch; a checkout on no
-branch drops the rename. `to` is the name create would have received: the
+branch drops the rename. Core no longer guards against a checkout that switched
+to a branch the user or agent made, so a provider renames only a branch it
+created for this environment and answers `kept` otherwise. `to` is the name create would have received: the
 generated title, or the fallback title when generation failed or was skipped.
 A title that settles before create returns is applied before setup starts, so
 setup and "Using branch" see the final name; a later one renames whenever it
