@@ -400,8 +400,14 @@ function createTerminalFontSet() {
   return { fontSet, finishLoading, finishLoadingFontFaces };
 }
 
-function createFontFace(family: string): FontFace {
-  return { family } as FontFace;
+function createFontFace(family: string, weight = "400"): FontFace {
+  return {
+    family,
+    style: "normal",
+    weight,
+    stretch: "normal",
+    unicodeRange: "U+0-10FFFF",
+  } as FontFace;
 }
 
 describe("terminal font loading", () => {
@@ -439,6 +445,25 @@ describe("terminal font loading", () => {
     await fontSet.ready;
 
     expect(measurements).toBe(2);
+    dispose();
+  });
+
+  it("does not measure again when the browser reports a loaded font face as a new object", async () => {
+    const { fontSet, finishLoading, finishLoadingFontFaces } =
+      createTerminalFontSet();
+    finishLoading();
+    await fontSet.ready;
+    const refresh = vi.fn();
+    const dispose = observeTerminalFontLoading(fontSet, refresh);
+    await fontSet.ready;
+    finishLoadingFontFaces([createFontFace("Inter Variable")]);
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    finishLoadingFontFaces([createFontFace("Inter Variable")]);
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    finishLoadingFontFaces([createFontFace("Inter Variable", "700")]);
+    expect(refresh).toHaveBeenCalledTimes(3);
     dispose();
   });
 
