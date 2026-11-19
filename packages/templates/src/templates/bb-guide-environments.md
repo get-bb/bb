@@ -105,13 +105,29 @@ Making your repo work with bb:
   reason, or `unknown` while the background check has not answered. Listing
   never waits on a machine; results can be up to ten minutes old, and thread
   creation checks the selected provider and machine afresh.
-  bb environment list                     List environments that are not destroyed
+  bb environment create                   Create an environment before any thread. You hold it:
+                                          it is never retired for having no threads, threads can
+                                          join it with `bb thread spawn --environment <id>`, and it
+                                          stays until `bb environment delete`. Setup runs as for a
+                                          thread; follow it with `bb environment show <id>`
+    --project <id>                        Project to create it in (required)
+    --machine <id-or-name>               Machine; defaults to the project's default checkout machine
+    --host <id-or-name>                  Alias for --machine
+    --provider <id>                       Environment provider; defaults to worktree (personal
+                                          workspace for the personal project). Providers written for
+                                          the version-1 contract are refused: they need a thread
+    --inputs <json>                       Provider inputs (requires --provider); omitted means {},
+                                          so the provider's defaults apply
+    --name <name>                         Display name; a worktree branch is <prefix><name-slug>-<id>
+  bb environment list                     List environments that are not destroyed; a held
+                                          environment shows "held by user"
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
     --host <id-or-name>                   Only environments on this machine
     --instance-key <key>                  Only the environment its provider named with
                                           this instance key (with --provider, the one
                                           row that provider's launch produced)
+    --held-by <holder>                    Only environments with this holder: user
     --status <status>                     Only environments in this status: provisioning,
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)

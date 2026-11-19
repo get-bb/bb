@@ -6,6 +6,7 @@ import {
   getThread,
   listEnvironments,
 } from "@bb/db";
+import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   PluginEnvironmentProviderCreateContext,
@@ -15,7 +16,6 @@ import type {
 import { createDeferredPromise } from "@bb/test-helpers";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
 import { sweepProviderLifecycles } from "../../src/services/environments/environment-engine.js";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../../src/services/environments/environment-provider-ids.js";
@@ -61,6 +61,7 @@ function installClaimingProvider(
   remove: () => Promise<PluginEnvironmentProviderRemoveResult> = async () => ({
     status: "removed",
   }),
+  locate?: PluginEnvironmentProviderDeclaration["locate"],
 ): void {
   const records: PluginEnvironmentProviderRecord[] = [
     {
@@ -76,6 +77,7 @@ function installClaimingProvider(
           gitRemote: false,
           projectless: false,
         },
+        ...(locate === undefined ? {} : { locate }),
         create,
         remove,
       }),
@@ -360,10 +362,14 @@ describe("environment path claim release", () => {
       });
       holdPath(harness, { environmentId: shared.id, ownerThreadId: owner.id });
       const claimed = createDeferredPromise<boolean>();
-      installClaimingProvider(async (context) => {
-        claimed.resolve(await context.experimental_claimPath(SHARED_PATH));
-        return { status: "created", path: SHARED_PATH, ownsPath: false };
-      });
+      installClaimingProvider(
+        async (context) => {
+          claimed.resolve(await context.experimental_claimPath(SHARED_PATH));
+          return { status: "created", path: SHARED_PATH, ownsPath: false };
+        },
+        undefined,
+        () => ({ path: SHARED_PATH, reuse: false }),
+      );
       const thread = await startThread(harness, {
         projectId: project.id,
         hostId: host.id,
@@ -499,7 +505,7 @@ function installCheckoutProvider(
     holds?: CheckoutCreateHolds[];
     onClaimed?: (index: number) => void;
   } = {},
-): { claimedBy(index: number): Promise<string> } {
+): { claimedBy(index: number): Promise<string>; creates(): number } {
   const holds = args.holds ?? [];
   const claims = holds.map(() => createDeferredPromise<string>());
   let createCount = 0;
@@ -513,9 +519,12 @@ function installCheckoutProvider(
         icon: "Folder",
         requires: { projectCheckout: true },
         inputs: checkoutProviderInputsSchema,
-        experimental_existingPath: (inputs) => {
+        locate: ({ inputs }) => {
           const parsed = checkoutProviderInputsSchema.parse(inputs);
-          return parsed.branch === undefined ? (parsed.path ?? null) : null;
+          return {
+            path: parsed.path ?? CHECKOUT_PATH,
+            reuse: parsed.branch === undefined,
+          };
         },
         create: async (context) => {
           const path =
@@ -551,6 +560,7 @@ function installCheckoutProvider(
     decisionTimeoutMs: 10_000,
   });
   return {
+    creates: () => createCount,
     claimedBy: (index) => {
       const claim = claims[index];
       if (claim === undefined) throw new Error(`No held claim ${index}`);
@@ -613,20 +623,6 @@ async function waitForThreadStarts(
     );
 }
 
-function workspacePathSteps(harness: TestAppHarness, threadId: string) {
-  return listEvents(harness.db, { threadId })
-    .filter((event) => event.type === "system/thread-provisioning")
-    .flatMap(
-      (event) =>
-        z
-          .object({
-            entries: z.array(z.object({ key: z.string().optional() })),
-          })
-          .parse(JSON.parse(event.data)).entries,
-    )
-    .filter((entry) => entry.key === "workspace-path").length;
-}
-
 function errorEvents(harness: TestAppHarness, threadIds: string[]) {
   return threadIds.flatMap((threadId) =>
     listEvents(harness.db, { threadId })
@@ -635,60 +631,8 @@ function errorEvents(harness: TestAppHarness, threadIds: string[]) {
   );
 }
 
-async function holdSecondCreateOnTheClaim(
-  harness: TestAppHarness,
-  args: {
-    projectId: string;
-    hostId: string;
-    finishFirstSetupBeforeTheClaim: boolean;
-  },
-) {
-  const firstHold = createDeferredPromise<void>();
-  const secondStart = createDeferredPromise<void>();
-  const secondHold = createDeferredPromise<void>();
-  const provider = installCheckoutProvider({
-    holds: [
-      { afterClaim: firstHold.promise },
-      {
-        ...(args.finishFirstSetupBeforeTheClaim
-          ? { beforeClaim: secondStart.promise }
-          : {}),
-        afterClaim: secondHold.promise,
-      },
-    ],
-  });
-  const target = { projectId: args.projectId, hostId: args.hostId };
-  const first = await createCheckoutThread(harness, {
-    ...target,
-    prompt: "first checkout",
-  });
-  expect(await provider.claimedBy(0)).toBe(first.id);
-  const second = await createCheckoutThread(harness, {
-    ...target,
-    prompt: "second checkout",
-  });
-  firstHold.resolve();
-  if (args.finishFirstSetupBeforeTheClaim) {
-    await finishWorkspaceSetup(harness, first.id);
-    await waitForThreadStarts(harness, [first.id]);
-    secondStart.resolve();
-  }
-  expect(await provider.claimedBy(1)).toBe(second.id);
-  const shared = getThread(harness.db, first.id)!.environmentId!;
-  expect(getEnvironment(harness.db, shared)).toMatchObject({
-    path: CHECKOUT_PATH,
-    claimPath: null,
-    ownerThreadId: null,
-  });
-  expect(getPreparingEnvironment(harness.db, second.id)).toMatchObject({
-    claimPath: CHECKOUT_PATH,
-    path: null,
-  });
-  return { first, second, shared, releaseSecond: () => secondHold.resolve() };
-}
-
 describe("creates racing on a new checkout path", () => {
-  it("makes a create wait for another still preparing the same path, then joins its environment", async () => {
+  it("makes threads that locate a path another create still prepares wait, then join its environment", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-checkout-settle-create",
@@ -697,34 +641,42 @@ describe("creates racing on a new checkout path", () => {
         hostId: host.id,
         path: CHECKOUT_PATH,
       });
-      const { first, second, shared, releaseSecond } =
-        await holdSecondCreateOnTheClaim(harness, {
-          projectId: project.id,
-          hostId: host.id,
-          finishFirstSetupBeforeTheClaim: true,
+      const firstHold = createDeferredPromise<void>();
+      const provider = installCheckoutProvider({
+        holds: [{ afterClaim: firstHold.promise }],
+      });
+      const target = { projectId: project.id, hostId: host.id };
+      const first = await createCheckoutThread(harness, {
+        ...target,
+        prompt: "first checkout",
+      });
+      expect(await provider.claimedBy(0)).toBe(first.id);
+      const later = [
+        await createCheckoutThread(harness, {
+          ...target,
+          prompt: "second checkout",
+        }),
+        await createCheckoutThread(harness, {
+          ...target,
+          prompt: "third checkout",
+        }),
+      ];
+      await delay(50);
+      expect(provider.creates()).toBe(1);
+      for (const thread of later)
+        expect(getThread(harness.db, thread.id)).toMatchObject({
+          status: "starting",
+          environmentId: null,
         });
 
-      const third = createCheckoutThread(harness, {
-        projectId: project.id,
-        hostId: host.id,
-        prompt: "third checkout",
-      });
-      const outcome = third.then(
-        () => "created",
-        () => "failed",
-      );
-      await delay(50);
-      expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe(
-        "pending",
-      );
-
-      releaseSecond();
-      const created = await third;
-      expect(created.environmentId).toBe(shared);
-      const threadIds = [first.id, second.id, created.id];
+      firstHold.resolve();
+      await finishWorkspaceSetup(harness, first.id);
+      const threadIds = [first.id, ...later.map((thread) => thread.id)];
       await waitForThreadStarts(harness, threadIds);
+      const shared = getThread(harness.db, first.id)?.environmentId;
       for (const threadId of threadIds)
         expect(getThread(harness.db, threadId)?.environmentId).toBe(shared);
+      expect(provider.creates()).toBe(1);
       expect(errorEvents(harness, threadIds)).toEqual([]);
       expect(
         listEnvironments(harness.db, { projectId: project.id }).filter(
@@ -734,139 +686,64 @@ describe("creates racing on a new checkout path", () => {
     });
   });
 
-  it("makes a thread finishing setup wait for another create still preparing its path", async () => {
+  it("lets a thread join a workspace whose setup is still running, and runs setup once", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-checkout-settle-setup",
+        id: "host-checkout-join-setup",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: CHECKOUT_PATH,
       });
-      const { first, second, shared, releaseSecond } =
-        await holdSecondCreateOnTheClaim(harness, {
-          projectId: project.id,
-          hostId: host.id,
-          finishFirstSetupBeforeTheClaim: false,
-        });
+      const provider = installCheckoutProvider();
+      const target = { projectId: project.id, hostId: host.id };
+      const first = await createCheckoutThread(harness, {
+        ...target,
+        prompt: "first checkout",
+      });
+      const firstSetup = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.attach" &&
+          command.initiator?.threadId === first.id,
+        5_000,
+      );
+      if (firstSetup.command.type !== "environment.attach")
+        throw new Error("Expected environment.attach command");
+      const shared = firstSetup.command.environmentId;
+      const second = await createCheckoutThread(harness, {
+        ...target,
+        prompt: "second checkout",
+      });
+      await vi.waitFor(
+        () =>
+          expect(getThread(harness.db, second.id)?.environmentId).toBe(shared),
+        { timeout: 5_000 },
+      );
+      await reportQueuedCommandSuccess(harness, firstSetup, {
+        path: CHECKOUT_PATH,
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+        transcript: [],
+      });
 
-      await finishWorkspaceSetup(harness, first.id);
-      await delay(50);
-      expect(getThread(harness.db, first.id)?.status).toBe("starting");
-
-      releaseSecond();
       const threadIds = [first.id, second.id];
       await waitForThreadStarts(harness, threadIds);
-      expect(getThread(harness.db, second.id)?.environmentId).toBe(shared);
+      expect(
+        listQueuedCommands(harness, "environment.attach"),
+        "setup ran again",
+      ).toEqual([]);
+      expect(provider.creates()).toBe(1);
+      expect(getEnvironment(harness.db, shared)).toMatchObject({
+        status: "ready",
+        ownerThreadId: null,
+        claimPath: null,
+      });
       expect(errorEvents(harness, threadIds)).toEqual([]);
     });
   });
-
-  it.each([
-    ["after the adopting create attaches", false],
-    ["while the adopting create is binding the environment", true],
-  ])(
-    "lets a create join a workspace setup that is still running when it finishes %s",
-    async (_label, finishWhileBinding) => {
-      await withTestHarness(async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: `host-checkout-join-setup-${String(finishWhileBinding)}`,
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-          path: CHECKOUT_PATH,
-        });
-        const firstHold = createDeferredPromise<void>();
-        const secondStart = createDeferredPromise<void>();
-        let finishOnNextNotification: (() => void) | null = null;
-        const finished = createDeferredPromise<void>();
-        let finishFirstSetup: () => Promise<Response> = () => {
-          throw new Error("The first setup was not queued");
-        };
-        const provider = installCheckoutProvider({
-          holds: [
-            { afterClaim: firstHold.promise },
-            { beforeClaim: secondStart.promise },
-          ],
-          onClaimed: (index) => {
-            if (index === 1 && finishWhileBinding)
-              finishOnNextNotification = () => {
-                void finishFirstSetup().then(() => finished.resolve());
-              };
-          },
-        });
-        const target = { projectId: project.id, hostId: host.id };
-        const first = await createCheckoutThread(harness, {
-          ...target,
-          prompt: "first checkout",
-        });
-        expect(await provider.claimedBy(0)).toBe(first.id);
-        const second = await createCheckoutThread(harness, {
-          ...target,
-          prompt: "second checkout",
-        });
-        const notifyEnvironment = harness.hub.notifyEnvironment.bind(
-          harness.hub,
-        );
-        const notified = vi
-          .spyOn(harness.hub, "notifyEnvironment")
-          .mockImplementation((environmentId, changes) => {
-            notifyEnvironment(environmentId, changes);
-            const finish = finishOnNextNotification;
-            finishOnNextNotification = null;
-            finish?.();
-          });
-        onTestFinished(() => notified.mockRestore());
-        firstHold.resolve();
-        const firstSetup = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "environment.attach" &&
-            command.initiator?.threadId === first.id,
-          5_000,
-        );
-        if (firstSetup.command.type !== "environment.attach")
-          throw new Error("Expected environment.attach command");
-        const shared = firstSetup.command.environmentId;
-        finishFirstSetup = () =>
-          reportQueuedCommandSuccess(harness, firstSetup, {
-            path: CHECKOUT_PATH,
-            isGitRepo: true,
-            isWorktree: false,
-            branchName: "main",
-            defaultBranch: "main",
-            transcript: [],
-          });
-        secondStart.resolve();
-        expect(await provider.claimedBy(1)).toBe(second.id);
-        await vi.waitFor(
-          () =>
-            expect(getThread(harness.db, second.id)?.environmentId).toBe(
-              shared,
-            ),
-          { timeout: 5_000 },
-        );
-        if (finishWhileBinding) await finished.promise;
-        else await finishFirstSetup();
-
-        const threadIds = [first.id, second.id];
-        await waitForThreadStarts(harness, threadIds);
-        expect(
-          listQueuedCommands(harness, "environment.attach"),
-          "setup ran again",
-        ).toEqual([]);
-        expect(getEnvironment(harness.db, shared)).toMatchObject({
-          status: "ready",
-          ownerThreadId: null,
-          claimPath: null,
-        });
-        expect(
-          threadIds.map((threadId) => workspacePathSteps(harness, threadId)),
-        ).toEqual([0, 1]);
-        expect(errorEvents(harness, threadIds)).toEqual([]);
-      });
-    },
-  );
 
   it("gives up waiting with the busy error once the settle bound passes", async () => {
     await withTestHarness(async (harness) => {

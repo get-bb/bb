@@ -178,6 +178,15 @@ export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
   }
 }
 
+export function dropEnvironmentHoldColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  for (const name of ["held_by", "create_pending"])
+    if (columns.some((existing) => existing.name === name))
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${name}`);
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

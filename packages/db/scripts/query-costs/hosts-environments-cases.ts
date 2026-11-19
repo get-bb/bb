@@ -10,7 +10,9 @@ import {
   environmentHasLiveThreads,
   findEnvironmentPathClaim,
   findForeignManagedEnvironmentAtHostPath,
+  findOtherLiveThreadAtEnvironmentPath,
   findProjectEnvironmentByHostPath,
+  insertHeldEnvironment,
   findProviderEnvironmentContainingPath,
   getEnvironment,
   getPreparingEnvironment,
@@ -163,7 +165,7 @@ function reserveFixtureEnvironment(
     status: "creating",
     environmentProviderId: "project-checkout",
     environmentProviderPluginId: "environment-project-checkout",
-    environmentProviderInstanceKey: `${fixture.threadId}-1`,
+    environmentProviderInstanceKey: () => `${fixture.threadId}-1`,
     providerOwnsPath: false,
     statusMessage: "Preparing project checkout…",
   });
@@ -283,6 +285,31 @@ const ENVIRONMENT_CASES: readonly Case[] = [
       }),
   },
   {
+    name: `${ENVIRONMENTS}#insertHeldEnvironment`,
+    run: (db, fixture, seed) =>
+      insertHeldEnvironment(db, {
+        projectId: fixture.projectId,
+        hostId: seed.busyHostId,
+        heldBy: "user",
+        attempt: 1,
+        status: "creating",
+        environmentProviderId: "git-worktree",
+        environmentProviderPluginId: "environment-git-worktree",
+        environmentProviderInstanceKey: (id) => `${id}-1`,
+        providerOwnsPath: false,
+        statusMessage: "Preparing Worktree…",
+      }),
+  },
+  {
+    name: `${ENVIRONMENTS}#findOtherLiveThreadAtEnvironmentPath`,
+    run: (db, fixture, seed) =>
+      findOtherLiveThreadAtEnvironmentPath(db, {
+        hostId: seed.busyHostId,
+        path: seed.readyEnvironmentPath,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
     name: `${ENVIRONMENTS}#listEnvironments`,
     run: (db, _fixture, seed) =>
       listEnvironments(db, { hostId: seed.busyHostId }),
@@ -373,6 +400,12 @@ const ENVIRONMENT_CASES: readonly Case[] = [
         db,
         requirePreparedEnvironment(),
         seed.bindTargetPath,
+        {
+          target: seed.sharedEnvironmentId,
+          providerPluginId: "environment-git-worktree",
+          resource: null,
+          mergeBaseBranch: undefined,
+        },
       ),
   },
 ];

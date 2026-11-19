@@ -13,6 +13,7 @@ import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
+  dropEnvironmentHoldColumns,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   rewindQueuedMessageStateMigration,
@@ -69,6 +70,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
+  dropEnvironmentHoldColumns(db);
   return { db, threadId: thread.id };
 }
 

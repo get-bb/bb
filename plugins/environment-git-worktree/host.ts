@@ -14,6 +14,7 @@ import {
   createWorktree,
   deleteOwnedBranch,
   listAdoptableWorktrees,
+  nameWorktreeBranch,
   removeWorktree,
   resolveAdoptableWorktree,
 } from "./host/worktree.js";
@@ -112,6 +113,33 @@ export function createWorktreeHostEntry() {
             baseBranch: baseBranch?.ref ?? null,
             ownsBranch: created.ownsBranch,
           } as const;
+        } catch (error) {
+          if (context.signal.aborted) throw error;
+          return {
+            status: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          } as const;
+        }
+      },
+
+      async nameBranch(input, context) {
+        try {
+          await nameWorktreeBranch({
+            sourcePath: input.sourcePath,
+            path: input.path,
+            completionPath: completionPathForWorktree(input.path),
+            ownWorktreesRoot: resolveWorktreesRoot(
+              context.experimental_paths.dataDir,
+            ),
+            branchName: input.branchName,
+            onProgress: createHostProgress({
+              operationId: input.operationId,
+              emit: (payload) =>
+                context.experimental_emitSignal("progress", payload),
+            }),
+            signal: context.signal,
+          });
+          return { status: "named" } as const;
         } catch (error) {
           if (context.signal.aborted) throw error;
           return {

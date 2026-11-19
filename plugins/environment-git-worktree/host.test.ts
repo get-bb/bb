@@ -25,6 +25,7 @@ import {
   it,
   type TestContext,
 } from "vitest";
+import { withGitRefMutationLock } from "bb-environment-provider-host/locks";
 import { createWorktreeHostEntry } from "./host.js";
 
 const execFileAsync = promisify(execFile);
@@ -994,6 +995,58 @@ describe.concurrent("worktree host entry", () => {
     expect(resumed).toEqual(first);
     expect(existsSync(join(first.path, "survives.txt"))).toBe(true);
     await restartedHarness.experimental_dispose();
+  });
+
+  it("creates a detached worktree, names its branch later, and resumes either step", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "Named Later",
+    );
+    const input = {
+      ...createInput({
+        operationId: "detached",
+        sourcePath,
+        pathKey: "thr_later",
+        branchName: "unused",
+      }),
+      branchName: null,
+    };
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call("create", input);
+    if (created.status !== "created") throw new Error(created.message);
+    expect(created.ownsBranch).toBe(false);
+    expect(
+      (await git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("HEAD");
+    await writeFile(join(created.path, "setup-output.txt"), "kept\n");
+    expect(await harness.experimental_call("create", input)).toEqual(created);
+
+    const name = {
+      operationId: "name",
+      sourcePath,
+      path: created.path,
+      branchName: "bb/named-later-thr_later",
+    };
+    expect(await harness.experimental_call("nameBranch", name)).toEqual({
+      status: "named",
+    });
+    expect(await harness.experimental_call("nameBranch", name)).toEqual({
+      status: "named",
+    });
+    expect(
+      (await git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("bb/named-later-thr_later");
+    expect(
+      (await git(created.path, "rev-parse", "HEAD")).trim(),
+    ).toBe((await git(sourcePath, "rev-parse", "main")).trim());
+    expect(await branchConfig(sourcePath, "bb/named-later-thr_later")).toBe(
+      "",
+    );
+    expect(await harness.experimental_call("create", input)).toEqual(created);
+    expect(existsSync(join(created.path, "setup-output.txt"))).toBe(true);
+    await harness.experimental_dispose();
   });
 
   it("completes a recovered worktree without running core setup", async ({

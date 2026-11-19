@@ -332,6 +332,7 @@ describe("attaching to a path that already has an environment", () => {
           gitRemote: false,
           projectless: false,
         },
+        locate: () => ({ path: MANAGED_PATH, reuse: false }),
         decide: (context) => ({
           action: "ready",
           environment: {

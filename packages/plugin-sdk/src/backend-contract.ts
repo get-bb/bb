@@ -464,16 +464,29 @@ export type PluginEnvironmentProviderDeclaration<
   Inputs extends
     import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
     import("./environment-provider.js").PluginEnvironmentProviderInputsSchema,
+  ApiVersion extends
+    import("./environment-provider.js").PluginEnvironmentProviderApiVersion = 1,
 > = import("./environment-provider.js").PluginEnvironmentProviderDefinition<
   Requires,
-  Inputs
+  Inputs,
+  ApiVersion
 >;
 
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. `apiVersion: 2` providers receive the environment
+   * instead of a thread and can create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
+  register<
+    const Requires extends PluginEnvironmentProviderRequirements,
+    const Inputs extends
+      import("./environment-provider.js").PluginEnvironmentProviderInputsSchema =
+      undefined,
+  >(
+    declaration: PluginEnvironmentProviderDeclaration<Requires, Inputs, 2>,
+  ): void;
   register<
     const Requires extends PluginEnvironmentProviderRequirements,
     const Inputs extends

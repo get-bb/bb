@@ -1,11 +1,12 @@
+import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderInputsSchema,
   PluginEnvironmentProviderProgress,
 } from "@get-bb/plugin-sdk/environment-provider";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
   type FakePluginHarness,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
@@ -78,24 +79,28 @@ async function setup() {
   const provider = harness.registrations.environmentProviders.get(
     PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID,
   );
-  if (provider === undefined) throw new Error("Provider not registered");
+  if (provider?.apiVersion !== 2) throw new Error("Provider not registered");
   const steps: string[] = [];
   const logs: string[] = [];
   const report: PluginEnvironmentProviderProgress = {
     step: (text) => steps.push(text),
     log: (text) => logs.push(text),
   };
-  const context: PluginEnvironmentProviderCreateContext = {
-    thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
+  const context: PluginEnvironmentProviderCreateContext<
+    PluginEnvironmentProviderRequirements,
+    PluginEnvironmentProviderInputsSchema,
+    2
+  > = {
+    environment: { id: "env_test", name: null, projectId: PROJECT_ID },
     project: PERSONAL_PROJECT,
     host: PROVISION_HOST,
     projectCheckout: null,
     gitRemote: null,
     inputs: null,
-    suggestedBranchName: "bb/test",
+    branchName: async () => "bb/test",
+    setup: async () => {},
     attempt: 1,
     pathKey: THREAD_ID,
-    experimental_claimPath: async () => true,
     report,
     signal: new AbortController().signal,
   };

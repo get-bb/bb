@@ -433,6 +433,12 @@ describe("environment path claims", () => {
         fixture.db,
         { ...preparing, claimPath: "/tmp/shared-checkout" },
         "/tmp/shared-checkout",
+        {
+          target: existing.id,
+          providerPluginId: "test-plugin",
+          resource: null,
+          mergeBaseBranch: undefined,
+        },
       );
 
       expect(bound).toMatchObject({
@@ -486,6 +492,12 @@ describe("environment path claims", () => {
         fixture.db,
         preparing,
         "/tmp/shared-checkout",
+        {
+          target: existing.id,
+          providerPluginId: "test-plugin",
+          resource: null,
+          mergeBaseBranch: undefined,
+        },
       );
 
       expect(bound).toMatchObject({
@@ -505,6 +517,33 @@ describe("environment path claims", () => {
       ).toEqual(before);
     },
   );
+
+  it("refuses to fold a preparing environment into an environment it did not declare", () => {
+    const fixture = setup();
+    const existing = seedClaim(fixture, {
+      environmentProviderId: "project-checkout",
+      path: "/tmp/undeclared",
+      providerOwnsPath: false,
+    });
+    const preparing = reserveEnvironment(fixture.db, {
+      projectId: fixture.project.id,
+      hostId: fixture.host.id,
+      ownerThreadId: "thread-undeclared",
+      providerOwnsPath: false,
+      status: "creating",
+      statusMessage: "Creating environment",
+    });
+    expect(() =>
+      bindEnvironmentPath(fixture.db, preparing, "/tmp/undeclared", {
+        target: null,
+        providerPluginId: "test-plugin",
+        resource: null,
+        mergeBaseBranch: undefined,
+      }),
+    ).toThrow(
+      `Workspace /tmp/undeclared already belongs to environment ${existing.id}`,
+    );
+  });
 
   it("claims a path only for a provider that owns the directory", () => {
     const fixture = setup();

@@ -26,6 +26,7 @@ import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadParentNotificationsValues } from "@bb/domain/thread-parent-notifications";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
+  EnvironmentHolder,
   EnvironmentProviderSelection,
   JsonValue,
   EnvironmentStatus,
@@ -571,6 +572,10 @@ export const environments = sqliteTable(
     teardownMessage: text("teardown_message"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     ownerThreadId: text("owner_thread_id"),
+    heldBy: text("held_by").$type<EnvironmentHolder>(),
+    createPending: integer("create_pending", { mode: "boolean" })
+      .notNull()
+      .default(false),
     attempt: integer("attempt").notNull().default(0),
     statusMessage: text("status_message"),
     pendingLog: text("pending_log").notNull().default(""),

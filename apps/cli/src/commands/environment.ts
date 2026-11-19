@@ -5,9 +5,13 @@ import {
 } from "../command-result.js";
 import {
   GIT_PLUGIN_ID,
+  environmentHolderSchema,
   environmentStatusSchema,
   environmentStatusValues,
+  jsonValueSchema,
+  type EnvironmentHolder,
   type EnvironmentStatus,
+  type JsonValue,
 } from "@bb/domain";
 import { Command } from "commander";
 import type { CommitActionResponse } from "@bb/server-contract";
@@ -23,6 +27,7 @@ interface EnvironmentCommitCommandOptions {
 }
 
 interface EnvironmentListCommandOptions {
+  heldBy?: string;
   host?: string;
   instanceKey?: string;
   json?: boolean;
@@ -31,6 +36,16 @@ interface EnvironmentListCommandOptions {
   project?: string;
   provider?: string;
   status?: string;
+}
+
+interface EnvironmentCreateCommandOptions {
+  host?: string;
+  inputs?: string;
+  json?: boolean;
+  machine?: string;
+  name?: string;
+  project: string;
+  provider?: string;
 }
 
 interface EnvironmentProvidersCommandOptions {
@@ -87,6 +102,24 @@ const GIT_COMMAND_REPLACEMENTS: Record<
   "diff-patch": "patch",
   "diff-viewed": "viewed",
 };
+
+function parseEnvironmentHolder(value: string): EnvironmentHolder {
+  const parsed = environmentHolderSchema.safeParse(value);
+  if (!parsed.success)
+    throw new Error('--held-by must be "user".');
+  return parsed.data;
+}
+
+function parseInputsOption(value: string | undefined): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("--inputs must be valid JSON.");
+  }
+  return jsonValueSchema.parse(parsed);
+}
 
 function parseEnvironmentStatus(value: string): EnvironmentStatus {
   const parsed = environmentStatusSchema.safeParse(value);
@@ -260,6 +293,10 @@ export function registerEnvironmentCommands(
     )
     .option("--host <id-or-name>", "Only environments on this machine")
     .option(
+      "--held-by <holder>",
+      'Only environments kept alive by this holder: "user"',
+    )
+    .option(
       "--instance-key <key>",
       "Only the environment its provider named with this instance key",
     )
@@ -286,6 +323,9 @@ export function registerEnvironmentCommands(
           ...(opts.project ? { projectId: opts.project } : {}),
           ...(opts.provider ? { environmentProviderId: opts.provider } : {}),
           ...(opts.instanceKey ? { instanceKey: opts.instanceKey } : {}),
+          ...(opts.heldBy === undefined
+            ? {}
+            : { heldBy: parseEnvironmentHolder(opts.heldBy) }),
           ...(hostId === undefined ? {} : { hostId }),
           ...(opts.status === undefined
             ? {}
@@ -296,9 +336,62 @@ export function registerEnvironmentCommands(
         if (outputJson(opts, rows)) return;
         for (const env of rows) {
           console.log(
-            `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
+            `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.heldBy === null ? "" : `  held by ${env.heldBy}`}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
           );
         }
+      }),
+    );
+
+  environment
+    .command("create")
+    .description(
+      "Create an environment before any thread; you hold it until you delete it",
+    )
+    .requiredOption("--project <id>", "Project to create it in")
+    .option(
+      "--machine <id-or-name>",
+      "Machine to create it on; defaults to the project's default checkout machine",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--provider <id>",
+      "Environment provider; defaults to worktree (personal workspace for the personal project)",
+    )
+    .option(
+      "--inputs <json>",
+      "Provider inputs as JSON; `bb environment providers --json` shows each schema",
+    )
+    .option("--name <name>", "Environment display name")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: EnvironmentCreateCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const target = resolveMachineTargetOption(opts);
+        const hostId =
+          target === undefined
+            ? undefined
+            : await resolveMachineHostId({ serverUrl: getUrl(), target });
+        const inputs = parseInputsOption(opts.inputs);
+        if (inputs !== undefined && opts.provider === undefined)
+          throw new Error("--inputs requires --provider <id>.");
+        const env = await sdk.environments.experimental_create({
+          projectId: opts.project,
+          ...(hostId === undefined ? {} : { hostId }),
+          ...(opts.provider === undefined
+            ? {}
+            : {
+                provider: {
+                  id: opts.provider,
+                  ...(inputs === undefined ? {} : { inputs }),
+                },
+              }),
+          ...(opts.name === undefined ? {} : { name: opts.name }),
+          hold: "user",
+        });
+        if (outputJson(opts, env)) return;
+        console.log(
+          `Creating environment ${env.id} (${env.environmentProviderId ?? "-"}). Follow it with: bb environment show ${env.id}`,
+        );
       }),
     );
 
@@ -343,7 +436,10 @@ export function registerEnvironmentCommands(
         console.log(`Environment: ${env.id}`);
         console.log(`  Project: ${env.projectId}`);
         console.log(`  Status: ${env.status}`);
+        if (env.statusMessage !== null && env.status !== "ready")
+          console.log(`  Status message: ${env.statusMessage}`);
         console.log(`  Lifecycle: ${env.lifecycle.phase}`);
+        if (env.heldBy !== null) console.log(`  Held by: ${env.heldBy}`);
         if (env.lifecycle.retireAt !== null)
           console.log(
             `  Retire at: ${new Date(env.lifecycle.retireAt).toISOString()}`,

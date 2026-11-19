@@ -7,7 +7,9 @@ import { createRetiredEnvironmentMembers } from "./retired-environment-members.j
 import {
   environmentSchema,
   type Environment,
+  type EnvironmentHolder,
   type EnvironmentStatus,
+  type JsonValue,
 } from "@bb/domain";
 import {
   commitActionResponseSchema,
@@ -73,6 +75,8 @@ export type EnvironmentPathsResult = WorkspacePathListResponse;
 export type EnvironmentUpdateResult = Environment;
 export interface EnvironmentListArgs {
   environmentProviderId?: string;
+  /** Only environments with this holder: `"user"` or `"plugin:<pluginId>"`. */
+  heldBy?: EnvironmentHolder;
   hostId?: string;
   instanceKey?: string;
   limit?: number;
@@ -83,6 +87,22 @@ export interface EnvironmentListArgs {
   status?: EnvironmentStatus;
 }
 export type EnvironmentListResult = Environment[];
+interface EnvironmentCreateBaseArgs {
+  projectId: string;
+  /** Defaults to the project's default checkout machine. */
+  hostId?: string;
+  /** Defaults to the Worktree provider (Personal workspace for the personal project). */
+  provider?: { id: string; inputs?: JsonValue };
+  name?: string;
+}
+/**
+ * `hold: "user"` keeps the environment until the user deletes it and lets
+ * threads join it.
+ */
+export type EnvironmentCreateArgs = EnvironmentCreateBaseArgs & {
+  hold: "user";
+};
+export type EnvironmentCreateResult = Environment;
 export interface EnvironmentDeleteArgs {
   environmentId: string;
 }
@@ -95,6 +115,10 @@ export interface EnvironmentListProvidersArgs {
 export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 
 export interface EnvironmentsArea {
+  /** Create an environment before any thread exists; setup runs as for a thread. Experimental: see docs/api_to_audit.md. */
+  experimental_create(
+    args: EnvironmentCreateArgs,
+  ): Promise<EnvironmentCreateResult>;
   experimental_cleanup(
     args: EnvironmentActionArgs & { recover?: boolean },
   ): Promise<OperationResponse>;
@@ -171,6 +195,7 @@ export function createEnvironmentsArea(
               ...(input?.environmentProviderId === undefined
                 ? {}
                 : { environmentProviderId: input.environmentProviderId }),
+              ...(input?.heldBy === undefined ? {} : { heldBy: input.heldBy }),
               ...(input?.instanceKey === undefined
                 ? {}
                 : { instanceKey: input.instanceKey }),
@@ -203,6 +228,22 @@ export function createEnvironmentsArea(
         ),
       );
       return response.providers;
+    },
+    async experimental_create(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments.$post({
+          json: {
+            projectId: input.projectId,
+            ...(input.hostId === undefined ? {} : { hostId: input.hostId }),
+            ...(input.provider === undefined
+              ? {}
+              : { provider: input.provider }),
+            ...(input.name === undefined ? {} : { name: input.name }),
+            heldBy: input.hold,
+          },
+        }),
+      );
+      return environmentSchema.parse(body);
     },
     async experimental_cleanup(input) {
       return transport.readJson(

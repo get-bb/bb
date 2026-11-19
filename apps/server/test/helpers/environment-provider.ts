@@ -38,8 +38,11 @@ export interface InstallFakeEnvironmentProviderArgs {
     context: PluginEnvironmentProviderValidateContext,
   ) => PluginEnvironmentValidateDecision;
   availability?: () => PluginEnvironmentProviderAvailability;
+  locate?: TestLocate;
   decide: (context: TestEnvironmentProviderContext) => TestProviderDecision;
 }
+
+type TestLocate = NonNullable<NormalizedPluginEnvironmentProvider["locate"]>;
 
 export const worktreeProviderInputsSchema = z.object({
   branch: gitBranchSelectionSchema,
@@ -76,6 +79,13 @@ export function defaultEnvironmentProviderRecords(): PluginEnvironmentProviderRe
     icon: "Folder",
     requires: { projectCheckout: true },
     inputs: checkoutProviderInputsSchema,
+    locate: ({ inputs, projectCheckout }) => {
+      const parsed = checkoutProviderInputsSchema.parse(inputs);
+      const path = parsed.path ?? projectCheckout?.path ?? null;
+      return path === null
+        ? null
+        : { path, reuse: parsed.branch === undefined };
+    },
     ...providerOperations((context) => {
       const host = context.host;
       const path =
@@ -121,6 +131,7 @@ export function installFakeEnvironmentProvider(
     ...(args.availability === undefined
       ? {}
       : { availability: args.availability }),
+    ...(args.locate === undefined ? {} : { locate: args.locate }),
     ...providerOperations((context) => {
       contexts.push(context);
       return args.decide(context);
@@ -163,8 +174,10 @@ export function installFakeGitWorktreeProvider(
     action: "wait",
     reason: "Creating worktree…",
   }),
+  options: { locate?: TestLocate } = {},
 ): FakeEnvironmentProvider {
   return installFakeEnvironmentProvider({
+    ...options,
     id: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
     pluginId: "environment-git-worktree",
     displayName: "Worktree",

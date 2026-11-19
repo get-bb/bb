@@ -183,7 +183,7 @@ describe("system notices", () => {
         environment: {
           type: "host",
           hostId: host.id,
-          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+          workspace: { type: "unmanaged", path: `${WORKSPACE_PATH}-parent` },
         },
         input: textInput("Created first"),
         origin: "app",

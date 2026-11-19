@@ -250,3 +250,44 @@ public `serverUrl` is validated and displayed in Machines settings, and while
 the provider is available core's Host and Origin guards admit its origin, so
 browsers and machines can use it without `BB_APP_URL`. Reading configuration
 never acquires access; the grant's URL is the one machines use.
+
+## Context versions and holds
+
+`apiVersion` picks the shape of the create and restore contexts. Version 2
+(`apiVersion: 2`) contexts carry `environment: { id, name, projectId }`, the
+environment being created, and no thread, so core can also create the
+environment before any thread exists (`bb environment create`,
+`bb.sdk.environments.experimental_create`). Omitting `apiVersion` means
+version 1: contexts carry the driving `thread` instead, and core refuses to
+create a version-1 provider's environment without a thread ("<provider> can't
+create an environment before a thread exists"). Version-1 source keeps
+type-checking and running; core adapts at the call boundary. The version only
+bumps for breaking context changes.
+
+Version 1 gets `suggestedBranchName`, `<prefix><slug>-<id>` from the thread's
+settled title and id. Version 2 calls core's steps in the order it needs:
+`branchName()` resolves to that name once the title settles (at once from the
+environment's name and id without a thread), so await it late;
+`setup(path)` claims `path` as a provider-owned workspace and starts core's
+setup there while create continues. The thread starts only after create
+returns `created` with the same path; without a call, core runs setup after
+create. Version 2 reads `projectCheckout.ownsPath` (bb cloned the checkout);
+version 1 reads `experimental_ownsPath` and has `experimental_claimPath`.
+
+Path keys are derived the same way for both versions: from the driving thread
+when there is one, so thread workspaces keep their names, and from the
+environment id otherwise.
+
+### Environments created before threads, and holds
+
+`bb.sdk.environments.experimental_create({ projectId, hostId?, provider?:
+{ id, inputs? }, name?, hold: "user" })` creates an environment no thread
+asked for. Its project, machine, provider selection, name and holder are
+stored on the environment, and core runs it, setup included, on the same
+create path threads use; restart resumes it on the same setup operation. A
+user hold keeps the environment until the user deletes it and lets threads
+join it; it is never retired for having no threads. Environment responses
+carry `heldBy` (`"user"` or null) and `statusMessage`, and
+`sdk.environments.list({ heldBy })` filters by holder. Environment responses
+expose only the read-only lifecycle projection: phase, retireAt, and
+teardown status/attempt/message.

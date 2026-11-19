@@ -917,12 +917,12 @@ Docs: `backend-events.md`.
    the `message.dispatch` chain) stays the right model once several provider
    plugins ship, and that the "not registered" wait + backoff is the right
    degradation for an uninstalled plugin.
-3. **Undeclared facts: `suggestedBranchName` and `projectCheckout`.** Every
-   create gets a branch name built from the thread title and
-   `managedBranchPrefix`, and the project's checkout on its machine, whether
-   or not the provider uses them. Decide whether both belong on the context
-   for everyone or behind a declaration flag, and whether a path is all a
-   provider needs to know about a checkout it did not make.
+3. **Undeclared facts: `branchName()` and `projectCheckout`.** Every create
+   can ask for a branch name built from the thread title and
+   `managedBranchPrefix`, and gets the project's checkout on its machine,
+   whether or not the provider uses them. Decide whether both belong on the
+   context for everyone or behind a declaration flag, and whether a path is
+   all a provider needs to know about a checkout it did not make.
 4. **Durable operations.** Audit cancellation races, provider reload during
    work, and restart checkpoints against the environment-provider contract
    below.
@@ -932,6 +932,27 @@ Docs: `backend-events.md`.
    (`apps/app` `thread-screen-hosts.ts`, thread-list
    `project-thread-groups.ts`, storage-retention `storage.ts`); migrate those
    readers before deprecating the fields.
+6. **Context versions (`apiVersion`).** Declarations are a union keyed on
+   `apiVersion`: omitted or 1 gets today's contexts with the driving
+   `thread`; 2 gets `environment: { id, name, projectId }` instead. Core keeps
+   one implementation and adapts at the call boundary
+   (`invokeCreate`/`providerRestoreCall`/`versionOneOperation` in
+   `apps/server/src/services/environments/environment-engine.ts`, the
+   validate call in `thread-environment-placement.ts`, and registration in
+   `host-policy.ts`). For version 1 it adds `thread`, sets
+   `suggestedBranchName` to the awaited `branchName()`, adds
+   `experimental_claimPath(path)`, shows `projectCheckout.ownsPath` as
+   `experimental_ownsPath`, turns `experimental_existingPath(inputs)` into a
+   `locate` that answers `{ path, reuse: true }`, and, as before, folds a
+   version-1 create whose path another environment already has into that
+   environment (version 2 must locate it instead); it refuses version-1
+   providers for environments created without a thread. Path keys are derived
+   the same way for both (thread-based when a thread drives the create,
+   environment-based otherwise). Delete the version-1 adapter, the
+   `per-thread` path-key value and `PluginEnvironmentProviderDefinition`'s
+   version parameter when this API stabilizes; all first-party providers are
+   on version 2. Core's thread creation and thread-less creation both go
+   through the same adapter.
 
 ## `@get-bb/plugin-sdk/environment-provider`
 
@@ -941,8 +962,8 @@ Exports the resource-operation contract for
 project and machine, re-checked at thread creation, and reported to pickers
 as `machineAvailability`. `restore` is the only way core rebuilds a destroyed
 environment.
-`PluginEnvironmentProviderCreateContext.experimental_claimPath(path)` durably
-reserves a host path on the launch row before mutation, and resolves false for
+Version-1 contexts keep `experimental_claimPath(path)`, which durably reserves
+a host path on the launch row before mutation and resolves false for
 competing claims or stale attempts. Values keep their prefix, and named types
 are unprefixed.
 
@@ -959,9 +980,55 @@ click when no branch was recorded). Decide when to stop passing the retired
 `rebuild: false` / `previous: null` create fields at runtime. Audit
 availability message ownership, create-time error presentation, the
 interaction between the `requires` floor and provider decisions, and whether
-the current decision timeout is appropriate. Stabilize `experimental_claimPath`
-after auditing restart, cancellation, competing checkout, and
-path-reservation behavior.
+the current decision timeout is appropriate.
+
+Version-2 contexts call core's steps instead of core running them at fixed
+points. These are members of contexts that `bb.experimental_environments`
+providers receive, so they carry no nested `experimental_` prefix.
+
+- `branchName()` replaces `suggestedBranchName` and rejects when the
+  operation aborts. Core starts title generation
+  for every new thread and never waits for it; `branchName()` resolves to
+  `<prefix><slug(title)>-<threadId>` once the title settles (generated,
+  provided or fallback), and at once to `<prefix><slug(name)>-<id>` or
+  `<prefix><id>` for an environment without a thread. Callers: Worktree
+  (names the branch after setup starts) and Project checkout (new branch).
+- `setup(path)` is a durable request: core claims and binds `path`, records
+  it as provider-owned, and applies `provision.requested` (`creating` →
+  `provisioning`). The thread attaches, and the existing attach operation
+  runs setup through `runEnvironmentHook`. `environments.create_pending`
+  marks a create that has not returned: the attach operation waits for create
+  before it inspects the workspace, so the environment becomes `ready` and
+  the thread starts only after create returns `created` with the same path.
+  A restart with setup finished and create pending re-runs create and skips
+  setup. Without a call, core runs setup after create, as before. Setup on
+  the path of an environment `locate` named is refused before anything is
+  bound. Stopping the only thread of an environment whose create has not
+  returned aborts the create and removes the environment, and the thread
+  goes back to its provider request. Caller: Worktree's cold create.
+- `locate({ host, projectCheckout, inputs })` answers `{ path, reuse }` or
+  null before create, replacing `experimental_existingPath`. Core checks
+  path admission and claims the path on the reservation; `reuse: true` joins
+  the environment at `path` as it is, otherwise create runs on a fresh
+  reservation, core refuses it while another live thread uses that
+  environment, and folds the result into it only when create returns the
+  located path. A create that returns another environment's path it did not
+  locate fails ("Workspace … already belongs to environment …"). Callers:
+  Project checkout (`reuse` unless a branch is requested) and Worktree
+  (adopting an existing worktree).
+- `experimental_claimPath` is removed from version 2: core now claims the
+  located path itself, which was the only reason Project checkout called it,
+  and the post-create bind claims any produced path. Version 1 keeps it
+  through the adapter.
+- `projectCheckout.ownsPath` (version 2) replaces `experimental_ownsPath`:
+  a provider decides `ownsPath` in its result from whether bb cloned the
+  checkout, and only core knows that. Caller: Project checkout.
+
+Before stabilizing, decide whether `locate` should also see the project and
+machine selection, whether a failed create should be able to hand core a
+resource (a provider that named a branch before failing must clean it up
+itself), and whether core should record the branch a provider owns; today
+the Worktree keeps it in its private resource and core has no reader.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
@@ -4095,6 +4162,28 @@ generations, expiry and cancellation races, bounded screenshot bytes, and
 cross-platform desktop startup. Cloud browsers and external provider
 registration are outside this surface.
 
+## Environments before threads and user holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`)
+
+`experimental_create({ projectId, hostId?, provider?: { id, inputs? }, name?,
+hold: "user" })` creates an environment before any thread. The creation
+intent (project, machine, provider selection, name, holder) is stored on the
+environment row (`environments.held_by` plus the existing provider columns),
+and the engine runs create and setup from it on the same path thread
+provisioning uses, including the durable `environment:<id>:<key>:setup` row
+and resume after restart. A user hold accepts joining threads and keeps the
+environment until the user deletes it: both retirement places
+(`refreshProviderRetirement` and the lifecycle sweep) skip held
+environments. Environment responses carry `heldBy` and `statusMessage`;
+`list` filters by `heldBy`. Composed providers (a new machine per thread),
+version-1 providers and a located path that already has an environment are
+refused. Core's caller is `bb environment create`.
+
+Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
+
+Before stabilizing, decide whether a hold needs release or re-hold (reuse
+after the last thread, or a UI "New workspace" flow), and whether `hold`
+should be optional.
+
 ## Machine paths and environment cleanup
 
 `bb.sdk.hosts.get({ hostId })` includes nullable `threadStorageRootPath` from
@@ -4313,8 +4402,8 @@ live-work races, provider unavailability, and repeated removal failures.
 
 ## Project checkout ownership
 
-The provider context's `projectCheckout.experimental_ownsPath` is a required
-boolean whenever a checkout is present. It is true only for a checkout core
+The provider context's `projectCheckout.ownsPath` (`experimental_ownsPath` in
+version-1 contexts) is a required boolean whenever a checkout is present. It is true only for a checkout core
 materialised at that exact path, derived from persisted source ownership and
 never from caller inputs. Core's environment hook policy uses it to apply to
 fresh machine clones and leave user-maintained attachments alone.
@@ -4635,13 +4724,16 @@ Audit before stabilization: immutable cross-project ownership, cross-host
 cleanup, archive/delete retries, creation races, and preservation of existing
 unowned threads.
 
-## Environment provider existing-path selection
+## Environment provider location (`locate`)
 
-`PluginEnvironmentProviderDefinition.experimental_existingPath(inputs)` returns
-an absolute path or null from parsed inputs, without mutating anything. On an
-existing machine, a usable environment of that project at the path is reused
-with its provider, ownership, resource and cleanup identity intact. An
-unusable one is refused, and a missing one goes through normal creation.
+`PluginEnvironmentProviderDefinition.locate({ host, projectCheckout, inputs })`
+returns `{ path, reuse }` or null without mutating anything; version-1
+`experimental_existingPath(inputs)` is read as `{ path, reuse: true }`. With
+`reuse: true`, a usable environment of that project at the path is reused
+with its provider, ownership, resource and cleanup identity intact, and an
+unusable one is refused. Otherwise core claims the path, refuses while
+another live thread uses an environment there, runs create on a fresh
+reservation, and folds a result at the same path into that environment.
 Other projects' managed paths remain forbidden.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in

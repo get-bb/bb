@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  environmentHolderSchema,
   environmentStatusSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
+  jsonValueSchema,
 } from "@bb/domain";
 import { apiErrorSchema } from "../errors.js";
 import {
@@ -34,9 +36,29 @@ export type UpdateEnvironmentRequest = z.infer<
   typeof updateEnvironmentRequestSchema
 >;
 
+export const createEnvironmentRequestSchema = z
+  .object({
+    projectId: z.string().min(1),
+    hostId: z.string().min(1).optional(),
+    provider: z
+      .object({
+        id: z.string().min(1),
+        inputs: jsonValueSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    name: environmentNameSchema.optional(),
+    heldBy: environmentHolderSchema,
+  })
+  .strict();
+export type CreateEnvironmentRequest = z.infer<
+  typeof createEnvironmentRequestSchema
+>;
+
 export const listEnvironmentsQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   environmentProviderId: z.string().min(1).optional(),
+  heldBy: environmentHolderSchema.optional(),
   hostId: z.string().min(1).optional(),
   instanceKey: environmentProviderInstanceKeySchema.optional(),
   path: z.string().min(1).optional(),

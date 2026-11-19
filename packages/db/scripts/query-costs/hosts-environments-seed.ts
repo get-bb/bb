@@ -496,7 +496,7 @@ function insertEnvironment(
       ...fields,
       ownerThreadId: thread.id,
       attempt: 1,
-      environmentProviderInstanceKey: `${thread.id}-1`,
+      environmentProviderInstanceKey: () => `${thread.id}-1`,
     });
     updateThread(db, noopNotifier, thread.id, {
       environmentId: environment.id,
@@ -636,7 +636,7 @@ function seedEnvironments(
       status: "creating",
       environmentProviderId: WORKTREE_PROVIDER,
       environmentProviderPluginId: WORKTREE_PLUGIN,
-      environmentProviderInstanceKey: `${thread.id}-1`,
+      environmentProviderInstanceKey: () => `${thread.id}-1`,
       providerOwnsPath: true,
       statusMessage: "Preparing Git worktree…",
     });

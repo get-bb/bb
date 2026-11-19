@@ -61,7 +61,7 @@ export const worktreeHostContract = defineRpcContract({
         operationId: z.string().min(1),
         sourcePath: z.string().min(1),
         pathKey: z.string().min(1),
-        branchName: z.string().min(1),
+        branchName: z.string().min(1).nullable(),
         baseBranch: worktreeBaseBranchSchema,
         branchMode: z.enum(["reset", "reuse-existing"]),
       })
@@ -75,6 +75,22 @@ export const worktreeHostContract = defineRpcContract({
           ownsBranch: z.boolean(),
         })
         .strict(),
+      z
+        .object({ status: z.literal("failed"), message: z.string().min(1) })
+        .strict(),
+    ]),
+  },
+  nameBranch: {
+    input: z
+      .object({
+        operationId: z.string().min(1),
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        branchName: z.string().min(1),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("named") }).strict(),
       z
         .object({ status: z.literal("failed"), message: z.string().min(1) })
         .strict(),

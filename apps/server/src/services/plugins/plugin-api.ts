@@ -106,6 +106,7 @@ import {
   storePluginHook,
   validateBackgroundServiceRegistration,
   validatePluginEnvironmentProviderDeclaration,
+  type AnyPluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerDeclarationIconRefusal,
@@ -1253,7 +1254,7 @@ export function createPluginApi(options: {
   const experimental_environments: PluginEnvironments = {
     register(
       declaration:
-        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | AnyPluginEnvironmentProviderDeclaration
         | NormalizedPluginEnvironmentComposition,
     ) {
       assertLive();

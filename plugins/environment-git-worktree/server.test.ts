@@ -1,13 +1,14 @@
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderInputsSchema,
   PluginEnvironmentProviderProgress,
   PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
   type FakePluginHarness,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +16,17 @@ import { worktreeHostContract } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin, { worktreeInputsSchema } from "./server.js";
 
-type Project = PluginEnvironmentProviderCreateContext["project"];
+type CreateContext = PluginEnvironmentProviderCreateContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema,
+  2
+>;
+type RestoreContext = PluginEnvironmentProviderRestoreContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema,
+  2
+>;
+type Project = CreateContext["project"];
 type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];
 
 const HOST_ID = "host-a";
@@ -48,6 +59,7 @@ async function setup(
           "reset",
       };
     }
+    if (call.method === "nameBranch") return { status: "named" };
     if (call.method === "remove") return { status: "removed" };
     throw new Error(`unexpected host method ${call.method}`);
   },
@@ -60,6 +72,7 @@ async function setup(
     GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
   );
   if (provider === undefined) throw new Error("Provider not registered");
+  if (provider.apiVersion !== 2) throw new Error("Expected version 2");
   const steps: string[] = [];
   const logs: string[] = [];
   const report: PluginEnvironmentProviderProgress = {
@@ -67,32 +80,47 @@ async function setup(
     log: (text) => logs.push(text),
   };
   const signal = new AbortController().signal;
-  const context: PluginEnvironmentProviderCreateContext = {
-    thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
+  const order: string[] = [];
+  const context: CreateContext = {
+    environment: { id: "env_1", name: null, projectId: PROJECT_ID },
     project: PROJECT,
     host: PROVISION_HOST,
-    projectCheckout: { experimental_ownsPath: false, path: SOURCE_PATH },
+    projectCheckout: { ownsPath: false, path: SOURCE_PATH },
     gitRemote: null,
     inputs: { branch: { kind: "default" } },
-    suggestedBranchName: "bb/test",
+    branchName: async () => {
+      order.push("branchName");
+      return "bb/test";
+    },
+    setup: async (path) => {
+      order.push(`setup ${path}`);
+    },
     attempt: 1,
     pathKey: THREAD_ID,
-    experimental_claimPath: async () => true,
     report,
     signal,
   };
   const restore = provider.restore;
   if (restore === null) throw new Error("Provider cannot restore");
-  return { context, harness, logs, provider, report, restore, signal, steps };
+  return {
+    context,
+    harness,
+    logs,
+    order,
+    provider,
+    report,
+    restore,
+    signal,
+    steps,
+  };
 }
 
 function restoreContext(
-  context: PluginEnvironmentProviderCreateContext,
+  context: CreateContext,
   branchName: string | null,
-): PluginEnvironmentProviderRestoreContext {
-  const { suggestedBranchName: _suggested, ...operation } = context;
+): RestoreContext {
   return {
-    ...operation,
+    ...context,
     pathKey: "replacement",
     attempt: 2,
     previous: {
@@ -119,6 +147,8 @@ function restoreContext(
         environmentProviderSelection: null,
         environmentProviderInstanceKey: THREAD_ID,
         managed: true,
+        heldBy: null,
+        statusMessage: null,
         workspaceProvisionType: "managed-worktree",
         createdAt: 1,
         updatedAt: 2,
@@ -137,7 +167,7 @@ describe("worktree resource operations", () => {
     expect(provider.policy.pathKeys).toBe("per-attempt");
   });
 
-  it("runs one long host create and returns its path, base branch, and owned branch", async () => {
+  it("creates a detached worktree, starts setup there, then names its branch", async () => {
     const fixture = await setup();
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
@@ -152,17 +182,59 @@ describe("worktree resource operations", () => {
         },
       },
     });
-    expect(fixture.harness.experimental_hostRpcCalls[0]).toMatchObject({
-      method: "create",
-      hostId: HOST_ID,
-      input: {
-        operationId: `create#${THREAD_ID}#1`,
-        branchName: "bb/test",
-        pathKey: THREAD_ID,
-        baseBranch: { kind: "default" },
-        branchMode: "reset",
+    expect(fixture.harness.experimental_hostRpcCalls).toMatchObject([
+      {
+        method: "create",
+        hostId: HOST_ID,
+        input: {
+          operationId: `create#${THREAD_ID}#1`,
+          branchName: null,
+          pathKey: THREAD_ID,
+          baseBranch: { kind: "default" },
+          branchMode: "reset",
+        },
+        signal: fixture.signal,
       },
-      signal: fixture.signal,
+      {
+        method: "nameBranch",
+        input: {
+          operationId: `name#${THREAD_ID}#1`,
+          path: WORKTREE_PATH,
+          branchName: "bb/test",
+        },
+      },
+    ]);
+    expect(fixture.order).toEqual([`setup ${WORKTREE_PATH}`, "branchName"]);
+  });
+
+  it("removes the worktree and the branch it may have made when naming fails", async () => {
+    const fixture = await setup((call) => {
+      if (call.method === "create")
+        return {
+          status: "created",
+          path: WORKTREE_PATH,
+          baseBranch: "main",
+          ownsBranch: false,
+        };
+      if (call.method === "nameBranch")
+        return { status: "failed", message: "switch failed" };
+      if (call.method === "remove") return { status: "removed" };
+      throw new Error(`unexpected host method ${call.method}`);
+    });
+    expect(await fixture.provider.create(fixture.context)).toEqual({
+      status: "failed",
+      message: "switch failed",
+    });
+    expect(fixture.harness.experimental_hostRpcCalls.at(-1)).toMatchObject({
+      method: "remove",
+      input: {
+        path: WORKTREE_PATH,
+        ownedBranch: {
+          name: "bb/test",
+          repositoryPath: SOURCE_PATH,
+          baseBranch: "main",
+        },
+      },
     });
   });
 
@@ -194,11 +266,12 @@ describe("worktree resource operations", () => {
 
   it("forwards host progress while create is running", async () => {
     let finish: (value: unknown) => void = () => {};
-    const fixture = await setup(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
+    const fixture = await setup((call) =>
+      call.method === "nameBranch"
+        ? { status: "named" }
+        : new Promise((resolve) => {
+            finish = resolve;
+          }),
     );
     const creating = fixture.provider.create(fixture.context);
     await vi.waitFor(() => {
@@ -305,7 +378,6 @@ describe("adopting an existing worktree", () => {
   async function setupAdoption(
     overrides: {
       resolve?: unknown;
-      claim?: boolean;
     } = {},
   ) {
     const fixture = await setup((call) => {
@@ -321,14 +393,11 @@ describe("adopting an existing worktree", () => {
       if (call.method === "remove") return { status: "removed" };
       throw new Error(`unexpected host method ${call.method}`);
     });
-    const claimed = vi.fn(async () => overrides.claim ?? true);
     return {
       ...fixture,
-      claimed,
       context: {
         ...fixture.context,
         inputs: { kind: "existing" as const, path: EXISTING_PATH },
-        experimental_claimPath: claimed,
       },
     };
   }
@@ -337,15 +406,18 @@ describe("adopting an existing worktree", () => {
     const fixture = await setupAdoption();
 
     expect(
-      fixture.provider.experimental_existingPath?.(fixture.context.inputs),
-    ).toBe(EXISTING_PATH);
+      await fixture.provider.locate?.({
+        host: fixture.context.host,
+        projectCheckout: fixture.context.projectCheckout,
+        inputs: fixture.context.inputs,
+      }),
+    ).toEqual({ path: EXISTING_PATH, reuse: true });
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
       path: EXISTING_PATH,
       ownsPath: false,
       resource: { adopted: true },
     });
-    expect(fixture.claimed).toHaveBeenCalledWith(EXISTING_PATH);
     expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(1);
     expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe(
       "resolveExistingWorktree",
@@ -359,7 +431,6 @@ describe("adopting an existing worktree", () => {
       await fixture.restore({
         ...restoreContext(fixture.context, "feature"),
         inputs: fixture.context.inputs,
-        experimental_claimPath: fixture.claimed,
       }),
     ).toEqual({
       status: "created",
@@ -380,17 +451,6 @@ describe("adopting an existing worktree", () => {
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "failed",
       message: "not a worktree of this repo",
-    });
-    expect(fixture.claimed).not.toHaveBeenCalled();
-  });
-
-  it("refuses a path another environment already claimed", async () => {
-    const fixture = await setupAdoption({ claim: false });
-
-    const result = await fixture.provider.create(fixture.context);
-    expect(result.status).toBe("failed");
-    expect(result).toMatchObject({
-      message: expect.stringContaining("already in use"),
     });
   });
 
