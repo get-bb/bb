@@ -32,26 +32,38 @@ async function startProcess(
   command: string,
   args: string[],
   cwd: string,
-): Promise<number> {
+): Promise<ChildProcess> {
   const child = spawn(command, args, {
     cwd,
     stdio: ["ignore", "pipe", "inherit"],
   });
   children.push(child);
-  const ready = await new Promise<string>((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) =>
       reject(new Error(`${command} exited early with ${code}`)),
     );
-    child.stdout!.once("data", (chunk: Buffer) => resolve(chunk.toString()));
+    child.stdout!.once("data", () => resolve());
   });
-  return Number(ready.trim());
+  return child;
+}
+
+function reportedAs(
+  result: Awaited<ReturnType<typeof inspectWorkspaceProcesses>>,
+  child: ChildProcess,
+): { inWorkspace: boolean; unreadable: boolean } {
+  expect(child.exitCode).toBeNull();
+  expect(child.signalCode).toBeNull();
+  return {
+    inWorkspace: result.pids.includes(child.pid!),
+    unreadable: result.unreadablePids.includes(child.pid!),
+  };
 }
 
 const NON_DUMPABLE_SLEEP =
-  "import ctypes, os, sys, time\n" +
+  "import ctypes, time\n" +
   "ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)\n" +
-  "print(os.getpid(), flush=True)\n" +
+  'print("ready", flush=True)\n' +
   "time.sleep(60)\n";
 
 it.skipIf(!hasPython)(
@@ -59,7 +71,7 @@ it.skipIf(!hasPython)(
   async () => {
     const workspace = await temporaryDirectory();
     const elsewhere = await temporaryDirectory();
-    const pid = await startProcess(
+    const child = await startProcess(
       "python3",
       ["-c", NON_DUMPABLE_SLEEP],
       elsewhere,
@@ -68,8 +80,10 @@ it.skipIf(!hasPython)(
     const result = await inspectWorkspaceProcesses(workspace);
 
     expect(result.supported).toBe(true);
-    expect(result.unreadablePids).not.toContain(pid);
-    expect(result.pids).not.toContain(pid);
+    expect(reportedAs(result, child)).toEqual({
+      inWorkspace: false,
+      unreadable: false,
+    });
   },
 );
 
@@ -80,13 +94,13 @@ it.skipIf(!canUnshare)(
     await mkdir(path.join(workspace, "src"));
     const target = path.join(await temporaryDirectory(), "mounted");
     await mkdir(target);
-    const pid = await startProcess(
+    const child = await startProcess(
       "unshare",
       [
         "-Urm",
         "sh",
         "-c",
-        `mount --bind "$1" "$2" && cd "$2/src" && echo $$ && exec sleep 60`,
+        `mount --bind "$1" "$2" && cd "$2/src" && echo ready && exec sleep 60`,
         "sh",
         workspace,
         target,
@@ -96,8 +110,10 @@ it.skipIf(!canUnshare)(
 
     const result = await inspectWorkspaceProcesses(workspace);
 
-    expect(result.pids).toContain(pid);
-    expect(result.unreadablePids).not.toContain(pid);
+    expect(reportedAs(result, child)).toEqual({
+      inWorkspace: true,
+      unreadable: false,
+    });
   },
 );
 
@@ -106,13 +122,13 @@ it.skipIf(!canUnshare)(
   async () => {
     const workspace = await temporaryDirectory();
     const elsewhere = await temporaryDirectory();
-    const pid = await startProcess(
+    const child = await startProcess(
       "unshare",
       [
         "-Urm",
         "sh",
         "-c",
-        `cd "$1" && echo $$ && exec sleep 60`,
+        `cd "$1" && echo ready && exec sleep 60`,
         "sh",
         elsewhere,
       ],
@@ -121,7 +137,9 @@ it.skipIf(!canUnshare)(
 
     const result = await inspectWorkspaceProcesses(workspace);
 
-    expect(result.pids).not.toContain(pid);
-    expect(result.unreadablePids).not.toContain(pid);
+    expect(reportedAs(result, child)).toEqual({
+      inWorkspace: false,
+      unreadable: false,
+    });
   },
 );
