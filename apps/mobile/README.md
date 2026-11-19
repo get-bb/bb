@@ -238,26 +238,24 @@ Android 16. Recheck and remove it when upgrading to a version with the fix.
 ### Android new-thread widget
 
 Add a server in bb, then add the **Thread shortcut** widget from the Android launcher.
-Choose a saved server, project, machine, icon and action. Select a provider,
-model, reasoning level or base branch to override the defaults. An explicit
-branch creates a worktree for the thread. Each 1×1 widget keeps its own target.
-The tile shows the chosen icon. TalkBack announces the project and action.
-Remove and add a widget again to change its settings.
+Choose a saved server, project, action and icon, then tap **Save widget**.
+Each 1×1 widget keeps its own target. The tile shows the chosen icon.
+TalkBack announces the project and action. Remove and add a widget again to
+change its settings.
 
-**Composer** opens an empty thread with the selected settings. The first
-prompt starts the agent. The empty thread stays in the project if you leave
-before sending. **Photo** opens the camera, lets you retake
-or cancel, and starts the thread with the photo after you confirm.
-**Voice input** opens an empty thread with the composer’s voice input ready.
-
-Use an updated bb server for empty threads. The picker uses the existing SDK
-project, machine, branch and provider catalogs. Empty creation is available
-through `sdk.threads.spawn({ …, createEmpty: true })` or
-`bb thread spawn --project <id> --empty` with the execution flags you want.
+**Composer** opens the new-thread composer for the project. The thread is
+created when you send, using the machine, model and branch chosen in the
+composer. **Voice input** opens the same composer; servers with the
+`widgetVoice` composer handoff also show a **Ready to record** prompt. Both
+work with released servers, because they use the existing `/projects/<id>`
+composer route. **Photo** also asks for a machine and optionally a provider,
+model, reasoning level or base branch (an explicit branch creates a
+worktree). It opens the camera, lets you retake or cancel, and starts the
+thread with the photo after you confirm.
 
 For a device smoke test, add two widgets to different projects or saved
-servers and choose distinct icons. Confirm each tap opens a new thread on the
-intended server with its saved settings. Test warm and cold app launches.
+servers and choose distinct icons. Confirm each tap opens the composer for the
+intended project on the intended server. Test warm and cold app launches.
 Add a camera widget, cancel one capture, then capture and confirm a second
 photo. Check that the second thread starts with the photo. Tap a voice widget
 and check that the composer offers recording. Cancel another widget during

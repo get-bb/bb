@@ -242,11 +242,7 @@ describe("@bb/sdk", () => {
       startedAt: 1,
     };
     const replies: Array<() => Response> = [
-      () =>
-        jsonResponse({
-          body: { job: { ...base, state: "running" } },
-          status: 202,
-        }),
+      () => jsonResponse({ body: { job: { ...base, state: "running" } }, status: 202 }),
       () => {
         throw new TypeError("Load failed");
       },
@@ -272,8 +268,7 @@ describe("@bb/sdk", () => {
         fetch: async (input, init) => {
           urls.push(`${init?.method ?? "GET"} ${String(input)}`);
           const reply = replies.shift();
-          if (reply === undefined)
-            throw new Error("No queued SDK test response");
+          if (reply === undefined) throw new Error("No queued SDK test response");
           return reply();
         },
         runtime: "node",
@@ -1374,82 +1369,6 @@ describe("@bb/sdk", () => {
         originKind: null,
       }),
     );
-  });
-
-  it("serializes explicit empty creates and rejects non-empty createEmpty input", async () => {
-    const queue = createFetchQueue([
-      { body: { id: "thr_empty" }, status: 201 },
-    ]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    await sdk.threads.spawn({
-      projectId: "proj_123",
-      environment: {
-        type: "host",
-        hostId: "host_123",
-        workspace: { type: "unmanaged", path: null },
-      },
-      createEmpty: true,
-    });
-
-    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
-      createEmpty: true,
-      input: [],
-    });
-    await expect(
-      sdk.threads.spawn({
-        projectId: "proj_123",
-        environment: {
-          type: "host",
-          hostId: "host_123",
-          workspace: { type: "unmanaged", path: null },
-        },
-        createEmpty: true,
-        input: [{ type: "text", text: "Not empty", mentions: [] }],
-      }),
-    ).rejects.toThrow("createEmpty cannot be combined with thread input.");
-    expect(queue.requests).toHaveLength(1);
-  });
-
-  it("serializes an explicit project-default persistence opt-out", async () => {
-    const queue = createFetchQueue([
-      { body: { id: "thr_no_defaults" }, status: 201 },
-    ]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-
-    await sdk.threads.spawn({
-      projectId: "proj_123",
-      environment: {
-        type: "host",
-        hostId: "host_123",
-        workspace: { type: "unmanaged", path: null },
-      },
-      prompt: "Open without changing project defaults",
-      rememberProjectDefaults: false,
-    });
-
-    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
-      input: [
-        {
-          type: "text",
-          text: "Open without changing project defaults",
-          mentions: [],
-        },
-      ],
-      rememberProjectDefaults: false,
-    });
   });
 
   it("defaults thread forks to source-environment reuse and preserves an agent-only context seed", async () => {

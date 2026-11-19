@@ -241,7 +241,7 @@ export type ThreadTimelineTurnSummaryDetailsResult =
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
-  "input" | "createEmpty" | "origin" | "originKind" | "startedOnBehalfOf"
+  "input" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
@@ -253,17 +253,10 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
     | {
         input: CreateThreadRequest["input"];
         prompt?: never;
-        createEmpty?: boolean;
       }
     | {
         input?: never;
         prompt: string;
-        createEmpty?: never;
-      }
-    | {
-        input?: never;
-        prompt?: never;
-        createEmpty: true;
       }
   );
 
@@ -868,12 +861,6 @@ function queueListQuery(
 function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
   if (input.input !== undefined && input.prompt !== undefined) {
     throw new Error("Provide only one of input or prompt.");
-  }
-  if (input.createEmpty === true) {
-    if (input.input?.length || input.prompt !== undefined) {
-      throw new Error("createEmpty cannot be combined with thread input.");
-    }
-    return [];
   }
   if (input.input !== undefined) {
     return input.input;

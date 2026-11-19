@@ -54,7 +54,6 @@ import {
 } from "@/components/promptbox/ComposerBox";
 import { usePromptModePermissionDisplay } from "@/components/promptbox/usePromptModePermissionDisplay";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
-import { voiceUnsupportedMessage } from "@/hooks/voice-input-support";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
   ExecutionControls,
@@ -65,7 +64,6 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
-import { WidgetVoiceReadyPrompt } from "@/components/promptbox/WidgetVoiceReadyPrompt";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { formatCompactTokenCount } from "@/components/thread/timeline/thread-context-window-usage";
 import {
@@ -192,7 +190,6 @@ export interface FollowUpPromptBoxProps {
   isPrimaryComposer?: boolean;
   showScrollToBottomButton?: boolean;
   pendingInteraction?: ReactNode;
-  widgetVoiceReady?: boolean;
 }
 
 type FollowUpPromptBoxWithComposerProps = Omit<
@@ -263,7 +260,6 @@ function FollowUpPromptBoxWithComposer({
   isPrimaryComposer = true,
   showScrollToBottomButton = true,
   pendingInteraction = null,
-  widgetVoiceReady = false,
 }: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
   const hasPendingInteraction =
@@ -312,11 +308,6 @@ function FollowUpPromptBoxWithComposer({
       : (pluginComposerHost ?? undefined),
     composerScope ? composerScopeIdentity(composerScope) : null,
   );
-  const [showWidgetVoiceReady, setShowWidgetVoiceReady] =
-    useState(widgetVoiceReady);
-  useEffect(() => {
-    setShowWidgetVoiceReady(widgetVoiceReady);
-  }, [widgetVoiceReady]);
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
@@ -724,21 +715,6 @@ function FollowUpPromptBoxWithComposer({
       onFocusCapture={handleComposerFocus}
       onPointerDownCapture={handleComposerPointerDown}
     >
-      {showWidgetVoiceReady ? (
-        <div className="mb-2">
-          <WidgetVoiceReadyPrompt
-            onDismiss={() => setShowWidgetVoiceReady(false)}
-            onStart={() => {
-              void voice.start();
-              setShowWidgetVoiceReady(false);
-            }}
-            supported={voice.isSupported}
-            unsupportedMessage={voiceUnsupportedMessage(
-              voice.unsupportedReason ?? null,
-            )}
-          />
-        </div>
-      ) : null}
       <PromptBoxWithScrollAnchor
         id={id}
         promptBoxRef={promptBoxRef}

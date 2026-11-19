@@ -1,15 +1,7 @@
-import {
-  getAppSettings,
-  getProjectExecutionDefaults,
-  setAppSettings,
-  upsertProjectExecutionDefaults,
-} from "@bb/db";
-import { threadSchema, type ReasoningLevel } from "@bb/domain";
+import { upsertProjectExecutionDefaults } from "@bb/db";
+import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import {
-  listQueuedThreadCommands,
-  waitForQueuedCommand,
-} from "../helpers/commands.js";
+import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -19,7 +11,6 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
-import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { availableModelFixture } from "../helpers/available-models.js";
 import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 
@@ -27,10 +18,9 @@ function daybreakModel(
   model: string,
   daybreak: { value: boolean; fixed: boolean },
   isDefault = false,
-  reasoningLevels: readonly ReasoningLevel[] = ["low"],
 ) {
   return {
-    ...availableModelFixture({ model, isDefault, reasoningLevels }),
+    ...availableModelFixture({ model, isDefault }),
     sessionOptions: [
       {
         type: "boolean" as const,
@@ -54,10 +44,7 @@ function registerDaybreakCatalog(
       codex: {
         models: [
           daybreakModel("gpt-standard", { value: false, fixed: true }, true),
-          daybreakModel("gpt-both", { value: false, fixed: false }, false, [
-            "low",
-            "high",
-          ]),
+          daybreakModel("gpt-both", { value: false, fixed: false }),
         ],
         selectedOnlyModels: [
           daybreakModel("gpt-daybreak-only", { value: true, fixed: true }),
@@ -85,36 +72,19 @@ async function createThread(
   args: {
     hostId: string;
     projectId: string;
-    origin?: "app" | "cli";
     sessionOptions?: unknown;
     model?: string | null;
-    reasoningLevel?: ReasoningLevel;
-    permissionMode?: "accept-edits" | "auto" | "full";
-    serviceTier?: string;
-    createEmpty?: boolean;
   },
 ) {
   return harness.app.request("/api/v1/threads", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      origin: args.origin ?? "app",
+      origin: "app",
       projectId: args.projectId,
       providerId: "codex",
       ...(args.model === null ? {} : { model: args.model ?? "gpt-5" }),
-      ...(args.reasoningLevel === undefined
-        ? {}
-        : { reasoningLevel: args.reasoningLevel }),
-      ...(args.permissionMode === undefined
-        ? {}
-        : { permissionMode: args.permissionMode }),
-      ...(args.serviceTier === undefined
-        ? {}
-        : { serviceTier: args.serviceTier }),
-      input: args.createEmpty
-        ? []
-        : [{ type: "text", text: "Start with my options" }],
-      ...(args.createEmpty ? { createEmpty: true } : {}),
+      input: [{ type: "text", text: "Start with my options" }],
       ...(args.sessionOptions === undefined
         ? {}
         : { sessionOptions: args.sessionOptions }),
@@ -156,127 +126,6 @@ function seedWorkspace(harness: TestAppHarness, name: string) {
 }
 
 describe("session options chosen when a thread is created", () => {
-  it("keeps interleaved empty-thread execution choices per thread through the first send", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session, project } = seedWorkspace(
-        harness,
-        "create-empty-options",
-      );
-      upsertProjectExecutionDefaults(harness.db, {
-        projectId: project.id,
-        providerId: "codex",
-        model: "gpt-standard",
-        reasoningLevel: "low",
-        permissionMode: "auto",
-        serviceTier: "default",
-      });
-      const projectDefaultsBefore = getProjectExecutionDefaults(harness.db, {
-        projectId: project.id,
-      });
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        allowFastServiceTier: true,
-      });
-      registerDaybreakCatalog(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-      });
-
-      const cliCreateResponse = await createThread(harness, {
-        hostId: host.id,
-        projectId: project.id,
-        origin: "cli",
-        model: "gpt-both",
-        reasoningLevel: "high",
-        permissionMode: "full",
-        serviceTier: "fast",
-        sessionOptions: { daybreak: true },
-        createEmpty: true,
-      });
-      expect(cliCreateResponse.status).toBe(201);
-      const cliThread = threadSchema.parse(await readJson(cliCreateResponse));
-      expect(
-        listQueuedThreadCommands(harness, "thread.start", cliThread.id),
-      ).toHaveLength(0);
-
-      const appCreateResponse = await createThread(harness, {
-        hostId: host.id,
-        projectId: project.id,
-        origin: "app",
-        model: "gpt-standard",
-        reasoningLevel: "low",
-        permissionMode: "accept-edits",
-        serviceTier: "ultrafast",
-        createEmpty: true,
-      });
-      expect(appCreateResponse.status).toBe(201);
-      const appThread = threadSchema.parse(await readJson(appCreateResponse));
-      expect(appThread.status).toBe("pending");
-      expect(
-        resolvePendingThreadSessionOptions(harness.db, cliThread.id),
-      ).toEqual({ daybreak: true });
-      expect(
-        listQueuedThreadCommands(harness, "thread.start", appThread.id),
-      ).toHaveLength(0);
-      expect(
-        getProjectExecutionDefaults(harness.db, { projectId: project.id }),
-      ).toEqual(projectDefaultsBefore);
-
-      const sendFirstMessage = async (threadId: string) => {
-        const sent = await harness.app.request(
-          `/api/v1/threads/${threadId}/send`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              input: [{ type: "text", text: "First real message" }],
-              mode: "auto",
-            }),
-          },
-        );
-        expect(sent.status).toBe(200);
-        const start = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === threadId,
-        );
-        return start.command.type === "thread.start"
-          ? start.command.options
-          : null;
-      };
-
-      await expect(sendFirstMessage(appThread.id)).resolves.toMatchObject({
-        model: "gpt-standard",
-        reasoningLevel: "low",
-        permissionMode: "accept-edits",
-        serviceTier: "ultrafast",
-      });
-      await expect(
-        buildExecutionOptions(harness.deps, {}, { threadId: appThread.id }),
-      ).resolves.toMatchObject({
-        model: "gpt-standard",
-        reasoningLevel: "low",
-        permissionMode: "accept-edits",
-        serviceTier: "ultrafast",
-      });
-      await expect(sendFirstMessage(cliThread.id)).resolves.toMatchObject({
-        model: "gpt-both",
-        reasoningLevel: "high",
-        permissionMode: "full",
-        serviceTier: "fast",
-        sessionOptions: { daybreak: true },
-      });
-      await expect(
-        buildExecutionOptions(harness.deps, {}, { threadId: cliThread.id }),
-      ).resolves.toMatchObject({
-        model: "gpt-both",
-        reasoningLevel: "high",
-        permissionMode: "full",
-        serviceTier: "fast",
-      });
-    });
-  });
-
   it("sends the choices with the thread's first command, before the provider has reported any option", async () => {
     await withTestHarness(async (harness) => {
       const { host, project } = seedWorkspace(harness, "create-options");

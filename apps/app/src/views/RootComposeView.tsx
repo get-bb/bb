@@ -11,6 +11,7 @@ import { useRootComposePlacement } from "@/lib/root-compose-selection";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useWidgetVoiceEntry } from "@/lib/widget-voice-entry";
 import { useProviderDirectory } from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
@@ -464,6 +465,7 @@ function RootComposeSurface({
 }: RootComposeSurfaceProps) {
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
+  const widgetVoiceReady = useWidgetVoiceEntry();
   const location = useLocation();
   const navigate = useNavigate();
   const [, setPlacement] = useRootComposePlacement();
@@ -1407,6 +1409,7 @@ function RootComposeSurface({
       isCreating: quickCreateProject.isCreating,
     },
     onRequestMachineSetup: handleRequestMachineSetup,
+    widgetVoiceReady,
   });
 
   return (

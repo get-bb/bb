@@ -59,7 +59,6 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useWidgetVoiceEntry } from "@/lib/widget-voice-entry";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -475,7 +474,6 @@ export function ThreadScreen({
   timelineEnabled,
   timelineHost,
 }: ThreadScreenProps) {
-  const widgetVoiceReady = useWidgetVoiceEntry();
   const timeline = useThreadTimelineController({
     enabled: timelineEnabled,
     threadId: thread.id,
@@ -615,7 +613,6 @@ export function ThreadScreen({
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       composerFocusRequestKey={composerFocusRequestKey}
-      widgetVoiceReady={widgetVoiceReady}
       sendMessage={sendMessage}
       sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={steerActiveThreadOnEnter}

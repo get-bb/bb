@@ -22,7 +22,6 @@ import {
 import {
   createStandaloneBuiltinCompactCommandInput,
   promptInputSchema,
-  resolvedThreadExecutionOptionsSchema,
   type PromptInput,
   type QueuedMessagePayload,
   type QueuedMessageDeliveryMode,
@@ -111,7 +110,6 @@ import { markTurnTraceSpan } from "../system/turn-trace.js";
 
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
-  executionOptions: resolvedThreadExecutionOptionsSchema.optional(),
   fork: threadForkDescriptorSchema.nullable(),
   historyCopy: z.literal(FORK_HISTORY_COPY_MARK).optional(),
   /** Provider-facing input when it differs from the persisted start seed. */

@@ -4,13 +4,7 @@ import {
   admitAfterPathClaimsSettle,
   assertEnvironmentPathAvailable,
 } from "../environments/path-admission.js";
-import {
-  markThreadDeleted,
-  getEnvironment,
-  getThread,
-  setThreadExecutionOverride,
-  setThreadStartupContext,
-} from "@bb/db";
+import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
 import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
@@ -91,7 +85,6 @@ interface CreateProvisioningThreadArgs {
   fork: ThreadForkPoint | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
-  createEmpty: boolean;
 }
 
 interface ResolveForkPointArgs {
@@ -533,57 +526,39 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    if (args.createEmpty) {
-      startContext.executionOptions = execution;
-      setThreadStartupContext(deps.db, {
-        threadId: thread.id,
-        startupContext: JSON.stringify({
-          kind: "pending",
-          ...startContext,
-        }),
-      });
-      setThreadExecutionOverride(deps.db, {
-        threadId: thread.id,
-        modelOverride: execution.model,
-        reasoningLevelOverride: execution.reasoningLevel,
-      });
-    }
-    if (!args.createEmpty)
-      await attemptDispatch(deps, {
-        thread,
-        payload: {
-          input: args.request.input,
-          mode: "start",
-          model: execution.model,
-          reasoningLevel: execution.reasoningLevel,
-          serviceTier: execution.serviceTier,
-          permissionMode: execution.permissionMode,
-          ...(args.request.executionInputSources !== undefined
-            ? { executionInputSources: args.request.executionInputSources }
-            : {}),
-          ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-        },
-        source: { kind: "inline" },
-        queuePayload: { kind: "inline" },
-        pluginSubmission: args.request.pluginSubmission ?? null,
-        systemNotice: null,
-        startContext,
-        executionDefaults: executionPlanArgs,
-        origin: args.request.origin,
-        originPluginId: args.request.originPluginId ?? null,
-        startedOnBehalfOf: args.request.startedOnBehalfOf,
-        trigger: "user",
-      });
+    await attemptDispatch(deps, {
+      thread,
+      payload: {
+        input: args.request.input,
+        mode: "start",
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        serviceTier: execution.serviceTier,
+        permissionMode: execution.permissionMode,
+        ...(args.request.executionInputSources !== undefined
+          ? { executionInputSources: args.request.executionInputSources }
+          : {}),
+        ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+      },
+      source: { kind: "inline" },
+      queuePayload: { kind: "inline" },
+      pluginSubmission: args.request.pluginSubmission ?? null,
+      systemNotice: null,
+      startContext,
+      executionDefaults: executionPlanArgs,
+      origin: args.request.origin,
+      originPluginId: args.request.originPluginId ?? null,
+      startedOnBehalfOf: args.request.startedOnBehalfOf,
+      trigger: "user",
+    });
   } catch (error) {
     discardUnstartedThread(deps, thread);
     throw error;
   }
-  if (!args.createEmpty && args.request.rememberProjectDefaults !== false) {
-    rememberProjectExecutionDefaultsForCreate(deps, {
-      execution,
-      request: args.request,
-    });
-  }
+  rememberProjectExecutionDefaultsForCreate(deps, {
+    execution,
+    request: args.request,
+  });
   return getThreadSafe(deps, thread.id);
 }
 
@@ -893,7 +868,6 @@ export async function createThreadFromRequest(
     environmentIntent,
     defaultModel,
     fork,
-    createEmpty: requestInput.createEmpty === true,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }
       : {}),

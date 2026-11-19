@@ -10,7 +10,11 @@ import { useProfileStoreState, type ServerProfile } from "@/lib/profiles";
 import { ThemeProvider, useTheme } from "@/theme";
 import { GroupedRow, GroupedSection, Spinner, Text } from "@/ui";
 import { withWidgetSdk } from "./widget-sdk";
-import { type WidgetTarget, widgetIcons } from "./widget-target";
+import {
+  type WidgetAction,
+  type WidgetTarget,
+  widgetIcons,
+} from "./widget-target";
 
 interface ProjectWidgetModule {
   configure(widgetId: number, targetJson: string): Promise<void>;
@@ -108,7 +112,7 @@ function TargetPicker({
   const [branch, setBranch] = useState<string | null>(null);
   const [reasoningLevel, setReasoningLevel] = useState<string | null>(null);
   const [icon, setIcon] = useState<WidgetTarget["icon"]>("message");
-  const [action, setAction] = useState<WidgetTarget["action"]>("thread");
+  const [action, setAction] = useState<WidgetAction>("thread");
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const projects = useQuery(
@@ -222,21 +226,30 @@ function TargetPicker({
   const branchesList = branches.data?.branches ?? [];
 
   async function configure() {
-    if (!project || !host) return;
-    setSaving(true);
-    setSaveFailed(false);
-    const target: WidgetTarget = {
+    if (!project) return;
+    const base = {
       profileId: profile.id,
       projectId: project.id,
       projectName: project.name,
-      hostId: host.id,
-      providerId,
-      model: model?.model ?? null,
-      baseBranch: branch,
-      reasoningLevel,
       icon,
-      action,
     };
+    let target: WidgetTarget;
+    if (action === "photo") {
+      if (!host) return;
+      target = {
+        ...base,
+        action,
+        hostId: host.id,
+        providerId,
+        model: model?.model ?? null,
+        baseBranch: branch,
+        reasoningLevel,
+      };
+    } else {
+      target = { ...base, action };
+    }
+    setSaving(true);
+    setSaveFailed(false);
     try {
       await requireNativeModule<ProjectWidgetModule>(
         "BBProjectWidget",
@@ -304,6 +317,34 @@ function TargetPicker({
         </GroupedSection>
       ) : null}
       {project ? (
+        <GroupedSection title="Widget action">
+          <GroupedRow
+            title="Composer"
+            subtitle="Open a new thread in this project"
+            selected={action === "thread"}
+            trailing={action === "thread" ? "checkmark" : undefined}
+            onPress={() => setAction("thread")}
+            disabled={saving}
+          />
+          <GroupedRow
+            title="Photo"
+            subtitle="Start by taking a photo"
+            selected={action === "photo"}
+            trailing={action === "photo" ? "checkmark" : undefined}
+            onPress={() => setAction("photo")}
+            disabled={saving}
+          />
+          <GroupedRow
+            title="Voice input"
+            subtitle="Open a new thread ready to record"
+            selected={action === "voice"}
+            trailing={action === "voice" ? "checkmark" : undefined}
+            onPress={() => setAction("voice")}
+            disabled={saving}
+          />
+        </GroupedSection>
+      ) : null}
+      {project && action === "photo" ? (
         <GroupedSection title="Machine">
           {compatibleHosts.map((item) => (
             <GroupedRow
@@ -327,7 +368,7 @@ function TargetPicker({
           ) : null}
         </GroupedSection>
       ) : null}
-      {project && host ? (
+      {project && action === "photo" && host ? (
         <>
           {providers.isPending ? <Spinner /> : null}
           <GroupedSection title="Provider">
@@ -427,7 +468,9 @@ function TargetPicker({
           ) : null}
         </>
       ) : null}
-      {model && model.supportedReasoningEfforts.length > 0 ? (
+      {action === "photo" &&
+      model &&
+      model.supportedReasoningEfforts.length > 0 ? (
         <GroupedSection title="Reasoning">
           {model.supportedReasoningEfforts.map((effort) => (
             <GroupedRow
@@ -445,32 +488,6 @@ function TargetPicker({
           ))}
         </GroupedSection>
       ) : null}
-      <GroupedSection title="Widget action">
-        <GroupedRow
-          title="Composer"
-          subtitle="Start with a blank thread"
-          selected={action === "thread"}
-          trailing={action === "thread" ? "checkmark" : undefined}
-          onPress={() => setAction("thread")}
-          disabled={saving}
-        />
-        <GroupedRow
-          title="Photo"
-          subtitle="Start by taking a photo"
-          selected={action === "photo"}
-          trailing={action === "photo" ? "checkmark" : undefined}
-          onPress={() => setAction("photo")}
-          disabled={saving}
-        />
-        <GroupedRow
-          title="Voice input"
-          subtitle="Start with voice input ready"
-          selected={action === "voice"}
-          trailing={action === "voice" ? "checkmark" : undefined}
-          onPress={() => setAction("voice")}
-          disabled={saving}
-        />
-      </GroupedSection>
       <GroupedSection title="Widget icon">
         <View className="flex-row flex-wrap px-2 py-2">
           {widgetIcons.map((item) => (
@@ -503,7 +520,7 @@ function TargetPicker({
           ))}
         </View>
       </GroupedSection>
-      {project && host ? (
+      {project && (action !== "photo" || host) ? (
         <GroupedSection title="Launch">
           <GroupedRow
             title="Save widget"

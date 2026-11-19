@@ -5,8 +5,7 @@ import type { ServerProfile } from "@/lib/profiles";
 import { GroupedScreen } from "@/screens/settings/GroupedScreen";
 import { firstParam, webViewShellHref } from "@/screens/shell/hrefs";
 import { GroupedRow, GroupedSection, Spinner, Text } from "@/ui";
-import { getThreadRoutePath } from "@bb/client-core";
-import { BbHttpError } from "@bb/sdk/browser";
+import { getProjectComposeRoutePath, getThreadRoutePath } from "@bb/client-core";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { requireOptionalNativeModule } from "expo";
 import { File } from "expo-file-system";
@@ -14,7 +13,11 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WidgetPhotoCapture } from "./WidgetPhotoCapture";
 import { withWidgetSdk } from "./widget-sdk";
-import { widgetTargetSchema, type WidgetTarget } from "./widget-target";
+import {
+  type PhotoWidgetTarget,
+  widgetTargetSchema,
+  type WidgetTarget,
+} from "./widget-target";
 
 interface ProjectWidgetModule {
   takeLaunch(token: string): Promise<string | null>;
@@ -67,11 +70,65 @@ function WidgetLaunchEntry({ token }: { token: string | undefined }) {
     return (
       <WidgetLaunchError message="This widget’s server is no longer saved in bb." />
     );
-  return <WidgetLaunch profile={profile} target={target} />;
+  if (target.action === "photo")
+    return <WidgetPhotoLaunch profile={profile} target={target} />;
+  return <WidgetComposerLaunch profile={profile} target={target} />;
 }
 
-function widgetEnvironment(target: WidgetTarget): CreateThreadEnvironmentArgs {
-  if (target.hostId === null) return { type: "project-default" };
+async function openInShell(
+  router: ReturnType<typeof useRouter>,
+  profileId: string,
+  path: string,
+): Promise<boolean> {
+  await getProfileStore().setActiveProfile(profileId);
+  const ready = await waitForActiveConnection(profileId);
+  if (!ready) return false;
+  router.replace(webViewShellHref({ path }));
+  return true;
+}
+
+function WidgetComposerLaunch({
+  profile,
+  target,
+}: {
+  profile: ServerProfile;
+  target: WidgetTarget;
+}) {
+  const router = useRouter();
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const composePath = getProjectComposeRoutePath(target.projectId);
+  const path =
+    target.action === "voice" ? `${composePath}?widgetVoice=1` : composePath;
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    void openInShell(router, profile.id, path)
+      .catch(() => false)
+      .then((opened) => {
+        if (!cancelled && !opened) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt, path, profile.id, router]);
+
+  if (failed)
+    return (
+      <WidgetLaunchError
+        message="Could not connect to this widget’s server."
+        retry={{ title: "Try again", run: () => setAttempt((n) => n + 1) }}
+      />
+    );
+  return (
+    <GroupedScreen>
+      <Spinner />
+    </GroupedScreen>
+  );
+}
+
+function widgetEnvironment(target: PhotoWidgetTarget): CreateThreadEnvironmentArgs {
   return {
     type: "host",
     hostId: target.hostId,
@@ -85,15 +142,18 @@ function widgetEnvironment(target: WidgetTarget): CreateThreadEnvironmentArgs {
   };
 }
 
-async function startWidgetThread(
+async function startPhotoThread(
   profile: ServerProfile,
-  target: WidgetTarget,
-  uri?: string,
+  target: PhotoWidgetTarget,
+  uri: string,
 ) {
   return withWidgetSdk(profile, undefined, async (sdk) => {
-    const options = {
-      origin: "app" as const,
-      rememberProjectDefaults: false as const,
+    const attachment = await sdk.projects.attachments.upload({
+      projectId: target.projectId,
+      clientFile: new File(uri),
+    });
+    return sdk.threads.spawn({
+      origin: "app",
       projectId: target.projectId,
       environment: widgetEnvironment(target),
       ...(target.providerId === null ? {} : { providerId: target.providerId }),
@@ -101,106 +161,62 @@ async function startWidgetThread(
       ...(target.reasoningLevel === null
         ? {}
         : { reasoningLevel: target.reasoningLevel }),
-    };
-    if (uri === undefined)
-      return sdk.threads.spawn({ ...options, createEmpty: true });
-    const clientFile = new File(uri);
-    const attachment = await sdk.projects.attachments.upload({
-      projectId: target.projectId,
-      clientFile,
-    });
-    return sdk.threads.spawn({
-      ...options,
       input: [{ type: "localImage", path: attachment.path }],
     });
   });
 }
 
-function WidgetLaunch({
+function WidgetPhotoLaunch({
   profile,
   target,
 }: {
   profile: ServerProfile;
-  target: WidgetTarget;
+  target: PhotoWidgetTarget;
 }) {
   const router = useRouter();
-  const creation = useRef<ReturnType<typeof startWidgetThread> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const creation = useRef<ReturnType<typeof startPhotoThread> | null>(null);
   const [threadToReopen, setThreadToReopen] = useState<Awaited<
-    ReturnType<typeof startWidgetThread>
+    ReturnType<typeof startPhotoThread>
   > | null>(null);
 
   const openThread = useCallback(
-    async (
-      thread: Awaited<ReturnType<typeof startWidgetThread>>,
-      signal?: AbortSignal,
-    ) => {
-      try {
-        await getProfileStore().setActiveProfile(profile.id);
-        const ready = await waitForActiveConnection(profile.id);
-        if (signal?.aborted) return;
-        if (!ready) throw new Error("Server profile did not activate");
-        const path = getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        });
-        router.replace(
-          webViewShellHref({
-            path: target.action === "voice" ? `${path}?widgetVoice=1` : path,
-          }),
-        );
-      } catch {
-        if (!signal?.aborted) setThreadToReopen(thread);
-      }
-    },
-    [profile.id, router, target.action],
-  );
-
-  useEffect(() => {
-    if (target.action === "photo") return;
-    const guard = new AbortController();
-    creation.current ??= startWidgetThread(profile, target);
-    void creation.current
-      .then(async (thread) => {
-        if (!guard.signal.aborted) await openThread(thread, guard.signal);
-      })
-      .catch((cause: unknown) => {
-        if (guard.signal.aborted) return;
-        setError(
-          cause instanceof BbHttpError && cause.status === 404
-            ? "This project or machine is no longer available."
-            : "Could not start the thread. Check the saved server and widget settings.",
-        );
+    async (thread: Awaited<ReturnType<typeof startPhotoThread>>) => {
+      const path = getThreadRoutePath({
+        projectId: thread.projectId,
+        threadId: thread.id,
       });
-    return () => guard.abort();
-  }, [openThread, profile, target]);
+      const opened = await openInShell(router, profile.id, path).catch(
+        () => false,
+      );
+      if (!opened) setThreadToReopen(thread);
+    },
+    [profile.id, router],
+  );
 
   if (threadToReopen) {
     return (
       <WidgetLaunchError
         message="The thread was created, but bb could not open it."
-        retry={() => void openThread(threadToReopen)}
+        retry={{
+          title: "Open thread",
+          run: () => void openThread(threadToReopen),
+        }}
       />
     );
   }
-  if (error) return <WidgetLaunchError message={error} />;
   return (
     <GroupedScreen>
-      {target.action === "photo" ? (
-        <WidgetPhotoCapture
-          onCancel={() => router.replace("/")}
-          onUsePhoto={async (photo) => {
-            creation.current ??= startWidgetThread(profile, target, photo.uri);
-            const thread = await creation.current.catch((cause: unknown) => {
-              creation.current = null;
-              throw cause;
-            });
-            await openThread(thread);
-          }}
-        />
-      ) : (
-        <Spinner />
-      )}
+      <WidgetPhotoCapture
+        onCancel={() => router.replace("/")}
+        onUsePhoto={async (photo) => {
+          creation.current ??= startPhotoThread(profile, target, photo.uri);
+          const thread = await creation.current.catch((cause: unknown) => {
+            creation.current = null;
+            throw cause;
+          });
+          await openThread(thread);
+        }}
+      />
     </GroupedScreen>
   );
 }
@@ -210,14 +226,14 @@ function WidgetLaunchError({
   retry,
 }: {
   message: string;
-  retry?: () => void;
+  retry?: { title: string; run: () => void };
 }) {
   const router = useRouter();
   return (
     <GroupedScreen>
       <Text>{message}</Text>
       <GroupedSection>
-        {retry && <GroupedRow title="Open thread" onPress={retry} />}
+        {retry && <GroupedRow title={retry.title} onPress={retry.run} />}
         <GroupedRow title="Open bb" onPress={() => router.replace("/")} />
       </GroupedSection>
     </GroupedScreen>
