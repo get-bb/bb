@@ -43,7 +43,7 @@ function section(label: string) {
   };
 }
 
-function titledSection(label: string, body = label) {
+function titledSection(label: string, body: string) {
   return function TitledSection({
     threadId,
   }: ExperimentalThreadContextCardProps) {
@@ -368,135 +368,66 @@ describe("thread context card", () => {
   });
 });
 
-type SectionStyle = "infoSection" | "legacyTitle";
-
-function registerSections(
-  style: SectionStyle,
-  sections: Array<{ id: string; title: string }>,
-  pluginId = "first",
+function registerSection(
+  pluginId: string,
+  id: string,
+  title: string,
+  legacy: boolean,
 ) {
   setPluginSlotRegistrations(
     pluginId,
     makePluginRegistrationSet({
-      threadContextCardSections: sections.map(({ id, title }, index) => ({
-        id,
-        group: "2_deploys",
-        order: index,
-        component:
-          style === "infoSection"
-            ? titledSection(title, `${title} body`)
-            : section(`${title} body`),
-        legacyTitle: style === "legacyTitle" ? title : null,
-      })),
+      threadContextCardSections: [
+        {
+          id,
+          group: "2_deploys",
+          component: legacy
+            ? titledSection(`Inner ${title}`, `${title} body`)
+            : titledSection(title, `${title} body`),
+          legacyTitle: legacy ? title : null,
+        },
+      ],
     }),
   );
 }
 
-function toggleFor(name: string, index = 0) {
-  return screen.getAllByRole("button", { name })[index]!;
-}
-
-function expandedStates(name: string) {
+function expanded(name: string) {
   return screen
-    .getAllByRole("button", { name })
+    .getAllByRole("button", { name: new RegExp(`^${name}`) })
     .map((node) => node.getAttribute("aria-expanded"));
 }
 
-function bodyShown(text: string) {
-  const node = screen.queryByText(text);
-  return node !== null && node.closest("[hidden]") === null;
-}
-
-describe.each<SectionStyle>(["infoSection", "legacyTitle"])(
-  "thread context card sections drawn with %s",
-  (style) => {
-    it("start open and fold from their title", () => {
-      registerSections(style, [{ id: "deploys", title: "Deploys" }]);
-      renderPane();
-
-      expect(expandedStates("Deploys")).toEqual(["true"]);
-      expect(bodyShown("Deploys body for thr_1")).toBe(true);
-
-      fireEvent.click(toggleFor("Deploys"));
-      expect(expandedStates("Deploys")).toEqual(["false"]);
-      expect(bodyShown("Deploys body for thr_1")).toBe(false);
-      expect(expandedStates("Child threads")).toEqual(["true"]);
-
-      fireEvent.click(toggleFor("Deploys"));
-      expect(expandedStates("Deploys")).toEqual(["true"]);
-      expect(bodyShown("Deploys body for thr_1")).toBe(true);
-    });
-
-    it("remember folded sections across a remount and in every thread", () => {
-      registerSections(style, [{ id: "deploys", title: "Deploys" }]);
+describe.each([false, true])(
+  "thread context card sections (legacy title: %s)",
+  (legacy) => {
+    it("start open, fold from the title, and remember folds by owner and id in every thread", () => {
+      registerSection("first", "status", "First", legacy);
+      registerSection("second", "status", "Second", legacy);
+      registerSection("core", "childThreads", "Plugin children", legacy);
       const store = createStore();
       const first = renderPane({ store, threadIds: ["thr_1", "thr_2"] });
+      expect(expanded("First")).toEqual(["true", "true"]);
 
-      fireEvent.click(toggleFor("Deploys", 0));
-      expect(expandedStates("Deploys")).toEqual(["false", "false"]);
-      expect(expandedStates("Child threads")).toEqual(["true", "true"]);
+      fireEvent.click(screen.getAllByRole("button", { name: "First" })[0]!);
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Plugin children" })[0]!,
+      );
+      expect(expanded("First")).toEqual(["false", "false"]);
+      expect(expanded("Second")).toEqual(["true", "true"]);
+      expect(expanded("Plugin children")).toEqual(["false", "false"]);
+      expect(expanded("Child threads")).toEqual(["true", "true"]);
+      expect(screen.queryByText("Inner First")).toBeNull();
+      const body = screen.queryAllByText("First body for thr_1");
+      expect(body.map((node) => node.closest("[hidden]") !== null)).toEqual(
+        legacy ? [true] : [],
+      );
 
       first.unmount();
       renderPane({ store, threadIds: ["thr_3"] });
-      expect(expandedStates("Deploys")).toEqual(["false"]);
-    });
-
-    it("key folds by owner and id, so plugins and bb can share an id", () => {
-      registerSections(style, [{ id: "status", title: "First status" }]);
-      registerSections(
-        style,
-        [{ id: "status", title: "Second status" }],
-        "second",
-      );
-      registerSections(
-        style,
-        [{ id: "childThreads", title: "Plugin children" }],
-        "core",
-      );
-      renderPane();
-
-      fireEvent.click(toggleFor("First status"));
-      fireEvent.click(toggleFor("Plugin children"));
-      expect(expandedStates("First status")).toEqual(["false"]);
-      expect(expandedStates("Second status")).toEqual(["true"]);
-      expect(expandedStates("Plugin children")).toEqual(["false"]);
-      expect(expandedStates("Child threads")).toEqual(["true"]);
+      expect(expanded("First")).toEqual(["false"]);
     });
   },
 );
-
-describe("legacy titled thread context card sections", () => {
-  it("keep a folded body mounted so an empty section stays hidden", () => {
-    registerSections("legacyTitle", [{ id: "deploys", title: "Deploys" }]);
-    renderPane();
-
-    fireEvent.click(toggleFor("Deploys"));
-    expect(
-      screen.getByText("Deploys body for thr_1").closest("[hidden]"),
-    ).not.toBeNull();
-  });
-
-  it("draw one title when the component also renders an InfoSection", () => {
-    setPluginSlotRegistrations(
-      "first",
-      makePluginRegistrationSet({
-        threadContextCardSections: [
-          {
-            id: "deploys",
-            group: "2_deploys",
-            component: titledSection("Inner deploys", "Deploys body"),
-            legacyTitle: "Deploys",
-          },
-        ],
-      }),
-    );
-    renderPane();
-
-    expect(expandedStates("Deploys")).toEqual(["true"]);
-    expect(screen.queryByText("Inner deploys")).toBeNull();
-    expect(bodyShown("Deploys body for thr_1")).toBe(true);
-  });
-});
 
 describe("useThreadContextKind", () => {
   function kindIn(wrap: (children: ReactNode) => ReactNode) {

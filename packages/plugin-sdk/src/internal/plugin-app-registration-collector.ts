@@ -256,16 +256,10 @@ function readLegacyCardSectionTitle(
   registration: ExperimentalThreadContextCardSectionRegistration,
   onWarning: (message: string) => void,
 ): string | null {
-  if (!("title" in registration) || registration.title === undefined) {
-    return null;
-  }
-  const title = registration.title;
-  if (typeof title !== "string" || title.trim() === "") {
-    onWarning(`${kind}: "title" ignored: expected a non-empty string`);
-    return null;
-  }
+  const title = "title" in registration ? registration.title : undefined;
+  if (typeof title !== "string" || title === "") return null;
   onWarning(
-    `${kind}: "title" is retired; render experimental_InfoSection with a label from the section's component. bb still draws "${title}" above this section for now.`,
+    `${kind}: "title" is retired; render experimental_InfoSection from the component instead.`,
   );
   return title;
 }
