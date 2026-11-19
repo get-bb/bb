@@ -5,17 +5,21 @@
   android:background="@drawable/bb_project_widget_background"
   android:gravity="center"
   android:orientation="vertical"
-  android:padding="4dp">
+  android:paddingStart="4dp"
+  android:paddingTop="2dp"
+  android:paddingEnd="4dp"
+  android:paddingBottom="2dp">
   <ImageView
     android:id="@+id/bb_project_widget_icon"
-    android:layout_width="22dp"
-    android:layout_height="22dp"
+    android:layout_width="32dp"
+    android:layout_height="32dp"
     android:importantForAccessibility="no"
     android:src="@drawable/bb_widget_icon_message" />
   <TextView
     android:id="@+id/bb_project_widget_label"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginTop="3dp"
     android:ellipsize="end"
     android:gravity="center"
     android:importantForAccessibility="no"
