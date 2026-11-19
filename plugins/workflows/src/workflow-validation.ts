@@ -77,8 +77,15 @@ export async function validateWorkflowSource(
           candidate.model === selection.model,
       );
       if (model === undefined) {
+        const guidance = models.selectedOnlyModels.some(
+          (candidate) =>
+            candidate.id === selection.model ||
+            candidate.model === selection.model,
+        )
+          ? ": this model is outside the default provider catalog. Add it to customModels in config.json to use it explicitly, or omit provider, model, and reasoningLevel to inherit the origin thread's selection."
+          : "";
         throw new Error(
-          `Model mismatch for literal workflow selection ${tupleDescription(selection)}`,
+          `Model mismatch for literal workflow selection ${tupleDescription(selection)}${guidance}`,
         );
       }
       if (

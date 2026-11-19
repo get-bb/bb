@@ -122,6 +122,16 @@ BB validates the tuple against the live provider/model catalog immediately
 before spawning the worker. A provider disappearing between authoring and
 execution fails the call instead of silently substituting another model.
 
+Explicit selections, including literal tuples checked by `bb workflows validate`,
+must use the provider's default model catalog. Models advertised only in
+`selectedOnlyModels` are eligible for inherited selections, not explicit overrides;
+`bb provider models --selected-model` discovers reasoning support but does not
+promote a model into the default catalog. To enable a model the provider accepts,
+register its `providerId` and `model` in top-level `customModels` in bb's
+`config.json`, then refresh the config or restart bb and check the catalog again.
+Alternatively, select the model on the origin thread and omit all three selection
+fields to inherit it. Custom models are hidden while streamer mode is enabled.
+
 ## Structured agent results
 
 Set native `schema` (or the compatible `outputSchema` alias) on an individual

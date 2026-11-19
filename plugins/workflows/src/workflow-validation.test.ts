@@ -182,7 +182,7 @@ describe("workflow validation", () => {
     ).rejects.toThrow("Unsupported reasoning");
   });
 
-  it("rejects selected-only models for explicit literal selections", async () => {
+  it("explains how to enable a selected-only model for explicit selection", async () => {
     await expect(
       validateWorkflowSource(
         SOURCE,
@@ -203,6 +203,8 @@ describe("workflow validation", () => {
           }),
         }),
       ),
-    ).rejects.toThrow("Model mismatch");
+    ).rejects.toThrow(
+      /outside the default provider catalog.*customModels in config\.json/,
+    );
   });
 });
