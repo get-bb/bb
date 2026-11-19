@@ -26,6 +26,8 @@ export const ownedBranchSchema = z
   })
   .strict();
 
+export const MAX_POOL_SIZE = 4;
+
 export const worktreeHostContract = defineRpcContract({
   defaultBaseBranch: {
     input: z.object({ sourcePath: z.string().min(1) }).strict(),
@@ -93,6 +95,70 @@ export const worktreeHostContract = defineRpcContract({
       z.object({ status: z.literal("named") }).strict(),
       z
         .object({ status: z.literal("failed"), message: z.string().min(1) })
+        .strict(),
+    ]),
+  },
+  refreshPoolBase: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        memberPaths: z.array(z.string().min(1)),
+      })
+      .strict(),
+    output: z
+      .object({
+        ref: z.string().min(1).nullable(),
+        commit: z.string().min(1).nullable(),
+        members: z.array(
+          z
+            .object({
+              path: z.string().min(1),
+              head: z.string().min(1).nullable(),
+              branch: z.string().min(1).nullable(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
+  handOff: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        fromBranch: z.string().min(1),
+        toBranch: z.string().min(1),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("handed-off"),
+          baseBranch: z.string().min(1),
+        })
+        .strict(),
+      z
+        .object({ status: z.literal("refused"), reason: z.string().min(1) })
+        .strict(),
+      z.object({ status: z.literal("busy") }).strict(),
+    ]),
+  },
+  restorePoolMember: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        placeholder: z.string().min(1),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("intact") }).strict(),
+      z.object({ status: z.literal("restored") }).strict(),
+      z
+        .object({
+          status: z.literal("used"),
+          branch: z.string().min(1).nullable(),
+        })
         .strict(),
     ]),
   },

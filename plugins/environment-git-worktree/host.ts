@@ -11,6 +11,11 @@ import {
   resolveWorktreeTargetPath,
 } from "./host/paths.js";
 import {
+  handOffWorktree,
+  refreshDefaultBase,
+  restorePoolMember,
+} from "./host/handoff.js";
+import {
   createWorktree,
   deleteOwnedBranch,
   listAdoptableWorktrees,
@@ -77,6 +82,31 @@ export function createWorktreeHostEntry() {
           sourcePath: input.sourcePath,
           path: input.path,
           managedRoot: resolveWorktreesRoot(context.experimental_paths.dataDir),
+        });
+      },
+      async refreshPoolBase(input, context) {
+        return refreshDefaultBase({
+          sourcePath: input.sourcePath,
+          memberPaths: input.memberPaths,
+          signal: context.signal,
+        });
+      },
+      async restorePoolMember(input, context) {
+        return restorePoolMember({
+          sourcePath: input.sourcePath,
+          path: input.path,
+          placeholder: input.placeholder,
+          signal: context.signal,
+        });
+      },
+      async handOff(input, context) {
+        return handOffWorktree({
+          sourcePath: input.sourcePath,
+          path: input.path,
+          fromBranch: input.fromBranch,
+          toBranch: input.toBranch,
+          completionPath: completionPathForWorktree(input.path),
+          signal: context.signal,
         });
       },
       async create(input, context) {

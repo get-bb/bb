@@ -98,6 +98,7 @@ async function setup() {
     inputs: null,
     branchName: async () => "bb/test",
     setup: async () => {},
+    adopt: async () => {},
     attempt: 1,
     pathKey: THREAD_ID,
     report,
