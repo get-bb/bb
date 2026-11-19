@@ -50,6 +50,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
   "sidebar.updates.providerCli",
+  "sidebar.updates.skipped",
   "composer.provider",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
@@ -155,7 +156,12 @@ export const uiPreferenceDefinitions = {
   "sidebar.updates.providerCli": defineUiPreference(
     z.boolean(),
     true,
-    "Whether agent CLI updates appear in the sidebar update button. false leaves them out of its count, card, and Update all; Settings → Updates and bb updates still list them.",
+    "Whether agent CLI updates appear in the sidebar update button. false leaves them out of its count, card, and the card's update button; Settings → Updates and bb updates still list them.",
+  ),
+  "sidebar.updates.skipped": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Updates skipped from the sidebar update button's card. The button stays hidden while every update it would show is in this list and reappears when a new one arrives; [] shows it again. Settings → Updates and bb updates still list skipped updates.",
   ),
   "composer.provider": defineUiPreference(
     uiPreferenceStringSchema,
