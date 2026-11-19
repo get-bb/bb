@@ -18,13 +18,14 @@ export interface PluginMarketplaceRow {
   lastSuccessfulRefreshAt: number | null;
   lastAttemptedRefreshAt: number | null;
   lastError: string | null;
+  enabled: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 export type UpsertPluginMarketplaceInput = Omit<
   PluginMarketplaceRow,
-  "createdAt" | "updatedAt"
+  "enabled" | "createdAt" | "updatedAt"
 >;
 
 export interface PluginMarketplaceIconRow {
@@ -95,6 +96,18 @@ export function upsertPluginMarketplace(
     throw new Error(`plugin marketplace "${name}" missing after upsert`);
   }
   return row;
+}
+
+export function setPluginMarketplaceEnabled(
+  db: DbQueryConnection,
+  name: string,
+  enabled: boolean,
+): PluginMarketplaceRow | undefined {
+  db.update(pluginMarketplaces)
+    .set({ enabled, updatedAt: Date.now() })
+    .where(eq(pluginMarketplaces.name, name))
+    .run();
+  return getPluginMarketplace(db, name);
 }
 
 export function recordPluginMarketplaceRefreshFailure(

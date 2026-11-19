@@ -316,7 +316,12 @@ type ExpectedPluginCatalogKey =
   | "startInstall"
   | "status";
 
-type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
+type ExpectedPluginMarketplacesKey =
+  | "add"
+  | "list"
+  | "refresh"
+  | "remove"
+  | "setEnabled";
 
 type ExpectedPluginInstallJobsKey = "cancel" | "get" | "list";
 

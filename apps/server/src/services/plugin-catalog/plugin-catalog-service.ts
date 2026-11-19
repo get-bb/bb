@@ -16,6 +16,7 @@ import {
   recordPluginMarketplaceRefreshFailure,
   replacePluginMarketplaceIcons,
   setInstalledPluginDirectProvenance,
+  setPluginMarketplaceEnabled,
   upsertPluginMarketplace,
   type DbConnection,
   type InstalledPluginRow,
@@ -144,6 +145,10 @@ export interface PluginCatalogService {
     subdirectory: string | null;
   }): Promise<PluginMarketplace>;
   removeMarketplace(name: string): Promise<{ convertedPluginIds: string[] }>;
+  setMarketplaceEnabled(
+    name: string,
+    enabled: boolean,
+  ): Promise<PluginMarketplace>;
   startPeriodicRefresh(): void;
   stopPeriodicRefresh(): void;
 }
@@ -308,6 +313,20 @@ export function createPluginCatalogService(deps: {
     });
   }
 
+  function enabledMarketplaces(): PluginMarketplaceRow[] {
+    return orderedMarketplaces().filter((row) => row.enabled);
+  }
+
+  function requireEnabledRow(name: string): PluginMarketplaceRow {
+    const row = requireRow(name);
+    if (!row.enabled) {
+      throw new Error(
+        `marketplace "${name}" is disabled; enable it with \`bb marketplace enable ${name}\``,
+      );
+    }
+    return row;
+  }
+
   function marketplaceView(row: PluginMarketplaceRow): PluginMarketplace {
     const catalog = catalogOf(row);
     return {
@@ -315,6 +334,8 @@ export function createPluginCatalogService(deps: {
       displayName: catalog?.displayName ?? row.name,
       description: catalog?.description ?? null,
       official: isReservedMarketplace(row.name),
+      enabled: row.enabled,
+      canDisable: row.name !== BUNDLED_MARKETPLACE_NAME,
       sourceKind: row.sourceKind,
       source: marketplaceSourceDisplay(marketplaceSourceFromRow(row)),
       subdirectory: row.sourceGitSubdirectory,
@@ -336,7 +357,7 @@ export function createPluginCatalogService(deps: {
       PluginCatalogCollectionMembership[]
     >();
     const marketplacesByExposedId = new Map<string, string>();
-    for (const row of orderedMarketplaces()) {
+    for (const row of enabledMarketplaces()) {
       if (!isReservedMarketplace(row.name)) continue;
       const catalog = overrides.get(row.name) ?? catalogOf(row);
       if (catalog === null) continue;
@@ -697,6 +718,14 @@ export function createPluginCatalogService(deps: {
   ): Promise<PluginMarketplaceRefreshResult> {
     return withLock(name, async () => {
       const row = requireRow(name);
+      if (!row.enabled) {
+        return {
+          name,
+          ok: false,
+          error: `marketplace "${name}" is disabled`,
+          marketplace: marketplaceView(row),
+        };
+      }
       try {
         await performRefresh(row, attemptedAt);
         return {
@@ -729,11 +758,11 @@ export function createPluginCatalogService(deps: {
   }): Promise<PluginMarketplaceRefreshResult[]> {
     const attemptedAt = args?.attemptedAt ?? Date.now();
     if (args?.name !== undefined) {
-      requireRow(args.name);
+      requireEnabledRow(args.name);
       return [await refreshOne(args.name, attemptedAt)];
     }
     const results: PluginMarketplaceRefreshResult[] = [];
-    for (const row of orderedMarketplaces()) {
+    for (const row of enabledMarketplaces()) {
       results.push(await refreshOne(row.name, attemptedAt));
     }
     return results;
@@ -742,9 +771,17 @@ export function createPluginCatalogService(deps: {
   function scheduleNextPeriodicRefresh(): void {
     if (periodicStopped) return;
     cancelPeriodic?.();
-    const lastAttempt = requireRow(
-      CURATED_PLUGIN_MARKETPLACE_NAME,
-    ).lastAttemptedRefreshAt;
+    const remote = enabledMarketplaces().filter(
+      (row) => row.name !== BUNDLED_MARKETPLACE_NAME,
+    );
+    if (remote.length === 0) {
+      schedulePeriodicRefresh(MARKETPLACE_REFRESH_INTERVAL_MS);
+      return;
+    }
+    const attempts = remote.map((row) => row.lastAttemptedRefreshAt);
+    const lastAttempt = attempts.includes(null)
+      ? null
+      : Math.min(...attempts.filter((attempt) => attempt !== null));
     const delay =
       lastAttempt === null
         ? 0
@@ -791,7 +828,7 @@ export function createPluginCatalogService(deps: {
   ): ResolvedCatalogEntry {
     const { entryId } = selector;
     if (selector.marketplace !== undefined) {
-      const row = requireRow(selector.marketplace);
+      const row = requireEnabledRow(selector.marketplace);
       const entry = catalogOf(row)?.plugins.find((candidate) =>
         entryMatchesSelector(candidate, entryId),
       );
@@ -802,7 +839,7 @@ export function createPluginCatalogService(deps: {
     }
     const matches: { row: PluginMarketplaceRow; entry: MarketplaceEntry }[] =
       [];
-    for (const row of orderedMarketplaces()) {
+    for (const row of enabledMarketplaces()) {
       const entry = catalogOf(row)?.plugins.find((candidate) =>
         entryMatchesSelector(candidate, entryId),
       );
@@ -985,7 +1022,7 @@ export function createPluginCatalogService(deps: {
 
   return {
     status() {
-      const marketplaceEntryCount = orderedMarketplaces().reduce(
+      const marketplaceEntryCount = enabledMarketplaces().reduce(
         (total, row) => total + (catalogOf(row)?.plugins.length ?? 0),
         0,
       );
@@ -1120,6 +1157,32 @@ export function createPluginCatalogService(deps: {
       });
     },
 
+    async setMarketplaceEnabled(name, enabled) {
+      const changed = await withLock(name, async () => {
+        const row = requireRow(name);
+        if (!enabled && name === BUNDLED_MARKETPLACE_NAME) {
+          throw new Error(
+            `marketplace "${name}" ships with bb and cannot be disabled`,
+          );
+        }
+        if (row.enabled === enabled) return false;
+        setPluginMarketplaceEnabled(deps.db, name, enabled);
+        reservedCollections = buildReservedCollectionIndex();
+        deps.notifyCatalogChanged?.();
+        return true;
+      });
+      if (changed && enabled && name !== BUNDLED_MARKETPLACE_NAME) {
+        void refreshOne(name, Date.now()).then((result) => {
+          if (!result.ok) {
+            deps.warn?.(
+              `${name} catalog refresh after enabling failed: ${result.error ?? "unknown error"}`,
+            );
+          }
+        });
+      }
+      return marketplaceView(requireRow(name));
+    },
+
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
       const collectionIndex = reservedCollections;
@@ -1153,7 +1216,7 @@ export function createPluginCatalogService(deps: {
             catalogEntryKey(row.catalogMarketplaceName, row.catalogEntryId),
           ),
       );
-      const catalogEntryPromises = orderedMarketplaces().flatMap(
+      const catalogEntryPromises = enabledMarketplaces().flatMap(
         (row, index) => {
           const catalog = isReservedMarketplace(row.name)
             ? (collectionIndex.catalogsByMarketplace.get(row.name) ?? null)
