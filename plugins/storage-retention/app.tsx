@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -61,6 +62,7 @@ import type {
   State,
   Policy,
   ColdThread,
+  ColdThreadCursor,
   ColdThreadList,
 } from "./src/contract.js";
 import {
@@ -1837,40 +1839,160 @@ function StoragePage({
   );
 }
 
+const COLD_STORAGE_PREVIEW = 5;
 const COLD_STORAGE_PAGE = 50;
+
+interface LoadedColdThreads {
+  search: string | null;
+  list: ColdThreadList;
+}
+
+function coldThreadCursor(entry: ColdThread): ColdThreadCursor {
+  return { storedAt: entry.storedAt, threadId: entry.threadId };
+}
+
+function sortsAfter(entry: ColdThread, cursor: ColdThreadCursor): boolean {
+  if (cursor.storedAt === null) {
+    return entry.storedAt !== null || entry.threadId < cursor.threadId;
+  }
+  return (
+    entry.storedAt !== null &&
+    (entry.storedAt < cursor.storedAt ||
+      (entry.storedAt === cursor.storedAt && entry.threadId < cursor.threadId))
+  );
+}
 
 function ColdStorageSection() {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
-  const [list, setList] = useState<ColdThreadList | null>(null);
-  const [limit, setLimit] = useState(COLD_STORAGE_PAGE);
-  const load = useCallback(async () => {
+  const [searchText, setSearchText] = useState("");
+  const [search, setSearch] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<LoadedColdThreads | null>(null);
+  const [changes, setChanges] = useState(0);
+  const latestRequest = useRef(0);
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchText.trim() || null), 250);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+  const fetchPage = useCallback(
+    (after: ColdThreadCursor | null, limit: number) =>
+      rpc.call("coldThreads", { projectId: null, search, limit, after }),
+    [rpc, search],
+  );
+  const refresh = useCallback(async () => {
+    const request = ++latestRequest.current;
     try {
-      setList(
-        await rpc.call("coldThreads", {
-          projectId: null,
-          search: null,
-          limit,
-          offset: 0,
-        }),
-      );
+      const first = await fetchPage(null, COLD_STORAGE_PREVIEW);
+      if (request !== latestRequest.current) return;
+      setLoaded((current) => {
+        const last = first.threads.at(-1);
+        if (
+          current === null ||
+          current.search !== search ||
+          !first.hasMore ||
+          last === undefined ||
+          current.list.threads.length <= COLD_STORAGE_PREVIEW
+        ) {
+          return { search, list: first };
+        }
+        const shown = new Set(first.threads.map((entry) => entry.threadId));
+        const rest = current.list.threads.filter(
+          (entry) =>
+            !shown.has(entry.threadId) &&
+            sortsAfter(entry, coldThreadCursor(last)),
+        );
+        return {
+          search,
+          list: {
+            ...first,
+            threads: [...first.threads, ...rest],
+            hasMore: current.list.hasMore,
+          },
+        };
+      });
+    } catch (error) {
+      if (request !== latestRequest.current) return;
+      toast.error("Couldn’t load cold storage", {
+        description: message(error),
+      });
+    }
+  }, [fetchPage, search]);
+  useEffect(() => {
+    const timer = setTimeout(() => void refresh(), 200);
+    return () => clearTimeout(timer);
+  }, [refresh, changes]);
+  useRealtime("cold-storage-changed", () => {
+    setChanges((count) => count + 1);
+  });
+  if (loaded === null) return null;
+  const { list } = loaded;
+  if (loaded.search === null && list.totalCount === 0) return null;
+  const showMore = async () => {
+    const last = list.threads.at(-1);
+    if (last === undefined) return;
+    try {
+      const page = await fetchPage(coldThreadCursor(last), COLD_STORAGE_PAGE);
+      setLoaded((current) => {
+        if (current === null || current.search !== loaded.search) {
+          return current;
+        }
+        const shown = new Set(
+          current.list.threads.map((entry) => entry.threadId),
+        );
+        return {
+          search: current.search,
+          list: {
+            ...page,
+            threads: [
+              ...current.list.threads,
+              ...page.threads.filter((entry) => !shown.has(entry.threadId)),
+            ],
+          },
+        };
+      });
     } catch (error) {
       toast.error("Couldn’t load cold storage", {
         description: message(error),
       });
     }
-  }, [rpc, limit]);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  useRealtime("cold-storage-changed", () => {
-    void load();
-  });
-  if (list === null || list.threads.length === 0) return null;
+  };
+  const showFewer = () =>
+    setLoaded((current) =>
+      current === null
+        ? current
+        : {
+            search: current.search,
+            list: {
+              ...current.list,
+              threads: current.list.threads.slice(0, COLD_STORAGE_PREVIEW),
+              hasMore: true,
+            },
+          },
+    );
+  const drop = (entry: ColdThread) =>
+    setLoaded((current) =>
+      current === null
+        ? current
+        : {
+            search: current.search,
+            list: {
+              ...current.list,
+              threads: current.list.threads.filter(
+                (shown) => shown.threadId !== entry.threadId,
+              ),
+              totalCount: Math.max(0, current.list.totalCount - 1),
+              totalBytes: Math.max(
+                0,
+                current.list.totalBytes - entry.fileBytes,
+              ),
+            },
+          },
+    );
   const restore = async (entry: ColdThread) => {
     const title = entry.title ?? "Untitled thread";
     try {
       await rpc.call("restoreColdThread", { threadId: entry.threadId });
+      drop(entry);
       toast.success("Thread restored", {
         description: title,
         action: {
@@ -1888,6 +2010,7 @@ function ColdStorageSection() {
     const title = entry.title ?? "Untitled thread";
     try {
       await rpc.call("deleteColdThread", { threadId: entry.threadId });
+      drop(entry);
       toast.success("Thread deleted from cold storage", { description: title });
     } catch (error) {
       toast.error("Couldn’t delete thread from cold storage", {
@@ -1895,14 +2018,30 @@ function ColdStorageSection() {
       });
     }
   };
+  const remaining = list.totalCount - list.threads.length;
   return (
     <section className="space-y-3">
       <SectionHeading
         title="Cold storage"
         description="Archived threads moved out of bb’s database into files. Restoring one brings it back to the archive with its full history."
-        badge={plural(list.threads.length, "thread")}
+        badge={`${loaded.search === null ? plural(list.totalCount, "thread") : plural(list.totalCount, "match", "matches")} · ${bytes(list.totalBytes)}`}
+        action={
+          <Input
+            type="search"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="Search titles"
+            aria-label="Search cold storage"
+            className="h-8 w-48"
+          />
+        }
       />
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+        {list.threads.length === 0 && (
+          <p className="px-4 py-3 text-sm text-subtle-foreground">
+            No threads in cold storage match “{loaded.search}”.
+          </p>
+        )}
         {list.threads.map((entry) => (
           <div
             key={entry.threadId}
@@ -1940,14 +2079,27 @@ function ColdStorageSection() {
           </div>
         ))}
       </div>
-      {list.hasMore && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setLimit((current) => current + COLD_STORAGE_PAGE)}
-        >
-          Show more
-        </Button>
+      {(list.hasMore || list.threads.length > COLD_STORAGE_PREVIEW) && (
+        <div className="flex gap-4">
+          {list.hasMore && remaining > 0 && (
+            <button
+              type="button"
+              className="rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => void showMore()}
+            >
+              {`Show ${Math.min(COLD_STORAGE_PAGE, remaining).toLocaleString()} more`}
+            </button>
+          )}
+          {list.threads.length > COLD_STORAGE_PREVIEW && (
+            <button
+              type="button"
+              className="rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={showFewer}
+            >
+              Show fewer
+            </button>
+          )}
+        </div>
       )}
     </section>
   );

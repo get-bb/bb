@@ -56,8 +56,14 @@ export type ColdThread = z.infer<typeof coldThreadSchema>;
 export const coldThreadListSchema = z.object({
   threads: z.array(coldThreadSchema),
   hasMore: z.boolean(),
+  totalCount: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
 });
 export type ColdThreadList = z.infer<typeof coldThreadListSchema>;
+export const coldThreadCursorSchema = z
+  .object({ storedAt: z.number().nullable(), threadId: z.string().min(1) })
+  .strict();
+export type ColdThreadCursor = z.infer<typeof coldThreadCursorSchema>;
 export const COLD_THREAD_LIST_MAX = 200;
 const coldThreadInput = z.object({ threadId: z.string().min(1) }).strict();
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
@@ -164,7 +170,7 @@ export const storageRpc = defineRpcContract({
         projectId: z.string().min(1).nullable(),
         search: z.string().min(1).nullable(),
         limit: z.number().int().min(1).max(COLD_THREAD_LIST_MAX),
-        offset: z.number().int().nonnegative(),
+        after: coldThreadCursorSchema.nullable(),
       })
       .strict(),
     output: coldThreadListSchema,

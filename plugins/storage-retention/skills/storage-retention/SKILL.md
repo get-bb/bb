@@ -18,6 +18,7 @@ bb storage retention --archive-after never --delete-after never --save --yes
 bb storage retention --cold-store-after 14 --save --yes
 bb storage cold-store --thread THREAD_ID --yes
 bb storage cold-list --search "flaky test" --limit 20
+bb storage cold-list --limit 50 --after LAST_THREAD_ID
 bb storage restore --thread THREAD_ID
 bb storage cold-delete --thread THREAD_ID --yes
 bb storage retention --delete-storage-on-archive true --save --yes
@@ -48,7 +49,10 @@ The plugin deletes the thread, holds the end of the delete through the
 the file, then lets bb remove the rows. It skips pinned and running threads and
 threads another thread still points at as its parent, source or lifecycle owner
 (those follow once their children are moved). Cold storage is listed in the
-plugin panel and by `bb storage cold-list`; Restore (or
+plugin panel (the five most recent, with search and Show more) and by
+`bb storage cold-list`, newest first, with `totalCount` and `totalBytes` for
+the matching threads and `hasMore`; pass the last thread ID as `--after` for
+the next page. Restore (or
 `bb storage restore --thread ID`) imports the file back, and a restored
 archived thread counts as archived from that moment. Each file is an ordinary
 thread file, so `bb thread import FILE` also brings it back. If the plugin is disabled
@@ -113,7 +117,7 @@ Clear-thread requires a stopped thread and an online machine. When the thread no
 snapshots; rescan to see external filesystem changes.
 
 Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, coldStoreAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`,
-and `configure({archiveAfterDays, coldStoreAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`; use null for Never and booleans for storage cleanup (`coldStoreAfterDays` defaults to null and both booleans to false for older policies). Cold storage: `coldThreads({projectId, search, limit, offset})`, `restoreColdThread({threadId})` and `deleteColdThread({threadId})`. Storage
+and `configure({archiveAfterDays, coldStoreAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`; use null for Never and booleans for storage cleanup (`coldStoreAfterDays` defaults to null and both booleans to false for older policies). Cold storage: `coldThreads({projectId, search, limit, after})`, where `after` is null or the last row's `{storedAt, threadId}`, `restoreColdThread({threadId})` and `deleteColdThread({threadId})`. Storage
 RPC methods are `hosts(null)`, `host({hostId})`, `scanHost({hostId})`,
 `removeOrphans({hostId})`, `retryWorktreeCleanup({hostId})`, and
 `clearThread({threadId})`, `clearArchivedFiles({hostId})` and `removeDevInstances({hostId, names: null})` for every missing instance or `removeDevInstances({hostId, names, stopRunning})` for chosen ones, `removeExternalWorktrees({hostId, paths: null})` or `removeExternalWorktrees({hostId, paths, force})`, and `startRemoveExternalWorktree({hostId, path, force})`. The plugin owns its host worker and scan database.

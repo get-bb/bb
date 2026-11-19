@@ -131,7 +131,7 @@ function fixture(subPath = "host_test") {
     {
       rpc: {
         state: () => state,
-        coldThreads: () => ({ threads: [], hasMore: false }),
+        coldThreads: () => ({ threads: [], hasMore: false, totalCount: 0, totalBytes: 0 }),
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
         startEntryCleanup: (raw) => {

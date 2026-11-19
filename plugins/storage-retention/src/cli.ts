@@ -275,6 +275,11 @@ export function registerCli(
               type: "string",
               description: `How many to list (default 50, at most ${COLD_THREAD_LIST_MAX})`,
             },
+            after: {
+              type: "string",
+              description:
+                "List the threads after this thread ID, the last one of the previous page",
+            },
           },
           run: (input) =>
             output(async () => {
@@ -294,7 +299,10 @@ export function registerCli(
                 projectId: input.options.project ?? null,
                 search: input.options.search ?? null,
                 limit,
-                offset: 0,
+                after:
+                  input.options.after === undefined
+                    ? null
+                    : coldStorage.cursorOf(input.options.after),
               });
             }),
         }),
