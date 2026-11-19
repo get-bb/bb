@@ -18,7 +18,10 @@ import {
   PAIR_ROUTE_PATH,
   readAccessStateFromAppShell,
   showPairingScreen,
+  watchSessionOnSocketLoss,
 } from "./lib/access-state";
+import { sdk } from "./lib/sdk";
+import { wsManager } from "./lib/ws";
 import { pairingCodeFromHash } from "./components/access/pairing-code";
 import { AccessGate } from "./components/access/AccessGate";
 import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
@@ -47,6 +50,10 @@ if (window.location.pathname === PAIR_ROUTE_PATH) {
     window.history.replaceState(window.history.state, "", "/");
   }
 }
+watchSessionOnSocketLoss({
+  onSocketLost: (listener) => wsManager.onSocketLost(listener),
+  readSession: () => sdk.experimental_access.session(),
+});
 seedPluginListFromAppShell(appQueryClient, document, performance.timeOrigin);
 
 initializePreferredTheme();

@@ -3,6 +3,7 @@ import {
   ACCESS_UNAUTHENTICATED_ERROR_CODE,
   APP_SHELL_ACCESS_ELEMENT_ID,
   appShellAccessStateSchema,
+  type AccessSessionResponse,
 } from "@bb/server-contract";
 import { useSyncExternalStore } from "react";
 import { asHttpError } from "./http-error";
@@ -57,6 +58,32 @@ export function showPairingScreen(): void {
   setAccessState({
     signedIn: false,
     reason: ACCESS_UNAUTHENTICATED_ERROR_CODE,
+  });
+}
+
+export function watchSessionOnSocketLoss(args: {
+  onSocketLost: (listener: () => void) => () => void;
+  readSession: () => Promise<AccessSessionResponse>;
+}): () => void {
+  let checking = false;
+  return args.onSocketLost(() => {
+    if (checking || !state.signedIn) return;
+    checking = true;
+    args
+      .readSession()
+      .then(
+        (session) => {
+          if (session.authenticated || !state.signedIn) return;
+          setAccessState({
+            signedIn: false,
+            reason: session.problem ?? ACCESS_UNAUTHENTICATED_ERROR_CODE,
+          });
+        },
+        () => {},
+      )
+      .finally(() => {
+        checking = false;
+      });
   });
 }
 
