@@ -14,11 +14,23 @@ export interface ServerAccessBridge {
 }
 
 let bridge: ServerAccessBridge | undefined;
+let availableOrigins: ReadonlySet<string> = new Set();
 
 export function setServerAccessBridge(
   value: ServerAccessBridge | undefined,
 ): void {
   bridge = value;
+  availableOrigins = new Set();
+}
+
+export function availableServerAccessOrigins(): ReadonlySet<string> {
+  return availableOrigins;
+}
+
+export function setAvailableServerAccessOrigins(
+  origins: ReadonlySet<string>,
+): void {
+  availableOrigins = origins;
 }
 
 export function listServerAccessProviders(): ServerAccessProviderRecord[] {

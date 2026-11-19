@@ -4052,6 +4052,8 @@ Docs: `frontend-core-slots.md`.
 
 Sends a payload-less system `config-changed` notification to connected
 clients, so configuration re-reads every registered provider's availability.
+Core also re-reads availability itself to refresh the addresses its Host and
+Origin guards admit (see `register`).
 
 Docs: `backend-machines.md`.
 
@@ -4066,15 +4068,22 @@ Registers a server access provider: `availability` (optionally with a public
 `serverUrl`), `acquire({ key, hostId, signal })` returning a grant
 `{ id, serverUrl, headers? }` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. Machines attach the grant's headers to
-enrollment and runtime traffic.
+enrollment and runtime traffic. While a provider reports `available` with a
+`serverUrl`, core's Host and Origin guards admit that URL's origin, as they do
+for `BB_APP_URL`; core refreshes the set when configuration is read, on
+`recheck()`, and when plugins change. Without a saved default, core uses the
+provider of the earliest-installed plugin. Callers: the bb connect plugin and
+the Tailscale official plugin (`plugins/tailscale`), whose Serve address is
+admitted this way.
 
 Docs: `backend-machines.md`.
 
 Before stabilization, prove retry-safe acquire/release across process death,
 credential privacy and revocation, explicit and automatic defaults, expired
 codes, removal while a provider is unavailable, and both enrolment and runtime
-traffic with independent direct and Connect consumers. Availability does not
-prove reachability from a remote machine.
+traffic with independent direct and Connect consumers. Prove that admitting
+an available provider's origin cannot be used to admit an attacker-controlled
+host. Availability does not prove reachability from a remote machine.
 
 ## Machine enrollment and bootstrap
 

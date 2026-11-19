@@ -10,6 +10,7 @@ import {
   windowsInstallerFailureScript,
 } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
+import { refreshServerAccessOrigins } from "./services/machines/server-access.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
@@ -785,7 +786,10 @@ export function createApp(
       deps.providerRegistry.forgetAllInstalled();
       requestHostDerivedStateRefreshForPluginChange(deps);
     },
-    onPluginsChanged: () => requestHostDerivedStateRefreshForPluginChange(deps),
+    onPluginsChanged: () => {
+      requestHostDerivedStateRefreshForPluginChange(deps);
+      refreshServerAccessOrigins(deps);
+    },
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
         kind: "plugin-unregistered",
@@ -829,6 +833,7 @@ export function createApp(
   );
   setServerAccessBridge(pluginService.serverAccessProviders);
   setServerAccessRecheckHandler(() => {
+    refreshServerAccessOrigins(deps);
     deps.hub.notifySystem(["config-changed"]);
   });
   setEnvironmentProviderRecheckHandler((pluginId) => {

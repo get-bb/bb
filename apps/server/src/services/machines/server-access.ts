@@ -8,6 +8,7 @@ import type { WorkSessionDeps } from "../../types.js";
 import {
   invokeServerAccessProvider,
   listServerAccessProviders,
+  setAvailableServerAccessOrigins,
 } from "../plugins/plugin-server-access-registry.js";
 import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 
@@ -91,9 +92,13 @@ function serverAccessConfiguration(deps: Dependencies) {
   };
 }
 
+let latestStatusRun = 0;
+let appliedStatusRun = 0;
+
 export async function serverAccessStatus(
   deps: Dependencies,
 ): Promise<ServerAccessStatus> {
+  const run = ++latestStatusRun;
   const configuration = serverAccessConfiguration(deps);
   const records = listServerAccessProviders();
   const providers = await Promise.all(
@@ -123,7 +128,46 @@ export async function serverAccessStatus(
       return { ...provider, availability };
     }),
   );
+  if (run > appliedStatusRun) {
+    appliedStatusRun = run;
+    setAvailableServerAccessOrigins(
+      new Set(
+        providers.flatMap(({ availability }) =>
+          availability?.status === "available" &&
+          availability.serverUrl !== undefined
+            ? [new URL(availability.serverUrl).origin]
+            : [],
+        ),
+      ),
+    );
+  }
   return { ...configuration, providers };
+}
+
+let originRefresh: Promise<void> | null = null;
+let originRefreshRequested = false;
+
+export function refreshServerAccessOrigins(deps: Dependencies): void {
+  if (originRefresh !== null) {
+    originRefreshRequested = true;
+    return;
+  }
+  originRefresh = serverAccessStatus(deps)
+    .then(
+      () => undefined,
+      (error: unknown) => {
+        deps.logger.warn(
+          { error },
+          "Could not refresh the server access provider addresses",
+        );
+      },
+    )
+    .finally(() => {
+      originRefresh = null;
+      if (!originRefreshRequested) return;
+      originRefreshRequested = false;
+      refreshServerAccessOrigins(deps);
+    });
 }
 
 function acquisitionKey(

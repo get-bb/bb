@@ -412,21 +412,27 @@ describe("plugin instance lifecycle on a running server", () => {
     if (fromFirst === undefined) throw new Error("provider not registered");
 
     await server.pluginService.reload("lifecycle");
+    const firstInstanceCalls = () =>
+      control().availabilityCalls.filter((generation) => generation === 1)
+        .length;
+    const callsBeforeStaleUse = firstInstanceCalls();
 
     await expect(
       invokeServerAccessProvider(fromFirst, async () =>
         fromFirst.provider.availability(),
       ),
     ).rejects.toThrow();
-    expect(control().availabilityCalls).toEqual([]);
+    expect(firstInstanceCalls()).toBe(callsBeforeStaleUse);
     const [fromSecond] = listServerAccessProviders();
     if (fromSecond === undefined) throw new Error("provider not registered");
+    control().availabilityCalls.length = 0;
     await expect(
       invokeServerAccessProvider(fromSecond, async () =>
         fromSecond.provider.availability(),
       ),
     ).resolves.toEqual({ status: "available" });
-    expect(control().availabilityCalls).toEqual([2]);
+    expect(control().availabilityCalls).toContain(2);
+    expect(firstInstanceCalls()).toBe(0);
   });
 });
 

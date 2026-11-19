@@ -244,7 +244,9 @@ not close a previous `0.0.0.0` listener.
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
 port. BB accepts request hosts that are `localhost`, IP addresses (including
-LAN and Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name
+LAN and Tailscale IPs), the address of an available machine access provider
+(such as the Tailscale plugin's Serve address), or the hostname in
+`BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`
 before connecting, including from the CLI or SDK; forwarded host headers cannot
 authorize an unconfigured name. BB Connect needs no additional configuration.
