@@ -1,4 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,6 +41,7 @@ interface LifecycleControl {
     realtime: { publish(channel: string, payload: unknown): void };
   }) => void;
   coreWork: () => void;
+  hangingUrl: string;
 }
 
 declare global {
@@ -89,6 +92,16 @@ const fixture = `
           setTimeout(() => {
             throw new Error("plugin timer bug");
           }, 0);
+          return { exitCode: 0 };
+        }
+        if (argv[0] === "abort-fetch") {
+          const controller = new AbortController();
+          fetch(control.hangingUrl, { signal: controller.signal }).catch((error: unknown) => {
+            setImmediate(() => {
+              throw error;
+            });
+          });
+          setTimeout(() => controller.abort(), 20);
           return { exitCode: 0 };
         }
         if (argv[0] === "core-work") {
@@ -146,6 +159,7 @@ function newControl(): { control: LifecycleControl; release: () => void } {
     disposeGate: Promise.resolve(),
     afterRelease: () => {},
     coreWork: () => {},
+    hangingUrl: "",
   };
   return { control, release };
 }
@@ -172,6 +186,34 @@ function control(): LifecycleControl {
   const current = globalThis.__lifecycle;
   if (current === undefined) throw new Error("fixture control missing");
   return current;
+}
+
+async function startHangingServer(): Promise<{
+  url: string;
+  close: () => Promise<void>;
+}> {
+  const server = createServer(() => {});
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/`,
+    close: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+function hasCodeFrames(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.stack ?? "")
+      .split("\n")
+      .some(
+        (line) =>
+          /^\s+at /.test(line) && !/[( ]node:|\(index \d+\)$/.test(line),
+      )
+  );
 }
 
 function withUncaughtExceptions(claim: (error: unknown) => boolean): {
@@ -518,6 +560,47 @@ describe("plugin instance lifecycle without cooperation", () => {
       });
     } finally {
       uncaught.restore();
+    }
+  });
+
+  it("contains an aborted fetch's frameless error from work a plugin started", async () => {
+    const hanging = await startHangingServer();
+    control().hangingUrl = hanging.url;
+    const uncaught = withUncaughtExceptions((error) =>
+      service.handleUncaughtException(error),
+    );
+    try {
+      await service.runCliCommand("lifecycle", ["abort-fetch"], {});
+
+      await expect.poll(() => uncaught.claimed).toHaveLength(1);
+      expect(uncaught.claimed[0]).toMatchObject({ name: "AbortError" });
+      expect(hasCodeFrames(uncaught.claimed[0])).toBe(false);
+      expect(uncaught.unclaimed).toEqual([]);
+      expect(status()).toMatchObject({
+        status: "running",
+        statusDetail: expect.stringContaining("This operation was aborted"),
+      });
+    } finally {
+      uncaught.restore();
+      await hanging.close();
+    }
+  });
+
+  it("does not claim a frameless error from work no plugin started", async () => {
+    const hanging = await startHangingServer();
+    try {
+      const controller = new AbortController();
+      const error = await new Promise<unknown>((resolve) => {
+        fetch(hanging.url, { signal: controller.signal }).catch(resolve);
+        setTimeout(() => controller.abort(), 20);
+      });
+
+      expect(error).toMatchObject({ name: "AbortError" });
+      expect(hasCodeFrames(error)).toBe(false);
+      expect(service.handleUncaughtException(error)).toBe(false);
+      expect(status()).toMatchObject({ status: "running", statusDetail: null });
+    } finally {
+      await hanging.close();
     }
   });
 
