@@ -438,6 +438,52 @@ describe("bb-plugin-memory", () => {
     );
   });
 
+  it("preserves history uniqueness errors and rolls back the failed creation", async () => {
+    const host = await loadPlugin();
+    try {
+      const database = host.bb.storage.database();
+      database.exec(`
+        CREATE TRIGGER reserve_history_version AFTER INSERT ON memories BEGIN
+          INSERT INTO memory_history (
+            memory_id, version, action, snapshot_json, write_reason, created_at
+          ) VALUES (NEW.id, NEW.version, 'create', '{}', 'reserve version', NEW.created_at);
+        END;
+      `);
+      const result = await host.harness.runCli([
+        "add",
+        "--scope",
+        "global",
+        "--name",
+        "history-conflict",
+        "--summary",
+        "A durable fact",
+        "--details",
+        "Details of the durable fact",
+        "--reason",
+        "Exercise a failed history write",
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        "UNIQUE constraint failed: memory_history.memory_id, memory_history.version",
+      );
+      expect(database.prepare("SELECT id FROM memories").all()).toEqual([]);
+      expect(database.prepare("SELECT id FROM memory_history").all()).toEqual(
+        [],
+      );
+
+      database.exec("DROP TRIGGER reserve_history_version");
+      await addMemory(host, {
+        scope: "global",
+        projectId: "project-a",
+        name: "history-conflict",
+        summary: "A durable fact",
+      });
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
   it("rejects prompt-injection content, secret-like values, and duplicates", async () => {
     const host = await loadPlugin();
     const injection = await host.harness.runCli(
