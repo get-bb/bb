@@ -26,6 +26,7 @@ import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import {
   createWarmPools,
   warmPoolStatusSchema,
+  type WarmHandOff,
   type WarmPoolStatus,
 } from "./warm-pools.js";
 
@@ -309,13 +310,21 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         return adoptExistingWorktree(context, context.inputs.path);
       }
       if (context.inputs.branch.kind === "default") {
+        const handedOffResource = (warm: WarmHandOff) => ({
+          ownedBranch: {
+            name: warm.branchName,
+            repositoryPath: context.projectCheckout.path,
+            baseBranch: warm.baseBranch,
+          },
+        });
         const warm = await pools.handOff({
           environmentId: context.environment.id,
           projectId: context.project.id,
           hostId: context.host.id,
           sourcePath: context.projectCheckout.path,
           branchName: context.branchName,
-          adopt: context.adopt,
+          adopt: (environmentId, handed) =>
+            context.adopt(environmentId, handedOffResource(handed)),
           signal: context.signal,
         });
         if (warm !== null)
@@ -324,13 +333,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             path: warm.path,
             ownsPath: true,
             mergeBaseBranch: warm.baseBranch,
-            resource: {
-              ownedBranch: {
-                name: warm.branchName,
-                repositoryPath: context.projectCheckout.path,
-                baseBranch: warm.baseBranch,
-              },
-            },
+            resource: handedOffResource(warm),
           };
       }
       const created = await createManagedWorktree(context, {

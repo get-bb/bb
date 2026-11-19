@@ -96,7 +96,7 @@ export interface WarmPools {
     hostId: string;
     sourcePath: string;
     branchName(): Promise<string>;
-    adopt(environmentId: string): Promise<void>;
+    adopt(environmentId: string, handOff: WarmHandOff): Promise<void>;
     signal: AbortSignal;
   }): Promise<WarmHandOff | null>;
   dispose(): void;
@@ -595,8 +595,13 @@ export async function createWarmPools(args: {
         );
         continue;
       }
+      const handed: WarmHandOff = {
+        path: member.path,
+        baseBranch: result.baseBranch,
+        branchName: toBranch,
+      };
       try {
-        await request.adopt(member.id);
+        await request.adopt(member.id, handed);
       } catch (error) {
         reserved.delete(member.id);
         await host
@@ -617,11 +622,7 @@ export async function createWarmPools(args: {
         continue;
       }
       countersFor(request.projectId).handedOff += 1;
-      return {
-        path: member.path,
-        baseBranch: result.baseBranch,
-        branchName: toBranch,
-      };
+      return handed;
     }
     countersFor(request.projectId).missed += 1;
     return null;

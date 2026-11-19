@@ -1,4 +1,7 @@
-import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
+import type {
+  JsonValue,
+  PluginEnvironmentProviderRequirements,
+} from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderInputsSchema,
@@ -186,6 +189,7 @@ async function setup(args: {
   if (provider?.apiVersion !== 2) throw new Error("Expected version 2");
   const setups: string[] = [];
   const adopted: string[] = [];
+  const adoptedResources: JsonValue[] = [];
   const context = (
     environmentId: string,
     branch: string | (() => Promise<string>),
@@ -207,8 +211,9 @@ async function setup(args: {
     setup: async (path) => {
       setups.push(path);
     },
-    adopt: async (id) => {
+    adopt: async (id, resource) => {
       adopted.push(id);
+      adoptedResources.push(resource);
       if (args.refuseAdopt?.includes(id))
         throw new Error(`Environment ${id} is not ready to hand over`);
     },
@@ -226,6 +231,7 @@ async function setup(args: {
     deleted,
     setups,
     adopted,
+    adoptedResources,
   };
 }
 
@@ -243,19 +249,21 @@ describe("warm worktree handoff", () => {
     const result = await fixture.provider.create(
       fixture.context("env_thread", "bb/fix-login-thr_1"),
     );
+    const resource = {
+      ownedBranch: {
+        name: "bb/fix-login-thr_1",
+        repositoryPath: SOURCE_PATH,
+        baseBranch: "origin/main",
+      },
+    };
     expect(result).toEqual({
       status: "created",
       path: READY.path,
       ownsPath: true,
       mergeBaseBranch: "origin/main",
-      resource: {
-        ownedBranch: {
-          name: "bb/fix-login-thr_1",
-          repositoryPath: SOURCE_PATH,
-          baseBranch: "origin/main",
-        },
-      },
+      resource,
     });
+    expect(fixture.adoptedResources).toEqual([resource]);
     expect(fixture.hostCalls.map((call) => call.method)).toEqual(["handOff"]);
     expect(fixture.hostCalls[0]?.input).toEqual({
       sourcePath: SOURCE_PATH,
