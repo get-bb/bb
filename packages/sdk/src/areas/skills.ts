@@ -7,7 +7,6 @@ import {
   registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
-  skillListResponseSchema,
   type DeleteSkillRequest,
   type RegistryRepositoryStars,
   type RegistrySkill,
@@ -18,6 +17,7 @@ import {
   type SkillContentResponse,
   type SkillFilesResponse,
   type SkillListResponse,
+  type SkillSummary,
 } from "@bb/server-contract";
 import { waitForJob } from "../job-wait.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -226,17 +226,27 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       );
     },
     async list(input) {
-      return skillListResponseSchema.parse(
-        await transport.readJson(
-          transport.api.v1.projects[":id"].skills.$get(
-            {
-              param: { id: input.projectId },
-              query: { environmentId: input.environmentId ?? "" },
-            },
-            ...signalRequestArgs(input.signal),
-          ),
+      const response: {
+        skills: Array<
+          Omit<SkillSummary, "providers"> &
+            Partial<Pick<SkillSummary, "providers">>
+        >;
+      } = await transport.readJson(
+        transport.api.v1.projects[":id"].skills.$get(
+          {
+            param: { id: input.projectId },
+            query: { environmentId: input.environmentId ?? "" },
+          },
+          ...signalRequestArgs(input.signal),
         ),
       );
+      return {
+        skills: response.skills.map(({ providers, ...skill }) => ({
+          ...skill,
+          providers:
+            providers ?? (skill.provider === null ? [] : [skill.provider]),
+        })),
+      };
     },
     async listFiles(input) {
       return transport.readJson(

@@ -2267,6 +2267,29 @@ describe("@bb/sdk", () => {
               manageable: true,
               registrySkillId: null,
             },
+            {
+              id: `skill_${"b".repeat(64)}`,
+              name: "released-codex-skill",
+              description: null,
+              provider: "codex",
+              scope: "codex-user",
+              pluginId: null,
+              filePath: "/home/u/.codex/skills/released-codex-skill/SKILL.md",
+              manageable: true,
+              registrySkillId: null,
+            },
+            {
+              id: `skill_${"c".repeat(64)}`,
+              name: "shared-skill",
+              description: null,
+              provider: null,
+              providers: ["claude-code", "codex"],
+              scope: "provider-user",
+              pluginId: null,
+              filePath: "/home/u/.agents/skills/shared-skill/SKILL.md",
+              manageable: true,
+              registrySkillId: null,
+            },
           ],
         },
       },
@@ -2301,7 +2324,20 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.skills.list({ projectId: "proj_123", environmentId: null }),
     ).resolves.toMatchObject({
-      skills: [{ name: "local-skill", providers: [] }],
+      skills: [
+        { name: "local-skill", provider: null, providers: [] },
+        {
+          name: "released-codex-skill",
+          provider: "codex",
+          providers: ["codex"],
+          scope: "codex-user",
+        },
+        {
+          name: "shared-skill",
+          provider: null,
+          providers: ["claude-code", "codex"],
+        },
+      ],
     });
     await expect(sdk.skills.registry.search()).resolves.toMatchObject({
       skills: [registrySkill],
