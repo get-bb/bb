@@ -113,7 +113,7 @@ const MachineSettingsView = lazy(() =>
     default: m.MachineSettingsView,
   })),
 );
-loadCoreWorkspacePage();
+void loadCoreWorkspacePage();
 
 function NavigatePreservingLocation({ pathname }: { pathname: string }) {
   const location = useLocation();
