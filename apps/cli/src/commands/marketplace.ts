@@ -24,7 +24,9 @@ function formatTimestamp(value: number | null): string {
 }
 
 function printMarketplace(marketplace: PluginMarketplace): void {
-  console.log(`${marketplace.name}  ${marketplace.displayName}`);
+  console.log(
+    `${marketplace.name}  ${marketplace.displayName}${marketplace.enabled ? "" : " (disabled)"}`,
+  );
   console.log(`  source: ${marketplace.source}`);
   if (marketplace.subdirectory !== null) {
     console.log(`  subdirectory: ${marketplace.subdirectory}`);
@@ -123,9 +125,11 @@ export function registerMarketplaceCommands(
               entry.source,
               ...(showSubdirectory ? [entry.subdirectory ?? ""] : []),
               String(entry.entryCount),
-              entry.lastError === null
-                ? formatTimestamp(entry.lastRefreshAt)
-                : `failed: ${entry.lastError}`,
+              !entry.enabled
+                ? "disabled"
+                : entry.lastError === null
+                  ? formatTimestamp(entry.lastRefreshAt)
+                  : `failed: ${entry.lastError}`,
             ]),
           ),
         );
@@ -161,6 +165,31 @@ export function registerMarketplaceCommands(
         });
       }),
     );
+
+  for (const enabled of [true, false]) {
+    marketplace
+      .command(`${enabled ? "enable" : "disable"} <name>`)
+      .description(
+        enabled
+          ? "Turn a disabled marketplace back on: its plugins return to search and installs, and bb refreshes its catalog"
+          : "Turn a marketplace off without forgetting it: bb stops refreshing its catalog and hides its plugins from search and installs. Installed plugins keep running. bb-official cannot be disabled",
+      )
+      .option("--json", "Output JSON")
+      .action(
+        action(async (name: string, opts: JsonOutputOptions) => {
+          const updated = await createCliBbSdk(
+            getUrl(),
+          ).plugins.marketplaces.setEnabled({ name, enabled });
+          if (opts.json) {
+            outputJson(opts, updated);
+            return;
+          }
+          console.log(
+            `${enabled ? "Enabled" : "Disabled"} marketplace ${updated.name}.`,
+          );
+        }),
+      );
+  }
 
   marketplace
     .command("remove <name>")

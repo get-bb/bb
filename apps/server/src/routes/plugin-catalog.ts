@@ -3,6 +3,7 @@ import {
   pluginMarketplaceAddRequestSchema,
   pluginMarketplaceNameSchema,
   pluginMarketplaceRefreshRequestSchema,
+  pluginMarketplaceSetEnabledRequestSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type {
@@ -148,6 +149,34 @@ export function registerPluginCatalogRoutes(
     try {
       return context.json({
         results: await catalog.refreshMarketplaces(body.data),
+      });
+    } catch (error) {
+      return context.json({ error: errorMessage(error) }, 422);
+    }
+  });
+
+  app.patch("/marketplaces/:name", async (context) => {
+    const parsedName = pluginMarketplaceNameSchema.safeParse(
+      context.req.param("name"),
+    );
+    if (!parsedName.success) {
+      return context.json(
+        { error: `invalid marketplace name "${context.req.param("name")}"` },
+        422,
+      );
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginMarketplaceSetEnabledRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "enabled": boolean }' }, 422);
+    }
+    try {
+      return context.json({
+        ok: true as const,
+        marketplace: await catalog.setMarketplaceEnabled(
+          parsedName.data,
+          body.data.enabled,
+        ),
       });
     } catch (error) {
       return context.json({ error: errorMessage(error) }, 422);

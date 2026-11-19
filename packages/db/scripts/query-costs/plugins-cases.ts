@@ -21,6 +21,7 @@ import {
   listPluginMarketplaces,
   recordPluginMarketplaceRefreshFailure,
   replacePluginMarketplaceIcons,
+  setPluginMarketplaceEnabled,
   upsertPluginMarketplace,
   type PluginMarketplaceIconRow,
   type PluginMarketplaceRow,
@@ -530,6 +531,7 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
     },
     run: (db) => {
       const {
+        enabled: _enabled,
         createdAt: _createdAt,
         updatedAt: _updatedAt,
         ...row
@@ -541,6 +543,11 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
         lastAttemptedRefreshAt: Date.now(),
       });
     },
+  },
+  {
+    name: `${MARKETPLACES}#setPluginMarketplaceEnabled`,
+    run: (db, _fixture, seed) =>
+      setPluginMarketplaceEnabled(db, seed.marketplaceName, false),
   },
   {
     name: `${MARKETPLACES}#recordPluginMarketplaceRefreshFailure`,

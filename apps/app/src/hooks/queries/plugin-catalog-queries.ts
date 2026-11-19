@@ -117,6 +117,13 @@ export async function removePluginMarketplace(
   return createPluginsClient(fetchImpl).marketplaces.remove({ name });
 }
 
+export async function setPluginMarketplaceEnabled(
+  fetchImpl: FetchLike,
+  args: { name: string; enabled: boolean },
+): Promise<PluginMarketplace> {
+  return createPluginsClient(fetchImpl).marketplaces.setEnabled(args);
+}
+
 export async function refreshPluginMarketplaces(
   fetchImpl: FetchLike,
   name?: string,
