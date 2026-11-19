@@ -127,7 +127,7 @@ describe("recordQueuedMessageDrainFailure", () => {
       let attempts = 0;
       const registry: HookRegistry = {
         "message.dispatch": [],
-        "thread.purge": [],
+        "thread.delete_finalize": [],
       };
       registry["message.dispatch"].push({
         pluginId: "rejector",
@@ -185,7 +185,7 @@ describe("recordQueuedMessageDrainFailure", () => {
     await withTestHarness(async (harness) => {
       const registry: HookRegistry = {
         "message.dispatch": [],
-        "thread.purge": [],
+        "thread.delete_finalize": [],
       };
       registry["message.dispatch"].push({
         pluginId: "rejector",
@@ -325,7 +325,7 @@ describe("a failed row's booked retry", () => {
     let attempts = 0;
     const registry: HookRegistry = {
       "message.dispatch": [],
-      "thread.purge": [],
+      "thread.delete_finalize": [],
     };
     registry["message.dispatch"].push({
       pluginId: "rejector",

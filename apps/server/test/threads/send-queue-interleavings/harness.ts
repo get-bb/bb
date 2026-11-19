@@ -573,7 +573,10 @@ class LimiterPlugin {
     };
     const registry: {
       [K in PluginHookName]: PluginHookRegistration<K>[];
-    } = { "message.dispatch": this.registrations, "thread.purge": [] };
+    } = {
+      "message.dispatch": this.registrations,
+      "thread.delete_finalize": [],
+    };
     this.registrations.push(registration, {
       pluginId: HOLDING_PLUGIN_ID,
       handler: (context) =>

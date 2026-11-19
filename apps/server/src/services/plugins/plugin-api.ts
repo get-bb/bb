@@ -651,7 +651,7 @@ export function createPluginApi(options: {
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
-    "thread.purge": null,
+    "thread.delete_finalize": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -1227,7 +1227,7 @@ export function createPluginApi(options: {
     },
     async recheck(hook) {
       assertLive();
-      // `thread.purge` is asked again on every purge pass, so only
+      // `thread.delete_finalize` is asked again on every purge pass, so only
       // `message.dispatch` has a re-attempt to schedule. Resolves on
       // SCHEDULING. The walk runs on a later macrotask, and the caller is not
       // the one it reports to — a failed re-attempt lands on the row it

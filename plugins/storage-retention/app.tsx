@@ -60,8 +60,8 @@ import type {
   storageRpc,
   State,
   Policy,
-  SavedThread,
-  SavedThreadList,
+  ColdThread,
+  ColdThreadList,
 } from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
@@ -76,7 +76,7 @@ type Machine = Awaited<
 >[number];
 const PANEL = "storage";
 const ARCHIVE_PRESETS = [7, 14, 30, 60, 90, 180, 365];
-const SAVE_PRESETS = [7, 14, 30, 60, 90];
+const COLD_STORE_PRESETS = [7, 14, 30, 60, 90];
 const DELETE_PRESETS = [7, 30, 90, 180, 365];
 function bytes(value: number) {
   if (value < 1024) return `${value} B`;
@@ -623,7 +623,7 @@ function StoragePage({
     updateState(next);
     const description = {
       archiveAfterDays: "Archive inactive threads",
-      saveAfterDays: "Save archived threads to files",
+      coldStoreAfterDays: "Move archived threads to cold storage",
       deleteAfterDays: "Delete archived threads",
       deleteStorageOnArchive: "Delete thread storage on archive",
       deleteDevDataOnCheckoutRemoval:
@@ -666,7 +666,7 @@ function StoragePage({
   const retentionOn =
     state !== null &&
     (state.policy.archiveAfterDays !== null ||
-      state.policy.saveAfterDays !== null ||
+      state.policy.coldStoreAfterDays !== null ||
       state.policy.deleteAfterDays !== null);
   const report = detail?.report;
   const missingDev =
@@ -1724,7 +1724,7 @@ function StoragePage({
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
-                description="Archive, save to files or delete inactive threads across all projects. Changes save automatically."
+                description="Archive, move to cold storage or delete inactive threads across all projects. Changes save automatically."
                 badge={retentionOn ? "Checks hourly" : "Off"}
               />
               <div
@@ -1734,7 +1734,8 @@ function StoragePage({
                 <Icon name="Pin" className="mt-px size-3.5 shrink-0" />
                 <p>
                   <span className="text-foreground">
-                    Pinned threads are never archived, saved or deleted.
+                    Pinned threads are never archived, moved to cold storage or
+                    deleted.
                   </span>{" "}
                   Automation targets aren’t protected on their own, so pin the
                   ones you want to keep.
@@ -1753,13 +1754,13 @@ function StoragePage({
                     }
                   />
                   <RetentionField
-                    label="Save archived threads to files"
+                    label="Move archived threads to cold storage"
                     description="After this long in the archive, move them out of bb's database into files kept by this plugin. Restore them below."
-                    presets={SAVE_PRESETS}
-                    value={policy.saveAfterDays}
+                    presets={COLD_STORE_PRESETS}
+                    value={policy.coldStoreAfterDays}
                     disabled={savingSetting}
                     onChange={(value) =>
-                      void saveSetting("saveAfterDays", value)
+                      void saveSetting("coldStoreAfterDays", value)
                     }
                   />
                   <RetentionField
@@ -1820,7 +1821,7 @@ function StoragePage({
                     <div className="px-4 py-2.5">
                       <p className="text-xs text-muted-foreground">
                         {state.lastRun
-                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.savedCount} saved · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
+                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.coldStoredCount} moved to cold storage · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
                           : "The first check runs within the hour."}
                       </p>
                     </div>
@@ -1828,7 +1829,7 @@ function StoragePage({
                 </div>
               )}
             </section>
-            <SavedThreadsSection />
+            <ColdStorageSection />
           </>
         )}
       </div>
@@ -1836,17 +1837,17 @@ function StoragePage({
   );
 }
 
-const SAVED_THREADS_PAGE = 50;
+const COLD_STORAGE_PAGE = 50;
 
-function SavedThreadsSection() {
+function ColdStorageSection() {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
-  const [list, setList] = useState<SavedThreadList | null>(null);
-  const [limit, setLimit] = useState(SAVED_THREADS_PAGE);
+  const [list, setList] = useState<ColdThreadList | null>(null);
+  const [limit, setLimit] = useState(COLD_STORAGE_PAGE);
   const load = useCallback(async () => {
     try {
       setList(
-        await rpc.call("savedThreads", {
+        await rpc.call("coldThreads", {
           projectId: null,
           search: null,
           limit,
@@ -1854,7 +1855,7 @@ function SavedThreadsSection() {
         }),
       );
     } catch (error) {
-      toast.error("Couldn’t load saved threads", {
+      toast.error("Couldn’t load cold storage", {
         description: message(error),
       });
     }
@@ -1862,14 +1863,14 @@ function SavedThreadsSection() {
   useEffect(() => {
     void load();
   }, [load]);
-  useRealtime("saved-threads-changed", () => {
+  useRealtime("cold-storage-changed", () => {
     void load();
   });
-  if (list === null || list.savedThreads.length === 0) return null;
-  const restore = async (entry: SavedThread) => {
+  if (list === null || list.threads.length === 0) return null;
+  const restore = async (entry: ColdThread) => {
     const title = entry.title ?? "Untitled thread";
     try {
-      await rpc.call("restoreSavedThread", { threadId: entry.threadId });
+      await rpc.call("restoreColdThread", { threadId: entry.threadId });
       toast.success("Thread restored", {
         description: title,
         action: {
@@ -1883,13 +1884,13 @@ function SavedThreadsSection() {
       });
     }
   };
-  const remove = async (entry: SavedThread) => {
+  const remove = async (entry: ColdThread) => {
     const title = entry.title ?? "Untitled thread";
     try {
-      await rpc.call("deleteSavedThread", { threadId: entry.threadId });
-      toast.success("Saved thread deleted", { description: title });
+      await rpc.call("deleteColdThread", { threadId: entry.threadId });
+      toast.success("Thread deleted from cold storage", { description: title });
     } catch (error) {
-      toast.error("Couldn’t delete saved thread", {
+      toast.error("Couldn’t delete thread from cold storage", {
         description: `${title} · ${message(error)}`,
       });
     }
@@ -1897,12 +1898,12 @@ function SavedThreadsSection() {
   return (
     <section className="space-y-3">
       <SectionHeading
-        title="Saved to files"
-        description="Archived threads moved out of bb’s database. Restoring one brings it back to the archive with its full history."
-        badge={plural(list.savedThreads.length, "thread")}
+        title="Cold storage"
+        description="Archived threads moved out of bb’s database into files. Restoring one brings it back to the archive with its full history."
+        badge={plural(list.threads.length, "thread")}
       />
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-        {list.savedThreads.map((entry) => (
+        {list.threads.map((entry) => (
           <div
             key={entry.threadId}
             className="flex min-h-14 items-center gap-3 px-4 py-2.5"
@@ -1912,12 +1913,12 @@ function SavedThreadsSection() {
                 {entry.title ?? "Untitled thread"}
               </span>
               <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
-                {entry.state === "saved" && entry.savedAt !== null
-                  ? `Saved ${ago(entry.savedAt)} · ${bytes(entry.fileBytes)}`
-                  : "Saving…"}
+                {entry.state === "stored" && entry.storedAt !== null
+                  ? `Moved ${ago(entry.storedAt)} · ${bytes(entry.fileBytes)}`
+                  : "Moving…"}
               </span>
             </div>
-            {entry.state === "saved" && (
+            {entry.state === "stored" && (
               <>
                 <Button
                   type="button"
@@ -1929,7 +1930,7 @@ function SavedThreadsSection() {
                 <Button
                   type="button"
                   variant="ghost"
-                  aria-label={`Delete ${entry.title ?? "saved thread"} permanently`}
+                  aria-label={`Delete ${entry.title ?? "thread"} from cold storage permanently`}
                   onClick={() => void remove(entry)}
                 >
                   <Icon name="Trash2" className="size-4" />
@@ -1943,7 +1944,7 @@ function SavedThreadsSection() {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => setLimit((current) => current + SAVED_THREADS_PAGE)}
+          onClick={() => setLimit((current) => current + COLD_STORAGE_PAGE)}
         >
           Show more
         </Button>

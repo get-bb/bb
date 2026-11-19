@@ -1,13 +1,15 @@
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
   BbPluginApi,
-  ThreadPurgeHookContext,
-  ThreadPurgeHookDecision,
+  ThreadDeleteFinalizeHookContext,
+  ThreadDeleteFinalizeHookDecision,
 } from "@get-bb/plugin-sdk";
-import type { SavedThread, SavedThreadList } from "./contract.js";
+import type { ColdThread, ColdThreadList } from "./contract.js";
 import { openPluginDatabase } from "./database.js";
 import { readThreadsById } from "./sdk-data.js";
 
-export interface SaveRequest {
+export interface ColdStoreRequest {
   id: string;
   projectId: string;
   title: string | null;
@@ -16,18 +18,18 @@ export interface SaveRequest {
   archivedAt: number | null;
 }
 
-interface SavedThreadRow {
+interface ColdThreadRow {
   thread_id: string;
   project_id: string;
   title: string | null;
   provider_id: string;
   thread_created_at: number;
   archived_at: number | null;
-  saved_at: number | null;
+  stored_at: number | null;
   file_bytes: number | null;
 }
 
-function toSavedThread(row: SavedThreadRow): SavedThread {
+function toColdThread(row: ColdThreadRow): ColdThread {
   return {
     threadId: row.thread_id,
     projectId: row.project_id,
@@ -35,34 +37,39 @@ function toSavedThread(row: SavedThreadRow): SavedThread {
     providerId: row.provider_id,
     threadCreatedAt: row.thread_created_at,
     archivedAt: row.archived_at,
-    state: row.saved_at === null ? "saving" : "saved",
-    savedAt: row.saved_at,
+    state: row.stored_at === null ? "moving" : "stored",
+    storedAt: row.stored_at,
     fileBytes: row.file_bytes ?? 0,
   };
 }
 
 const LISTED_COLUMNS = `thread_id, project_id, title, provider_id,
-  thread_created_at, archived_at, saved_at, file_bytes`;
+  thread_created_at, archived_at, stored_at, file_bytes`;
 
 export function createColdStorage(bb: BbPluginApi) {
   const db = openPluginDatabase(bb);
+  const directory = join(dirname(db.name), "cold-storage");
   const exporting = new Set<string>();
 
   function changed() {
-    bb.realtime.publish("saved-threads-changed", null);
+    bb.realtime.publish("cold-storage-changed", null);
+  }
+
+  function filePath(threadId: string): string {
+    return join(directory, `${threadId}.jsonl.zst`);
   }
 
   function pendingRow(threadId: string) {
     return db
-      .prepare<[string], { saved_at: number | null }>(
-        "SELECT saved_at FROM saved_threads WHERE thread_id = ?",
+      .prepare<[string], { stored_at: number | null }>(
+        "SELECT stored_at FROM cold_threads WHERE thread_id = ?",
       )
       .get(threadId);
   }
 
-  async function save(thread: SaveRequest): Promise<void> {
+  async function store(thread: ColdStoreRequest): Promise<void> {
     db.prepare(
-      `INSERT INTO saved_threads
+      `INSERT INTO cold_threads
          (thread_id, project_id, title, provider_id, thread_created_at, archived_at, requested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (thread_id) DO NOTHING`,
@@ -82,47 +89,56 @@ export function createColdStorage(bb: BbPluginApi) {
       });
     } catch (error) {
       db.prepare(
-        "DELETE FROM saved_threads WHERE thread_id = ? AND saved_at IS NULL",
+        "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at IS NULL",
       ).run(thread.id);
       throw error;
     }
     changed();
   }
 
-  async function writeFile(threadId: string): Promise<void> {
+  async function writeColdFile(threadId: string): Promise<void> {
+    const path = filePath(threadId);
+    const partial = `${path}.partial`;
     try {
       const file = await bb.sdk.threads.experimental_export({ threadId });
-      db.prepare(
-        `UPDATE saved_threads SET file = ?, file_bytes = ?, saved_at = ?
-         WHERE thread_id = ? AND saved_at IS NULL`,
-      ).run(Buffer.from(file), file.byteLength, Date.now(), threadId);
-      changed();
+      await mkdir(directory, { recursive: true });
+      await writeFile(partial, file);
+      await rename(partial, path);
+      const stored = db
+        .prepare(
+          `UPDATE cold_threads SET file_bytes = ?, stored_at = ?
+           WHERE thread_id = ? AND stored_at IS NULL`,
+        )
+        .run(file.byteLength, Date.now(), threadId).changes;
+      if (stored === 0) await rm(path, { force: true });
+      else changed();
     } catch (error) {
+      await rm(partial, { force: true });
       bb.log.warn(
-        `Could not save thread ${threadId} to a file yet: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not move thread ${threadId} to cold storage yet: ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
       exporting.delete(threadId);
     }
   }
 
-  function beforePurge(
-    context: ThreadPurgeHookContext,
-  ): ThreadPurgeHookDecision {
+  function beforeDeleteFinalize(
+    context: ThreadDeleteFinalizeHookContext,
+  ): ThreadDeleteFinalizeHookDecision {
     const row = pendingRow(context.threadId);
-    if (row === undefined || row.saved_at !== null)
+    if (row === undefined || row.stored_at !== null)
       return { action: "proceed" };
     if (!exporting.has(context.threadId)) {
       exporting.add(context.threadId);
-      void writeFile(context.threadId);
+      void writeColdFile(context.threadId);
     }
     return { action: "wait" };
   }
 
-  async function dropAbandonedSaves(): Promise<void> {
+  async function dropAbandonedMoves(): Promise<void> {
     const pending = db
       .prepare<[], { thread_id: string }>(
-        "SELECT thread_id FROM saved_threads WHERE saved_at IS NULL",
+        "SELECT thread_id FROM cold_threads WHERE stored_at IS NULL",
       )
       .all()
       .map((row) => row.thread_id)
@@ -130,7 +146,7 @@ export function createColdStorage(bb: BbPluginApi) {
     if (pending.length === 0) return;
     const threads = await readThreadsById(bb, pending);
     const remove = db.prepare(
-      "DELETE FROM saved_threads WHERE thread_id = ? AND saved_at IS NULL",
+      "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at IS NULL",
     );
     let dropped = 0;
     for (const threadId of pending) {
@@ -138,10 +154,12 @@ export function createColdStorage(bb: BbPluginApi) {
       if (thread !== undefined && thread.deletedAt !== null) continue;
       if (thread === undefined) {
         bb.log.warn(
-          `Thread ${threadId} was removed before it could be saved to a file`,
+          `Thread ${threadId} was removed before it could be moved to cold storage`,
         );
       }
-      dropped += remove.run(threadId).changes;
+      if (remove.run(threadId).changes === 0) continue;
+      dropped += 1;
+      await rm(filePath(threadId), { force: true });
     }
     if (dropped > 0) changed();
   }
@@ -151,7 +169,7 @@ export function createColdStorage(bb: BbPluginApi) {
     search: string | null;
     limit: number;
     offset: number;
-  }): SavedThreadList {
+  }): ColdThreadList {
     const rows = db
       .prepare<
         [
@@ -162,12 +180,12 @@ export function createColdStorage(bb: BbPluginApi) {
           number,
           number,
         ],
-        SavedThreadRow
+        ColdThreadRow
       >(
-        `SELECT ${LISTED_COLUMNS} FROM saved_threads
+        `SELECT ${LISTED_COLUMNS} FROM cold_threads
          WHERE (? IS NULL OR project_id = ?)
            AND (? IS NULL OR title LIKE '%' || ? || '%')
-         ORDER BY saved_at IS NOT NULL, saved_at DESC, thread_id DESC
+         ORDER BY stored_at IS NOT NULL, stored_at DESC, thread_id DESC
          LIMIT ? OFFSET ?`,
       )
       .all(
@@ -179,53 +197,50 @@ export function createColdStorage(bb: BbPluginApi) {
         args.offset,
       );
     return {
-      savedThreads: rows.slice(0, args.limit).map(toSavedThread),
+      threads: rows.slice(0, args.limit).map(toColdThread),
       hasMore: rows.length > args.limit,
     };
   }
 
-  function savedFile(threadId: string): Uint8Array {
-    const row = db
-      .prepare<[string], { file: Buffer | null }>(
-        "SELECT file FROM saved_threads WHERE thread_id = ? AND saved_at IS NOT NULL",
-      )
-      .get(threadId);
-    if (row?.file == null) {
-      throw new Error(`Thread ${threadId} isn't saved to a file.`);
+  function requireStored(threadId: string): void {
+    const row = pendingRow(threadId);
+    if (row?.stored_at == null) {
+      throw new Error(`Thread ${threadId} isn't in cold storage.`);
     }
-    return new Uint8Array(row.file);
   }
 
   async function restore(threadId: string) {
+    requireStored(threadId);
     const result = await bb.sdk.threads.experimental_import({
-      file: savedFile(threadId),
+      file: await readFile(filePath(threadId)),
     });
-    db.prepare("DELETE FROM saved_threads WHERE thread_id = ?").run(threadId);
+    db.prepare("DELETE FROM cold_threads WHERE thread_id = ?").run(threadId);
+    await rm(filePath(threadId), { force: true });
     changed();
     return result;
   }
 
-  function remove(threadId: string): { ok: true } {
+  async function remove(threadId: string): Promise<{ ok: true }> {
     const deleted = db
       .prepare(
-        "DELETE FROM saved_threads WHERE thread_id = ? AND saved_at IS NOT NULL",
+        "DELETE FROM cold_threads WHERE thread_id = ? AND stored_at IS NOT NULL",
       )
       .run(threadId).changes;
     if (deleted === 0) {
-      throw new Error(`Thread ${threadId} isn't saved to a file.`);
+      throw new Error(`Thread ${threadId} isn't in cold storage.`);
     }
+    await rm(filePath(threadId), { force: true });
     changed();
     return { ok: true };
   }
 
   return {
-    beforePurge,
-    dropAbandonedSaves,
+    beforeDeleteFinalize,
+    dropAbandonedMoves,
     list,
     remove,
     restore,
-    save,
-    savedFile,
+    store,
   };
 }
 

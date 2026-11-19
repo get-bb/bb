@@ -1810,12 +1810,11 @@ export const publicApiRoutes = {
       response: binaryResponse<Uint8Array>(),
     }),
     /**
-     * Import a thread file. Merges the events a thread already in the database
-     * lacks, or recreates a purged thread in its project. A recreated archived
-     * thread counts as archived now. 404 when the project is not on this
-     * server; 400 when the file is not a thread file or uses an unknown format
-     * version; 409 while the thread is being deleted or another import or
-     * export of it is running.
+     * Import a thread file, recreating a deleted thread in its project. A
+     * recreated archived thread counts as archived now. 404 when the project
+     * is not on this server; 400 when the file is not a thread file or uses an
+     * unknown format version; 409 when the thread still exists, is still being
+     * deleted, or another import or export of it is running.
      */
     importThread: defineRoute({
       path: "/threads/import",

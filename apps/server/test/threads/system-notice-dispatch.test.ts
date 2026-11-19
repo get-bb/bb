@@ -68,7 +68,7 @@ function installDispatchHook(
     | Promise<{ action: "proceed" }>,
 ): void {
   const registry: HookRegistry = {
-    "thread.purge": [],
+    "thread.delete_finalize": [],
     "message.dispatch": [{ pluginId: "notice-test", handler }],
   };
   setPluginHookProvider({

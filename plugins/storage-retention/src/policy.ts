@@ -28,7 +28,7 @@ export function selectCandidates(
   threads: readonly RetentionThread[],
   policy: Pick<
     Policy,
-    "archiveAfterDays" | "deleteAfterDays" | "saveAfterDays"
+    "archiveAfterDays" | "deleteAfterDays" | "coldStoreAfterDays"
   >,
   now: number,
 ) {
@@ -70,7 +70,7 @@ export function selectCandidates(
     return result;
   }
   const archive: Candidate[] = [];
-  const save: Candidate[] = [];
+  const coldStore: Candidate[] = [];
   const deletion: Candidate[] = [];
   const referenced = new Set(
     live.flatMap((thread) => [
@@ -79,8 +79,8 @@ export function selectCandidates(
       thread.lifecycleOwnerThreadId,
     ]),
   );
-  if (policy.saveAfterDays !== null) {
-    const cutoff = now - policy.saveAfterDays * 86400000;
+  if (policy.coldStoreAfterDays !== null) {
+    const cutoff = now - policy.coldStoreAfterDays * 86400000;
     for (const thread of live) {
       if (
         thread.archivedAt !== null &&
@@ -91,7 +91,7 @@ export function selectCandidates(
         thread.status !== "stopping" &&
         !referenced.has(thread.id)
       ) {
-        save.push({
+        coldStore.push({
           rootId: thread.id,
           memberIds: [thread.id],
           oldestAt: thread.archivedAt,
@@ -160,7 +160,7 @@ export function selectCandidates(
     a.oldestAt - b.oldestAt || a.rootId.localeCompare(b.rootId);
   return {
     archive: archive.sort(sort),
-    save: save.sort(sort),
+    coldStore: coldStore.sort(sort),
     delete: deletion.sort(sort),
   };
 }

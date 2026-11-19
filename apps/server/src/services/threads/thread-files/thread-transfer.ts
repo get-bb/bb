@@ -64,7 +64,6 @@ interface ThreadFileSummary {
 }
 
 interface ThreadFileImportResult {
-  insertedRows: number;
   rows: number;
   threadId: string;
 }
@@ -295,57 +294,47 @@ async function insertInSlices<T>(
   insert: (
     tx: Parameters<Parameters<AppDeps["db"]["transaction"]>[0]>[0],
     item: T,
-  ) => number,
-): Promise<number> {
+  ) => void,
+): Promise<void> {
   let index = 0;
-  let total = 0;
   while (index < items.length) {
     const startedAt = performance.now();
-    total += deps.db.transaction(
+    deps.db.transaction(
       (tx) => {
-        let inserted = 0;
         do {
           const item = items[index];
           index += 1;
-          if (item !== undefined) inserted += insert(tx, item);
+          if (item !== undefined) insert(tx, item);
         } while (
           index < items.length &&
           performance.now() - startedAt < INSERT_SLICE_MS
         );
-        return inserted;
       },
       { behavior: "immediate" },
     );
     await yieldToEventLoop();
   }
-  return total;
 }
 
 async function insertThreadFileEvents(
   deps: Pick<AppDeps, "db">,
   file: OpenThreadFile,
-): Promise<number> {
-  let inserted = 0;
+): Promise<void> {
   for (const entry of file.table.frames) {
     if (entry.rows === 0) continue;
     const frame = await readThreadFileFrame(file, entry);
     const now = Date.now();
-    inserted += await insertInSlices(
-      deps,
-      insertBatches(frame.rows),
-      (tx, rows) => {
-        const eventIds = new Set(rows.map((row) => row.id));
-        return insertThreadHistoryRows(tx, {
-          now,
-          retained: frame.retained.filter((output) =>
-            eventIds.has(output.eventId),
-          ),
-          rows,
-        });
-      },
-    );
+    await insertInSlices(deps, insertBatches(frame.rows), (tx, rows) => {
+      const eventIds = new Set(rows.map((row) => row.id));
+      insertThreadHistoryRows(tx, {
+        now,
+        retained: frame.retained.filter((output) =>
+          eventIds.has(output.eventId),
+        ),
+        rows,
+      });
+    });
   }
-  return inserted;
 }
 
 async function openForImport(path: string): Promise<OpenThreadFile> {
@@ -437,7 +426,7 @@ function asImportError(error: unknown): unknown {
 async function recreateThreadFromFile(
   deps: ThreadFileDeps,
   file: OpenThreadFile,
-): Promise<number> {
+): Promise<void> {
   const { threadId, projectId } = file.header;
   requireImportProject(deps, file.header);
   const { attachments, tables } = await readTablesAndAttachments(file);
@@ -460,7 +449,7 @@ async function recreateThreadFromFile(
   await insertInSlices(
     deps,
     tables.filter((row) => row.table !== "threads"),
-    (tx, row) => (insertThreadTableRow(tx, row) ? 1 : 0),
+    (tx, row) => insertThreadTableRow(tx, row),
   );
   for (const attachment of attachments) {
     await restoreProjectAttachment(
@@ -476,7 +465,7 @@ async function recreateThreadFromFile(
     attachments.map((attachment) => attachment.storedPath),
     "best-effort",
   );
-  const insertedRows = await insertThreadFileEvents(deps, file);
+  await insertThreadFileEvents(deps, file);
   deps.db.transaction(
     (tx) => {
       unhideImportedThread(tx, threadId);
@@ -485,10 +474,9 @@ async function recreateThreadFromFile(
     },
     { behavior: "immediate" },
   );
-  return insertedRows;
 }
 
-async function importIntoThread(
+async function importDeletedThread(
   deps: ThreadFileDeps,
   file: OpenThreadFile,
 ): Promise<ThreadFileImportResult> {
@@ -501,26 +489,24 @@ async function importIntoThread(
       `Thread ${threadId} is still being deleted. Import the file again once the deletion finishes.`,
     );
   }
-  const recreated = thread === null;
-  let insertedRows: number;
+  if (thread !== null) {
+    throw new ApiError(
+      409,
+      "thread_exists",
+      `Thread ${threadId} already exists. Only a deleted thread can be imported.`,
+    );
+  }
   try {
-    insertedRows = recreated
-      ? await recreateThreadFromFile(deps, file)
-      : await insertThreadFileEvents(deps, file);
+    await recreateThreadFromFile(deps, file);
   } catch (error) {
     throw asImportError(error);
   }
-  deps.hub.notifyThread(
-    threadId,
-    [recreated ? "thread-created" : "history-rewritten"],
-    { projectId: file.header.projectId },
-  );
+  deps.hub.notifyThread(threadId, ["thread-created"], {
+    projectId: file.header.projectId,
+  });
   deps.hub.notifyProject(file.header.projectId, ["threads-changed"]);
-  deps.logger.info(
-    { threadId, rows: file.table.rows, insertedRows, recreated },
-    "Thread file imported",
-  );
-  return { insertedRows, rows: file.table.rows, threadId };
+  deps.logger.info({ threadId, rows: file.table.rows }, "Thread file imported");
+  return { rows: file.table.rows, threadId };
 }
 
 export async function importThreadFile(
@@ -531,7 +517,7 @@ export async function importThreadFile(
   try {
     const release = holdThreadPurge(file.header.threadId, "exclusive");
     try {
-      return await importIntoThread(deps, file);
+      return await importDeletedThread(deps, file);
     } finally {
       release();
     }

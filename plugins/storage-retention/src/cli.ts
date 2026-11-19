@@ -7,7 +7,7 @@ import {
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import type { ColdStorage } from "./cold-storage.js";
-import { policySchema, SAVED_THREAD_LIST_MAX } from "./contract.js";
+import { policySchema, COLD_THREAD_LIST_MAX } from "./contract.js";
 import { readThreadsById } from "./sdk-data.js";
 import type { Service } from "./service.js";
 
@@ -157,10 +157,10 @@ export function registerCli(
               type: "string",
               description: "Idle days before archiving, or never",
             },
-            "save-after": {
+            "cold-store-after": {
               type: "string",
               description:
-                "Archived days before saving to a file in this plugin, or never",
+                "Archived days before moving to cold storage, or never",
             },
             "delete-after": {
               type: "string",
@@ -202,9 +202,9 @@ export function registerCli(
                   input.options["archive-after"],
                   state.policy.archiveAfterDays,
                 ),
-                saveAfterDays: days(
-                  input.options["save-after"],
-                  state.policy.saveAfterDays,
+                coldStoreAfterDays: days(
+                  input.options["cold-store-after"],
+                  state.policy.coldStoreAfterDays,
                 ),
                 deleteAfterDays: days(
                   input.options["delete-after"],
@@ -220,7 +220,7 @@ export function registerCli(
               }
               if (
                 input.options["archive-after"] !== undefined ||
-                input.options["save-after"] !== undefined ||
+                input.options["cold-store-after"] !== undefined ||
                 input.options["delete-after"] !== undefined ||
                 cleanup !== undefined ||
                 devCleanup !== undefined
@@ -229,9 +229,9 @@ export function registerCli(
               return state;
             }),
         }),
-        "save-thread": cliCommand({
+        "cold-store": cliCommand({
           summary:
-            "Save an archived thread to a file in this plugin and remove it from bb's database",
+            "Move an archived thread to cold storage: write it to a file and remove it from bb's database",
           options: {
             thread: { type: "string", description: "Thread ID" },
             yes: YES,
@@ -250,9 +250,9 @@ export function registerCli(
                 throw new Error(`Thread ${threadId} not found.`);
               if (thread.archivedAt === null || thread.pinnedAt !== null)
                 throw new Error(
-                  "Only archived, unpinned threads can be saved to a file.",
+                  "Only archived, unpinned threads can be moved to cold storage.",
                 );
-              await coldStorage.save({
+              await coldStorage.store({
                 id: thread.id,
                 projectId: thread.projectId,
                 title: thread.title ?? thread.titleFallback ?? null,
@@ -260,11 +260,11 @@ export function registerCli(
                 createdAt: thread.createdAt,
                 archivedAt: thread.archivedAt,
               });
-              return { threadId, state: "saving" };
+              return { threadId, state: "moving" };
             }),
         }),
-        saved: cliCommand({
-          summary: "List threads saved to files, newest first",
+        "cold-list": cliCommand({
+          summary: "List threads in cold storage, newest first",
           options: {
             project: { type: "string", description: "Only this project ID" },
             search: {
@@ -273,7 +273,7 @@ export function registerCli(
             },
             limit: {
               type: "string",
-              description: `How many to list (default 50, at most ${SAVED_THREAD_LIST_MAX})`,
+              description: `How many to list (default 50, at most ${COLD_THREAD_LIST_MAX})`,
             },
           },
           run: (input) =>
@@ -285,10 +285,10 @@ export function registerCli(
               if (
                 !Number.isInteger(limit) ||
                 limit < 1 ||
-                limit > SAVED_THREAD_LIST_MAX
+                limit > COLD_THREAD_LIST_MAX
               )
                 throw new Error(
-                  `Use --limit between 1 and ${SAVED_THREAD_LIST_MAX}.`,
+                  `Use --limit between 1 and ${COLD_THREAD_LIST_MAX}.`,
                 );
               return coldStorage.list({
                 projectId: input.options.project ?? null,
@@ -298,16 +298,16 @@ export function registerCli(
               });
             }),
         }),
-        "restore-saved": cliCommand({
-          summary: "Bring a thread saved to a file back into bb",
+        restore: cliCommand({
+          summary: "Bring a thread in cold storage back into bb",
           options: { thread: { type: "string", description: "Thread ID" } },
           run: (input) =>
             output(() =>
               coldStorage.restore(required(input.options.thread, "thread")),
             ),
         }),
-        "delete-saved": cliCommand({
-          summary: "Permanently delete a thread saved to a file",
+        "cold-delete": cliCommand({
+          summary: "Permanently delete a thread in cold storage",
           options: {
             thread: { type: "string", description: "Thread ID" },
             yes: YES,
@@ -316,7 +316,7 @@ export function registerCli(
             output(async () => {
               if (!input.options.yes)
                 throw new Error(
-                  "Pass --yes to permanently delete the saved thread.",
+                  "Pass --yes to permanently delete the thread from cold storage.",
                 );
               return coldStorage.remove(
                 required(input.options.thread, "thread"),

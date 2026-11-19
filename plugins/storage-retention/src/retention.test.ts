@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -47,7 +49,11 @@ describe("retention eligibility", () => {
             }),
             thread("independent"),
           ],
-          { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
+          {
+            archiveAfterDays: 30,
+            coldStoreAfterDays: null,
+            deleteAfterDays: null,
+          },
           NOW,
         );
         expect(result.archive.map((group) => group.rootId)).toEqual([
@@ -76,7 +82,7 @@ describe("retention eligibility", () => {
         }),
         thread("pinned", { archivedAt: DAY, pinnedAt: DAY }),
       ],
-      { archiveAfterDays: null, saveAfterDays: null, deleteAfterDays: 30 },
+      { archiveAfterDays: null, coldStoreAfterDays: null, deleteAfterDays: 30 },
       NOW,
     );
     expect(
@@ -97,7 +103,7 @@ describe("retention eligibility", () => {
         }),
         thread("deleted", { deletedAt: DAY }),
       ],
-      { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
+      { archiveAfterDays: 30, coldStoreAfterDays: null, deleteAfterDays: null },
       NOW,
     );
     expect(result.archive.map((group) => group.memberIds)).toEqual([
@@ -129,7 +135,7 @@ describe("retention plugin", () => {
       });
       expect(preview).toEqual({
         archiveCount: 1,
-        saveCount: 0,
+        coldStoreCount: 0,
         deleteCount: 0,
       });
       expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(0);
@@ -153,7 +159,7 @@ describe("retention plugin", () => {
       expect(await host.harness.callRpc("state", null)).toMatchObject({
         policy: {
           archiveAfterDays: 30,
-          saveAfterDays: null,
+          coldStoreAfterDays: null,
           deleteAfterDays: null,
         },
         lastRun: { archivedCount: 1 },
@@ -205,7 +211,7 @@ describe("retention plugin", () => {
       await host.harness.dispose();
     }
   });
-  it("saves only old archived threads that nothing else points at", () => {
+  it("moves only old archived threads that nothing else points at to cold storage", () => {
     const result = selectCandidates(
       [
         thread("old", { archivedAt: DAY }),
@@ -216,15 +222,15 @@ describe("retention plugin", () => {
         thread("running", { archivedAt: DAY, status: "active" }),
         thread("live"),
       ],
-      { archiveAfterDays: null, saveAfterDays: 30, deleteAfterDays: null },
+      { archiveAfterDays: null, coldStoreAfterDays: 30, deleteAfterDays: null },
       NOW,
     );
-    expect(result.save.map((candidate) => candidate.rootId)).toEqual([
+    expect(result.coldStore.map((candidate) => candidate.rootId)).toEqual([
       "child",
       "old",
     ]);
   });
-  it("holds a saved thread's purge until its file is written, then restores it from the file", async () => {
+  it("holds the end of a cold-stored thread's delete until its file is written, then restores it from the file", async () => {
     const file = new Uint8Array([1, 2, 3, 4]);
     let deleted = false;
     const host = createFakePluginHost({
@@ -244,21 +250,19 @@ describe("retention plugin", () => {
             return { ok: true };
           },
           experimental_export: async () => file,
-          experimental_import: async () => ({
-            threadId: "thr_old",
-            rows: 4,
-            insertedRows: 4,
-          }),
+          experimental_import: async () => ({ threadId: "thr_old", rows: 4 }),
         },
       },
     });
     try {
       plugin(host.bb);
-      const beforePurge = host.harness.registrations.hooks["thread.purge"];
-      if (beforePurge === null) throw new Error("thread.purge not registered");
+      const beforeDeleteFinalize =
+        host.harness.registrations.hooks["thread.delete_finalize"];
+      if (beforeDeleteFinalize === null)
+        throw new Error("thread.delete_finalize not registered");
       await host.harness.callRpc("configure", {
         archiveAfterDays: null,
-        saveAfterDays: 30,
+        coldStoreAfterDays: 30,
         deleteAfterDays: null,
       });
       await host.harness.runSchedule("retention");
@@ -266,51 +270,65 @@ describe("retention plugin", () => {
         [{ threadId: "thr_old", childThreadsConfirmed: true }],
       ]);
       expect(
-        await beforePurge({ threadId: "thr_other", projectId: "proj_test" }),
+        await beforeDeleteFinalize({
+          threadId: "thr_other",
+          projectId: "proj_test",
+        }),
       ).toEqual({ action: "proceed" });
 
       const context = { threadId: "thr_old", projectId: "proj_test" };
-      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      expect(await beforeDeleteFinalize(context)).toEqual({ action: "wait" });
       await vi.waitFor(async () =>
         expect(
-          await host.harness.callRpc("savedThreads", {
+          await host.harness.callRpc("coldThreads", {
             projectId: null,
             search: null,
             limit: 50,
             offset: 0,
           }),
         ).toMatchObject({
-          savedThreads: [
+          threads: [
             {
               threadId: "thr_old",
               title: "Old investigation",
-              state: "saved",
+              state: "stored",
               fileBytes: 4,
             },
           ],
         }),
       );
-      expect(await beforePurge(context)).toEqual({ action: "proceed" });
+      expect(await beforeDeleteFinalize(context)).toEqual({
+        action: "proceed",
+      });
       expect(host.harness.sdk.callsTo("threads.experimental_export")).toEqual([
         [{ threadId: "thr_old" }],
       ]);
+      const directory = join(
+        dirname(host.bb.storage.database().name),
+        "cold-storage",
+      );
+      expect(readdirSync(directory)).toEqual(["thr_old.jsonl.zst"]);
+      expect(
+        new Uint8Array(readFileSync(join(directory, "thr_old.jsonl.zst"))),
+      ).toEqual(file);
 
       expect(
-        await host.harness.callRpc("restoreSavedThread", {
+        await host.harness.callRpc("restoreColdThread", {
           threadId: "thr_old",
         }),
-      ).toEqual({ threadId: "thr_old", rows: 4, insertedRows: 4 });
+      ).toEqual({ threadId: "thr_old", rows: 4 });
       expect(host.harness.sdk.callsTo("threads.experimental_import")).toEqual([
-        [{ file }],
+        [{ file: Buffer.from(file) }],
       ]);
+      expect(existsSync(join(directory, "thr_old.jsonl.zst"))).toBe(false);
       expect(
-        await host.harness.callRpc("savedThreads", {
+        await host.harness.callRpc("coldThreads", {
           projectId: null,
           search: null,
           limit: 50,
           offset: 0,
         }),
-      ).toEqual({ savedThreads: [], hasMore: false });
+      ).toEqual({ threads: [], hasMore: false });
     } finally {
       await host.harness.dispose();
     }
@@ -334,25 +352,29 @@ describe("retention plugin", () => {
     });
     try {
       plugin(host.bb);
-      const beforePurge = host.harness.registrations.hooks["thread.purge"];
-      if (beforePurge === null) throw new Error("thread.purge not registered");
+      const beforeDeleteFinalize =
+        host.harness.registrations.hooks["thread.delete_finalize"];
+      if (beforeDeleteFinalize === null)
+        throw new Error("thread.delete_finalize not registered");
       await host.harness.callRpc("configure", {
         archiveAfterDays: null,
-        saveAfterDays: 30,
+        coldStoreAfterDays: 30,
         deleteAfterDays: null,
       });
       await host.harness.runSchedule("retention");
       const context = { threadId: "thr_old", projectId: "proj_test" };
-      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      expect(await beforeDeleteFinalize(context)).toEqual({ action: "wait" });
       await vi.waitFor(() =>
         expect(
           host.harness.sdk.callsTo("threads.experimental_export"),
         ).toHaveLength(1),
       );
       await new Promise((resolve) => setImmediate(resolve));
-      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      expect(await beforeDeleteFinalize(context)).toEqual({ action: "wait" });
       await vi.waitFor(async () =>
-        expect(await beforePurge(context)).toEqual({ action: "proceed" }),
+        expect(await beforeDeleteFinalize(context)).toEqual({
+          action: "proceed",
+        }),
       );
       expect(
         host.harness.sdk.callsTo("threads.experimental_export"),
@@ -361,7 +383,7 @@ describe("retention plugin", () => {
       await host.harness.dispose();
     }
   });
-  it("forgets a save whose delete failed or whose thread was removed without it", async () => {
+  it("forgets a move whose delete failed or whose thread was removed without it", async () => {
     let present = true;
     const host = createFakePluginHost({
       pluginId: "storage-retention",
@@ -387,7 +409,7 @@ describe("retention plugin", () => {
       plugin(host.bb);
       const coldStorage = createColdStorage(host.bb);
       await expect(
-        coldStorage.save({
+        coldStorage.store({
           id: "thr_old",
           projectId: "proj_test",
           title: null,
@@ -403,33 +425,33 @@ describe("retention plugin", () => {
           limit: 50,
           offset: 0,
         }),
-      ).toEqual({ savedThreads: [], hasMore: false });
+      ).toEqual({ threads: [], hasMore: false });
 
       host.bb.storage
         .database()
         .prepare(
-          `INSERT INTO saved_threads (thread_id, project_id, provider_id, thread_created_at, requested_at)
+          `INSERT INTO cold_threads (thread_id, project_id, provider_id, thread_created_at, requested_at)
            VALUES ('thr_old', 'proj_test', 'codex', 1, 1)`,
         )
         .run();
-      await coldStorage.dropAbandonedSaves();
+      await coldStorage.dropAbandonedMoves();
       expect(
         coldStorage.list({
           projectId: null,
           search: null,
           limit: 50,
           offset: 0,
-        }).savedThreads,
+        }).threads,
       ).toHaveLength(1);
       present = false;
-      await coldStorage.dropAbandonedSaves();
+      await coldStorage.dropAbandonedMoves();
       expect(
         coldStorage.list({
           projectId: null,
           search: null,
           limit: 50,
           offset: 0,
-        }).savedThreads,
+        }).threads,
       ).toEqual([]);
     } finally {
       await host.harness.dispose();
