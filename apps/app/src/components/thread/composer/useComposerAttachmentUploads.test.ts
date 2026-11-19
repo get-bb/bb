@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
 import { PromptAttachmentSizeError } from "@/lib/prompt-attachment-size";
-import { uploadDraftAttachments } from "./useComposerAttachmentUploads";
+import {
+  isUnreadableFolder,
+  uploadDraftAttachments,
+} from "./useComposerAttachmentUploads";
 
 const uploaded: PromptDraftAttachment = {
   type: "localFile",
@@ -113,5 +116,76 @@ describe("uploadDraftAttachments", () => {
 
     expect(result.failureMessage).toBe("Failed to attach: inline.txt");
   });
+});
 
+function folderLike(name: string): File {
+  const file = new File([], name, { type: "" });
+  Object.defineProperty(file, "slice", {
+    value: () => ({
+      arrayBuffer: () =>
+        Promise.reject(new DOMException("unreadable", "NotReadableError")),
+    }),
+  });
+  return file;
+}
+
+describe("folders (#7827)", () => {
+  it("treats a typeless file that cannot be read as a folder", async () => {
+    expect(await isUnreadableFolder(folderLike("tab-radar"))).toBe(true);
+  });
+
+  it("does not treat readable files as folders, typed or not", async () => {
+    expect(
+      await isUnreadableFolder(new File(["x"], "Makefile", { type: "" })),
+    ).toBe(false);
+    expect(
+      await isUnreadableFolder(new File([], "empty.txt", { type: "" })),
+    ).toBe(false);
+    expect(
+      await isUnreadableFolder(new File(["x"], "a.png", { type: "image/png" })),
+    ).toBe(false);
+  });
+
+  it("skips a pasted folder without uploading it and says why", async () => {
+    const upload = vi.fn(async () => uploaded);
+    const settled: string[] = [];
+
+    const result = await uploadDraftAttachments({
+      uploads: [{ id: "tab-radar", file: folderLike("tab-radar") }],
+      target: { key: "bottom", addAttachment: vi.fn() },
+      upload,
+      getCurrentTarget: () => null,
+      onUploadSettled: (u) => settled.push(u.id),
+    });
+
+    expect(upload).not.toHaveBeenCalled();
+    expect(settled).toEqual(["tab-radar"]);
+    expect(result).toEqual({
+      added: [],
+      failureMessage:
+        "Folders can't be attached: tab-radar. Paste its path as text instead.",
+    });
+  });
+
+  it("still uploads the real files pasted together with a folder", async () => {
+    const addAttachment = vi.fn();
+    const upload = vi.fn(async () => uploaded);
+
+    const result = await uploadDraftAttachments({
+      uploads: [
+        { id: "tab-radar", file: folderLike("tab-radar") },
+        pending("old.txt"),
+      ],
+      target: { key: "bottom", addAttachment },
+      upload,
+      getCurrentTarget: () => ({ key: "bottom", addAttachment }),
+      onUploadSettled: vi.fn(),
+    });
+
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(result.added).toEqual([uploaded]);
+    expect(result.failureMessage).toBe(
+      "Folders can't be attached: tab-radar. Paste its path as text instead.",
+    );
+  });
 });

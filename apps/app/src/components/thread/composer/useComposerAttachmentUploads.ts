@@ -72,6 +72,23 @@ function attachFailureMessage(
     : `Failed to attach ${names}: ${reason}`;
 }
 
+export async function isUnreadableFolder(file: File): Promise<boolean> {
+  if (file.type !== "") return false;
+  try {
+    await file.slice(0, 1).arrayBuffer();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function folderSkipMessage(folders: readonly string[]): string {
+  const names = folders.join(", ");
+  return folders.length === 1
+    ? `Folders can't be attached: ${names}. Paste its path as text instead.`
+    : `Folders can't be attached: ${names}. Paste their paths as text instead.`;
+}
+
 export async function uploadDraftAttachments({
   uploads,
   target,
@@ -90,8 +107,14 @@ export async function uploadDraftAttachments({
 }> {
   const added: PromptDraftAttachment[] = [];
   const failedFiles: string[] = [];
+  const skippedFolders: string[] = [];
   let rejectionReason: string | null = null;
   for (const pendingUpload of uploads) {
+    if (await isUnreadableFolder(pendingUpload.file)) {
+      skippedFolders.push(pendingUpload.file.name);
+      onUploadSettled(pendingUpload);
+      continue;
+    }
     try {
       const uploaded = await upload(pendingUpload.file);
       target.addAttachment(uploaded);
@@ -105,12 +128,15 @@ export async function uploadDraftAttachments({
       onUploadSettled(pendingUpload);
     }
   }
+  const messages = [
+    ...(skippedFolders.length > 0 ? [folderSkipMessage(skippedFolders)] : []),
+    ...(failedFiles.length > 0
+      ? [attachFailureMessage(failedFiles, rejectionReason)]
+      : []),
+  ];
   return {
     added,
-    failureMessage:
-      failedFiles.length > 0
-        ? attachFailureMessage(failedFiles, rejectionReason)
-        : null,
+    failureMessage: messages.length > 0 ? messages.join(" ") : null,
   };
 }
 
