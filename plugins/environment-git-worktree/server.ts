@@ -226,7 +226,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         branchMode: "reuse-existing",
       });
     },
-    async experimental_renameBranch(context) {
+    async renameBranch(context) {
       const resource = parseWorktreeResource(context.resource);
       if (resource === null || "adopted" in resource) {
         return {

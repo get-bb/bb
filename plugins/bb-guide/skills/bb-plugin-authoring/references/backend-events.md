@@ -292,7 +292,7 @@ message. When core reuses an environment row your provider already owns at
 that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
 clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
 on the same environment row after cleanup. `report.step` and `report.log`
-stream durable progress while the call runs. Declaring `experimental_renameBranch({ environment, resource, from, to, report, signal })` lets core create before the title exists, with `suggestedBranchName` `<prefix><threadId>`, then ask once to rename it (`renamed` with an optional new `resource`, `kept` with a reason, or `failed`).
+stream durable progress while the call runs. Declaring `renameBranch({ environment, resource, from, to, report, signal })` lets core create before the title exists, with `suggestedBranchName` `<prefix><threadId>`, then ask once to rename it (`renamed` with an optional new `resource`, `kept` with a reason, or `failed`).
 
 `await context.experimental_claimPath(path)` on the create and restore
 contexts atomically reserves a directory on the selected host for this launch before

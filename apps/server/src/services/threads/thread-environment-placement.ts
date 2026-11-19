@@ -733,7 +733,7 @@ function buildProviderOperationContext(
   > & { record: PluginEnvironmentProviderRecord; thread: Thread },
 ): ProviderOperationContext {
   const branchRenameOwed =
-    args.record.provider.experimental_renameBranch !== null &&
+    args.record.provider.renameBranch !== null &&
     isThreadTitlePending(deps, args.thread.id);
   const titled = getThread(deps.db, args.thread.id) ?? args.thread;
   return {
@@ -882,21 +882,27 @@ function threadProvisionContextEnvironment(
     ? null
     : toEnvironmentResponse(deps.db, environment);
 }
+export async function inspectEnvironmentBranch(
+  deps: ThreadProvisioningDeps,
+  args: { hostId: string; path: string },
+): Promise<string | null> {
+  const { checkout } = await callHostRetryableOnlineRpc(deps, {
+    hostId: args.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: { type: "host.inspect_git_checkout", path: args.path },
+  });
+  return checkout.kind === "branch" || checkout.kind === "unborn"
+    ? checkout.branchName
+    : null;
+}
+
 export async function refreshAttachedEnvironmentBranch(
   deps: ThreadProvisioningDeps,
   args: { environmentId: string; hostId: string; path: string },
 ): Promise<void> {
   try {
-    const { checkout } = await callHostRetryableOnlineRpc(deps, {
-      hostId: args.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "host.inspect_git_checkout", path: args.path },
-    });
     recordEnvironmentCurrentBranch(deps.db, deps.hub, args.environmentId, {
-      branchName:
-        checkout.kind === "branch" || checkout.kind === "unborn"
-          ? checkout.branchName
-          : null,
+      branchName: await inspectEnvironmentBranch(deps, args),
     });
   } catch (error) {
     deps.logger.warn(

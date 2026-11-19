@@ -386,7 +386,7 @@ async function invokeCreateRecordingBranchRename(
 ): Promise<PluginEnvironmentProviderCreateResult> {
   mutateProvisioning(deps, provisioning, ["creating"], (row) => {
     row.pendingBranchRename = branchRenameOwed
-      ? { threadId: context.thread.id, from: context.suggestedBranchName }
+      ? { threadId: context.thread.id }
       : null;
   });
   return invokeCreate(record, context);

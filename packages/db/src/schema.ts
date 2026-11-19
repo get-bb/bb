@@ -52,7 +52,6 @@ import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
 export interface PendingEnvironmentBranchRename {
   threadId: string;
-  from: string;
 }
 
 export const authUsers = sqliteTable(

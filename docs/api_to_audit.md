@@ -799,7 +799,7 @@ Docs: `backend-events.md`.
    degradation for an uninstalled plugin.
 3. **Undeclared facts: `suggestedBranchName` and `projectCheckout`.** Every
    create gets a branch name built from the thread title (or only the thread
-   id, for providers declaring `experimental_renameBranch`) and
+   id, for providers declaring `renameBranch`) and
    `managedBranchPrefix`, and the project's checkout on its machine, whether
    or not the provider uses them. Decide whether both belong on the context
    for everyone or behind a declaration flag, and whether a path is all a
@@ -4425,25 +4425,28 @@ progress, cross-project ownership, and concurrent creation before binding.
 
 ## Environment provider branch rename
 
-`PluginEnvironmentProviderDefinition.experimental_renameBranch(context)` lets a
-provider take a thread before its title exists. For a provider that declares
-it, core starts title generation alongside provisioning instead of before it;
-if the title is still pending when `create` is built, `suggestedBranchName` is
+`PluginEnvironmentProviderDefinition.renameBranch(context)` lets a provider
+take a thread before its title exists. For a provider that declares it, core
+starts title generation alongside provisioning instead of before it; if the
+title is still pending when `create` is built, `suggestedBranchName` is
 `<managedBranchPrefix><threadId>`. Core persists the owed rename on the
-environment row (`pending_branch_rename`) before calling create, then calls
-the hook once with `{ environment, resource, from, to, report, signal }` when
-create has returned and title generation has settled. `to` is the name create
-would have received: the generated title, or the fallback title when generation
-failed or was skipped. A title that settles before create returns is applied
-before setup starts, so setup and "Using branch" see the final name; a later
-one renames whenever it lands and appends a `branch_rename` operation to the
-thread. Turn start waits for an in-flight rename, never for a pending title.
-Removal waits for an in-flight rename, and a retiring or failed environment
-drops it. `renamed` may replace the resource; core then re-reads the branch
-from git. `kept` and `failed` drop the rename; a throw or an unregistered
-provider leaves it for the `environment-branch-rename` periodic sweep, which
-also finishes renames a restart interrupted. User renames never touch the
-branch. Providers without the hook keep waiting for the title before create.
+environment row (`pending_branch_rename`) before calling create, then calls the
+hook once with `{ environment, resource, from, to, report, signal }` when create
+has returned and title generation has settled. `from` is the branch the
+environment's checkout is on, read from git just before the call, so a create
+that binds to an existing row reports that row's branch; a checkout on no
+branch drops the rename. `to` is the name create would have received: the
+generated title, or the fallback title when generation failed or was skipped.
+A title that settles before create returns is applied before setup starts, so
+setup and "Using branch" see the final name; a later one renames whenever it
+lands and appends a `branch_rename` operation to the thread. Turn start waits
+for an in-flight rename, never for a pending title. Removal waits for an
+in-flight rename, and a retiring or failed environment drops it. `renamed` may
+replace the resource; core then re-reads the branch from git. `kept` and
+`failed` drop the rename; a throw or an unregistered provider leaves it for the
+`environment-branch-rename` periodic sweep, which also finishes renames a
+restart interrupted. User renames never touch the branch. Providers without the
+hook keep waiting for the title before create.
 
 Core callers: thread provisioning (`thread-provisioning-environment.ts`),
 create (`runCreate` in `environment-engine.ts`) and the sweep all go through

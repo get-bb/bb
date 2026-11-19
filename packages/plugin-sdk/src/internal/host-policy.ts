@@ -2492,8 +2492,8 @@ export interface NormalizedPluginEnvironmentProvider {
   create: PluginEnvironmentProviderDeclaration["create"];
   restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
-  experimental_renameBranch: NonNullable<
-    PluginEnvironmentProviderDeclaration["experimental_renameBranch"]
+  renameBranch: NonNullable<
+    PluginEnvironmentProviderDeclaration["renameBranch"]
   > | null;
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
@@ -2653,8 +2653,8 @@ export function validatePluginEnvironmentProviderDeclaration(
   assertOptionalFunction(
     "environment provider",
     id,
-    declaration.experimental_renameBranch,
-    "experimental_renameBranch",
+    declaration.renameBranch,
+    "renameBranch",
   );
   return {
     id,
@@ -2670,7 +2670,7 @@ export function validatePluginEnvironmentProviderDeclaration(
     create: declaration.create,
     restore: declaration.restore ?? null,
     remove: declaration.remove,
-    experimental_renameBranch: declaration.experimental_renameBranch ?? null,
+    renameBranch: declaration.renameBranch ?? null,
     policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
   };
 }

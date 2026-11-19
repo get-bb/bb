@@ -109,11 +109,12 @@ export type PluginEnvironmentProviderRemoveResult =
   | { status: "removed" }
   | { status: "failed"; message: string };
 
-/** The environment whose placeholder branch `from` core asks to rename to `to`, once per environment. */
+/** The environment whose branch `from` core asks to rename to `to`, once per environment. */
 export interface PluginEnvironmentProviderRenameBranchContext {
   environment: Environment;
   /** Resource is private to this provider, as last returned by create or a rename. */
   resource: JsonValue | null;
+  /** The branch the environment's checkout is on when core asks, read from git just before the call. */
   from: string;
   to: string;
   report: PluginEnvironmentProviderProgress;
@@ -177,7 +178,7 @@ export interface PluginEnvironmentProviderDefinition<
     context: PluginEnvironmentProviderRemoveContext,
   ): Promise<PluginEnvironmentProviderRemoveResult>;
   /** Experimental: declaring it lets core create the environment before the thread has a title, with `suggestedBranchName` holding only the thread id, then rename that branch once the title exists: see docs/api_to_audit.md. */
-  experimental_renameBranch?(
+  renameBranch?(
     context: PluginEnvironmentProviderRenameBranchContext,
   ): Promise<PluginEnvironmentProviderRenameBranchResult>;
 }

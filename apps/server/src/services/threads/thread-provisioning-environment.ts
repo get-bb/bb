@@ -264,7 +264,7 @@ export async function ensureThreadProvisionEnvironmentReady(
     const renamesBranchLater =
       intent.type === "provider" &&
       (getEnvironmentProvider(intent.environmentProviderId)?.provider
-        .experimental_renameBranch ?? null) !== null;
+        .renameBranch ?? null) !== null;
     if (!context.request.titleProvided) {
       if (intent.type === "provider" && !renamesBranchLater) {
         await inferThreadMetadata(deps, {

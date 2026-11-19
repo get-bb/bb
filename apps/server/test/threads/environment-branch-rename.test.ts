@@ -1,5 +1,6 @@
 import { environments, getEnvironment, getThread } from "@bb/db";
 import { listEvents } from "@bb/db/testing";
+import type { GitCheckoutRef } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
 import type {
   PluginEnvironmentProviderCreateResult,
@@ -39,12 +40,14 @@ interface Fixture {
   finishCreate: (result?: PluginEnvironmentProviderCreateResult) => void;
   resolveTitle: (title: string) => void;
   rejectTitle: (error: Error) => void;
+  detachHead: () => void;
 }
 
 function setUp(
   harness: TestAppHarness,
   options: {
     holdCreate: boolean;
+    checkedOutBranch?: string;
     renameResult?: PluginEnvironmentProviderRenameBranchResult;
   },
 ): Fixture & { hostId: string; projectId: string } {
@@ -55,12 +58,13 @@ function setUp(
     hostId: host.id,
     path: "/tmp/branch-rename-project",
   });
-  const inspection = {
-    checkout: {
-      kind: "branch" as const,
-      branchName: "pending",
-      headSha: "abc123",
-    },
+  const onBranch = (branchName: string): GitCheckoutRef => ({
+    kind: "branch",
+    branchName,
+    headSha: "abc123",
+  });
+  const inspection: { checkout: GitCheckoutRef } = {
+    checkout: onBranch("pending"),
   };
   registerTestHostRpcCapture(harness, {
     hostId: host.id,
@@ -89,6 +93,9 @@ function setUp(
     finishCreate: (result = created) => create.resolve(result),
     resolveTitle: (value) => title.resolve(value),
     rejectTitle: (error) => title.reject(error),
+    detachHead: () => {
+      inspection.checkout = { kind: "detached", headSha: "abc123" };
+    },
   };
   const record = {
     pluginId: "renaming-plugin",
@@ -100,15 +107,18 @@ function setUp(
       requires: { projectCheckout: true },
       create: async (context) => {
         fixture.creates.push(context.suggestedBranchName);
+        inspection.checkout = onBranch(
+          options.checkedOutBranch ?? context.suggestedBranchName,
+        );
         return create.promise;
       },
       remove: async () => ({ status: "removed" }),
-      experimental_renameBranch: async (context) => {
+      renameBranch: async (context) => {
         fixture.renames.push(context);
         fixture.attachQueuedAtRename.push(
           listQueuedCommands(harness, "environment.attach").length > 0,
         );
-        inspection.checkout.branchName = context.to;
+        inspection.checkout = onBranch(context.to);
         return (
           options.renameResult ?? {
             status: "renamed",
@@ -215,7 +225,6 @@ describe("branch rename after parallel title generation", () => {
       expect(fixture.renames).toEqual([]);
       expect(environmentOf(harness, thread.id)?.pendingBranchRename).toEqual({
         threadId: thread.id,
-        from: `bb/${thread.id}`,
       });
 
       fixture.resolveTitle("Fix Login Redirect");
@@ -304,9 +313,13 @@ describe("branch rename after parallel title generation", () => {
     });
   });
 
-  it("still renames when create lands on an environment row that already exists at its path", async () => {
+  it("renames the adopted environment's checked-out branch when create lands on an existing row", async () => {
     await withTestHarness(async (harness) => {
-      const fixture = setUp(harness, { holdCreate: true });
+      const adoptedBranch = "bb/earlier-task-thr_earlier";
+      const fixture = setUp(harness, {
+        holdCreate: true,
+        checkedOutBranch: adoptedBranch,
+      });
       const existing = seedEnvironment(harness.deps, {
         hostId: fixture.hostId,
         projectId: fixture.projectId,
@@ -314,6 +327,7 @@ describe("branch rename after parallel title generation", () => {
         environmentProviderId: PROVIDER_ID,
         environmentProviderPluginId: "renaming-plugin",
         providerOwnsPath: true,
+        branchName: adoptedBranch,
       });
       const thread = await createThread(harness, fixture);
       await vi.waitFor(() =>
@@ -331,7 +345,7 @@ describe("branch rename after parallel title generation", () => {
       await vi.waitFor(() => expect(fixture.renames).toHaveLength(1));
       expect(fixture.renames[0]).toMatchObject({
         environment: { id: existing.id },
-        from: `bb/${thread.id}`,
+        from: adoptedBranch,
         to: `bb/fix-login-redirect-${thread.id}`,
       });
       await vi.waitFor(() =>
@@ -346,6 +360,24 @@ describe("branch rename after parallel title generation", () => {
           .all()
           .filter((row) => row.pendingBranchRename !== null),
       ).toEqual([]);
+    });
+  });
+
+  it("drops the rename when the checkout is on no branch", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = setUp(harness, { holdCreate: false });
+      const thread = await createThread(harness, fixture);
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
+      fixture.detachHead();
+
+      fixture.resolveTitle("Fix Login Redirect");
+
+      await vi.waitFor(() =>
+        expect(
+          environmentOf(harness, thread.id)?.pendingBranchRename,
+        ).toBeNull(),
+      );
+      expect(fixture.renames).toEqual([]);
     });
   });
 

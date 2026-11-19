@@ -19,7 +19,10 @@ import {
 } from "../plugins/plugin-environment-provider-registry.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { buildSuggestedBranchName } from "../threads/thread-create-helpers.js";
-import { refreshAttachedEnvironmentBranch } from "../threads/thread-environment-placement.js";
+import {
+  inspectEnvironmentBranch,
+  refreshAttachedEnvironmentBranch,
+} from "../threads/thread-environment-placement.js";
 import type { ThreadProvisioningDeps } from "../threads/thread-provisioning-environment.js";
 import { appendThreadEvent } from "../threads/thread-events.js";
 import { toEnvironmentResponse } from "./environment-response.js";
@@ -157,9 +160,8 @@ async function runOwedBranchRename(
     throw new Error(
       `Environment provider "${row.environmentProviderId}" is not registered`,
     );
-  const renameBranch = record.provider.experimental_renameBranch;
+  const renameBranch = record.provider.renameBranch;
   if (
-    to === owed.from ||
     renameBranch === null ||
     record.pluginId !== row.environmentProviderPluginId
   ) {
@@ -167,6 +169,15 @@ async function runOwedBranchRename(
     return;
   }
   const signal = options.signal ?? new AbortController().signal;
+  const from = await inspectEnvironmentBranch(deps, {
+    hostId: row.hostId,
+    path,
+  });
+  if (signal.aborted) return;
+  if (from === null || from === to) {
+    clearOwedBranchRename(deps, environmentId);
+    return;
+  }
   const invocation = await invokeEnvironmentProvider(
     record,
     `"${record.provider.id}" environment provider branch rename`,
@@ -174,7 +185,7 @@ async function runOwedBranchRename(
       renameBranch({
         environment: toEnvironmentResponse(deps.db, row),
         resource: row.resource,
-        from: owed.from,
+        from,
         to,
         report: options.report ?? {
           step: () => undefined,
@@ -194,7 +205,7 @@ async function runOwedBranchRename(
   const result = renameResultSchema.safeParse(invocation.value);
   if (!result.success || result.data.status !== "renamed") {
     clearOwedBranchRename(deps, environmentId);
-    const fields = { environmentId, from: owed.from, to };
+    const fields = { environmentId, from, to };
     if (result.success && result.data.status === "kept")
       deps.logger.info(
         { ...fields, reason: result.data.reason },
@@ -234,8 +245,8 @@ async function runOwedBranchRename(
         operation: BRANCH_RENAME_OPERATION,
         operationId: createEventId(),
         status: "completed",
-        message: `Renamed branch ${owed.from} to ${to}`,
-        metadata: { from: owed.from, to },
+        message: `Renamed branch ${from} to ${to}`,
+        metadata: { from, to },
       },
     });
   if (row.status === "creating") return;
