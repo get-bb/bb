@@ -113,7 +113,6 @@ import {
   type ExperimentalThreadHeaderRowRegistration,
   type ExperimentalThreadHeaderTitleRegistration,
   type ExperimentalThreadContextCardRowRegistration,
-  type ExperimentalThreadContextCardSectionRegistration,
   type ExperimentalThreadContextKind,
   type ExperimentalThreadContextCardRowProps,
   type ExperimentalPanelTabIconProps,
@@ -2161,7 +2160,7 @@ export interface CapturedPluginApp {
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
-  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
+  threadContextCardSections: import("../internal/plugin-app-registration-collector.js").CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];

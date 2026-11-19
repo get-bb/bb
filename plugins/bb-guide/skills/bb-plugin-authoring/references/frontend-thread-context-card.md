@@ -10,17 +10,20 @@ threads shown inside a panel.
 
 `app.slots.experimental_threadContextCardRow({ id, group, order?, component })`
 adds a row to the card's top block, and
-`app.slots.experimental_threadContextCardSection({ id, title, group, order?, component })`
-adds a section below the rows under its title and a divider: the card's
+`app.slots.experimental_threadContextCardSection({ id, group, order?, component })`
+adds a section below the rows, with a divider above it: the card's
 counterparts of the Info tab's `experimental_threadInfoRow` and
-`experimental_threadInfoSection`. Rows sort by `group`, then `order` (unset
+`experimental_threadInfoSection`, with the same registration shapes. Rows sort by `group`, then `order` (unset
 last), then registration order, bb's first on a tie, using the Info tab's
 `experimental_THREAD_INFO_ROW_GROUPS`; sections sort the same way using
 `experimental_THREAD_INFO_SECTION_GROUPS`. bb's parent row and Child threads
 section, the Git plugin's changes row, and GitHub PR Status's pull request row
-use these slots. Components receive `{ threadId, projectId, environment }` and
-render `experimental_ThreadContextCardRow` rows, or null to show nothing; a
-crash removes only that row or section.
+use these slots. Components receive `{ threadId, projectId, environment }`. A
+row component renders `experimental_ThreadContextCardRow` rows; a section
+component renders one `experimental_InfoSection` with its label (and an
+optional count, accessory and trailing control) around those rows, as an Info
+tab section does. Either returns null to show nothing for the thread; a crash
+removes only that row or section.
 
 bb owns the card, placement, and header button: each split pane has its own
 card, and it stays put while messages scroll. In a wide pane the card sits
@@ -29,12 +32,34 @@ there the header button pins or unpins it (`threadContextCard.pinned`,
 default on). A pane too narrow for either shows the banner, and the header
 button opens the card as a popover; the pane switches back as it widens.
 
+In the card, `experimental_InfoSection` draws its label as a button that folds
+the section. Sections start open, and bb remembers the ones the person folds
+across threads and restarts (`threadContextCard.collapsedSections`, keyed
+`<pluginId>/<sectionId>`, separate from the Info tab's). While folded, the
+section's children unmount but its component stays mounted, so keep its
+subscriptions cheap. Keep a long list short with `experimental_InfoList`, which
+shows five rows and a "N more" toggle. A plugin built against an older SDK that
+passes `title` keeps working: bb draws that title itself and logs a warning.
+
 ```tsx
 app.slots.experimental_threadContextCardRow({ id: "deploy", group: ROW_GROUPS.environment, order: 40, component: DeployRow });
 function DeployRow({ threadId }: ExperimentalThreadContextCardProps) {
   const deploy = useDeploy(threadId);
   if (!deploy) return null;
   return <ThreadContextCardRow icon="Rocket" label={deploy.label} trailing={deploy.status} onClick={deploy.open} />;
+}
+
+app.slots.experimental_threadContextCardSection({ id: "deploys", group: SECTION_GROUPS.related, order: 40, component: DeploysSection });
+function DeploysSection({ threadId }: ExperimentalThreadContextCardProps) {
+  const deploys = useDeploys(threadId);
+  if (deploys.length === 0) return null;
+  return (
+    <InfoSection label="Deploys" count={deploys.length}>
+      <InfoList items={deploys} getKey={(deploy) => deploy.id} renderItem={(deploy) => (
+        <li className="list-none"><ThreadContextCardRow icon="Rocket" label={deploy.label} onClick={deploy.open} /></li>
+      )} />
+    </InfoSection>
+  );
 }
 ```
 
