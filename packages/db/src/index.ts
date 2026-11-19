@@ -49,3 +49,5 @@ export {
 export type { DbNotifier } from "./notifier.js";
 
 export * from "./data/index.js";
+
+export { sanitizeEnvironmentDiagnosticSnapshot } from "./environment-diagnostic-data.js";

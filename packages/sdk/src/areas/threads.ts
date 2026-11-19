@@ -1072,7 +1072,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     );
   const events: ThreadEventsArea = {
     async list(input) {
-      return transport.readJson(
+      const rows = await transport.readJson(
         transport.api.v1.threads[":id"].events.$get(
           {
             param: { id: input.threadId },
@@ -1080,6 +1080,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
           ...signalRequestArgs(input.signal),
         ),
+      );
+      if (!rows.some((row) => row.type === "provider.env-resolved")) {
+        return rows;
+      }
+      const { parseThreadEventRow } = await import("./thread-event-parser.js");
+      return rows.map((row) =>
+        row.type === "provider.env-resolved" ? parseThreadEventRow(row) : row,
       );
     },
     async wait(input) {
