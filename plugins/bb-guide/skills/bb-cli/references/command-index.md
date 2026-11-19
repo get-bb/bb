@@ -203,6 +203,8 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb thread archive`
 - `bb thread unarchive`
 - `bb thread restore-environment`
+- `bb thread export`
+- `bb thread import`
 - `bb thread pin`
 - `bb thread unpin`
 - `bb thread regenerate-title`

@@ -129,8 +129,8 @@ periodically.
 ### bb.experimental_hooks — the dispatch checkpoint
 
 **Hooks are questions core asks.** Core stops, hands your handler a context, and
-acts on what you return. There is one hook, `"message.dispatch"`
-(`PluginHookName`), the admission checkpoint every message passes through
+acts on what you return. `"thread.purge"` is in backend-sdk.md; this one,
+`"message.dispatch"`, is the admission checkpoint every message passes through
 exactly once per attempt: a thread's first message, a follow-up, a steer, a
 drained queue row, a retry of a failed turn. Two members: `on` answers the
 question, and `recheck("message.dispatch")` asks core to ask it again.

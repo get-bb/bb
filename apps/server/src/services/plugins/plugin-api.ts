@@ -651,6 +651,7 @@ export function createPluginApi(options: {
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
+    "thread.purge": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -1226,13 +1227,12 @@ export function createPluginApi(options: {
     },
     async recheck(hook) {
       assertLive();
-      // One hook key exists; the parameter selects which question to re-pose
-      // and widens additively when a second key ever ships.
-      void hook;
-      // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
-      // caller is not the one it reports to — a failed re-attempt lands on the
-      // row it failed, like every other background drain.
-      requestQueueDrain();
+      // `thread.purge` is asked again on every purge pass, so only
+      // `message.dispatch` has a re-attempt to schedule. Resolves on
+      // SCHEDULING. The walk runs on a later macrotask, and the caller is not
+      // the one it reports to — a failed re-attempt lands on the row it
+      // failed, like every other background drain.
+      if (hook === "message.dispatch") requestQueueDrain();
     },
   };
 

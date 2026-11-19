@@ -573,7 +573,7 @@ class LimiterPlugin {
     };
     const registry: {
       [K in PluginHookName]: PluginHookRegistration<K>[];
-    } = { "message.dispatch": this.registrations };
+    } = { "message.dispatch": this.registrations, "thread.purge": [] };
     this.registrations.push(registration, {
       pluginId: HOLDING_PLUGIN_ID,
       handler: (context) =>
@@ -590,6 +590,7 @@ class LimiterPlugin {
         value: await run(),
       }),
       decisionTimeoutMs: 24 * 60 * 60 * 1000,
+      isLoadingPlugins: () => false,
     });
   }
 

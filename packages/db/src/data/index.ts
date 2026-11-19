@@ -34,6 +34,7 @@ export * from "./prompt-history.js";
 export * from "./provider-model-catalogs.js";
 export * from "./queued-thread-messages.js";
 export * from "./retained-event-outputs.js";
+export * from "./thread-files.js";
 export * from "./server-move.js";
 export * from "./sessions.js";
 export * from "./sweep-item-failures.js";

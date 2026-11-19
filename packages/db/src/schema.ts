@@ -834,6 +834,7 @@ export const threadPurges = sqliteTable(
       .primaryKey()
       .references(() => threads.id, { onDelete: "cascade" }),
     requestedAt: integer("requested_at").notNull(),
+    startedAt: integer("started_at"),
   },
   (table) => [index("thread_purges_requested_idx").on(table.requestedAt)],
 );

@@ -1599,6 +1599,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       listHooks: listPluginHooks,
       invokeHook: invokeOwned,
       decisionTimeoutMs: DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
+      isLoadingPlugins: () => loadPassActive,
     },
 
     environmentProviders: {

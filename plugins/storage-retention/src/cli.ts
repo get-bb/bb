@@ -6,7 +6,9 @@ import {
   type BbPluginApi,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
-import { policySchema } from "./contract.js";
+import type { ColdStorage } from "./cold-storage.js";
+import { policySchema, SAVED_THREAD_LIST_MAX } from "./contract.js";
+import { readThreadsById } from "./sdk-data.js";
 import type { Service } from "./service.js";
 
 const MACHINE = { type: "string", description: "Machine ID" } as const;
@@ -52,6 +54,7 @@ export function registerCli(
   bb: BbPluginApi,
   service: Service,
   storage: Storage,
+  coldStorage: ColdStorage,
 ) {
   bb.cli.register(
     defineCli({
@@ -154,6 +157,11 @@ export function registerCli(
               type: "string",
               description: "Idle days before archiving, or never",
             },
+            "save-after": {
+              type: "string",
+              description:
+                "Archived days before saving to a file in this plugin, or never",
+            },
             "delete-after": {
               type: "string",
               description: "Archived days before deleting, or never",
@@ -194,6 +202,10 @@ export function registerCli(
                   input.options["archive-after"],
                   state.policy.archiveAfterDays,
                 ),
+                saveAfterDays: days(
+                  input.options["save-after"],
+                  state.policy.saveAfterDays,
+                ),
                 deleteAfterDays: days(
                   input.options["delete-after"],
                   state.policy.deleteAfterDays,
@@ -208,12 +220,107 @@ export function registerCli(
               }
               if (
                 input.options["archive-after"] !== undefined ||
+                input.options["save-after"] !== undefined ||
                 input.options["delete-after"] !== undefined ||
                 cleanup !== undefined ||
                 devCleanup !== undefined
               )
                 return { policy, preview: await service.preview(policy) };
               return state;
+            }),
+        }),
+        "save-thread": cliCommand({
+          summary:
+            "Save an archived thread to a file in this plugin and remove it from bb's database",
+          options: {
+            thread: { type: "string", description: "Thread ID" },
+            yes: YES,
+          },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to remove the thread from bb's database once its file is written.",
+                );
+              const threadId = required(input.options.thread, "thread");
+              const thread = (await readThreadsById(bb, [threadId])).get(
+                threadId,
+              );
+              if (thread === undefined || thread.deletedAt !== null)
+                throw new Error(`Thread ${threadId} not found.`);
+              if (thread.archivedAt === null || thread.pinnedAt !== null)
+                throw new Error(
+                  "Only archived, unpinned threads can be saved to a file.",
+                );
+              await coldStorage.save({
+                id: thread.id,
+                projectId: thread.projectId,
+                title: thread.title ?? thread.titleFallback ?? null,
+                providerId: thread.providerId,
+                createdAt: thread.createdAt,
+                archivedAt: thread.archivedAt,
+              });
+              return { threadId, state: "saving" };
+            }),
+        }),
+        saved: cliCommand({
+          summary: "List threads saved to files, newest first",
+          options: {
+            project: { type: "string", description: "Only this project ID" },
+            search: {
+              type: "string",
+              description: "Only threads whose title contains this text",
+            },
+            limit: {
+              type: "string",
+              description: `How many to list (default 50, at most ${SAVED_THREAD_LIST_MAX})`,
+            },
+          },
+          run: (input) =>
+            output(async () => {
+              const limit =
+                input.options.limit === undefined
+                  ? 50
+                  : Number(input.options.limit);
+              if (
+                !Number.isInteger(limit) ||
+                limit < 1 ||
+                limit > SAVED_THREAD_LIST_MAX
+              )
+                throw new Error(
+                  `Use --limit between 1 and ${SAVED_THREAD_LIST_MAX}.`,
+                );
+              return coldStorage.list({
+                projectId: input.options.project ?? null,
+                search: input.options.search ?? null,
+                limit,
+                offset: 0,
+              });
+            }),
+        }),
+        "restore-saved": cliCommand({
+          summary: "Bring a thread saved to a file back into bb",
+          options: { thread: { type: "string", description: "Thread ID" } },
+          run: (input) =>
+            output(() =>
+              coldStorage.restore(required(input.options.thread, "thread")),
+            ),
+        }),
+        "delete-saved": cliCommand({
+          summary: "Permanently delete a thread saved to a file",
+          options: {
+            thread: { type: "string", description: "Thread ID" },
+            yes: YES,
+          },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to permanently delete the saved thread.",
+                );
+              return coldStorage.remove(
+                required(input.options.thread, "thread"),
+              );
             }),
         }),
         usage: cliCommand({

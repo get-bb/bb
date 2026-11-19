@@ -56,7 +56,13 @@ import {
   needsForce,
   selectExternalWorktrees,
 } from "./src/worktree-selection.js";
-import type { storageRpc, State, Policy } from "./src/contract.js";
+import type {
+  storageRpc,
+  State,
+  Policy,
+  SavedThread,
+  SavedThreadList,
+} from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
   LARGE_FILE_NUDGE_MIN_BYTES,
@@ -70,6 +76,7 @@ type Machine = Awaited<
 >[number];
 const PANEL = "storage";
 const ARCHIVE_PRESETS = [7, 14, 30, 60, 90, 180, 365];
+const SAVE_PRESETS = [7, 14, 30, 60, 90];
 const DELETE_PRESETS = [7, 30, 90, 180, 365];
 function bytes(value: number) {
   if (value < 1024) return `${value} B`;
@@ -616,6 +623,7 @@ function StoragePage({
     updateState(next);
     const description = {
       archiveAfterDays: "Archive inactive threads",
+      saveAfterDays: "Save archived threads to files",
       deleteAfterDays: "Delete archived threads",
       deleteStorageOnArchive: "Delete thread storage on archive",
       deleteDevDataOnCheckoutRemoval:
@@ -658,6 +666,7 @@ function StoragePage({
   const retentionOn =
     state !== null &&
     (state.policy.archiveAfterDays !== null ||
+      state.policy.saveAfterDays !== null ||
       state.policy.deleteAfterDays !== null);
   const report = detail?.report;
   const missingDev =
@@ -1715,7 +1724,7 @@ function StoragePage({
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
-                description="Archive or delete inactive threads across all projects. Changes save automatically."
+                description="Archive, save to files or delete inactive threads across all projects. Changes save automatically."
                 badge={retentionOn ? "Checks hourly" : "Off"}
               />
               <div
@@ -1725,7 +1734,7 @@ function StoragePage({
                 <Icon name="Pin" className="mt-px size-3.5 shrink-0" />
                 <p>
                   <span className="text-foreground">
-                    Pinned threads are never archived or deleted.
+                    Pinned threads are never archived, saved or deleted.
                   </span>{" "}
                   Automation targets aren’t protected on their own, so pin the
                   ones you want to keep.
@@ -1741,6 +1750,16 @@ function StoragePage({
                     disabled={savingSetting}
                     onChange={(value) =>
                       void saveSetting("archiveAfterDays", value)
+                    }
+                  />
+                  <RetentionField
+                    label="Save archived threads to files"
+                    description="After this long in the archive, move them out of bb's database into files kept by this plugin. Restore them below."
+                    presets={SAVE_PRESETS}
+                    value={policy.saveAfterDays}
+                    disabled={savingSetting}
+                    onChange={(value) =>
+                      void saveSetting("saveAfterDays", value)
                     }
                   />
                   <RetentionField
@@ -1801,7 +1820,7 @@ function StoragePage({
                     <div className="px-4 py-2.5">
                       <p className="text-xs text-muted-foreground">
                         {state.lastRun
-                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
+                          ? `Last checked ${ago(state.lastRun.ranAt)} · ${state.lastRun.archivedCount} archived · ${state.lastRun.savedCount} saved · ${state.lastRun.deletedCount} deleted${state.lastRun.failedCount ? ` · ${state.lastRun.failedCount} failed` : ""}`
                           : "The first check runs within the hour."}
                       </p>
                     </div>
@@ -1809,10 +1828,127 @@ function StoragePage({
                 </div>
               )}
             </section>
+            <SavedThreadsSection />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+const SAVED_THREADS_PAGE = 50;
+
+function SavedThreadsSection() {
+  const rpc = useRpc<typeof storageRpc>();
+  const navigate = useBbNavigate();
+  const [list, setList] = useState<SavedThreadList | null>(null);
+  const [limit, setLimit] = useState(SAVED_THREADS_PAGE);
+  const load = useCallback(async () => {
+    try {
+      setList(
+        await rpc.call("savedThreads", {
+          projectId: null,
+          search: null,
+          limit,
+          offset: 0,
+        }),
+      );
+    } catch (error) {
+      toast.error("Couldn’t load saved threads", {
+        description: message(error),
+      });
+    }
+  }, [rpc, limit]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useRealtime("saved-threads-changed", () => {
+    void load();
+  });
+  if (list === null || list.savedThreads.length === 0) return null;
+  const restore = async (entry: SavedThread) => {
+    const title = entry.title ?? "Untitled thread";
+    try {
+      await rpc.call("restoreSavedThread", { threadId: entry.threadId });
+      toast.success("Thread restored", {
+        description: title,
+        action: {
+          label: "Open",
+          onClick: () => navigate.toThread(entry.threadId),
+        },
+      });
+    } catch (error) {
+      toast.error("Couldn’t restore thread", {
+        description: `${title} · ${message(error)}`,
+      });
+    }
+  };
+  const remove = async (entry: SavedThread) => {
+    const title = entry.title ?? "Untitled thread";
+    try {
+      await rpc.call("deleteSavedThread", { threadId: entry.threadId });
+      toast.success("Saved thread deleted", { description: title });
+    } catch (error) {
+      toast.error("Couldn’t delete saved thread", {
+        description: `${title} · ${message(error)}`,
+      });
+    }
+  };
+  return (
+    <section className="space-y-3">
+      <SectionHeading
+        title="Saved to files"
+        description="Archived threads moved out of bb’s database. Restoring one brings it back to the archive with its full history."
+        badge={plural(list.savedThreads.length, "thread")}
+      />
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+        {list.savedThreads.map((entry) => (
+          <div
+            key={entry.threadId}
+            className="flex min-h-14 items-center gap-3 px-4 py-2.5"
+          >
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-sm">
+                {entry.title ?? "Untitled thread"}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
+                {entry.state === "saved" && entry.savedAt !== null
+                  ? `Saved ${ago(entry.savedAt)} · ${bytes(entry.fileBytes)}`
+                  : "Saving…"}
+              </span>
+            </div>
+            {entry.state === "saved" && (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void restore(entry)}
+                >
+                  Restore
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  aria-label={`Delete ${entry.title ?? "saved thread"} permanently`}
+                  onClick={() => void remove(entry)}
+                >
+                  <Icon name="Trash2" className="size-4" />
+                </Button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      {list.hasMore && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setLimit((current) => current + SAVED_THREADS_PAGE)}
+        >
+          Show more
+        </Button>
+      )}
+    </section>
   );
 }
 

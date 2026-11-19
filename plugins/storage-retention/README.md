@@ -1,9 +1,13 @@
 # Storage & retention
 
 A bundled, default-disabled plugin. Enable the `bb--storage-retention` plugin. Open Storage & retention in the sidebar.
-Both retention policies default to Never. The plugin owns policy, previews,
-hourly scheduling, run summaries, UI, and CLI commands. It uses public SDK thread
-rows to reconstruct archive/delete relationships and ordinary lifecycle actions.
+The archive, save-to-files and delete policies default to Never. The plugin owns
+policy, previews, hourly scheduling, run summaries, UI, and CLI commands. It uses
+public SDK thread rows to reconstruct archive/delete relationships and ordinary
+lifecycle actions. Saving to files deletes the thread through
+`threads.delete` and answers core's `thread.purge` hook with `wait` until it has
+written the thread from `threads.experimental_export` into its own SQLite
+database; restoring hands that file to `threads.experimental_import`.
 The plugin also owns disk measurement in its host worker, scan caching in its own
 SQLite database, report assembly, orphan classification, and file deletion.
 Core supplies ordinary thread lifecycle actions, machine storage paths, and

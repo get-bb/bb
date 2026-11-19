@@ -1,3 +1,4 @@
+import { openPluginDatabase } from "./database.js";
 import { randomUUID } from "node:crypto";
 import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
 import {
@@ -286,13 +287,7 @@ export function createStorage(
   devCleanupEnabled: () => Promise<boolean>,
   archiveCleanupEnabled: () => Promise<boolean>,
 ) {
-  const db = bb.storage.database();
-  bb.storage.migrate(db, [
-    "CREATE TABLE scans (host_id TEXT PRIMARY KEY, result_json TEXT NOT NULL)",
-    "CREATE TABLE archive_cleanup (thread_id TEXT PRIMARY KEY, archived_at INTEGER NOT NULL)",
-    "ALTER TABLE archive_cleanup ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0",
-    "ALTER TABLE archive_cleanup ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0",
-  ]);
+  const db = openPluginDatabase(bb);
   const worker = bb.hosts.experimental_client({
     contract: hostStorageContract,
   });

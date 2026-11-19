@@ -1,17 +1,19 @@
 import { readThreads } from "./sdk-data.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { policySchema, runSchema, type Policy, type Run } from "./contract.js";
+import type { ColdStorage } from "./cold-storage.js";
 import { selectCandidates } from "./policy.js";
 
 const DEFAULT_POLICY: Policy = {
   archiveAfterDays: null,
+  saveAfterDays: null,
   deleteAfterDays: null,
   deleteStorageOnArchive: false,
   deleteDevDataOnCheckoutRemoval: false,
 };
 const BATCH_LIMIT = 50;
 
-export function createService(bb: BbPluginApi) {
+export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
   let disposed = false;
   let running = false;
   bb.onDispose(() => {
@@ -47,6 +49,7 @@ export function createService(bb: BbPluginApi) {
       new Set(groups.flatMap((group) => group.memberIds)).size;
     return {
       archiveCount: count(result.archive),
+      saveCount: count(result.save),
       deleteCount: count(result.delete),
     };
   }
@@ -61,29 +64,37 @@ export function createService(bb: BbPluginApi) {
     running = true;
     try {
       const policy = await readPolicy();
-      if (policy.archiveAfterDays === null && policy.deleteAfterDays === null)
+      if (
+        policy.archiveAfterDays === null &&
+        policy.saveAfterDays === null &&
+        policy.deleteAfterDays === null
+      )
         return;
       const selected = await candidates(policy);
       const run: Run = {
         ranAt: Date.now(),
         archivedCount: 0,
+        savedCount: 0,
         deletedCount: 0,
         failedCount: 0,
       };
-      for (const action of ["archive", "delete"] as const) {
+      await coldStorage.dropAbandonedSaves();
+      for (const action of ["archive", "save", "delete"] as const) {
         for (const candidate of selected[action].slice(0, BATCH_LIMIT)) {
           if (disposed) return;
           const current = await readPolicy();
           if (disposed) return;
           if (
             current.archiveAfterDays !== policy.archiveAfterDays ||
+            current.saveAfterDays !== policy.saveAfterDays ||
             current.deleteAfterDays !== policy.deleteAfterDays
           )
             break;
           try {
-            const fresh = (await candidates(current))[action].find(
-              (entry) => entry.rootId === candidate.rootId,
-            );
+            const threads = await readThreads(bb);
+            const fresh = selectCandidates(threads, current, Date.now())[
+              action
+            ].find((entry) => entry.rootId === candidate.rootId);
             if (disposed) return;
             if (fresh === undefined) continue;
             if (action === "archive") {
@@ -91,6 +102,20 @@ export function createService(bb: BbPluginApi) {
                 threadId: candidate.rootId,
               });
               run.archivedCount += result.archivedThreadIds.length;
+            } else if (action === "save") {
+              const thread = threads.find(
+                (entry) => entry.id === candidate.rootId,
+              );
+              if (thread === undefined) continue;
+              await coldStorage.save({
+                id: thread.id,
+                projectId: thread.projectId,
+                title: thread.title ?? thread.titleFallback ?? null,
+                providerId: thread.providerId,
+                createdAt: thread.createdAt,
+                archivedAt: thread.archivedAt,
+              });
+              run.savedCount += 1;
             } else {
               await bb.sdk.threads.delete({
                 threadId: candidate.rootId,

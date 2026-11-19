@@ -410,6 +410,8 @@ type ExpectedThreadsKey =
   | "experimental_listPluginMetadata"
   | "experimental_headState"
   | "experimental_regenerateTitle"
+  | "experimental_export"
+  | "experimental_import"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"
