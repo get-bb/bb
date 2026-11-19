@@ -240,7 +240,15 @@ type StorageData = {
   entryCleanups: EntryCleanup[];
   machines: Record<string, Machine>;
   primaryHostId: string | null;
+  coldStorage: ColdThreadList;
 };
+
+const COLD_STORAGE_SUMMARY = {
+  projectId: null,
+  search: null,
+  limit: 1,
+  after: null,
+} as const;
 
 function StoragePanel(props: PluginNavPanelProps) {
   const rpc = useRpc<typeof storageRpc>();
@@ -258,12 +266,15 @@ function StoragePanel(props: PluginNavPanelProps) {
     const revision = stateRevision.current;
     const request = ++refreshRevision.current;
     try {
-      const [state, reports, machines, config] = await Promise.all([
-        rpc.call("state", null),
-        rpc.call("hosts", null),
-        sdk.hosts.list({ type: "persistent" }),
-        sdk.system.config(),
-      ]);
+      const [state, reports, machines, config, coldStorage] = await Promise.all(
+        [
+          rpc.call("state", null),
+          rpc.call("hosts", null),
+          sdk.hosts.list({ type: "persistent" }),
+          sdk.system.config(),
+          rpc.call("coldThreads", COLD_STORAGE_SUMMARY),
+        ],
+      );
       if (request !== refreshRevision.current) return;
       setData((current) => ({
         state:
@@ -275,6 +286,7 @@ function StoragePanel(props: PluginNavPanelProps) {
         entryCleanups: reports.entryCleanups,
         machines: Object.fromEntries(machines.map((host) => [host.id, host])),
         primaryHostId: config.primaryHostId,
+        coldStorage,
       }));
       setLoadError(null);
     } catch (error) {
@@ -460,6 +472,29 @@ function StoragePanel(props: PluginNavPanelProps) {
   useRealtime("policy-changed", () => {
     void refreshPolicy();
   });
+  const coldStorageChanges = useColdStorageChanges();
+  const coldSummaryRequest = useRef(0);
+  useEffect(() => {
+    if (coldStorageChanges === 0) return;
+    const timer = setTimeout(() => {
+      const request = ++coldSummaryRequest.current;
+      rpc
+        .call("coldThreads", COLD_STORAGE_SUMMARY)
+        .then((coldStorage) => {
+          if (request !== coldSummaryRequest.current) return;
+          setData((current) =>
+            current === null ? current : { ...current, coldStorage },
+          );
+        })
+        .catch((error: unknown) => {
+          if (request !== coldSummaryRequest.current) return;
+          toast.error("Couldn’t load cold storage", {
+            description: message(error),
+          });
+        });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [rpc, coldStorageChanges]);
   const connection = useRealtimeConnectionState();
   const previousConnection = useRef(connection);
   useEffect(() => {
@@ -1724,12 +1759,15 @@ function StoragePage({
                 ))}
               </div>
             </section>
-            <ColdStorageSummary
-              policyOn={state?.policy.coldStoreAfterDays != null}
-              onOpen={() =>
-                navigate.toPluginPanel(PANEL, { subPath: COLD_STORAGE_PATH })
-              }
-            />
+            {data && (
+              <ColdStorageSummary
+                summary={data.coldStorage}
+                policyOn={state?.policy.coldStoreAfterDays != null}
+                onOpen={() =>
+                  navigate.toPluginPanel(PANEL, { subPath: COLD_STORAGE_PATH })
+                }
+              />
+            )}
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
@@ -1879,39 +1917,15 @@ function useColdStorageChanges(): number {
 }
 
 function ColdStorageSummary({
+  summary,
   policyOn,
   onOpen,
 }: {
+  summary: ColdThreadList;
   policyOn: boolean;
   onOpen: () => void;
 }) {
-  const rpc = useRpc<typeof storageRpc>();
-  const changes = useColdStorageChanges();
-  const [summary, setSummary] = useState<ColdThreadList | null>(null);
-  const latestRequest = useRef(0);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const request = ++latestRequest.current;
-      rpc
-        .call("coldThreads", {
-          projectId: null,
-          search: null,
-          limit: 1,
-          after: null,
-        })
-        .then((list) => {
-          if (request === latestRequest.current) setSummary(list);
-        })
-        .catch((error: unknown) => {
-          if (request !== latestRequest.current) return;
-          toast.error("Couldn’t load cold storage", {
-            description: message(error),
-          });
-        });
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [rpc, changes]);
-  if (summary === null || (summary.totalCount === 0 && !policyOn)) return null;
+  if (summary.totalCount === 0 && !policyOn) return null;
   const details = [
     ...(summary.lastStoredAt === null
       ? ["Nothing moved yet"]
@@ -2017,8 +2031,11 @@ function ColdStoragePage() {
       });
     }
   }, [fetchPage, search]);
+  const seenChanges = useRef(changes);
   useEffect(() => {
-    const timer = setTimeout(() => void refresh(), 200);
+    const changed = changes !== seenChanges.current;
+    seenChanges.current = changes;
+    const timer = setTimeout(() => void refresh(), changed ? 200 : 0);
     return () => clearTimeout(timer);
   }, [refresh, changes]);
   const showMore = async (current: LoadedColdThreads) => {
@@ -2097,8 +2114,19 @@ function ColdStoragePage() {
       });
     }
   };
-  const list = loaded?.list ?? null;
-  const remaining = list === null ? 0 : list.totalCount - list.threads.length;
+  if (loaded === null) {
+    return (
+      <div className="h-full w-full overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-4 md:px-5 md:pt-5">
+          <DelayedLoading>
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </DelayedLoading>
+        </div>
+      </div>
+    );
+  }
+  const { list } = loaded;
+  const remaining = list.totalCount - list.threads.length;
   return (
     <div className="h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-10 pt-4 md:px-5 md:pt-5">
@@ -2114,15 +2142,13 @@ function ColdStoragePage() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <h1 className="text-base font-semibold">Cold storage</h1>
-                {list !== null && (
-                  <Pill>
-                    {`${
-                      loaded?.search === null
-                        ? plural(list.totalCount, "thread")
-                        : plural(list.totalCount, "match", "matches")
-                    } · ${bytes(list.totalBytes)}`}
-                  </Pill>
-                )}
+                <Pill>
+                  {`${
+                    loaded.search === null
+                      ? plural(list.totalCount, "thread")
+                      : plural(list.totalCount, "match", "matches")
+                  } · ${bytes(list.totalBytes)}`}
+                </Pill>
               </div>
               <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
                 Archived threads moved out of bb’s database into files.
@@ -2140,66 +2166,62 @@ function ColdStoragePage() {
             />
           </div>
         </header>
-        {list === null ? (
-          <Skeleton className="h-40 w-full rounded-lg" />
-        ) : (
-          <section className="space-y-3">
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-              {list.threads.length === 0 && (
-                <p className="px-4 py-3 text-sm text-subtle-foreground">
-                  {loaded?.search === null
-                    ? "Nothing in cold storage yet. Threads moved by the cold storage policy or bb storage cold-store show up here."
-                    : `No threads in cold storage match “${loaded?.search}”.`}
-                </p>
-              )}
-              {list.threads.map((entry) => (
-                <div
-                  key={entry.threadId}
-                  className="flex min-h-14 items-center gap-3 px-4 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
-                      {entry.title ?? "Untitled thread"}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
-                      {entry.state === "stored" && entry.storedAt !== null
-                        ? `Moved ${ago(entry.storedAt)} · ${bytes(entry.fileBytes)}`
-                        : "Moving…"}
-                    </span>
-                  </div>
-                  {entry.state === "stored" && (
-                    <>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => void restore(entry)}
-                      >
-                        Restore
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        aria-label={`Delete ${entry.title ?? "thread"} from cold storage permanently`}
-                        onClick={() => void remove(entry)}
-                      >
-                        <Icon name="Trash2" className="size-4" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-            {loaded !== null && list.hasMore && remaining > 0 && (
-              <button
-                type="button"
-                className={TEXT_BUTTON}
-                onClick={() => void showMore(loaded)}
-              >
-                {`Show ${Math.min(COLD_STORAGE_PAGE, remaining).toLocaleString()} more`}
-              </button>
+        <section className="space-y-3">
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+            {list.threads.length === 0 && (
+              <p className="px-4 py-3 text-sm text-subtle-foreground">
+                {loaded.search === null
+                  ? "Nothing in cold storage yet. Threads moved by the cold storage policy or bb storage cold-store show up here."
+                  : `No threads in cold storage match “${loaded.search}”.`}
+              </p>
             )}
-          </section>
-        )}
+            {list.threads.map((entry) => (
+              <div
+                key={entry.threadId}
+                className="flex min-h-14 items-center gap-3 px-4 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">
+                    {entry.title ?? "Untitled thread"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
+                    {entry.state === "stored" && entry.storedAt !== null
+                      ? `Moved ${ago(entry.storedAt)} · ${bytes(entry.fileBytes)}`
+                      : "Moving…"}
+                  </span>
+                </div>
+                {entry.state === "stored" && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void restore(entry)}
+                    >
+                      Restore
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={`Delete ${entry.title ?? "thread"} from cold storage permanently`}
+                      onClick={() => void remove(entry)}
+                    >
+                      <Icon name="Trash2" className="size-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          {list.hasMore && remaining > 0 && (
+            <button
+              type="button"
+              className={TEXT_BUTTON}
+              onClick={() => void showMore(loaded)}
+            >
+              {`Show ${Math.min(COLD_STORAGE_PAGE, remaining).toLocaleString()} more`}
+            </button>
+          )}
+        </section>
       </div>
     </div>
   );
