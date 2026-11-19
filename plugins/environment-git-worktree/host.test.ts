@@ -274,6 +274,60 @@ describe.concurrent("worktree host entry", () => {
     },
   );
 
+  it("removes a worktree after a conflicted rebase finishes", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-rebased",
+        sourcePath,
+        pathKey: "rebased",
+        branchName: "bb/rebased",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await writeFile(join(created.path, "conflict.txt"), "branch\n");
+    await git(created.path, "add", ".");
+    await git(created.path, "commit", "-m", "branch");
+    const upstream = (await git(created.path, "rev-parse", "HEAD~1")).trim();
+    await git(created.path, "checkout", "-q", "--detach", upstream);
+    await writeFile(join(created.path, "conflict.txt"), "upstream\n");
+    await git(created.path, "add", ".");
+    await git(created.path, "commit", "-m", "upstream");
+    const onto = (await git(created.path, "rev-parse", "HEAD")).trim();
+    await git(created.path, "checkout", "-q", "bb/rebased");
+    await expect(git(created.path, "rebase", onto)).rejects.toThrow();
+    await writeFile(join(created.path, "conflict.txt"), "resolved\n");
+    await git(created.path, "add", ".");
+    await execFileAsync("git", ["rebase", "--continue"], {
+      cwd: created.path,
+      env: { ...process.env, GIT_EDITOR: "true" },
+    });
+    const gitDir = (
+      await git(created.path, "rev-parse", "--absolute-git-dir")
+    ).trim();
+    expect(existsSync(join(gitDir, "REBASE_HEAD"))).toBe(true);
+
+    expect(
+      await harness.experimental_call("remove", {
+        operationId: "remove-rebased",
+        pathKey: "rebased",
+        path: created.path,
+        ownedBranch: {
+          name: "bb/rebased",
+          repositoryPath: sourcePath,
+          baseBranch: created.baseBranch,
+        },
+      }),
+    ).toEqual({ status: "removed" });
+    expect(existsSync(created.path)).toBe(false);
+  });
+
   it.for(["main", "release", "origin/main", "refs/heads/main"])(
     "resolves and fetches a stale named base %s",
     async (base, { onTestFinished }) => {

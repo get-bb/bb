@@ -761,7 +761,6 @@ async function assertNoWorktreeLocalState(
     "MERGE_HEAD",
     "CHERRY_PICK_HEAD",
     "REVERT_HEAD",
-    "REBASE_HEAD",
     "BISECT_START",
     "rebase-merge",
     "rebase-apply",
