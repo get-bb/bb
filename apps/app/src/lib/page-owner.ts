@@ -46,6 +46,14 @@ export function resetRememberedPageOwnersForTest(): void {
   rememberedAtStartup = null;
 }
 
+export function rememberedPageOwnerPluginIds(pathname: string): string[] {
+  const route = pageLocationForPathname(pathname)?.kind;
+  if (route === undefined) return [];
+  return readRememberedPageOwners()
+    .filter((owner) => owner.routes.includes(route))
+    .map((owner) => owner.pluginId);
+}
+
 export type PageOwner =
   | { kind: "page"; slot: PluginPageSlot }
   | { kind: "pending"; chrome: ExperimentalPageChrome };

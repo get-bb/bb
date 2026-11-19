@@ -29,6 +29,7 @@ import {
 } from "@/lib/page-owner";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { PageRoute } from "./PageRoute";
+import { frontendPriorityPluginIds } from "@/lib/plugin-surface-providers";
 
 const coreMounts = vi.hoisted(() => ({ count: 0, renders: 0 }));
 
@@ -191,6 +192,16 @@ describe("PageRoute ownership", () => {
     expect(screen.getByTestId("probe-page").textContent).toBe("home");
     await settleLazyModules();
     expect(coreMounts.count).toBe(0);
+  });
+
+  it("loads a remembered page owner first, only on routes it draws", () => {
+    registerPage("chat", { routes: ["thread"] });
+    rememberPageOwners(true, getPluginSlotSnapshot().pages);
+    resetRememberedPageOwnersForTest();
+
+    expect(frontendPriorityPluginIds("/threads/thr_1")).toContain("chat");
+    expect(frontendPriorityPluginIds("/")).not.toContain("chat");
+    expect(frontendPriorityPluginIds("/settings")).not.toContain("chat");
   });
 
   it("falls back to bb's page when boot settles without the remembered owner", async () => {

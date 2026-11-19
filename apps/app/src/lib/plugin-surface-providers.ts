@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createLastKnownCache } from "@/lib/last-known-cache";
 import { usePluginFrontendBootComplete } from "@/lib/plugin-frontend-boot-state";
 import { getPluginPanelRoutePluginId } from "@/lib/route-paths";
+import { rememberedPageOwnerPluginIds } from "@/lib/page-owner";
 
 const PLUGIN_SURFACES = [
   "composer",
@@ -45,6 +46,7 @@ export function frontendPriorityPluginIds(pathname: string): string[] {
   return [
     ...new Set([
       ...(routePluginId === null ? [] : [routePluginId]),
+      ...rememberedPageOwnerPluginIds(pathname),
       ...expectedSurfaceProviderIds(),
     ]),
   ];
