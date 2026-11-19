@@ -8,6 +8,10 @@ import {
   type EnvironmentsArea,
 } from "./areas/environments.js";
 import { createFilesArea, type FilesArea } from "./areas/files.js";
+import {
+  createAccessArea,
+  type ExperimentalAccessArea,
+} from "./areas/access.js";
 import type { GuideArea } from "./areas/guide.js";
 import { createHostsArea, type HostsArea } from "./areas/hosts.js";
 import {
@@ -47,6 +51,7 @@ export interface CreateBbSdkWithGuideArgs extends CreateBbSdkArgs {
 }
 
 export interface BbSdkAreas extends BbRealtime {
+  experimental_access: ExperimentalAccessArea;
   experimental_desktopBrowsers: ExperimentalDesktopBrowsersArea;
   experimental_promptHistory: ExperimentalPromptHistoryArea;
   experimental_server: ExperimentalServerArea;
@@ -79,6 +84,7 @@ export function createBbSdk(
     transport: args.transport,
   });
   const areas: BbSdkAreas = {
+    experimental_access: createAccessArea(sdkContext),
     experimental_desktopBrowsers: createDesktopBrowsersArea(sdkContext),
     experimental_promptHistory: createPromptHistoryArea(sdkContext),
     experimental_server: createServerArea(sdkContext),

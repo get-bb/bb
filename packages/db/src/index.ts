@@ -23,6 +23,7 @@ export type {
 
 export * from "./schema.js";
 export {
+  createAccessCredentialId,
   createQueuedThreadMessageId,
   createEventId,
   createHostId,

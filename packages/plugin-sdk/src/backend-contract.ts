@@ -992,6 +992,24 @@ export interface PluginHttp {
     handler: ExperimentalPluginWebSocketHandler,
     opts?: { auth?: PluginHttpAuthMode },
   ): void;
+
+  /**
+   * Internal to bb's bundled plugins: who core decided sent a request this
+   * plugin's route is handling. "server-machine": a local process on the
+   * server machine; "signed-in-device": a device holding a bb sign-in;
+   * "connect-session": a browser the bb connect gate signed in; "machine": an
+   * enrolled machine; "oauth": an OAuth client the bb connect gate admitted;
+   * "anonymous": anyone else.
+   */
+  internal_DO_NOT_USE_requestAccess(
+    context: Context,
+  ):
+    | "server-machine"
+    | "signed-in-device"
+    | "connect-session"
+    | "machine"
+    | "oauth"
+    | "anonymous";
 }
 
 export interface PluginRpc {
@@ -2083,6 +2101,17 @@ export interface PluginServerApi {
    * reading it from handlers, services, and timers.
    */
   readonly loopbackBaseUrl: string;
+
+  /**
+   * Internal to bb's bundled plugins: the header and per-start value bb's own
+   * connect tunnel stamps on what it forwards to `loopbackBaseUrl`, so the
+   * server honours the gate's verdict only for tunnelled requests. Throws for
+   * plugins that are not bundled with bb.
+   */
+  readonly internal_DO_NOT_USE_tunnelMarker: {
+    readonly header: string;
+    readonly value: string;
+  };
 
   /**
    * This server's data directory — the one holding `config.json`, `bb.db` and

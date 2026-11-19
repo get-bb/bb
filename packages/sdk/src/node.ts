@@ -96,6 +96,10 @@ export {
 export { BbHttpError } from "./http-error.js";
 export { BbRequestTimeoutError } from "./response.js";
 export {
+  createNodeWebsocketFactory,
+  type CreateNodeWebsocketFactoryArgs,
+} from "./node-websocket.js";
+export {
   pluginMutationResponseSchema,
   type PluginMutationResponse,
 } from "./areas/plugins.js";

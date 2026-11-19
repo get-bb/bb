@@ -1,5 +1,8 @@
+import { createMigratedConnection } from "@bb/db/testing";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import { resolveRequestAccess } from "../src/request-access.js";
+import { createAccessService } from "../src/services/access/access-service.js";
 import {
   captureTrustedRemoteAddress,
   getTrustedRemoteAddress,
@@ -10,26 +13,54 @@ import {
 
 describe("request context", () => {
   it.each([
-    ["/api/v1/threads", "10.0.0.5", "direct"],
-    ["/api/v1/threads", "127.0.0.1", "loopback"],
-    ["/internal/session/events", "10.0.0.5", null],
-  ])("labels %s from %s as %s", async (path, remoteAddress, expected) => {
-    const app = new Hono();
-    app.use("*", async (context, next) => {
-      captureTrustedRemoteAddress(context);
-      await next();
-    });
-    app.all("*", (context) =>
-      context.json({ route: resolveRequestAccessRoute(context) }),
-    );
+    ["/api/v1/threads", "10.0.0.5", {}, "direct"],
+    ["/api/v1/threads", "127.0.0.1", {}, "loopback"],
+    [
+      "/api/v1/threads",
+      "127.0.0.1",
+      { "x-forwarded-for": "10.0.0.5" },
+      "direct",
+    ],
+    [
+      "/api/v1/threads",
+      "127.0.0.1",
+      { "x-bb-tunnel-marker": "marker", "x-bb-gate-auth": "session" },
+      "connect",
+    ],
+    ["/internal/session/events", "10.0.0.5", {}, null],
+  ])(
+    "labels %s from %s with %j as %s",
+    async (path, remoteAddress, headers, expected) => {
+      const access = createAccessService({ db: createMigratedConnection() });
+      const app = new Hono();
+      app.use("*", async (context, next) => {
+        captureTrustedRemoteAddress(context);
+        await resolveRequestAccess(
+          context,
+          {
+            access: {
+              ...access,
+              isTunnelMarker: (value) => value === "marker",
+            },
+            config: { serverPort: 3334 },
+            machineAuth: { verifyDaemonHostKey: async () => null },
+          },
+          getTrustedRemoteAddress(context),
+        );
+        await next();
+      });
+      app.all("*", (context) =>
+        context.json({ route: resolveRequestAccessRoute(context) }),
+      );
 
-    const response = await app.fetch(
-      new Request(`http://example.test${path}`),
-      { incoming: { socket: { remoteAddress } } },
-    );
+      const response = await app.fetch(
+        new Request(`http://127.0.0.1:3334${path}`, { headers }),
+        { incoming: { socket: { remoteAddress } } },
+      );
 
-    await expect(response.json()).resolves.toEqual({ route: expected });
-  });
+      await expect(response.json()).resolves.toEqual({ route: expected });
+    },
+  );
 
   it("captures the trusted remote address from node connection metadata", async () => {
     const app = new Hono();

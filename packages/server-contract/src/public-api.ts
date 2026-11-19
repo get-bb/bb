@@ -435,6 +435,16 @@ import type {
   ServerSweepRetryResponse,
 } from "./api/server-sweeps.js";
 import {
+  redeemAccessPairingRequestSchema,
+  type AccessCredentialListResponse,
+  type AccessPairing,
+  type AccessSessionResponse,
+  type AccessSignOutResponse,
+  type RedeemAccessPairingRequest,
+  type RedeemAccessPairingResponse,
+  type RevokeAccessCredentialResponse,
+} from "./api/access.js";
+import {
   updateUiPreferenceRequestSchema,
   type PathUiPreferenceKey,
   type UiPreferenceResponse,
@@ -457,6 +467,46 @@ type PathThreadBackgroundTaskId = {
 };
 
 export const publicApiRoutes = {
+  access: {
+    session: defineRoute({
+      path: "/access/session",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<AccessSessionResponse>(),
+    }),
+    createPairing: defineRoute({
+      path: "/access/pairings",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<AccessPairing>(),
+    }),
+    redeemPairing: defineRoute({
+      path: "/access/pairings/redeem",
+      method: "post",
+      request: jsonRequest<EmptyInput, RedeemAccessPairingRequest>(
+        redeemAccessPairingRequestSchema,
+      ),
+      response: jsonResponse<RedeemAccessPairingResponse>(),
+    }),
+    listCredentials: defineRoute({
+      path: "/access/credentials",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<AccessCredentialListResponse>(),
+    }),
+    revokeCredential: defineRoute({
+      path: "/access/credentials/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<RevokeAccessCredentialResponse>(),
+    }),
+    signOut: defineRoute({
+      path: "/access/sign-out",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<AccessSignOutResponse>(),
+    }),
+  },
   promptHistory: {
     list: defineRoute({
       path: "/prompt-history",

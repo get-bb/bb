@@ -34,9 +34,9 @@ import {
   operationInProgress,
 } from "../services/lib/operation-response.js";
 import {
-  getGateAuthKind,
-  type RequestHeaderReader,
-} from "../request-context.js";
+  isMachineRequest,
+  type RequestAccessReader,
+} from "../request-access.js";
 import {
   listPublicHostsWithStatus,
   requireNonDestroyedHostWithStatus,
@@ -93,8 +93,8 @@ function requireMutableHost(deps: AppDeps, hostId: string) {
   return host;
 }
 
-function assertHostManagementAllowed(context: RequestHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertHostManagementAllowed(context: RequestAccessReader): void {
+  if (isMachineRequest(context)) {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",

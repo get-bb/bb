@@ -307,6 +307,7 @@ describe("public host management", () => {
             authorization: `Bearer ${issued.joinCode}`,
             "content-type": "application/json",
             "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
             "x-bb-gate-machine-id": "machine-cloud-1",
           },
           body: JSON.stringify({
@@ -345,6 +346,7 @@ describe("public host management", () => {
             authorization: `Bearer ${enrolled.hostKey}`,
             "content-type": "application/json",
             "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
             "x-bb-gate-machine-id": "machine-cloud-2",
           },
           body: JSON.stringify({
@@ -394,6 +396,7 @@ describe("public host management", () => {
           authorization: `Bearer ${issued.joinCode}`,
           "content-type": "application/json",
           "x-bb-gate-auth": "machine",
+          "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
           "x-bb-gate-machine-id": "machine-authenticated",
         },
         body: JSON.stringify({
@@ -419,6 +422,7 @@ describe("public host management", () => {
           headers: {
             "content-type": "application/json",
             "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
           },
           body: JSON.stringify({}),
         }),
@@ -427,42 +431,65 @@ describe("public host management", () => {
           headers: {
             "content-type": "application/json",
             "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
           },
           body: JSON.stringify({ name: "forbidden" }),
         }),
         harness.app.request(`${API}/hosts/${host.id}`, {
           method: "DELETE",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/retry-update`, {
           method: "POST",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/reconnect-commands`, {
           method: "POST",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/suspend`, {
           method: "POST",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/resume`, {
           method: "POST",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/retry-cleanup`, {
           method: "POST",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}?force=true`, {
           method: "DELETE",
-          headers: { "x-bb-gate-auth": "machine" },
+          headers: {
+            "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+          },
         }),
         harness.app.request(`${API}/hosts/${host.id}/permission-ceiling`, {
           method: "PATCH",
           headers: {
             "content-type": "application/json",
             "x-bb-gate-auth": "machine",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
           },
           body: JSON.stringify({ maxPermissionMode: "full" }),
         }),
@@ -517,6 +544,7 @@ describe("public host management", () => {
           headers: {
             "content-type": "application/json",
             "x-bb-gate-auth": "session",
+            "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
           },
           body: JSON.stringify({ maxPermissionMode: "accept-edits" }),
         },

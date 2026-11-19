@@ -19,9 +19,9 @@ import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import { createJobRegistry } from "../services/lib/job-registry.js";
 import {
-  getGateAuthKind,
-  type RequestHeaderReader,
-} from "../request-context.js";
+  isMachineRequest,
+  type RequestAccessReader,
+} from "../request-access.js";
 import { callHostOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   assertUsableHostId,
@@ -37,8 +37,8 @@ import type { AppDeps } from "../types.js";
 const SERVER_EXPORT_WORK_DIR_NAME = "server-export";
 const DELETE_OLD_SERVER_COPY_TIMEOUT_MS = 5 * 60_000;
 
-function assertServerManagementAllowed(context: RequestHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertServerManagementAllowed(context: RequestAccessReader): void {
+  if (isMachineRequest(context)) {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",
@@ -181,7 +181,7 @@ export function registerServerMoveRoutes(
   });
 
   const startDeleteJob = async (
-    context: RequestHeaderReader,
+    context: RequestAccessReader,
     hostId: string,
   ) => {
     assertServerManagementAllowed(context);

@@ -12,7 +12,7 @@ import {
   setMachineEnvironmentVariable,
   deleteMachineEnvironmentVariable,
 } from "../services/machines/environment-storage.js";
-import { getGateAuthKind } from "../request-context.js";
+import { isMachineRequest } from "../request-access.js";
 import {
   countProjectSources,
   findOrCreateProjectByLocalPathSource,
@@ -367,7 +367,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.projects;
   del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",
@@ -382,7 +382,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.setMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",
@@ -402,7 +402,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   put(routes.replaceMachineEnvironment, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",

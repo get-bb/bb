@@ -33,6 +33,7 @@ import {
 } from "@bb/host-daemon/test";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
+import { createAccessService } from "../../../apps/server/src/services/access/access-service.js";
 import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
@@ -330,6 +331,7 @@ async function startIntegrationServer(
     },
   });
   const serverDeps = {
+    access: createAccessService({ db }),
     appUpdate,
     cliCommand: createCliCommandService({
       env: {},

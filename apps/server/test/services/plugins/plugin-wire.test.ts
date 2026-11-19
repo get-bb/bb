@@ -14,6 +14,7 @@ import WebSocket, { type ClientOptions, type RawData } from "ws";
 import {
   createTestAppHarness,
   startTestServer,
+  testDeviceAuthorization,
   type RunningTestServer,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
@@ -278,7 +279,14 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(appOrigin.status).toBe(200);
   });
 
-  it("local auth rejects foreign origins but accepts LAN and configured proxy serving", async () => {
+  it("local auth rejects foreign origins but accepts signed-in LAN and configured proxy serving", async () => {
+    const authorization = testDeviceAuthorization(harness);
+    const anonymousLan = await harness.app.request(
+      "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "http://100.64.158.8:3334" } },
+    );
+    expect(anonymousLan.status).toBe(401);
+
     const foreignOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: EVIL_ORIGIN } },
@@ -297,19 +305,19 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
     const sameOriginLan = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
-      { headers: { origin: "http://100.64.158.8:3334" } },
+      { headers: { authorization, origin: "http://100.64.158.8:3334" } },
     );
     expect(sameOriginLan.status).toBe(200);
 
     const sameOriginReverseProxy = await harness.app.request(
       "https://bb.example.test/api/v1/plugins/wire/http/hello",
-      { headers: { origin: "https://bb.example.test" } },
+      { headers: { authorization, origin: "https://bb.example.test" } },
     );
     expect(sameOriginReverseProxy.status).toBe(200);
 
     const directDev = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
-      { headers: { origin: "http://100.64.158.8:5173" } },
+      { headers: { authorization, origin: "http://100.64.158.8:5173" } },
     );
     expect(directDev.status).toBe(200);
 
@@ -317,6 +325,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       `${BASE}/api/v1/plugins/wire/http/hello`,
       {
         headers: {
+          authorization,
           origin: "http://100.64.158.8:5173",
           "x-forwarded-host": "100.64.158.8:5173",
         },

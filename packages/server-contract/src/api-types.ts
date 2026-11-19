@@ -15,3 +15,4 @@ export * from "./api/thread-files.js";
 export * from "./api/desktop-browsers.js";
 export * from "./api/server-move.js";
 export * from "./api/server-sweeps.js";
+export * from "./api/access.js";

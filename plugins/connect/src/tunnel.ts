@@ -50,6 +50,7 @@ interface ConnectTunnelOptions {
   defaultBaseUrl: string;
   enabled: boolean;
   getLoopbackBaseUrl: () => string;
+  getTunnelMarker: () => { header: string; value: string };
   log: PluginLogger;
   onStatusChange?: (status: ConnectStatus) => void;
 }
@@ -318,6 +319,7 @@ export class ConnectTunnel {
 
   private resolveStreamOrigin(target: string | undefined): StreamOriginResult {
     if (target === undefined) {
+      const marker = this.options.getTunnelMarker();
       return {
         kind: "ok",
         resolved: {
@@ -325,6 +327,7 @@ export class ConnectTunnel {
           publicOrigin: this.identity
             ? new URL(this.identity.serverUrl).origin
             : this.options.getLoopbackBaseUrl(),
+          headers: { [marker.header]: marker.value },
         },
       };
     }

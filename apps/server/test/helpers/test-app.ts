@@ -1,5 +1,6 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
+import { createAccessService } from "../../src/services/access/access-service.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -343,6 +344,7 @@ export async function createTestAppHarness(
   });
   const walCheckpointer = startWalCheckpointer({ logger });
   const deps: ServerAppDeps = {
+    access: createAccessService({ db }),
     appUpdate,
     appVersion,
     bbAppManagedConfig,
@@ -483,4 +485,36 @@ export async function startTestServer(
       await harness.cleanup();
     },
   };
+}
+
+export async function signInTestDevice(baseUrl: string): Promise<string> {
+  const minted = await fetch(new URL("/api/v1/access/pairings", baseUrl), {
+    method: "POST",
+  });
+  const { code }: { code: string } = await minted.json();
+  const redeemed = await fetch(
+    new URL("/api/v1/access/pairings/redeem", baseUrl),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "device", code, label: "test device" }),
+    },
+  );
+  const { token }: { token: string } = await redeemed.json();
+  return token;
+}
+
+export function testDeviceAuthorization(harness: TestAppHarness): string {
+  const { code } = harness.deps.access.createPairing();
+  const result = harness.deps.access.redeemPairing({
+    code,
+    kind: "device",
+    label: "test device",
+    origin: "http://test.invalid",
+    secureOnly: false,
+  });
+  if (result.outcome !== "redeemed") {
+    throw new Error(`test device sign-in failed: ${result.outcome}`);
+  }
+  return `Bearer ${result.token}`;
 }

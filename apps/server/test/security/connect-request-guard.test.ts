@@ -30,7 +30,7 @@ afterEach(async () => {
   await server?.close();
 });
 
-it("carries Connect HTTP and WebSocket requests through the host guard", async () => {
+it("carries Connect HTTP and WebSocket requests through the host guard on the gate's verdict", async () => {
   server = await startTestServer();
   gateway = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(gateway, "listening");
@@ -44,12 +44,17 @@ it("carries Connect HTTP and WebSocket requests through the host guard", async (
   await once(client, "open");
   const relay = await connected;
   const baseUrl = server.baseUrl;
+  const marker = server.deps.access.tunnelMarker;
   session = new TunnelSession({
     tunnel: client,
     log: { warn: () => {} },
     resolveOrigin: () => ({
       kind: "ok",
-      resolved: { origin: baseUrl, publicOrigin: "https://bee.getbb.app" },
+      resolved: {
+        origin: baseUrl,
+        publicOrigin: "https://bee.getbb.app",
+        headers: { "x-bb-tunnel-marker": marker },
+      },
     }),
   });
   session.start();
@@ -60,6 +65,8 @@ it("carries Connect HTTP and WebSocket requests through the host guard", async (
     ["Origin", "https://bee.getbb.app"],
     ["X-Forwarded-Host", "bee.getbb.app"],
     ["X-Forwarded-Proto", "https"],
+    ["x-bb-gate-auth", "session"],
+    ["x-bb-tunnel-marker", "client-guess"],
   ];
   relay.send(
     encodeFrame({
@@ -84,7 +91,10 @@ it("carries Connect HTTP and WebSocket requests through the host guard", async (
       streamId: 2,
       method: "GET",
       path: "/api/v1/threads",
-      headers: [["Host", "bee.getbb.app"]],
+      headers: [
+        ["Host", "bee.getbb.app"],
+        ["X-Forwarded-For", "203.0.113.9"],
+      ],
       hasBody: false,
     }),
   );
@@ -94,7 +104,7 @@ it("carries Connect HTTP and WebSocket requests through the host guard", async (
         (frame) => frame.type === "resp-head" && frame.streamId === 2,
       ),
     )
-    .toMatchObject({ status: 200 });
+    .toMatchObject({ status: 401 });
   relay.send(
     encodeFrame({
       type: "open-ws",
@@ -120,6 +130,7 @@ it("carries Connect HTTP and WebSocket requests through the host guard", async (
       headers: [
         ["Host", "bee.getbb.app"],
         ["Origin", "https://attacker.example"],
+        ["x-bb-gate-auth", "session"],
       ],
       hasBody: false,
     }),

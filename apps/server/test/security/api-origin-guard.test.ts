@@ -2,6 +2,7 @@ import http from "node:http";
 import { createNodeBbSdk } from "@bb/sdk/node";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  signInTestDevice,
   startTestServer,
   type RunningTestServer,
 } from "../helpers/test-app.js";
@@ -123,8 +124,10 @@ describe("/api/v1 browser origin guard", () => {
 
   it("does not trust an attacker origin through forwarded headers", async () => {
     server = await startTestServer();
+    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         host: new URL(server.baseUrl).host,
         origin: "https://attacker.example",
         "x-forwarded-host": "attacker.example",
@@ -214,6 +217,7 @@ describe("/api/v1 browser origin guard", () => {
   it("accepts direct IP access and a configured Tailscale proxy", async () => {
     server = await startTestServer({ appUrl: "https://box.ts.net" });
     const port = new URL(server.baseUrl).port;
+    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
 
     for (const host of [
       `192.168.1.5:${port}`,
@@ -221,11 +225,14 @@ describe("/api/v1 browser origin guard", () => {
       `[2001:db8::5]:${port}`,
       "box.ts.net",
     ]) {
-      expect(await rawStatus(server.baseUrl, { host })).toBe(200);
+      expect(await rawStatus(server.baseUrl, { authorization, host })).toBe(
+        200,
+      );
     }
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://192.168.1.5:${port}`,
         host: `192.168.1.5:${port}`,
       }),
@@ -233,6 +240,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: "https://box.ts.net",
         host: "box.ts.net",
         "x-forwarded-proto": "https",
@@ -241,6 +249,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: "https://box.ts.net",
         host: `127.0.0.1:${port}`,
         "x-forwarded-host": "box.ts.net",
@@ -250,6 +259,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://192.168.1.5:${port}`,
         host: `127.0.0.1:${port}`,
         "x-forwarded-host": `192.168.1.5:${port}`,
@@ -258,6 +268,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://[::1]:${port}`,
         host: `[::1]:${port}`,
       }),

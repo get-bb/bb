@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import {
+  testDeviceAuthorization,
   type TestAppHarnessConfigOverrides,
   withTestHarness,
 } from "../helpers/test-app.js";
@@ -12,7 +13,9 @@ async function readServerUrl(
   headers?: Record<string, string>,
 ): Promise<string> {
   return withTestHarness(overrides, async (harness) => {
-    const response = await harness.app.request(request, { headers });
+    const response = await harness.app.request(request, {
+      headers: { authorization: testDeviceAuthorization(harness), ...headers },
+    });
     const config = systemConfigResponseSchema.parse(await readJson(response));
     return config.serverUrl;
   });

@@ -41,6 +41,11 @@ import {
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import { declineWebSocketCompression } from "../ws/compression.js";
 import {
+  getRequestAccess,
+  isAuthenticatedAccess,
+  UNAUTHENTICATED_MESSAGE,
+} from "../request-access.js";
+import {
   hashedAssetCacheControl,
   pluginImageResponse,
 } from "./plugin-image-response.js";
@@ -60,7 +65,10 @@ interface PluginRoutesDeps {
   db: import("@bb/db").DbConnection;
 }
 
-type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
+type LocalAuthProblem =
+  | BrowserRequestProblem
+  | { status: 401; code: "unauthenticated"; error: string };
+type WireAuthProblem = LocalAuthProblem | { status: 401; error: string };
 type UpgradeWebSocket = ReturnType<
   typeof createNodeWebSocket
 >["upgradeWebSocket"];
@@ -209,7 +217,14 @@ function parsePluginMentionTrigger(
 function localAuthProblem(
   context: Context,
   deps: PluginRoutesDeps,
-): BrowserRequestProblem | null {
+): LocalAuthProblem | null {
+  if (!isAuthenticatedAccess(getRequestAccess(context))) {
+    return {
+      status: 401,
+      code: "unauthenticated",
+      error: UNAUTHENTICATED_MESSAGE,
+    };
+  }
   return browserRequestProblem(context, deps, {
     requireJsonForMutation: true,
   });

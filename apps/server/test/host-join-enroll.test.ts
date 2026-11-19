@@ -127,6 +127,7 @@ describe("host enroll routes", () => {
         headers: {
           "content-type": "application/json",
           "x-bb-gate-auth": "machine",
+          "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
         },
         body: JSON.stringify({ hostId: "host_forbidden_machine" }),
       });

@@ -89,6 +89,23 @@ describe("MCP route", () => {
     }
   });
 
+  it("refuses a LAN caller without a sign-in before any MCP handling", async () => {
+    const { host } = await load(SIGNED_OUT);
+    const response = await host.harness.fetchHttp(
+      "POST",
+      "http://192.168.1.20:38886/mcp",
+      mcpRequest({}),
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "unauthenticated" });
+    const signedIn = await host.harness.fetchHttp(
+      "POST",
+      "http://192.168.1.20:38886/mcp",
+      mcpRequest({ authorization: "Bearer bbs_device-token" }),
+    );
+    expect(signedIn.status).toBe(200);
+  });
+
   it("refuses web pages and gate callers that are not OAuth clients before any MCP handling", async () => {
     const { host } = await load(SIGNED_OUT);
     const refused: Record<string, string>[] = [

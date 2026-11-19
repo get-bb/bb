@@ -903,6 +903,26 @@ function createFakePluginHostInternal(
       );
       websocketRoutes.push({ ...route, handler });
     },
+    internal_DO_NOT_USE_requestAccess(context) {
+      assertLive();
+      switch (context.req.header("x-bb-gate-auth")) {
+        case "session":
+          return "connect-session";
+        case "machine":
+          return "machine";
+        case "oauth":
+          return "oauth";
+      }
+      if (context.req.header("authorization")?.startsWith("Bearer bbs_")) {
+        return "signed-in-device";
+      }
+      const hostname = new URL(context.req.url).hostname;
+      return hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "[::1]"
+        ? "server-machine"
+        : "anonymous";
+    },
   };
 
   // --- rpc ---
@@ -1187,6 +1207,10 @@ function createFakePluginHostInternal(
     get loopbackBaseUrl(): string {
       assertLive();
       return loopbackBaseUrl;
+    },
+    get internal_DO_NOT_USE_tunnelMarker() {
+      assertLive();
+      return { header: "x-bb-tunnel-marker", value: "fake-tunnel-marker" };
     },
     get experimental_dataDir(): string {
       assertLive();

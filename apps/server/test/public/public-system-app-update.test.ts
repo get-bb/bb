@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { SystemAppUpdateStatus } from "@bb/server-contract";
 import type { AppUpdateServiceStatus } from "../../src/services/system/app-update.js";
 import { readJson } from "../helpers/json.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1/system/app-update";
-const MACHINE_HEADERS = { "x-bb-gate-auth": "machine" };
+function machineHeaders(harness: TestAppHarness): Record<string, string> {
+  return {
+    "x-bb-gate-auth": "machine",
+    "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+  };
+}
 
 describe("/api/v1/system/app-update", () => {
   it("reports in-app updates as unavailable when bb runs without the launcher shim", () =>
@@ -85,25 +90,34 @@ describe("/api/v1/system/app-update", () => {
       const responses = await Promise.all([
         harness.app.request(`${API}/apply`, {
           body: JSON.stringify({ confirmInterruptingThreads: true }),
-          headers: { ...MACHINE_HEADERS, "content-type": "application/json" },
+          headers: {
+            ...machineHeaders(harness),
+            "content-type": "application/json",
+          },
           method: "POST",
         }),
         harness.app.request(`${API}/acknowledge`, {
           body: JSON.stringify({ id: "result-1" }),
-          headers: { ...MACHINE_HEADERS, "content-type": "application/json" },
+          headers: {
+            ...machineHeaders(harness),
+            "content-type": "application/json",
+          },
           method: "POST",
         }),
         harness.app.request(`${API}/schedule`, {
-          headers: MACHINE_HEADERS,
+          headers: machineHeaders(harness),
           method: "POST",
         }),
         harness.app.request(`${API}/schedule/cancel`, {
-          headers: MACHINE_HEADERS,
+          headers: machineHeaders(harness),
           method: "POST",
         }),
         harness.app.request(`${API}/auto`, {
           body: JSON.stringify({ enabled: true }),
-          headers: { ...MACHINE_HEADERS, "content-type": "application/json" },
+          headers: {
+            ...machineHeaders(harness),
+            "content-type": "application/json",
+          },
           method: "POST",
         }),
       ]);
@@ -138,7 +152,7 @@ describe("/api/v1/system/app-update", () => {
       },
       async (harness) => {
         await harness.app.request(`${API}?force=true`, {
-          headers: MACHINE_HEADERS,
+          headers: machineHeaders(harness),
         });
         await harness.app.request(`${API}?force=true`);
       },

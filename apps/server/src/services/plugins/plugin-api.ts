@@ -142,6 +142,7 @@ import {
 } from "./plugin-rpc-caller.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import type { PluginEventLog } from "./plugin-log.js";
+import { getRequestAccess } from "../../request-access.js";
 import {
   readPluginSettingsValues,
   writePluginSettingsUpdate,
@@ -516,6 +517,7 @@ export function createPluginApi(options: {
   getSdk: () => BbSdk | undefined;
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
+  tunnelMarker: { header: string; value: string } | null;
   getLoopbackBaseUrl: () => string | undefined;
   /**
    * This load's rpc caller token, attached to the plugin's
@@ -592,6 +594,7 @@ export function createPluginApi(options: {
     walCheckpointer,
     getSdk,
     getAppUrl,
+    tunnelMarker,
     getLoopbackBaseUrl,
     rpcCaller,
     publishSignal,
@@ -887,6 +890,22 @@ export function createPluginApi(options: {
         sockets: new Set(),
       });
     },
+    internal_DO_NOT_USE_requestAccess(context) {
+      assertLive();
+      const access = getRequestAccess(context);
+      switch (access.kind) {
+        case "owner":
+          return access.via === "local"
+            ? "server-machine"
+            : access.via === "credential"
+              ? "signed-in-device"
+              : "connect-session";
+        case "machine":
+        case "oauth":
+        case "anonymous":
+          return access.kind;
+      }
+    },
   };
 
   const rpc: PluginRpc = {
@@ -1092,6 +1111,15 @@ export function createPluginApi(options: {
         );
       }
       return baseUrl;
+    },
+    get internal_DO_NOT_USE_tunnelMarker(): { header: string; value: string } {
+      assertLive();
+      if (tunnelMarker === null) {
+        throw new Error(
+          "bb.server.internal_DO_NOT_USE_tunnelMarker is only available to plugins bundled with bb",
+        );
+      }
+      return tunnelMarker;
     },
     get experimental_dataDir(): string {
       assertLive();

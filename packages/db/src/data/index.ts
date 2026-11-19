@@ -1,3 +1,4 @@
+export * from "./access-credentials.js";
 export * from "./app-settings.js";
 export * from "./app-theme.js";
 export * from "./auth-api-keys.js";

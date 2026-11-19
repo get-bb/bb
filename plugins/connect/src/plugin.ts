@@ -87,6 +87,7 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       defaultBaseUrl: resolveDefaultConnectBaseUrl(process.env),
       enabled: currentSettings.remoteAccess,
       getLoopbackBaseUrl,
+      getTunnelMarker: () => bb.server.internal_DO_NOT_USE_tunnelMarker,
       log: bb.log,
       onStatusChange: (status) => {
         bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);

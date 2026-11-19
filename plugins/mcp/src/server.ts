@@ -93,10 +93,16 @@ export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
       method,
       MCP_ROUTE_PATH,
       async (context) => {
-        const problem = mcpAccessProblem(context.req.raw.headers);
+        const problem = mcpAccessProblem(
+          context.req.raw.headers,
+          bb.http.internal_DO_NOT_USE_requestAccess(context),
+        );
         if (problem !== null) {
           return Response.json(
-            { error: "forbidden", message: problem.message },
+            {
+              error: problem.status === 401 ? "unauthenticated" : "forbidden",
+              message: problem.message,
+            },
             { status: problem.status },
           );
         }

@@ -40,6 +40,7 @@ import type {
   QueuedMessageWaitHolder,
   ReasoningLevel,
   ServerRouteKind,
+  AccessCredentialKind,
   ServiceTier,
   SystemThreadInterruptedReason,
   TerminalSessionCloseReason,
@@ -101,6 +102,23 @@ export const authApiKeys = sqliteTable(
     uniqueIndex("apikey_key_unique").on(table.key),
     index("apikey_reference_id_idx").on(table.referenceId),
     index("apikey_config_id_idx").on(table.configId),
+  ],
+);
+
+export const accessCredentials = sqliteTable(
+  "access_credentials",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").$type<AccessCredentialKind>().notNull(),
+    label: text("label").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    secureOnly: integer("secure_only", { mode: "boolean" }).notNull(),
+    origin: text("origin").notNull(),
+    createdAt: integer("created_at").notNull(),
+    lastUsedAt: integer("last_used_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("access_credentials_token_hash_unique").on(table.tokenHash),
   ],
 );
 

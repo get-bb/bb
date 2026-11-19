@@ -18,8 +18,11 @@ function decodeWsMessageData(data: RawData): string {
   return Buffer.from(new Uint8Array(data)).toString("utf8");
 }
 
-export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
-  const socket = new NodeWsWebSocket(url);
+export function wrapNodeWsWebsocket(
+  url: string,
+  headers: Readonly<Record<string, string>> = {},
+): BbRealtimeSocket {
+  const socket = new NodeWsWebSocket(url, { headers });
   const adapter = createRealtimeSocketAdapter(socket);
   socket.on("open", () => adapter.onopen?.());
   socket.on("message", (data) =>
@@ -30,8 +33,18 @@ export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
   return adapter;
 }
 
-export function createNodeWebsocketFactory(): BbRealtimeSocketFactory {
+export interface CreateNodeWebsocketFactoryArgs {
+  headers?: (url: string) => Readonly<Record<string, string>>;
+}
+
+export function createNodeWebsocketFactory(
+  args: CreateNodeWebsocketFactoryArgs = {},
+): BbRealtimeSocketFactory {
   return (url) => {
+    const headers = args.headers?.(url) ?? {};
+    if (Object.keys(headers).length > 0) {
+      return wrapNodeWsWebsocket(url, headers);
+    }
     if (typeof WebSocket !== "undefined") {
       return wrapStandardWebsocket(new WebSocket(url));
     }

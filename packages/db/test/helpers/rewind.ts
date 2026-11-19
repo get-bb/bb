@@ -166,6 +166,10 @@ export function dropPluginFailureLabelColumns(db: DbConnection): void {
   }
 }
 
+export function dropAccessCredentialsTable(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS access_credentials");
+}
+
 export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(hosts)")

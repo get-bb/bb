@@ -3,6 +3,7 @@ import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import {
+  signInTestDevice,
   startTestServer,
   type RunningTestServer,
 } from "../helpers/test-app.js";
@@ -116,6 +117,7 @@ describe("browser WebSocket origin boundary", () => {
   it("accepts direct IP and configured proxy WebSocket hosts", async () => {
     server = await startTestServer({ appUrl: "https://box.ts.net" });
     const port = new URL(server.baseUrl).port;
+    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
     for (const origin of [
       `http://192.168.1.5:${port}`,
       `http://[::1]:${port}`,
@@ -125,6 +127,7 @@ describe("browser WebSocket origin boundary", () => {
         websocketUrl(server.baseUrl, "/ws"),
         origin,
         {
+          authorization,
           host: new URL(origin).host,
           "x-forwarded-proto": new URL(origin).protocol.slice(0, -1),
         },
@@ -135,6 +138,7 @@ describe("browser WebSocket origin boundary", () => {
       websocketUrl(server.baseUrl, "/ws"),
       "https://box.ts.net",
       {
+        authorization,
         host: new URL(server.baseUrl).host,
         "x-forwarded-host": "box.ts.net",
         "x-forwarded-proto": "https",

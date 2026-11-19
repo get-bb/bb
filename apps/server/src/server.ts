@@ -31,9 +31,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
+  APP_SHELL_ACCESS_ELEMENT_ID,
   APP_SHELL_PLUGIN_LIST_ELEMENT_ID,
+  type AppShellAccessState,
   terminalWebSocketQuerySchema,
   type PluginListResponse,
 } from "@bb/server-contract";
@@ -93,9 +95,21 @@ import {
 } from "./internal/auth.js";
 import {
   captureTrustedRemoteAddress,
+  getTrustedRemoteAddress,
   resolveRequestAccessRoute,
   resolveRequestAppSurface,
 } from "./request-context.js";
+import {
+  CREDENTIAL_REQUIRES_HTTPS_MESSAGE,
+  getRequestAccess,
+  isAuthenticatedAccess,
+  requiresAuthenticatedAccess,
+  resolveRequestAccess,
+  TUNNEL_MARKER_HEADER_NAME,
+  UNAUTHENTICATED_MESSAGE,
+} from "./request-access.js";
+import { registerAccessRoutes } from "./routes/access.js";
+import { trackCredentialSocket } from "./ws/credential-sockets.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { runWithTelemetryRequest } from "./services/system/telemetry.js";
 import {
@@ -302,18 +316,17 @@ const STATIC_MIME_TYPES: Record<string, string> = {
 export function registerStaticAppRoutes(
   app: Hono,
   staticDir: string,
-  renderShellHead: () => string,
+  renderShellHead: (context: Context) => string,
 ): void {
   const root = resolve(staticDir);
   const shellPath = join(root, "index.html");
 
-  const serveAppShell = async (
-    ifNoneMatchHeader: string | undefined,
-  ): Promise<Response> => {
+  const serveAppShell = async (context: Context): Promise<Response> => {
+    const ifNoneMatchHeader = context.req.header("if-none-match");
     const template = await readFile(shellPath, "utf8");
     const html = template.replace(
       "</head>",
-      () => `${renderShellHead()}</head>`,
+      () => `${renderShellHead(context)}</head>`,
     );
     const etag = `W/"${createHash("sha256").update(html).digest("hex").slice(0, 32)}"`;
     const headers = new Headers();
@@ -360,14 +373,13 @@ export function registerStaticAppRoutes(
   };
 
   app.get("*", async (context) => {
-    const ifNoneMatchHeader = context.req.header("if-none-match");
     const urlPath = context.req.path === "/" ? "/index.html" : context.req.path;
     const filePath = join(root, urlPath);
     if (!filePath.startsWith(root)) {
       return context.notFound();
     }
     if (filePath === shellPath) {
-      return serveAppShell(ifNoneMatchHeader);
+      return serveAppShell(context);
     }
     try {
       const fileStat = await stat(filePath);
@@ -384,7 +396,7 @@ export function registerStaticAppRoutes(
     if (urlPath.startsWith("/assets/")) {
       return context.notFound();
     }
-    return serveAppShell(ifNoneMatchHeader);
+    return serveAppShell(context);
   });
 }
 
@@ -503,6 +515,7 @@ export function createApp(
   });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
+    await resolveRequestAccess(context, deps, getTrustedRemoteAddress(context));
     return runWithTelemetryRequest(
       {
         appSurface: resolveRequestAppSurface(context),
@@ -543,6 +556,21 @@ export function createApp(
     return compressResponse(context, async () => {
       await compressApiJson(context, next);
     });
+  });
+  app.use("*", async (context, next) => {
+    if (!requiresAuthenticatedAccess(context.req.method, context.req.path)) {
+      return next();
+    }
+    const access = getRequestAccess(context);
+    if (isAuthenticatedAccess(access)) return next();
+    if (access.kind === "anonymous" && access.problem !== null) {
+      throw new ApiError(
+        401,
+        access.problem,
+        CREDENTIAL_REQUIRES_HTTPS_MESSAGE,
+      );
+    }
+    throw new ApiError(401, "unauthenticated", UNAUTHENTICATED_MESSAGE);
   });
   app.onError(createServerErrorHandler(deps.logger));
   app.get("/health", async (context) => {
@@ -773,6 +801,10 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     getAppUrl: () => deps.config.appUrl ?? null,
+    tunnelMarker: {
+      header: TUNNEL_MARKER_HEADER_NAME,
+      value: deps.access.tunnelMarker,
+    },
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
     pluginHostArtifacts: deps.pluginHostArtifacts,
@@ -940,6 +972,7 @@ export function createApp(
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
   registerServerSweepRoutes(publicApi, deps);
+  registerAccessRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -979,11 +1012,18 @@ export function createApp(
     "/ws",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
+      const credentialSocket = trackCredentialSocket(deps.access, context);
       return {
-        onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
+        onOpen: (_event, socket) => {
+          credentialSocket.opened(socket);
+          onClientSocketOpen(deps.hub, socket);
+        },
         onMessage: (event, socket) =>
           onClientSocketMessage(deps.hub, socket, event.data),
-        onClose: (_event, socket) => onClientSocketClose(deps.hub, socket),
+        onClose: (_event, socket) => {
+          credentialSocket.closed();
+          onClientSocketClose(deps.hub, socket);
+        },
       };
     }),
   );
@@ -1008,25 +1048,30 @@ export function createApp(
           "Terminal websocket sinceSeq must be a non-negative integer and outputAcks must be 0 or 1",
         );
       }
+      const credentialSocket = trackCredentialSocket(deps.access, context);
       return {
-        onOpen: (_event, socket) =>
+        onOpen: (_event, socket) => {
+          credentialSocket.opened(socket);
           onTerminalSocketOpen(deps, {
             outputAcks: query.data.outputAcks,
             socket,
             sinceSeq: query.data.sinceSeq,
             terminalId,
-          }),
+          });
+        },
         onMessage: (event, socket) =>
           onTerminalSocketMessage(deps, {
             raw: event.data,
             socket,
             terminalId,
           }),
-        onClose: (_event, socket) =>
+        onClose: (_event, socket) => {
+          credentialSocket.closed();
           onTerminalSocketClose(deps, {
             socket,
             terminalId,
-          }),
+          });
+        },
       };
     }),
   );
@@ -1057,10 +1102,14 @@ export function createApp(
   );
 
   if (options?.staticDir) {
-    registerStaticAppRoutes(app, options.staticDir, () =>
-      renderJsonScriptElement(APP_SHELL_PLUGIN_LIST_ELEMENT_ID, {
-        plugins: pluginService.list(),
-      } satisfies PluginListResponse),
+    registerStaticAppRoutes(app, options.staticDir, (context) =>
+      isAuthenticatedAccess(getRequestAccess(context))
+        ? renderJsonScriptElement(APP_SHELL_PLUGIN_LIST_ELEMENT_ID, {
+            plugins: pluginService.list(),
+          } satisfies PluginListResponse)
+        : renderJsonScriptElement(APP_SHELL_ACCESS_ELEMENT_ID, {
+            authenticated: false,
+          } satisfies AppShellAccessState),
     );
   } else {
     app.get("/", (context) => context.text("bb server"));
