@@ -6,7 +6,7 @@ const PAIRING_TIMEOUT_MS = 8000;
 const ACCESS_LABEL_MAX_LENGTH = 80;
 
 export const DIRECT_SIGN_IN_HELP =
-  "This bb needs a sign-in code. On the server machine run `bb access pair`, or open Settings → Devices on a signed-in browser.";
+  "This bb needs a sign-in code. On the server machine run “bb access pair”, or open Settings → Devices on a signed-in browser.";
 
 const redeemedSchema = z.object({
   kind: z.literal("device"),

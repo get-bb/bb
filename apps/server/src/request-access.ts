@@ -12,7 +12,7 @@ export const TUNNEL_MARKER_HEADER_NAME = "x-bb-tunnel-marker";
 const GATE_HEADER_PREFIX = "x-bb-gate-";
 const REQUEST_ACCESS_CONTEXT_KEY = "bbRequestAccess";
 export const UNAUTHENTICATED_MESSAGE =
-  "Sign in to this bb first: open it in a browser and enter a pairing code from `bb access pair` on the server machine or Settings → Devices on a signed-in device.";
+  "Sign in to this bb first: get a pairing code from `bb access pair` on the server machine or Settings → Devices on a signed-in device, then enter it on bb's sign-in screen (reload any open bb page) or run `bb access login --code <code>`.";
 export const CREDENTIAL_REQUIRES_HTTPS_MESSAGE =
   "This sign-in was made over HTTPS and is not accepted over plain HTTP. Use the HTTPS address, or sign in again on this address.";
 

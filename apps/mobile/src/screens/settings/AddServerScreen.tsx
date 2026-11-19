@@ -65,7 +65,7 @@ export function AddServerScreen() {
           phase: "needs-code",
           serverUrl: repair.serverUrl,
           message:
-            "Enter a new sign-in code. On the server machine run `bb access pair`, or open Settings → Devices on a signed-in browser.",
+            "Enter a new sign-in code. On the server machine run “bb access pair”, or open Settings → Devices on a signed-in browser.",
         },
   );
   const labelRef = useRef<TextInputInstance>(null);
