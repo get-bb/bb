@@ -159,11 +159,14 @@ function healthResult(args: {
   };
 }
 
-async function readAcpCliVersion(command: string): Promise<string | null> {
+async function readAcpCliVersion(
+  command: string,
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
   try {
     const { stdout, stderr } = await execPortableFile(command, ["--version"], {
       cwd: process.cwd(),
-      env: process.env,
+      env,
       maxBuffer: 1024 * 1024,
       timeout: 5_000,
     });
@@ -183,6 +186,7 @@ async function readAcpCliVersion(command: string): Promise<string | null> {
 export async function getAcpProviderHealth(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  env: NodeJS.ProcessEnv;
 }): Promise<ProviderHealthResult> {
   const maintenance = args.maintenance;
   if (args.command === null) {
@@ -192,10 +196,10 @@ export async function getAcpProviderHealth(args: {
       statusMessage: "The ACP provider has no launch command.",
     });
   }
-  if ((await resolveExecutablePath(args.command)) === null) {
+  if ((await resolveExecutablePath(args.command, args.env)) === null) {
     return healthResult({ maintenance, status: "not_installed" });
   }
-  const version = await readAcpCliVersion(args.command);
+  const version = await readAcpCliVersion(args.command, args.env);
   if (maintenance === undefined) {
     return healthResult({
       maintenance,
@@ -224,14 +228,17 @@ export async function getAcpProviderHealth(args: {
 export async function getAcpProviderInstallationStatus(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  env: NodeJS.ProcessEnv;
 }): Promise<ProviderInstallationStatus> {
   const executableName = args.command ?? "";
   const resolvedExecutable =
-    args.command === null ? null : await resolveExecutablePath(args.command);
+    args.command === null
+      ? null
+      : await resolveExecutablePath(args.command, args.env);
   const installed = resolvedExecutable !== null;
   const currentVersion =
     installed && args.command !== null
-      ? await readAcpCliVersion(args.command)
+      ? await readAcpCliVersion(args.command, args.env)
       : null;
   const installAction =
     args.maintenance !== undefined && !installed
@@ -260,6 +267,7 @@ export async function getAcpProviderInstallationStatus(args: {
 export async function getAcpProviderInstallationRun(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  env: NodeJS.ProcessEnv;
   action: "install" | "update";
 }): Promise<ProviderInstallationRunResult> {
   const status = await getAcpProviderInstallationStatus(args);
@@ -406,7 +414,7 @@ export async function getAcpProviderUsage(args: {
   if (readUsage === undefined) return { supported: false };
   if (
     args.command === null ||
-    (await resolveExecutablePath(args.command)) === null
+    (await resolveExecutablePath(args.command, args.env)) === null
   ) {
     return { supported: true, usage: { status: "not_installed" } };
   }

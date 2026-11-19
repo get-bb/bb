@@ -443,8 +443,9 @@ it("a steer still queued when the run ends is reported dropped through the deliv
   ).toBe(false);
 }, 90_000);
 
-it("recovers from one transient model mismatch by respawning", async () => {
+it("recovers from one transient login miss by respawning", async () => {
   const catalog = await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(catalog.error).toBeUndefined();
@@ -453,7 +454,7 @@ it("recovers from one transient model mismatch by respawning", async () => {
     "FAKE_PI_SPAWN_COUNTER_FILE",
     join(harness.workspaceDir, "spawns"),
   );
-  vi.stubEnv("FAKE_PI_MISMATCH_FIRST_SPAWN", "1");
+  vi.stubEnv("FAKE_PI_NO_MODELS_FIRST_SPAWN", "1");
   const threadId = "thr_r2_mismatch";
   const response = await harness.startThread(threadId, {
     options: { ...FULL_PERMISSION_OPTIONS, model: "fake-provider/fake-mini" },
@@ -505,6 +506,7 @@ it("a child whose extension never reports ready is a construction error, not a h
 it("evicts an idle catalog child", async () => {
   vi.stubEnv("BB_PI_CATALOG_IDLE_MS", "300");
   const models = await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(models.error, JSON.stringify(models)).toBeUndefined();
@@ -520,6 +522,7 @@ it("evicts an idle catalog child", async () => {
   }
   expect(harness.readProcessLog().exited).toContain(spawned[0]);
   await harness.request((nextId += 1), "model/list", {
+    envVars: {},
     cwd: harness.workspaceDir,
   });
   expect(harness.readProcessLog().spawned).toHaveLength(2);

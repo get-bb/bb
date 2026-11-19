@@ -132,7 +132,7 @@ input.on("line", (line) => {
       } else {
         send(
           "model/list",
-          { providerOptions: providerOptions(readyFile, true) },
+          { envVars: {}, providerOptions: providerOptions(readyFile, true) },
           1,
         );
       }
@@ -154,7 +154,7 @@ input.on("line", (line) => {
       ) {
         send(
           "model/list",
-          { providerOptions: providerOptions(lateFile, true) },
+          { envVars: {}, providerOptions: providerOptions(lateFile, true) },
           2,
         );
       }

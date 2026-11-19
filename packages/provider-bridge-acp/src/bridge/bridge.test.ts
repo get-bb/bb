@@ -443,6 +443,7 @@ function sendModelList(
 ): number {
   const { modelLines, cwd, selectedModel, ...launch } = args;
   return sendRequest("model/list", {
+    envVars: {},
     ...(selectedModel === undefined ? {} : { selectedModel }),
     ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
@@ -772,8 +773,8 @@ describe("acp bridge", () => {
     ).toEqual(["low", "medium", "high"]);
   });
 
-  it("answers a minimal model/list (no params) with the synthetic default", async () => {
-    const modelListId = sendRequest("model/list", {});
+  it("answers a minimal model/list (no launch spec) with the synthetic default", async () => {
+    const modelListId = sendRequest("model/list", { envVars: {} });
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [
         { id: "acp-default", isDefault: true, supportedServiceTiers: [] },

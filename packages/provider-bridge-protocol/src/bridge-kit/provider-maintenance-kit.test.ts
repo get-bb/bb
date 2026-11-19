@@ -1,16 +1,20 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  commandOutput,
   compareVersions,
   downloadedInstallerCommand,
   formatCommand,
   installationVerification,
   npmGlobalInstallSource,
   readCliVersion,
+  resolveExecutablePath,
   versionFrom,
 } from "./provider-maintenance-kit.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("provider maintenance kit", () => {
   it("reads a CLI version through a native launcher after closing stdin", async () => {
@@ -32,11 +36,45 @@ describe("provider maintenance kit", () => {
           : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${script.replaceAll("'", "'\\''")}' "$@"\n`,
         { mode: 0o755 },
       );
-      expect(await readCliVersion(executable)).toBe("1.2.3");
+      expect(await readCliVersion(executable, process.env)).toBe("1.2.3");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  it.skipIf(process.platform === "win32")(
+    "probes with the bridge's own env when a caller passes none",
+    async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "bb-cli-probe-env-"));
+      try {
+        const executable = path.join(dir, "probe-cli");
+        await writeFile(
+          executable,
+          '#!/bin/sh\necho "probe-cli $PROBE_CLI_VERSION ${PROBE_CLI_MARKER:-unset}"\n',
+          { mode: 0o755 },
+        );
+        await chmod(executable, 0o755);
+        vi.stubEnv("PATH", `${dir}${path.delimiter}${process.env.PATH ?? ""}`);
+        vi.stubEnv("PROBE_CLI_VERSION", "4.5.6");
+        vi.stubEnv("PROBE_CLI_MARKER", "inherited");
+
+        expect(await resolveExecutablePath("probe-cli")).toBe(executable);
+        expect(await readCliVersion("probe-cli")).toBe("4.5.6");
+        expect(await commandOutput("probe-cli", [])).toBe(
+          "probe-cli 4.5.6 inherited",
+        );
+        expect(
+          await commandOutput("probe-cli", [], {
+            ...process.env,
+            PROBE_CLI_MARKER: "explicit",
+          }),
+        ).toBe("probe-cli 4.5.6 explicit");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 
   it("compares the numeric core of CLI versions, prerelease below release", () => {
     expect(compareVersions("0.135.9", "0.136.0")).toBeLessThan(0);
@@ -131,7 +169,7 @@ describe("provider maintenance kit", () => {
         `#!/bin/sh\necho "codex ${version}"${redirect}\n`,
       );
       await chmod(executable, 0o755);
-      expect(await readCliVersion(executable)).toBeNull();
+      expect(await readCliVersion(executable, process.env)).toBeNull();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
