@@ -1,6 +1,7 @@
 import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const { parsePanelParams } = await import("./app");
@@ -37,6 +38,22 @@ const message = {
   sourceSeqEnd: 42,
   experimental_messageSeq: 42,
 };
+
+function unusedLauncherServices(): {
+  experimental_sdk: PluginBrowserBbSdk;
+  experimental_navigate: BbNavigate;
+} {
+  const unused = <T extends object>(name: string): T =>
+    new Proxy({} as T, {
+      get() {
+        throw new Error(`${name} is not used by this test`);
+      },
+    });
+  return {
+    experimental_sdk: unused<PluginBrowserBbSdk>("sdk"),
+    experimental_navigate: unused<BbNavigate>("navigate"),
+  };
+}
 
 describe("parsePanelParams", () => {
   it("narrows persisted params and rejects malformed values", () => {
@@ -81,6 +98,7 @@ describe("reply-in-side-chat message action", () => {
       message,
       experimental_panel,
       composer: null,
+      ...unusedLauncherServices(),
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -126,6 +144,7 @@ describe("reply-in-side-chat message action", () => {
       message,
       experimental_panel,
       composer: null,
+      ...unusedLauncherServices(),
     };
 
     const first = app.messageActions[0]!.run(context);
@@ -152,6 +171,7 @@ describe("reply-in-side-chat message action", () => {
       selectedText: "just this part",
       experimental_panel,
       composer: null,
+      ...unusedLauncherServices(),
     });
 
     expect(experimental_panel.openTab).toHaveBeenCalledWith(

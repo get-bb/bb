@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
+import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 
 import { expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
@@ -7,6 +8,22 @@ import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugi
 import gitApp from "./app.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
+
+function unusedLauncherServices(): {
+  experimental_sdk: PluginBrowserBbSdk;
+  experimental_navigate: BbNavigate;
+} {
+  const unused = <T extends object>(name: string): T =>
+    new Proxy({} as T, {
+      get() {
+        throw new Error(`${name} is not used by this test`);
+      },
+    });
+  return {
+    experimental_sdk: unused<PluginBrowserBbSdk>("sdk"),
+    experimental_navigate: unused<BbNavigate>("navigate"),
+  };
+}
 
 it("registers the Diff tab, Info rows and sections, the composer segment, and the Commit header action", () => {
   expect(app.tabs).toMatchObject([
@@ -57,12 +74,14 @@ it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
       threadId: null,
       projectId: null,
       experimental_panel: panel,
+      ...unusedLauncherServices(),
     }),
   ).toBe(false);
   await command.run({
     threadId: "thr-1",
     projectId: null,
     experimental_panel: panel,
+    ...unusedLauncherServices(),
   });
   expect(panel.toggleTab).toHaveBeenCalledWith({
     tab: { id: "diff", context: { kind: "thread" }, availability: "fixed" },
