@@ -1,4 +1,4 @@
-import { chmod } from "node:fs/promises";
+import { chmod, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
@@ -27,6 +27,7 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { storeAttachment } from "../../src/services/projects/attachments.js";
 import { holdThreadPurge } from "../../src/services/threads/thread-purge.js";
+import { ThreadFileWriter } from "../../src/services/threads/thread-files/thread-file.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
@@ -182,14 +183,22 @@ async function decodeThreadFile(bytes: Buffer): Promise<string[]> {
   return text.split("\n").filter((line) => line.length > 0);
 }
 
-function withFormatVersion(bytes: Buffer, formatVersion: number): Buffer {
+interface SeekTableJson {
+  formatVersion: number;
+  frames: Array<{ offset: number }>;
+}
+
+function withSeekTable(
+  bytes: Buffer,
+  change: (table: SeekTableJson) => SeekTableJson,
+): Buffer {
   const size = bytes.length;
   const tableLength = bytes.readUInt32LE(size - 12);
   const tableStart = size - 12 - tableLength;
   const table = JSON.parse(
     bytes.subarray(tableStart, size - 12).toString(),
-  ) as Record<string, unknown>;
-  const tableBytes = Buffer.from(JSON.stringify({ ...table, formatVersion }));
+  ) as SeekTableJson;
+  const tableBytes = Buffer.from(JSON.stringify(change(table)));
   const trailer = Buffer.alloc(12);
   trailer.writeUInt32LE(tableBytes.length, 0);
   trailer.write("BBHSEEK1", 4, "ascii");
@@ -343,6 +352,16 @@ describe("thread files", () => {
       acquireProjectAttachmentOwnership(harness.db, thread.id, [
         attachment.path,
       ]);
+      harness.db.run(sql`
+        INSERT INTO thread_dynamic_context_file_states
+          (thread_id, file_key, content_status, content_hash, shown_at, created_at, updated_at)
+        VALUES (${thread.id}, 'AGENTS.md', 'present', 'hash-1', 1, 1, 1)
+      `);
+      harness.db
+        .update(threads)
+        .set({ storageDeletedAt: Date.now() })
+        .where(eq(threads.id, thread.id))
+        .run();
       const bytes = await exportBytes(harness, thread.id);
       hideAndRequestPurge(harness, thread.id);
       await runThreadPurges(harness.deps);
@@ -359,7 +378,12 @@ describe("thread files", () => {
       expect(getThread(harness.db, thread.id)).toMatchObject({
         title: threadBefore?.title,
         deletedAt: null,
+        storageDeletedAt: null,
       });
+      expect(
+        countRows(harness, "thread_dynamic_context_file_states", thread.id),
+      ).toBe(1);
+      expect(countRows(harness, "thread_pruning_work", thread.id)).toBe(1);
       expect(getThread(harness.db, thread.id)?.archivedAt).toBeGreaterThan(
         threadBefore?.archivedAt ?? Number.POSITIVE_INFINITY,
       );
@@ -410,7 +434,10 @@ describe("thread files", () => {
     await withTestHarness(async (harness) => {
       const { project, thread } = seedArchivedConversation(harness);
       const bytes = await exportBytes(harness, thread.id);
-      const newer = await importThread(harness, withFormatVersion(bytes, 2));
+      const newer = await importThread(
+        harness,
+        withSeekTable(bytes, (table) => ({ ...table, formatVersion: 2 })),
+      );
       expect(newer.status).toBe(400);
       expect(JSON.stringify(await readJson(newer))).toContain(
         "format version 2",
@@ -428,6 +455,82 @@ describe("thread files", () => {
       expect(JSON.stringify(await readJson(missing))).toContain(
         "another server",
       );
+    });
+  });
+
+  it("rejects damaged files and rows from another project with 400, recreating nothing", async () => {
+    await withTestHarness(async (harness) => {
+      const { project, thread } = seedArchivedConversation(harness);
+      const bytes = await exportBytes(harness, thread.id);
+      const [threadRow] = readThreadTableRows(harness.db, thread.id).filter(
+        (row) => row.table === "threads",
+      );
+      if (threadRow === undefined) throw new Error("no thread row");
+      harness.db.delete(threads).where(eq(threads.id, thread.id)).run();
+
+      const craft = async (
+        fill: (writer: ThreadFileWriter) => void,
+      ): Promise<Buffer> => {
+        const path = join(harness.config.dataDir, `crafted-${Date.now()}`);
+        const writer = await ThreadFileWriter.create({
+          header: {
+            archivedAt: null,
+            createdAt: 1,
+            exportedAt: 1,
+            projectId: project.id,
+            projectName: null,
+            providerId: "codex",
+            threadId: thread.id,
+            title: null,
+          },
+          path,
+        });
+        fill(writer);
+        await writer.seal();
+        return readFile(path);
+      };
+      const sparseParts = await craft((writer) => {
+        writer.addTableRows([threadRow]);
+        writer.addAttachment({
+          mimeType: null,
+          originalName: "a.txt",
+          parts: 2,
+          sizeBytes: 1,
+          storedPath: "a.txt",
+        });
+        writer.addAttachmentPart({
+          data: Buffer.from("x"),
+          index: 1,
+          storedPath: "a.txt",
+        });
+      });
+      const otherProject = await craft((writer) => {
+        writer.addTableRows([
+          {
+            ...threadRow,
+            values: { ...threadRow.values, project_id: "proj_other" },
+          },
+        ]);
+      });
+      const outOfBounds = withSeekTable(bytes, (table) => ({
+        ...table,
+        frames: table.frames.map((frame) => ({
+          ...frame,
+          offset: frame.offset + 1_000_000_000,
+        })),
+      }));
+
+      for (const [file, message] of [
+        [sparseParts, "missing parts of a.txt"],
+        [otherProject, "from a project other than"],
+        [outOfBounds, "invalid seek table"],
+      ] as const) {
+        const response = await importThread(harness, file);
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(await readJson(response))).toContain(message);
+        await runThreadPurges(harness.deps);
+        expect(getThread(harness.db, thread.id)).toBeNull();
+      }
     });
   });
 

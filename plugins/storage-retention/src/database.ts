@@ -17,6 +17,7 @@ const MIGRATIONS = [
     file_bytes INTEGER
   )`,
   "CREATE INDEX cold_threads_stored_at_idx ON cold_threads (stored_at)",
+  "ALTER TABLE cold_threads ADD COLUMN linked_thread_ids TEXT NOT NULL DEFAULT '[]'",
 ];
 
 export function openPluginDatabase(bb: BbPluginApi) {

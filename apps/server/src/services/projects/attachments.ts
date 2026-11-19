@@ -472,6 +472,10 @@ async function writeInventoriedAttachment(
     await ensureAttachmentReferenceExists(db, dataDir, projectId, storedPath);
     return;
   }
+  const outputPath = resolveAttachmentPath(
+    projectAttachmentDir(dataDir, projectId),
+    storedPath,
+  );
   const now = Date.now();
   const row = recordProjectAttachment(db, {
     projectId,
@@ -483,10 +487,6 @@ async function writeInventoriedAttachment(
     readyAt: null,
   });
   const pendingPath = pendingAttachmentPath(dataDir, projectId, row.id);
-  const outputPath = resolveAttachmentPath(
-    projectAttachmentDir(dataDir, projectId),
-    storedPath,
-  );
   try {
     await mkdir(dirname(pendingPath), { recursive: true });
     await mkdir(dirname(outputPath), { recursive: true });

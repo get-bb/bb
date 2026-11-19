@@ -8,6 +8,7 @@ import {
   threads,
 } from "../schema.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
+import { markThreadPruningWork } from "./thread-pruning-work.js";
 
 export const THREAD_FILE_FORMAT_VERSION = 1;
 
@@ -18,6 +19,7 @@ export const THREAD_FILE_TABLES = [
   "prompt_history_entries",
   "thread_search_segments",
   "thread_conversation_outlines",
+  "thread_dynamic_context_file_states",
 ] as const;
 export type ThreadFileTable = (typeof THREAD_FILE_TABLES)[number];
 
@@ -252,6 +254,7 @@ export function insertHiddenThreadRow(
     source_thread_id: existingId(db, "threads", values.source_thread_id),
     lifecycle_owner_thread_id: existingId(db, "threads", values.lifecycle_owner_thread_id),
     deleted_at: hiddenAt,
+    storage_deleted_at: null,
   });
 }
 
@@ -337,6 +340,7 @@ export function insertThreadHistoryRows(
 
 export function unhideImportedThread(db: DbQueryConnection, threadId: string): void {
   db.update(threads).set({ deletedAt: null }).where(eq(threads.id, threadId)).run();
+  markThreadPruningWork(db, [threadId]);
 }
 
 export function restartThreadArchiveClock(

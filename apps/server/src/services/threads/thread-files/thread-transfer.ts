@@ -379,15 +379,22 @@ async function readTablesAndAttachments(file: OpenThreadFile): Promise<{
   }
   const attachments = headers.map((header) => {
     const list = parts.get(header.storedPath) ?? [];
-    if (
-      list.length !== header.parts ||
-      list.some((part) => part === undefined)
-    ) {
+    const ordered: Buffer[] = [];
+    for (let index = 0; index < header.parts; index += 1) {
+      const part = list[index];
+      if (part === undefined) {
+        throw new ThreadFileError(
+          `Thread file is missing parts of ${header.storedPath}`,
+        );
+      }
+      ordered.push(part);
+    }
+    if (list.length !== header.parts) {
       throw new ThreadFileError(
-        `Thread file is missing parts of ${header.storedPath}`,
+        `Thread file has extra parts of ${header.storedPath}`,
       );
     }
-    const content = Buffer.concat(list);
+    const content = Buffer.concat(ordered);
     if (content.length !== header.sizeBytes) {
       throw new ThreadFileError(
         `Thread file has a damaged copy of ${header.storedPath}`,
@@ -441,7 +448,11 @@ async function recreateThreadFromFile(
   deps.db.transaction(
     (tx) => {
       const now = Date.now();
-      insertHiddenThreadRow(tx, threadRow, now);
+      if (!insertHiddenThreadRow(tx, threadRow, now)) {
+        throw new ThreadFileError(
+          `Thread file has a thread row this version of bb can't insert`,
+        );
+      }
       requestThreadPurge(tx, { now, threadId });
     },
     { behavior: "immediate" },
@@ -451,6 +462,15 @@ async function recreateThreadFromFile(
     tables.filter((row) => row.table !== "threads"),
     (tx, row) => insertThreadTableRow(tx, row),
   );
+  const attachmentPaths = attachments.map(
+    (attachment) => attachment.storedPath,
+  );
+  acquireProjectAttachmentOwnership(
+    deps.db,
+    threadId,
+    attachmentPaths,
+    "best-effort",
+  );
   for (const attachment of attachments) {
     await restoreProjectAttachment(
       deps.db,
@@ -459,12 +479,7 @@ async function recreateThreadFromFile(
       attachment,
     );
   }
-  acquireProjectAttachmentOwnership(
-    deps.db,
-    threadId,
-    attachments.map((attachment) => attachment.storedPath),
-    "best-effort",
-  );
+  acquireProjectAttachmentOwnership(deps.db, threadId, attachmentPaths);
   await insertThreadFileEvents(deps, file);
   deps.db.transaction(
     (tx) => {

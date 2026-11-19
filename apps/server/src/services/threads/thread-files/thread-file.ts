@@ -23,6 +23,7 @@ const SEEK_TRAILER_BYTES = 4 + SEEK_TRAILER_MAGIC.length;
 const TEMP_SUFFIX = ".tmp";
 
 const THREAD_FILE_FORMAT = "bb.thread";
+const HEADER_MAX_RAW_BYTES = 1024 * 1024;
 
 export const THREAD_FILE_FRAME_RAW_BYTES = 1024 * 1024;
 
@@ -116,10 +117,24 @@ const headerLineSchema = z.object({
 export class ThreadFileError extends Error {}
 
 function assertSupportedVersion(formatVersion: number): void {
-  if (formatVersion !== THREAD_FILE_FORMAT_VERSION) {
+  if (formatVersion < 1 || formatVersion > THREAD_FILE_FORMAT_VERSION) {
     throw new ThreadFileError(
-      `Thread file uses format version ${formatVersion}; this version of bb reads version ${THREAD_FILE_FORMAT_VERSION}`,
+      `Thread file uses format version ${formatVersion}; this version of bb reads versions 1 to ${THREAD_FILE_FORMAT_VERSION}. Update bb to import it.`,
     );
+  }
+}
+
+async function decompress(
+  compressed: Buffer,
+  maxOutputLength: number,
+  what: string,
+): Promise<Buffer> {
+  try {
+    return await zstdDecompress(compressed, {
+      maxOutputLength: Math.max(1, maxOutputLength),
+    });
+  } catch {
+    throw new ThreadFileError(`Thread file has an unreadable ${what}`);
   }
 }
 
@@ -487,11 +502,23 @@ async function readSeekTable(handle: FileHandle): Promise<ThreadFileSeekTable> {
     z.object({ formatVersion: z.number().int() }),
   ).formatVersion;
   assertSupportedVersion(formatVersion);
-  return parseThreadFileJson(
+  const table = parseThreadFileJson(
     "seek table",
     tableBytes.toString("utf8"),
     seekTableSchema,
   );
+  const contentEnd = size - SEEK_TRAILER_BYTES - tableLength;
+  if (
+    table.headerBytes > contentEnd ||
+    table.frames.some(
+      (entry) =>
+        entry.offset < table.headerBytes ||
+        entry.offset + entry.compressedBytes > contentEnd,
+    )
+  ) {
+    throw new ThreadFileError(`Thread file has an invalid seek table`);
+  }
+  return table;
 }
 
 async function readHeader(
@@ -500,12 +527,7 @@ async function readHeader(
 ): Promise<ThreadFileHeader> {
   const compressed = Buffer.alloc(table.headerBytes);
   await handle.read(compressed, 0, table.headerBytes, 0);
-  let raw: Buffer;
-  try {
-    raw = await zstdDecompress(compressed);
-  } catch {
-    throw new ThreadFileError(`Thread file has an unreadable header`);
-  }
+  const raw = await decompress(compressed, HEADER_MAX_RAW_BYTES, "header");
   const line = raw.toString("utf8").split("\n", 1)[0] ?? "";
   const {
     kind: _kind,
@@ -622,7 +644,11 @@ async function readCheckedFrame(
       `Thread file frame at ${entry.offset} failed its checksum`,
     );
   }
-  const raw = await zstdDecompress(compressed);
+  const raw = await decompress(
+    compressed,
+    entry.rawBytes,
+    `frame at ${entry.offset}`,
+  );
   if (raw.length !== entry.rawBytes) {
     throw new ThreadFileError(
       `Thread file frame at ${entry.offset} decoded to ${raw.length} bytes, expected ${entry.rawBytes}`,
@@ -654,6 +680,17 @@ export async function readThreadFileFrame(
     )
   ) {
     throw new ThreadFileError(`Thread file has events from another thread`);
+  }
+  if (
+    contents.tables.some(
+      (row) =>
+        (row.table === "threads" || "project_id" in row.values) &&
+        row.values.project_id !== file.header.projectId,
+    )
+  ) {
+    throw new ThreadFileError(
+      `Thread file has rows from a project other than ${file.header.projectId}`,
+    );
   }
   if (contents.rows.length !== entry.rows) {
     throw new ThreadFileError(
