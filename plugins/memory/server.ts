@@ -388,7 +388,14 @@ class MemoryStore {
     } catch (error) {
       if (
         error instanceof Error &&
-        error.message.includes("UNIQUE constraint failed")
+        "code" in error &&
+        error.code === "SQLITE_CONSTRAINT_UNIQUE" &&
+        this.db
+          .prepare(
+            "SELECT 1 FROM memories WHERE scope_key = ? AND name = ? AND deleted_at IS NULL",
+          )
+          .get(scopeKey(record.scope, record.projectId), record.name) !==
+          undefined
       ) {
         throw new CliError(
           `an active ${record.scope} memory named "${record.name}" already exists`,

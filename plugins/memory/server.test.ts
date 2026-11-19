@@ -57,6 +57,42 @@ async function addMemory(
 }
 
 describe("bb-plugin-memory", () => {
+  it("does not report a history constraint failure as a duplicate memory name", async () => {
+    const host = await loadPlugin();
+    host.bb.storage.database().exec(`
+      CREATE TRIGGER duplicate_history BEFORE INSERT ON memory_history BEGIN
+        INSERT INTO memory_history (
+          memory_id, version, action, snapshot_json, source_thread_id,
+          write_reason, created_at
+        ) VALUES (
+          NEW.memory_id, NEW.version, NEW.action, NEW.snapshot_json,
+          NEW.source_thread_id, NEW.write_reason, NEW.created_at
+        );
+      END;
+    `);
+
+    const result = await host.harness.runCli(
+      [
+        "add",
+        "--scope",
+        "global",
+        "--name",
+        "unique-history-test",
+        "--summary",
+        "A memory that cannot be stored",
+        "--details",
+        "The history insert fails after the memory insert",
+        "--reason",
+        "Test history constraint handling",
+      ],
+      { projectId: "project-a" },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("UNIQUE constraint failed");
+    expect(result.stderr).not.toContain("active global memory named");
+  });
+
   it("registers a CLI and instruction catalog without native agent tools", async () => {
     const host = await loadPlugin();
     expect(host.harness.registrations.cli?.name).toBe("memory");
