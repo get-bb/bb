@@ -19,6 +19,9 @@ class ProjectWidgetModule : Module() {
       Prop("icon") { view: ProjectWidgetIconPreview, icon: String ->
         view.setIcon(icon)
       }
+      Prop("projectName") { view: ProjectWidgetIconPreview, projectName: String ->
+        view.setProjectName(projectName)
+      }
     }
   }
 }

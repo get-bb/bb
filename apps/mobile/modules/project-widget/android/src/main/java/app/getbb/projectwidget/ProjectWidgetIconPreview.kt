@@ -1,24 +1,28 @@
 package app.getbb.projectwidget
 
 import android.content.Context
+import android.view.LayoutInflater
 import android.widget.ImageView
+import android.widget.TextView
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
 class ProjectWidgetIconPreview(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
 
-  private val image = ImageView(context).apply {
-    scaleType = ImageView.ScaleType.CENTER
-    setImageResource(R.drawable.bb_widget_icon_message)
-  }
+  private val widget = LayoutInflater.from(context).inflate(R.layout.bb_project_widget, this, false)
+  private val image = widget.findViewById<ImageView>(R.id.bb_project_widget_icon)
+  private val label = widget.findViewById<TextView>(R.id.bb_project_widget_label)
 
   init {
-    setBackgroundResource(R.drawable.bb_project_widget_background)
-    addView(image, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    addView(widget)
   }
 
   fun setIcon(icon: String) {
     image.setImageResource(ProjectWidgetProvider.icon(icon))
+  }
+
+  fun setProjectName(projectName: String) {
+    label.text = projectName
   }
 }

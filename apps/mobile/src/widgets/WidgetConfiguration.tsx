@@ -3,11 +3,11 @@ import "@/lib/polyfills";
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import { requireNativeModule, requireNativeView } from "expo";
 import { useEffect, useState } from "react";
-import { ScrollView, type ViewProps } from "react-native";
+import { Pressable, ScrollView, View, type ViewProps } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { getProfileStore } from "@/lib/native";
 import { useProfileStoreState, type ServerProfile } from "@/lib/profiles";
-import { ThemeProvider } from "@/theme";
+import { ThemeProvider, useTheme } from "@/theme";
 import { GroupedRow, GroupedSection, Spinner, Text } from "@/ui";
 import { withWidgetSdk } from "./widget-sdk";
 import { type WidgetTarget, widgetIcons } from "./widget-target";
@@ -19,11 +19,15 @@ interface ProjectWidgetModule {
 const queryClient = new QueryClient();
 const WidgetIconPreview =
   process.env.EXPO_OS === "android"
-    ? requireNativeView<ViewProps & { icon: WidgetTarget["icon"] }>(
-        "BBProjectWidget",
-      )
+    ? requireNativeView<
+        ViewProps & { icon: WidgetTarget["icon"]; projectName: string }
+      >("BBProjectWidget")
     : null;
-const iconPreviewStyle = { width: 36, height: 36 };
+const iconPreviewStyle = {
+  width: "100%",
+  maxWidth: 104,
+  aspectRatio: 1,
+} satisfies ViewProps["style"];
 const iconLabels: Record<WidgetTarget["icon"], string> = {
   message: "Message",
   camera: "Camera",
@@ -40,7 +44,7 @@ export function WidgetConfiguration({ widgetId }: { widgetId: number }) {
       <ThemeProvider>
         <SafeAreaView className="flex-1 bg-background">
           <ScrollView contentContainerStyle={{ gap: 16, padding: 16 }}>
-            <Text variant="heading">New thread widget</Text>
+            <Text variant="heading">Thread shortcut</Text>
             <WidgetPicker widgetId={widgetId} />
           </ScrollView>
         </SafeAreaView>
@@ -96,6 +100,7 @@ function TargetPicker({
   profile: ServerProfile;
   changeServer: () => void;
 }) {
+  const { tokens } = useTheme();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
@@ -442,8 +447,8 @@ function TargetPicker({
       ) : null}
       <GroupedSection title="Widget action">
         <GroupedRow
-          title="New thread"
-          subtitle="Start with a blank composer"
+          title="Composer"
+          subtitle="Start with a blank thread"
           selected={action === "thread"}
           trailing={action === "thread" ? "checkmark" : undefined}
           onPress={() => setAction("thread")}
@@ -466,26 +471,44 @@ function TargetPicker({
           disabled={saving}
         />
       </GroupedSection>
-      <GroupedSection title="Icon">
-        {widgetIcons.map((item) => (
-          <GroupedRow
-            key={item}
-            title={iconLabels[item]}
-            leading={
-              WidgetIconPreview && (
-                <WidgetIconPreview
-                  icon={item}
-                  importantForAccessibility="no"
-                  style={iconPreviewStyle}
-                />
-              )
-            }
-            selected={icon === item}
-            trailing={icon === item ? "checkmark" : undefined}
-            onPress={() => setIcon(item)}
-            disabled={saving}
-          />
-        ))}
+      <GroupedSection title="Widget icon">
+        <View className="flex-row flex-wrap px-2 py-2">
+          {widgetIcons.map((item) => (
+            <View key={item} style={{ width: "33.333%" }} className="p-1">
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={iconLabels[item]}
+                accessibilityState={{
+                  checked: icon === item,
+                  disabled: saving,
+                }}
+                className="items-center gap-1 rounded-xl border-2 p-2"
+                style={{
+                  borderColor: icon === item ? tokens.primary : "transparent",
+                }}
+                onPress={() => setIcon(item)}
+                disabled={saving}
+              >
+                {WidgetIconPreview && (
+                  <View
+                    pointerEvents="none"
+                    importantForAccessibility="no-hide-descendants"
+                    style={iconPreviewStyle}
+                  >
+                    <WidgetIconPreview
+                      icon={item}
+                      projectName={project?.name ?? "Project"}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                )}
+                <Text variant="caption" numberOfLines={1}>
+                  {iconLabels[item]}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
       </GroupedSection>
       {project && host ? (
         <GroupedSection title="Launch">
