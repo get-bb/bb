@@ -21,7 +21,11 @@ import {
   reportNextEnvironmentAttachSuccess,
 } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
-import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+} from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const PROVIDER_ID = "renaming-worktree";
@@ -297,6 +301,51 @@ describe("branch rename after parallel title generation", () => {
         branch: "placeholder",
       });
       expect(renameOperations(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("still renames when create lands on an environment row that already exists at its path", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = setUp(harness, { holdCreate: true });
+      const existing = seedEnvironment(harness.deps, {
+        hostId: fixture.hostId,
+        projectId: fixture.projectId,
+        path: WORKSPACE_PATH,
+        environmentProviderId: PROVIDER_ID,
+        environmentProviderPluginId: "renaming-plugin",
+        providerOwnsPath: true,
+      });
+      const thread = await createThread(harness, fixture);
+      await vi.waitFor(() =>
+        expect(fixture.creates).toEqual([`bb/${thread.id}`]),
+      );
+      fixture.resolveTitle("Fix Login Redirect");
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, thread.id)?.title).toBe(
+          "Fix Login Redirect",
+        ),
+      );
+
+      fixture.finishCreate();
+
+      await vi.waitFor(() => expect(fixture.renames).toHaveLength(1));
+      expect(fixture.renames[0]).toMatchObject({
+        environment: { id: existing.id },
+        from: `bb/${thread.id}`,
+        to: `bb/fix-login-redirect-${thread.id}`,
+      });
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+          existing.id,
+        ),
+      );
+      expect(
+        harness.db
+          .select({ pendingBranchRename: environments.pendingBranchRename })
+          .from(environments)
+          .all()
+          .filter((row) => row.pendingBranchRename !== null),
+      ).toEqual([]);
     });
   });
 

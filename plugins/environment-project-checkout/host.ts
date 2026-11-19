@@ -1,6 +1,5 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { createHostProgress } from "bb-environment-provider-host/progress";
-import { renameCheckedOutBranch } from "bb-environment-provider-host/branch-rename";
 import { checkoutHostContract, checkoutHostSignals } from "./contract.js";
 import { attachCheckout, inspectCheckout } from "./host/checkout.js";
 
@@ -29,9 +28,6 @@ export function createCheckoutHostEntry() {
             message: error instanceof Error ? error.message : String(error),
           } as const;
         }
-      },
-      async renameBranch(input, context) {
-        return renameCheckedOutBranch({ ...input, signal: context.signal });
       },
       async inspectCheckout(input) {
         return await inspectCheckout({ path: input.path });

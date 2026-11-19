@@ -4447,10 +4447,15 @@ branch. Providers without the hook keep waiting for the title before create.
 
 Core callers: thread provisioning (`thread-provisioning-environment.ts`),
 create (`runCreate` in `environment-engine.ts`) and the sweep all go through
-`renameOwedEnvironmentBranch` in `environment-branch-rename.ts`. First-party
-implementations: Worktree and Project checkout, both through the shared
+`renameOwedEnvironmentBranch` in `environment-branch-rename.ts`. When create
+binds to an environment row that already exists at the produced path, the owed
+rename moves to that row, so the hook still runs for the environment the
+thread ends up on. First-party implementation: Worktree, through the
 `renameCheckedOutBranch` host helper (HEAD is `from`, no upstream, no
 remote-tracking ref of that name, `to` absent; already on `to` is `renamed`).
+Project checkout does not declare the hook: its new branches live in a shared
+checkout whose environment row outlives any one thread, so it keeps waiting
+for the title.
 
 Stabilization requires deciding whether the owed rename should also follow a
 user's first manual title, whether a pushed branch should ever be renamed,

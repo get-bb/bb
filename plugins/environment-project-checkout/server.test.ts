@@ -419,10 +419,7 @@ describe("checkout provider merge base", () => {
     [{}, {}, null],
     [
       { branch: { kind: "new", baseBranch: "dev" } },
-      {
-        mergeBaseBranch: "origin/dev",
-        resource: { createdBranch: "bb/thread-branch" },
-      },
+      { mergeBaseBranch: "origin/dev" },
       "origin/dev",
     ],
   ] as const)(

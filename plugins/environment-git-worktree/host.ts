@@ -2,9 +2,9 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { readdir, rm } from "node:fs/promises";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { emitOutput } from "bb-environment-provider-host/transcript";
-import { renameCheckedOutBranch } from "bb-environment-provider-host/branch-rename";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
 import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
+import { renameCheckedOutBranch } from "./host/branch-rename.js";
 import {
   resolveWorktreeChildPath,
   resolveWorktreesRoot,

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { runGit, type RunGitOptions } from "./git.js";
-import { withWorktreeMetadataLock } from "./locks.js";
+import { runGit, type RunGitOptions } from "bb-environment-provider-host/git";
+import { withWorktreeMetadataLock } from "bb-environment-provider-host/locks";
 
 export type CheckedOutBranchRename =
   | { status: "renamed" }

@@ -87,21 +87,6 @@ export const checkoutHostContract = defineRpcContract({
         .strict(),
     ]),
   },
-  renameBranch: {
-    input: z
-      .object({
-        path: z.string().min(1),
-        from: z.string().min(1),
-        to: z.string().min(1),
-      })
-      .strict(),
-    output: z.discriminatedUnion("status", [
-      z.object({ status: z.literal("renamed") }).strict(),
-      z
-        .object({ status: z.literal("kept"), reason: z.string().min(1) })
-        .strict(),
-    ]),
-  },
   inspectCheckout: {
     input: z.object({ path: z.string().min(1) }).strict(),
     output: checkoutInspectionSchema,
