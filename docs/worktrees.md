@@ -20,7 +20,12 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
 
 - It shares the repo's `.git` state with your main checkout — cheap to
   create, no full clone.
-- It gets its own branch so multiple threads can run in parallel.
+- It gets its own branch so multiple threads can run in parallel. bb creates
+  it as `bb/<thread-id>` (your managed branch prefix plus the thread id) so the
+  worktree does not wait for the thread's title, then renames it once to
+  `bb/<title-slug>-<thread-id>` when the title is ready. The rename is skipped
+  if the branch was pushed, gained an upstream, or the worktree switched
+  branches; renaming the thread later never renames the branch.
 - It lives at
   `<BB_DATA_DIR>/plugins/environment-git-worktree/host-data/worktrees/<thread-id>/<repo-name>`
   — for example, `~/.bb/plugins/environment-git-worktree/host-data/worktrees/thr_abc.../myrepo`.

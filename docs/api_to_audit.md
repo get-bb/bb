@@ -798,7 +798,8 @@ Docs: `backend-events.md`.
    plugins ship, and that the "not registered" wait + backoff is the right
    degradation for an uninstalled plugin.
 3. **Undeclared facts: `suggestedBranchName` and `projectCheckout`.** Every
-   create gets a branch name built from the thread title and
+   create gets a branch name built from the thread title (or only the thread
+   id, for providers declaring `experimental_renameBranch`) and
    `managedBranchPrefix`, and the project's checkout on its machine, whether
    or not the provider uses them. Decide whether both belong on the context
    for everyone or behind a declaration flag, and whether a path is all a
@@ -4421,6 +4422,40 @@ Other projects' managed paths remain forbidden.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
 progress, cross-project ownership, and concurrent creation before binding.
+
+## Environment provider branch rename
+
+`PluginEnvironmentProviderDefinition.experimental_renameBranch(context)` lets a
+provider take a thread before its title exists. For a provider that declares
+it, core starts title generation alongside provisioning instead of before it;
+if the title is still pending when `create` is built, `suggestedBranchName` is
+`<managedBranchPrefix><threadId>`. Core persists the owed rename on the
+environment row (`pending_branch_rename`) before calling create, then calls
+the hook once with `{ environment, resource, from, to, report, signal }` when
+create has returned and title generation has settled. `to` is the name create
+would have received: the generated title, or the fallback title when generation
+failed or was skipped. A title that settles before create returns is applied
+before setup starts, so setup and "Using branch" see the final name; a later
+one renames whenever it lands and appends a `branch_rename` operation to the
+thread. Turn start waits for an in-flight rename, never for a pending title.
+Removal waits for an in-flight rename, and a retiring or failed environment
+drops it. `renamed` may replace the resource; core then re-reads the branch
+from git. `kept` and `failed` drop the rename; a throw or an unregistered
+provider leaves it for the `environment-branch-rename` periodic sweep, which
+also finishes renames a restart interrupted. User renames never touch the
+branch. Providers without the hook keep waiting for the title before create.
+
+Core callers: thread provisioning (`thread-provisioning-environment.ts`),
+create (`runCreate` in `environment-engine.ts`) and the sweep all go through
+`renameOwedEnvironmentBranch` in `environment-branch-rename.ts`. First-party
+implementations: Worktree and Project checkout, both through the shared
+`renameCheckedOutBranch` host helper (HEAD is `from`, no upstream, no
+remote-tracking ref of that name, `to` absent; already on `to` is `renamed`).
+
+Stabilization requires deciding whether the owed rename should also follow a
+user's first manual title, whether a pushed branch should ever be renamed,
+and whether warm worktree pools reuse this hook or claim a pre-created branch
+by another path.
 
 ## Composer editing: `insert` and `replace`
 

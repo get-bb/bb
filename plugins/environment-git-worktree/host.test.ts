@@ -1459,3 +1459,109 @@ describe.concurrent("worktree host entry", () => {
     });
   });
 });
+
+describe.concurrent("worktree branch rename", () => {
+  async function createPlaceholderWorktree(
+    onTestFinished: TestContext["onTestFinished"],
+  ) {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-placeholder",
+        sourcePath,
+        pathKey: "placeholder",
+        branchName: "bb/thr_placeholder",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    return { harness, sourcePath, path: created.path, created };
+  }
+
+  const rename = {
+    from: "bb/thr_placeholder",
+    to: "bb/fix-login-thr_placeholder",
+  };
+
+  it("renames the checked-out placeholder branch, keeps its config, and removal deletes the new name", async ({
+    onTestFinished,
+  }) => {
+    const { harness, sourcePath, path, created } =
+      await createPlaceholderWorktree(onTestFinished);
+    await git(sourcePath, "config", `branch.${rename.from}.bbOwned`, "true");
+
+    expect(
+      await harness.experimental_call("renameBranch", { path, ...rename }),
+    ).toEqual({ status: "renamed" });
+    expect(
+      await harness.experimental_call("renameBranch", { path, ...rename }),
+    ).toEqual({ status: "renamed" });
+
+    expect((await git(path, "symbolic-ref", "--short", "HEAD")).trim()).toBe(
+      rename.to,
+    );
+    expect(await branchExists(sourcePath, rename.from)).toBe(false);
+    expect(await branchConfig(sourcePath, rename.to)).toContain("bbowned true");
+    const removed = await harness.experimental_call("remove", {
+      operationId: "remove-renamed",
+      pathKey: "placeholder",
+      path,
+      ownedBranch: {
+        name: rename.to,
+        repositoryPath: sourcePath,
+        baseBranch: created.baseBranch,
+      },
+    });
+    expect(removed.status).toBe("removed");
+    expect(await branchExists(sourcePath, rename.to)).toBe(false);
+  });
+
+  it.for([
+    {
+      name: "the branch tracks an upstream",
+      prepare: async (sourcePath: string, path: string) => {
+        await git(sourcePath, "branch", "upstream-target");
+        await git(path, "branch", "--set-upstream-to=upstream-target");
+      },
+      reason: `${rename.from} tracks upstream-target.`,
+    },
+    {
+      name: "the branch was pushed without tracking",
+      prepare: async (sourcePath: string, path: string) => {
+        await git(
+          sourcePath,
+          "update-ref",
+          `refs/remotes/origin/${rename.from}`,
+          (await git(path, "rev-parse", "HEAD")).trim(),
+        );
+      },
+      reason: `${rename.from} was already pushed.`,
+    },
+    {
+      name: "the workspace switched branches",
+      prepare: async (_sourcePath: string, path: string) => {
+        await git(path, "switch", "-c", "elsewhere");
+      },
+      reason: `The workspace is no longer on ${rename.from}.`,
+    },
+    {
+      name: "the target branch exists",
+      prepare: async (sourcePath: string) => {
+        await git(sourcePath, "branch", rename.to);
+      },
+      reason: `${rename.to} already exists.`,
+    },
+  ])("keeps the branch when $name", async (testCase, { onTestFinished }) => {
+    const { harness, sourcePath, path } =
+      await createPlaceholderWorktree(onTestFinished);
+    await testCase.prepare(sourcePath, path);
+
+    expect(
+      await harness.experimental_call("renameBranch", { path, ...rename }),
+    ).toEqual({ status: "kept", reason: testCase.reason });
+    expect(await branchExists(sourcePath, rename.from)).toBe(true);
+  });
+});

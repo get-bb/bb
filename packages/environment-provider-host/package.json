@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./branch-rename": {
+      "source": "./src/branch-rename.ts",
+      "types": "./src/branch-rename.ts",
+      "default": "./src/branch-rename.ts"
+    },
     "./branch-options": {
       "source": "./src/branch-options.ts",
       "types": "./src/branch-options.ts",

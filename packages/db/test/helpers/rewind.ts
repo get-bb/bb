@@ -169,6 +169,19 @@ export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
   }
 }
 
+export function dropEnvironmentPendingBranchRenameColumn(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "pending_branch_rename")) {
+    db.$client.exec(
+      "ALTER TABLE environments DROP COLUMN pending_branch_rename",
+    );
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

@@ -50,6 +50,11 @@ import type {
 } from "@bb/domain";
 import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
+export interface PendingEnvironmentBranchRename {
+  threadId: string;
+  from: string;
+}
+
 export const authUsers = sqliteTable(
   "user",
   {
@@ -569,6 +574,9 @@ export const environments = sqliteTable(
     >(),
     teardownMessage: text("teardown_message"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    pendingBranchRename: text("pending_branch_rename", {
+      mode: "json",
+    }).$type<PendingEnvironmentBranchRename>(),
     ownerThreadId: text("owner_thread_id"),
     attempt: integer("attempt").notNull().default(0),
     statusMessage: text("status_message"),

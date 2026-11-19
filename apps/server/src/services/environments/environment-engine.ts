@@ -58,7 +58,6 @@ import {
 import {
   canonicalizeHostPath,
   isAbsoluteHostPath,
-  jsonValueSchema,
   type Environment,
   type EnvironmentMachineSelection,
   type Host,
@@ -150,6 +149,12 @@ import {
 } from "../lib/operation-response.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { sliceUtf16Head } from "@bb/text-utils";
+import { environmentResourceSchema } from "./environment-resource.js";
+import {
+  awaitEnvironmentBranchRename,
+  isThreadTitlePending,
+  renameOwedEnvironmentBranch,
+} from "./environment-branch-rename.js";
 
 type Deps = ThreadProvisioningDeps;
 
@@ -162,6 +167,7 @@ export interface ProviderOperationContext {
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;
+  branchRenameOwed: boolean;
   environment: Environment | null;
 }
 
@@ -172,17 +178,13 @@ interface ActiveOperation {
   cancellation: Promise<void> | null;
 }
 
-const resourceSchema = jsonValueSchema.refine(
-  (value) => Buffer.byteLength(JSON.stringify(value)) <= 16_384,
-  "Resource exceeds 16 KiB",
-);
 const createResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("created"),
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
     mergeBaseBranch: z.string().min(1).nullable().optional(),
-    resource: resourceSchema.optional(),
+    resource: environmentResourceSchema.optional(),
   }),
   z.object({
     status: z.literal("failed"),
@@ -375,6 +377,21 @@ async function invokeCreate(
   return createResultSchema.parse(invocation.value);
 }
 
+async function invokeCreateRecordingBranchRename(
+  deps: Deps,
+  record: PluginEnvironmentProviderRecord,
+  provisioning: EnvironmentRow,
+  context: PluginEnvironmentProviderCreateContext,
+  branchRenameOwed: boolean,
+): Promise<PluginEnvironmentProviderCreateResult> {
+  mutateProvisioning(deps, provisioning, ["creating"], (row) => {
+    row.pendingBranchRename = branchRenameOwed
+      ? { threadId: context.thread.id, from: context.suggestedBranchName }
+      : null;
+  });
+  return invokeCreate(record, context);
+}
+
 async function invokeRestore(
   record: PluginEnvironmentProviderRecord,
   context: PluginEnvironmentProviderRestoreContext,
@@ -465,10 +482,16 @@ async function runCreate(
                     : previous.resource,
               },
             })
-          : await invokeCreate(record, {
-              ...operation,
-              suggestedBranchName: context.suggestedBranchName,
-            });
+          : await invokeCreateRecordingBranchRename(
+              deps,
+              record,
+              provisioning,
+              {
+                ...operation,
+                suggestedBranchName: context.suggestedBranchName,
+              },
+              context.branchRenameOwed,
+            );
     if (result.status === "created") {
       let adoptedExistingEnvironment = false;
       let existingProviderOwnsLifecycle = false;
@@ -563,6 +586,19 @@ async function runCreate(
         },
       );
       signal.throwIfAborted();
+      if (!isThreadTitlePending(deps, context.thread.id))
+        await renameOwedEnvironmentBranch(deps, provisioning.id, {
+          announce: false,
+          report: operation.report,
+          signal,
+        }).catch((error) => {
+          if (signal.aborted) throw error;
+          deps.logger.warn(
+            { environmentId: provisioning.id, error: errorMessage(error) },
+            "Branch rename will retry",
+          );
+        });
+      signal.throwIfAborted();
     }
     changed =
       result.status === "created" && provisioning.status === "provisioning"
@@ -631,6 +667,28 @@ async function runCreate(
       requestEnvironmentProvisioningRecheck(context.thread.id);
     }
   }
+}
+
+export function environmentRemovalActive(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): boolean {
+  return (
+    perDbRegistry(environmentOperations, deps.db).get(environmentId)?.kind ===
+    "remove"
+  );
+}
+
+export async function waitForEnvironmentOperation(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+): Promise<boolean> {
+  const active = perDbRegistry(environmentOperations, deps.db).get(
+    environmentId,
+  );
+  if (active === undefined || active.kind === "remove") return false;
+  await active.done;
+  return true;
 }
 
 export function markProviderEnvironmentAttached(
@@ -876,6 +934,7 @@ async function removeEnvironment(
   environmentId: string,
 ): Promise<void> {
   const map = perDbRegistry(environmentOperations, deps.db);
+  await awaitEnvironmentBranchRename(deps, environmentId);
   const active = map.get(environmentId);
   if (active !== undefined) {
     const row = getEnvironment(deps.db, environmentId);

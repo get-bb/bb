@@ -294,6 +294,16 @@ clears it, and omitting it keeps it; a failed create is terminal, and a retry is
 on the same environment row after cleanup. `report.step` and `report.log`
 stream durable progress while the call runs.
 
+Declaring the optional `experimental_renameBranch(context)` stops core from
+waiting for the thread's generated title before `create`: while the title is
+pending, `suggestedBranchName` is `<prefix><threadId>`, and core later calls
+the hook once with `{ environment, resource, from, to, report, signal }` to
+rename that branch to the titled name. Return `renamed` (optionally with a
+replacement `resource`), `kept` with a reason when the branch should keep its
+name (for example it was pushed or switched), or `failed`. It runs before
+setup when the title lands before create returns, otherwise whenever the title
+lands, and never concurrently with removal.
+
 `await context.experimental_claimPath(path)` on the create and restore
 contexts atomically reserves a directory on the selected host for this launch before
 workspace mutations. It returns false if another unattached launch holds the

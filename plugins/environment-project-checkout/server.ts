@@ -17,6 +17,7 @@ import {
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const ATTACH_TIMEOUT_MS = 15 * 60 * 1000;
+const RENAME_TIMEOUT_MS = 60 * 1000;
 const LIVE_THREAD_STATUSES = new Set([
   "starting",
   "active",
@@ -29,6 +30,10 @@ const DETACHED_MESSAGE = "Checkout blocked while HEAD is detached";
 const UNBORN_MESSAGE = "Checkout blocked before the first commit";
 const CONFLICTS_MESSAGE = "Checkout blocked by unresolved conflicts";
 const DIRTY_MESSAGE = "Checkout blocked by uncommitted changes";
+
+const createdBranchResourceSchema = z
+  .object({ createdBranch: z.string().min(1) })
+  .strict();
 
 export const checkoutInputsSchema = z.object({
   path: z.string().min(1).optional(),
@@ -203,6 +208,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         ...(branch === null
           ? {}
           : { mergeBaseBranch: mergeBaseBranch ?? result.mergeBaseBranch }),
+        ...(branch?.kind === "new"
+          ? { resource: { createdBranch: branch.name } }
+          : {}),
         ownsPath:
           result.path === context.projectCheckout.path &&
           context.projectCheckout.experimental_ownsPath === true,
@@ -298,6 +306,43 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         branch: { kind: "existing", name: branchName },
         mergeBaseBranch: context.previous.environment.mergeBaseBranch,
       });
+    },
+    async experimental_renameBranch(context) {
+      const resource = createdBranchResourceSchema.safeParse(context.resource);
+      if (!resource.success) {
+        return {
+          status: "kept",
+          reason: "bb did not create this checkout's branch.",
+        };
+      }
+      const created = resource.data.createdBranch;
+      if (created === context.to) return { status: "renamed" };
+      if (created !== context.from) {
+        return {
+          status: "kept",
+          reason: `bb created ${created}, not ${context.from}.`,
+        };
+      }
+      const path = context.environment.path;
+      if (path === null) {
+        return { status: "failed", message: "The checkout has no path." };
+      }
+      try {
+        const result = await host.call(
+          "renameBranch",
+          { path, from: context.from, to: context.to },
+          {
+            hostId: context.environment.hostId,
+            signal: context.signal,
+            timeoutMs: RENAME_TIMEOUT_MS,
+          },
+        );
+        if (result.status === "kept") return result;
+        return { status: "renamed", resource: { createdBranch: context.to } };
+      } catch (error) {
+        if (context.signal.aborted) throw error;
+        return { status: "failed", message: errorMessage(error) };
+      }
     },
     async remove() {
       return { status: "removed" };

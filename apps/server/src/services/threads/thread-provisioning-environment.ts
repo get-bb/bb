@@ -31,6 +31,12 @@ import {
 import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { inferThreadMetadata } from "./thread-metadata-inference.js";
 import { resolveEnvironmentProvider } from "./thread-environment-placement.js";
+import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
+import {
+  awaitEnvironmentBranchRename,
+  markThreadTitlePending,
+  settleThreadTitle,
+} from "../environments/environment-branch-rename.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
@@ -174,6 +180,45 @@ export function queueChildSetupFailureNotification(
   });
 }
 
+async function inferThreadTitleInBackground(
+  deps: ThreadProvisioningDeps,
+  args: { context: ThreadProvisionContext; threadId: string },
+): Promise<void> {
+  try {
+    const metadata = await inferThreadMetadata(deps, {
+      input: args.context.request.input,
+      provisioningId: args.context.state.provisioningId,
+      threadId: args.threadId,
+      writeTranscript: false,
+    });
+    if (!metadata.titleApplied || !metadata.title) return;
+    const titledThread = getThread(deps.db, args.threadId);
+    const environment = titledThread?.environmentId
+      ? getEnvironment(deps.db, titledThread.environmentId)
+      : null;
+    if (
+      !titledThread ||
+      !environment ||
+      (titledThread.status !== "active" && titledThread.status !== "idle")
+    )
+      return;
+    dispatchThreadRenameCommand(deps, {
+      environment: { id: environment.id, hostId: environment.hostId },
+      providerId: titledThread.providerId,
+      threadId: titledThread.id,
+      title: metadata.title,
+    });
+  } catch (error) {
+    deps.logger.warn(
+      {
+        threadId: args.threadId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to generate thread title",
+    );
+  }
+}
+
 export async function ensureThreadProvisionEnvironmentReady(
   deps: ThreadProvisioningDeps,
   args: { context: ThreadProvisionContext; thread: Thread },
@@ -216,57 +261,26 @@ export async function ensureThreadProvisionEnvironmentReady(
         context,
       });
     }
-    if (context.request.environmentIntent.type === "provider") {
-      if (!context.request.titleProvided)
+    const renamesBranchLater =
+      intent.type === "provider" &&
+      (getEnvironmentProvider(intent.environmentProviderId)?.provider
+        .experimental_renameBranch ?? null) !== null;
+    if (!context.request.titleProvided) {
+      if (intent.type === "provider" && !renamesBranchLater) {
         await inferThreadMetadata(deps, {
           input: context.request.input,
           provisioningId: context.state.provisioningId,
           threadId: thread.id,
           writeTranscript: true,
         });
-    } else {
-      if (!context.request.titleProvided) {
-        void inferThreadMetadata(deps, {
-          input: context.request.input,
-          provisioningId: context.state.provisioningId,
+      } else {
+        if (renamesBranchLater) markThreadTitlePending(deps, thread.id);
+        void inferThreadTitleInBackground(deps, {
+          context,
           threadId: thread.id,
-          writeTranscript: false,
-        })
-          .then((metadata) => {
-            if (!metadata.titleApplied || !metadata.title) {
-              return;
-            }
-            const titledThread = getThread(deps.db, thread.id);
-            const environment = titledThread?.environmentId
-              ? getEnvironment(deps.db, titledThread.environmentId)
-              : null;
-            if (
-              !titledThread ||
-              !environment ||
-              (titledThread.status !== "active" &&
-                titledThread.status !== "idle")
-            ) {
-              return;
-            }
-            dispatchThreadRenameCommand(deps, {
-              environment: {
-                id: environment.id,
-                hostId: environment.hostId,
-              },
-              providerId: titledThread.providerId,
-              threadId: titledThread.id,
-              title: metadata.title,
-            });
-          })
-          .catch((error) => {
-            deps.logger.warn(
-              {
-                threadId: thread.id,
-                ...runtimeErrorLogFields(deps.config, error),
-              },
-              "Failed to generate thread title",
-            );
-          });
+        }).finally(() => {
+          if (renamesBranchLater) settleThreadTitle(deps, thread.id);
+        });
       }
     }
   }
@@ -292,6 +306,7 @@ export async function ensureThreadProvisionEnvironmentReady(
     environmentId: environment.id,
     threadId: thread.id,
   });
+  await awaitEnvironmentBranchRename(deps, environment.id);
   const attached = getThreadProvisionContext(deps.db, thread.id);
   if (attached === null || attached.state.environmentId !== environment.id)
     return null;

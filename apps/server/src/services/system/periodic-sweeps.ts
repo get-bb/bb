@@ -9,6 +9,7 @@ import {
   projectAttachmentBackfillSweep,
   projectAttachmentPruneSweep,
 } from "../projects/attachment-maintenance.js";
+import { environmentBranchRenameSweep } from "../environments/environment-branch-rename.js";
 import {
   providerLifecycleSweep,
   sweepProviderLifecycles,
@@ -518,7 +519,8 @@ async function runMachineAuthPruneSweep(
 }
 
 type CompletedEventOutputMigrationTarget =
-  (typeof RETAINED_EVENT_OUTPUT_TARGETS)[number] | "legacy-image-generation";
+  | (typeof RETAINED_EVENT_OUTPUT_TARGETS)[number]
+  | "legacy-image-generation";
 
 function completedEventOutputMigrationKey(
   target: CompletedEventOutputMigrationTarget,
@@ -654,6 +656,13 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     name: "environment-provider-lifecycle",
     background: false,
     sweep: (deps) => providerLifecycleSweep(deps, { background: true }),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "environment-branch-rename",
+    background: false,
+    sweep: environmentBranchRenameSweep,
   },
   {
     cadenceMs: 0,

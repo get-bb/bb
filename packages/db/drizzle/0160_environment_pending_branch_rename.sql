@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `pending_branch_rename` text;

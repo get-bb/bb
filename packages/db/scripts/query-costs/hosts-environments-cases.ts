@@ -14,6 +14,7 @@ import {
   findProviderEnvironmentContainingPath,
   getEnvironment,
   getPreparingEnvironment,
+  listEnvironmentIdsOwingBranchRename,
   listEnvironments,
   listProviderLifecycleEnvironments,
   listRetiredLoadedEnvironmentIdsOnHost,
@@ -345,6 +346,10 @@ const ENVIRONMENT_CASES: readonly Case[] = [
     name: `${ENVIRONMENTS}#environmentHasLiveThreads`,
     run: (db, _fixture, seed) =>
       environmentHasLiveThreads(db, seed.sharedEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listEnvironmentIdsOwingBranchRename`,
+    run: (db) => listEnvironmentIdsOwingBranchRename(db),
   },
   {
     name: `${ENVIRONMENTS}#releaseFinishedEnvironmentPreparationOwners`,

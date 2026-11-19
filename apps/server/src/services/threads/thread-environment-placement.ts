@@ -94,6 +94,7 @@ import {
   resolvePluginEnvironmentProviderAvailability,
 } from "../environments/provider-availability.js";
 import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibility.js";
+import { isThreadTitlePending } from "../environments/environment-branch-rename.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -731,6 +732,10 @@ function buildProviderOperationContext(
     "host" | "inputs" | "machine" | "project" | "projectCheckout"
   > & { record: PluginEnvironmentProviderRecord; thread: Thread },
 ): ProviderOperationContext {
+  const branchRenameOwed =
+    args.record.provider.experimental_renameBranch !== null &&
+    isThreadTitlePending(deps, args.thread.id);
+  const titled = getThread(deps.db, args.thread.id) ?? args.thread;
   return {
     thread: toThreadResponseFromThread(deps, { thread: args.thread }),
     project: args.project,
@@ -743,9 +748,10 @@ function buildProviderOperationContext(
     inputs: args.inputs,
     suggestedBranchName: buildSuggestedBranchName({
       branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-      title: args.thread.title ?? args.thread.titleFallback,
+      title: branchRenameOwed ? null : (titled.title ?? titled.titleFallback),
       threadId: args.thread.id,
     }),
+    branchRenameOwed,
     environment: threadProvisionContextEnvironment(
       deps,
       args.thread.environmentId,

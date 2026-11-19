@@ -2,6 +2,7 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { readdir, rm } from "node:fs/promises";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { emitOutput } from "bb-environment-provider-host/transcript";
+import { renameCheckedOutBranch } from "bb-environment-provider-host/branch-rename";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
 import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
 import {
@@ -119,6 +120,10 @@ export function createWorktreeHostEntry() {
             message: error instanceof Error ? error.message : String(error),
           } as const;
         }
+      },
+
+      async renameBranch(input, context) {
+        return renameCheckedOutBranch({ ...input, signal: context.signal });
       },
 
       async remove(input, context) {

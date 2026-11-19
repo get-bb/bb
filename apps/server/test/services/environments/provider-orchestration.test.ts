@@ -131,6 +131,7 @@ function setup(
     gitRemote: null,
     inputs: null,
     suggestedBranchName: "bb/test",
+    branchRenameOwed: false,
     environment: null,
   };
   let lastEnvironmentId: string | null = null;

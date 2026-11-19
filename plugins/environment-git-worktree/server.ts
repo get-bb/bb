@@ -22,6 +22,7 @@ import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const CREATE_TIMEOUT_MS = 15 * 60 * 1000;
 const REMOVE_TIMEOUT_MS = 15 * 60 * 1000;
+const RENAME_TIMEOUT_MS = 60 * 1000;
 
 export const worktreeInputsSchema = z
   .union([
@@ -224,6 +225,46 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         baseBranch: context.inputs.branch,
         branchMode: "reuse-existing",
       });
+    },
+    async experimental_renameBranch(context) {
+      const resource = parseWorktreeResource(context.resource);
+      if (resource === null || "adopted" in resource) {
+        return {
+          status: "kept",
+          reason: "bb did not create this worktree's branch.",
+        };
+      }
+      const owned = resource.ownedBranch;
+      if (owned.name === context.to) return { status: "renamed" };
+      if (owned.name !== context.from) {
+        return {
+          status: "kept",
+          reason: `bb created ${owned.name}, not ${context.from}.`,
+        };
+      }
+      const path = context.environment.path;
+      if (path === null) {
+        return { status: "failed", message: "The worktree has no path." };
+      }
+      try {
+        const result = await host.call(
+          "renameBranch",
+          { path, from: context.from, to: context.to },
+          {
+            hostId: context.environment.hostId,
+            signal: context.signal,
+            timeoutMs: RENAME_TIMEOUT_MS,
+          },
+        );
+        if (result.status === "kept") return result;
+        return {
+          status: "renamed",
+          resource: { ownedBranch: { ...owned, name: context.to } },
+        };
+      } catch (error) {
+        if (context.signal.aborted) throw error;
+        return { status: "failed", message: errorMessage(error) };
+      }
     },
     async remove(context) {
       const resource = parseWorktreeResource(context.resource);

@@ -1365,6 +1365,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginEnvironmentProviderProgress",
           "PluginEnvironmentProviderRemoveContext",
           "PluginEnvironmentProviderRemoveResult",
+          "PluginEnvironmentProviderRenameBranchContext",
+          "PluginEnvironmentProviderRenameBranchResult",
         ],
         firstParty: [
           "Modal Sandbox [Experimental]",
