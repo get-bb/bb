@@ -680,8 +680,8 @@ Handlers run as a fail-closed chain in install order under one server-wide
 lock. `recheck("message.dispatch")` schedules a re-attempt of every
 plugin-queued row and resolves when the walk is scheduled.
 
-`on("thread.purge", handler)` runs before the `thread-purge` sweep starts
-removing a deleted thread's rows. The context names the thread and its
+`on("thread.delete_finalize", handler)` runs before the `thread-purge` sweep
+starts removing a deleted thread's rows. The context names the thread and its
 project. `proceed` lets the purge start; `wait` keeps the rows, and core asks
 again on every purge pass (about every 10 seconds) and after every restart.
 A throw, a timeout or an unknown answer counts as `wait`. A disabled or
@@ -689,9 +689,9 @@ uninstalled plugin is not asked. No purge starts while the startup load pass
 is still registering plugins, and core never asks again once a purge has
 started (`thread_purges.started_at`). Until then the thread is hidden and
 can no longer change, and `threads.experimental_export` still reads it.
-`recheck("thread.purge")` schedules nothing. Core caller: every purge,
-including the deletes a user makes. Plugin caller: Storage & retention keeps a
-copy of the threads its Save archived threads to files policy deletes.
+`recheck("thread.delete_finalize")` schedules nothing. Core caller: every
+purge, including the deletes a user makes. Plugin caller: Storage & retention
+keeps a copy of the threads it moves to cold storage.
 
 Docs: `backend-events.md`, `backend-sdk.md`.
 
@@ -709,8 +709,8 @@ Docs: `backend-events.md`, `backend-sdk.md`.
   its shim before stabilizing. The queued row's internal
   `requested_by_initiator` / `requested_by_thread_id` are unaffected.
 - **Two hooks, two rule sets.** `message.dispatch` is a fail-closed chain
-  under one lock; `thread.purge` treats every failure as `wait` and takes no
-  lock. Confirm one `on(hook, handler)` signature still reads clearly with
+  under one lock; `thread.delete_finalize` treats every failure as `wait` and
+  takes no lock. Confirm one `on(hook, handler)` signature still reads clearly with
   rules this different.
 - **A purge wait never expires.** A plugin that keeps answering `wait` keeps
   the thread's rows in `bb.db` for as long as it stays enabled. Decide whether
@@ -1297,21 +1297,20 @@ A seek table sits in a zstd skippable frame.
 - `GET /threads/:id/export` writes one for a thread in the database, including
   a deleted thread whose purge has not started; 409 `thread_being_purged`
   after that. The export holds the purge until it finishes.
-- `POST /threads/import` takes a file as the multipart `file` field. If the
-  thread exists, it inserts the events the thread lacks (`INSERT OR IGNORE`),
-  so an older file never replaces newer history. If not, it recreates the
-  thread in its project: the thread row goes in hidden with a purge queued,
+- `POST /threads/import` takes a file as the multipart `file` field and
+  recreates a deleted thread in its project: the thread row goes in hidden with
+  a purge queued,
   then its rows, attachments and events, and one transaction unhides it,
   cancels the purge and restarts an archived thread's archive clock. An import
   that fails or is cut off leaves the hidden thread to that purge. It answers
-  `{ threadId, rows, insertedRows }`: 404 when the project is not on this
-  server, 400 for a file that is not a thread file or uses a format version
-  this bb does not read, and 409 while the thread is still being deleted or
+  `{ threadId, rows }`: 404 when the project is not on this server, 400 for a
+  file that is not a thread file or uses a format version this bb does not
+  read, and 409 when the thread still exists, is still being deleted, or
   another import or export of it is running.
 
 Core callers: `bb thread export` and `bb thread import`. Plugin caller: the
-Storage & retention plugin exports a thread from its `thread.purge` hook and
-imports it back when someone restores it.
+Storage & retention plugin exports a thread from its `thread.delete_finalize`
+hook and imports it back when someone restores it.
 
 Stabilization: decide what a cross-server import does with projects,
 environments and provider sessions (it is refused today), commit to reading

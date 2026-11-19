@@ -147,8 +147,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginServerAccess",
   "ServerAccessGrant",
   "ServerAccessProviderDeclaration",
-  "ThreadPurgeHookContext",
-  "ThreadPurgeHookDecision",
+  "ThreadDeleteFinalizeHookContext",
+  "ThreadDeleteFinalizeHookDecision",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [

@@ -52,7 +52,7 @@ afterEach(() => {
 function recordDispatchHookCalls(): string[][] {
   const calls: string[][] = [];
   const registry: HookRegistry = {
-    "thread.purge": [],
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "send-time-test",

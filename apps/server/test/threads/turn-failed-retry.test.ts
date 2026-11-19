@@ -56,7 +56,7 @@ function installHooks(
 ): void {
   const registry: HookRegistry = {
     "message.dispatch": handlers["message.dispatch"] ?? [],
-    "thread.purge": [],
+    "thread.delete_finalize": [],
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],

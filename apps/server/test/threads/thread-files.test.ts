@@ -16,7 +16,7 @@ import {
 import { turnScope } from "@bb/domain";
 import type {
   PluginHookName,
-  ThreadPurgeHookDecision,
+  ThreadDeleteFinalizeHookDecision,
 } from "@get-bb/plugin-sdk";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
@@ -241,7 +241,9 @@ function hideAndRequestPurge(harness: TestAppHarness, threadId: string): void {
 function installPurgeHook(
   decide: (
     threadId: string,
-  ) => ThreadPurgeHookDecision | Promise<ThreadPurgeHookDecision>,
+  ) =>
+    | ThreadDeleteFinalizeHookDecision
+    | Promise<ThreadDeleteFinalizeHookDecision>,
   options: { loading?: () => boolean } = {},
 ): string[] {
   const asked: string[] = [];
@@ -249,7 +251,7 @@ function installPurgeHook(
     [K in PluginHookName]: PluginHookRegistration<K>[];
   } = {
     "message.dispatch": [],
-    "thread.purge": [
+    "thread.delete_finalize": [
       {
         pluginId: "cold-storage-test",
         handler: async (context) => {
@@ -352,7 +354,6 @@ describe("thread files", () => {
       ).toEqual({
         threadId: thread.id,
         rows: before.length,
-        insertedRows: before.length,
       });
       expect(allRows(harness, thread.id)).toEqual(before);
       expect(getThread(harness.db, thread.id)).toMatchObject({
@@ -388,23 +389,20 @@ describe("thread files", () => {
     });
   });
 
-  it("imports into the same thread, adding only missing events", async () => {
+  it("refuses to import a thread that still exists and leaves it untouched", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedArchivedConversation(harness);
-      const sdk = sdkFor(harness);
-      const before = allRows(harness, thread.id);
-      const bytes = await sdk.threads.experimental_export({
-        threadId: thread.id,
-      });
+      const bytes = await exportBytes(harness, thread.id);
       harness.db.run(
         sql`DELETE FROM events WHERE thread_id = ${thread.id} AND type = 'item/completed'`,
       );
-      expect(await sdk.threads.experimental_import({ file: bytes })).toEqual({
-        threadId: thread.id,
-        rows: before.length,
-        insertedRows: 2,
-      });
-      expect(allRows(harness, thread.id)).toEqual(before);
+      const remaining = allRows(harness, thread.id);
+      const response = await importThread(harness, bytes);
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await readJson(response))).toContain(
+        "thread_exists",
+      );
+      expect(allRows(harness, thread.id)).toEqual(remaining);
     });
   });
 
@@ -592,7 +590,7 @@ describe("thread purge hook", () => {
   it("treats a hook that throws or returns nonsense as wait", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedArchivedConversation(harness);
-      let answer: () => ThreadPurgeHookDecision = () => {
+      let answer: () => ThreadDeleteFinalizeHookDecision = () => {
         throw new Error("storage is offline");
       };
       installPurgeHook(() => answer());
@@ -601,7 +599,7 @@ describe("thread purge hook", () => {
       await runThreadPurges(harness.deps);
       expect(getThread(harness.db, thread.id)).not.toBeNull();
       answer = () =>
-        ({ action: "later" }) as unknown as ThreadPurgeHookDecision;
+        ({ action: "later" }) as unknown as ThreadDeleteFinalizeHookDecision;
       await runThreadPurges(harness.deps);
       expect(getThread(harness.db, thread.id)).not.toBeNull();
       answer = () => ({ action: "proceed" });

@@ -1035,7 +1035,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "wire",
           "thread-events",
           "dispatch-hook",
-          "purge-hook",
+          "delete-finalize-hook",
           "environment-providers",
           "machine-providers",
           "server-access",
@@ -1327,9 +1327,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
-        id: "purge-hook",
+        id: "delete-finalize-hook",
         tagline: "Keep a copy before a thread is removed",
-        title: "Purge hook",
+        title: "Delete finalize hook",
         summary:
           "Run a check before bb removes a deleted thread's history from its database. With this, a plugin can:",
         bullets: [
@@ -1340,8 +1340,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginHooks",
           "PluginHookSignatures",
-          "ThreadPurgeHookContext",
-          "ThreadPurgeHookDecision",
+          "ThreadDeleteFinalizeHookContext",
+          "ThreadDeleteFinalizeHookDecision",
         ],
         firstParty: ["Storage & retention [Experimental]"],
         experimental: true,

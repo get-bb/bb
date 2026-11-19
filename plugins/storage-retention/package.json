@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-bb--storage-retention",
   "version": "0.1.0",
-  "description": "Inspect machine storage and automatically archive, save to files, or delete old threads.",
+  "description": "Inspect machine storage and automatically archive, move to cold storage, or delete old threads.",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,7 +10,7 @@
   },
   "bb": {
     "name": "Storage & retention [Experimental]",
-    "description": "Inspect machine storage and automatically archive, save to files, or delete old threads.",
+    "description": "Inspect machine storage and automatically archive, move to cold storage, or delete old threads.",
     "branding": {
       "icon": "./icons/database-restore.svg"
     },

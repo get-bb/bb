@@ -7,12 +7,11 @@ import { z } from "zod";
 export type ThreadImportForm = Record<"file", Blob>;
 
 /**
- * The result of importing a thread file. `rows` is the number of events in the
- * file; `insertedRows` is how many of them the thread did not already have.
+ * The result of importing a thread file: the recreated thread and the number of
+ * events it was recreated with.
  */
 export const threadImportResponseSchema = z.object({
   threadId: z.string().min(1),
   rows: z.number().int().nonnegative(),
-  insertedRows: z.number().int().nonnegative(),
 });
 export type ThreadImportResponse = z.infer<typeof threadImportResponseSchema>;

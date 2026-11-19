@@ -8,7 +8,10 @@ import { registerCli } from "./cli.js";
 export default function plugin(bb: BbPluginApi) {
   const coldStorage = createColdStorage(bb);
   const service = createService(bb, coldStorage);
-  bb.experimental_hooks.on("thread.purge", coldStorage.beforePurge);
+  bb.experimental_hooks.on(
+    "thread.delete_finalize",
+    coldStorage.beforeDeleteFinalize,
+  );
   const devCleanupEnabled = async () =>
     (await service.state()).policy.deleteDevDataOnCheckoutRemoval;
   const cleanupEnabled = async () =>
@@ -105,9 +108,9 @@ export default function plugin(bb: BbPluginApi) {
     removeDevInstances: (input) => storage.removeDevInstances(input),
     removeExternalWorktrees: (input) => storage.removeExternalWorktrees(input),
     startRemoveExternalWorktree: storage.startRemoveExternalWorktree,
-    savedThreads: (input) => coldStorage.list(input),
-    restoreSavedThread: ({ threadId }) => coldStorage.restore(threadId),
-    deleteSavedThread: ({ threadId }) => coldStorage.remove(threadId),
+    coldThreads: (input) => coldStorage.list(input),
+    restoreColdThread: ({ threadId }) => coldStorage.restore(threadId),
+    deleteColdThread: ({ threadId }) => coldStorage.remove(threadId),
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure,

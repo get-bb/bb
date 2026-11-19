@@ -58,7 +58,7 @@ afterEach(() => {
 
 function holdParentDeliveries(): void {
   const registry: HookRegistry = {
-    "thread.purge": [],
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "hold-parent",

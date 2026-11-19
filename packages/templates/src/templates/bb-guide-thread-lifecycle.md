@@ -109,21 +109,20 @@ Lifecycle:
   bb thread export [id]                    Write the thread to a .jsonl.zst thread file
     --self                                 Export current thread
     -o, --output <path>                    Where to write it (default ./<id>.jsonl.zst)
-  bb thread import <file>                  Add a thread file back: merges into its thread,
-                                           or recreates it if it was deleted
+  bb thread import <file>                  Bring back a deleted thread from a thread file
     --json                                 Machine-readable output (both)
 
   A thread file is JSONL under zstd: a header line naming the thread, title,
   project and provider, then the thread's rows, every event in sequence order,
   and its attachments. `zstdcat <file> | jq` and `rg -z` read it without bb.
-  Import only adds events a thread lacks, so an older file never replaces
-  newer history, and only accepts a file whose project is on this server. A
-  deleted thread can be exported until bb starts removing its rows, and
-  imported again once they are gone; a recreated archived thread counts as
-  archived from the moment it came back. To move old archived threads out of
-  the database automatically, use the Storage & retention plugin's Save
-  archived threads to files policy (`bb storage retention --save-after 14
-  --save --yes`, then `bb storage saved` and `bb storage restore-saved`).
+  Import only recreates a deleted thread, never touches one that still exists,
+  and only accepts a file whose project is on this server. A deleted thread
+  can be exported until bb starts removing its rows, and imported again once
+  they are gone; a recreated archived thread counts as archived from the
+  moment it came back. To move old archived threads out of the database
+  automatically, use the Storage & retention plugin's cold storage policy
+  (`bb storage retention --cold-store-after 14 --save --yes`, then
+  `bb storage cold-list` and `bb storage restore`).
 
   bb thread restore-environment [id]       Restore a destroyed workspace
     --self                                 Restore current thread

@@ -88,7 +88,7 @@ describe("thread file rows", () => {
     expect(getThread(context.db, live.id)?.archivedAt).toBeNull();
   });
 
-  it("re-inserts an event window byte-for-byte, ignoring rows already present", () => {
+  it("re-inserts an event window byte-for-byte", () => {
     const context = setup();
     const thread = seedThread(context);
     const before = context.db.all(
@@ -105,13 +105,11 @@ describe("thread file rows", () => {
     expect(
       context.db.all(sql`SELECT id FROM events WHERE thread_id = ${thread.id}`),
     ).toEqual([]);
-    expect(
-      insertThreadHistoryRows(context.db, {
-        now: Date.now(),
-        retained: window.retained,
-        rows: [...window.rows, ...window.rows],
-      }),
-    ).toBe(4);
+    insertThreadHistoryRows(context.db, {
+      now: Date.now(),
+      retained: window.retained,
+      rows: window.rows,
+    });
     expect(
       context.db.all(
         sql`SELECT * FROM events WHERE thread_id = ${thread.id} ORDER BY sequence`,

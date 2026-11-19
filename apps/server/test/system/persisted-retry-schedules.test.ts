@@ -305,7 +305,7 @@ async function arrangeQueuedMessage(
   const registry: {
     [K in PluginHookName]: PluginHookRegistration<K>[];
   } = {
-    "thread.purge": [],
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "retry-guard",

@@ -15,7 +15,7 @@ const daysSchema = z.number().int().min(1).max(3650).nullable();
 export const policySchema = z
   .object({
     archiveAfterDays: daysSchema,
-    saveAfterDays: daysSchema.default(null),
+    coldStoreAfterDays: daysSchema.default(null),
     deleteAfterDays: daysSchema,
     deleteStorageOnArchive: z.boolean().default(false),
     deleteDevDataOnCheckoutRemoval: z.boolean().default(false),
@@ -25,7 +25,7 @@ export type Policy = z.infer<typeof policySchema>;
 export const runSchema = z.object({
   ranAt: z.number(),
   archivedCount: z.number().int().nonnegative(),
-  savedCount: z.number().int().nonnegative().default(0),
+  coldStoredCount: z.number().int().nonnegative().default(0),
   deletedCount: z.number().int().nonnegative(),
   failedCount: z.number().int().nonnegative(),
 });
@@ -37,29 +37,29 @@ export const stateSchema = z.object({
 export type State = z.infer<typeof stateSchema>;
 export const previewSchema = z.object({
   archiveCount: z.number().int().nonnegative(),
-  saveCount: z.number().int().nonnegative(),
+  coldStoreCount: z.number().int().nonnegative(),
   deleteCount: z.number().int().nonnegative(),
 });
 export type Preview = z.infer<typeof previewSchema>;
-export const savedThreadSchema = z.object({
+export const coldThreadSchema = z.object({
   threadId: z.string(),
   projectId: z.string(),
   title: z.string().nullable(),
   providerId: z.string(),
   threadCreatedAt: z.number(),
   archivedAt: z.number().nullable(),
-  state: z.enum(["saving", "saved"]),
-  savedAt: z.number().nullable(),
+  state: z.enum(["moving", "stored"]),
+  storedAt: z.number().nullable(),
   fileBytes: z.number().int().nonnegative(),
 });
-export type SavedThread = z.infer<typeof savedThreadSchema>;
-export const savedThreadListSchema = z.object({
-  savedThreads: z.array(savedThreadSchema),
+export type ColdThread = z.infer<typeof coldThreadSchema>;
+export const coldThreadListSchema = z.object({
+  threads: z.array(coldThreadSchema),
   hasMore: z.boolean(),
 });
-export type SavedThreadList = z.infer<typeof savedThreadListSchema>;
-export const SAVED_THREAD_LIST_MAX = 200;
-const savedThreadInput = z.object({ threadId: z.string().min(1) }).strict();
+export type ColdThreadList = z.infer<typeof coldThreadListSchema>;
+export const COLD_THREAD_LIST_MAX = 200;
+const coldThreadInput = z.object({ threadId: z.string().min(1) }).strict();
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
 export const storageRpc = defineRpcContract({
   startEntryCleanup: {
@@ -158,27 +158,26 @@ export const storageRpc = defineRpcContract({
       stoppedProcessCount: z.number().int().nonnegative(),
     }),
   },
-  savedThreads: {
+  coldThreads: {
     input: z
       .object({
         projectId: z.string().min(1).nullable(),
         search: z.string().min(1).nullable(),
-        limit: z.number().int().min(1).max(SAVED_THREAD_LIST_MAX),
+        limit: z.number().int().min(1).max(COLD_THREAD_LIST_MAX),
         offset: z.number().int().nonnegative(),
       })
       .strict(),
-    output: savedThreadListSchema,
+    output: coldThreadListSchema,
   },
-  restoreSavedThread: {
-    input: savedThreadInput,
+  restoreColdThread: {
+    input: coldThreadInput,
     output: z.object({
       threadId: z.string(),
       rows: z.number().int().nonnegative(),
-      insertedRows: z.number().int().nonnegative(),
     }),
   },
-  deleteSavedThread: {
-    input: savedThreadInput,
+  deleteColdThread: {
+    input: coldThreadInput,
     output: z.object({ ok: z.literal(true) }),
   },
   state: { input: z.null(), output: stateSchema },

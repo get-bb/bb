@@ -294,7 +294,7 @@ export function insertThreadHistoryRows(
     retained: readonly ThreadHistoryRetainedOutputRow[];
     rows: readonly ThreadHistoryEventRow[];
   },
-): number {
+): void {
   const environmentIds = [
     ...new Set(
       args.rows.flatMap((row) => (row.environmentId === null ? [] : [row.environmentId])),
@@ -310,14 +310,13 @@ export function insertThreadHistoryRows(
           .all()
           .map((row) => row.id),
   );
-  let inserted = 0;
   for (const row of args.rows) {
     const environmentId =
       row.environmentId !== null && liveEnvironmentIds.has(row.environmentId)
         ? row.environmentId
         : null;
-    inserted += db.run(sql`
-      INSERT OR IGNORE INTO events (
+    db.run(sql`
+      INSERT INTO events (
         id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id,
         sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at
       ) VALUES (
@@ -325,17 +324,15 @@ export function insertThreadHistoryRows(
         ${row.providerThreadId}, ${row.sequence}, ${row.type}, ${row.itemId},
         ${row.itemKind}, ${row.parentToolCallId}, ${row.data}, ${row.createdAt}
       )
-    `).changes;
+    `);
   }
   for (const output of args.retained) {
     if (output.expiresAt <= args.now) continue;
     db.run(sql`
-      INSERT OR IGNORE INTO retained_event_outputs (event_id, output_path, value, expires_at)
-      SELECT ${output.eventId}, ${output.outputPath}, ${output.value}, ${output.expiresAt}
-      WHERE EXISTS (SELECT 1 FROM events WHERE id = ${output.eventId})
+      INSERT INTO retained_event_outputs (event_id, output_path, value, expires_at)
+      VALUES (${output.eventId}, ${output.outputPath}, ${output.value}, ${output.expiresAt})
     `);
   }
-  return inserted;
 }
 
 export function unhideImportedThread(db: DbQueryConnection, threadId: string): void {

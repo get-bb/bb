@@ -53,9 +53,7 @@ export function registerTransferCommands(
 
   parent
     .command("import <file>")
-    .description(
-      "Import a thread file: add the events its thread no longer has, or bring the thread back if it was deleted",
-    )
+    .description("Import a thread file to bring back a deleted thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (file: string, opts: ThreadImportCommandOptions) => {
@@ -66,7 +64,7 @@ export function registerTransferCommands(
         });
         if (outputJson(opts, result)) return;
         console.log(
-          `Imported thread ${result.threadId}: added ${result.insertedRows.toLocaleString("en-US")} of ${result.rows.toLocaleString("en-US")} events`,
+          `Imported thread ${result.threadId} with ${result.rows.toLocaleString("en-US")} events`,
         );
       }),
     );

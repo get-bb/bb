@@ -27,7 +27,7 @@ function fixture(subPath = "host_test") {
   let state: State = {
     policy: {
       archiveAfterDays: null,
-      saveAfterDays: null,
+      coldStoreAfterDays: null,
       deleteAfterDays: null,
       deleteStorageOnArchive: false,
       deleteDevDataOnCheckoutRemoval: false,
@@ -131,7 +131,7 @@ function fixture(subPath = "host_test") {
     {
       rpc: {
         state: () => state,
-        savedThreads: () => ({ savedThreads: [], hasMore: false }),
+        coldThreads: () => ({ threads: [], hasMore: false }),
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
         startEntryCleanup: (raw) => {

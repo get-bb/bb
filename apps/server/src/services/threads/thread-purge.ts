@@ -62,7 +62,7 @@ async function pluginsLetPurge(
 ): Promise<boolean> {
   const provider = pluginHookProvider();
   if (provider === undefined) return true;
-  const hooks = provider.listHooks("thread.purge");
+  const hooks = provider.listHooks("thread.delete_finalize");
   if (hooks.length === 0) return true;
   const thread = getThread(deps.db, threadId);
   if (thread === null) return true;
@@ -71,7 +71,7 @@ async function pluginsLetPurge(
   for (const hook of hooks) {
     const invocation = await provider.invokeHook(
       hook,
-      "thread.purge hook",
+      "thread.delete_finalize hook",
       () =>
         decideWithinBox(
           async () => hook.handler(context),
@@ -95,7 +95,7 @@ async function pluginsLetPurge(
               ? invocation.value.error
               : "returned an invalid decision",
         },
-        "thread.purge hook failed; keeping the thread until it answers",
+        "thread.delete_finalize hook failed; keeping the thread until it answers",
       );
     }
   }
