@@ -1035,6 +1035,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "wire",
           "thread-events",
           "dispatch-hook",
+          "purge-hook",
           "environment-providers",
           "machine-providers",
           "server-access",
@@ -1323,6 +1324,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "MessageDispatchHookDecision",
         ],
         firstParty: ["Concurrency limit", "Drafts"],
+        experimental: true,
+      },
+      {
+        id: "purge-hook",
+        tagline: "Keep a copy before a thread is removed",
+        title: "Purge hook",
+        summary:
+          "Run a check before bb removes a deleted thread's history from its database. With this, a plugin can:",
+        bullets: [
+          "Export the thread to its own storage while it can no longer change",
+          "Hold the removal until the copy is written",
+          "Bring the thread back later by importing the copy",
+        ],
+        apiSymbols: [
+          "PluginHooks",
+          "PluginHookSignatures",
+          "ThreadPurgeHookContext",
+          "ThreadPurgeHookDecision",
+        ],
+        firstParty: ["Storage & retention [Experimental]"],
         experimental: true,
       },
       {

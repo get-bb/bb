@@ -3,6 +3,7 @@ import { EVENTS_COST_CASES } from "./events-cases.js";
 import { HOSTS_ENVIRONMENTS_COST_GROUP } from "./hosts-environments-cases.js";
 import { PLUGINS_COST_GROUP } from "./plugins-cases.js";
 import { QUEUED_THREAD_MESSAGES_COST_CASES } from "./queued-thread-messages-cases.js";
+import { THREAD_FILES_COST_GROUP } from "./thread-files-cases.js";
 import { SETTINGS_MAINTENANCE_COST_GROUP } from "./settings-maintenance-cases.js";
 import { THREADS_COST_GROUP } from "./threads-cases.js";
 
@@ -21,6 +22,7 @@ const ALL_GROUPS: readonly RegisteredCostGroup[] = [
   HOSTS_ENVIRONMENTS_COST_GROUP,
   PLUGINS_COST_GROUP,
   SETTINGS_MAINTENANCE_COST_GROUP,
+  THREAD_FILES_COST_GROUP,
 ];
 
 function selectedGroupNames(): ReadonlySet<string> | null {

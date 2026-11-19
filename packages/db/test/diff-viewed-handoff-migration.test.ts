@@ -4,6 +4,7 @@ import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
+  rewindThreadPurgeStartedColumn,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
 } from "./helpers/rewind.js";
@@ -20,6 +21,7 @@ function databaseBeforeHandoff(
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
+  rewindThreadPurgeStartedColumn(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(
     "INSERT INTO diff_viewed_files (environment_id, target_key, path, revision, updated_at) VALUES (?, ?, ?, ?, ?)",

@@ -1,11 +1,14 @@
 import { createStorage } from "./storage.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { storageRpc, type Policy } from "./contract.js";
+import { createColdStorage } from "./cold-storage.js";
 import { createService } from "./service.js";
 import { registerCli } from "./cli.js";
 
 export default function plugin(bb: BbPluginApi) {
-  const service = createService(bb);
+  const coldStorage = createColdStorage(bb);
+  const service = createService(bb, coldStorage);
+  bb.experimental_hooks.on("thread.purge", coldStorage.beforePurge);
   const devCleanupEnabled = async () =>
     (await service.state()).policy.deleteDevDataOnCheckoutRemoval;
   const cleanupEnabled = async () =>
@@ -102,11 +105,14 @@ export default function plugin(bb: BbPluginApi) {
     removeDevInstances: (input) => storage.removeDevInstances(input),
     removeExternalWorktrees: (input) => storage.removeExternalWorktrees(input),
     startRemoveExternalWorktree: storage.startRemoveExternalWorktree,
+    savedThreads: (input) => coldStorage.list(input),
+    restoreSavedThread: ({ threadId }) => coldStorage.restore(threadId),
+    deleteSavedThread: ({ threadId }) => coldStorage.remove(threadId),
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure,
   });
-  registerCli(bb, { ...service, configure }, storage);
+  registerCli(bb, { ...service, configure }, storage, coldStorage);
   bb.background.schedule("retention", "0 * * * *", () => service.sweep());
   bb.background.schedule("leftover-worktree-recovery", "15 * * * *", () =>
     storage.recoverInterruptedWorktrees(),

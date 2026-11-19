@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
+import { createColdStorage } from "./cold-storage.js";
 import { selectCandidates, type RetentionThread } from "./policy.js";
 import plugin from "./server.js";
 
@@ -46,7 +47,7 @@ describe("retention eligibility", () => {
             }),
             thread("independent"),
           ],
-          { archiveAfterDays: 30, deleteAfterDays: null },
+          { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
           NOW,
         );
         expect(result.archive.map((group) => group.rootId)).toEqual([
@@ -75,7 +76,7 @@ describe("retention eligibility", () => {
         }),
         thread("pinned", { archivedAt: DAY, pinnedAt: DAY }),
       ],
-      { archiveAfterDays: null, deleteAfterDays: 30 },
+      { archiveAfterDays: null, saveAfterDays: null, deleteAfterDays: 30 },
       NOW,
     );
     expect(
@@ -96,7 +97,7 @@ describe("retention eligibility", () => {
         }),
         thread("deleted", { deletedAt: DAY }),
       ],
-      { archiveAfterDays: 30, deleteAfterDays: null },
+      { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
       NOW,
     );
     expect(result.archive.map((group) => group.memberIds)).toEqual([
@@ -126,7 +127,11 @@ describe("retention plugin", () => {
         archiveAfterDays: 30,
         deleteAfterDays: null,
       });
-      expect(preview).toEqual({ archiveCount: 1, deleteCount: 0 });
+      expect(preview).toEqual({
+        archiveCount: 1,
+        saveCount: 0,
+        deleteCount: 0,
+      });
       expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(0);
       const refused = await host.harness.runCli([
         "retention",
@@ -146,7 +151,11 @@ describe("retention plugin", () => {
       await host.harness.runSchedule("retention");
       expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(1);
       expect(await host.harness.callRpc("state", null)).toMatchObject({
-        policy: { archiveAfterDays: 30, deleteAfterDays: null },
+        policy: {
+          archiveAfterDays: 30,
+          saveAfterDays: null,
+          deleteAfterDays: null,
+        },
         lastRun: { archivedCount: 1 },
       });
     } finally {
@@ -192,6 +201,236 @@ describe("retention plugin", () => {
       expect(await host.harness.callRpc("state", null)).toMatchObject({
         lastRun: { archivedCount: 49, failedCount: 1 },
       });
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("saves only old archived threads that nothing else points at", () => {
+    const result = selectCandidates(
+      [
+        thread("old", { archivedAt: DAY }),
+        thread("recent", { archivedAt: NOW - DAY }),
+        thread("pinned", { archivedAt: DAY, pinnedAt: DAY }),
+        thread("parent", { archivedAt: DAY }),
+        thread("child", { archivedAt: DAY, parentThreadId: "parent" }),
+        thread("running", { archivedAt: DAY, status: "active" }),
+        thread("live"),
+      ],
+      { archiveAfterDays: null, saveAfterDays: 30, deleteAfterDays: null },
+      NOW,
+    );
+    expect(result.save.map((candidate) => candidate.rootId)).toEqual([
+      "child",
+      "old",
+    ]);
+  });
+  it("holds a saved thread's purge until its file is written, then restores it from the file", async () => {
+    const file = new Uint8Array([1, 2, 3, 4]);
+    let deleted = false;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () => [
+            makeThreadResponse({
+              id: "thr_old",
+              archivedAt: 1,
+              title: "Old investigation",
+              deletedAt: deleted ? 2 : null,
+            }),
+          ],
+          delete: async () => {
+            deleted = true;
+            return { ok: true };
+          },
+          experimental_export: async () => file,
+          experimental_import: async () => ({
+            threadId: "thr_old",
+            rows: 4,
+            insertedRows: 4,
+          }),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      const beforePurge = host.harness.registrations.hooks["thread.purge"];
+      if (beforePurge === null) throw new Error("thread.purge not registered");
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: null,
+        saveAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      expect(host.harness.sdk.callsTo("threads.delete")).toEqual([
+        [{ threadId: "thr_old", childThreadsConfirmed: true }],
+      ]);
+      expect(
+        await beforePurge({ threadId: "thr_other", projectId: "proj_test" }),
+      ).toEqual({ action: "proceed" });
+
+      const context = { threadId: "thr_old", projectId: "proj_test" };
+      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      await vi.waitFor(async () =>
+        expect(
+          await host.harness.callRpc("savedThreads", {
+            projectId: null,
+            search: null,
+            limit: 50,
+            offset: 0,
+          }),
+        ).toMatchObject({
+          savedThreads: [
+            {
+              threadId: "thr_old",
+              title: "Old investigation",
+              state: "saved",
+              fileBytes: 4,
+            },
+          ],
+        }),
+      );
+      expect(await beforePurge(context)).toEqual({ action: "proceed" });
+      expect(host.harness.sdk.callsTo("threads.experimental_export")).toEqual([
+        [{ threadId: "thr_old" }],
+      ]);
+
+      expect(
+        await host.harness.callRpc("restoreSavedThread", {
+          threadId: "thr_old",
+        }),
+      ).toEqual({ threadId: "thr_old", rows: 4, insertedRows: 4 });
+      expect(host.harness.sdk.callsTo("threads.experimental_import")).toEqual([
+        [{ file }],
+      ]);
+      expect(
+        await host.harness.callRpc("savedThreads", {
+          projectId: null,
+          search: null,
+          limit: 50,
+          offset: 0,
+        }),
+      ).toEqual({ savedThreads: [], hasMore: false });
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("keeps waiting while the file can't be written, and asks for it again", async () => {
+    let failures = 1;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () => [
+            makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
+          ],
+          delete: async () => ({ ok: true }),
+          experimental_export: async () => {
+            if (failures-- > 0) throw new Error("disk full");
+            return new Uint8Array([1]);
+          },
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      const beforePurge = host.harness.registrations.hooks["thread.purge"];
+      if (beforePurge === null) throw new Error("thread.purge not registered");
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: null,
+        saveAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      const context = { threadId: "thr_old", projectId: "proj_test" };
+      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      await vi.waitFor(() =>
+        expect(
+          host.harness.sdk.callsTo("threads.experimental_export"),
+        ).toHaveLength(1),
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(await beforePurge(context)).toEqual({ action: "wait" });
+      await vi.waitFor(async () =>
+        expect(await beforePurge(context)).toEqual({ action: "proceed" }),
+      );
+      expect(
+        host.harness.sdk.callsTo("threads.experimental_export"),
+      ).toHaveLength(2);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("forgets a save whose delete failed or whose thread was removed without it", async () => {
+    let present = true;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () =>
+            present
+              ? [
+                  makeThreadResponse({
+                    id: "thr_old",
+                    archivedAt: 1,
+                    deletedAt: 2,
+                  }),
+                ]
+              : [],
+          delete: async () => {
+            throw new Error("thread is busy");
+          },
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      const coldStorage = createColdStorage(host.bb);
+      await expect(
+        coldStorage.save({
+          id: "thr_old",
+          projectId: "proj_test",
+          title: null,
+          providerId: "codex",
+          createdAt: 1,
+          archivedAt: 1,
+        }),
+      ).rejects.toThrow("thread is busy");
+      expect(
+        coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 50,
+          offset: 0,
+        }),
+      ).toEqual({ savedThreads: [], hasMore: false });
+
+      host.bb.storage
+        .database()
+        .prepare(
+          `INSERT INTO saved_threads (thread_id, project_id, provider_id, thread_created_at, requested_at)
+           VALUES ('thr_old', 'proj_test', 'codex', 1, 1)`,
+        )
+        .run();
+      await coldStorage.dropAbandonedSaves();
+      expect(
+        coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 50,
+          offset: 0,
+        }).savedThreads,
+      ).toHaveLength(1);
+      present = false;
+      await coldStorage.dropAbandonedSaves();
+      expect(
+        coldStorage.list({
+          projectId: null,
+          search: null,
+          limit: 50,
+          offset: 0,
+        }).savedThreads,
+      ).toEqual([]);
     } finally {
       await host.harness.dispose();
     }

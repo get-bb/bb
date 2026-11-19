@@ -436,6 +436,28 @@ export function pendingAttachmentPath(
   return join(projectAttachmentDir(dataDir, projectId), ".pending", id);
 }
 
+export async function restoreProjectAttachment(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  attachment: {
+    content: Buffer;
+    mimeType: string | null;
+    originalName: string;
+    storedPath: string;
+  },
+): Promise<void> {
+  await writeInventoriedAttachment(
+    db,
+    dataDir,
+    projectId,
+    attachment.storedPath,
+    attachment.content,
+    attachment.originalName,
+    attachment.mimeType,
+  );
+}
+
 async function writeInventoriedAttachment(
   db: DbConnection,
   dataDir: string,

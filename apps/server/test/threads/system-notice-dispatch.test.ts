@@ -68,12 +68,14 @@ function installDispatchHook(
     | Promise<{ action: "proceed" }>,
 ): void {
   const registry: HookRegistry = {
+    "thread.purge": [],
     "message.dispatch": [{ pluginId: "notice-test", handler }],
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 

@@ -1275,6 +1275,7 @@ function createFakePluginHostInternal(
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
     "message.dispatch": null,
+    "thread.purge": null,
   };
   const environmentCompositions = new Map<
     string,
