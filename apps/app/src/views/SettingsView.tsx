@@ -1,6 +1,7 @@
 import { ApplicationLinkApprovalsSettings } from "@/components/settings/ApplicationLinkApprovalsSettings";
 import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
+import { DevicesSettingsSection } from "@/components/settings/DevicesSettingsSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useMemo, useRef, useState, type ReactNode } from "react";
@@ -1419,6 +1420,8 @@ export function SettingsView() {
     content = <UpdatesSettingsSection />;
   } else if (activeSection === "mobile") {
     content = <MobileAppSection />;
+  } else if (activeSection === "devices") {
+    content = <DevicesSettingsSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection

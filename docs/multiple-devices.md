@@ -151,8 +151,8 @@ getbb.app dashboard; its session stops working within about 20 seconds.
 Every phone
 takes one of the account's machine slots, so a machine-limit error means an
 unused device should be removed first. On a trusted network the app can also
-use a direct server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with
-the same caveats as a browser. What the phone cannot do is listed in
+use a direct server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`); it
+asks for a pairing code the first time, like a browser. What the phone cannot do is listed in
 [platform-support.md](platform-support.md#mobile-app).
 
 The dashboard folds devices that have not been used for 14 days under "Show N
@@ -182,6 +182,10 @@ the OS keychain, and never holds the server's pairing secret. The app appears in
 the getbb.app dashboard under Devices, named after the computer, where
 you can remove it. After a removal, the app drops the
 credential and asks the local server again.
+
+To point the desktop app at a direct server (a custom URL such as a LAN or
+Tailscale address), sign its window in with a pairing code the first time; the
+app keeps that browser sign-in.
 
 A remote server has no realtime link for keybindings and theme. The app re-reads
 them when it starts, when it becomes active, and every five minutes.

@@ -14,6 +14,13 @@ import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard
 import { installAppQueryClientBrowserEvents } from "./lib/query-client";
 import { appQueryClient } from "./lib/app-query-client";
 import { seedPluginListFromAppShell } from "./lib/app-shell-plugin-list";
+import {
+  PAIR_ROUTE_PATH,
+  readAccessStateFromAppShell,
+  showPairingScreen,
+} from "./lib/access-state";
+import { pairingCodeFromHash } from "./components/access/pairing-code";
+import { AccessGate } from "./components/access/AccessGate";
 import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import { installStaleChunkRecovery } from "./lib/stale-chunk-recovery";
@@ -29,6 +36,17 @@ Error.stackTraceLimit = 50;
 
 installAppQueryClientBrowserEvents(appQueryClient);
 registerProviderCliInstallQueryClient(appQueryClient);
+const shellAccess = readAccessStateFromAppShell(document);
+if (window.location.pathname === PAIR_ROUTE_PATH) {
+  if (
+    shellAccess === "unknown" &&
+    pairingCodeFromHash(window.location.hash) !== null
+  ) {
+    showPairingScreen();
+  } else if (shellAccess !== "signed-out") {
+    window.history.replaceState(window.history.state, "", "/");
+  }
+}
 seedPluginListFromAppShell(appQueryClient, document, performance.timeOrigin);
 
 initializePreferredTheme();
@@ -51,13 +69,15 @@ createRoot(document.getElementById("root")!, {
   <StrictMode>
     <AppErrorBoundary>
       <QueryClientProvider client={appQueryClient}>
-        <BrowserRouter>
-          <PluginActionContextProvider>
-            <App />
-          </PluginActionContextProvider>
-          <AppToaster />
-          <ApplicationUrlDialog />
-        </BrowserRouter>
+        <AccessGate>
+          <BrowserRouter>
+            <PluginActionContextProvider>
+              <App />
+            </PluginActionContextProvider>
+            <AppToaster />
+            <ApplicationUrlDialog />
+          </BrowserRouter>
+        </AccessGate>
       </QueryClientProvider>
     </AppErrorBoundary>
   </StrictMode>,

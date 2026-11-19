@@ -13,6 +13,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "FolderGit", id: "projects", label: "Projects" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "Smartphone", id: "mobile", label: "Mobile" },
+  { icon: "SquareUnlock02", id: "devices", label: "Devices" },
   {
     icon: "Lock",
     id: "environment-variables",

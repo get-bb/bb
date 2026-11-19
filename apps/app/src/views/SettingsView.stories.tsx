@@ -1,4 +1,5 @@
 import { MobileAppSection } from "@/components/settings/MobileAppSection";
+import { DevicesSettingsSection } from "@/components/settings/DevicesSettingsSection";
 import { CliCommandSettingsSectionContent } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSectionContent } from "@/components/settings/CliSkillsSettingsSection";
 import { useEffect, useRef, useState } from "react";
@@ -397,6 +398,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return <SettingsUpdatesStory />;
     case "mobile":
       return <MobileAppSection />;
+    case "devices":
+      return <DevicesSettingsSection />;
     case "experiments":
       return <ExperimentsStory />;
     case "marketplaces":

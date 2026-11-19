@@ -258,6 +258,25 @@ export const SETTINGS_SEARCH_INDEX: Record<
     keywords: ["phone", "ios", "iphone", "android", "testflight", "apk"],
     settings: [],
   },
+  devices: {
+    keywords: [
+      "sign in",
+      "sign out",
+      "pairing code",
+      "access",
+      "revoke",
+      "browsers",
+      "lan",
+      "tailscale",
+    ],
+    settings: [
+      {
+        title: "Sign in another device",
+        keywords: ["pair", "qr code", "pairing code"],
+      },
+      { title: "Signed-in devices", keywords: ["revoke", "sign out"] },
+    ],
+  },
   "environment-variables": {
     keywords: ["env", "secrets", "tokens", "gh_token"],
     settings: [],
