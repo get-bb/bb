@@ -1,13 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { resolveAppServerLaunch } from "./bridge.js";
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("Codex Account Pool launch", () => {
   it("scopes the pool URL and environment-backed hub header to the pooled provider", () => {
-    vi.stubEnv("CODEX_OPENAI_BASE_URL", "https://bb.example/pool/v1");
-    vi.stubEnv("CODEX_POOL_AUTH_TOKEN", "secret-machine-token");
-    const launch = resolveAppServerLaunch();
+    const launch = resolveAppServerLaunch({
+      CODEX_OPENAI_BASE_URL: "https://bb.example/pool/v1",
+      CODEX_POOL_AUTH_TOKEN: "secret-machine-token",
+    });
     expect(launch.command).toBe("codex");
     expect(launch.args.some((arg) => arg.startsWith("openai_base_url="))).toBe(
       false,
@@ -29,8 +28,11 @@ describe("Codex Account Pool launch", () => {
   });
 
   it("does not partially route when either required variable is missing", () => {
-    vi.stubEnv("CODEX_OPENAI_BASE_URL", "https://bb.example/pool/v1");
-    expect(resolveAppServerLaunch()).toEqual({
+    expect(
+      resolveAppServerLaunch({
+        CODEX_OPENAI_BASE_URL: "https://bb.example/pool/v1",
+      }),
+    ).toEqual({
       command: "codex",
       args: ["app-server"],
     });

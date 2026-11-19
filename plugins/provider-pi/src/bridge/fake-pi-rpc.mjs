@@ -31,7 +31,7 @@ if (args.includes("--version")) {
     );
     process.exit(1);
   }
-  process.stdout.write(`${process.env.FAKE_PI_VERSION ?? "0.84.0"}\n`);
+  process.stdout.write(`${process.env.FAKE_PI_VERSION ?? "0.84.3"}\n`);
   process.exit(0);
 }
 function flag(name) {
@@ -47,17 +47,17 @@ if (failNextStartFile && existsSync(failNextStartFile)) {
 const sessionFile = args.includes("--no-session")
   ? undefined
   : flag("--session");
-const extensionPath = flag("--extension");
-const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
-const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
-const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
-const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
-if (process.env.FAKE_PI_ENV_LOG) {
+if (process.env.FAKE_PI_ENV_LOG && sessionFile !== undefined) {
   appendFileSync(
     process.env.FAKE_PI_ENV_LOG,
     `${process.env.FAKE_PI_ENV_MARKER ?? ""}\n`,
   );
 }
+const extensionPath = flag("--extension");
+const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
+const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
+const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
+const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
 if (sessionFile !== undefined) {
   mkdirSync(dirname(sessionFile), { recursive: true });
   if (!existsSync(sessionFile)) {
@@ -151,7 +151,6 @@ function loadAvailableModels() {
 let availableModels = loadAvailableModels();
 
 let model = MODELS[0];
-const requestedModel = flag("--model");
 let spawnIndex = 1;
 if (process.env.FAKE_PI_SPAWN_COUNTER_FILE) {
   try {
@@ -166,20 +165,8 @@ if (process.env.FAKE_PI_SPAWN_COUNTER_FILE) {
     "utf8",
   );
 }
-const ignoreRequestedModel =
-  process.env.FAKE_PI_MISMATCH_FIRST_SPAWN === "1" && spawnIndex === 1;
-if (requestedModel !== undefined && !ignoreRequestedModel) {
-  const requestedProvider = flag("--provider");
-  const candidates = MODELS.filter(
-    (entry) => !requestedProvider || entry.provider === requestedProvider,
-  );
-  model =
-    candidates.find(
-      (entry) => `${entry.provider}/${entry.id}` === requestedModel,
-    ) ??
-    candidates.find((entry) => entry.id === requestedModel) ??
-    MODELS[0];
-}
+const missModelsOnFirstSpawn =
+  process.env.FAKE_PI_NO_MODELS_FIRST_SPAWN === "1" && spawnIndex === 1;
 let thinkingLevel = flag("--thinking") ?? "medium";
 let isStreaming = false;
 let isCompacting = false;
@@ -286,7 +273,7 @@ async function prepareExtensionLoadPath(path) {
     "./core/session-manager.js",
     import.meta.resolve("@earendil-works/pi-coding-agent"),
   ).href;
-  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
+  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.3") : "0.83.0")};`)}`;
   const aliases = new Map([
     ["@earendil-works/pi-coding-agent", runtimeShim],
     ["typebox", import.meta.resolve("typebox")],
@@ -751,7 +738,9 @@ async function handle(command) {
       });
       return;
     case "get_available_models":
-      respond(id, "get_available_models", { models: availableModels });
+      respond(id, "get_available_models", {
+        models: missModelsOnFirstSpawn ? [] : availableModels,
+      });
       if (
         process.env.FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE === "1" &&
         spawnIndex === 1

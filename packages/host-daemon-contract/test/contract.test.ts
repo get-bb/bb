@@ -1070,7 +1070,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(269);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(271);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1099,52 +1099,11 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(266)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(267)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(268)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(269)).toBe(true);
-    expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
-    expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(269)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(270)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(271)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
-  });
-
-  it("parses connect next config and status messages strictly", () => {
-    const config = {
-      domain: "next.getbb.app",
-      server: { protocol: "wss", host: "tunnel.next.getbb.app", port: 443 },
-    };
-    expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "connect-next.replace",
-        generation: 3,
-        config,
-      }),
-    ).toEqual({ type: "connect-next.replace", generation: 3, config });
-    expect(
-      hostDaemonServerWsMessageSchema.safeParse({
-        type: "connect-next.replace",
-        generation: 3,
-        config: { ...config, credential: "x" },
-      }).success,
-    ).toBe(false);
-    const status = {
-      state: "connected",
-      label: "laptop",
-      lastError: null,
-      nextRetryAt: null,
-      since: 1,
-      shares: [{ port: 3000, state: "active", error: null }],
-    };
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "connect-next.status",
-        status,
-      }),
-    ).toEqual({ type: "connect-next.status", status });
-    expect(
-      hostDaemonDaemonWsMessageSchema.safeParse({
-        type: "connect-next.status",
-        status: { ...status, state: "halted" },
-      }).success,
-    ).toBe(false);
   });
 
   it.each([
@@ -2981,19 +2940,6 @@ describe("host-daemon session schemas", () => {
         endedInteractiveRequests: [],
       }).connectShares,
     ).toEqual({ generation: 0, ports: [] });
-
-    expect(
-      hostDaemonSessionOpenResponseSchema.parse({
-        sessionId: "session_default_next",
-        machineEnvironment: { revision: 0, entries: [] },
-        idleProviderSessionTimeoutMinutes: 30,
-        agentCpuPriority: false,
-        heartbeatIntervalMs: 5_000,
-        leaseTimeoutMs: 30_000,
-        reconnectGraceMs: 30_000,
-        endedInteractiveRequests: [],
-      }).connectNext,
-    ).toEqual({ generation: 0, config: null });
 
     expect(() =>
       hostDaemonSessionOpenResponseSchema.parse({

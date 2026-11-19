@@ -620,7 +620,7 @@ describe("runtime recovery hints", () => {
     );
     let caught: unknown;
     try {
-      await runtime.listModels({ providerId: PROVIDER_ID });
+      await runtime.listModels({ providerId: PROVIDER_ID, contributedEnv: [] });
     } catch (error) {
       caught = error;
     }

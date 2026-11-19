@@ -1,19 +1,22 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { resolvePiModelSelection, type PiModelRef } from "./model-selection.js";
 import { runSettlementError } from "./run-settlement.js";
-import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_buildBridgeToolCallContent as buildBridgeToolCallContent,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
   NO_REQUEST_TIMEOUT,
   PiRpcChild,
   PiRpcChildExitedError,
-  buildPiChildEnv,
   type PiRpcChildExitInfo,
 } from "./rpc-child.js";
 
 export interface PiRpcSessionOptions {
   cwd: string;
-  model?: { provider: string; id: string };
+  model?: string;
   thinkingLevel?: string;
   additionalSkillPaths?: readonly string[];
   shellEnvOverrides?: Record<string, string>;
@@ -228,6 +231,7 @@ export class PiRpcSession {
     contextWindow: number;
   } | null = null;
   private liveModel: PiRpcSessionState["model"] | undefined;
+  private selectedModel: PiModelRef | undefined;
   private closed = false;
 
   constructor(
@@ -254,6 +258,32 @@ export class PiRpcSession {
 
   getLiveModel(): PiRpcSessionState["model"] | undefined {
     return this.liveModel;
+  }
+
+  getSelectedModel(): PiModelRef | undefined {
+    return this.selectedModel;
+  }
+
+  async resolveModel(selection: string): Promise<PiModelRef> {
+    const resolution = resolvePiModelSelection(
+      selection,
+      await this.availableModels(this.requireChild()),
+    );
+    if (resolution.kind !== "resolved") throw resolution.error;
+    return resolution.model;
+  }
+
+  private async availableModels(child: PiRpcChild): Promise<unknown[]> {
+    const data = await child.requestOk(
+      { type: "get_available_models" },
+      CHANNEL_REQUEST_TIMEOUT_MS,
+    );
+    return typeof data === "object" &&
+      data !== null &&
+      "models" in data &&
+      Array.isArray(data.models)
+      ? data.models
+      : [];
   }
 
   getContextUsage(): { tokens: number | null; contextWindow: number } | null {
@@ -304,14 +334,6 @@ export class PiRpcSession {
     for (const skillPath of this.options.additionalSkillPaths ?? []) {
       args.push("--skill", skillPath);
     }
-    if (this.options.model) {
-      args.push(
-        "--provider",
-        this.options.model.provider,
-        "--model",
-        this.options.model.id,
-      );
-    }
     if (this.options.thinkingLevel) {
       args.push("--thinking", this.options.thinkingLevel);
     }
@@ -320,7 +342,7 @@ export class PiRpcSession {
     const onExtensionUiRequest = this.options.onExtensionUiRequest;
     const child = new PiRpcChild({
       cwd: this.options.cwd,
-      env: buildPiChildEnv({
+      env: buildProviderCliEnv({
         ...(this.options.shellEnvOverrides ?? {}),
         PI_BB_TOOLS_FILE: toolsFilePath,
       }),
@@ -352,23 +374,44 @@ export class PiRpcSession {
         error: new Error("Pi has no authenticated model provider available."),
       };
     }
-    const wanted = this.options.model;
+    const selection = this.options.model;
+    if (selection === undefined) return { ok: true };
+    const resolution = resolvePiModelSelection(
+      selection,
+      await this.availableModels(child),
+    );
+    if (resolution.kind === "ambiguous") throw resolution.error;
+    if (resolution.kind === "missing") {
+      return { ok: false, error: resolution.error };
+    }
+    const wanted = resolution.model;
+    await child.requestOk(
+      { type: "set_model", provider: wanted.provider, modelId: wanted.id },
+      CHANNEL_REQUEST_TIMEOUT_MS,
+    );
+    if (this.options.thinkingLevel) {
+      await child.requestOk(
+        { type: "set_thinking_level", level: this.options.thinkingLevel },
+        CHANNEL_REQUEST_TIMEOUT_MS,
+      );
+    }
+    const selected = await this.getState(CHANNEL_REQUEST_TIMEOUT_MS);
     if (
-      wanted &&
-      (state.model?.provider !== wanted.provider ||
-        state.model?.id !== wanted.id)
+      selected.model?.provider !== wanted.provider ||
+      selected.model?.id !== wanted.id
     ) {
       return {
         ok: false,
         error: new Error(
-          `Pi did not start with model "${wanted.provider}/${wanted.id}"` +
-            (state.model?.id
-              ? ` (it chose "${String(state.model.provider)}/${String(state.model.id)}")`
+          `Pi did not switch to model "${wanted.provider}/${wanted.id}"` +
+            (selected.model?.id
+              ? ` (it kept "${String(selected.model.provider)}/${String(selected.model.id)}")`
               : "") +
             ". Check that the provider is authenticated.",
         ),
       };
     }
+    this.selectedModel = wanted;
     return { ok: true };
   }
 

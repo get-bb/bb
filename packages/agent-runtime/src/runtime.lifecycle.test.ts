@@ -1224,7 +1224,10 @@ describe("createAgentRuntime lifecycle", () => {
         },
       });
 
-      const { models } = await runtime.listModels({ providerId: "fake" });
+      const { models } = await runtime.listModels({
+        providerId: "fake",
+        contributedEnv: [],
+      });
       expect(models).toHaveLength(1);
       expect(models[0]?.id).toBe("fake-model");
       expect(models[0]?.isDefault).toBe(true);

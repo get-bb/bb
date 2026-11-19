@@ -98,8 +98,7 @@ function signalService(child, signal) {
     } else {
       process.kill(-child.pid, signal);
     }
-  } catch {
-  }
+  } catch {}
 }
 
 async function stopService(child) {
@@ -181,8 +180,7 @@ function routeRequest(request) {
         return { target: WORKER_URL, changeOrigin: true };
       }
     }
-  } catch {
-  }
+  } catch {}
   return null;
 }
 
@@ -291,11 +289,6 @@ const worker = spawnService(
     `BETTER_AUTH_SECRET:${DEV_SECRET}`,
     "--var",
     "CLOUD_DEV:true",
-    "--var",
-    `NEXT_BASE_DOMAIN:next.${DEV_BASE_DOMAIN}`,
-    ...(process.env.BB_CLOUD_DEV_GATE_SECRET?.trim()
-      ? ["--var", `GATE_SECRET:${process.env.BB_CLOUD_DEV_GATE_SECRET.trim()}`]
-      : []),
     "--show-interactive-dev-session=false",
   ],
   DATABASE_ENV,

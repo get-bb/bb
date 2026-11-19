@@ -90,8 +90,8 @@ async function managedInstall(layout = "releases-v1") {
 }
 
 async function offeredUpdate() {
-  const status = await getPiProviderInstallationStatus();
-  const run = await getPiProviderInstallationRun("update");
+  const status = await getPiProviderInstallationStatus(process.env, true);
+  const run = await getPiProviderInstallationRun(process.env, "update");
   return {
     action: status.installAction,
     command: run.available ? run.command : null,
@@ -164,11 +164,11 @@ describe("Pi provider update command by install source", () => {
     probeState.executablePath = install.launcher;
     probeState.version = "0.83.0";
 
-    expect(await getPiInstallGate()).toMatchObject({
+    expect(await getPiInstallGate(process.env)).toMatchObject({
       ok: false,
       status: "unsupported_version",
       statusMessage:
-        "Pi 0.83.0 is older than the supported minimum 0.84.0. Update Pi to 0.84.0 or newer: pi update --self",
+        "Pi 0.83.0 is older than the supported minimum 0.84.3. Update Pi to 0.84.3 or newer: pi update --self",
     });
   });
 });

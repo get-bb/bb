@@ -81,7 +81,7 @@ describe("Claude Code account status", () => {
     const profile = path.resolve("/profiles/work");
     vi.stubEnv("CLAUDE_CONFIG_DIR", profile);
 
-    expect(await getClaudeProviderUsage()).toEqual({
+    expect(await getClaudeProviderUsage(process.env)).toEqual({
       supported: true,
       usage: {
         status: "ok",
@@ -114,7 +114,7 @@ describe("Claude Code account status", () => {
         rate_limits: null,
       };
 
-      expect(await getClaudeProviderUsage()).toEqual({
+      expect(await getClaudeProviderUsage(process.env)).toEqual({
         supported: true,
         usage: { status: "unauthenticated" },
       });
@@ -122,7 +122,7 @@ describe("Claude Code account status", () => {
   );
 
   it("reports health from the account Claude Code signs in with", async () => {
-    expect(await getClaudeProviderHealth()).toMatchObject({
+    expect(await getClaudeProviderHealth(process.env)).toMatchObject({
       health: {
         status: "ready",
         accountEmail: "claude@example.com",
@@ -131,7 +131,7 @@ describe("Claude Code account status", () => {
     });
 
     state.account = signedOut;
-    expect(await getClaudeProviderHealth()).toMatchObject({
+    expect(await getClaudeProviderHealth(process.env)).toMatchObject({
       health: { status: "unauthenticated", accountEmail: null },
     });
   });

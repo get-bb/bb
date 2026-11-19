@@ -2452,7 +2452,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       bridgeLaunch,
       cwd,
       selectedModel,
-      contributedEnv = [],
+      contributedEnv,
     }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
@@ -2480,7 +2480,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return proc.adapter.parseModelListResult(result);
     },
 
-    async listCommands({ providerId, bridgeLaunch, cwd }) {
+    async listCommands({ providerId, bridgeLaunch, cwd, contributedEnv }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2489,6 +2489,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       const plan = proc.adapter.buildCommandPlan({
         type: "commands/list",
         cwd,
+        envVars: resolveContributedEnvironment(
+          contributedEnv,
+          options.shellEnv,
+        ),
       });
       if (plan.kind === "noop") {
         return { commands: [] };
@@ -2500,7 +2504,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async providerHealth({ providerId, bridgeLaunch, cwd }) {
+    async providerHealth({ providerId, bridgeLaunch, cwd, contributedEnv }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2509,6 +2513,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       const plan = proc.adapter.buildCommandPlan({
         type: "provider/health",
         ...(cwd !== undefined ? { cwd } : {}),
+        envVars: resolveContributedEnvironment(
+          contributedEnv,
+          options.shellEnv,
+        ),
       });
       if (plan.kind === "noop") {
         return { supported: false };
@@ -2546,6 +2554,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       cwd,
       requirement,
       checkUpdates = true,
+      contributedEnv,
     }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
@@ -2559,6 +2568,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           checkUpdates,
           ...(cwd !== undefined ? { cwd } : {}),
           ...(requirement !== undefined ? { requirement } : {}),
+          envVars: resolveContributedEnvironment(
+            contributedEnv,
+            options.shellEnv,
+          ),
         }),
         providerId,
       });
@@ -2569,7 +2582,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async providerInstallationRun({ providerId, bridgeLaunch, cwd, action }) {
+    async providerInstallationRun({
+      providerId,
+      bridgeLaunch,
+      cwd,
+      action,
+      contributedEnv,
+    }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2581,6 +2600,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           type: "provider/installation/run",
           action,
           ...(cwd !== undefined ? { cwd } : {}),
+          envVars: resolveContributedEnvironment(
+            contributedEnv,
+            options.shellEnv,
+          ),
         }),
         providerId,
       });

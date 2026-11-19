@@ -188,6 +188,47 @@ function agentMessageDeltaId(events: ThreadEvent[]): string | undefined {
 }
 
 describe("pi delta translation equivalence", () => {
+  it.each([false, true])(
+    "drops system prompt boundaries with an active turn: %s",
+    (activeTurn) => {
+      const harness = createHarness();
+      if (activeTurn) {
+        harness.translate(sdkMessage(loadFixture("agent-start.json")));
+      }
+      const message = {
+        role: "system",
+        content: "",
+        sections: { instructions: "Synthetic prompt section. ".repeat(2048) },
+        timestamp: 0,
+      };
+
+      const events = ["message_start", "message_end"].flatMap((type) =>
+        harness.translate(sdkMessage({ type, message })),
+      );
+
+      expect(events).toEqual([]);
+    },
+  );
+
+  it.each(["message_start", "message_end"])(
+    "preserves diagnostics for an unknown role at %s",
+    (type) => {
+      const harness = createHarness();
+      const envelope = sdkMessage({
+        type,
+        message: { role: "unrecognized-role", content: "diagnostic payload" },
+      });
+
+      expect(harness.translate(envelope)).toEqual([
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: `sdk/${type}`,
+          rawEvent: envelope,
+        }),
+      ]);
+    },
+  );
+
   it("keeps turn_start as internal noise while agent_start owns the bb turn", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
