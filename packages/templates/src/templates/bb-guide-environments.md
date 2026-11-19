@@ -179,9 +179,16 @@ Making your repo work with bb:
   still active, while any process owned by the daemon UID has its cwd or a
   mapped file path under the workspace, or while any such process cannot be
   inspected. Linux reads `/proc`; macOS uses `lsof` and refuses recovery if
-  `lsof` is missing or fails. On macOS, an uninspectable setuid process that
-  runs under another effective UID, such as the `login` process behind each
-  terminal tab, counts as another user's process. The guard compares paths,
+  `lsof` is missing or fails. An uninspectable setuid process that runs under
+  another effective UID, such as the `login` process behind each macOS
+  terminal tab or `fusermount3` on Linux, counts as another user's process.
+  On Linux, an uninspectable process in the daemon's own mount namespace, such
+  as `systemd --user`, `sshd-session` or `gpg-agent`, is not a blocker, so a
+  non-dumpable program running inside the workspace is not detected. A process
+  in another mount namespace, such as a container, is checked through its own
+  mount table: it blocks recovery when its cwd or a mapped file is in the
+  workspace, or, if it cannot be inspected, when one of its mounts exposes the
+  workspace or a parent directory. The guard compares paths,
   including deleted paths, rather than shared inode identity. It does not kill
   processes. Processes owned by other users require separate inspection before
   recovery. Stop or move your own workspace users first. Windows hosts and
