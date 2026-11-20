@@ -556,17 +556,24 @@ if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
   shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
   node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
   printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$shim_file"
-  cli_path_quoted=$(printf '%s' "$data_dir/npm/bin/bb" | sed "s/'/'\\''/g")
-  cat >> "$shim_file" <<'BB_MACHINE_EXPLICIT_DATA'
-if [ -n "${BB_DATA_DIR:-}" ] && [ -x "$BB_DATA_DIR/npm/bin/bb" ]; then
-  exec "$BB_DATA_DIR/npm/bin/bb" "$@"
+  data_dir_quoted=$(printf '%s' "$data_dir" | sed "s/'/'\\''/g")
+  cat >> "$shim_file" <<'BB_MACHINE_RUN'
+run_machine_cli() {
+  machine_dir=$1
+  shift
+  for candidate in "$machine_dir/bin/bb" "$machine_dir/npm/bin/bb"; do
+    if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+  done
+}
+if [ -n "${BB_DATA_DIR:-}" ]; then
+  run_machine_cli "$BB_DATA_DIR" "$@"
 fi
-BB_MACHINE_EXPLICIT_DATA
-  printf 'if [ -x \047%s\047 ]; then exec \047%s\047 "$@"; fi\n' "$cli_path_quoted" "$cli_path_quoted" >> "$shim_file"
+BB_MACHINE_RUN
+  printf 'run_machine_cli \047%s\047 "$@"\n' "$data_dir_quoted" >> "$shim_file"
   cat >> "$shim_file" <<'BB_MACHINE_CLI'
 unset BB_DATA_DIR
-for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
-  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+for machine_dir in "$HOME"/.bb-machines/*; do
+  run_machine_cli "$machine_dir" "$@"
 done
 if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
 printf '%s\n' 'No installed bb machine CLI is available.' >&2

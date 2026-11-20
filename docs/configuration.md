@@ -175,7 +175,10 @@ SDK methods are `system.experimental_cliCommand()`,
 - bb never replaces another `bb`. If one already comes first on your PATH
   (for example a global `npm install -g bb-app`, the `~/.local/bin/bb` a bb
   machine install added, or Babashka), the setting names it and Install is
-  refused with `409 cli_command_blocked`.
+  refused with `409 cli_command_blocked`. The machine's `~/.local/bin/bb`
+  runs the data dir's `<dataDir>/bin/bb` launcher when one exists, so it
+  follows in-app updates once that machine runs a bb server, and falls back
+  to the machine's npm install otherwise.
 - Remove deletes only links that point at a bb launcher, or the
   `<dataDir>\bin` PATH entry on Windows.
 - Machine credentials cannot install or remove the command.
