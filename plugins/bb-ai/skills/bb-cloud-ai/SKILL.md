@@ -1,6 +1,6 @@
 ---
 name: bb-cloud-ai
-description: "Check, turn off, or troubleshoot bb cloud, the hosted service that writes thread titles and commit messages and transcribes voice input for signed-in bb accounts."
+description: "Check, turn off, or troubleshoot bb cloud: hosted thread titles, commit messages, and voice transcription."
 ---
 
 # bb cloud AI

@@ -1,6 +1,6 @@
 ---
 name: push-notifications
-description: "Register mobile devices, toggle mobile, web, and desktop notification channels, set per-thread notification levels, send a notification from the CLI or another plugin, or test delivery for BB push notifications."
+description: "Send, test, or configure BB push notifications: mobile devices, mobile, web, and desktop channels, and per-thread levels."
 ---
 
 # Push notifications

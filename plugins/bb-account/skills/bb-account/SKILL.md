@@ -1,6 +1,6 @@
 ---
 name: bb-account
-description: "Sign this bb in to or out of its getbb.app account with bb account, and check which account remote access and hosted services use."
+description: "Sign bb in to or out of its getbb.app account, and check which account remote access and hosted services use."
 ---
 
 # bb account

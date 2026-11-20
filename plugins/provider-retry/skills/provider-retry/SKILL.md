@@ -1,6 +1,6 @@
 ---
 name: provider-retry
-description: "Diagnose automatic retries of BB turns after provider overloads, server or connection errors, and subscription-window limits."
+description: "Diagnose bb's automatic turn retries after provider overloads, server or connection errors, and usage limits."
 ---
 
 # Provider retry

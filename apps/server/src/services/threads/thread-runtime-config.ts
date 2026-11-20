@@ -31,6 +31,10 @@ import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import {
+  formatAgentInstructions,
+  type AgentInstructionSection,
+} from "./agent-instruction-sections.js";
+import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   readDataDirAgentInstructions,
@@ -218,17 +222,15 @@ export async function resolveThreadRuntimeCommandConfig(
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
   );
-  const instructionSections: string[] = [];
+  const instructionSections: AgentInstructionSection[] = [];
   for (const contribution of dynamicToolContributions) {
     if (!contribution.instructions) continue;
-    if (contribution.pluginId === null) {
-      instructionSections.push(contribution.instructions);
-    } else {
-      instructionSections.push(
-        `The following instructions come from the BB plugin "${contribution.pluginId}" for its tool "${contribution.tool.name}":`,
-        contribution.instructions,
-      );
-    }
+    instructionSections.push({
+      kind: "tool",
+      pluginId: contribution.pluginId,
+      toolName: contribution.tool.name,
+      text: contribution.instructions,
+    });
   }
   for (const contribution of listPluginInstructionContributions()) {
     let text = contribution.provider({
@@ -236,31 +238,34 @@ export async function resolveThreadRuntimeCommandConfig(
       projectId: args.thread.projectId,
     });
     if (text === null || text.trim().length === 0) continue;
-    text = sliceUtf16Head(text, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS);
-    instructionSections.push(
-      `The following instructions come from the BB plugin "${contribution.pluginId}":`,
-      text,
-    );
+    instructionSections.push({
+      kind: "plugin",
+      pluginId: contribution.pluginId,
+      text: sliceUtf16Head(text, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS),
+    });
   }
   for (const contribution of conditionalConfiguration.dynamicInstructions) {
-    instructionSections.push(
-      `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
-      contribution.text,
-    );
+    instructionSections.push({
+      kind: "dynamic",
+      pluginId: contribution.pluginId,
+      text: contribution.text,
+    });
   }
   if (dataDirAgentInstructions) {
-    instructionSections.push(
-      `The following user instructions come from <dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
-      dataDirAgentInstructions,
-    );
+    instructionSections.push({
+      kind: "user",
+      source: `<dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}`,
+      text: dataDirAgentInstructions,
+    });
   }
   if (workspaceAgentContext.agentInstructions) {
-    instructionSections.push(
-      `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
-      workspaceAgentContext.agentInstructions,
-    );
+    instructionSections.push({
+      kind: "workspace",
+      source: WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
+      text: workspaceAgentContext.agentInstructions,
+    });
   }
-  const instructions = instructionSections.join("\n\n");
+  const instructions = formatAgentInstructions(instructionSections);
   const threadStoragePath = await requireLiveThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,

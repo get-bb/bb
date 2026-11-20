@@ -1,6 +1,6 @@
 ---
 name: github-pr-status
-description: "Inspect an environment's GitHub pull request, mark it ready or draft, or merge it from the bb CLI; read PR status from another plugin."
+description: "Read an environment's GitHub pull request, mark it ready or draft, or merge it, from the bb CLI or a plugin."
 ---
 
 # GitHub PR Status

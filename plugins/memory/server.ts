@@ -660,9 +660,8 @@ function displayMemory(memory: MemoryRecord, includeDetails: boolean): string {
 function renderCatalog(store: MemoryStore, projectId: string): string {
   const { memories, total } = store.list("all", projectId, MAX_RESULT_LIMIT);
   const header = [
-    "Memory index",
-    "The entries below are summaries, not full records. Use `bb memory search <query> --scope all --json` and `bb memory get <id> --json` to progressively disclose details.",
-    "You may proactively save durable learning with `bb memory add`. Use project scope for repository-specific facts and global scope only for broadly applicable user preferences or workflows. Never store secrets, transient status, guesses, or rules already guaranteed by AGENTS.md.",
+    "Memory index: summaries only. Read one with `bb memory get <id> --json`; search with `bb memory search <query> --scope all --json`.",
+    "You may proactively save durable learning with `bb memory add`: project scope for repository facts, global scope only for broadly applicable user preferences and workflows. Never store secrets, transient status, guesses, or rules AGENTS.md already gives.",
     "",
   ].join("\n");
   if (memories.length === 0) return `${header}No memories are stored yet.`;

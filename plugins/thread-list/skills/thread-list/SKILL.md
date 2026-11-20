@@ -1,6 +1,6 @@
 ---
 name: thread-list
-description: "Inspect or change the sidebar thread list's layout preferences: organization mode, sort, section order, hidden groups, collapsed groups, and thread row actions."
+description: "Inspect or change the sidebar thread list layout: grouping, sort, section order, hidden or collapsed groups, and row actions."
 ---
 
 # Thread list preferences

@@ -531,7 +531,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     tools: [],
     skills: ["browser-automation"],
     instructions:
-      "When `bb browser-automation open` returns a previewDirective, copy it into your next response exactly once as a standalone line before you continue working. Do not wrap it in backticks or a code fence, and do not invent or edit the session ID. The directive shows the user a live view of that headless browser in BB chat. Desktop sessions return no directive.",
+      "When `bb browser-automation open` returns a previewDirective, copy it unchanged into your next response exactly once, on its own line and outside backticks or code fences, before you continue. It shows the user the headless browser live. Desktop sessions return none.",
   }));
   async function executeCli(
     request: BrowserCliRequest,

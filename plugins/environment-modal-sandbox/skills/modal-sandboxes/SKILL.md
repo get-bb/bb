@@ -1,6 +1,6 @@
 ---
 name: modal-sandboxes
-description: Connect Modal and create reusable cloud machines with the bundled standard image, on-demand daemon installation, and snapshot lifecycle.
+description: "Connect Modal and create reusable cloud machines from the standard image, with snapshots."
 ---
 
 # Modal machines

@@ -1,6 +1,6 @@
 ---
 name: codex-provider
-description: "Diagnose BB-specific Codex session controls, MCP elicitation and Computer Use app access, model acceptance, and durable goals."
+description: "Diagnose BB Codex sessions: controls, MCP elicitation, Computer Use access, model acceptance, and goals."
 ---
 
 # Codex provider

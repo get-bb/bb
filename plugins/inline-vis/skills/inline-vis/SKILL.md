@@ -1,6 +1,6 @@
 ---
 name: inline-vis
-description: "Show an HTML chart, table, diagram, mockup, demo, or report inline in BB chat: write a small page directly in the reply as an inline-vis fenced block, or show a workspace or thread-storage HTML or Markdown file with the inline-vis directive."
+description: "Show a chart, table, diagram, mockup, or report in BB chat: an inline-vis block, or a workspace or thread-storage HTML or Markdown file."
 ---
 
 # Inline previews

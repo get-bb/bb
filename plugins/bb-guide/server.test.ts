@@ -25,10 +25,8 @@ it("introduces bb without user-question guidance", async () => {
     });
     expect(introduction).toContain("You are working inside bb");
     expect(introduction).toContain("agentic IDE");
-    expect(introduction).toContain(
-      "Reference a BB thread as `@thread:thr_abc123`",
-    );
-    expect(introduction).toContain("Do not construct thread URLs manually");
+    expect(introduction).toContain("Link a thread as `@thread:thr_abc123`");
+    expect(introduction).toContain("Never build thread URLs");
     expect(introduction).toContain("`bb voice transcribe <path>`");
     expect(introduction).not.toContain(
       "Ask the user a blocking question only when",
@@ -110,5 +108,46 @@ describe("individual skill selection", () => {
     } finally {
       await harness.lifecycle.dispose();
     }
+  });
+});
+
+describe("child thread instructions", () => {
+  async function instructionsFor(
+    parentThreadId: string | null,
+    introductionEnabled = true,
+  ) {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "bb-guide",
+      agentSkillIds: bundledSkills,
+    });
+    try {
+      await plugin(bb);
+      await harness.behavior.setSettings({ introduction: introductionEnabled });
+      return (
+        await harness.behavior.resolveAgentConfiguration(
+          makePluginAgentConfigurationContext({
+            thread: {
+              id: "thr_child",
+              title: null,
+              parentThreadId,
+              sourceThreadId: null,
+            },
+          }),
+        )
+      ).instructions;
+    } finally {
+      await harness.lifecycle.dispose();
+    }
+  }
+
+  it("tells a child thread to report to its parent when notifications are off", async () => {
+    const instructions = await instructionsFor("thr_parent");
+    expect(instructions).toContain("child of thread thr_parent");
+    expect(instructions).toContain("`bb thread tell thr_parent`");
+  });
+
+  it("adds nothing for a top-level thread or with the introduction off", async () => {
+    expect(await instructionsFor(null)).toBeNull();
+    expect(await instructionsFor("thr_parent", false)).toBeNull();
   });
 });

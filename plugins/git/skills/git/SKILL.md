@@ -1,6 +1,6 @@
 ---
 name: git
-description: "Read an environment's git status, changed files, diffs and branches, or mark files Viewed, from the bb CLI; read git status from another plugin."
+description: "Read an environment's git status, changed files, diffs, and branches, or mark files Viewed, from the bb CLI or a plugin."
 ---
 
 # Git
