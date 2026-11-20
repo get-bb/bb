@@ -1,5 +1,6 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import {
+  environments,
   getEnvironment,
   liveThread,
   threads,
@@ -62,4 +63,25 @@ export function cancelEnvironmentProvisioningForThreadStopInTransaction(
   }
 
   return "ready_to_finalize";
+}
+
+export function discardPendingCreateForThreadStopInTransaction(
+  deps: EnvironmentProvisionCancellationTransactionDeps,
+  args: CancelEnvironmentProvisioningForThreadStopArgs,
+): boolean {
+  const environment = getEnvironment(deps.db, args.environmentId);
+  if (
+    environment === null ||
+    !environment.createPending ||
+    environment.heldBy !== null ||
+    environment.teardownStatus !== null ||
+    hasOtherLiveThreadDependingOnEnvironmentProvision(deps, args)
+  )
+    return false;
+  deps.db
+    .update(environments)
+    .set({ teardownStatus: "running", retireAt: Date.now() })
+    .where(eq(environments.id, environment.id))
+    .run();
+  return true;
 }

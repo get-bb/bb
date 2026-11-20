@@ -114,14 +114,17 @@ function seedWorkspace(harness: TestAppHarness, name: string) {
     path: `/tmp/${name}-workspace`,
     status: "ready",
   });
-  installFakeGitWorktreeProvider(() => ({
-    action: "ready",
-    environment: {
-      type: "host",
-      hostId: host.id,
-      path: `/tmp/${name}-workspace`,
-    },
-  }));
+  installFakeGitWorktreeProvider(
+    () => ({
+      action: "ready",
+      environment: {
+        type: "host",
+        hostId: host.id,
+        path: `/tmp/${name}-workspace`,
+      },
+    }),
+    { locate: () => ({ path: `/tmp/${name}-workspace`, reuse: true }) },
+  );
   return { host, session, project };
 }
 

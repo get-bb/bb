@@ -159,6 +159,8 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: null,
     status: "ready",
     createdAt: Date.now(),

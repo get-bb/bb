@@ -472,7 +472,9 @@ export type PluginEnvironmentProviderDeclaration<
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. Providers receive the environment being created,
+   * so core can also create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
   register<
     const Requires extends PluginEnvironmentProviderRequirements,

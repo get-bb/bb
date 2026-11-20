@@ -282,6 +282,7 @@ import {
   type TimelineTurnSummaryDetailsQuery,
   type TimelineTurnSummaryDetailsResponse,
   type ListEnvironmentsQuery,
+  type CreateEnvironmentRequest,
   type UpdateEnvironmentRequest,
   type UpdateThreadSectionRequest,
   type UpdateTerminalRequest,
@@ -392,6 +393,7 @@ import {
   threadConversationOutlineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   listEnvironmentsQuerySchema,
+  createEnvironmentRequestSchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
   updateHostPermissionCeilingRequestSchema,
@@ -1203,6 +1205,18 @@ export const publicApiRoutes = {
         listEnvironmentsQuerySchema,
       ),
       response: jsonResponse<Environment[]>(),
+    }),
+    create: defineRoute({
+      path: "/environments",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateEnvironmentRequest>(
+        createEnvironmentRequestSchema,
+      ),
+      response: [
+        jsonResponse<Environment>({ status: 201 }),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
     }),
     delete: defineRoute({
       path: "/environments/:id",

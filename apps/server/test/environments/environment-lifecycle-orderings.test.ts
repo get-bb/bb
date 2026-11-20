@@ -1167,17 +1167,12 @@ class World {
           this.createThread(first, this.checkoutRequest("a", "path")),
         ];
         await firstAttach.reached;
-        const secondAttach = this.machine().hold(attach);
         creating.push(
           this.createThread(second, this.checkoutRequest("a", "path")),
-        );
-        firstAttach.release();
-        await secondAttach.reached;
-        creating.push(
           this.createThread(third, this.checkoutRequest("a", "path")),
         );
         await delay(100);
-        secondAttach.release();
+        firstAttach.release();
         await Promise.all(creating);
       },
     );

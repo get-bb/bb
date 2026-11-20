@@ -30,6 +30,8 @@ const ENVIRONMENT = {
   environmentProviderSelection: null,
   environmentProviderInstanceKey: null,
   managed: true,
+  heldBy: null,
+  statusMessage: null,
   workspaceProvisionType: "worktree",
 } as Environment;
 
