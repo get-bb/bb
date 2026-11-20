@@ -1071,27 +1071,18 @@ export function registerHandlers(
       const ids = [
         ...new Set(roots.flatMap((id) => [id, ...(descendants.get(id) ?? [])])),
       ];
-      const responses = await Promise.all(
-        ids.map(async (id) => {
-          try {
-            return await bb.sdk.threads.get({ threadId: id });
-          } catch (error) {
-            if (
-              typeof error === "object" &&
-              error !== null &&
-              "code" in error &&
-              error.code === "thread_not_found"
-            )
-              return null;
-            throw error;
-          }
-        }),
-      );
-      const threads = new Map(
-        responses.flatMap((thread) =>
-          thread === null ? [] : [[thread.id, thread] as const],
-        ),
-      );
+      const threads = new Map<
+        string,
+        Awaited<ReturnType<typeof bb.sdk.threads.list>>[number]
+      >();
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = await bb.sdk.threads.list({
+          threadIds: ids.slice(i, i + 200),
+          includeHidden: true,
+          limit: 200,
+        });
+        for (const thread of batch) threads.set(thread.id, thread);
+      }
       return {
         timings: attached.flatMap((task) => {
           const taskThreads = [
