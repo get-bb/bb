@@ -288,6 +288,8 @@ create path threads use; restart resumes it on the same setup operation. A
 held environment is never retired for having no threads. `hold: "user"` keeps
 it until the user deletes it and lets threads join it. `hold: "plugin"` holds
 it for the calling plugin, and threads cannot join it ("held by <plugin>").
+Disabling or uninstalling that plugin releases its holds, and the environments
+retire like any other.
 That plugin's version-2 provider hands one to a new thread by calling
 `adopt(environmentId, resource)` in `create` and returning its path: core
 clears the hold, moves the thread onto it and records `resource` at once, and

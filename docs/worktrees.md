@@ -135,8 +135,13 @@ created at the project's default base with `.worktreeinclude` copied and
 one instead of waiting for git and the setup script: once the thread's title
 settles, the plugin renames the warm worktree's unused placeholder branch to
 the thread's branch and hands it over, and setup does not run again. If core
-refuses the handover, the branch is renamed back. A warm worktree is only handed out while
-it is still at the last fetched default base; the checkout is never moved at
+refuses the handover, the branch is renamed back. While the title is being
+generated, bb asks the remote for its current default base (`git ls-remote`),
+and a warm worktree is only handed out if it is at that commit, so a thread
+never starts on older code than a fresh worktree would. If the remote can't be
+reached, bb compares against the last fetched default base instead, as a fresh
+worktree would, and the thread's provisioning log says it may be out of date.
+The log names the warm worktree's commit. The checkout is never moved at
 handoff, because setup already ran against it. Named bases, existing
 worktrees and restores always build a fresh worktree, and so does a thread
 that finds no current warm worktree.
@@ -151,7 +156,9 @@ after a handoff, idle worktrees are replaced after eight hours, and a failed
 one is deleted and retried after ten minutes. Warm worktrees are environments
 held by the Worktree plugin (`bb environment list --held-by
 plugin:environment-git-worktree`); threads cannot join them, and deleting the
-project or removing the machine removes them.
+project or removing the machine removes them. Disabling or uninstalling the
+Worktree plugin releases them, and they are then removed like any unused
+worktree once the plugin is enabled again.
 
 ## Cleanup
 

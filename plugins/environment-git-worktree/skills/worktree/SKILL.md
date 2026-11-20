@@ -21,7 +21,9 @@ when the user asks for it: each warm worktree runs the project's
 up again) whenever the default base moves.
 
 Only new worktree threads on the default base take a warm worktree, and only
-one that is still at the last fetched default base; setup does not run again,
+one that is at the remote's current default base (bb checks with
+`git ls-remote` while the title is generated, and falls back to the last
+fetched base when the remote can't be reached); setup does not run again,
 so the thread starts on exactly what setup ran against. Named bases, existing
 worktrees and restores build a fresh worktree, and so does a thread that finds
 no current warm worktree.
@@ -30,4 +32,5 @@ Warm worktrees are ordinary environments held by the Worktree plugin:
 `bb environment list --held-by plugin:environment-git-worktree` lists them, and
 `bb thread spawn --environment <id>` refuses them. A failed one is deleted and
 its error shows in `status`; refills then wait ten minutes. Deleting the project
-or removing the machine removes them like any other environment.
+or removing the machine removes them like any other environment, and
+disabling or uninstalling the Worktree plugin releases them.

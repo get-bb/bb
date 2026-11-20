@@ -4418,7 +4418,11 @@ adopt and create returning, core finishes the create from what adopt
 recorded and starts the thread. Its only caller is the Worktree plugin's warm
 pool, which renames a member's placeholder branch under the git ref lock,
 then adopts it with a resource naming the new branch, and renames the branch
-back when core refuses.
+back when core refuses. Disabling or uninstalling a plugin releases its holds
+(`releasePluginEnvironmentHolds`, on the plugin service's
+`onPluginUnregistered`, the same signal that clears its queue waits), so the
+environments retire like any other. Steps a provider reports after `adopt`
+land on the adopted environment and the thread's provisioning transcript.
 
 Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
 
