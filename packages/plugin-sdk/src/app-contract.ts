@@ -67,25 +67,10 @@ export interface PluginHomepageSectionProps {
 /**
  * Props passed to a `settingsSection` component.
  *
- * Versioned additive like the other slot props.
+ * Deliberately empty while sections read live app state through SDK hooks;
+ * versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {
-  /**
-   * Internal to bb's bundled connect plugin; not part of the plugin API.
-   * Set only when the setup guide renders the section; call it when the user
-   * starts setting it up.
-   */
-  internal_DO_NOT_USE_onSetupStarted?: () => void;
-  /**
-   * Internal to bb's bundled connect plugin; not part of the plugin API.
-   * Set only when the setup guide renders the section; call it when a setup
-   * attempt fails, with the stage that failed and, when known, why.
-   */
-  internal_DO_NOT_USE_onSetupFailed?: (
-    stage: InternalDoNotUseSetupFailureStage,
-    detail?: InternalDoNotUseSetupFailureDetail,
-  ) => void;
-}
+export interface PluginSettingsSectionProps {}
 
 /**
  * Stage of a setup guide section's setup attempt that failed.
