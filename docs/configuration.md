@@ -593,6 +593,14 @@ unbinds a command. Overrides may be scoped to `mac`, `windows`, or `linux`. Plug
 commands bind as `plugin:<plugin-id>/<command-id>`. See
 `bb guide customization` for scoping and plugin-binding rules.
 
+A focused terminal keeps the keys a shell reads: keys without Ctrl, Alt or
+Cmd (Escape, Enter, arrows, typing) and plain Ctrl+letter, Ctrl+Space, Ctrl+[,
+Ctrl+], Ctrl+\ and Ctrl+/, such as Ctrl+C, Ctrl+D, Ctrl+R and Ctrl+W. Those keys
+reach the shell even when a command is bound to them, so on Windows and Linux
+`Mod+K`, `Mod+W` and `Mod+J` go to the shell while a terminal has focus. Every
+other bound shortcut, including function keys and Ctrl+Shift, Alt or Cmd
+chords, runs its command from the terminal.
+
 `showKeyboardHints` (default `true`; `bb settings keyboard hints <true|false>`)
 shows delayed shortcut badges while the modifier is held; shortcuts work
 either way.

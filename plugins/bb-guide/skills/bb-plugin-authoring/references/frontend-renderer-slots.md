@@ -255,6 +255,9 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A focused terminal keeps unmodified keys and plain Control+letter for the
+  shell, so prefer a chord with Command, Alt or Shift, or a function key,
+  when the command should also run from a terminal.
   Registered shortcuts match by physical key when the active layout types a
   non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
   character on Latin layouts such as Dvorak. A plugin that handles keys

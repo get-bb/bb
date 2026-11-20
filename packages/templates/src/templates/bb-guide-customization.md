@@ -265,9 +265,11 @@ bb settings keyboard reset [command] [--platform mac|windows|linux]
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `terminal.find` applies while a terminal has
-focus: `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere, so Ctrl+letter keys keep
-reaching the shell. `hints` (default true) shows or hides the delayed shortcut
+unbound `panel.fullScreen.toggle`. A focused terminal keeps the keys a shell
+reads: keys without Ctrl, Alt or Cmd (Escape, Enter, arrows, typing) and plain
+Ctrl+letter, Ctrl+Space, Ctrl+[, Ctrl+], Ctrl+\ and Ctrl+/. Every other bound
+shortcut, including function keys, runs its command from the terminal. That is
+why `terminal.find` is `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere. `hints` (default true) shows or hides the delayed shortcut
 badges shown while holding the modifier key; shortcuts work either way.
 
 `history.back` / `history.forward` (`Mod+[` / `Mod+]`) follow the pages opened
