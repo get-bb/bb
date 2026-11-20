@@ -15,9 +15,11 @@ import {
 
 let contexts: PluginAgentContext[] = [];
 
+const LOAD_ALL_PLUGINS_TIMEOUT_MS = 180_000;
+
 beforeAll(async () => {
   contexts = await loadPluginAgentContexts({ nativeUserQuestion: false });
-});
+}, LOAD_ALL_PLUGINS_TIMEOUT_MS);
 
 describe("agent context budget", () => {
   it("keeps each plugin's always-on agent text within its budget", () => {

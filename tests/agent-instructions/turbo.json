@@ -1,6 +1,9 @@
 {
   "extends": ["//"],
   "tasks": {
+    "typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
     "test": {
       "dependsOn": [
         "//#ensure-native-modules",
