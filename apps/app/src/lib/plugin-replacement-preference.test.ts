@@ -21,11 +21,13 @@ function resolve(
   slots: readonly PluginThreadListSlot[],
   preference: string = AUTOMATIC_REPLACEMENT_PROVIDER,
   builtinPluginIds: ReadonlySet<string> = new Set(),
+  settledOnce = true,
 ): PluginThreadListSlot | null {
   const resolved = resolvePreferredReplacement(
     slots,
     preference,
     builtinPluginIds,
+    settledOnce,
   );
   return resolved.kind === "plugin" ? resolved.registration : null;
 }
@@ -56,8 +58,10 @@ describe("resolvePreferredReplacement", () => {
     );
   });
 
-  it("uses the owner while an explicitly selected provider is unavailable", () => {
-    expect(resolve([], "alpha/inbox")).toBeNull();
+  it("treats a missing selected provider as Automatic once plugins settle", () => {
+    const fallback = slot("beta", "inbox");
+    expect(resolve([fallback], "alpha/inbox")).toBe(fallback);
+    expect(resolve([fallback], "alpha/inbox", new Set(), false)).toBeNull();
   });
 
   it("prefers an installed replacement over a built-in plugin's regardless of plugin order", () => {

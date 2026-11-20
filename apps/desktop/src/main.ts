@@ -268,7 +268,10 @@ import {
   BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
-import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
+import {
+  STARTUP_RELOAD_KEYBINDINGS,
+  resolveDesktopReloadShortcut,
+} from "./desktop-reload-shortcut.js";
 import {
   type RendererCrashRecovery,
   watchRendererCrashes,
@@ -415,7 +418,7 @@ let desktopBrowserBroker: DesktopBrowserBroker | null = null;
 let desktopBrowserBrokerClient: ReturnType<
   typeof createDesktopBrowserBrokerClient
 > | null = null;
-let currentAppKeybindings: AppKeybindings = [];
+let currentAppKeybindings: AppKeybindings = STARTUP_RELOAD_KEYBINDINGS;
 let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
@@ -586,7 +589,11 @@ function registerApplicationRendererReloadShortcut(
   webContents: WebContents,
 ): void {
   webContents.on("before-input-event", (event, input) => {
-    const shortcut = resolveDesktopReloadShortcut(input);
+    const shortcut = resolveDesktopReloadShortcut(
+      input,
+      currentAppKeybindings,
+      process.platform,
+    );
     if (shortcut === null) {
       return;
     }
@@ -1064,6 +1071,7 @@ async function refreshSystemConfig(
     currentAppKeybindings = config.keybindings;
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
+      process.platform,
     );
     refreshApplicationMenu();
   } catch (error) {

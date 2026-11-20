@@ -776,6 +776,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       listStoredClientTurnRequestRowsByKeys(db, {
         keys: [
           {
+            acceptedSequence: lastTurn(fixture).completedSequence,
             requestId: lastTurn(fixture).requestId,
             threadId: fixture.threadId,
           },

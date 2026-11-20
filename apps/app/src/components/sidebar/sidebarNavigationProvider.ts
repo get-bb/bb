@@ -6,10 +6,12 @@ import { createLastKnownCache } from "@/lib/last-known-cache";
 import {
   usePluginFrontendLoadFailed,
   usePluginFrontendsSettled,
+  usePluginFrontendsSettledOnce,
 } from "@/lib/plugin-frontend-boot-state";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   findAutomaticReplacement,
+  findPinnedReplacement,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
 import {
@@ -56,6 +58,7 @@ export function resolveSidebarNavigation({
   slots,
   builtinPluginIds,
   settled,
+  settledOnce,
   loadFailed,
   lastResolved,
 }: {
@@ -63,17 +66,20 @@ export function resolveSidebarNavigation({
   slots: readonly ExperimentalSidebarNavigationSlot[];
   builtinPluginIds: ReadonlySet<string>;
   settled: boolean;
+  settledOnce: boolean;
   loadFailed: boolean;
   lastResolved: LastResolvedSidebarNavigation | null;
 }): ResolvedSidebarNavigation {
   const isAutomatic = preference === AUTOMATIC_REPLACEMENT_PROVIDER;
-  const pinned = isAutomatic
-    ? undefined
-    : slots.find((slot) => replacementProviderKey(slot) === preference);
+  const pinned = findPinnedReplacement(slots, preference);
   if (pinned) return resolvedPlugin(pinned, slots, builtinPluginIds);
   const automatic = findAutomaticReplacement(slots, builtinPluginIds);
   if (!settled) {
-    const awaitedKey = isAutomatic ? lastResolved?.key : preference;
+    const awaitedKey = isAutomatic
+      ? lastResolved?.key
+      : settledOnce
+        ? undefined
+        : preference;
     if (
       awaitedKey !== undefined &&
       (automatic === undefined ||
@@ -136,6 +142,7 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
   );
   const preference = useAtomValue(sidebarNavigationProviderAtom);
   const settled = usePluginFrontendsSettled();
+  const settledOnce = usePluginFrontendsSettledOnce();
   const loadFailed = usePluginFrontendLoadFailed();
   const [lastResolved] = useState(() =>
     lastResolvedCache.read(LAST_RESOLVED_KEY),
@@ -146,6 +153,7 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
     slots: experimentalSidebarNavigations,
     builtinPluginIds,
     settled,
+    settledOnce,
     loadFailed,
     lastResolved,
   });

@@ -8,6 +8,7 @@ import {
   type ProviderRawEventDescription,
   type ProviderVisibilityMetadata,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { claudeBlockingInformationalSystemMessageSchema } from "./schemas.js";
 
 function getMessageContentTypes(message: Record<string, unknown>): string[] {
   const messagePayload = getRecordProperty(message, "message");
@@ -49,6 +50,7 @@ type ClaudeSystemSubtype =
   | "hook_progress"
   | "hook_response"
   | "hook_started"
+  | "informational"
   | "init"
   | "local_command_output"
   | "memory_recall"
@@ -137,6 +139,7 @@ interface ClaudeUserRawEvent {
 interface ClaudeSystemRawEvent {
   kind: "sdk/system";
   subtype: ClaudeSystemSubtype;
+  blocksContinuation: boolean;
 }
 
 interface ClaudeResultRawEvent {
@@ -229,6 +232,7 @@ function toClaudeSystemSubtype(
     case "hook_progress":
     case "hook_response":
     case "hook_started":
+    case "informational":
     case "init":
     case "local_command_output":
     case "memory_recall":
@@ -397,6 +401,9 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
       return {
         kind: "sdk/system",
         subtype: toClaudeSystemSubtype(getStringProperty(message, "subtype")),
+        blocksContinuation:
+          claudeBlockingInformationalSystemMessageSchema.safeParse(message)
+            .success,
       };
 
     case "user":
@@ -488,6 +495,11 @@ function describeParsedClaudeRawEvent(
 
     case "sdk/system":
       switch (event.subtype) {
+        case "informational":
+          return {
+            kind: "sdk/system:informational",
+            coverage: event.blocksContinuation ? "normalized" : "unknown",
+          };
         case "compact_boundary":
           return {
             kind: "sdk/system:compact_boundary",

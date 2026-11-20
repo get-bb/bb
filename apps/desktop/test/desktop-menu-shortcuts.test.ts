@@ -31,9 +31,11 @@ describe("desktop menu shortcuts", () => {
     expect(DEFAULT_APPLICATION_MENU_ACCELERATORS).toEqual({
       closeWindowOrSideTab: "CommandOrControl+W",
       createNewWindow: "CommandOrControl+Shift+N",
+      forceReloadWindow: "CommandOrControl+Shift+R",
       openNewTab: "CommandOrControl+T",
       openNewThread: "CommandOrControl+N",
       openSettings: "CommandOrControl+,",
+      reloadWindow: "CommandOrControl+R",
       reopenClosedTab: "CommandOrControl+Shift+T",
     });
   });
@@ -52,15 +54,47 @@ describe("desktop menu shortcuts", () => {
   });
 
   it("uses the latest resolved binding and removes disabled menu accelerators", () => {
-    const accelerators = resolveApplicationMenuAccelerators([
-      binding("thread.new", "n", { mod: true }),
-      binding("thread.new", "u", { mod: true, shift: true }),
-      binding("settings.open", ",", { mod: true }),
-      binding("panel.reopenClosedTab", "t", { mod: true, shift: true }),
-    ]);
+    const accelerators = resolveApplicationMenuAccelerators(
+      [
+        binding("thread.new", "n", { mod: true }),
+        binding("thread.new", "u", { mod: true, shift: true }),
+        binding("settings.open", ",", { mod: true }),
+        binding("panel.reopenClosedTab", "t", { mod: true, shift: true }),
+      ],
+      "darwin",
+    );
     expect(accelerators.openNewThread).toBe("CommandOrControl+Shift+U");
     expect(accelerators.openSettings).toBe("CommandOrControl+,");
     expect(accelerators.reopenClosedTab).toBe("CommandOrControl+Shift+T");
     expect(accelerators.openNewTab).toBeUndefined();
+  });
+
+  it("shows only bindings that apply to the desktop on this platform", () => {
+    const macReload = {
+      ...binding("window.reload", "r", { mod: true }),
+      when: { all: ["mainSurface" as const, "macPlatform" as const], none: [] },
+    };
+    const webNewThread = {
+      ...binding("thread.new", "o", { mod: true, shift: true }),
+      when: { all: ["mainSurface" as const, "webSurface" as const], none: [] },
+    };
+    const keybindings = [
+      binding("thread.new", "n", { mod: true }),
+      webNewThread,
+      macReload,
+    ];
+
+    expect(
+      resolveApplicationMenuAccelerators(keybindings, "darwin"),
+    ).toMatchObject({
+      openNewThread: "CommandOrControl+N",
+      reloadWindow: "CommandOrControl+R",
+    });
+    expect(
+      resolveApplicationMenuAccelerators(keybindings, "win32"),
+    ).toMatchObject({
+      openNewThread: "CommandOrControl+N",
+      reloadWindow: undefined,
+    });
   });
 });

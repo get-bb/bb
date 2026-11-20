@@ -9,8 +9,10 @@ import { PluginSlotMount } from "./PluginSlotMount";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { resolvePendingInteraction } from "@/lib/plugin-slot-resolvers";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlotKind } from "@/lib/plugin-slots";
+import {
+  usePluginFrontendSettled,
+  usePluginSlotKind,
+} from "@/lib/plugin-slots";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { sdk } from "@/lib/sdk";
 
@@ -39,7 +41,7 @@ export function PluginPendingInteractionComposer({
 }: PluginPendingInteractionComposerProps) {
   const pendingInteractions = usePluginSlotKind("pendingInteractions");
   const pluginName = usePluginDisplayName(request.pluginId);
-  const pluginsSettled = usePluginFrontendsSettled();
+  const pluginSettled = usePluginFrontendSettled(request.pluginId);
   const inline = useContext(InlinePendingInteractionContext) !== null;
   const stopThread = useStopThread();
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +147,7 @@ export function PluginPendingInteractionComposer({
                 />
               </fieldset>
             </PluginSlotMount>
-          ) : pluginsSettled ? (
+          ) : pluginSettled ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 The plugin form is unavailable. {dismissLabel} to continue.

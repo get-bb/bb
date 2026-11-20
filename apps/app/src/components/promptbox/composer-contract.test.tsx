@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 import type {
+  ComposerCustomization,
   PluginComposerApi,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
@@ -380,24 +381,65 @@ function ComposersProbe() {
   return null;
 }
 
-function registerProbePlugin() {
+const PROBE_POPUP = {
+  id: "probe-popup",
+  label: "Probe popup",
+  component: () => <p>Probe popup body</p>,
+};
+
+function registerProbePlugin(
+  extra: readonly ComposerCustomization[] = [],
+): void {
   setPluginSlotRegistrations(
     PROBE_PLUGIN_ID,
     makePluginRegistrationSet({
       composerCustomizations: [
-        {
-          id: "probe",
-          experimental_popups: [
-            {
-              id: "probe-popup",
-              label: "Probe popup",
-              component: () => <p>Probe popup body</p>,
-            },
-          ],
-        },
+        { id: "probe", experimental_popups: [PROBE_POPUP] },
+        ...extra,
       ],
     }),
   );
+}
+
+const ALL_SCOPE_KINDS = [
+  "thread",
+  "queued-message",
+  "new-thread",
+] as const satisfies readonly PluginComposerScope["kind"][];
+
+function contributionCustomization(
+  id: string,
+  name: string,
+  scopes?: readonly PluginComposerScope["kind"][],
+): ComposerCustomization {
+  return {
+    id,
+    ...(scopes === undefined ? {} : { scopes }),
+    experimental_popups: [
+      {
+        id: `${id}-popup`,
+        label: `${name} popup`,
+        component: () => <p>{name} popup body</p>,
+      },
+    ],
+    plusMenu: [
+      {
+        id: "row",
+        label: `${name} plus row`,
+        run: ({ composer }) => {
+          composer.experimental_openPopup(`${id}-popup`);
+        },
+      },
+    ],
+    sendMenu: [{ id: "row", label: `${name} send row`, run: () => {} }],
+    banners: [{ id: "banner", component: () => <p>{name} banner</p> }],
+    actions: [
+      {
+        id: "action",
+        component: () => <button type="button">{name} action</button>,
+      },
+    ],
+  };
 }
 
 function renderSurface(surface: Surface) {
@@ -674,3 +716,96 @@ describe.each(COMPOSERS)("$name", (composer) => {
     });
   });
 });
+
+async function openMenuRows(trigger: string): Promise<readonly string[]> {
+  const box = await composerBox();
+  act(() => {
+    focusPaneComposer(screen.getByTestId("pane"));
+  });
+  await waitFor(() => expect(box.contains(document.activeElement)).toBe(true));
+  await act(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const button = screen.queryByRole("button", { name: trigger });
+  if (button === null) return [];
+  fireEvent.pointerDown(button, { button: 0 });
+  const rows = await waitFor(() => {
+    const realized = document.querySelectorAll(
+      '[role="menu"] [role="menuitem"]',
+    );
+    if (realized.length === 0) throw new Error(`${trigger} has no rows yet`);
+    return realized;
+  });
+  return Array.from(rows, (row) => row.textContent ?? "");
+}
+
+function menuRow(label: string): HTMLElement {
+  const row = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'),
+  ).find((candidate) => candidate.textContent === label);
+  if (row === undefined) throw new Error(`No menu row "${label}"`);
+  return row;
+}
+
+describe.each(SURFACES)(
+  "other plugins' composer contributions in the $name",
+  (surface) => {
+    beforeEach(async () => {
+      registerProbePlugin([
+        contributionCustomization("everywhere", "Everywhere"),
+        contributionCustomization(
+          "elsewhere",
+          "Elsewhere",
+          ALL_SCOPE_KINDS.filter((kind) => kind !== surface.scope.kind),
+        ),
+      ]);
+      await registerComposerPlugin();
+    });
+
+    it("shows plus rows in scope, and each opens its popup in this composer", async () => {
+      renderSurface(surface);
+      await composerBox();
+      const rows = await openMenuRows("Prompt actions");
+      expect(rows).toContain("Everywhere plus row");
+      expect(rows).not.toContain("Elsewhere plus row");
+      fireEvent.click(menuRow("Everywhere plus row"));
+      expect(await screen.findByText("Everywhere popup body")).toBeTruthy();
+    });
+
+    it(
+      surface.customizable
+        ? "mounts send rows, banners and actions in scope"
+        : "mounts no send rows, banners or actions",
+      async () => {
+        renderSurface(surface);
+        await composerBox();
+        const expected = surface.customizable ? ["Everywhere"] : [];
+        await waitFor(() =>
+          expect(
+            ["Everywhere", "Elsewhere"].filter(
+              (name) =>
+                screen.queryByText(`${name} banner`) !== null &&
+                screen.queryByRole("button", { name: `${name} action` }) !==
+                  null,
+            ),
+          ).toEqual(expected),
+        );
+        expect(screen.queryByText("Elsewhere banner")).toBeNull();
+        expect(
+          screen.queryByRole("button", { name: "Elsewhere action" }),
+        ).toBeNull();
+        if (!surface.customizable) {
+          expect(screen.queryByText("Everywhere banner")).toBeNull();
+          expect(
+            screen.queryByRole("button", { name: "Everywhere action" }),
+          ).toBeNull();
+        }
+        const sendRows = (await openMenuRows("Send options")).filter((row) =>
+          row.endsWith("send row"),
+        );
+        expect(sendRows).toEqual(expected.map((name) => `${name} send row`));
+      },
+    );
+  },
+);

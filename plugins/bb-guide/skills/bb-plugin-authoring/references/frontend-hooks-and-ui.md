@@ -7,7 +7,7 @@ Hooks:
   `projects`, `environments`, `hosts`, `files`, …), running with the
   signed-in user's session on the app origin. The first choice for reading
   and mutating bb state from a frontend: `sdk.threadSections.create({ name })`,
-  `sdk.threads.update({ id, sectionId })`, `sdk.threads.pin({ id })`,
+  `sdk.threads.update({ threadId, sectionId })`, `sdk.threads.pin({ threadId })`,
   `sdk.threads.spawn(request)`. `spawn` and `fork` stamp your plugin as the
   origin and the plugin-metadata calls default `pluginId`, exactly like the
   backend client. Thread title, section, and parent updates are optimistic in
@@ -16,8 +16,9 @@ Hooks:
   unread are optimistic too. For bb's archive and delete flows (child
   confirmation, pane cleanup, Undo) render bb's thread menu or run its
   thread actions; see "An action in every thread menu". The client is stable,
-  so it is safe in dependency lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
-} } })` and read `inspection.sdkCalls`.
+  so it is safe in dependency lists. Test with
+  `renderSlot(registration, props, { sdk: { threads: { update: async () => ({ … }) } } })`
+  and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.
   Reach for it when the work needs your server: secrets, host files, or your
@@ -209,8 +210,9 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows also appear in the sent-message
-  editor (scope `thread`), where the other customizations do not mount.
+  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows, their popups, and
+  composer commands also work in the sent-message editor (scope `thread`),
+  where actions, banners, `sendMenu` rows and rich text do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the

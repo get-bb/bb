@@ -5,8 +5,8 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { useMemo, type ReactNode, type RefObject } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
+  usePluginFrontendSettled,
   usePluginSlotKind,
   type PluginNewThreadPanelActionSlot,
   isThreadTab,
@@ -300,9 +300,9 @@ export function PluginPanelTabContent({
   );
 }
 
-function UnavailableActionTab() {
-  const pluginsSettled = usePluginFrontendsSettled();
-  if (!pluginsSettled) {
+function UnavailableActionTab({ pluginId }: { pluginId: string }) {
+  const pluginSettled = usePluginFrontendSettled(pluginId);
+  if (!pluginSettled) {
     return null;
   }
   return (
@@ -368,7 +368,7 @@ function RegisteredActionTabContent({
   if (action === undefined && context.kind === "nav-panel")
     return <NewThreadActionTabContent tab={tab} projectId={null} />;
   if (action === undefined || action.availability !== "action")
-    return <UnavailableActionTab />;
+    return <UnavailableActionTab pluginId={tab.pluginId} />;
   return (
     <PanelActionTabFrame
       layout={action.layout}
@@ -406,7 +406,7 @@ function NewThreadActionTabContent({
         candidate.pluginId === tab.pluginId && candidate.id === tab.actionId,
     ) ?? null;
   const params = usePersistedActionParams(tab);
-  if (action === null) return <UnavailableActionTab />;
+  if (action === null) return <UnavailableActionTab pluginId={tab.pluginId} />;
   return (
     <PanelActionTabFrame
       layout={action.layout}

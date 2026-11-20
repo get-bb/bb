@@ -5,7 +5,11 @@ import {
   usePluginFrontendBootComplete,
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlotKind, type PluginNavPanelSlot } from "@/lib/plugin-slots";
+import {
+  useIsPluginFrontendSettled,
+  usePluginSlotKind,
+  type PluginNavPanelSlot,
+} from "@/lib/plugin-slots";
 
 const pluginNavPanelChromeSchema = z.object({
   pluginId: z.string().min(1),
@@ -66,6 +70,7 @@ export function readRememberedPluginNavPanelChrome(
 export function mergePluginNavPanelChrome(
   remembered: readonly PluginNavPanelChrome[],
   navPanels: readonly PluginNavPanelSlot[],
+  isPluginSettled: (pluginId: string) => boolean,
 ): PluginNavPanelChromeEntry[] {
   const live = navPanels.map((panel) => ({
     chrome: pluginNavPanelChromeOf(panel),
@@ -75,9 +80,11 @@ export function mergePluginNavPanelChrome(
   const liveByKey = new Map(
     live.map((entry) => [chromeKey(entry.chrome), entry]),
   );
-  const entries: PluginNavPanelChromeEntry[] = remembered.map(
-    (chrome) => liveByKey.get(chromeKey(chrome)) ?? { chrome, panel: null },
-  );
+  const entries = remembered.flatMap((chrome): PluginNavPanelChromeEntry[] => {
+    const live = liveByKey.get(chromeKey(chrome));
+    if (live !== undefined) return [live];
+    return isPluginSettled(chrome.pluginId) ? [] : [{ chrome, panel: null }];
+  });
   const rememberedKeys = new Set(remembered.map(chromeKey));
   for (const entry of live) {
     if (!rememberedKeys.has(chromeKey(entry.chrome))) entries.push(entry);
@@ -95,14 +102,15 @@ export function rememberPluginNavPanelChrome(
 
 export function usePluginNavPanelChrome(): PluginNavPanelChromeEntry[] {
   const settled = usePluginFrontendsSettled();
+  const isPluginSettled = useIsPluginFrontendSettled();
   const navPanels = usePluginSlotKind("navPanels");
   const remembered = useMemo(
     () => readRememberedPluginNavPanelChrome(settled),
     [settled],
   );
   return useMemo(
-    () => mergePluginNavPanelChrome(remembered, navPanels),
-    [navPanels, remembered],
+    () => mergePluginNavPanelChrome(remembered, navPanels, isPluginSettled),
+    [isPluginSettled, navPanels, remembered],
   );
 }
 

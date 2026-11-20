@@ -25,6 +25,7 @@ import {
   fetchFrontendCandidates,
   reconcilePluginFrontends,
   type PluginFrontendCandidate,
+  type PluginFrontendCandidates,
   type PluginFrontendReconcileDeps,
 } from "./plugin-frontend";
 import {
@@ -249,7 +250,7 @@ function accountPoolListResponse(
 }
 
 interface TestReconcileDeps extends PluginFrontendReconcileDeps {
-  fetchCandidates: Mock<() => Promise<PluginFrontendCandidate[]>>;
+  fetchCandidates: Mock<() => Promise<PluginFrontendCandidates>>;
   importModule: Mock<(url: string) => Promise<unknown>>;
   removeRegistrations: Mock<typeof removePluginSlotRegistrations>;
   setRegistrations: Mock<typeof setPluginSlotRegistrations>;
@@ -257,9 +258,10 @@ interface TestReconcileDeps extends PluginFrontendReconcileDeps {
 
 function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
   return {
-    fetchCandidates: vi.fn(
-      async (): Promise<PluginFrontendCandidate[]> => initial,
-    ),
+    fetchCandidates: vi.fn(async (): Promise<PluginFrontendCandidates> => ({
+      candidates: initial,
+      startingPluginIds: [],
+    })),
     importModule: vi.fn(async (_url: string): Promise<unknown> =>
       pluginModule("hello"),
     ),
@@ -271,6 +273,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
+    setLoadingPlugins: vi.fn(),
+    settlePluginLoad: vi.fn(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
@@ -299,7 +303,11 @@ function reconcileHarness(
     deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
   }
   const reconcile = (next?: PluginFrontendCandidate[]): Promise<void> => {
-    if (next) deps.fetchCandidates.mockResolvedValue(next);
+    if (next)
+      deps.fetchCandidates.mockResolvedValue({
+        candidates: next,
+        startingPluginIds: [],
+      });
     return reconcilePluginFrontends(state, deps);
   };
   return { state, deps, reconcile };
@@ -357,7 +365,10 @@ describe("reconcilePluginFrontends", () => {
 
       await expect(
         fetchFrontendCandidates(newQueryClient(), "await-refresh"),
-      ).resolves.toEqual([candidate("account-pool", "v1")]);
+      ).resolves.toEqual({
+        candidates: [candidate("account-pool", "v1")],
+        startingPluginIds: [],
+      });
     },
   );
 
@@ -401,9 +412,10 @@ describe("reconcilePluginFrontends", () => {
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       cancel();
 
-      await expect(candidates).resolves.toEqual([
-        candidate("account-pool", "v1"),
-      ]);
+      await expect(candidates).resolves.toEqual({
+        candidates: [candidate("account-pool", "v1")],
+        startingPluginIds: [],
+      });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     },
   );

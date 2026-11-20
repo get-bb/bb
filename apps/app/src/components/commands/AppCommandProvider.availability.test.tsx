@@ -15,6 +15,7 @@ import {
   useAppCommandContext,
   useAppCommandHandler,
   useAppCommandRunner,
+  useIsAppCommandAvailable,
 } from "./AppCommandProvider";
 
 const MOD_P = {
@@ -211,6 +212,70 @@ describe("isCommandAvailable", () => {
       </>,
     );
     expect(availabilityOf("window.new")).toBe("yes");
+  });
+});
+
+function RenderedAvailability({ command }: { command: AppCommandId }) {
+  const available = useIsAppCommandAvailable(command);
+  return (
+    <span data-testid={`rendered-${command}`}>{available ? "yes" : "no"}</span>
+  );
+}
+
+function renderedAvailabilityOf(command: AppCommandId): string | null {
+  return screen.getByTestId(`rendered-${command}`).textContent;
+}
+
+function renderWithin(children: ReactNode) {
+  return (
+    <MemoryRouter>
+      <AppCommandProvider>{children}</AppCommandProvider>
+    </MemoryRouter>
+  );
+}
+
+describe("useIsAppCommandAvailable", () => {
+  it("re-renders when a handler mounts or unmounts after the reader rendered", () => {
+    const { rerender } = render(
+      renderWithin(<RenderedAvailability command="thread.new" />),
+    );
+    expect(renderedAvailabilityOf("thread.new")).toBe("no");
+
+    rerender(
+      renderWithin(
+        <>
+          <RenderedAvailability command="thread.new" />
+          <Handler command="thread.new" />
+        </>,
+      ),
+    );
+    expect(renderedAvailabilityOf("thread.new")).toBe("yes");
+
+    rerender(renderWithin(<RenderedAvailability command="thread.new" />));
+    expect(renderedAvailabilityOf("thread.new")).toBe("no");
+  });
+
+  it("re-renders when a precondition context registers after the reader rendered", () => {
+    const { rerender } = render(
+      renderWithin(
+        <>
+          <RenderedAvailability command="pane.close" />
+          <Handler command="pane.close" />
+        </>,
+      ),
+    );
+    expect(renderedAvailabilityOf("pane.close")).toBe("no");
+
+    rerender(
+      renderWithin(
+        <>
+          <RenderedAvailability command="pane.close" />
+          <Handler command="pane.close" />
+          <SplitContext />
+        </>,
+      ),
+    );
+    expect(renderedAvailabilityOf("pane.close")).toBe("yes");
   });
 });
 

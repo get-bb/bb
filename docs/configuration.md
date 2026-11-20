@@ -259,7 +259,9 @@ change the host-daemon protocol.
 | `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server            | Nested bb servers       | Machine token this nested server presents to the parent hub. Both parent variables must be well formed or proxying stays off.                                                                                                                                                                                                       |
 
 BB accepts request hosts that are `localhost`, IP addresses (including LAN and
-Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or
+Tailscale IPs), the address of an available machine access provider (such as
+the Tailscale plugin's `https://<machine>.<tailnet>.ts.net` once Serve is set
+up), or the hostname in `BB_APP_URL`. For a custom DNS name or
 reverse proxy, set `BB_APP_URL` (for example `https://bb.example.com`) before
 connecting, including from the CLI or SDK; a matching `Host`/`Origin` or
 `X-Forwarded-Host` cannot authorize an unconfigured name. A proxy can preserve
@@ -593,6 +595,14 @@ unbinds a command. Overrides may be scoped to `mac`, `windows`, or `linux`. Plug
 commands bind as `plugin:<plugin-id>/<command-id>`. See
 `bb guide customization` for scoping and plugin-binding rules.
 
+A focused terminal keeps the keys a shell reads: keys without Ctrl, Alt or
+Cmd (Escape, Enter, arrows, typing) and plain Ctrl+letter, Ctrl+Space, Ctrl+[,
+Ctrl+], Ctrl+\ and Ctrl+/, such as Ctrl+C, Ctrl+D, Ctrl+R and Ctrl+W. Those keys
+reach the shell even when a command is bound to them, so on Windows and Linux
+`Mod+K`, `Mod+W` and `Mod+J` go to the shell while a terminal has focus. Every
+other bound shortcut, including function keys and Ctrl+Shift, Alt or Cmd
+chords, runs its command from the terminal.
+
 `showKeyboardHints` (default `true`; `bb settings keyboard hints <true|false>`)
 shows delayed shortcut badges while the modifier is held; shortcuts work
 either way.
@@ -883,7 +893,9 @@ the SDK and CLI, and machine credentials cannot change it. Read it with
 **Machine server access.** `machineServerUrl` (Settings → Machines → Server URL
 reachable by machines; HTTP or HTTPS without embedded credentials) falls back
 to `BB_EXTERNAL_URL` when unset. `defaultMachineAccess` selects the access
-provider; unset selects bb connect, and `direct` (Manual) uses your own URL.
+provider; unset selects the provider of the earliest-installed plugin (bb
+connect unless it was removed), `tailscale` uses the Tailscale plugin's Serve
+address, and `direct` (Manual) uses your own URL.
 An explicit provider must be installed and available. Set them with
 `bb settings general machineServerUrl <url-or-null>` and
 `bb settings general defaultMachineAccess <provider-id-or-null>`.
@@ -982,6 +994,8 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
+A provider key whose plugin is disabled or uninstalled behaves as
+`__automatic__` until the plugin returns.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
@@ -1529,7 +1543,15 @@ are documented in [`apps/mobile/README.md`](../apps/mobile/README.md).
 The realtime client WebSocket (`/ws`) negotiates `permessage-deflate`, so
 messages of 1 KB or more, such as timeline pushes, are compressed (about 4x for
 timeline JSON). It helps clients that reach the server over a network;
-the bb connect relay re-frames messages and does not carry it. Terminal, host daemon, and plugin WebSockets are never compressed.
+the bb connect relay re-frames messages and does not carry it. Terminal
+(`/ws/terminals/:id`) and host daemon (`/internal/ws`) WebSockets negotiate the
+same compression only when the peer is on another machine: a non-loopback
+address, or a request that arrived through a proxy such as Tailscale Serve
+(`X-Forwarded-For` or `Forwarded`). From the same machine they stay
+uncompressed, since compressing there costs CPU and saves nothing. Daemons
+compress what they send at level 1 above 1 KB, as the server does, except
+file contents read for a download or preview, which are often already
+compressed. Plugin WebSockets are never compressed.
 
 ### Modal machines
 
@@ -1550,6 +1572,25 @@ never modifies the user's global npm installation. See the
 `browser-automation` skill and `plugins/browser-automation/README.md`. For
 isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` and
 `DEV_BROWSER_SMOKE_CHROME` select absolute binary and Chrome paths.
+
+### Tailscale
+
+The official Tailscale plugin (`bb plugin install tailscale`, plugin id
+`bb--tailscale`) makes this server reachable at
+`https://<machine>.<tailnet>.ts.net` through Tailscale Serve. Settings →
+Tailscale → **Set up** or `bb tailscale setup` runs
+`tailscale serve --bg --yes --https=443 <loopback URL>`, or uses bb's own port
+(for example `:38886`) when another service has 443 or already listens on the
+tailnet address at that port; a Serve mapping to bb made by hand is adopted
+unchanged. bb changes Serve only on setup and on **Remove** (`bb tailscale
+teardown`), which removes only the mapping bb created; stopping bb or
+disabling the plugin leaves it in place. Once Serve reaches bb, the address is
+the `tailscale` machine access provider, and bb accepts it as a request host
+without `BB_APP_URL`. See the `tailscale` skill.
+
+| Variable           | Effect                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `BB_TAILSCALE_CLI` | Path of the `tailscale` binary to run instead of the platform's standard install path. |
 
 ### MCP server
 

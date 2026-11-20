@@ -7,10 +7,11 @@
   `{ id, title, description?, component }`. Like `experimental_threadList`
   each slot is **exclusive** — one renderer at a time; a plugin the user
   installed wins over one bundled with bb, then the first in slot order, and
-  a missing, disabled, or crashing replacement falls back to bb's
-  renderer. Installing and enabling the plugin activates it, and the user can
-  pin bb's renderer or a specific provider under
-  **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
+  a crashing replacement falls back to bb's renderer. Installing and enabling
+  the plugin activates it, and the user can pin bb's renderer or a specific
+  provider under **Settings → Appearance** ("Source code" / "Diffs"), per
+  client. A pinned provider whose plugin is disabled or uninstalled behaves as
+  Automatic until it returns. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, Original }`;
@@ -46,8 +47,9 @@ Original }`. `experimental_fullFileContents` is either
   Registration: `{ id, title, description?, component }`. Exclusive like
   `experimental_threadList`: a composer from a plugin the user installed wins
   over the bundled Composer plugin; users choose under **Settings → Appearance
-  → Composer** (`composer.provider`). With no composer plugin enabled, no
-  composer is shown. bb's own composer is the bundled `plugins/composer`
+  → Composer** (`composer.provider`). A pinned composer whose plugin is
+  disabled or uninstalled behaves as Automatic until it returns. With no
+  composer plugin enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
   plugin, built on this slot; copy it to make your own.
 
   Read and write the draft with `useComposer()` (`draft`, `replace`) and
@@ -255,6 +257,9 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A focused terminal keeps unmodified keys and plain Control+letter for the
+  shell, so prefer a chord with Command, Alt or Shift, or a function key,
+  when the command should also run from a terminal.
   Registered shortcuts match by physical key when the active layout types a
   non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
   character on Latin layouts such as Dvorak. A plugin that handles keys

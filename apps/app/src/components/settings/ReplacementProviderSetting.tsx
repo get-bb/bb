@@ -2,6 +2,7 @@ import { useAtom, type WritableAtom } from "jotai";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
+  effectiveReplacementPreference,
   findAutomaticReplacement,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
@@ -20,7 +21,6 @@ export function ReplacementProviderSetting({
   description,
   triggerAriaLabel,
   builtInDescription,
-  allowAutomatic = true,
   preferenceAtom,
   slots,
 }: {
@@ -28,7 +28,6 @@ export function ReplacementProviderSetting({
   description: string;
   triggerAriaLabel: string;
   builtInDescription?: string;
-  allowAutomatic?: boolean;
   preferenceAtom: WritableAtom<string, [string], void>;
   slots: readonly ReplacementProviderSlot[];
 }) {
@@ -70,17 +69,15 @@ export function ReplacementProviderSetting({
               : `${slot.pluginId} plugin. ${slot.description}`,
         };
   const options = [
-    ...(allowAutomatic ? [automaticOption] : []),
+    automaticOption,
     ...slots.filter((slot) => !isBuiltin(slot)).map(optionFor),
     ...slots.filter(isBuiltin).map(optionFor),
     ...(builtInOption === null ? [] : [builtInOption]),
   ];
+  const effectivePreference = effectiveReplacementPreference(slots, preference);
   const selected =
-    options.find((option) => option.key === preference) ??
-    builtInOption ??
-    (allowAutomatic
-      ? automaticOption
-      : { key: preference, title: "Unavailable plugin" });
+    options.find((option) => option.key === effectivePreference) ??
+    automaticOption;
 
   return (
     <ChoiceDropdownSetting

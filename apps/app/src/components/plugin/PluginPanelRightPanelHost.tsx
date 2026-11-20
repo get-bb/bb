@@ -217,10 +217,12 @@ export function PluginPanelRightPanelHost({
       (candidate) =>
         candidate.pluginId === pluginId && candidate.path === panelPath,
     ) ?? null;
+  const awaitedPluginIds = useMemo(() => [pluginId], [pluginId]);
   const registeredTabs = usePluginTabs(
     panel === null
       ? null
       : { kind: "nav-panel", panelId: panel.id, pluginId, subPath },
+    awaitedPluginIds,
   );
   const pageTabs = useMemo(
     () =>

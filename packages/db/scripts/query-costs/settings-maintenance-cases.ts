@@ -11,6 +11,7 @@ import {
   getDisabledProviderIds,
   getPluginRecommendationId,
   getPluginSafeMode,
+  getServerAccessOrigins,
   getSkippedAppUpdate,
   isAppUpdateSendHoldSet,
   setAiServiceSelection,
@@ -22,6 +23,7 @@ import {
   setDisabledProviderIds,
   setPluginRecommendationId,
   setPluginSafeMode,
+  setServerAccessOrigins,
   setSkippedAppUpdate,
 } from "../../src/data/app-settings.js";
 import {
@@ -360,12 +362,32 @@ const SETTINGS_CASES: readonly Case[] = [
     run: (db) => setAutoAppUpdate(db, false),
   },
   {
+    name: `${APP_SETTINGS}#setServerAccessOrigins`,
+    run: (db) =>
+      setServerAccessOrigins(db, [
+        {
+          providerId: "tailscale",
+          pluginId: "bb--tailscale",
+          origin: "https://mini.tail1234.ts.net",
+        },
+        {
+          providerId: "connect",
+          pluginId: "connect",
+          origin: "https://bee.getbb.app",
+        },
+      ]),
+  },
+  {
     name: `${APP_SETTINGS}#getAiServiceSelections`,
     run: (db) => getAiServiceSelections(db),
   },
   {
     name: `${APP_SETTINGS}#getPluginSafeMode`,
     run: (db) => getPluginSafeMode(db),
+  },
+  {
+    name: `${APP_SETTINGS}#getServerAccessOrigins`,
+    run: (db) => getServerAccessOrigins(db),
   },
   {
     name: `${APP_SETTINGS}#getDisabledProviderIds`,

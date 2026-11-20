@@ -149,9 +149,9 @@ export default definePluginApp((app) => {
 ### A button in the thread header
 
 A thread action with `placement: "header"` is a button in the open thread's
-header instead of a menu entry. It shows after the workspace's Open button
-with its `label` (several share one split button). On phones and in narrow
-split panes it folds into the header's thread menu, as a row at the top. It
+header after the workspace's Open button: `icon` and `label`, `detail` as its
+tooltip, red for `variant: "destructive"`; several share a split button. On
+phones and narrow split panes it folds into the thread menu, at the top. It
 never appears in other menus, the quick-action picker, or
 `experimental_useThreadActions`. Its `useData` receives only the threads
 whose header is on screen. Return null from `item` whenever the button does
@@ -182,7 +182,7 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
   return (
     <InfoSection label="Automations" count={items.length}>
       <InfoList items={items} getKey={(item) => item.id} limit={3}
-        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={...} />} />
+        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={() => openAutomation(item.id)} />} />
     </InfoSection>
   );
 }
@@ -284,8 +284,11 @@ title and icon for a picker. Keys are `bb--core/<id>` and `<pluginId>/<id>`.
 ### A control in the Browser toolbar
 
 `app.slots.experimental_browserToolbarAction` renders a component beside the
-address bar of every built-in Browser tab. The component receives the owning
-`threadId`, current `tabId`, top-level `url`, and `isCompactViewport` state.
+address bar of every built-in Browser tab. The component receives the tab's
+owner as `threadId`, current `tabId`, top-level `url`, and `isCompactViewport`
+state. `threadId` is a thread id only in a thread's side panel; on the New
+thread screen and plugin pages it is an opaque panel key. Pass it with `tabId`
+to `sdk.experimental_desktopBrowsers` calls; do not treat it as a thread.
 Use these host-provided values to scope actions to the visible tab; do not infer
 the active Browser from global state.
 
@@ -359,9 +362,6 @@ interface PluginThreadListProps {
   isCompactViewport: boolean;
   /** Closes the mobile drawer. Always call it after opening a thread. */
   onNavigate: () => void;
-  /** Deprecated compatibility value for the removed sidebar search field.
-      The host always supplies "". */
-  searchQuery: string;
 }
 ```
 
@@ -383,7 +383,7 @@ const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
 // over realtime:
 const sdk = useSdk();
 await sdk.threadSections.create({ name: "Later" });
-await sdk.threads.update({ id: thread.id, sectionId });
+await sdk.threads.update({ threadId: thread.id, sectionId });
 
 // threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
 // anchor; the host routes clicks in place), title, titleFallback,
@@ -399,9 +399,9 @@ await sdk.threads.update({ id: thread.id, sectionId });
 // workspaceDisplayKind }, where workspaceDisplayKind is deprecated
 // compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
 // latestAttentionAt, and `indicator` (bb's resolved status kind) +
-// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
-// the SDK ships no status component. Treat an unknown indicator, status, or
-// runtimeStatus value as its documented fallback — bb adds kinds over time.
+// `indicatorLabel` (its a11y string). Draw it with `experimental_ThreadStatusGlyph`
+// or your own glyph. Treat an unknown indicator, status, or runtimeStatus
+// value as its documented fallback — bb adds kinds over time.
 
 // Three more per-row facts are client-local, so they are hooks rather than
 // fields on the thread: an unsent composer draft (bb paints a pencil, or a
@@ -425,15 +425,13 @@ const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, thread
 </span>;
 
 // `environment.providerId` names an entry in bb's environment provider
-// catalog; resolve it for a display name, and draw it with
-// <experimental_ProviderIcon providerKind="environment" provider={entry} />:
+// catalog; resolve it for a display name, and draw it with a capitalized
+// `experimental_ProviderIcon` alias (`providerKind="environment"`, `provider={entry}`):
 const { providers: environmentProviders } = useEnvironmentProviders();
 
 // Pull requests: read the GitHub PR Status plugin by thread.environment?.id
 // (references/frontend-pull-requests.md).
 
-const navigate = useBbNavigate();
-const sdk = useSdk();
 navigate.toThread(id, { split: true }); // bb's split placement rules
 navigate.toCompose({ projectId, focusPrompt: true });
 navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
@@ -461,7 +459,7 @@ plugin; see references/frontend-pull-requests.md.
 const { splitProps, isAvailable, layout } =
   experimental_useSidebarThreadSplit(thread.id);
 
-<a {...splitProps} onClick={...}>
+<a {...splitProps} onClick={openThread}>
   {title}
   {/* layout is data: draw a mini-map, a tint, or nothing */}
 </a>;
@@ -492,6 +490,8 @@ silently stop working:
 
 ```tsx
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
+  {thread.displayTitle}
+</a>
 ```
 
 ## Tab API migration

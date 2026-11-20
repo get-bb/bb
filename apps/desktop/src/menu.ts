@@ -26,8 +26,6 @@ const UNINSTALL_MENU_LABEL = "How to Uninstall bb";
 const UNINSTALL_URL = "https://getbb.app/uninstall";
 const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
-const RELOAD_ACCELERATOR = "CommandOrControl+R";
-const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 const DESKTOP_SETTINGS_MENU_LABEL = "Desktop Settings";
 const SERVER_MENU_LABEL = "Server";
 const DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID = "bb-desktop-settings-server-menu";
@@ -267,7 +265,7 @@ export function buildApplicationMenuTemplate(
       label: "View",
       submenu: [
         {
-          accelerator: RELOAD_ACCELERATOR,
+          accelerator: args.accelerators.reloadWindow,
           label: "Reload",
           registerAccelerator: false,
           click(_menuItem, browserWindow) {
@@ -275,7 +273,7 @@ export function buildApplicationMenuTemplate(
           },
         },
         {
-          accelerator: FORCE_RELOAD_ACCELERATOR,
+          accelerator: args.accelerators.forceReloadWindow,
           label: "Force Reload",
           registerAccelerator: false,
           click(_menuItem, browserWindow) {

@@ -27,7 +27,10 @@ function deps(
   candidates: () => PluginFrontendCandidate[],
 ): PluginFrontendReconcileDeps {
   return {
-    fetchCandidates: async () => candidates(),
+    fetchCandidates: async () => ({
+      candidates: candidates(),
+      startingPluginIds: [],
+    }),
     importModule: async () => ({ default: definePluginApp(() => {}) }),
     importRetryDelaysMs: [],
     applyCss: () => {},
@@ -37,6 +40,8 @@ function deps(
     resetCrashedSlots: () => {},
     setRegistrations: () => {},
     removeRegistrations: () => {},
+    setLoadingPlugins: () => {},
+    settlePluginLoad: () => {},
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
     warn: () => {},

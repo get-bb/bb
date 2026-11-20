@@ -147,7 +147,11 @@ function ThreadActionChoicesHint({
   );
 }
 
-function ThreadActionLabel({ action }: { action: PluginBoundThreadAction }) {
+export function ThreadActionLabel({
+  action,
+}: {
+  action: PluginBoundThreadAction;
+}) {
   if (action.detail === undefined) return action.label;
   return (
     <span className="flex min-w-0 flex-1 flex-col">

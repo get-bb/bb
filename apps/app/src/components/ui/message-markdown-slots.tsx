@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import type { PluginMessageDirectiveMessage } from "@get-bb/plugin-sdk";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import {
   buildCodeFenceRendererRegistry,
@@ -21,9 +22,13 @@ export function MessageSlotRegistriesProvider({
 }) {
   const messageDirectiveSlots = usePluginSlotKind("messageDirectives");
   const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
+  const pluginsSettled = usePluginFrontendsSettled();
   const messageDirectiveRegistry = useMemo(
-    () => buildMessageDirectiveRegistry(messageDirectiveSlots),
-    [messageDirectiveSlots],
+    () =>
+      buildMessageDirectiveRegistry(messageDirectiveSlots, {
+        unclaimed: pluginsSettled ? "literal" : "hold",
+      }),
+    [messageDirectiveSlots, pluginsSettled],
   );
   const codeFenceRendererRegistry = useMemo(
     () => buildCodeFenceRendererRegistry(codeFenceRendererSlots),
@@ -45,7 +50,8 @@ export function useMessageDirectives(
   const registry = useMessageDirectiveRegistry();
   return useMemo(
     () =>
-      registry === null || registry.size === 0
+      registry === null ||
+      (registry.directives.size === 0 && registry.unclaimed === "literal")
         ? undefined
         : { registry, message, openWorkspaceFile },
     [registry, message, openWorkspaceFile],
