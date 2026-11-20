@@ -631,9 +631,9 @@ const hostDaemonTerminalCloseMessageSchema = z
   })
   .strict();
 
-const hostDaemonTerminalFlowControlMessageSchema = z
+const hostDaemonTerminalStreamMessageSchema = z
   .object({
-    type: z.literal("terminal.flow-control"),
+    type: z.literal("terminal.stream"),
     terminalId: terminalIdSchema,
     enabled: z.boolean(),
   })
@@ -695,7 +695,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   hostDaemonTerminalInputMessageSchema,
   hostDaemonTerminalResizeMessageSchema,
   hostDaemonTerminalCloseMessageSchema,
-  hostDaemonTerminalFlowControlMessageSchema,
+  hostDaemonTerminalStreamMessageSchema,
   hostDaemonTerminalAckMessageSchema,
 ]);
 export type HostDaemonServerWsMessage = z.infer<

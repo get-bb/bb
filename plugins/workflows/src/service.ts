@@ -767,10 +767,7 @@ export function createWorkflowService(
         `Could not load models for provider ${requested.provider}: ${catalog.modelLoadError.code}`,
       );
     }
-    const eligibleModels = inherited
-      ? [...catalog.models, ...catalog.selectedOnlyModels]
-      : catalog.models;
-    const model = eligibleModels.find(
+    const model = [...catalog.models, ...catalog.selectedOnlyModels].find(
       (candidate) =>
         candidate.id === requested.model || candidate.model === requested.model,
     );

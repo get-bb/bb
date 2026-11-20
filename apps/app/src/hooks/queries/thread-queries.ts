@@ -508,7 +508,6 @@ export function useProjectThreadSubset({
   filters,
   projectId,
 }: UseProjectThreadSubsetArgs): UseProjectThreadSubsetResult {
-  const queryClient = useQueryClient();
   const enabled = (enabledOption ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
@@ -518,12 +517,6 @@ export function useProjectThreadSubset({
       : disabledThreadListQueryKey(
           projectId ? { archived: false, projectId } : { archived: false },
         );
-  const activeProjectThreadListIsCached =
-    enabled &&
-    projectId !== undefined &&
-    queryClient.getQueryData<ThreadListResponse>(
-      threadListQueryKey({ archived: false, projectId }),
-    ) !== undefined;
   const activeProjectThreadsQuery = useQuery<ThreadListResponse>({
     queryKey: activeProjectThreadListQueryKey,
     queryFn: ({ signal }) =>
@@ -532,7 +525,7 @@ export function useProjectThreadSubset({
         projectId: requireThreadId(projectId ?? "", "useProjectThreadSubset"),
         signal,
       }),
-    enabled: enabled && activeProjectThreadListIsCached,
+    enabled: (query) => enabled && query.state.data !== undefined,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
   const hasActiveProjectThreadList =

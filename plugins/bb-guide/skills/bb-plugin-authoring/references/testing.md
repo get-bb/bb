@@ -208,10 +208,12 @@ const slot = renderSlot(
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
-await slot.behavior.setComposerScope(
-  { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
-  "queued draft",
-);
+await slot.behavior.setComposerScope({
+  kind: "queued-message",
+  threadId: "t1",
+  queuedMessageId: "q1",
+});
+await slot.behavior.setComposerText("queued draft");
 slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
 slot.inspection.composer; // text, visuals, quotes, mentions, and focus activity

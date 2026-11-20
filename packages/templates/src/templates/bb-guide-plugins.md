@@ -214,6 +214,10 @@ Each bundled plugin documents its commands and behavior in its own skill.
   reusable Modal cloud machines. `bb modal account inspect`,
   `bb machine create --provider modal-sandbox`, and `bb modal image|sandbox`;
   see the `modal-sandboxes` skill.
+- Tailscale (official, `bb plugin install tailscale`): reach this bb at
+  `https://<machine>.<tailnet>.ts.net` through Tailscale Serve, set up in one
+  click, and offer that address as the `tailscale` machine access provider.
+  `bb tailscale status|setup|teardown [--json]`; see the `tailscale` skill.
 
 Multi-plugin repositories
 

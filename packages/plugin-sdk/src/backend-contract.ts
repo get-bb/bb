@@ -69,7 +69,7 @@ export interface PluginLogger {
 }
 
 // ---------------------------------------------------------------------------
-// Settings (design §4.2).
+// Settings.
 // ---------------------------------------------------------------------------
 
 export type PluginSettingDescriptor =
@@ -171,7 +171,7 @@ export interface PluginSettings {
 }
 
 // ---------------------------------------------------------------------------
-// Storage (design §4.3).
+// Storage.
 // ---------------------------------------------------------------------------
 
 export interface PluginKvStorage {
@@ -205,7 +205,7 @@ export interface PluginStorage {
 }
 
 // ---------------------------------------------------------------------------
-// Thread lifecycle events (design §4.5).
+// Thread lifecycle events.
 // ---------------------------------------------------------------------------
 
 /**
@@ -289,7 +289,7 @@ export interface PluginTurnFailedEvent {
 }
 
 /**
- * Lifecycle events a plugin can observe with `bb.events.on` (design §4.5).
+ * Lifecycle events a plugin can observe with `bb.events.on`.
  *
  * **Events are announcements core makes.** Something already happened; a
  * handler is told about it and whatever it returns is IGNORED. Handlers run
@@ -472,7 +472,9 @@ export type PluginEnvironmentProviderDeclaration<
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. Providers receive the environment being created,
+   * so core can also create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
   register<
     const Requires extends PluginEnvironmentProviderRequirements,
@@ -852,7 +854,7 @@ export interface PluginHooks {
 }
 
 // ---------------------------------------------------------------------------
-// Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
+// Wire surfaces: HTTP, rpc, realtime.
 // ---------------------------------------------------------------------------
 
 export type PluginHttpAuthMode = "local" | "token" | "none";
@@ -965,7 +967,7 @@ export interface PluginRealtime {
 }
 
 // ---------------------------------------------------------------------------
-// Background services and schedules (design §4.8).
+// Background services and schedules.
 // ---------------------------------------------------------------------------
 
 export interface PluginBackground {
@@ -994,7 +996,7 @@ export interface PluginBackground {
 }
 
 // ---------------------------------------------------------------------------
-// Agent-facing CLI subcommands (design §4.4).
+// Agent-facing CLI subcommands.
 // ---------------------------------------------------------------------------
 
 export interface PluginCliCommandInfo {
@@ -1133,11 +1135,11 @@ export interface PluginCli {
 }
 
 // ---------------------------------------------------------------------------
-// Agent surfaces: per-turn context and native tools (design §4.4).
+// Agent surfaces: per-turn context and native tools.
 // ---------------------------------------------------------------------------
 
-/** Per-turn context handed to bb.agents context providers (design §4.4). */
-/** MCP-style content parts a native tool may return (design §4.4). */
+/** Per-turn context handed to bb.agents context providers. */
+/** MCP-style content parts a native tool may return. */
 export type PluginAgentToolContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -1146,7 +1148,7 @@ export type PluginAgentToolResult =
   | string
   | { content: PluginAgentToolContentPart[]; isError?: boolean };
 
-/** Per-call context handed to a native tool's execute (design §4.4). */
+/** Per-call context handed to a native tool's execute. */
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
@@ -1736,7 +1738,7 @@ export interface PluginAgents {
     ) => PluginAgentConfiguration,
   ): void;
   /**
-   * Register a native dynamic tool (design §4.4). `parameters` is either a
+   * Register a native dynamic tool. `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
    * plain JSON-schema object (no validation; execute receives the raw
    * arguments as `unknown`). Tool-set changes apply on the NEXT session
@@ -1851,12 +1853,12 @@ export interface ExperimentalPluginProviderEnvHealth {
 }
 
 // ---------------------------------------------------------------------------
-// Host-rendered UI contributions (design §4.9).
+// Host-rendered UI contributions.
 // ---------------------------------------------------------------------------
 
 export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
 
-/** Search context handed to a mention provider (design §4.9). `projectId`/
+/** Search context handed to a mention provider. `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 export interface PluginMentionSearchContext {
   trigger: PluginMentionTrigger;
@@ -1937,7 +1939,7 @@ export interface PluginUi {
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
   /**
-   * Register a mention provider for the shipped app's composer (design §4.9).
+   * Register a mention provider for the shipped app's composer.
    * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or
    * `~` with `triggers`. Items group under `label` in the mention menu; a
    * picked item becomes a `{ kind: "plugin" }` mention resource whose context
@@ -2003,7 +2005,7 @@ export interface PluginServerApi {
 /** Options for one `complete` call. */
 export interface PluginAiCompleteOptions {
   /**
-   * Aborted when bb stops waiting: the task timed out (5 seconds for titles
+   * Aborted when bb stops waiting: the task timed out (8 seconds for titles
    * and commit messages) or the request was cancelled. Pass it to `fetch`.
    */
   readonly signal: AbortSignal;
@@ -2011,7 +2013,7 @@ export interface PluginAiCompleteOptions {
 
 /** Options for one `transcribe` call. */
 export interface PluginAiTranscribeOptions {
-  /** Aborted when bb stops waiting (10 seconds) or the request was cancelled. */
+  /** Aborted when bb stops waiting (70 seconds) or the request was cancelled. */
   readonly signal: AbortSignal;
   /**
    * Vocabulary the speaker is likely to use (names, identifiers), for
@@ -2130,11 +2132,13 @@ export interface PluginHosts {
 
 export interface PluginStatusApi {
   /**
-   * Mark this plugin `needs-configuration` (with a message shown in
-   * `bb plugin list` and the UI) instead of failing — e.g. a factory or
-   * service that finds no API key configured. Cleared on the next load;
-   * saving settings does not auto-reload in V1, so ask the user to
-   * `bb plugin reload <id>` after configuring.
+   * Mark this plugin `needs-configuration` instead of failing — e.g. a
+   * factory or service that finds no API key configured. `bb plugin list`
+   * shows the message; the plugin's page shows it only when the plugin has no
+   * settings, and otherwise links to its settings instead. Cleared on the next
+   * load. Saving settings that change a value reloads a plugin in this state,
+   * so the factory runs again with the new values; without settings, the
+   * user reloads it from the plugin's page or with `bb plugin reload <id>`.
    */
   needsConfiguration(message: string): void;
 }
@@ -2173,7 +2177,7 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
 };
 
 /**
- * The API object handed to a plugin's factory (design §4). Implemented by
+ * The API object handed to a plugin's factory. Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
  */
@@ -2184,28 +2188,28 @@ export interface BbPluginApi {
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */
   readonly log: PluginLogger;
-  /** Declarative settings (design §4.2). */
+  /** Declarative settings. */
   readonly settings: PluginSettings;
-  /** Namespaced KV + per-plugin database (design §4.3). */
+  /** Namespaced KV + per-plugin database. */
   readonly storage: PluginStorage;
-  /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
+  /** HTTP routes under /api/v1/plugins/<id>/http/*. */
   readonly http: PluginHttp;
-  /** RPC methods under /api/v1/plugins/<id>/rpc/<method> (design §4.6). */
+  /** RPC methods under /api/v1/plugins/<id>/rpc/<method>. */
   readonly rpc: PluginRpc;
-  /** Ephemeral push to connected frontends (design §4.7). */
+  /** Ephemeral push to connected frontends. */
   readonly realtime: PluginRealtime;
-  /** Long-lived services + cron schedules (design §4.8). */
+  /** Long-lived services + cron schedules. */
   readonly background: PluginBackground;
-  /** Agent-facing `bb` CLI subcommand (design §4.4). */
+  /** Agent-facing `bb` CLI subcommand. */
   readonly cli: PluginCli;
-  /** Per-turn agent context contributions (design §4.4). */
+  /** Per-turn agent context contributions. */
   readonly agents: PluginAgents;
   /** Agent provider registration (docs/provider-plugin-api.md §1). */
   readonly providers: PluginProviders;
-  /** Host-rendered UI contributions (design §4.9). */
+  /** Host-rendered UI contributions. */
   readonly ui: PluginUi;
   /**
-   * Additive plugin lifecycle listeners (design §4.5). Announcements core
+   * Additive plugin lifecycle listeners. Announcements core
    * makes: a handler's return value is ignored.
    */
   readonly events: PluginEvents;
@@ -2218,7 +2222,7 @@ export interface BbPluginApi {
   readonly experimental_hooks: PluginHooks;
   /**
    * Environment targets: places a thread can run that this plugin
-   * provisions (plans/plugin-environment-providers.md). Experimental: see
+   * provisions. Experimental: see
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
@@ -2237,7 +2241,7 @@ export interface BbPluginApi {
    */
   readonly experimental_aiServices: PluginAiServices;
   /**
-   * The full BB SDK, bound to this server over loopback (design §4.1).
+   * The full BB SDK, bound to this server over loopback.
    * Bind-gated: reading this before the host binds the SDK throws. The real
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer

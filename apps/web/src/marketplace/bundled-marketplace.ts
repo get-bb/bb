@@ -24,6 +24,7 @@ export const INSTALL_ON_REQUEST_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "environment-modal-sandbox",
   "github",
   "memory",
+  "tailscale",
   "tasks",
   "theme-preview",
 ]);

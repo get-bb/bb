@@ -13,6 +13,7 @@ import {
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
+import { DEFAULT_APPLICATION_MENU_ACCELERATORS } from "../src/desktop-menu-shortcuts.js";
 import { buildDesktopServerChoices } from "../src/server-list.js";
 import {
   createServerTargetStore,
@@ -27,9 +28,11 @@ function menuArgs(
     accelerators: {
       closeWindowOrSideTab: undefined,
       createNewWindow: undefined,
+      forceReloadWindow: undefined,
       openNewTab: undefined,
       openNewThread: undefined,
       openSettings: undefined,
+      reloadWindow: undefined,
       reopenClosedTab: undefined,
     },
     closeWindowOrSideTab: () => {},
@@ -104,9 +107,11 @@ describe("application menu", () => {
         accelerators: {
           closeWindowOrSideTab: undefined,
           createNewWindow: undefined,
+          forceReloadWindow: undefined,
           openNewTab: undefined,
           openNewThread: undefined,
           openSettings: undefined,
+          reloadWindow: undefined,
           reopenClosedTab: "CommandOrControl+Shift+T",
         },
         reopenClosedTab,
@@ -175,18 +180,26 @@ describe("application menu", () => {
     expect(zoomFocusedPage.mock.calls).toEqual([["reset"], ["in"], ["out"]]);
   });
 
-  it("shows reload shortcuts without globally stealing browser commands", () => {
+  it("shows the bound reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
-    const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
+    const template = buildApplicationMenuTemplate(
+      menuArgs(reloadWindow, {
+        accelerators: {
+          ...DEFAULT_APPLICATION_MENU_ACCELERATORS,
+          forceReloadWindow: "F5",
+          reloadWindow: "Alt+CommandOrControl+L",
+        },
+      }),
+    );
     const viewMenu = template.find((item) => item.label === "View");
     const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
     const reload = submenu.find((item) => item.label === "Reload");
     const forceReload = submenu.find((item) => item.label === "Force Reload");
     const focusedWindow = {} as BaseWindow;
 
-    expect(reload?.accelerator).toBe("CommandOrControl+R");
+    expect(reload?.accelerator).toBe("Alt+CommandOrControl+L");
     expect(reload?.registerAccelerator).toBe(false);
-    expect(forceReload?.accelerator).toBe("CommandOrControl+Shift+R");
+    expect(forceReload?.accelerator).toBe("F5");
     expect(forceReload?.registerAccelerator).toBe(false);
     reload?.click?.({} as never, focusedWindow, {} as never);
     forceReload?.click?.({} as never, focusedWindow, {} as never);

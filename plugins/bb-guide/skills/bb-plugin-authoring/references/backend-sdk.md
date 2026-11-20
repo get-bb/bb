@@ -122,12 +122,14 @@ CLI, agents, and bb. Tests set it with
 `harness.callRpc(method, input, { experimental_caller })`.
 
 ```ts
-handOver(input, { experimental_caller: caller }) {
-  if (caller.kind !== "plugin" || caller.pluginId !== "connect") {
-    throw new Error("only the connect plugin can call handOver");
-  }
-  return handOver(input);
-},
+const handlers = {
+  handOver(input, { experimental_caller: caller }) {
+    if (caller.kind !== "plugin" || caller.pluginId !== "connect") {
+      throw new Error("only the connect plugin can call handOver");
+    }
+    return handOver(input);
+  },
+};
 ```
 
 The context's `experimental_signal` aborts when the caller stops waiting
@@ -293,19 +295,21 @@ first when the worker no longer belongs in active lists. Use a `finally`
 block so a plugin failure cannot retain the agent process:
 
 ```ts
-const worker = await bb.sdk.threads.spawn({
-  projectId,
-  environment: { type: "project-default" },
-  prompt: "Review this change.",
-  visibility: "hidden",
-});
+async function review(projectId: string) {
+  const worker = await bb.sdk.threads.spawn({
+    projectId,
+    environment: { type: "project-default" },
+    prompt: "Review this change.",
+    visibility: "hidden",
+  });
 
-try {
-  await bb.sdk.threads.wait({ threadId: worker.id, status: "idle" });
-  return await bb.sdk.threads.output({ threadId: worker.id });
-} finally {
-  await bb.sdk.threads.archive({ threadId: worker.id });
-  await bb.sdk.threads.stop({ threadId: worker.id });
+  try {
+    await bb.sdk.threads.wait({ threadId: worker.id, status: "idle" });
+    return await bb.sdk.threads.output({ threadId: worker.id });
+  } finally {
+    await bb.sdk.threads.archive({ threadId: worker.id });
+    await bb.sdk.threads.stop({ threadId: worker.id });
+  }
 }
 ```
 

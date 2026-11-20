@@ -101,6 +101,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Reload window",
         "Reload the current bb desktop window.",
       ),
+      paletteHiddenCommand(
+        "window.forceReload",
+        "Force reload window",
+        "Reload the current bb desktop window, bypassing the cache.",
+      ),
       command("history.back", "Go back", "Go back in this window's history."),
       command(
         "history.forward",

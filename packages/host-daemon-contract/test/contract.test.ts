@@ -1070,7 +1070,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(273);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(276);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1103,7 +1103,10 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(270)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(271)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(272)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(273)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(273)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(274)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(275)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(276)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });

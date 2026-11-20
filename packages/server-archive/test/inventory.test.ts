@@ -40,6 +40,7 @@ describe("listServerOwnedEntries", () => {
       "plugins/docs/data.db",
       "plugins/docs/secrets",
       "plugins/npm",
+      "plugins/runtime",
       "plugins/snapshots",
       "skills",
       "telemetry-id",

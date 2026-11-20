@@ -2299,12 +2299,14 @@ function awaitingTurnStartPastDeadline(deadline: number) {
     eq(threads.status, "active"),
     isNull(threads.deletedAt),
     lte(threads.statusChangedAt, deadline),
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${events}
-      WHERE ${events.threadId} = ${threads.id}
-        AND ${events.type} = 'turn/completed'
-        AND ${events.createdAt} > ${deadline}
-    )`,
+    sql`COALESCE((
+      SELECT latest.created_at
+      FROM ${events} AS latest INDEXED BY events_thread_type_sequence_idx
+      WHERE latest.thread_id = ${threads.id}
+        AND latest.type = 'turn/completed'
+      ORDER BY latest.sequence DESC
+      LIMIT 1
+    ), ${deadline}) <= ${deadline}`,
   );
 }
 

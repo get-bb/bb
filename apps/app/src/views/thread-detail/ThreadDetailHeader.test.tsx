@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render as renderUi,
@@ -9,6 +10,7 @@ import {
 } from "@testing-library/react";
 import type { ReactElement, ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
@@ -498,6 +500,88 @@ describe("ThreadDetailHeader", () => {
     expect(runs.Deploy).toHaveBeenCalledTimes(1);
     expect(runs.Ship).not.toHaveBeenCalled();
   });
+
+  const REVIEW_ACTION = {
+    label: "Review",
+    icon: "FileDiff",
+    detail: "Open the diff review panel",
+    variant: "default",
+  } as const;
+  const BLOCK_ACTION = {
+    label: "Block merge",
+    icon: "GitBranch",
+    detail: "Advisor found a blocking issue",
+    variant: "destructive",
+  } as const;
+
+  it.each([
+    { name: "one action", actions: [BLOCK_ACTION] },
+    { name: "a split button", actions: [REVIEW_ACTION, BLOCK_ACTION] },
+    {
+      name: "a destructive main action",
+      actions: [BLOCK_ACTION, REVIEW_ACTION],
+    },
+  ])(
+    "shows each header action's icon, detail and variant on desktop with $name, as its menu row does",
+    async ({ actions }) => {
+      render(
+        <TooltipProvider>
+          <HeaderActionCollectors
+            registrations={actions.map((action, order) => ({
+              id: action.icon,
+              placement: "header",
+              group: "release",
+              order,
+              title: action.label,
+              icon: action.icon,
+              item: () => ({ ...action, run: () => {} }),
+            }))}
+          />
+          <PaneContext.Provider value={PANE_CONTEXT}>
+            <ThreadDetailHeader
+              environmentId={null}
+              actionsMenu={null}
+              isSecondaryPanelOpen={false}
+              onToggleSecondaryPanel={vi.fn()}
+              thread={THREAD_TARGET}
+              threadTitle="Header action presentation"
+            />
+          </PaneContext.Provider>
+        </TooltipProvider>,
+      );
+
+      const [main, ...rest] = actions;
+      const button = await screen.findByRole("button", { name: main.label });
+      expect(button.querySelector(`[data-icon="${main.icon}"]`)).not.toBeNull();
+      expect(button.classList.contains("text-destructive")).toBe(
+        main.variant === "destructive",
+      );
+      fireEvent.keyDown(document, { key: "Tab" });
+      act(() => button.focus());
+      expect((await screen.findByRole("tooltip")).textContent).toBe(
+        main.detail,
+      );
+      if (rest.length === 0) return;
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "More actions" }),
+        { button: 0, ctrlKey: false },
+      );
+      const rows = screen.getAllByRole("menuitem");
+      expect(
+        rows.map((row) => ({
+          text: row.textContent,
+          icon: row.querySelector("[data-icon]")?.getAttribute("data-icon"),
+          destructive: row.className.includes("text-destructive"),
+        })),
+      ).toEqual(
+        rest.map((action) => ({
+          text: `${action.label}${action.detail}`,
+          icon: action.icon,
+          destructive: action.variant === "destructive",
+        })),
+      );
+    },
+  );
 
   it("renders serialized mentions in the thread title as pills", () => {
     const { container } = render(

@@ -109,6 +109,7 @@ interface SidebarSplitContainerProps {
   hasNewTabButton?: boolean;
   onTabNavigated?: (paneId: string, isNewTabButton: boolean) => void;
   isFullScreen: boolean;
+  isTabListReady: boolean;
   onActivateTab: (tabId: string) => void;
   onGlobalTabReorder: (request: SecondaryPanelTabReorderRequest) => void;
   onToggleFullScreen: () => void;
@@ -124,6 +125,7 @@ export function SidebarSplitContainer({
   hasNewTabButton = false,
   onTabNavigated,
   isFullScreen,
+  isTabListReady,
   onActivateTab,
   onGlobalTabReorder,
   onToggleFullScreen,
@@ -151,6 +153,9 @@ export function SidebarSplitContainer({
       isFullScreen ? restored.layout.focusedPaneId : null,
     );
   });
+  const [isRestorePending, setIsRestorePending] = useState(
+    () => !isTabListReady && initialStorageValue !== null,
+  );
   const stateRef = useRef(state);
   const lastPersistedValueRef = useRef({
     storageKey,
@@ -173,14 +178,33 @@ export function SidebarSplitContainer({
   }, [state]);
 
   useEffect(() => {
-    const previousExternalActiveTabId = previousActiveTabId.current;
-    const previousAvailableTabs = previousTabs.current;
+    const restoresSavedLayout = isRestorePending && isTabListReady;
+    const previousExternalActiveTabId = restoresSavedLayout
+      ? activeTabId
+      : previousActiveTabId.current;
+    const previousAvailableTabs = restoresSavedLayout
+      ? tabs
+      : previousTabs.current;
     const previousAvailable = previousAvailableTabs.map((tab) => tab.id);
     const shouldFollowExternalSelection =
       previousExternalActiveTabId !== activeTabId;
     previousActiveTabId.current = activeTabId;
     previousTabs.current = tabs;
-    const current = stateRef.current;
+    if (restoresSavedLayout) removedTabPlacements.current.clear();
+    const stored = restoresSavedLayout
+      ? parseSidebarSplitState(
+          initialStorageValue,
+          availableTabIds,
+          activeTabId,
+        )
+      : null;
+    const current =
+      stored === null
+        ? stateRef.current
+        : setSidebarPaneMaximized(
+            stored,
+            isFullScreen ? stored.layout.focusedPaneId : null,
+          );
     const availableTabIdSet = new Set(availableTabIds);
     for (const tab of previousAvailableTabs) {
       if (availableTabIdSet.has(tab.id)) continue;
@@ -226,11 +250,20 @@ export function SidebarSplitContainer({
       activePane === undefined
         ? reconciled
         : selectSidebarTab(reconciled, activePane.paneId, activeTabId);
-    if (next !== current) {
+    if (next !== stateRef.current) {
       stateRef.current = next;
       setState(next);
     }
-  }, [activeTabId, availableTabIds, tabs]);
+    if (restoresSavedLayout) setIsRestorePending(false);
+  }, [
+    activeTabId,
+    availableTabIds,
+    initialStorageValue,
+    isFullScreen,
+    isRestorePending,
+    isTabListReady,
+    tabs,
+  ]);
 
   useEffect(() => {
     withLocalStorage(
@@ -248,6 +281,7 @@ export function SidebarSplitContainer({
   }, [storageKey]);
 
   useEffect(() => {
+    if (isRestorePending) return;
     const persistedValue = isCanonicalSidebarSplitState(
       state,
       availableTabIds,
@@ -275,7 +309,14 @@ export function SidebarSplitContainer({
         error,
       );
     }
-  }, [activeTabId, availableTabIds, panelStateId, state, storageKey]);
+  }, [
+    activeTabId,
+    availableTabIds,
+    isRestorePending,
+    panelStateId,
+    state,
+    storageKey,
+  ]);
 
   const commitState = useCallback(
     (

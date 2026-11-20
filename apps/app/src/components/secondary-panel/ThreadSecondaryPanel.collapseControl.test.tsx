@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-
 import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import {
   cleanup,
@@ -24,6 +23,7 @@ import {
   createPluginPageFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
+  getFixedPanelTabsStateStorageKey,
   type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
@@ -151,6 +151,10 @@ function renderFixedTabSplit(ready = true) {
   window.localStorage.setItem(
     sidebarSplitStorageKey(panelStateId),
     serializeSidebarSplitState(split),
+  );
+  window.localStorage.setItem(
+    getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+    JSON.stringify({ lastUsedAt: Date.now() }),
   );
 
   const content = (areFixedTabsReady: boolean) => (
@@ -732,7 +736,6 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
     ).toBeNull();
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
-
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {

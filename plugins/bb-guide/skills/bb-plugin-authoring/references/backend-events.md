@@ -199,10 +199,11 @@ anything into the transcript the model or the user reads back.
 
 **How a wait clears.** You never release a row — you ask core to re-decide it.
 It clears when the row's `sendAt` comes due, when any plugin calls
-`bb.experimental_hooks.recheck("message.dispatch")`, when the user sends it now,
-or when the orphan sweep clears a wait whose plugin stopped running. Every one
-of those re-runs the full pass, including your own handler, so a message that is
-still blocked simply re-queues.
+`bb.experimental_hooks.recheck("message.dispatch")`, or when the orphan sweep
+clears a wait whose plugin stopped running. Every one of those re-runs the full
+pass, including your own handler, so a still-blocked message re-queues. The
+user's Send now skips the hook pass and dispatches the row even while your
+handler would wait or reject.
 
 ```ts
 // The condition your waits depend on changed. Ask core to re-ask.
@@ -228,6 +229,7 @@ operation types.
 
 ```ts
 bb.experimental_environments.register({
+  apiVersion: 2,
   id: "personal-workspace",
   displayName: "Personal workspace",
   description: "Create a personal directory without a project.",
@@ -274,34 +276,27 @@ background, and core checks it again for the selected provider and machine on
 every thread creation. `validate` may accept or refuse
 (`{ action: "refuse", message }`) the same request before a thread exists,
 using the resolved project, host, checkout, remote and inputs. The optional
-`experimental_existingPath(inputs)` selects a path from parsed inputs: core
-reuses a recorded environment at that path on the selected host instead of
-calling `create`, and null requests normal creation. Create waits for startup
+`locate({ host, projectCheckout, inputs })` answers `{ path, reuse }` or null
+before create: core claims the path, `reuse: true` joins the environment
+recorded there, otherwise create runs and core folds its result into that
+environment when create returns the same path; returning another
+environment's path without locating it fails. Create waits for startup
 registrations to settle, then rejects an unknown provider id; existing threads
 wait if their registered provider disappears. `bb.experimental_environments.recheck()`
-asks core to re-ask this plugin's waiting provisioning now instead of at its
-scheduled time.
+re-asks this plugin's waiting provisioning now instead of at its scheduled time.
 
-`create` receives the resolved facts, thread, `suggestedBranchName`,
-monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds
-a fresh environment. It is one long call with no overall timeout and must be
-idempotent for `pathKey`: after a process or plugin restart, core calls it
-again with the same attempt and pathKey. Return `created` with `path`,
-explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
-message. When core reuses an environment row your provider already owns at
-that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
-clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
-on the same environment row after cleanup. `report.step` and `report.log`
-stream durable progress while the call runs.
+`create` receives the resolved facts, the `environment` and its steps,
+monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds a fresh environment. It is one long call with no
+overall timeout and must be idempotent for `pathKey`: after a process or plugin
+restart, core calls it again with the same attempt and pathKey. Return `created`
+with `path`, explicit `ownsPath` and optional `mergeBaseBranch`, or `failed`
+with a message. When core reuses an environment row your provider already owns
+at that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
+clears it, and omitting it keeps it; a failed create is terminal, and a retry is
+an explicit new attempt on the same environment row after cleanup. `report.step`
+and `report.log` stream durable progress while the call runs.
 
-`await context.experimental_claimPath(path)` on the create and restore
-contexts atomically reserves a directory on the selected host for this launch before
-workspace mutations. It returns false if another unattached launch holds the
-host/path, this attempt is no longer creating, or this attempt already
-reserved another path; repeating the same claim succeeds. Core keeps the claim
-through attachment or completed cancellation cleanup, including after failed
-creation, and normalizes trailing slashes. Check existing attached threads
-after claiming and before mutating a shared checkout.
+Core claims a provider's directory through `locate` or `setup(path)`.
 `bb.sdk.environments.list({ hostId, path })` compares stored paths without
 contacting hosts.
 
@@ -322,16 +317,17 @@ with nullable `environment`, `hostId` and `path`, plus `pathKey`, `resource`,
 pathKey even when create never returned a path, and returns removed or
 failed(message). Failed removal persists and retries after 60 seconds.
 
-The optional `policy` sets `retireGraceMs` (five minutes by default; null
-keeps the environment indefinitely) and `pathKeys` (`"per-thread"` by default,
-or `"per-attempt"`). Retirement starts after the last live thread archives or
-is deleted; rebuilds use fresh path keys. Environment responses expose only
-the read-only lifecycle projection: phase, retireAt, and teardown
+The optional `policy` sets `retireGraceMs` (five minutes by default; null keeps
+the environment indefinitely) and `pathKeys` (`"per-environment"` by default, or
+`"per-attempt"`). Retirement starts after the last live thread archives or is
+deleted; rebuilds use fresh path keys. Environment responses expose only the
+read-only lifecycle projection: phase, retireAt, and teardown
 status/attempt/message.
 
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
-`ownsPath: true`, and `.bb-env-teardown.sh` before `remove`; providers never
-call these hooks, and attached paths (`ownsPath: false`) never run them. Each
+`ownsPath: true`, or earlier when a version-2 create calls `setup(path)`, and
+`.bb-env-teardown.sh` before `remove`; providers never run these hooks
+themselves, and attached paths (`ownsPath: false`) never run them. Each
 has a 15-minute timeout, and its output goes to the launch report. Setup
 failure fails the launch. Teardown failure is reported, and removal continues
 only after the script is confirmed terminated; if a daemon restart loses that

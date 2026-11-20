@@ -15,6 +15,8 @@ export const SERVER_OWNED_FIXTURE_PATHS: readonly string[] = [
   "plugins/npm/bb-plugin-linear@1.0.0/package.json",
   "plugins/cache/git/abc/index.js",
   "plugins/snapshots/docs/1-a-b/data.db",
+  "plugins/runtime/server/abc/server.js",
+  "plugins/runtime/host/def/build.json",
   "plugins/docs/data.db",
   "plugins/docs/secrets/token",
   "plugins/automations/scripts/nightly.sh",

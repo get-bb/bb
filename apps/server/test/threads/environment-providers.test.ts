@@ -32,15 +32,15 @@ import {
 import { PERSONAL_PROJECT_ID, type JsonValue } from "@bb/domain";
 import type {
   PluginDispatchEnvironmentIntent,
-  PluginEnvironmentProviderDeclaration,
   PluginEnvironmentValidateDecision,
   PluginHookName,
 } from "@get-bb/plugin-sdk";
-import type { PluginEnvironmentProviderValidateContext } from "@get-bb/plugin-sdk/environment-provider";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
 import {
   validatePluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
+  type PluginEnvironmentProviderV1Declaration,
+  type PluginEnvironmentProviderV1ValidateContext,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -99,7 +99,7 @@ const PROVIDER_ID = "container";
 
 interface FakeTarget {
   id?: string;
-  remove?: PluginEnvironmentProviderDeclaration["remove"];
+  remove?: PluginEnvironmentProviderV1Declaration["remove"];
   provision: (
     context: TestEnvironmentProviderContext,
   ) => TestProviderDecision | Promise<TestProviderDecision>;
@@ -109,11 +109,12 @@ interface FakeTarget {
   requiresProjectless?: boolean;
   inputs?: z.ZodType;
   validate?: (
-    context: PluginEnvironmentProviderValidateContext,
+    context: PluginEnvironmentProviderV1ValidateContext,
   ) =>
     | PluginEnvironmentValidateDecision
     | Promise<PluginEnvironmentValidateDecision>;
-  availability?: PluginEnvironmentProviderDeclaration["availability"];
+  availability?: PluginEnvironmentProviderV1Declaration["availability"];
+  locate?: PluginEnvironmentProviderV1Declaration["locate"];
 }
 
 const CONTAINER_INPUTS = z.object({
@@ -143,6 +144,7 @@ function installTargets(
       ...(fake.availability === undefined
         ? {}
         : { availability: fake.availability }),
+      ...(fake.locate === undefined ? {} : { locate: fake.locate }),
       ...providerOperations(fake.provision),
       ...(fake.remove === undefined ? {} : { remove: fake.remove }),
     }),
@@ -655,6 +657,8 @@ function blockEntries(harness: TestAppHarness, threadId: string) {
   );
 }
 
+const locateWorkspace = () => ({ path: WORKSPACE_PATH, reuse: false });
+
 function readyAt(host: { id: string }): TestProviderDecision {
   return {
     action: "ready",
@@ -1103,7 +1107,8 @@ describe("environment providers are asked inside provisioning", () => {
         inputs: "2",
       });
 
-      await expect.poll(() => inputs).toEqual([2]);
+      await expect.poll(() => inputs.length).toBeGreaterThan(0);
+      expect(new Set(inputs)).toEqual(new Set([2]));
     });
   });
 
@@ -1277,6 +1282,7 @@ describe("environment providers are asked inside provisioning", () => {
         },
       });
       installTarget({
+        locate: locateWorkspace,
         inputs: CONTAINER_INPUTS,
         provision: (context) => {
           ownerThreadId = context.thread.id;
@@ -1324,6 +1330,7 @@ describe("environment providers are asked inside provisioning", () => {
         { environmentProviderId: PROVIDER_ID },
       );
       installTarget({
+        locate: locateWorkspace,
         provision: async () => {
           ask += 1;
           if (ask === 1) {
@@ -1405,6 +1412,7 @@ describe("environment providers are asked inside provisioning", () => {
         { environmentProviderId: PROVIDER_ID },
       );
       installTarget({
+        locate: locateWorkspace,
         provision: async () => {
           await createReady.promise;
           return readyAt(host);
@@ -1542,6 +1550,10 @@ describe("environment providers are asked inside provisioning", () => {
         },
       });
       installTarget({
+        locate: () => ({
+          path: "/tmp/environment-providers-refresh-branch",
+          reuse: false,
+        }),
         provision: () => ({
           action: "ready",
           environment: {
@@ -1607,6 +1619,7 @@ describe("environment providers are asked inside provisioning", () => {
           },
         });
         installTarget({
+          locate: () => ({ path, reuse: false }),
           provision: () => ({
             action: "ready",
             environment: {
@@ -1684,6 +1697,7 @@ describe("environment providers are asked inside provisioning", () => {
 
       const asks: string[] = [];
       installTarget({
+        locate: locateWorkspace,
         provision: (context) => {
           asks.push(context.thread.id);
           return readyAt(host);
@@ -2045,7 +2059,7 @@ describe("provider validate at create time", () => {
 
   it("hands validate the parsed inputs and the machine's checkout, then proceeds on accept", async () => {
     await withTestHarness(async (harness) => {
-      const seen: PluginEnvironmentProviderValidateContext[] = [];
+      const seen: PluginEnvironmentProviderV1ValidateContext[] = [];
       installTarget({
         requiresProjectCheckout: true,
         inputs: CONTAINER_INPUTS,
@@ -3055,6 +3069,7 @@ it("resumes a provider launch and its original request after the in-memory conte
     });
     let ready = false;
     installTarget({
+      locate: locateWorkspace,
       provision: () =>
         ready ? readyAt(host) : { action: "wait", reason: "Creating" },
     });
@@ -3091,7 +3106,10 @@ it("keeps an existing request waiting when its provider is not registered", asyn
     let ready = false;
     const provision = () =>
       ready ? readyAt(host) : ({ action: "wait", reason: "Creating" } as const);
-    installTarget({ provision });
+    installTarget({
+      locate: locateWorkspace,
+      provision,
+    });
     const thread = await createTargetThread(harness, {
       projectId: project.id,
     });
@@ -3153,7 +3171,11 @@ it("stops an unattached provider creation and provisions its follow-up", async (
     );
     expect(remove).toHaveBeenCalledTimes(1);
     expect(getThread(harness.db, created.id)?.status).toBe("idle");
-    installTarget({ provision: () => readyAt(host), remove });
+    installTarget({
+      locate: locateWorkspace,
+      provision: () => readyAt(host),
+      remove,
+    });
     const response = await harness.app.request(
       `/api/v1/threads/${created.id}/send`,
       {

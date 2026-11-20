@@ -2,6 +2,7 @@ import {
   advanceEnvironmentProvisioning,
   providerEnvironmentHasPendingWork,
   refreshProviderRetirement,
+  sweepProviderEnvironment,
 } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
@@ -18,6 +19,7 @@ import {
   getActiveStoredTurnId,
   getEnvironment,
   getHost,
+  updateThread,
   getLatestSessionForHost,
   getLatestThreadSequence,
   getThread,
@@ -51,7 +53,10 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
   LoggedWorkSessionDeps,
 } from "../../types.js";
-import { cancelEnvironmentProvisioningForThreadStopInTransaction } from "../environments/environment-provisioning-cancellation.js";
+import {
+  cancelEnvironmentProvisioningForThreadStopInTransaction,
+  discardPendingCreateForThreadStopInTransaction,
+} from "../environments/environment-provisioning-cancellation.js";
 import {
   emptyCommandResultSideEffects,
   type CommandResultPostCommitAction,
@@ -91,6 +96,7 @@ import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
   readDispatchedThreadStartFork,
+  saveThreadProvisionContext,
 } from "./thread-startup-store.js";
 import { cancelAbandonedProviderCreations } from "./thread-environment-providers.js";
 import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
@@ -780,6 +786,7 @@ function buildProvisioningStoppedEntry(): ProvisioningTranscriptEntry {
 interface PreStartStopResult {
   abandonedProvider: boolean;
   cancelHostId: string | null;
+  discardedEnvironmentId?: string;
   environmentId: string | null;
   finalized: boolean;
   outcomes: ThreadLifecycleOutcome[];
@@ -831,8 +838,35 @@ function requestThreadStopInTransaction(
     thread.environmentId === null
       ? null
       : getEnvironment(deps.db, thread.environmentId);
+  const selection = environment?.environmentProviderSelection ?? null;
+  const discarded =
+    environment !== null &&
+    environment.environmentProviderId !== null &&
+    selection !== null &&
+    context !== null &&
+    discardPendingCreateForThreadStopInTransaction(deps, {
+      environmentId: environment.id,
+      threadId: thread.id,
+    });
+  if (discarded && environment.environmentProviderId !== null && selection !== null) {
+    updateThread(deps.db, deps.hub, thread.id, { environmentId: null });
+    context.request.environmentIntent = {
+      type: "provider",
+      environmentProviderId: environment.environmentProviderId,
+      machine: selection.machine,
+      inputs: selection.inputs,
+      selectionResolved: true,
+    };
+    context.state.environmentId = null;
+    saveThreadProvisionContext({
+      replace: false,
+      db: deps.db,
+      threadId: thread.id,
+      context,
+    });
+  }
   const cancellation =
-    environment === null
+    environment === null || discarded
       ? "ready_to_finalize"
       : cancelEnvironmentProvisioningForThreadStopInTransaction(deps, {
           environmentId: environment.id,
@@ -850,7 +884,10 @@ function requestThreadStopInTransaction(
   return {
     abandonedProvider,
     cancelHostId: null,
-    environmentId: thread.environmentId,
+    ...(discarded && environment !== null
+      ? { discardedEnvironmentId: environment.id }
+      : {}),
+    environmentId: discarded ? null : thread.environmentId,
     finalized: true,
     outcomes: [
       requested,
@@ -893,6 +930,15 @@ async function requestThreadStop(
   }
   if (result.abandonedProvider) {
     cancelAbandonedProviderCreations(deps, threadId);
+  }
+  if (result.discardedEnvironmentId !== undefined) {
+    void sweepProviderEnvironment(deps, result.discardedEnvironmentId).catch(
+      (error) =>
+        deps.logger.warn(
+          { environmentId: result.discardedEnvironmentId, error },
+          "Discarding an environment whose create never returned failed",
+        ),
+    );
   }
   if (!result.finalized && result.environmentId && result.cancelHostId) {
     void advanceEnvironmentProvisioning(deps, {

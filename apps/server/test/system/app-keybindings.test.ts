@@ -348,6 +348,12 @@ describe("app keybindings", () => {
     ["web-mac", "Ctrl+1", [], "thread.jump.1"],
     ["web-other", "Ctrl+1", [], null],
     ["web-other", "Ctrl+Shift+1", [], "thread.jump.1"],
+    ["desktop-mac", "Mod+R", [], "window.reload"],
+    ["desktop-mac", "Mod+R", ["modalOpen"], "window.reload"],
+    ["desktop-mac", "Mod+R", ["browserFocus"], "browser.reload"],
+    ["desktop-mac", "Mod+Shift+R", [], "window.forceReload"],
+    ["desktop-other", "Mod+R", [], null],
+    ["web-mac", "Mod+R", [], null],
   ] as const)(
     "on %s, %s with %j resolves to %s by default",
     (clientName, chord, extraContexts, expected) => {

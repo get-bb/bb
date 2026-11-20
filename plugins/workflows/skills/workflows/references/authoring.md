@@ -122,6 +122,10 @@ BB validates the tuple against the live provider/model catalog immediately
 before spawning the worker. A provider disappearing between authoring and
 execution fails the call instead of silently substituting another model.
 
+The catalog includes the provider's additional models, the ones the model
+picker lists under "More models", so any model you can pick for a thread is
+valid in an explicit selection.
+
 ## Structured agent results
 
 Set native `schema` (or the compatible `outputSchema` alias) on an individual

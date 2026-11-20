@@ -1,6 +1,6 @@
 import type { Profiler } from "node:inspector";
 import { findSourceMap } from "node:module";
-import { roundDurationMs } from "./event-loop-delay.js";
+import { roundDurationMs } from "./event-loop-gaps.js";
 
 import { EVENT_LOOP_GAP_INTERVAL_MS } from "./event-loop-gaps.js";
 import {
