@@ -2285,18 +2285,19 @@ export function listItemEventSpansByItems(
     .all();
 }
 
-export interface GetStoredItemLifecycleSequenceRangeArgs {
+export interface FindStoredItemTurnIdInRangeArgs {
   itemId: string;
+  sequenceEnd: number;
+  sequenceStart: number;
   threadId: string;
-  turnId: string;
 }
 
-export function getStoredItemLifecycleSequenceRange(
+export function findStoredItemTurnIdInRange(
   db: DbQueryConnection,
-  args: GetStoredItemLifecycleSequenceRangeArgs,
-): { first: number; last: number } | null {
-  const [range] = db.all<{ first: number | null; last: number | null }>(sql`
-    SELECT MIN(lifecycle.sequence) AS first, MAX(lifecycle.sequence) AS last
+  args: FindStoredItemTurnIdInRangeArgs,
+): string | null {
+  const [row] = db.all<{ turnId: string | null }>(sql`
+    SELECT lifecycle.turn_id AS turnId
     FROM ${events} AS lifecycle
       INDEXED BY events_item_lifecycle_thread_item_sequence_idx
     WHERE lifecycle.thread_id = ${args.threadId}
@@ -2306,12 +2307,106 @@ export function getStoredItemLifecycleSequenceRange(
         'item/completed',
         'item/backgroundTask/completed'
       )
-      AND lifecycle.turn_id = ${args.turnId}
+      AND lifecycle.sequence >= ${args.sequenceStart}
+      AND lifecycle.sequence <= ${args.sequenceEnd}
+    ORDER BY lifecycle.sequence
+    LIMIT 1
+  `);
+  return row?.turnId ?? null;
+}
+
+export interface GetStoredItemTreeSequenceRangeArgs {
+  itemId: string;
+  threadId: string;
+  turnId: string;
+}
+
+const itemEventTypesSql = sql.join(
+  ITEM_EVENT_TYPES.map((type) => sql`${type}`),
+  sql`, `,
+);
+
+export function getStoredItemTreeSequenceRange(
+  db: DbQueryConnection,
+  args: GetStoredItemTreeSequenceRangeArgs,
+): { first: number; last: number } | null {
+  const ownEvents = sql`
+    FROM ${events} AS item_event
+      INDEXED BY events_thread_turn_type_item_sequence_idx
+    WHERE item_event.thread_id = ${args.threadId}
+      AND item_event.turn_id = ${args.turnId}
+      AND item_event.type IN (${itemEventTypesSql})
+      AND item_event.item_id = ${args.itemId}
+  `;
+  const [range] = db.all<{
+    descendantLast: number | null;
+    first: number | null;
+    last: number | null;
+  }>(sql`
+    WITH RECURSIVE descendant(item_id, turn_id) AS (
+      SELECT child.item_id, child.turn_id
+      FROM ${events} AS child
+        INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE child.thread_id = ${args.threadId}
+        AND child.parent_tool_call_id = ${args.itemId}
+        AND child.item_id IS NOT NULL
+      UNION
+      SELECT child.item_id, child.turn_id
+      FROM descendant
+      CROSS JOIN ${events} AS child
+        INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE child.thread_id = ${args.threadId}
+        AND child.parent_tool_call_id = descendant.item_id
+        AND child.item_id IS NOT NULL
+    ),
+    delegating_item(item_id) AS (
+      SELECT ${args.itemId}
+      UNION
+      SELECT item_id FROM descendant
+    ),
+    delegated_turn(turn_id) AS (
+      SELECT DISTINCT started.turn_id
+      FROM delegating_item
+      CROSS JOIN ${events} AS started
+        INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE started.thread_id = ${args.threadId}
+        AND started.parent_tool_call_id = delegating_item.item_id
+        AND started.type = 'turn/started'
+        AND started.turn_id IS NOT NULL
+    )
+    SELECT
+      (SELECT MIN(item_event.sequence) ${ownEvents}) AS first,
+      (SELECT MAX(item_event.sequence) ${ownEvents}) AS last,
+      MAX(tree_event.sequence) AS descendantLast
+    FROM (
+      SELECT lifecycle.sequence
+      FROM descendant
+      CROSS JOIN ${events} AS lifecycle
+        INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+      WHERE lifecycle.thread_id = ${args.threadId}
+        AND lifecycle.item_id = descendant.item_id
+        AND lifecycle.turn_id IS descendant.turn_id
+        AND lifecycle.type IN (
+          'item/started',
+          'item/completed',
+          'item/backgroundTask/completed'
+        )
+      UNION ALL
+      SELECT turn_event.sequence
+      FROM delegated_turn
+      CROSS JOIN ${events} AS turn_event
+        INDEXED BY events_thread_turn_type_item_sequence_idx
+      WHERE turn_event.thread_id = ${args.threadId}
+        AND turn_event.turn_id = delegated_turn.turn_id
+    ) AS tree_event
   `);
   if (range === undefined || range.first === null || range.last === null) {
     return null;
   }
-  return { first: range.first, last: range.last };
+  return {
+    first: range.first,
+    last: Math.max(range.last, range.descendantLast ?? range.last),
+  };
 }
 
 export interface ListStoredItemLifecycleRowsByItemsArgs {
