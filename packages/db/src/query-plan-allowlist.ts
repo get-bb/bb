@@ -60,10 +60,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "Outer rows are requests after the last completed turn, and each search starts at its request's sequence; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(
-    `${EVENTS}#listLatestTurnFinalAgentMessageEventRows`,
-    "LIMIT keeps the outer rows to the newest replies, so each later-reply search covers only the newest turns; check:query-costs measures it",
-  ),
-  boundedCorrelatedEvents(
     `${EVENTS}#getStoredConversationOutlineProjectionState`,
     "LIMIT 1: the root-request search runs only for nested turns, and the first nested turn with a matching root ends the query; check:query-costs measures it",
   ),

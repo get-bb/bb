@@ -6,6 +6,9 @@ import {
   getStoredConversationOutlineProjectionState,
   hasStoredProviderTurnCompletedSince,
   insertEvents,
+  isStoredTurnContextCompactionOnly,
+  isStoredTurnProviderCompactionRunning,
+  listLatestTurnFinalAgentMessageEventRows,
   listStoredTaskTurnRequestEvents,
   listStoredTimelineThreadWindowEventRows,
   listStoredTurnCompletedRowsByTurnIds,
@@ -48,6 +51,8 @@ function setup() {
 interface EventArgs {
   createdAt?: number;
   data?: object;
+  itemId?: string;
+  itemKind?: InsertEventInput["itemKind"];
   parentToolCallId?: string;
   providerThreadId?: string;
   turnId?: string;
@@ -64,8 +69,8 @@ function event(
     sequence,
     type,
     scope: args.turnId === undefined ? threadScope() : turnScope(args.turnId),
-    itemId: null,
-    itemKind: null,
+    itemId: args.itemId ?? null,
+    itemKind: args.itemKind ?? null,
     parentToolCallId: args.parentToolCallId ?? null,
     providerThreadId: args.providerThreadId ?? null,
     ...(args.createdAt === undefined ? {} : { createdAt: args.createdAt }),
@@ -293,5 +298,119 @@ describe("history lookups bounded by existing indexes", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([3]);
+  });
+  it("reports a provider compaction running only while the turn's latest root compaction has started", () => {
+    const { db, thread } = setup();
+    const running = (turnId: string) =>
+      isStoredTurnProviderCompactionRunning(db, { threadId: thread.id, turnId });
+    const compaction = (
+      sequence: number,
+      type: "item/started" | "item/completed",
+      turnId: string,
+      itemId: string,
+      parentToolCallId?: string,
+    ) =>
+      event(thread.id, sequence, type, {
+        itemId,
+        itemKind: "contextCompaction",
+        turnId,
+        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+      });
+
+    insertEvents(db, noopNotifier, [
+      event(thread.id, 1, "turn/started", { turnId: "turn-1" }),
+      compaction(2, "item/started", "turn-1", "compact-1"),
+    ]);
+    expect(running("turn-1")).toBe(true);
+    expect(running("turn-2")).toBe(false);
+
+    insertEvents(db, noopNotifier, [
+      compaction(3, "item/completed", "turn-1", "compact-1"),
+      compaction(4, "item/started", "turn-1", "nested", "call-1"),
+    ]);
+    expect(running("turn-1")).toBe(false);
+
+    insertEvents(db, noopNotifier, [
+      compaction(5, "item/started", "turn-1", "compact-2"),
+    ]);
+    expect(running("turn-1")).toBe(true);
+
+    insertEvents(db, noopNotifier, [
+      event(thread.id, 6, "turn/input/accepted", {
+        data: { clientRequestId: "creq_23456789aa" },
+        turnId: "turn-1",
+      }),
+    ]);
+    expect(running("turn-1")).toBe(false);
+  });
+
+  it("treats a turn as compaction-only when its only root completed items are compactions", () => {
+    const { db, thread } = setup();
+    const compactionOnly = (turnId: string) =>
+      isStoredTurnContextCompactionOnly(db, { threadId: thread.id, turnId });
+    insertEvents(db, noopNotifier, [
+      event(thread.id, 1, "turn/started", { turnId: "turn-1" }),
+      event(thread.id, 2, "item/completed", {
+        itemId: "compact-1",
+        itemKind: "contextCompaction",
+        turnId: "turn-1",
+      }),
+      event(thread.id, 3, "item/completed", {
+        itemId: "nested-message",
+        itemKind: "agentMessage",
+        parentToolCallId: "call-1",
+        turnId: "turn-1",
+      }),
+      event(thread.id, 4, "turn/started", { turnId: "turn-2" }),
+    ]);
+    expect(compactionOnly("turn-1")).toBe(true);
+    expect(compactionOnly("turn-2")).toBe(false);
+
+    insertEvents(db, noopNotifier, [
+      event(thread.id, 5, "item/completed", {
+        itemId: "message-1",
+        itemKind: "agentMessage",
+        turnId: "turn-1",
+      }),
+    ]);
+    expect(compactionOnly("turn-1")).toBe(false);
+  });
+
+  it("lists each turn's final root agent reply, newest first, skipping turns whose final reply is empty", () => {
+    const { db, thread } = setup();
+    const reply = (
+      sequence: number,
+      turnId: string,
+      text: string,
+      parentToolCallId?: string,
+    ) =>
+      event(thread.id, sequence, "item/completed", {
+        data: { item: { type: "agentMessage", id: `m${sequence}`, text } },
+        itemId: `m${sequence}`,
+        itemKind: "agentMessage",
+        turnId,
+        ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+      });
+    insertEvents(db, noopNotifier, [
+      event(thread.id, 1, "turn/started", { turnId: "turn-1" }),
+      reply(2, "turn-1", "first draft"),
+      reply(3, "turn-1", "first final"),
+      event(thread.id, 4, "turn/started", { turnId: "turn-2" }),
+      reply(5, "turn-2", "second draft"),
+      reply(6, "turn-2", ""),
+      event(thread.id, 7, "turn/started", { turnId: "turn-3" }),
+      reply(8, "turn-3", "third draft"),
+      reply(9, "turn-3", "third final"),
+      reply(10, "turn-3", "nested reply", "call-1"),
+    ]);
+    const sequences = (limit: number) =>
+      listLatestTurnFinalAgentMessageEventRows(db, {
+        limit,
+        threadId: thread.id,
+      }).map((row) => row.sequence);
+
+    expect(sequences(1)).toEqual([9]);
+    expect(sequences(2)).toEqual([9, 3]);
+    expect(sequences(5)).toEqual([9, 3]);
   });
 });
