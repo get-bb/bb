@@ -2,9 +2,10 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import type { ThreadTabsResponse } from "@bb/server-contract";
 import {
   createPluginFixedPanelTab,
   createThreadInfoFixedPanelTab,
@@ -23,8 +24,10 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import {
   resetPluginSlotStoreForTest,
+  setLoadingPluginFrontends,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { sdk } from "@/lib/sdk";
 import {
   createThreadFixedTabDescriptor,
   useThreadFixedTabs,
@@ -61,6 +64,17 @@ const fileTab = createWorkspaceFilePreviewFixedPanelTab({
     statusLabel: null,
   },
 });
+const savedThreadTabs: ThreadTabsResponse = {
+  revision: 1,
+  tabs: [
+    {
+      id: statusTab.id,
+      kind: "plugin-fixed",
+      pluginId: "example",
+      tabId: "status",
+    },
+  ],
+};
 
 function Host({
   threadId,
@@ -119,7 +133,11 @@ function Host({
   );
 }
 
-function mountHost(activeTab: SecondaryFixedPanelTab) {
+async function settleThreadTabs() {
+  await act(async () => {});
+}
+
+async function mountHost(activeTab: SecondaryFixedPanelTab) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   const content = (threadId: string) => (
     <Wrapper>
@@ -131,8 +149,12 @@ function mountHost(activeTab: SecondaryFixedPanelTab) {
     </Wrapper>
   );
   const view = render(content("thr_a"));
+  await settleThreadTabs();
   return {
-    switchTo: (threadId: string) => view.rerender(content(threadId)),
+    switchTo: async (threadId: string) => {
+      view.rerender(content(threadId));
+      await settleThreadTabs();
+    },
   };
 }
 
@@ -158,6 +180,9 @@ function registerStatusPlugin() {
 }
 
 beforeEach(() => {
+  vi.spyOn(sdk.threads.tabs, "get").mockImplementation(async () => ({
+    ...savedThreadTabs,
+  }));
   registerStatusPlugin();
   markPluginFrontendBootStarted();
   act(() => markPluginFrontendsSettled());
@@ -165,6 +190,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   window.localStorage.clear();
   mounts.length = 0;
   resetPluginSlotStoreForTest();
@@ -178,52 +204,89 @@ describe("ThreadSecondaryPanel thread switch", () => {
     ["an open file", fileTab, "file"],
   ] as const)(
     "mounts %s content once per thread switch",
-    (_name, activeTab, prefix) => {
-      const host = mountHost(activeTab);
+    async (_name, activeTab, prefix) => {
+      const host = await mountHost(activeTab);
       expect(screen.getByText(`${prefix}:thr_a`)).not.toBeNull();
       expect(screen.getByRole("button", { name: /status/i })).not.toBeNull();
       expect(mounts).toEqual([`${prefix}:thr_a`]);
       mounts.length = 0;
 
-      host.switchTo("thr_b");
+      await host.switchTo("thr_b");
       expect(screen.getByText(`${prefix}:thr_b`)).not.toBeNull();
       expect(mounts).toEqual([`${prefix}:thr_b`]);
 
       mounts.length = 0;
-      host.switchTo("thr_c");
+      await host.switchTo("thr_c");
       expect(mounts).toEqual([`${prefix}:thr_c`]);
     },
   );
+
+  it("shows the panel content while a thread's saved tabs load", async () => {
+    let resolveTabs: (tabs: ThreadTabsResponse) => void = noop;
+    vi.mocked(sdk.threads.tabs.get).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTabs = resolve;
+        }),
+    );
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <Host threadId="thr_a" activeTab={infoTab} />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+    expect(screen.getByText("info:thr_a")).not.toBeNull();
+    expect(screen.queryByTestId("secondary-panel-content-skeleton")).toBeNull();
+
+    await act(async () => resolveTabs({ ...savedThreadTabs }));
+    expect(screen.getByText("info:thr_a")).not.toBeNull();
+    expect(mounts).toEqual(["info:thr_a"]);
+  });
 
   it.each([
     ["Info", infoTab, "info"],
     ["an open file", fileTab, "file"],
     ["a plugin tab", statusTab, "status"],
   ] as const)(
-    "keeps %s content mounted while plugin frontends reload",
-    (_name, activeTab, prefix) => {
-      mountHost(activeTab);
+    "keeps %s content mounted while a saved tab's plugin reloads",
+    async (_name, activeTab, prefix) => {
+      await mountHost(activeTab);
       mounts.length = 0;
 
-      act(() => setPluginFrontendReconcilePending(true));
+      act(() => {
+        setPluginFrontendReconcilePending(true);
+        setLoadingPluginFrontends(["example"]);
+      });
       expect(screen.getByText(`${prefix}:thr_a`)).not.toBeNull();
-      expect(screen.queryByTestId("secondary-panel-content-skeleton")).toBeNull();
+      expect(
+        screen.queryByTestId("secondary-panel-content-skeleton"),
+      ).toBeNull();
 
-      act(() => setPluginFrontendReconcilePending(false));
+      act(() => {
+        setLoadingPluginFrontends([]);
+        setPluginFrontendReconcilePending(false);
+      });
       expect(screen.getByText(`${prefix}:thr_a`)).not.toBeNull();
       expect(mounts).toEqual([]);
     },
   );
 
-  it("keeps a reloaded plugin tab selected", () => {
-    mountHost(statusTab);
-    mounts.length = 0;
+  it("keeps a reloaded plugin tab selected", async () => {
+    await mountHost(statusTab);
 
     act(() => {
       setPluginFrontendReconcilePending(true);
+      setLoadingPluginFrontends(["example"]);
       registerStatusPlugin();
     });
-    act(() => setPluginFrontendReconcilePending(false));
+    act(() => {
+      setLoadingPluginFrontends([]);
+      setPluginFrontendReconcilePending(false);
+    });
 
     expect(screen.getByText("status:thr_a")).not.toBeNull();
     expect(screen.queryByText("info:thr_a")).toBeNull();
