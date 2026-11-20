@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Label, Task } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import { useProjects, useTasksRpc } from "../../shell/data.js";
+import {
+  selectTasks,
+  useProjects,
+  useTasksQuery,
+  useTasksRpc,
+} from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
@@ -18,6 +23,7 @@ import {
   useListTasks,
   widestKeysByPrefix,
   useTaskListMeta,
+  useTaskListTiming,
   type TaskEdit,
 } from "./data.js";
 import {
@@ -134,8 +140,50 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     priorities: filters.priorities,
     labelIds,
   });
+  const childInput = useMemo(
+    () => (projectId === null ? {} : { projectId }),
+    [projectId],
+  );
+  const childrenQuery = useTasksQuery("listAllTasks", childInput, selectTasks);
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      const value: unknown = JSON.parse(
+        localStorage.getItem("bb-tasks:collapsed-subtasks") ?? "[]",
+      );
+      return Array.isArray(value)
+        ? value.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const childrenByParent = useMemo(() => {
+    const result = new Map<string, Task[]>();
+    for (const task of childrenQuery.data ?? []) {
+      if (task.parentTaskId === null) continue;
+      const children = result.get(task.parentTaskId) ?? [];
+      children.push(task);
+      result.set(task.parentTaskId, children);
+    }
+    return result;
+  }, [childrenQuery.data]);
+  const toggleChildren = (id: string) => {
+    setCollapsed((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id];
+      try {
+        localStorage.setItem(
+          "bb-tasks:collapsed-subtasks",
+          JSON.stringify(next),
+        );
+      } catch {}
+      return next;
+    });
+  };
   const meta = useTaskListMeta(projectId);
-  const taskEdit = useListTaskEdit(tasksQuery.reads);
+  const timing = useTaskListTiming(projectId);
+  const taskEdit = useListTaskEdit([...tasksQuery.reads, childInput]);
   const { mutate: mutateTask } = taskEdit;
   const refreshTasks = tasksQuery.refresh;
   const editTask = useCallback(
@@ -208,8 +256,18 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     [tasksQuery.data],
   );
   const groups = useMemo(
-    () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
-    [displayTasks, sort],
+    () =>
+      groupTasksByStatus(sortTasks(displayTasks ?? [], sort)).map((group) => ({
+        ...group,
+        count: group.tasks.length,
+        tasks: group.tasks.flatMap((task) => [
+          task,
+          ...(collapsed.includes(task.id)
+            ? []
+            : (childrenByParent.get(task.id) ?? [])),
+        ]),
+      })),
+    [displayTasks, sort, collapsed, childrenByParent],
   );
 
   const showProject = projectId === null;
@@ -312,7 +370,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <StatusIcon status={group.status} />
             {STATUS_LABELS[group.status]}
             <span className="text-xs font-normal tabular-nums text-subtle-foreground">
-              {group.tasks.length}
+              {group.count}
             </span>
           </div>
           {hiddenAbove > 0 ? (
@@ -322,7 +380,21 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             <TaskRow
               key={task.id}
               task={task}
+              child={task.parentTaskId !== null}
+              subTasks={
+                task.parentTaskId === null && childrenByParent.has(task.id)
+                  ? {
+                      total: childrenByParent.get(task.id)!.length,
+                      done: childrenByParent
+                        .get(task.id)!
+                        .filter((child) => child.status === "done").length,
+                      open: !collapsed.includes(task.id),
+                      toggle: () => toggleChildren(task.id),
+                    }
+                  : undefined
+              }
               meta={meta.data?.get(task.id)}
+              timing={timing.get(task.id)}
               project={projectsById.get(task.projectId)}
               showProject={showProject}
               labelsById={labelsById}

@@ -672,6 +672,23 @@ export const tasksRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  listTaskTiming: {
+    tags: () => [TASK_META_TAG],
+    input: z.object({ projectId: idSchema.optional() }).strict(),
+    output: z
+      .object({
+        timings: z.array(
+          z
+            .object({
+              taskId: idSchema,
+              start: z.number(),
+              working: z.boolean(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
   listTaskPullRequests: {
     tags: (input) => [threadsTag(input.taskId), pullRequestsTag(input.taskId)],
     input: z.object({ taskId: idSchema }).strict(),

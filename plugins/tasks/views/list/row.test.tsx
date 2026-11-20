@@ -68,6 +68,7 @@ function task(overrides: Partial<Task> & Pick<Task, "id" | "number">): Task {
 
 interface Options {
   projects?: Project[];
+  timings?: { taskId: string; start: number; working: boolean }[];
   moveTaskToProject?: (input: Record<string, unknown>) => TaskMutationResult;
   updateTask?: (input: Record<string, unknown>) => TaskMutationResult;
 }
@@ -86,6 +87,7 @@ function renderList(tasks: Task[], options: Options = {}) {
         labelsByProject: labelsByProject([label]),
         listAllTasks: (raw: unknown) => ({ tasks: matchingTasks(tasks, raw) }),
         listTaskCardMeta: () => ({ cards: [] }),
+        listTaskTiming: () => ({ timings: options.timings ?? [] }),
         listTaskThreads: () => ({ taskThreads: [] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),
@@ -112,6 +114,55 @@ async function rowFor(slot: ReturnType<typeof renderList>, key: string) {
 }
 
 describe("inline row editing", () => {
+  it("shows elapsed time only for working threads", async () => {
+    const item = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 });
+    const slot = renderList([item], {
+      timings: [{ taskId: item.id, start: Date.now() - 60_000, working: true }],
+    });
+    expect(
+      within(await rowFor(slot, item.key)).getByText(/^1m \d+s$/),
+    ).toBeTruthy();
+    cleanup();
+    const idle = renderList([item], {
+      timings: [
+        { taskId: item.id, start: Date.now() - 60_000, working: false },
+      ],
+    });
+    expect(
+      within(await rowFor(idle, item.key)).queryByText(/^1m \d+s$/),
+    ).toBeNull();
+  });
+
+  it("nests sub-tasks and remembers a collapsed parent", async () => {
+    const parent = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 });
+    const child = task({
+      id: "01HZT1ZZZZZZZZZZZZZZZZZZT2",
+      number: 2,
+      parentTaskId: parent.id,
+      status: "done",
+    });
+    const slot = renderList([parent, child]);
+    const row = await rowFor(slot, parent.key);
+    expect(await rowFor(slot, child.key)).toBeTruthy();
+    expect(within(row).getByText("1/1")).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole("button", { name: /Collapse sub-tasks/ }),
+    );
+    expect(
+      slot.container.querySelector(`[data-task-key="${child.key}"]`),
+    ).toBeNull();
+    cleanup();
+    const reopened = renderList([parent, child]);
+    const parentRow = await rowFor(reopened, parent.key);
+    expect(
+      reopened.container.querySelector(`[data-task-key="${child.key}"]`),
+    ).toBeNull();
+    fireEvent.click(
+      within(parentRow).getByRole("button", { name: /Expand sub-tasks/ }),
+    );
+    expect(await rowFor(reopened, child.key)).toBeTruthy();
+  });
+
   it("opens a windowed row using its task key", async () => {
     const slot = renderList([
       task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),

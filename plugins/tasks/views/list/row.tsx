@@ -1,4 +1,11 @@
-import { memo, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   Label,
   Project,
@@ -31,6 +38,27 @@ function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
         className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
       />
       Active
+    </span>
+  );
+}
+
+function ElapsedChip({ start }: { start: number }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [start]);
+  const seconds = Math.max(0, Math.floor((now - start) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(hours / 24);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return (
+    <span className={`${RAIL_CHIP_CLASS} tabular-nums`}>
+      {days > 0 ? `${days}d ` : ""}
+      {hours > 0 ? `${hours % 24}h ` : ""}
+      {minutes > 0 || hours > 0 ? `${minutes}m ` : ""}
+      {seconds % 60}s
     </span>
   );
 }
@@ -93,6 +121,9 @@ function LabelChips({
 
 interface TaskRowProps {
   task: Task;
+  timing?: { start: number; working: boolean };
+  child?: boolean;
+  subTasks?: { done: number; total: number; open: boolean; toggle: () => void };
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -154,6 +185,9 @@ export function KeyColumnScope({
 
 export const TaskRow = memo(function TaskRow({
   task,
+  timing,
+  child = false,
+  subTasks,
   meta,
   project,
   showProject,
@@ -181,6 +215,7 @@ export const TaskRow = memo(function TaskRow({
         className={cn(
           "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
           "@md:flex @md:h-[34px] @md:py-0",
+          child && "pl-9",
           pending && "opacity-70",
         )}
       >
@@ -227,7 +262,23 @@ export const TaskRow = memo(function TaskRow({
           {task.title}
         </span>
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
+          {subTasks && subTasks.total > 0 ? (
+            <button
+              type="button"
+              aria-expanded={subTasks.open}
+              aria-label={`${subTasks.open ? "Collapse" : "Expand"} sub-tasks of ${task.key}`}
+              onClick={subTasks.toggle}
+              className={cn(RAIL_CHIP_CLASS, "relative")}
+            >
+              <Icon
+                name={subTasks.open ? "ChevronDown" : "ChevronRight"}
+                className="size-3"
+              />
+              {subTasks.done}/{subTasks.total}
+            </button>
+          ) : null}
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
+          {timing?.working ? <ElapsedChip start={timing.start} /> : null}
           <LabelChips task={task} labelsById={labelsById} />
           {task.dueDate !== null ? (
             <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>

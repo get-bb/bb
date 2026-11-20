@@ -211,3 +211,20 @@ export function useTaskListMeta(projectId: string | null) {
   );
   return { data };
 }
+
+const selectTimings = (result: {
+  timings: { taskId: string; start: number; working: boolean }[];
+}) => result.timings;
+
+export function useTaskListTiming(projectId: string | null) {
+  const timings = useTasksQuery(
+    "listTaskTiming",
+    projectId === null ? {} : { projectId },
+    selectTimings,
+  );
+  return useMemo(
+    () =>
+      new Map((timings.data ?? []).map((timing) => [timing.taskId, timing])),
+    [timings.data],
+  );
+}
