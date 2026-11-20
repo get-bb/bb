@@ -26,6 +26,7 @@ import {
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,
+  claudeBlockingInformationalSystemMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
   claudeConversationResetMessageSchema,
   claudeModelFallbackSystemMessageSchema,
@@ -402,6 +403,7 @@ interface ClaudeThreadDialectState {
   mainRunIdle: boolean;
   selectedModelContextWindow: number | null;
   suppressUnacceptedTurnStart: boolean;
+  continuationBlocked: boolean;
   openCompaction: { segment: number } | undefined;
   startedTools: Map<string, ClaudeClassifiedTool>;
   heldSkillOpen: HeldSkillOpen | undefined;
@@ -424,6 +426,7 @@ function createThreadState(): ClaudeThreadDialectState {
     mainRunIdle: false,
     selectedModelContextWindow: null,
     suppressUnacceptedTurnStart: false,
+    continuationBlocked: false,
     openCompaction: undefined,
     startedTools: new Map(),
     heldSkillOpen: undefined,
@@ -473,6 +476,7 @@ export function createClaudeDeltaTranslator(
     state.mirror.turnOpen = true;
     state.mirror.segment += 1;
     state.mirror.responseStarted = false;
+    state.continuationBlocked = false;
     state.latestRequestContextTokens = undefined;
     state.latestProviderCheckpointId = undefined;
     state.armedHardRateLimitRejection = undefined;
@@ -658,6 +662,22 @@ export function createClaudeDeltaTranslator(
     state: ClaudeThreadDialectState,
     context: ClaudeDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
+    const blockingInformationalMessage =
+      claudeBlockingInformationalSystemMessageSchema.safeParse(event);
+    if (blockingInformationalMessage.success) {
+      if (isTurnStartSuppressed(state)) {
+        return [];
+      }
+      const deltas = withMirror(state, [{ kind: "turn.open" }]);
+      state.continuationBlocked = true;
+      deltas.push({
+        kind: "provider.error",
+        message: "Claude Code stopped execution",
+        detail: blockingInformationalMessage.data.content,
+      });
+      return deltas;
+    }
+
     const apiRetryMessage = claudeApiRetryMessageSchema.safeParse(event);
     if (apiRetryMessage.success) {
       const errorInfo = buildClaudeProviderErrorInfo({
@@ -1188,8 +1208,11 @@ export function createClaudeDeltaTranslator(
         ? state.armedHardRateLimitRejection
         : undefined;
     const resultFailed = isClaudeResultFailure(message);
-    const failed = resultFailed || pendingHardRateLimitRejection !== undefined;
-    if (failed) {
+    const failed =
+      resultFailed ||
+      pendingHardRateLimitRejection !== undefined ||
+      state.continuationBlocked;
+    if (resultFailed || pendingHardRateLimitRejection !== undefined) {
       const resultErrorInfo = buildClaudeProviderErrorInfo({
         httpStatusCode: message.api_error_status,
         resultSubtype: message.subtype,
