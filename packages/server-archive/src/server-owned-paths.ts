@@ -1,4 +1,4 @@
-import { pluginIdSchema } from "@bb/domain";
+import { CORE_PLUGIN_DIRECTORIES, pluginIdSchema } from "@bb/domain";
 import { isSafeRelativePath } from "./relative-path.js";
 
 export const SERVER_OWNED_TOP_LEVEL_FILES: readonly string[] = [
@@ -23,11 +23,9 @@ const TOP_LEVEL_FILE_NAMES: ReadonlySet<string> = new Set(
 const TOP_LEVEL_DIRECTORY_NAMES: ReadonlySet<string> = new Set(
   SERVER_OWNED_TOP_LEVEL_DIRECTORIES,
 );
-const SERVER_OWNED_PLUGIN_TREES: ReadonlySet<string> = new Set([
-  "npm",
-  "cache",
-  "snapshots",
-]);
+const SERVER_OWNED_PLUGIN_TREES: ReadonlySet<string> = new Set(
+  Object.values(CORE_PLUGIN_DIRECTORIES),
+);
 const HOST_OWNED_PLUGIN_CHILDREN: ReadonlySet<string> = new Set([
   "host-data",
   "bridge-data",

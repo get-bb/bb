@@ -134,6 +134,20 @@ describe("server move marker files", () => {
     await expect(readServerImportFile(dataDir)).rejects.toThrow(/Invalid/u);
   });
 
+  it("reads a marker that an older bb wrote with per-child plugins/runtime roots", async () => {
+    const dataDir = await makeTempDir();
+    const olderMarker = {
+      ...MOVED_FILE,
+      oldCopyEntries: ["plugins/runtime/host", "plugins/runtime/server"],
+    };
+    await writeFile(
+      path.join(dataDir, SERVER_MOVED_FILE_NAME),
+      JSON.stringify(olderMarker),
+    );
+
+    expect(await readServerMovedFile(dataDir)).toEqual(olderMarker);
+  });
+
   it("refuses to write markers that could target paths outside the data directory", async () => {
     const dataDir = await makeTempDir();
     for (const oldCopyEntry of ["../.ssh", "auth.json", "plugins/docs"]) {

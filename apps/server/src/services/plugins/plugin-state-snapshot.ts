@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import { z } from "zod";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
 import {
@@ -137,7 +138,7 @@ export async function createPluginStateSnapshotOnDisk(args: {
   const snapshotPath = join(
     args.dataDir,
     "plugins",
-    "snapshots",
+    CORE_PLUGIN_DIRECTORIES.stateSnapshots,
     args.pluginId,
     `${args.now}-${args.toArtifactId}-${id}`,
   );

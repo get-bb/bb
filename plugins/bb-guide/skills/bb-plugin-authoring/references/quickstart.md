@@ -134,8 +134,10 @@ Default to `bb-plugin-hello` for the package name. Scoped names such as
 package-name component minus the `bb-plugin-` prefix. BB lowercases it,
 replaces non-alphanumeric runs with `-`, and trims separators. An empty result
 is invalid. Every bundled plugin id is reserved for its bundled source, and
-ids starting with `bb--` are reserved for plugins bundled with BB. The id
-namespaces routes, storage, settings, and CLI commands.
+ids starting with `bb--` are reserved for plugins bundled with BB. The ids
+`npm`, `cache`, `runtime`, and `snapshots` are refused because BB keeps its own
+folders under those names in `<dataDir>/plugins/`. The id namespaces routes,
+storage, settings, and CLI commands.
 
 ## Builds, installs, and dependencies
 

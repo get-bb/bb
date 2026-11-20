@@ -14,6 +14,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import semver from "semver";
 import {
   hostToolchain,
@@ -334,7 +335,12 @@ export function npmInstallPrefix(
   name: string,
   version: string,
 ): string {
-  return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
+  return join(
+    dataDir,
+    "plugins",
+    CORE_PLUGIN_DIRECTORIES.npmPackages,
+    ...`${name}@${version}`.split("/"),
+  );
 }
 
 export function npmPackageRoot(prefix: string, packageName: string): string {
@@ -389,7 +395,7 @@ export function npmArtifactCacheDir(
     throw new Error(`invalid npm package name "${packageName}"`);
   }
   return resolveInside(
-    join(dataDir, "plugins", "cache", "npm"),
+    join(dataDir, "plugins", CORE_PLUGIN_DIRECTORIES.cache, "npm"),
     [...packageName.split("/"), version],
     "npm artifact",
   );
@@ -402,7 +408,7 @@ export function gitArtifactCacheDir(
 ): string {
   if (!isCommitSha(commit)) throw new Error(`invalid git commit "${commit}"`);
   return resolveInside(
-    join(dataDir, "plugins", "cache", "git"),
+    join(dataDir, "plugins", CORE_PLUGIN_DIRECTORIES.cache, "git"),
     [...cachePath.split("/"), commit],
     "git artifact",
   );

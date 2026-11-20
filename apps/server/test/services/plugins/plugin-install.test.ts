@@ -44,6 +44,7 @@ import {
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import { createPluginService } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { expectCorePluginFoldersUnclaimable } from "../../helpers/core-plugin-folders.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
@@ -1898,6 +1899,7 @@ describe("plugin install flows", () => {
             rootDir: join(prefix, "node_modules", name),
           });
           await stat(prefix);
+          await expectCorePluginFoldersUnclaimable(dataDir, ["npmhero"]);
 
           expect(await service.remove("npmhero")).toBe(true);
           await expect(stat(prefix)).rejects.toMatchObject({
@@ -1975,6 +1977,33 @@ describe("plugin install flows", () => {
         kind: "root",
       }),
     ).rejects.toThrowError(/ids starting with "bb--" are reserved/);
+  });
+
+  test.for(["npm", "cache", "runtime", "snapshots"])(
+    "refuses a path plugin whose id names core's plugins/%s folder",
+    async (id, { fixture }) => {
+      const { db, dataDir, workDir, service } = fixture;
+
+      const rootDir = join(workDir, `bb-plugin-${id}`);
+      await writePluginFixture(rootDir, { name: `bb-plugin-${id}` });
+      await expect(service.installPath(rootDir)).rejects.toThrowError(
+        /reserves for its own folders under plugins\//,
+      );
+      expect(getInstalledPluginRegistration(db, id)).toBeUndefined();
+      await expect(
+        stat(join(dataDir, "plugins", id, "logs")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  test("refuses an npm package whose derived id names a core folder before install", async ({
+    fixture,
+  }) => {
+    const { service } = fixture;
+
+    await expect(
+      service.install("npm:@acme/bb-plugin-runtime@1.2.3", { kind: "root" }),
+    ).rejects.toThrowError(/reserves for its own folders under plugins\//);
   });
 
   test("the bb plugin new scaffold installs and loads through the plugin service", async ({
