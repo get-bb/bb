@@ -769,7 +769,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       listStoredEventRows(db, {
         afterSequence: 0,
         beforeSequence: fixture.latestSequence + 1,
-        limit: 2_000,
+        limit: 1_000,
         threadId: fixture.threadId,
         types: ["turn/input/accepted", "client/turn/requested"],
       }),
@@ -1177,6 +1177,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTimelineTurnEventRows`,
+    growsWith: {
+      turnSize:
+        "Returns every row of the window's turns, including the whole long last turn",
+    },
     run: (db, fixture) =>
       listStoredTimelineTurnEventRows(db, {
         ...timelineWindowArgs(fixture),

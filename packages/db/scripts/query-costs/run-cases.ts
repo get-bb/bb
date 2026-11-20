@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import {
   GROWTH_BOUNDED_LIMIT,
-  GROWTH_FLOOR_MS,
   type RegisteredCostCase,
   type SeedsByGroup,
 } from "./case.js";
@@ -25,21 +24,29 @@ interface StoredWorld {
   seeds: SeedsByGroup;
 }
 
-const [smallPath, smallFixturePath, largePath, largeFixturePath, startArg] =
-  process.argv.slice(2);
+const [
+  smallPath,
+  smallFixturePath,
+  largePath,
+  largeFixturePath,
+  startArg,
+  floorArg,
+] = process.argv.slice(2);
 if (
   smallPath === undefined ||
   smallFixturePath === undefined ||
   largePath === undefined ||
   largeFixturePath === undefined ||
-  startArg === undefined
+  startArg === undefined ||
+  floorArg === undefined
 ) {
   throw new Error(
-    "Usage: run-cases.ts <small.sqlite> <small.json> <large.sqlite> <large.json> <start>",
+    "Usage: run-cases.ts <small.sqlite> <small.json> <large.sqlite> <large.json> <start> <floorMs>",
   );
 }
 
 const fileBacked = process.argv.includes("--db");
+const floorMs = Number(floorArg);
 
 function openHistory(databasePath: string, fixturePath: string): SizedHistory {
   const world = JSON.parse(readFileSync(fixturePath, "utf8")) as StoredWorld;
@@ -89,10 +96,10 @@ for (
     let smallMs = timeOnce(index, costCase, small);
     let largeMs = timeOnce(index, costCase, large);
     const exceedsGrowth = () =>
-      largeMs >= GROWTH_FLOOR_MS && largeMs > smallMs * GROWTH_BOUNDED_LIMIT;
+      largeMs >= floorMs && largeMs > smallMs * GROWTH_BOUNDED_LIMIT;
     for (
       let attempt = 1;
-      largeMs >= GROWTH_FLOOR_MS / 2 &&
+      largeMs >= floorMs / 2 &&
       (attempt < ATTEMPTS ||
         (attempt < CONFIRMING_ATTEMPTS && exceedsGrowth()));
       attempt += 1

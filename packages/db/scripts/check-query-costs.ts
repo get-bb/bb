@@ -38,6 +38,10 @@ import {
 } from "./query-costs/cases.js";
 import { buildHistoryFixture } from "../src/history-fixture.js";
 import { selectCpuClock } from "./query-costs/cpu-clock.js";
+import {
+  measureCalibrationMs,
+  REFERENCE_CALIBRATION_MS,
+} from "./query-costs/calibration.js";
 import { listQueryFunctions } from "./query-functions.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -148,6 +152,7 @@ function runFrom(
         large.databasePath,
         large.fixturePath,
         String(start),
+        String(growthFloorMs),
         ...process.argv.slice(2),
       ],
       { stdio: ["ignore", "pipe", "inherit"] },
@@ -323,7 +328,7 @@ function findingOf(
   }
   const { smallMs, largeMs } = outcome;
   const growth = largeMs / smallMs;
-  if (comparison.axis !== null && largeMs >= GROWTH_FLOOR_MS) {
+  if (comparison.axis !== null && largeMs >= growthFloorMs) {
     const measured = `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x`;
     const declared = QUERY_COST_CASES[index].growsWith?.[comparison.axis];
     if (declared === undefined && growth > GROWTH_BOUNDED_LIMIT) {
@@ -397,9 +402,30 @@ async function runComparison(comparison: Comparison): Promise<Finding[]> {
   const measured = QUERY_COST_CASES.flatMap((costCase, index) => {
     const outcome = outcomes.get(index);
     return outcome?.kind === "measured"
-      ? [{ name: costCase.label, ...outcome }]
+      ? [{ name: costCase.label, index, ...outcome }]
       : [];
   });
+  if (comparison.axis !== null) {
+    const axis = comparison.axis;
+    console.log(
+      `Undeclared query functions closest to size^${GROWTH_BOUNDED_EXPONENT} (${GROWTH_BOUNDED_LIMIT.toFixed(1)}x), ${comparison.name}:`,
+    );
+    for (const row of measured
+      .filter(
+        (row) =>
+          row.largeMs >= growthFloorMs &&
+          QUERY_COST_CASES[row.index].growsWith?.[axis] === undefined,
+      )
+      .sort(
+        (left, right) =>
+          right.largeMs / right.smallMs - left.largeMs / left.smallMs,
+      )
+      .slice(0, 5)) {
+      console.log(
+        `  ${(row.largeMs / row.smallMs).toFixed(2)}x ${row.smallMs.toFixed(2)} → ${row.largeMs.toFixed(2)} ms ${row.name}`,
+      );
+    }
+  }
   console.log(`Slowest query functions, ${comparison.name}:`);
   for (const row of measured
     .sort((left, right) => right.largeMs - left.largeMs)
@@ -423,7 +449,14 @@ async function runComparison(comparison: Comparison): Promise<Finding[]> {
   });
 }
 
-console.log(`Timing each call by ${selectCpuClock().name}`);
+const cpuClock = selectCpuClock();
+const calibrationMs = measureCalibrationMs(cpuClock);
+const growthFloorMs =
+  GROWTH_FLOOR_MS * (calibrationMs / REFERENCE_CALIBRATION_MS);
+console.log(`Timing each call by ${cpuClock.name}`);
+console.log(
+  `Calibration workload took ${calibrationMs.toFixed(2)} ms against ${REFERENCE_CALIBRATION_MS} ms on the reference machine, so growth is checked from ${growthFloorMs.toFixed(2)} ms`,
+);
 const coverageProblems = PARTIAL_RUN ? [] : checkCoverage();
 const directory = mkdtempSync(join(tmpdir(), "bb-query-costs-"));
 let failed = coverageProblems.length > 0;

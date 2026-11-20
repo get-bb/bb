@@ -373,6 +373,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDescendants`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole subtree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDescendants(db, seed.descendantRootIds, {
         includeArchived: false,

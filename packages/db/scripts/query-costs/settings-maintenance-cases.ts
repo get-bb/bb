@@ -521,6 +521,10 @@ const MAINTENANCE_CASES: readonly Case[] = [
   },
   {
     name: `${MAINTENANCE}#dropDeferredLegacyTables`,
+    growsWith: {
+      history:
+        "Drops the deferred legacy tables, freeing every page, and the seed grows their rows",
+    },
     run: (db) => dropDeferredLegacyTables(db),
   },
   {
@@ -652,6 +656,10 @@ const MAINTENANCE_CASES: readonly Case[] = [
   },
   {
     name: `${SWEEPS}#pruneClosedSessions`,
+    growsWith: {
+      history:
+        "Deletes up to one batch of 1,000 closed sessions, and the smaller world has fewer than a batch",
+    },
     run: (db) =>
       pruneClosedSessions(db, {
         closedBefore: Date.now() - CLOSED_SESSION_ROW_RETENTION_MS,
