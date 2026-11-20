@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  createPluginFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type SecondaryFixedPanelTab,
@@ -18,6 +19,7 @@ import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
+  setPluginFrontendReconcilePending,
 } from "@/lib/plugin-frontend-boot-state";
 import {
   resetPluginSlotStoreForTest,
@@ -45,6 +47,10 @@ function CountedContent({ label }: { label: string }) {
 }
 
 const infoTab = createThreadInfoFixedPanelTab();
+const statusTab = createPluginFixedPanelTab({
+  pluginId: "example",
+  tabId: "status",
+});
 const fileTab = createWorkspaceFilePreviewFixedPanelTab({
   environmentId: "env-test",
   projectId: "project-test",
@@ -130,7 +136,7 @@ function mountHost(activeTab: SecondaryFixedPanelTab) {
   };
 }
 
-beforeEach(() => {
+function registerStatusPlugin() {
   setPluginSlotRegistrations(
     "example",
     collectPluginAppRegistrations(
@@ -142,11 +148,17 @@ beforeEach(() => {
           title: "Status",
           icon: "Info",
           useVisible: () => true,
-          component: () => <div>Status content</div>,
+          component: ({ threadId }) => (
+            <CountedContent label={`status:${threadId}`} />
+          ),
         });
       }),
     ),
   );
+}
+
+beforeEach(() => {
+  registerStatusPlugin();
   markPluginFrontendBootStarted();
   act(() => markPluginFrontendsSettled());
 });
@@ -182,4 +194,38 @@ describe("ThreadSecondaryPanel thread switch", () => {
       expect(mounts).toEqual([`${prefix}:thr_c`]);
     },
   );
+
+  it.each([
+    ["Info", infoTab, "info"],
+    ["an open file", fileTab, "file"],
+    ["a plugin tab", statusTab, "status"],
+  ] as const)(
+    "keeps %s content mounted while plugin frontends reload",
+    (_name, activeTab, prefix) => {
+      mountHost(activeTab);
+      mounts.length = 0;
+
+      act(() => setPluginFrontendReconcilePending(true));
+      expect(screen.getByText(`${prefix}:thr_a`)).not.toBeNull();
+      expect(screen.queryByTestId("secondary-panel-content-skeleton")).toBeNull();
+
+      act(() => setPluginFrontendReconcilePending(false));
+      expect(screen.getByText(`${prefix}:thr_a`)).not.toBeNull();
+      expect(mounts).toEqual([]);
+    },
+  );
+
+  it("keeps a reloaded plugin tab selected", () => {
+    mountHost(statusTab);
+    mounts.length = 0;
+
+    act(() => {
+      setPluginFrontendReconcilePending(true);
+      registerStatusPlugin();
+    });
+    act(() => setPluginFrontendReconcilePending(false));
+
+    expect(screen.getByText("status:thr_a")).not.toBeNull();
+    expect(screen.queryByText("info:thr_a")).toBeNull();
+  });
 });

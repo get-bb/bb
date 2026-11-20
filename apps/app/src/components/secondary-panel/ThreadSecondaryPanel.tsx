@@ -355,6 +355,9 @@ function ThreadSecondaryPanelContent({
       : null,
   );
   const holdsPanelContent = isAwaitingActiveFixedTab;
+  const [splitSurfaceMountedFor, setSplitSurfaceMountedFor] = useState<
+    string | undefined
+  >(undefined);
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
@@ -839,6 +842,17 @@ function ThreadSecondaryPanelContent({
 
   const shouldEnableSidebarSplits =
     !renderAsDrawer && splitPanelStateId !== undefined;
+  if (
+    shouldEnableSidebarSplits &&
+    areFixedTabsReady &&
+    splitSurfaceMountedFor !== splitPanelStateId
+  ) {
+    setSplitSurfaceMountedFor(splitPanelStateId);
+  }
+  const holdsSplitSurface =
+    shouldEnableSidebarSplits &&
+    !areFixedTabsReady &&
+    splitSurfaceMountedFor !== splitPanelStateId;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
         ...fixedTabs.map((fixedTab) => ({
@@ -986,7 +1000,7 @@ function ThreadSecondaryPanelContent({
         ],
       )}
     >
-      {shouldEnableSidebarSplits && !areFixedTabsReady ? (
+      {holdsSplitSurface ? (
         <SecondaryPanelContentSkeleton />
       ) : (
         panelSurface
