@@ -248,6 +248,11 @@ export const migrations = [
   `CREATE INDEX workflow_runs_expiry_idx
      ON workflow_runs(finished_at + json_extract(settings_json, '$.retentionDays') * 86400000)
      WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1;`,
+  `CREATE INDEX workflow_runs_resumed_from_idx ON workflow_runs(resumed_from_run_id)
+     WHERE resumed_from_run_id IS NOT NULL;
+   CREATE INDEX workflow_calls_replayed_from_idx ON workflow_calls(replayed_from_call_id)
+     WHERE replayed_from_call_id IS NOT NULL;
+   CREATE INDEX workflow_workers_run_idx ON workflow_workers(run_id);`,
 ];
 
 export function createRun(

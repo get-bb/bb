@@ -557,8 +557,6 @@ const WORKFLOWS_CASES: readonly QueryCostCase<WorkflowsSeed>[] = [
   {
     name: `${WORKFLOWS}#listExpiredTerminalRuns`,
     growsWith: { history: RETENTION_SWEEP_REASON },
-    ceilingMs: 200,
-    reason: RETENTION_SWEEP_REASON,
     run: (db, _fixture, seed) =>
       listExpiredTerminalRuns(
         db.$client,
@@ -568,10 +566,6 @@ const WORKFLOWS_CASES: readonly QueryCostCase<WorkflowsSeed>[] = [
   },
   {
     name: `${WORKFLOWS}#deleteTerminalRuns`,
-    growsWith: {
-      history:
-        "Known linear cost: deleting a batch of expired runs scans every worker row, since workflow_workers has no run_id index",
-    },
     prepare: (db, _fixture, seed) => {
       expiredRunIds = listExpiredTerminalRuns(
         db.$client,
@@ -668,13 +662,6 @@ export const WORKFLOWS_COST_GROUP = registerCostGroup({
           reason: RETENTION_SWEEP_REASON,
         }),
       ),
-      {
-        rule: "full-scan",
-        table: "workflow_workers",
-        caller: `${WORKFLOWS}#deleteTerminalRuns`,
-        reason:
-          "Known linear cost: workflow_workers has no run_id index, so deleting a batch of expired runs scans every worker row",
-      },
       {
         rule: "full-scan",
         table: "workflow_workers",

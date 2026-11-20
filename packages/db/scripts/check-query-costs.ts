@@ -49,7 +49,6 @@ import {
   listQueryFunctions,
 } from "./query-functions.js";
 import { auditCaseQueryPlans } from "./query-costs/plan-audit.js";
-import { openPluginDatabase } from "./query-costs/plugin-database.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const RUNNER = fileURLToPath(
@@ -282,7 +281,7 @@ function openPluginDatabases(
   return new Map(
     QUERY_COST_GROUPS.filter((group) => group.pluginDatabase).map((group) => [
       group.name,
-      openPluginDatabase(pathOf(group.name) ?? ":memory:"),
+      createConnection(pathOf(group.name) ?? ":memory:"),
     ]),
   );
 }

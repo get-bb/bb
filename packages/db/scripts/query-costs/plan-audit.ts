@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
+  createConnection,
   type DbConnection,
   type QueryPlanExecutionObserver,
 } from "../../src/connection.js";
@@ -12,7 +13,6 @@ import {
 } from "../../src/query-plan-audit.js";
 import { allowlistKey } from "../../src/query-plan-guard.js";
 import type { RegisteredCostCase, SeedsByGroup } from "./case.js";
-import { openPluginDatabase } from "./plugin-database.js";
 
 interface StoredWorld {
   fixture: HistoryFixture;
@@ -66,7 +66,7 @@ export function auditCaseQueryPlans(
   const databases = new Map<string, DbConnection>(
     Object.entries(stored.pluginDatabasePaths).map(([group, path]) => [
       group,
-      openPluginDatabase(world.fileBacked ? path : readFileSync(path), {
+      createConnection(world.fileBacked ? path : readFileSync(path), {
         queryPlanObserver: () => observer,
       }),
     ]),

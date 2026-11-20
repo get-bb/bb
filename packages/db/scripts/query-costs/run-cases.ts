@@ -8,7 +8,6 @@ import {
 } from "./case.js";
 import { QUERY_COST_CASES } from "./cases.js";
 import { selectCpuClock } from "./cpu-clock.js";
-import { openPluginDatabase } from "./plugin-database.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
 
 const ATTEMPTS = 3;
@@ -64,7 +63,7 @@ function openHistory(databasePath: string, fixturePath: string): SizedHistory {
     pluginDatabases: new Map(
       Object.entries(world.pluginDatabasePaths).map(([group, path]) => [
         group,
-        openPluginDatabase(fileBacked ? path : readFileSync(path)),
+        createConnection(fileBacked ? path : readFileSync(path)),
       ]),
     ),
     fixture: world.fixture,

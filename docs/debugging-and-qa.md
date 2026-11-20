@@ -454,7 +454,7 @@ check therefore also covers the plugin database modules listed in
 account-pool, automations and workflows stores. Their cases live in
 `packages/db/scripts/query-costs/plugin-databases-cases.ts`. Each of these
 groups sets `pluginDatabase`, so every world gets a separate database per
-plugin, opened as the server opens plugin databases (foreign keys off),
+plugin, opened as the server opens plugin databases (better-sqlite3 enforces foreign keys by default),
 which the group's seed migrates with the plugin's own statements and fills at
 both sizes; exported functions and public methods of exported classes count
 as query functions. The check also explains every statement those cases run
