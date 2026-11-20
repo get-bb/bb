@@ -29,6 +29,7 @@ import {
   MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
 import { installGitDependencies } from "./git-plugin-dependencies.js";
+import { PluginInstallCancelledError } from "./install-cancellation.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type {
@@ -151,9 +152,28 @@ async function cloneGitCommit(
   commit: string,
   notFoundHint?: string,
 ): Promise<void> {
-  await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+  await runInstallCommand("git", ["init", "--quiet", stagingDir], {
     notFoundHint,
   });
+  try {
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "fetch",
+      "--quiet",
+      "--depth",
+      "1",
+      "--no-tags",
+      url,
+      commit,
+    ]);
+  } catch (error) {
+    if (error instanceof PluginInstallCancelledError) throw error;
+    await rm(stagingDir, { recursive: true, force: true });
+    await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+      notFoundHint,
+    });
+  }
   await runInstallCommand("git", [
     "-C",
     stagingDir,

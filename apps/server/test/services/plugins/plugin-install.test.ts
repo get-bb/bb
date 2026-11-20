@@ -163,6 +163,61 @@ async function commitAll(repoDir: string, message: string): Promise<string> {
   return git(repoDir, ["rev-parse", "HEAD"]);
 }
 
+async function serveGitRepository(repoDir: string) {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const child = execFile(
+      "git",
+      ["http-backend"],
+      {
+        encoding: "buffer",
+        env: {
+          ...process.env,
+          GIT_PROJECT_ROOT: dirname(repoDir),
+          GIT_HTTP_EXPORT_ALL: "1",
+          PATH_INFO: url.pathname,
+          QUERY_STRING: url.search.slice(1),
+          REQUEST_METHOD: request.method ?? "GET",
+          CONTENT_TYPE: request.headers["content-type"] ?? "",
+        },
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          response.writeHead(500).end(stderr);
+          return;
+        }
+        const headerEnd = stdout.indexOf("\r\n\r\n");
+        for (const header of stdout
+          .subarray(0, headerEnd)
+          .toString()
+          .split("\r\n")) {
+          const separator = header.indexOf(":");
+          const name = header.slice(0, separator);
+          const value = header.slice(separator + 1).trim();
+          if (name.toLowerCase() === "status")
+            response.statusCode = Number.parseInt(value, 10);
+          else response.setHeader(name, value);
+        }
+        response.end(stdout.subarray(headerEnd + 4));
+      },
+    );
+    request.pipe(child.stdin!);
+  });
+  await new Promise<void>((resolvePromise) =>
+    server.listen(0, "127.0.0.1", resolvePromise),
+  );
+  const address = server.address();
+  if (address === null || typeof address === "string")
+    throw new Error("missing git server port");
+  return {
+    url: `http://127.0.0.1:${address.port}/${repoDir.slice(dirname(repoDir).length + 1)}`,
+    close: () =>
+      new Promise<void>((resolvePromise) =>
+        server.close(() => resolvePromise()),
+      ),
+  };
+}
+
 function artifactMeta(args: {
   artifactFormatVersion?: number;
   pluginId: string;
@@ -840,27 +895,81 @@ describe("plugin install flows", () => {
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
 
-    test("installs a pinned commit sha via clone + checkout", async ({
+    test("installs a resolved commit without downloading unavailable ancestor blobs", async ({
       fixture,
     }) => {
-      const { workDir, service } = fixture;
-
-      const repoDir = join(workDir, "repo-sha");
-      await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
+      const { db, workDir, service } = fixture;
+      const repoDir = join(workDir, "repo-selected-commit");
+      await writePluginFixture(repoDir, { name: "bb-plugin-selected-commit" });
       await initGitRepo(repoDir);
-      const sha = await commitAll(repoDir, "init");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-shaman",
-        version: "9.9.9",
-      });
-      await commitAll(repoDir, "later");
+      await writeFile(
+        join(repoDir, "retired.txt"),
+        "content from an older release",
+      );
+      await commitAll(repoDir, "previous release");
+      const retiredBlob = await git(repoDir, ["rev-parse", "HEAD:retired.txt"]);
+      await rm(join(repoDir, "retired.txt"));
+      const commit = await commitAll(repoDir, "selected release");
+      await rm(
+        join(
+          repoDir,
+          ".git",
+          "objects",
+          retiredBlob.slice(0, 2),
+          retiredBlob.slice(2),
+        ),
+      );
+      const remote = await serveGitRepository(repoDir);
 
-      const entry = await service.install(`git:${repoDir}@${sha}`, {
-        kind: "root",
-      });
-      expect(entry.status).toBe("running");
-      expect(entry.version).toBe("0.1.0");
+      try {
+        const entry = await service.install(`git:${remote.url}@main`, {
+          kind: "root",
+        });
+
+        expect(entry).toMatchObject({
+          id: "selected-commit",
+          version: "0.1.0",
+          status: "running",
+        });
+        expect(getInstalledPluginRegistration(db, entry.id)).toMatchObject({
+          gitResolvedCommit: commit,
+        });
+        expect(existsSync(join(entry.rootDir, ".git"))).toBe(false);
+      } finally {
+        await remote.close();
+      }
     });
+
+    test.for([40, 7])(
+      "installs a pinned commit with a %i-character sha",
+      async (shaLength, { fixture }) => {
+        const { workDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-sha");
+        await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
+        await initGitRepo(repoDir);
+        const sha = await commitAll(repoDir, "init");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-shaman",
+          version: "9.9.9",
+        });
+        await commitAll(repoDir, "later");
+
+        const remote = await serveGitRepository(repoDir);
+        try {
+          const entry = await service.install(
+            `git:${remote.url}@${sha.slice(0, shaLength)}`,
+            {
+              kind: "root",
+            },
+          );
+          expect(entry.status).toBe("running");
+          expect(entry.version).toBe("0.1.0");
+        } finally {
+          await remote.close();
+        }
+      },
+    );
 
     test("never reuses an exact-resolution artifact owned by another plugin", async ({
       fixture,
