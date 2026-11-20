@@ -8,8 +8,15 @@ import {
   useRpc,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import type { tailscaleRpcContract } from "./src/rpc.js";
 import {
   TAILSCALE_REALTIME_CHANNEL,
@@ -39,7 +46,6 @@ interface View {
   title: string;
   body: string | null;
   primary: PrimaryAction;
-  checkAgain: boolean;
 }
 
 function adminLink(status: TailscaleStatus, label: string): PrimaryAction {
@@ -57,7 +63,6 @@ function servedView(status: TailscaleStatus): View {
       title: "Checking the address…",
       body: null,
       primary: remove,
-      checkAgain: false,
     };
   }
   if (status.https.result === "other-server") {
@@ -66,7 +71,6 @@ function servedView(status: TailscaleStatus): View {
       title: "Reaches a different bb server",
       body: status.https.error,
       primary: remove,
-      checkAgain: true,
     };
   }
   if (status.https.result === "no-answer") {
@@ -75,7 +79,6 @@ function servedView(status: TailscaleStatus): View {
       title: "Set up, but not answering yet",
       body: status.https.error,
       primary: remove,
-      checkAgain: true,
     };
   }
   if (status.serve?.funnel === true) {
@@ -84,7 +87,6 @@ function servedView(status: TailscaleStatus): View {
       title: "Public on the internet (Funnel is on)",
       body: status.message,
       primary: remove,
-      checkAgain: true,
     };
   }
   return {
@@ -92,7 +94,6 @@ function servedView(status: TailscaleStatus): View {
     title: "Reachable on your tailnet",
     body: null,
     primary: remove,
-    checkAgain: false,
   };
 }
 
@@ -104,7 +105,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Install Tailscale",
         body: "Install Tailscale on the machine running this bb server, then sign in.",
         primary: adminLink(status, "Download Tailscale"),
-        checkAgain: true,
       };
     case "not-running":
       return {
@@ -112,7 +112,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Connect Tailscale",
         body: status.message,
         primary: null,
-        checkAgain: true,
       };
     case "logged-out":
       return {
@@ -120,7 +119,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Sign in to Tailscale",
         body: "Sign in to Tailscale on the machine running this bb server.",
         primary: null,
-        checkAgain: true,
       };
     case "needs-approval":
       return {
@@ -128,7 +126,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Approve this machine",
         body: "This machine is waiting for approval in your tailnet.",
         primary: adminLink(status, "Open machines"),
-        checkAgain: true,
       };
     case "needs-magicdns":
       return {
@@ -136,7 +133,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Turn on MagicDNS",
         body: "Tailscale needs MagicDNS to give this machine a ts.net name.",
         primary: adminLink(status, "Open DNS settings"),
-        checkAgain: true,
       };
     case "needs-https":
       return {
@@ -144,7 +140,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Turn on HTTPS certificates",
         body: "Tailscale needs HTTPS certificates to serve bb at an https:// address. They're in the same DNS settings.",
         primary: adminLink(status, "Open DNS settings"),
-        checkAgain: true,
       };
     case "not-served":
       return {
@@ -155,7 +150,6 @@ function viewOf(status: TailscaleStatus): View {
             ? "Gives bb a private HTTPS address on your tailnet."
             : `Gives bb a private HTTPS address at ${status.dnsName}. Only devices on your tailnet can open it.`,
         primary: { kind: "setup" },
-        checkAgain: false,
       };
     case "conflict":
       return {
@@ -163,7 +157,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Serve ports are in use",
         body: status.message,
         primary: null,
-        checkAgain: true,
       };
     case "served":
       return servedView(status);
@@ -173,7 +166,6 @@ function viewOf(status: TailscaleStatus): View {
         title: "Couldn't read Tailscale",
         body: status.message,
         primary: null,
-        checkAgain: true,
       };
   }
 }
@@ -235,6 +227,11 @@ function useTailscaleStatus() {
     if (connectionState === "connected" && previous !== "connected") refetch();
   }, [connectionState, refetch]);
 
+  useEffect(() => {
+    window.addEventListener("focus", refetch);
+    return () => window.removeEventListener("focus", refetch);
+  }, [refetch]);
+
   useRealtime(TAILSCALE_REALTIME_CHANNEL, accept);
 
   const run = useCallback(
@@ -284,7 +281,55 @@ function useTailscaleStatus() {
     [accept, refetch, rpc],
   );
 
-  return { status, loadError, refetch, run };
+  const check = useCallback(() => {
+    const id = toast.loading("Checking Tailscale…");
+    rpc.call("status").then(
+      (result) => {
+        const next = asStatus(result);
+        if (next === null) {
+          toast.error("Couldn't check Tailscale", {
+            id,
+            description: "Unexpected status payload.",
+          });
+          return;
+        }
+        accept(next);
+        toast.success("Tailscale checked", {
+          id,
+          description: viewOf(next).title,
+        });
+      },
+      (error: unknown) => {
+        toast.error("Couldn't check Tailscale", {
+          id,
+          description: errorText(error),
+        });
+      },
+    );
+  }, [accept, rpc]);
+
+  return { status, loadError, run, check };
+}
+
+function CheckAgainButton({ onClick }: { onClick: () => void }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground"
+            aria-label="Check again"
+            onClick={onClick}
+          >
+            <Icon name="RotateCcw" className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Check again</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function PrimaryButton({
@@ -322,7 +367,7 @@ function PrimaryButton({
 const TEXT_ACTION_CLASS = "h-auto px-0 text-xs text-muted-foreground";
 
 function TailscaleSettingsSection() {
-  const { status, loadError, refetch, run } = useTailscaleStatus();
+  const { status, loadError, run, check } = useTailscaleStatus();
 
   if (loadError !== null) {
     return (
@@ -340,22 +385,12 @@ function TailscaleSettingsSection() {
   return (
     <div className="space-y-2">
       <div className="space-y-1.5 rounded-lg border border-border bg-card px-4 py-3">
-        <div className="flex min-h-8 items-center gap-3">
+        <div className="-mr-1.5 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2" role="status">
             <StatusDot tone={view.tone} />
             <span className="truncate text-sm font-medium">{view.title}</span>
           </div>
-          {view.checkAgain ? (
-            <Button
-              size="sm"
-              variant="link"
-              className={TEXT_ACTION_CLASS}
-              onClick={refetch}
-            >
-              Check again
-            </Button>
-          ) : null}
-          <PrimaryButton action={view.primary} run={run} />
+          <CheckAgainButton onClick={check} />
         </div>
         {serve !== null ? (
           <div className="flex min-w-0 items-center gap-3">
@@ -400,6 +435,11 @@ function TailscaleSettingsSection() {
               : "Set up by bb"}{" "}
             · forwards to {status.target}
           </p>
+        ) : null}
+        {view.primary !== null ? (
+          <div className="pt-1.5">
+            <PrimaryButton action={view.primary} run={run} />
+          </div>
         ) : null}
       </div>
       {serve?.owner === "bb" ? (

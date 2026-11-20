@@ -123,6 +123,37 @@ describe("tailscale settings section", () => {
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
 
+  it("re-reads Tailscale when the window regains focus", async () => {
+    let current = status({
+      state: "needs-magicdns",
+      message: "Turn on MagicDNS in your tailnet's DNS settings",
+      adminUrl: "https://login.tailscale.com/admin/dns",
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { openUrl: () => true, rpc: { status: () => current } },
+    );
+    await slot.findByText("Turn on MagicDNS");
+    current = status();
+    fireEvent.focus(window);
+    await slot.findByText("Not set up");
+    expect(slot.getByRole("button", { name: "Set up" })).toBeTruthy();
+  });
+
+  it("checks again on request and shows the new state", async () => {
+    let current = status({ state: "logged-out", message: "Sign in" });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { openUrl: () => true, rpc: { status: () => current } },
+    );
+    await slot.findByText("Sign in to Tailscale");
+    current = status();
+    fireEvent.click(slot.getByRole("button", { name: "Check again" }));
+    await slot.findByText("Not set up");
+  });
+
   it("warns instead of showing reachable when the address is public or reaches another bb", async () => {
     const funnel = renderSlot(
       app.settingsSections[0]!,
