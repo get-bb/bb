@@ -44,7 +44,8 @@ import {
   getLatestThreadSystemErrorEventRow,
   getLatestTokenUsageRow,
   getStoredConversationOutlineProjectionState,
-  getStoredItemLifecycleSequenceRange,
+  findStoredItemTurnIdInRange,
+  getStoredItemTreeSequenceRange,
   getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
   hasTimelineGroupingContextChangesInRange,
@@ -688,13 +689,24 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getStoredItemLifecycleSequenceRange`,
+    name: `${EVENTS}#getStoredItemTreeSequenceRange`,
     variant: LIVE_TURN,
     run: (db, fixture) =>
-      getStoredItemLifecycleSequenceRange(db, {
+      getStoredItemTreeSequenceRange(db, {
         itemId: fixture.liveTurn.streamingMessageItemId,
         threadId: fixture.liveTurn.threadId,
         turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findStoredItemTurnIdInRange`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      findStoredItemTurnIdInRange(db, {
+        itemId: fixture.liveTurn.streamingMessageItemId,
+        sequenceEnd: fixture.liveTurn.latestSequence,
+        sequenceStart: fixture.liveTurn.requestSequence,
+        threadId: fixture.liveTurn.threadId,
       }),
   },
   {
@@ -839,13 +851,25 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getStoredItemLifecycleSequenceRange`,
+    name: `${EVENTS}#getStoredItemTreeSequenceRange`,
     run: (db, fixture) => {
       const turn = turnAt(fixture, 0);
-      return getStoredItemLifecycleSequenceRange(db, {
+      return getStoredItemTreeSequenceRange(db, {
         itemId: turn.agentMessageItemId,
         threadId: fixture.threadId,
         turnId: turn.turnId,
+      });
+    },
+  },
+  {
+    name: `${EVENTS}#findStoredItemTurnIdInRange`,
+    run: (db, fixture) => {
+      const turn = turnAt(fixture, 0);
+      return findStoredItemTurnIdInRange(db, {
+        itemId: turn.agentMessageItemId,
+        sequenceEnd: turn.completedSequence,
+        sequenceStart: turn.requestSequence,
+        threadId: fixture.threadId,
       });
     },
   },
