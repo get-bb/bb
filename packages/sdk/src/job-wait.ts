@@ -1,9 +1,8 @@
-import { BbHttpError, BbRequestTimeoutError } from "./response.js";
+import { BbHttpError } from "./http-error.js";
+import { BbRequestTimeoutError } from "./response.js";
 
 const UNREACHABLE_LIMIT_MS = 2 * 60_000;
-const UNREACHABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([
-  502, 503, 504,
-]);
+const UNREACHABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 
 function isUnreachableServerError(error: unknown): boolean {
   if (error instanceof BbHttpError) {

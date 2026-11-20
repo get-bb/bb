@@ -97,7 +97,6 @@ describe("queued message waits", () => {
         pluginId: "concurrency-limit",
         reason: "4 of 4 running",
       },
-      sendAt: null,
     });
     expect(queued?.waitHolder).toBe("plugin:concurrency-limit");
     expect(JSON.parse(queued!.waitingOn!)).toEqual({
@@ -112,7 +111,6 @@ describe("queued message waits", () => {
       id: row.id,
       threadId: thread.id,
       waitingOn: { kind: "provisioning" },
-      sendAt: null,
     });
     expect(requeued?.waitHolder).toBeNull();
     expect(JSON.parse(requeued!.waitingOn!)).toEqual({ kind: "provisioning" });
@@ -132,7 +130,6 @@ describe("queued message waits", () => {
       id: row.id,
       threadId: thread.id,
       waitingOn: { kind: "thread-busy" },
-      sendAt: null,
     });
     expect(requeued?.sendAt).toBeNull();
   });
@@ -144,7 +141,6 @@ describe("queued message waits", () => {
       id: row.id,
       threadId: thread.id,
       waitingOn: { kind: "provisioning" },
-      sendAt: null,
     });
 
     expect(
@@ -158,7 +154,6 @@ describe("queued message waits", () => {
         id: row.id,
         threadId: thread.id,
         waitingOn: { kind: "interaction" },
-        sendAt: null,
       }),
     ).toBeNull();
     expect(
@@ -186,7 +181,6 @@ describe("queued message waits", () => {
         id: row.id,
         threadId: other.id,
         waitingOn: { kind: "provisioning" },
-        sendAt: null,
       }),
     ).toBeNull();
   });
@@ -310,19 +304,16 @@ describe("wait lookups", () => {
       id: mine.id,
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limiter", reason: "full" },
-      sendAt: null,
     });
     setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: theirs.id,
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "router", reason: "picking" },
-      sendAt: null,
     });
     setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: core.id,
       threadId: thread.id,
       waitingOn: { kind: "provisioning" },
-      sendAt: null,
     });
 
     expect(
@@ -354,20 +345,17 @@ describe("wait lookups", () => {
         id,
         threadId: thread.id,
         waitingOn: { kind: "provisioning" },
-        sendAt: null,
       });
     }
     setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: otherKind.id,
       threadId: thread.id,
       waitingOn: { kind: "interaction" },
-      sendAt: null,
     });
     setQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: elsewhere.id,
       threadId: otherThread.id,
       waitingOn: { kind: "provisioning" },
-      sendAt: null,
     });
 
     expect(

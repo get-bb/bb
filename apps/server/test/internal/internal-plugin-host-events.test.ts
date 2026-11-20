@@ -20,15 +20,21 @@ describe("internal plugin host events", () => {
             type: "plugin-host.worker-exited",
             pluginId: "keep-awake",
             generation: "generation-1",
+            reason: "host plugin worker exited (1)",
           },
         },
-        { handleHostWorkerExit, handleHostSignal: vi.fn() },
+        {
+          handleHostWorkerExit,
+          handleHostSignal: vi.fn(),
+          handleHostWorkerOutput: vi.fn(),
+        },
       );
 
       expect(handleHostWorkerExit).toHaveBeenCalledWith({
         authenticatedHostId: host.id,
         pluginId: "keep-awake",
         generation: "generation-1",
+        reason: "host plugin worker exited (1)",
       });
       expect(socket.close).not.toHaveBeenCalled();
     });
@@ -54,7 +60,11 @@ describe("internal plugin host events", () => {
             payload: { sequence: 3 },
           },
         },
-        { handleHostSignal, handleHostWorkerExit: vi.fn() },
+        {
+          handleHostSignal,
+          handleHostWorkerExit: vi.fn(),
+          handleHostWorkerOutput: vi.fn(),
+        },
       );
 
       expect(handleHostSignal).toHaveBeenCalledWith({

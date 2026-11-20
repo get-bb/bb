@@ -21,6 +21,7 @@ const SNAPSHOT_FENCE_CLASSIFICATION: Record<
   "machine.shutdown-ack": "unfenced",
   "plugin-host.signal": "fenced",
   "plugin-host.worker-exited": "fenced",
+  "plugin-host.worker-output": "unfenced",
   "server_move.progress": "unfenced",
   "terminal.error": "unfenced",
   "terminal.exited": "fenced",

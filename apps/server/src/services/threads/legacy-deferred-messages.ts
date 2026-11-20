@@ -1,6 +1,12 @@
-import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { getThread } from "@bb/db";
+import {
+  deleteLegacyDeferredThreadMessage,
+  dropLegacyDeferredThreadMessagesTable,
+  getThread,
+  legacyDeferredThreadMessagesTableExists,
+  listLegacyDeferredThreadMessages,
+  type LegacyDeferredThreadMessageRow,
+} from "@bb/db";
 import {
   promptInputSchema,
   systemMessageKindSchema,
@@ -12,19 +18,6 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { queueParentSystemMessage } from "./parent-system-messages.js";
 import { acceptThreadSendRequest } from "./thread-send-request.js";
-
-/**
- * Where the pre-queue `deferred_thread_messages` rows wait for this backfill.
- *
- * The queue rework replaced the deferral mechanism, but its rows were users'
- * held messages — a migration that dropped them would delete words somebody
- * wrote. Migration 0111 copies the rows into this table before dropping the
- * original, because they cannot be transferred in SQL: a queued row carries a
- * resolved execution tuple and a typed wait, both of which only the running
- * server can compute. This module finishes the job on startup and drops the
- * table once nothing is left in it.
- */
-const LEGACY_DEFERRED_TABLE = "deferred_thread_messages_legacy";
 
 /**
  * The old payload shapes, validated only as far as delivery needs.
@@ -48,22 +41,6 @@ const legacyDeferredPayloadSchema = z.discriminatedUnion("kind", [
     systemMessageSubject: systemMessageSubjectSchema.nullable(),
   }),
 ]);
-
-interface LegacyDeferredRow {
-  id: string;
-  threadId: string;
-  payload: string;
-}
-
-function legacyDeferredTableExists(
-  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
-): boolean {
-  return (
-    deps.db.get<{ name: string }>(
-      sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ${LEGACY_DEFERRED_TABLE}`,
-    ) !== undefined
-  );
-}
 
 function toSendPayload(
   request: z.infer<(typeof legacyDeferredPayloadSchema.options)[0]>["request"],
@@ -102,12 +79,10 @@ function toSendPayload(
 export async function deliverLegacyDeferredThreadMessages(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  if (!legacyDeferredTableExists(deps)) {
+  if (!legacyDeferredThreadMessagesTableExists(deps.db)) {
     return;
   }
-  const rows = deps.db.all<LegacyDeferredRow>(
-    sql`SELECT id, thread_id AS threadId, payload FROM deferred_thread_messages_legacy ORDER BY thread_id, created_at, id`,
-  );
+  const rows = listLegacyDeferredThreadMessages(deps.db);
   let kept = 0;
   for (const row of rows) {
     try {
@@ -116,9 +91,7 @@ export async function deliverLegacyDeferredThreadMessages(
         kept += 1;
         continue;
       }
-      deps.db.run(
-        sql`DELETE FROM deferred_thread_messages_legacy WHERE id = ${row.id}`,
-      );
+      deleteLegacyDeferredThreadMessage(deps.db, row.id);
     } catch (error) {
       kept += 1;
       deps.logger.warn(
@@ -132,7 +105,7 @@ export async function deliverLegacyDeferredThreadMessages(
     }
   }
   if (kept === 0) {
-    deps.db.run(sql`DROP TABLE deferred_thread_messages_legacy`);
+    dropLegacyDeferredThreadMessagesTable(deps.db);
     if (rows.length > 0) {
       deps.logger.info(
         { migrated: rows.length },
@@ -144,7 +117,7 @@ export async function deliverLegacyDeferredThreadMessages(
 
 async function deliverLegacyDeferredRow(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  row: LegacyDeferredRow,
+  row: LegacyDeferredThreadMessageRow,
 ): Promise<"delivered" | "kept"> {
   const thread = getThread(deps.db, row.threadId);
   if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {

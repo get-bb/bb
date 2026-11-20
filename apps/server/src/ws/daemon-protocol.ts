@@ -153,7 +153,10 @@ export function createDaemonSocketEvents(
     Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions"> &
     LoggedPendingInteractionWorkSessionDeps,
   target: DaemonSocketTarget,
-  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  plugins?: Pick<
+    PluginService,
+    "handleHostSignal" | "handleHostWorkerExit" | "handleHostWorkerOutput"
+  >,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): DaemonSocketEvents {
   let channel: DaemonChannel | null = null;
@@ -283,7 +286,10 @@ export function onDaemonSocketOpen(
 export function onDaemonSocketMessage(
   deps: WorkSessionDeps & Pick<AppDeps, "sharedPorts" | "terminalSessions">,
   args: DaemonSocketMessageArgs,
-  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  plugins?: Pick<
+    PluginService,
+    "handleHostSignal" | "handleHostWorkerExit" | "handleHostWorkerOutput"
+  >,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
   deps.hub.recordDaemonActivity(args.sessionId);
@@ -427,6 +433,17 @@ export function onDaemonSocketMessage(
           authenticatedHostId: args.hostId,
           pluginId: message.pluginId,
           generation: message.generation,
+          reason: message.reason,
+        });
+        return;
+      }
+      if (message.type === "plugin-host.worker-output") {
+        plugins?.handleHostWorkerOutput({
+          authenticatedHostId: args.hostId,
+          pluginId: message.pluginId,
+          generation: message.generation,
+          stream: message.stream,
+          line: message.line,
         });
         return;
       }

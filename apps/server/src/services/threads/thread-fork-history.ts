@@ -10,6 +10,8 @@ import {
   listStoredTurnCompletedRowsByTurnIds,
   type StoredEventRow,
   type StoredEventRowMetadata,
+  clearThreadForkHistoryCopyMark,
+  isThreadCopyingForkHistory,
 } from "@bb/db";
 import type { Thread, ThreadEvent, ThreadEventType } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -17,11 +19,7 @@ import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
 import { resolveTurnProviderCheckpointId } from "./thread-edit-message.js";
-import {
-  clearThreadForkHistoryCopyMark,
-  isThreadCopyingForkHistory,
-  type ThreadForkDescriptor,
-} from "./thread-startup-store.js";
+import type { ThreadForkDescriptor } from "./thread-startup-store.js";
 
 export interface ThreadForkPoint {
   descriptor: ThreadForkDescriptor;

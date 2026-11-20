@@ -178,6 +178,41 @@ export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
   }
 }
 
+const QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP = 1795210022396;
+
+export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
+  db.$client
+    .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+    .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  dropForkHistoryCopyIndex(db);
+  dropQueuedMessageRecheckAtColumn(db);
+}
+
+export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS queued_thread_messages_recheck_idx");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "recheck_at")) {
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
+    );
+  }
+}
+
+export function dropForkHistoryCopyIndex(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS threads_fork_history_copy_idx");
+}
+
+export function dropEnvironmentHoldColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  for (const name of ["held_by", "create_pending"])
+    if (columns.some((existing) => existing.name === name))
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${name}`);
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

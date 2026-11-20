@@ -6,6 +6,7 @@ import {
   requestEnvironmentRemoval,
 } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
+import { createEnvironmentBeforeThread } from "../services/environments/environment-creation.js";
 import {
   environmentHasLiveThreads,
   listEnvironments,
@@ -124,6 +125,7 @@ export function registerEnvironmentRoutes(
           ...(query?.environmentProviderId
             ? { environmentProviderId: query.environmentProviderId }
             : {}),
+          ...(query?.heldBy ? { heldBy: query.heldBy } : {}),
           ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
           ...(query?.path === undefined ? {} : { path: query.path }),
           ...(limit === undefined ? {} : { limit }),
@@ -134,6 +136,23 @@ export function registerEnvironmentRoutes(
         }),
       ),
     );
+  });
+
+  post(routes.create, async (context, payload) => {
+    const environment = await createEnvironmentBeforeThread(deps, {
+      projectId: payload.projectId,
+      hostId: payload.hostId ?? null,
+      provider:
+        payload.provider === undefined
+          ? null
+          : {
+              id: payload.provider.id,
+              inputs: payload.provider.inputs ?? null,
+            },
+      name: payload.name ?? null,
+      heldBy: payload.heldBy,
+    });
+    return context.json(toEnvironmentResponse(deps.db, environment), 201);
   });
 
   del(routes.delete, (context) => {

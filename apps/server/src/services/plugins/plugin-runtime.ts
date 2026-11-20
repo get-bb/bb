@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import { logPluginBuildWarnings } from "./plugin-log.js";
+import { createPluginEventLog, logPluginBuildWarnings } from "./plugin-log.js";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -111,6 +111,7 @@ import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 import { buildCachedPluginServer } from "./plugin-server-cache.js";
 import { createPluginRpcCallerRegistry } from "./plugin-rpc-caller.js";
+import { ApiError } from "../../errors.js";
 
 const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
 const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
@@ -415,6 +416,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
   const logger = deps.logger;
+  const pluginLog = createPluginEventLog({
+    dataDir: deps.dataDir,
+    logger: deps.logger,
+  });
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
@@ -463,7 +468,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   >();
   const hungServices = new Map<string, Set<string>>();
   const needsConfiguration = new Map<string, string>();
-  const agentToolProblems = new Map<string, string>();
+  const registrationProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
@@ -541,11 +546,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     setStatus(id, "needs-configuration", message);
   }
 
-  function reportAgentToolProblem(id: string, message: string): void {
-    agentToolProblems.set(id, message);
-    logger.warn(`[plugin:${id}] ${message}`);
+  function reportRegistrationProblem(id: string, message: string): void {
+    const reported = registrationProblems.get(id);
+    if (reported?.split("; ").includes(message)) return;
+    const problems =
+      reported === undefined ? message : `${reported}; ${message}`;
+    registrationProblems.set(id, problems);
+    pluginLog.warn(id, message);
     if (statuses.get(id)?.status === "running") {
-      setStatus(id, "running", message);
+      setStatus(id, "running", problems);
     }
   }
 
@@ -622,10 +631,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!(error instanceof PluginContextStaleError)) return false;
     if (!reportedStaleErrors.has(error)) {
       reportedStaleErrors.add(error);
-      logger.warn(
-        { err: error },
-        `[plugin:${error.pluginId}] ${error.message}`,
-      );
+      pluginLog.warn(error.pluginId, error.message, error);
     }
     return true;
   }
@@ -649,11 +655,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       (hasCodeFrames(error) ? undefined : pluginCodeContext.getStore());
     if (pluginId === undefined) return false;
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn(
-      { err: error },
+    pluginLog.warn(
+      pluginId,
       stackOwner === undefined
-        ? `[plugin:${pluginId}] uncaught error from work this plugin started (its stack names no code): ${message}`
-        : `[plugin:${pluginId}] uncaught error: ${message}`,
+        ? `uncaught error from work this plugin started (its stack names no code): ${message}`
+        : `uncaught error: ${message}`,
+      error,
     );
     if (statuses.get(pluginId)?.status === "running") {
       setStatus(pluginId, "running", `uncaught error: ${message}`);
@@ -668,16 +675,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const name = service.record.name;
     const message = error instanceof Error ? error.message : String(error);
     if (service.controller !== controller || service.disposed) {
-      logger.warn(
-        `[plugin:${id}] service ${name} raised an uncaught exception from a stopped run: ${message}`,
+      pluginLog.warn(
+        id,
+        `service ${name} raised an uncaught exception from a stopped run: ${message}`,
       );
       return true;
     }
     if (instance.uncaughtError !== undefined) return true;
     instance.uncaughtError = { error };
-    logger.warn(
-      { err: error },
-      `[plugin:${id}] service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+    pluginLog.warn(
+      id,
+      `service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+      error,
     );
     const current = service.current;
     controller.abort();
@@ -691,8 +700,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         "degraded",
         `service ${name} did not stop after an uncaught exception`,
       );
-      logger.warn(
-        `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
+      pluginLog.warn(
+        id,
+        `service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
       );
     });
     return true;
@@ -709,7 +719,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const name = service.record.name;
     if (!outcome.crashed) {
       service.state = "stopped";
-      logger.info(`[plugin:${id}] service ${name} stopped`);
+      pluginLog.info(id, `service ${name} stopped`);
       return;
     }
     if (isNeedsConfigurationError(outcome.error)) {
@@ -718,8 +728,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         id,
         outcome.error.message || `service ${name} needs configuration`,
       );
-      logger.info(
-        `[plugin:${id}] service ${name} needs configuration; not restarting until reload`,
+      pluginLog.info(
+        id,
+        `service ${name} needs configuration; not restarting until reload`,
       );
       return;
     }
@@ -730,8 +741,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (stabilizingPluginIds.has(id)) {
       service.state = "stopped";
       setStatus(id, "error", `service ${name} crashed: ${message}`);
-      logger.warn(
-        `[plugin:${id}] service ${name} crashed during activation: ${message}`,
+      pluginLog.warn(
+        id,
+        `service ${name} crashed during activation: ${message}`,
       );
       return;
     }
@@ -745,8 +757,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     });
     service.consecutiveCrashes += 1;
     service.state = "backoff";
-    logger.warn(
-      `[plugin:${id}] service ${name} crashed: ${message} — restarting in ${delayMs}ms`,
+    pluginLog.warn(
+      id,
+      `service ${name} crashed: ${message} — restarting in ${delayMs}ms`,
     );
     const timer = setTimeout(() => {
       service.restartTimer = null;
@@ -778,8 +791,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           }
           hung.add(name);
           setStatus(id, "degraded", `service ${name} did not stop`);
-          logger.warn(
-            `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms — plugin degraded until it does`,
+          pluginLog.warn(
+            id,
+            `service ${name} did not stop within ${serviceStopTimeoutMs}ms — plugin degraded until it does`,
           );
           void current.then(
             () => onHungServiceSettled(id, name),
@@ -796,8 +810,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!hung) return;
     hung.delete(name);
     if (hung.size === 0) hungServices.delete(id);
-    logger.info(
-      `[plugin:${id}] service ${name} eventually stopped — reload to recover`,
+    pluginLog.info(
+      id,
+      `service ${name} eventually stopped — reload to recover`,
     );
   }
 
@@ -867,8 +882,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     for (const [pluginId, plugin] of loaded) {
       for (const provider of select(plugin)) {
         if (seen.has(provider.id)) {
-          logger.warn(
-            `[plugin:${pluginId}] ${kindLabel} provider "${provider.id}" is already registered by another plugin; ignoring`,
+          pluginLog.warn(
+            pluginId,
+            `${kindLabel} provider "${provider.id}" is already registered by another plugin; ignoring`,
           );
           continue;
         }
@@ -1007,7 +1023,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
       if (!reportStaleError(error)) {
-        logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
+        pluginLog.warn(id, `${label} failed: ${message}`, error);
         if (
           loaded.get(id) === instance &&
           statuses.get(id)?.status === "running"
@@ -1022,8 +1038,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       void execution.catch((error: unknown) => {
         if (released.aborted && !reportStaleError(error)) {
-          logger.warn(
-            `[plugin:${id}] ${label} failed after its caller was released: ${error instanceof Error ? error.message : String(error)}`,
+          pluginLog.warn(
+            id,
+            `${label} failed after its caller was released: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       });
@@ -1052,8 +1069,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       serviceStopTimeoutMs,
     );
     if (!drained) {
-      logger.warn(
-        `plugin ${instance.pluginId}: ${instance.invocations.size} in-flight invocation(s) did not settle before dispose; releasing their callers`,
+      pluginLog.warn(
+        instance.pluginId,
+        `${instance.invocations.size} in-flight invocation(s) did not settle before dispose; releasing their callers`,
       );
     }
   }
@@ -1355,8 +1373,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }),
       );
       logPluginBuildWarnings({
-        dataDir: deps.dataDir,
-        logger,
+        pluginLog,
         pluginId: row.id,
         warnings: built.warnings,
       });
@@ -1390,8 +1407,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     } catch {}
     if (!isPrebuiltServerSdkCompatible(meta)) {
-      logger.warn(
-        `plugin ${row.id}: ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
+      pluginLog.warn(
+        row.id,
+        `ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
       );
       return buildSource();
     }
@@ -1433,7 +1451,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         const reason = sdkChanged
           ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
           : "plugin source is newer than dist/app.js";
-        logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
+        pluginLog.info(row.id, `rebuilding frontend bundle (${reason})`);
         try {
           const app = await buildPluginApp(
             row.rootDir,
@@ -1442,8 +1460,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             { minify: true, hostProvidedZod: true },
           );
           logPluginBuildWarnings({
-            dataDir: deps.dataDir,
-            logger,
+            pluginLog,
             pluginId: row.id,
             warnings: app.migrationWarnings,
           });
@@ -1451,9 +1468,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
-          logger.warn(
-            `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
-          );
+          pluginLog.warn(row.id, `frontend bundle rebuild failed: ${message}`);
           return {
             snapshot: { state: { hasApp: true, bundle: null }, assets: null },
             problem: `frontend bundle rebuild failed: ${message}`,
@@ -1621,19 +1636,41 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } else {
       icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
     }
+    const pluginId = args.row.id;
+    const providerId = args.declaration.id;
+    const registration = buildPluginProviderRegistration({
+      available: args.available,
+      pluginId,
+      declaration: args.declaration,
+      iconHash: icon?.hash ?? null,
+      readSettings: () =>
+        readPluginSettingsValuesSync({
+          db: deps.db,
+          pluginId,
+          descriptors: args.settingsDescriptors,
+        }),
+    });
     return deps.providerRegistry.register({
-      ...buildPluginProviderRegistration({
-        available: args.available,
-        pluginId: args.row.id,
-        declaration: args.declaration,
-        iconHash: icon?.hash ?? null,
-        readSettings: () =>
-          readPluginSettingsValuesSync({
-            db: deps.db,
-            pluginId: args.row.id,
-            descriptors: args.settingsDescriptors,
-          }),
-      }),
+      ...registration,
+      deriveProviderOptions: (context) => {
+        try {
+          return registration.deriveProviderOptions(context);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          pluginLog.warn(
+            pluginId,
+            `provider "${providerId}" deriveProviderOptions failed for thread ${context.threadId}: ${message}`,
+            error,
+          );
+          throw new ApiError(
+            502,
+            "provider_options_failed",
+            `The "${pluginId}" plugin's deriveProviderOptions for provider "${providerId}" failed: ${message}`,
+            { details: { pluginId, providerId } },
+          );
+        }
+      },
       ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
       iconNames: new Set(args.brandingAssets.icons.keys()),
@@ -1755,7 +1792,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       await disposeOne(row.id);
       await populateIdentity(row);
       setStatus(row.id, "disabled", held);
-      logger.warn(`plugin ${row.id} not loaded (held): ${held}`);
+      pluginLog.warn(row.id, `not loaded (held): ${held}`);
       return null;
     }
     if (isSuppressedBySafeMode(row)) {
@@ -1780,20 +1817,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     ): string {
       if (isReload) {
         setStatus(row.id, "running", `reload failed: ${detail}`);
-        logger.warn(
-          `plugin ${row.id} reload failed (kept previous instance): ${detail}`,
+        pluginLog.warn(
+          row.id,
+          `reload failed (kept previous instance): ${detail}`,
         );
         return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
       }
       setStatus(row.id, status, detail);
-      logger.warn(`plugin ${row.id} not loaded (${status}): ${detail}`);
+      pluginLog.warn(row.id, `not loaded (${status}): ${detail}`);
       return detail;
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
       const detail = hungServicesDetail(hung);
       setStatus(row.id, "degraded", detail);
-      logger.warn(`plugin ${row.id} not loaded (degraded): ${detail}`);
+      pluginLog.warn(row.id, `not loaded (degraded): ${detail}`);
       return detail;
     }
     try {
@@ -1845,7 +1883,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const handle = createPluginApi({
       recordPluginUse: () => capturePluginUse(deps, row.id),
       pluginId: row.id,
-      logger: deps.logger,
+      pluginLog,
       db: deps.db,
       dataDir: deps.dataDir,
       walCheckpointer: deps.walCheckpointer ?? null,
@@ -1881,8 +1919,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
               })
               .catch((error: unknown) => {
                 if (!controller.signal.aborted)
-                  deps.logger.warn(
-                    `Plugin ${row.id} watched RPC failed: ${String(error)}`,
+                  pluginLog.warn(
+                    row.id,
+                    `watched RPC failed: ${String(error)}`,
                   );
               });
           }
@@ -1924,8 +1963,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return undefined;
       },
-      reportAgentToolProblem: (message) => {
-        reportAgentToolProblem(row.id, message);
+      reportRegistrationProblem: (message) => {
+        reportRegistrationProblem(row.id, message);
       },
       requestQueueDrain: () => {
         // Unwired in isolated plugin-runtime tests, which have no thread
@@ -2106,8 +2145,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       } else {
         setStatus(row.id, "error", message);
       }
-      logger.warn(
-        `plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`,
+      pluginLog.warn(
+        row.id,
+        `failed to load: ${statuses.get(row.id)?.detail}`,
+        error,
       );
       return previous !== undefined
         ? `${message} (${PREVIOUS_INSTANCE_KEPT})`
@@ -2129,7 +2170,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       await discardCandidate(plugin);
       setStatus(row.id, "error", hostArtifactProblem);
-      logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
+      pluginLog.warn(row.id, `failed to load: ${hostArtifactProblem}`);
       return hostArtifactProblem;
     }
     plugin.services = handle.backgroundServices.map((record) => ({
@@ -2166,7 +2207,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     else hostArtifacts.set(row.id, hostArtifactCandidate);
     brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
+    registrationProblems.delete(row.id);
     handle.activate();
     const now = Date.now();
     prunePluginSchedules(
@@ -2187,7 +2228,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     if (!needsConfiguration.has(row.id)) {
       const details = [
-        agentToolProblems.get(row.id),
+        registrationProblems.get(row.id),
         appBundleCandidate.problem,
       ].filter((detail): detail is string => typeof detail === "string");
       setStatus(
@@ -2196,7 +2237,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         details.length > 0 ? details.join("; ") : null,
       );
     }
-    logger.info(`plugin ${row.id}@${manifest.version} loaded`);
+    pluginLog.info(row.id, `loaded version ${manifest.version}`);
     return null;
   }
 
@@ -2231,8 +2272,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         try {
           await hook();
         } catch (error) {
-          logger.warn(
-            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          pluginLog.warn(
+            id,
+            `dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -2241,8 +2283,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         try {
           database.close();
         } catch (error) {
-          logger.warn(
-            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
+          pluginLog.warn(
+            id,
+            `database close failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
         await deps.walCheckpointer?.detach(database);
@@ -2317,7 +2360,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   return {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    pluginLog,
+    registrationProblems,
     appBundles,
     hostArtifacts,
     bindSdk,

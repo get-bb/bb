@@ -162,7 +162,7 @@ Persisted panel tabs:
   bb thread tabs show <thread-id>
   bb thread tabs set <thread-id> --expected-revision <n> --tabs-json '<json>'
 
-Core Info uses plugin id `core` and tab id `info`; Diff belongs to the Git plugin, plugin id `bb--git` and tab id `diff`. Legacy `thread-info`, `git-diff` and `core` `diff` entries convert automatically without changing their order.
+Core Info uses plugin id `bb--core` and tab id `info`; Diff belongs to the Git plugin, plugin id `bb--git` and tab id `diff`. Legacy `thread-info`, `git-diff`, `core` `info` and `core` `diff` entries convert automatically without changing their order.
 
 Pinned plugin tabs use `{ "id": "plugin-fixed:<plugin-id>:<tab-id>", "kind": "plugin-fixed", "pluginId": "<plugin-id>", "tabId": "<tab-id>" }`.
 The id encodes each plugin/tab id with percent escapes. The app shows registered,

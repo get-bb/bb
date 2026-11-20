@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +8,7 @@ import {
   getRun,
   getRunRequired,
   listExpiredTerminalRuns,
+  markNotificationSent,
   migrations,
   ownWorker,
 } from "./data.js";
@@ -83,9 +85,11 @@ function setup(
         get: async ({ threadId }) => {
           if (threadId === "origin") {
             if (originDeleted) {
-              throw Object.assign(new Error("Thread not found"), {
+              throw new experimental_BbHttpError({
                 status: 404,
                 code: "thread_not_found",
+                message: "Thread not found",
+                body: null,
               });
             }
             return {
@@ -98,9 +102,11 @@ function setup(
           }
           const worker = workers.get(threadId);
           if (worker?.deleted) {
-            throw Object.assign(new Error("Thread not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
               code: "thread_not_found",
+              message: "Thread not found",
+              body: null,
             });
           }
           return {
@@ -2253,9 +2259,11 @@ describe("workflow service policy integration", () => {
     const test = setup();
     harnesses.push(test.harness);
     test.harness.sdk.stub("threads.send", (async () => {
-      throw Object.assign(new Error("deleted"), {
+      throw new experimental_BbHttpError({
         status: 404,
         code: "thread_not_found",
+        message: "deleted",
+        body: null,
       });
     }) as never);
     const run = await test.start(source(`return "done";`, "missing-origin"));
@@ -2388,6 +2396,68 @@ describe("workflow service policy integration", () => {
         listExpiredTerminalRuns(test.db, Date.now(), 100).runIds,
       ),
     ).toBe(50);
+  });
+
+  it("keeps a resumed run's source while the resumed run's notification is pending", () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const settingsJson = JSON.stringify({
+      ...DEFAULT_WORKFLOW_SETTINGS,
+      retentionDays: 1,
+    });
+    const old = Date.now() - 3 * 86_400_000;
+    const insertRun = test.db.prepare(
+      `INSERT INTO workflow_runs (
+        id, project_id, origin_thread_id, environment_id, origin_provider,
+        origin_model, origin_reasoning_level, origin_permission_mode,
+        name, source, source_hash, args_json, settings_json, status,
+        resumed_from_run_id, result_json, notification_sent, created_at,
+        started_at, finished_at
+      ) VALUES (?, 'project-test', 'origin', 'environment-1', 'codex',
+        'gpt-test', 'medium', 'full', 'resume', 'source', 'hash', 'null', ?,
+        'succeeded', ?, 'null', ?, ?, ?, ?)`,
+    );
+    const insertCall = test.db.prepare(
+      `INSERT INTO workflow_calls (
+        id, run_id, call_index, cache_key, prompt, options_json,
+        resolved_provider, resolved_model, resolved_reasoning_level,
+        resolved_permission_mode, status, result_json, replayed_from_call_id,
+        created_at
+      ) VALUES (?, ?, 0, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium',
+        'full', 'succeeded', 'null', ?, ?)`,
+    );
+    insertRun.run("source-run", settingsJson, null, 1, old, old, old);
+    insertCall.run("source-call", "source-run", null, old);
+    insertRun.run(
+      "resumed-run",
+      settingsJson,
+      "source-run",
+      0,
+      old + 1,
+      old + 1,
+      old + 1,
+    );
+    insertCall.run("resumed-call", "resumed-run", "source-call", old + 1);
+    insertRun.run("unrelated-run", settingsJson, null, 1, old, old, old);
+    insertCall.run("unrelated-call", "unrelated-run", null, old);
+    const sweep = () =>
+      deleteTerminalRuns(
+        test.db,
+        listExpiredTerminalRuns(test.db, Date.now(), 100).runIds,
+      );
+    const remainingCalls = () =>
+      test.db
+        .prepare(`SELECT id FROM workflow_calls ORDER BY id`)
+        .all()
+        .map((row) => (row as { id: string }).id);
+
+    expect(sweep()).toBe(1);
+    expect(remainingCalls()).toEqual(["resumed-call", "source-call"]);
+
+    markNotificationSent(test.db, "resumed-run");
+    expect(sweep()).toBe(2);
+    expect(remainingCalls()).toEqual([]);
+    expect(test.db.pragma("foreign_key_check")).toEqual([]);
   });
 
   it("bounds UTF-8 notifications while preserving the stable run marker", async () => {

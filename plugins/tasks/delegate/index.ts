@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginRpcHandlers,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
   Attachment,
@@ -213,18 +217,6 @@ async function presetSpawnEnvironment(
   };
 }
 
-function isBbHttpError(
-  error: unknown,
-): error is Error & { code: string | null; status: number } {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (typeof error.code === "string" || error.code === null) &&
-    "status" in error &&
-    typeof error.status === "number"
-  );
-}
-
 const SPAWN_TARGET_ERROR_CODES = new Set([
   "host_not_found",
   "host_unavailable",
@@ -237,7 +229,7 @@ const SPAWN_TARGET_ERROR_CODES = new Set([
 function mapSpawnTargetError(error: unknown, preset: Preset): never {
   if (
     preset.environmentKind === "new-worktree" &&
-    isBbHttpError(error) &&
+    error instanceof experimental_BbHttpError &&
     error.code !== null &&
     SPAWN_TARGET_ERROR_CODES.has(error.code)
   ) {

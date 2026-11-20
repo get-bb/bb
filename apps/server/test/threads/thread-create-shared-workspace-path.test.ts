@@ -1,6 +1,6 @@
 import { ensurePersonalProject, listEnvironments } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { PluginEnvironmentProviderValidateContext } from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderV1ValidateContext } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it } from "vitest";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../../src/services/environments/environment-provider-ids.js";
@@ -73,7 +73,7 @@ describe("thread creation on a path another project already uses", () => {
 
   it("runs the checkout provider's validate for a branch checkout request", async () => {
     await withTestHarness(async (harness) => {
-      const validated: PluginEnvironmentProviderValidateContext[] = [];
+      const validated: PluginEnvironmentProviderV1ValidateContext[] = [];
       installFakeEnvironmentProvider({
         id: DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
         pluginId: "environment-project-checkout",
@@ -332,6 +332,7 @@ describe("attaching to a path that already has an environment", () => {
           gitRemote: false,
           projectless: false,
         },
+        locate: () => ({ path: MANAGED_PATH, reuse: false }),
         decide: (context) => ({
           action: "ready",
           environment: {

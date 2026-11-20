@@ -13,6 +13,9 @@ import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
+  dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
+  dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   rewindQueuedMessageStateMigration,
@@ -69,6 +72,9 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
+  dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
+  dropEnvironmentHoldColumns(db);
   return { db, threadId: thread.id };
 }
 
@@ -177,8 +183,8 @@ const documentedCombinations: readonly {
       sendAt: 9000,
     },
     migrated: {
-      state: "scheduled",
-      sendAt: 9000,
+      state: "waiting",
+      sendAt: null,
       waitingOn: limiter,
       waitHolder: "plugin:limiter",
       failureReason: null,

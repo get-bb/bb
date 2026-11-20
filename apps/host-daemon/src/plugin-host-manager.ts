@@ -97,7 +97,17 @@ interface PluginHostManagerOptions {
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "info" | "warn">;
   fetchArtifact: FetchPluginHostArtifact;
-  onWorkerExit?: (args: { pluginId: string; generation: string }) => void;
+  onWorkerExit?: (args: {
+    pluginId: string;
+    generation: string;
+    reason: string;
+  }) => void;
+  onWorkerOutput?: (args: {
+    pluginId: string;
+    generation: string;
+    stream: "stdout" | "stderr";
+    line: string;
+  }) => void;
   onSignal?: (args: {
     pluginId: string;
     generation: string;
@@ -167,8 +177,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function observeBoundedStderr(
+function observeBoundedLines(
   source: Readable,
+  stream: "stdout" | "stderr",
   onLine: (line: string) => void,
 ): void {
   let tail = Buffer.alloc(0);
@@ -191,7 +202,7 @@ function observeBoundedStderr(
     if (truncated || tail.length === 0) return;
     if (emittedLines >= HOST_DIAGNOSTIC_MAX_LINES) {
       truncated = true;
-      onLine("[host plugin stderr truncated]");
+      onLine(`[host plugin ${stream} truncated]`);
       tail = Buffer.alloc(0);
       return;
     }
@@ -461,7 +472,7 @@ export class PluginHostManager {
             env: process.env,
             ...(shellPath !== undefined ? { shellPath } : {}),
           }),
-          stdio: ["ignore", "ignore", "pipe", "ipc"],
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
         },
       );
     } catch (error) {
@@ -529,6 +540,7 @@ export class PluginHostManager {
         this.options.onWorkerExit?.({
           pluginId: worker.pluginId,
           generation: worker.generation,
+          reason,
         });
       }
       worker.rejectReady(new Error(reason));
@@ -545,8 +557,20 @@ export class PluginHostManager {
       child.kill("SIGKILL");
     }, START_TIMEOUT_MS);
     startTimer.unref?.();
+    const forwardOutput = (stream: "stdout" | "stderr", line: string) =>
+      this.options.onWorkerOutput?.({
+        pluginId: worker.pluginId,
+        generation: worker.generation,
+        stream,
+        line,
+      });
+    if (child.stdout !== null) {
+      observeBoundedLines(child.stdout, "stdout", (line) =>
+        forwardOutput("stdout", line),
+      );
+    }
     if (child.stderr !== null) {
-      observeBoundedStderr(child.stderr, (line) => {
+      observeBoundedLines(child.stderr, "stderr", (line) => {
         this.options.logger.warn(
           {
             pluginId: worker.pluginId,
@@ -555,6 +579,7 @@ export class PluginHostManager {
           },
           "Host plugin stderr",
         );
+        forwardOutput("stderr", line);
       });
     }
     child.once("error", (error) => {

@@ -38,6 +38,7 @@ import {
 } from "@get-bb/plugin-sdk";
 import {
   enforcePluginCliOutputLimit,
+  pluginCliFailureResult,
   normalizePluginAgentConfiguration,
   normalizeRpcJsonResult,
   readPluginRpcRefusal,
@@ -389,6 +390,14 @@ export interface PluginService {
     authenticatedHostId: string;
     pluginId: string;
     generation: string;
+    reason: string;
+  }): void;
+  handleHostWorkerOutput(args: {
+    authenticatedHostId: string;
+    pluginId: string;
+    generation: string;
+    stream: "stdout" | "stderr";
+    line: string;
   }): void;
   handleHostSignal(args: {
     authenticatedHostId: string;
@@ -645,8 +654,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
     })();
     if (!(await settledWithin(run, installHandlerTimeoutMs))) {
-      logger.warn(
-        `[plugin:${id}] install handlers were still running after ${installHandlerTimeoutMs / 1000}s; the install finished without waiting for them`,
+      pluginLog.warn(
+        id,
+        `install handlers were still running after ${installHandlerTimeoutMs / 1000}s; the install finished without waiting for them`,
       );
     }
   }
@@ -691,7 +701,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    registrationProblems,
     appBundles,
     bindSdk: bindRuntimeSdk,
     resolveRpcCaller,
@@ -739,6 +749,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withArtifactLock,
     withLifecycleLock,
     withPluginOperationLock,
+    pluginLog,
   } = createPluginRuntime({
     deps,
     includedBuiltinNames: new Set(
@@ -772,6 +783,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceFingerprint,
   } = createPluginRegistration({
     runInstallHandlers,
+    pluginLog,
     safeModeActivationRefusal,
     deps,
     bundledPlugins,
@@ -816,6 +828,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const managedPluginArtifacts = createManagedPluginArtifacts({
     deps,
+    pluginLog,
     withArtifactLock,
     sourceKind,
     checkEngineRange,
@@ -1591,7 +1604,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       list: listPluginServerAccessProviders,
       invoke: async (record, run) => {
         const outcome = await invokeOwned(record, "server access", run);
-        if (!outcome.ok) throw new Error("Server access provider failed");
+        if (!outcome.ok) {
+          throw new Error(
+            `The "${record.pluginId}" plugin's server access provider "${record.provider.id}" failed: ${outcome.error}`,
+          );
+        }
         return outcome.value;
       },
     },
@@ -1655,8 +1672,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   { minify: true, hostProvidedZod: true },
                 );
                 logPluginBuildWarnings({
-                  dataDir: deps.dataDir,
-                  logger,
+                  pluginLog,
                   pluginId: row.id,
                   warnings: app.migrationWarnings,
                 });
@@ -1704,7 +1720,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               notifyPluginsChanged();
               if (problem !== null) throw new Error(problem);
             },
-            log: (message) => logger.info(`plugin ${row.id}: ${message}`),
+            log: (message) => pluginLog.info(row.id, message),
           });
           const watcher = watch(
             bundled.rootDir,
@@ -1717,8 +1733,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             watcher,
             onClose: () => loop.dispose(),
             onError: (error) =>
-              logger.warn(
-                `plugin ${row.id}: source watcher failed; hot reload is off until the server restarts: ${error.message}`,
+              pluginLog.warn(
+                row.id,
+                `source watcher failed; hot reload is off until the server restarts: ${error.message}`,
               ),
           });
           builtinSourceWatchers.push(watcher);
@@ -1850,7 +1867,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
-        agentToolProblems.delete(id);
+        registrationProblems.delete(id);
         appBundles.delete(id);
         brandingAssets.delete(id);
         identities.delete(id);
@@ -2081,11 +2098,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       ) {
         return;
       }
+      pluginLog.warn(
+        args.pluginId,
+        `host worker on ${args.authenticatedHostId} stopped unexpectedly: ${args.reason}`,
+      );
       for (const handler of [...plugin.handle.hostWorkerExitHandlers]) {
         void invokeWrapped(plugin, "host worker exit", async () =>
           handler({ hostId: args.authenticatedHostId }),
         );
       }
+    },
+
+    handleHostWorkerOutput(args) {
+      const artifact = hostArtifacts.get(args.pluginId);
+      if (
+        !loaded.has(args.pluginId) ||
+        artifact === undefined ||
+        artifact.generation !== args.generation
+      ) {
+        return;
+      }
+      const message = `host ${args.authenticatedHostId} ${args.stream}: ${args.line}`;
+      if (args.stream === "stderr") pluginLog.warn(args.pluginId, message);
+      else pluginLog.info(args.pluginId, message);
     },
 
     handleHostSignal(args) {
@@ -2154,8 +2189,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           try {
             listener(next, prev);
           } catch (error) {
-            logger.warn(
-              `plugin ${id} settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
+            pluginLog.warn(
+              id,
+              `settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
             );
           }
         }
@@ -2357,23 +2393,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async runCliCommand(id, argv, ctx) {
-      const fail = (stderr: string) =>
-        enforcePluginCliOutputLimit(
-          { exitCode: 1, stdout: "", stderr },
-          argv.includes("--json"),
-        );
+      const fail = (code: string, message: string) =>
+        pluginCliFailureResult({ code, message }, argv.includes("--json"));
       const plugin = loaded.get(id);
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
-        if (!row) return fail(`unknown plugin "${id}"`);
+        if (!row) return fail("plugin_not_found", `unknown plugin "${id}"`);
         const { status, detail } = getStatus(row);
         return fail(
+          "plugin_not_running",
           `plugin "${id}" is not running (status: ${status}${detail ? ` — ${detail}` : ""})`,
         );
       }
       const registration = plugin.handle.cli.registration;
       if (!registration) {
-        return fail(`plugin "${id}" registers no CLI command`);
+        return fail(
+          "plugin_cli_not_registered",
+          `plugin "${id}" registers no CLI command`,
+        );
       }
       const outcome = await invokeWrapped(
         plugin,
@@ -2404,7 +2441,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         ctx.signal,
       );
       if (outcome.ok) return outcome.value;
-      return fail(`bb ${registration.name} failed: ${outcome.error}`);
+      return fail(
+        "command_failed",
+        `bb ${registration.name} failed: ${outcome.error}`,
+      );
     },
 
     listSkillRootContributions() {
@@ -2591,7 +2631,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       )) {
         const provider = plugin.handle.instructionProvider;
         if (provider === null) continue;
-        out.push({ pluginId: id, provider });
+        out.push({
+          pluginId: id,
+          provider: (ctx) => {
+            try {
+              return provider(ctx);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              pluginLog.warn(
+                id,
+                `contributeInstructions provider failed for thread ${ctx.threadId}; contributing nothing: ${message}`,
+                error,
+              );
+              return null;
+            }
+          },
+        });
       }
       return out;
     },
@@ -2864,8 +2920,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           if (row === undefined) continue;
           const problem = await withLifecycleLock(id, () => loadOne(row));
           if (problem !== null) {
-            logger.warn(
-              `plugin ${id} did not resume after a server move: ${problem}`,
+            pluginLog.warn(
+              id,
+              `did not resume after a server move: ${problem}`,
             );
           }
           resumed.push(id);

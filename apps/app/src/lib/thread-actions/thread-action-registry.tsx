@@ -29,9 +29,10 @@ import {
 } from "@/lib/app-navigation-host";
 import { usePluginActionContextBinder } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
-import { usePluginSlotKind } from "@/lib/plugin-slots";
-
-export const CORE_THREAD_ACTION_OWNER = "bb--core";
+import {
+  usePluginSlotKind,
+  type PluginThreadActionSlot,
+} from "@/lib/plugin-slots";
 
 export interface ThreadActionRegistrationRecord {
   key: string;
@@ -320,23 +321,15 @@ class ThreadActionCollectorBoundary extends Component<
 }
 
 function useThreadActionRecords(
-  coreRegistrations: readonly PluginThreadActionRegistration<unknown>[],
+  coreRegistrations: readonly PluginThreadActionSlot[],
 ): readonly ThreadActionRegistrationRecord[] {
   const slots = usePluginSlotKind("threadActions");
-  const records = [
-    ...coreRegistrations.map((registration) => ({
-      key: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,
-      instanceKey: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,
-      pluginId: CORE_THREAD_ACTION_OWNER,
-      registration,
-    })),
-    ...slots.map((slot) => ({
-      key: `${slot.pluginId}/${slot.id}`,
-      instanceKey: `${slot.pluginId}/${slot.id}/${slot.generation}`,
-      pluginId: slot.pluginId,
-      registration: slot,
-    })),
-  ];
+  const records = [...coreRegistrations, ...slots].map((slot) => ({
+    key: `${slot.pluginId}/${slot.id}`,
+    instanceKey: `${slot.pluginId}/${slot.id}/${slot.generation}`,
+    pluginId: slot.pluginId,
+    registration: slot,
+  }));
   return records
     .map((record, index) => ({ record, index }))
     .sort((left, right) =>
@@ -357,7 +350,7 @@ export function ThreadActionCollectors({
   coreRegistrations,
   requestRename,
 }: {
-  coreRegistrations: readonly PluginThreadActionRegistration<unknown>[];
+  coreRegistrations: readonly PluginThreadActionSlot[];
   requestRename: (threadId: string) => void;
 }) {
   const records = useThreadActionRecords(coreRegistrations);

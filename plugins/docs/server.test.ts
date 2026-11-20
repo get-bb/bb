@@ -1011,7 +1011,7 @@ describe("Docs vault operations", () => {
     expect(JSON.parse(result.stdout ?? "{}")).toMatchObject({
       ok: false,
       error: {
-        code: "operation_failed",
+        code: "command_failed",
         message: expect.stringContaining(".bb-docs-state.json is malformed"),
       },
     });

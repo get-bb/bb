@@ -364,41 +364,73 @@ Plans cannot show what a query costs once data grows, so the workflow's cost
 job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds
 worlds through the real write paths and compares them along two axes:
 
-- Thread history: a thread with 2,500 or 10,000 turns (about 250,000 events in
+- Thread history: a thread with 625 or 10,000 turns (about 250,000 events in
   the full-scale world), plus what each case group in
   `packages/db/scripts/query-costs/` seeds for its tables at about twice the
-  size of the largest real user (for example 10,000 threads, 4,000
-  environments, 50,000 prompt history entries and 15,000 terminal sessions at
-  full scale).
+  size of the largest real user (for example 10,000 threads with title and
+  message search segments, 4,000 environments, 50,000 prompt history entries
+  and 15,000 terminal sessions at full scale).
 - Turn size: a 500-turn thread whose first and last turns, and the open turn
-  of a second, running thread, have 375 or 1,500 steps (about 4,500 or 18,000
+  of a second, running thread, have 94 or 1,500 steps (about 1,100 or 18,000
   events each: reasoning, commands with streamed output, file edits,
   commentary, plan and usage updates, and delegations).
 
 `HistoryFixture.liveTurn` names the open turn, and the `open long turn` cases
 in `events-cases.ts` time the reads and appends a running thread makes
 against it. The check calls every exported query function in
-`packages/db/src/data` against the smaller and larger world of each axis,
+`packages/db/src/data` and in the plugin database modules (below) against the
+smaller and larger world of each axis,
 interleaved, each call inside a rolled-back savepoint. Each call is timed by
 CPU time, not by the wall clock, so other work on a busy runner does not count
 against it: the thread's CPU time on macOS, and the process's on Linux, where a
 thread's CPU time only advances at scheduler ticks and reads near zero for
-short calls. The check keeps the fastest of up
-to three calls per world. As the data grows 4x on either axis, linear costs
-measure about size^1.0 to size^1.3 locally and up to size^1.5 on shared CI
-runners, where memory-heavy queries scale worse under neighbouring load; a
-quadratic cost measures about size^2. So the check fails only on signals noise
-cannot produce:
+short calls. The check keeps the fastest of at
+least three calls per world. The larger world is 16 times the smaller, so a
+bounded cost measures about 1x, a linear one about 16x (size^1, up to about
+size^1.5 on shared CI runners, where memory-heavy queries scale worse under
+neighbouring load), and a quadratic one about 256x (size^2).
 
-- a function's cost grows faster than size^2 (more than 16 times its
-  smaller-world time, once its larger-world time is at least 2 ms); or
+A query function is expected to stay bounded: its cost must not grow faster
+than size^0.5 (4x) on either axis once its larger-world time reaches the
+growth floor. A full-history read that keeps a few rows, such as filtering
+every request event of a thread by a JSON field, measures about size^1 and
+fails. A case whose cost must grow, because it returns or modifies rows the
+larger world has more of, declares the axis with the reason:
+`growsWith: { history: "Lists every thread on the host, and the seed grows the thread count" }`
+(`history` or `turnSize`). A declaration that measures within size^0.125
+(1.4x) is reported as a warning so it can be removed once the query is
+bounded; the gap between size^0.125 and size^0.5 keeps runner noise from
+either failing an undeclared case or flagging a declared one that only
+partly grows.
+
+The growth floor is 2 ms on the reference machine, scaled by how long a fixed
+SQLite calibration workload takes on the current one, measured after the
+worlds are built (`packages/db/scripts/query-costs/calibration.ts`), so a
+slower CI runner checks roughly the cases a laptop does. The floor only
+screens out calls too small to time reliably; every case that grows with data
+declares it, so a case crossing the floor on one runner and not another does
+not change the result. The check prints the calibration, and for
+each axis the five undeclared functions closest to the limit. The check
+fails when:
+
+- an undeclared function grows faster than size^0.5 (4x);
+- a declared function grows faster than size^2 (256x);
+- a function takes longer than its ceiling in the larger world of either axis,
+  whether or not it declares growth: 100 ms on the reference machine, scaled
+  by the calibration like the growth floor, unless its case sets a higher
+  `ceilingMs` with a `reason`. Every query runs synchronously on the server's
+  main thread, request path or sweep alike, so a declaration explains why a
+  cost grows but never lets it grow without bound; or
 - a single call runs for more than 5 seconds of wall time, when it is killed,
   or a case throws.
 
-It reports a GitHub Actions warning, without failing, when a function grows
-faster than size^1.5 (8x) or takes longer than its ceiling in the larger world
-(250 ms unless its case sets `ceilingMs` with a `reason`). A case that crosses
-size^1.5 is measured up to eight times before it is reported. The
+It reports a GitHub Actions warning, without failing, when a declared function
+grows faster than size^1.5 (64x), or when a case raises `ceilingMs` but
+measures within a third of the default ceiling on every axis, so the raise
+can be removed. A case that crosses size^0.5 or its ceiling is measured up to eight
+times before it is reported. The default sits at about twice the slowest
+bounded case on CI, where heavy reads run up to 4 times slower than on the
+reference machine while the calibration moves about 1.5 times. The
 request-path statement-count test below is exact, so it stays blocking.
 
 The check also fails when an exported query function in `packages/db/src/data`
@@ -406,11 +438,37 @@ has no case. A query function is an exported function that builds a query
 itself or calls a function in the same file that does, so wrappers around a
 private query helper count too (`pnpm --filter @bb/db list:query-functions`
 lists them; the same list drives the "query functions run in tests" checks). `--group <name>[,<name>]` runs only those case groups and skips
-the coverage check. To time the cases against real data shapes, make a copy
+the coverage check.
+
+Server code runs SQL only through those query functions:
+`apps/server/test/sql-in-data-modules.test.ts` fails when a file in
+`apps/server/src` imports `drizzle-orm` at runtime or builds a query on a
+`db`, `tx` or `$client` receiver. The server may still open a transaction
+and pass it to query functions, and pass `$client` to connection-level
+helpers (backup, checkpointing, vacuum).
+
+Plugins that keep their own SQLite file run it on the same main thread, but a
+forkable plugin cannot load `@bb/db`, so its test guard never sees them. The
+check therefore also covers the plugin database modules listed in
+`PLUGIN_QUERY_MODULES` (`packages/db/scripts/query-functions.ts`): the
+account-pool, automations and workflows stores. Their cases live in
+`packages/db/scripts/query-costs/plugin-databases-cases.ts`. Each of these
+groups sets `pluginDatabase`, so every world gets a separate database per
+plugin, opened as the server opens plugin databases (better-sqlite3 enforces foreign keys by default),
+which the group's seed migrates with the plugin's own statements and fills at
+both sizes; exported functions and public methods of exported classes count
+as query functions. The check also explains every statement those cases run
+against the larger history world's plugin databases and fails on the
+query-plan guard's rules for the tables the group lists in
+`pluginDatabase.auditedTables`, unless the group's
+`pluginDatabase.allowedFindings` lists the finding with the case name as its
+caller and a reason; an allowed finding no case reports is a warning. The
+workflow runs on pull requests that change these modules as well as
+`packages/db`. To time the cases against real data shapes, make a copy
 with `sqlite3 ~/.bb/bb.db "VACUUM INTO '/tmp/bb-copy.db'"` and run
 `pnpm --filter @bb/db check:query-costs --db /tmp/bb-copy.db`: it migrates the
-copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling and the
-5-second kill, since there is no second size to compare. The copy is written to;
+copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling, the
+plugin plan audit and the 5-second kill, since there is no second size to compare. The copy is written to;
 never point `--db` at `~/.bb/bb.db` (the check refuses), and never start a bb
 server on the copy.
 
@@ -561,11 +619,30 @@ policy, at any size; the app renders an HTML iframe only for files up
 to 5 MiB and shows larger HTML as source or, past 25 MB, as a Download.
 
 The server uses `host.read_file_chunk` for a metadata-only probe (`length: 0`),
-then reads at most 1 MiB per RPC as the HTTP consumer pulls data. HEAD, `304`,
-and `416` responses read no contents. Cancelling or aborting stops subsequent
-reads; an already in-flight RPC can finish. Each RPC opens and closes its file
+then reads at most 64 KiB per RPC, keeping up to 16 RPCs in flight ahead of
+the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
+frame (a 4-byte header length, the JSON frame, then the raw bytes) instead of
+base64 inside JSON. HEAD, `304`, and `416` responses read no contents.
+Cancelling, aborting, or a failed chunk stops subsequent reads and aborts the
+RPCs still in flight. Each RPC opens and closes its file
 handle, so no remote read session needs cleanup. Offsets and lengths are
 validated at the daemon boundary, and paths remain confined to the route's root.
+
+The daemon's session socket keeps small messages ahead of bulk data. Terminal
+output and file chunks queue per terminal or per chunk RPC and take turns;
+everything else (RPC replies, heartbeats, events, and terminal output under
+4 KiB such as keystroke echo whose terminal has nothing queued) is written at
+once. Bulk is written only while the socket buffers at most 64 KiB and the
+bulk the server has not yet acknowledged fits a send window; the server
+acknowledges every 32 KiB it receives. The window starts at 256 KiB and adapts
+between 64 KiB and 4 MiB by 64 KiB per round trip: it grows while
+acknowledgement round trips stay near the lowest seen in the last 10–20
+seconds, and shrinks while its own bulk keeps more than about 144 KiB and 10 ms
+queued on the path. A
+terminal's exit, error, and replay messages stay behind its queued output.
+Without the window, bulk bytes sat in kernel and network buffers and a reply
+waited behind them: on a 45 ms, 3.6 MB/s link, replies took about 400 ms
+during a file download.
 
 The daemon returns a revision based on device, inode, size, and nanosecond
 mtime/ctime. Every content read checks the expected revision before and after

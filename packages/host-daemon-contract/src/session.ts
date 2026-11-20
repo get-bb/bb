@@ -747,6 +747,17 @@ const pluginHostWorkerExitedMessageSchema = z
     type: z.literal("plugin-host.worker-exited"),
     pluginId: z.string().min(1),
     generation: z.string().min(1),
+    reason: z.string(),
+  })
+  .strict();
+
+const pluginHostWorkerOutputMessageSchema = z
+  .object({
+    type: z.literal("plugin-host.worker-output"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    stream: z.enum(["stdout", "stderr"]),
+    line: z.string(),
   })
   .strict();
 
@@ -841,6 +852,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   pluginHostWorkerExitedMessageSchema,
+  pluginHostWorkerOutputMessageSchema,
   pluginHostSignalMessageSchema,
   environmentHookProgressMessageSchema,
   serverMoveProgressMessageSchema,
@@ -854,6 +866,57 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
 export type HostDaemonDaemonWsMessage = z.infer<
   typeof hostDaemonDaemonWsMessageSchema
 >;
+
+export interface EncodedHostDaemonDaemonWsMessage {
+  json: string;
+  attachment: Uint8Array | null;
+}
+
+export function encodeHostDaemonDaemonWsMessage(
+  message: HostDaemonDaemonWsMessage,
+): EncodedHostDaemonDaemonWsMessage {
+  if (
+    message.type === "host-rpc.response" &&
+    message.ok &&
+    message.commandType === "host.read_file_chunk"
+  ) {
+    const { content, ...result } = message.result;
+    return {
+      json: JSON.stringify({ ...message, result }),
+      attachment: content,
+    };
+  }
+  return { json: JSON.stringify(message), attachment: null };
+}
+
+const binaryAttachmentCarrierSchema = z
+  .object({
+    type: z.literal("host-rpc.response"),
+    ok: z.literal(true),
+    commandType: z.literal("host.read_file_chunk"),
+    result: z.object({}).passthrough(),
+  })
+  .passthrough();
+
+export function decodeHostDaemonDaemonWsMessage(
+  message: unknown,
+  attachment: Uint8Array | null,
+): { ok: true; message: unknown } | { ok: false } {
+  if (attachment === null) {
+    return { ok: true, message };
+  }
+  const carrier = binaryAttachmentCarrierSchema.safeParse(message);
+  if (!carrier.success) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    message: {
+      ...carrier.data,
+      result: { ...carrier.data.result, content: attachment },
+    },
+  };
+}
 
 export const hostDaemonToolCallRequestSchema = toolCallRequestSchema
   .pick({

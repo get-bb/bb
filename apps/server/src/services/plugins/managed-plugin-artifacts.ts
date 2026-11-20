@@ -52,7 +52,7 @@ import {
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
-import { logPluginBuildWarnings } from "./plugin-log.js";
+import { logPluginBuildWarnings, type PluginEventLog } from "./plugin-log.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -105,6 +105,7 @@ interface ActivateManagedUpdateArgs {
 
 interface ManagedPluginArtifactsContext {
   deps: PluginServiceDeps;
+  pluginLog: PluginEventLog;
   withArtifactLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>;
   sourceKind: (source: string) => "path" | "git" | "npm" | "builtin";
   checkEngineRange: (manifest: PluginManifest) => string | undefined;
@@ -251,6 +252,7 @@ export function createManagedPluginArtifacts(
 ) {
   const {
     deps,
+    pluginLog,
     withArtifactLock,
     sourceKind,
     checkEngineRange,
@@ -347,8 +349,7 @@ export function createManagedPluginArtifacts(
           );
         }
         logPluginBuildWarnings({
-          dataDir: deps.dataDir,
-          logger: deps.logger,
+          pluginLog,
           pluginId: manifest.id,
           warnings: app.migrationWarnings,
         });
@@ -368,8 +369,7 @@ export function createManagedPluginArtifacts(
         );
       }
       logPluginBuildWarnings({
-        dataDir: deps.dataDir,
-        logger: deps.logger,
+        pluginLog,
         pluginId: manifest.id,
         warnings: server.migrationWarnings,
       });

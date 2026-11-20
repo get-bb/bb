@@ -14,9 +14,11 @@ import {
   pluginHookAlreadyRegisteredMessage,
   coerceStoredPluginSettingValue,
   enforcePluginCliOutputLimit,
+  pluginCliFailureResult,
   isStandardSchema,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  type AnyPluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
   type NormalizedPluginMachineProvider,
@@ -1559,7 +1561,7 @@ function createFakePluginHostInternal(
   const experimental_environments: PluginEnvironments = {
     register(
       declaration:
-        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | AnyPluginEnvironmentProviderDeclaration
         | NormalizedPluginEnvironmentComposition,
     ) {
       assertLive();
@@ -2014,11 +2016,10 @@ function createFakePluginHostInternal(
           argv.includes("--json"),
         );
       } catch (error) {
-        return enforcePluginCliOutputLimit(
+        return pluginCliFailureResult(
           {
-            exitCode: 1,
-            stdout: "",
-            stderr: `bb ${registration.name} failed: ${errorMessage(error)}`,
+            code: "command_failed",
+            message: `bb ${registration.name} failed: ${errorMessage(error)}`,
           },
           argv.includes("--json"),
         );

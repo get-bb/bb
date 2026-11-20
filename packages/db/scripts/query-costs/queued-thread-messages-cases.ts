@@ -1,3 +1,4 @@
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import { inArray } from "drizzle-orm";
 import type { DbConnection } from "../../src/connection.js";
 import {
@@ -199,7 +200,35 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
       ),
   },
   {
+    name: `${QUEUED}#supersedeQueuedRetriesInTransaction`,
+    variant: "missing key",
+    growsWith: {
+      history:
+        "When the retried request is not in the thread, the origin lookup reads every request row and the acceptance check then starts from the thread's first event: request ids live only in JSON",
+    },
+    prepare: (db, fixture) =>
+      db.$client
+        .prepare(
+          "UPDATE queued_thread_messages SET retry_of_turn_request_id = ? WHERE thread_id = ? AND payload_kind = 'retry'",
+        )
+        .run(
+          encodeClientTurnRequestIdNumber({ value: 2 ** 40 }),
+          fixture.threadId,
+        ),
+    run: (db, fixture) =>
+      db.transaction((tx) =>
+        supersedeQueuedRetriesInTransaction(tx, {
+          threadId: fixture.threadId,
+          retryOfTurnRequestId: null,
+        }),
+      ),
+  },
+  {
     name: `${QUEUED}#deleteQueuedRetriesForThreadEventSuffixInTransaction`,
+    growsWith: {
+      history:
+        "Matches every request in the deleted suffix inside JSON, and the case deletes the whole history",
+    },
     run: (db, fixture) =>
       db.transaction((tx) =>
         deleteQueuedRetriesForThreadEventSuffixInTransaction(tx, {
@@ -615,6 +644,7 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
         threadId: fixture.threadId,
         waitingOn: { kind: "thread-busy" },
         sendAt: null,
+        recheckAt: null,
       }),
   },
   {
@@ -641,7 +671,6 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
         id: fixture.queuedMessageId,
         threadId: fixture.threadId,
         waitingOn: { kind: "host-offline", hostName: "query-costs" },
-        sendAt: null,
       }),
   },
   {
@@ -670,7 +699,6 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
           pluginId: "github-pr-status",
           reason: "Waiting for CI",
         },
-        sendAt: null,
       });
     },
     run: (db, fixture) =>

@@ -6,7 +6,7 @@
   "description": "Switch servers, add one, or sign in to bb Connect from the sidebar footer in bb Desktop and the mobile app.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.172"
+    "bbPluginSdk": ">=0.6.175"
   },
   "bb": {
     "name": "Server switcher",

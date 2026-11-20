@@ -146,6 +146,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
   const plugins = {
     handleHostSignal: vi.fn(),
     handleHostWorkerExit: vi.fn(),
+    handleHostWorkerOutput: vi.fn(),
   };
   const readTerminal = () =>
     getTerminalSession(harness.db, {
@@ -193,6 +194,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
           type: "plugin-host.worker-exited",
           pluginId: "fixture",
           generation: "generation-1",
+          reason: "host plugin worker exited (1)",
         },
         {
           type: "terminal.exited",

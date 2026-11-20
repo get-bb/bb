@@ -13,6 +13,7 @@ import {
   isNull,
   lt,
   lte,
+  notExists,
   or,
   placeholder,
   sql,
@@ -38,6 +39,7 @@ import {
   pendingInteractions,
   projects,
   terminalSessions,
+  threadPurges,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -718,7 +720,7 @@ export interface ListThreadEnvironmentAssignmentsOnHostArgs {
   threadIds: readonly string[];
 }
 
-export interface ListHostThreadIdsArgs {
+export interface ListRuntimeHostThreadIdsArgs {
   hostId: string;
 }
 
@@ -1626,17 +1628,26 @@ export function listExistingThreadIds(
     .map((row) => row.id);
 }
 
-export function listHostThreadIds(
-  db: DbConnection,
-  args: ListHostThreadIdsArgs,
+export function listRuntimeHostThreadIds(
+  db: DbQueryConnection,
+  args: ListRuntimeHostThreadIdsArgs,
 ): string[] {
-  return db
-    .select({ id: threads.id })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(eq(environments.hostId, args.hostId))
-    .all()
-    .map((row) => row.id);
+  const hostThreadIdsWhere = (where: ThreadWhere) =>
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .innerJoin(environments, eq(threads.environmentId, environments.id))
+      .where(and(eq(environments.hostId, args.hostId), where))
+      .all()
+      .map((row) => row.id);
+  return [
+    ...new Set([
+      ...hostThreadIdsWhere(liveThread),
+      ...hostThreadIdsWhere(
+        nonDeletedThreads(inArray(threads.status, ["active", "stopping"])),
+      ),
+    ]),
+  ].sort();
 }
 
 export function listActiveHostThreads(
@@ -2149,7 +2160,7 @@ function deletionThreadTreeIdsForThread(threadId: string): SQL {
   return deletionThreadTreeIds(sql`SELECT ${threadId}`);
 }
 
-export function deletionThreadTreeIdsForProject(projectId: string): SQL {
+function deletionThreadTreeIdsForProject(projectId: string): SQL {
   return deletionThreadTreeIds(
     sql`SELECT id FROM threads WHERE project_id = ${projectId}`,
   );
@@ -2299,12 +2310,14 @@ function awaitingTurnStartPastDeadline(deadline: number) {
     eq(threads.status, "active"),
     isNull(threads.deletedAt),
     lte(threads.statusChangedAt, deadline),
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${events}
-      WHERE ${events.threadId} = ${threads.id}
-        AND ${events.type} = 'turn/completed'
-        AND ${events.createdAt} > ${deadline}
-    )`,
+    sql`COALESCE((
+      SELECT latest.created_at
+      FROM ${events} AS latest INDEXED BY events_thread_type_sequence_idx
+      WHERE latest.thread_id = ${threads.id}
+        AND latest.type = 'turn/completed'
+      ORDER BY latest.sequence DESC
+      LIMIT 1
+    ), ${deadline}) <= ${deadline}`,
   );
 }
 
@@ -2338,6 +2351,304 @@ export function isThreadAwaitingTurnStartPastDeadline(
           awaitingTurnStartPastDeadline(args.deadline),
         ),
       )
+      .get() !== undefined
+  );
+}
+
+export const FORK_HISTORY_COPY_MARK = "copying";
+
+export function getThreadStatus(
+  db: DbQueryConnection,
+  threadId: string,
+): ThreadStatus | null {
+  return (
+    db
+      .select({ status: threads.status })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.status ?? null
+  );
+}
+
+export function setStartingThreadProvisioningStartupContext(
+  db: DbQueryConnection,
+  args: {
+    provisioningId: string;
+    replace: boolean;
+    startupContext: string;
+    threadId: string;
+  },
+): boolean {
+  return (
+    db
+      .update(threads)
+      .set({ startupContext: args.startupContext })
+      .where(
+        and(
+          eq(threads.id, args.threadId),
+          eq(threads.status, "starting"),
+          args.replace
+            ? undefined
+            : or(
+                isNull(threads.startupContext),
+                sql`json_extract(${threads.startupContext}, '$.kind') = 'provisioning' AND json_extract(${threads.startupContext}, '$.state.provisioningId') = ${args.provisioningId}`,
+              ),
+        ),
+      )
+      .run().changes > 0
+  );
+}
+
+export function markThreadProvisioningStartupContextDispatched(
+  db: DbQueryConnection,
+  args: { provisioningId: string; threadId: string },
+): void {
+  db.update(threads)
+    .set({
+      startupContext: sql`json_set(${threads.startupContext}, '$.kind', 'dispatched')`,
+    })
+    .where(
+      and(
+        eq(threads.id, args.threadId),
+        sql`json_extract(${threads.startupContext}, '$.state.provisioningId') = ${args.provisioningId}`,
+      ),
+    )
+    .run();
+}
+
+export function clearThreadForkHistoryCopyMark(
+  db: DbQueryConnection,
+  threadId: string,
+): void {
+  db.update(threads)
+    .set({
+      startupContext: sql`json_remove(${threads.startupContext}, '$.historyCopy')`,
+    })
+    .where(eq(threads.id, threadId))
+    .run();
+}
+
+export function listThreadIdsCopyingForkHistory(
+  db: DbQueryConnection,
+): string[] {
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        isNull(threads.deletedAt),
+        sql`(CASE WHEN json_valid(${threads.startupContext}) THEN json_extract(${threads.startupContext}, '$.historyCopy') END) = ${FORK_HISTORY_COPY_MARK}`,
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
+export function isThreadCopyingForkHistory(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(
+        and(
+          eq(threads.id, threadId),
+          isNull(threads.deletedAt),
+          sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
+        ),
+      )
+      .get() !== undefined
+  );
+}
+
+export function hasLiveChildThread(
+  db: DbQueryConnection,
+  parentThreadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(and(eq(threads.parentThreadId, parentThreadId), liveThread))
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function listStartingThreadIds(db: DbQueryConnection): string[] {
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
+    .all()
+    .map((row) => row.id);
+}
+
+export function listActiveThreadIdsOnHost(
+  db: DbQueryConnection,
+  args: { hostId: string; includeStopping: boolean },
+): string[] {
+  return db
+    .select({ threadId: threads.id })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        inArray(
+          threads.status,
+          args.includeStopping ? ["active", "stopping"] : ["active"],
+        ),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all()
+    .map((row) => row.threadId);
+}
+
+export interface ThreadIdStatusRow {
+  id: string;
+  status: ThreadStatus;
+}
+
+export function listNonDeletedThreadStatusesOnHost(
+  db: DbQueryConnection,
+  args: { hostId: string; statuses: readonly ThreadStatus[] },
+): ThreadIdStatusRow[] {
+  return db
+    .select({ id: threads.id, status: threads.status })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        isNull(threads.deletedAt),
+        inArray(threads.status, [...args.statuses]),
+      ),
+    )
+    .all();
+}
+
+export function listLiveThreadStatusesOnHost(
+  db: DbQueryConnection,
+  args: { hostId: string; statuses: readonly ThreadStatus[] },
+): ThreadIdStatusRow[] {
+  return db
+    .select({ id: threads.id, status: threads.status })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        inArray(threads.status, [...args.statuses]),
+        liveThread,
+      ),
+    )
+    .all();
+}
+
+export interface DeletedThreadAwaitingPurgeRow {
+  environmentId: string | null;
+  id: string;
+  storageDeletedAt: number | null;
+}
+
+export function listDeletedThreadsAwaitingPurge(
+  db: DbQueryConnection,
+): DeletedThreadAwaitingPurgeRow[] {
+  return db
+    .select({
+      environmentId: threads.environmentId,
+      id: threads.id,
+      storageDeletedAt: threads.storageDeletedAt,
+    })
+    .from(threads)
+    .where(
+      and(
+        isNotNull(threads.deletedAt),
+        notExists(
+          db
+            .select({ threadId: threadPurges.threadId })
+            .from(threadPurges)
+            .where(eq(threadPurges.threadId, threads.id)),
+        ),
+      ),
+    )
+    .all();
+}
+
+export interface DeletedThreadAwaitingPurgeOnHostRow {
+  environmentId: string;
+  id: string;
+  storageDeletedAt: number | null;
+}
+
+export function listDeletedThreadsAwaitingPurgeOnHost(
+  db: DbQueryConnection,
+  args: { hostId: string },
+): DeletedThreadAwaitingPurgeOnHostRow[] {
+  return db
+    .select({
+      environmentId: environments.id,
+      id: threads.id,
+      storageDeletedAt: threads.storageDeletedAt,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        isNotNull(threads.deletedAt),
+        notExists(
+          db
+            .select({ threadId: threadPurges.threadId })
+            .from(threadPurges)
+            .where(eq(threadPurges.threadId, threads.id)),
+        ),
+      ),
+    )
+    .all();
+}
+
+export interface ProjectDeletionThreadRow {
+  deletedAt: number | null;
+  environmentId: string | null;
+  id: string;
+  purgeRequestedAt: number | null;
+  status: ThreadStatus;
+  storageDeletedAt: number | null;
+}
+
+export function listProjectDeletionThreads(
+  db: DbQueryConnection,
+  args: { projectId: string },
+): ProjectDeletionThreadRow[] {
+  return db
+    .select({
+      deletedAt: threads.deletedAt,
+      environmentId: threads.environmentId,
+      id: threads.id,
+      purgeRequestedAt: threadPurges.requestedAt,
+      status: threads.status,
+      storageDeletedAt: threads.storageDeletedAt,
+    })
+    .from(threads)
+    .leftJoin(threadPurges, eq(threadPurges.threadId, threads.id))
+    .where(inArray(threads.id, deletionThreadTreeIdsForProject(args.projectId)))
+    .all();
+}
+
+export function hasProjectThreads(
+  db: DbQueryConnection,
+  projectId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(eq(threads.projectId, projectId))
       .get() !== undefined
   );
 }

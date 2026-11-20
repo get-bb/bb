@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginThreadSettledEvent,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   closeAutomationRun,
@@ -72,20 +76,8 @@ const sdkThreadSchema = z
   .passthrough();
 type SdkThread = z.infer<typeof sdkThreadSchema>;
 
-const projectGoneErrorSchema = z
-  .object({
-    status: z.literal(404),
-    code: z.enum(["project_not_found", "project_unavailable"]),
-  })
-  .passthrough();
-
-const threadGoneErrorSchema = z
-  .object({ status: z.literal(404) })
-  .passthrough();
-
 function isThreadGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return threadGoneErrorSchema.safeParse(error).success;
+  return error instanceof experimental_BbHttpError && error.status === 404;
 }
 
 export function errorMessage(error: unknown): string {
@@ -93,8 +85,11 @@ export function errorMessage(error: unknown): string {
 }
 
 function isProjectGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return projectGoneErrorSchema.safeParse(error).success;
+  return (
+    error instanceof experimental_BbHttpError &&
+    error.status === 404 &&
+    (error.code === "project_not_found" || error.code === "project_unavailable")
+  );
 }
 
 function renderAutomationDueMessage(args: {

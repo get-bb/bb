@@ -2,11 +2,11 @@ import { z } from "zod";
 import {
   createThreadProvisioningId,
   getThreadStartupContext,
-  threads,
+  getThreadStatus,
+  setStartingThreadProvisioningStartupContext,
   type DbConnection,
   type DbTransaction,
 } from "@bb/db";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
 import {
   environmentMachineSelectionSchema,
   jsonValueSchema,
@@ -141,12 +141,8 @@ export function getThreadProvisionContext(
   db: DbConnection | DbTransaction,
   threadId: string,
 ): ThreadProvisionContext | null {
-  const thread = db
-    .select({ status: threads.status })
-    .from(threads)
-    .where(eq(threads.id, threadId))
-    .get();
-  return thread?.status === "starting" || thread?.status === "stopping"
+  const status = getThreadStatus(db, threadId);
+  return status === "starting" || status === "stopping"
     ? readThreadProvisionContext(db, threadId)
     : null;
 }
@@ -165,26 +161,12 @@ function persistThreadProvisionContext(
   replace: boolean,
 ): boolean {
   const persisted = persistedThreadProvisionContextSchema.parse(context);
-  return (
-    db
-      .update(threads)
-      .set({
-        startupContext: JSON.stringify({ kind: "provisioning", ...persisted }),
-      })
-      .where(
-        and(
-          eq(threads.id, threadId),
-          eq(threads.status, "starting"),
-          replace
-            ? undefined
-            : or(
-                isNull(threads.startupContext),
-                sql`json_extract(${threads.startupContext}, '$.kind') = 'provisioning' AND json_extract(${threads.startupContext}, '$.state.provisioningId') = ${context.state.provisioningId}`,
-              ),
-        ),
-      )
-      .run().changes > 0
-  );
+  return setStartingThreadProvisioningStartupContext(db, {
+    provisioningId: context.state.provisioningId,
+    replace,
+    startupContext: JSON.stringify({ kind: "provisioning", ...persisted }),
+    threadId,
+  });
 }
 
 export function readThreadStartupContextOfKind<T>(
@@ -241,51 +223,4 @@ export function createThreadStartup(
       workspaceReadyEventSequence: null,
     },
   };
-}
-
-export const FORK_HISTORY_COPY_MARK = "copying";
-
-export function clearThreadForkHistoryCopyMark(
-  db: DbConnection | DbTransaction,
-  threadId: string,
-): void {
-  db.update(threads)
-    .set({
-      startupContext: sql`json_remove(${threads.startupContext}, '$.historyCopy')`,
-    })
-    .where(eq(threads.id, threadId))
-    .run();
-}
-
-export function listThreadIdsCopyingForkHistory(db: DbConnection): string[] {
-  return db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        isNull(threads.deletedAt),
-        sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
-      ),
-    )
-    .all()
-    .map((row) => row.id);
-}
-
-export function isThreadCopyingForkHistory(
-  db: DbConnection | DbTransaction,
-  threadId: string,
-): boolean {
-  return (
-    db
-      .select({ id: threads.id })
-      .from(threads)
-      .where(
-        and(
-          eq(threads.id, threadId),
-          isNull(threads.deletedAt),
-          sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
-        ),
-      )
-      .get() !== undefined
-  );
 }

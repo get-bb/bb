@@ -96,7 +96,11 @@ callers can pipe it: the `bb` CLI reads exactly one non-empty line (at most
 `--<name> <value>`, keeping the value out of process arguments. Keep a
 required ID strict, but when `ctx.projectId` or
 `ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
-prints the exact flag to add. A registration built this way sets
+prints the exact flag to add. Any other error a command throws exits 1 with
+`bb <name> failed: <message>` on stderr and, under `--json`, the core
+`{ "ok": false, "error": { "code": "command_failed", "message" } }`
+envelope on stdout; its stack goes to `bb plugin logs <id>`. Do not wrap
+commands to convert errors yourself. A registration built this way sets
 `rendersHelp`, so `bb weather today --help` reaches the plugin and
 prints its full option help; a hand-written `run` leaves that unset and the
 `bb` CLI answers `--help` from the `commands[].usage` line without calling

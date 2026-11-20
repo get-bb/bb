@@ -18,6 +18,7 @@ export function createLocalFileSource(
       const handle = await open(path, "r");
       return {
         maxChunkBytes: 64 * 1024,
+        maxChunksInFlight: 1,
         async read(offset, length) {
           signal.throwIfAborted();
           const bytes = Buffer.alloc(length);

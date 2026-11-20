@@ -59,12 +59,12 @@ import {
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listArchivedThreadsPendingTeardown,
   listExistingThreadIds,
-  listHostThreadIds,
   listLifecycleThreadDependents,
   listLiveThreadsInEnvironment,
   listNonDeletedChildThreads,
   listNonDeletedHiddenSourceThreads,
   listRunningThreads,
+  listRuntimeHostThreadIds,
   listThreadAncestors,
   listThreadDeletionTree,
   listThreadDescendants,
@@ -86,7 +86,30 @@ import {
   upsertThreadSearchSegmentBatch,
   upsertThreadSearchSegments,
   type ReorderPinnedThreadArgs,
+  clearThreadForkHistoryCopyMark,
+  getThreadStatus,
+  hasLiveChildThread,
+  hasProjectThreads,
+  isThreadCopyingForkHistory,
+  listActiveThreadIdsOnHost,
+  listDeletedThreadsAwaitingPurge,
+  listDeletedThreadsAwaitingPurgeOnHost,
+  listLiveThreadStatusesOnHost,
+  listNonDeletedThreadStatusesOnHost,
+  listProjectDeletionThreads,
+  listStartingThreadIds,
+  listThreadIdsCopyingForkHistory,
+  markThreadProvisioningStartupContextDispatched,
+  setStartingThreadProvisioningStartupContext,
 } from "../../src/data/threads.js";
+import { listDeletedProjectIds } from "../../src/data/projects.js";
+import { listProvisioningEnvironmentIds } from "../../src/data/environments.js";
+import {
+  deleteLegacyDeferredThreadMessage,
+  dropLegacyDeferredThreadMessagesTable,
+  legacyDeferredThreadMessagesTableExists,
+  listLegacyDeferredThreadMessages,
+} from "../../src/data/legacy-deferred-thread-messages.js";
 import type { HistoryFixture, HistoryTurn } from "../../src/history-fixture.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { registerCostGroup, type QueryCostCase } from "./case.js";
@@ -115,6 +138,10 @@ const PRUNING = "packages/db/src/data/thread-pruning.ts";
 const PRUNING_WORK = "packages/db/src/data/thread-pruning-work.ts";
 const PURGES = "packages/db/src/data/thread-purges.ts";
 const PROMPT_HISTORY = "packages/db/src/data/prompt-history.ts";
+const PROJECTS = "packages/db/src/data/projects.ts";
+const ENVIRONMENTS = "packages/db/src/data/environments.ts";
+const LEGACY_DEFERRED =
+  "packages/db/src/data/legacy-deferred-thread-messages.ts";
 const PROMPT_HISTORY_ENTRY_LIMIT = 50;
 const PROMPT_HISTORY_PAGE_MAX_LIMIT = 1_000;
 const PURGE_EVENT_ROWS = 64;
@@ -231,6 +258,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#countThreads`,
+    growsWith: {
+      history:
+        "Counts every thread grouped by host, and the seed grows the thread count",
+    },
     run: (db) =>
       countThreads(db, {
         groupBy: "host",
@@ -252,6 +283,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listLiveThreadsInEnvironment`,
+    growsWith: {
+      history:
+        "Lists every live thread in the busiest environment, and the seed grows its thread count",
+    },
     run: (db, _fixture, seed) =>
       listLiveThreadsInEnvironment(db, {
         environmentId: seed.busiestEnvironmentId,
@@ -271,9 +306,13 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
       listExistingThreadIds(db, seed.existingLookupIds),
   },
   {
-    name: `${THREADS}#listHostThreadIds`,
+    name: `${THREADS}#listRuntimeHostThreadIds`,
+    growsWith: {
+      history:
+        "Returns every live or running thread on the host, and the seed grows live threads with the thread count",
+    },
     run: (db, _fixture, seed) =>
-      listHostThreadIds(db, { hostId: seed.busiestHostId }),
+      listRuntimeHostThreadIds(db, { hostId: seed.busiestHostId }),
   },
   {
     name: `${THREADS}#listActiveHostThreads`,
@@ -361,6 +400,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDescendants`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole subtree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDescendants(db, seed.descendantRootIds, {
         includeArchived: false,
@@ -374,11 +417,19 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDeletionTree`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole thread tree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDeletionTree(db, seed.orchestratorId),
   },
   {
     name: `${THREADS}#markThreadDeleted`,
+    growsWith: {
+      history:
+        "Marks the orchestrator's whole thread tree deleted, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       markThreadDeleted(db, noopNotifier, { threadId: seed.orchestratorId }),
   },
@@ -418,6 +469,13 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#searchThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Ranks and counts every thread matching the query for group totals, and the seed grows the matches",
+    },
+    ceilingMs: 250,
+    reason:
+      "Known linear cost: ranks and counts every matching thread for the group totals (10,000 threads and 80,000 matching segments at full scale); runs once per debounced search",
     run: (db) =>
       searchThreadsWithPendingInteractionState(db, {
         query: "tests",
@@ -426,6 +484,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionStateForProjects`,
+    growsWith: {
+      history:
+        "Lists every live visible thread in ten projects, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionStateForProjects(db, {
         projectIds: seed.projectIds,
@@ -434,6 +496,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Lists every live visible thread on the busiest host, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionState(db, {
         hostId: seed.busiestHostId,
@@ -462,6 +528,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listNonDeletedChildThreads`,
+    growsWith: {
+      history:
+        "Returns every child of the orchestrator, and the seed grows its children",
+    },
     run: (db, _fixture, seed) =>
       listNonDeletedChildThreads(db, { parentThreadId: seed.orchestratorId }),
   },
@@ -547,6 +617,10 @@ const SECTION_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${SECTIONS}#deleteThreadSection`,
+    growsWith: {
+      history:
+        "Clears the section from every thread in it, and the seed grows the section's threads",
+    },
     run: (db, _fixture, seed) =>
       deleteThreadSection(db, noopNotifier, { id: seed.biggestSectionId }),
   },
@@ -630,11 +704,19 @@ const PLUGIN_METADATA_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
 const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
     name: `${OUTLINES}#getThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Reads the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     run: (db, fixture) =>
       getThreadConversationOutlineRecord(db, fixture.threadId),
   },
   {
     name: `${OUTLINES}#upsertThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Writes the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     prepare: (_db, fixture) => {
       nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
     },
@@ -767,6 +849,130 @@ const PROMPT_HISTORY_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
 ];
 
+const THREAD_LIFECYCLE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
+  {
+    name: `${THREADS}#getThreadStatus`,
+    run: (db, fixture) => getThreadStatus(db, fixture.threadId),
+  },
+  {
+    name: `${THREADS}#setStartingThreadProvisioningStartupContext`,
+    run: (db, fixture) =>
+      setStartingThreadProvisioningStartupContext(db, {
+        provisioningId: "provisioning-in-flight",
+        replace: false,
+        startupContext: JSON.stringify({ kind: "provisioning" }),
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${THREADS}#markThreadProvisioningStartupContextDispatched`,
+    run: (db, fixture) =>
+      markThreadProvisioningStartupContextDispatched(db, {
+        provisioningId: "provisioning-in-flight",
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${THREADS}#clearThreadForkHistoryCopyMark`,
+    run: (db, fixture) => clearThreadForkHistoryCopyMark(db, fixture.threadId),
+  },
+  {
+    name: `${THREADS}#listThreadIdsCopyingForkHistory`,
+    run: (db) => listThreadIdsCopyingForkHistory(db),
+  },
+  {
+    name: `${THREADS}#isThreadCopyingForkHistory`,
+    run: (db, fixture) => isThreadCopyingForkHistory(db, fixture.threadId),
+  },
+  {
+    name: `${THREADS}#hasLiveChildThread`,
+    run: (db, _fixture, seed) => hasLiveChildThread(db, seed.managerRootId),
+  },
+  {
+    name: `${THREADS}#listStartingThreadIds`,
+    run: (db) => listStartingThreadIds(db),
+  },
+  {
+    name: `${THREADS}#listActiveThreadIdsOnHost`,
+    run: (db, _fixture, seed) =>
+      listActiveThreadIdsOnHost(db, {
+        hostId: seed.busiestHostId,
+        includeStopping: true,
+      }),
+  },
+  {
+    name: `${THREADS}#listNonDeletedThreadStatusesOnHost`,
+    growsWith: {
+      history:
+        "Returns every non-deleted active, starting, stopping, idle or errored thread on the host for daemon reconciliation, and the seed grows the host's thread count",
+    },
+    run: (db, _fixture, seed) =>
+      listNonDeletedThreadStatusesOnHost(db, {
+        hostId: seed.busiestHostId,
+        statuses: ["active", "starting", "stopping", "idle", "error"],
+      }),
+  },
+  {
+    name: `${THREADS}#listLiveThreadStatusesOnHost`,
+    growsWith: {
+      history:
+        "Returns every live active or idle thread on the host for restart resume, and the seed grows the host's thread count",
+    },
+    run: (db, _fixture, seed) =>
+      listLiveThreadStatusesOnHost(db, {
+        hostId: seed.busiestHostId,
+        statuses: ["active", "idle"],
+      }),
+  },
+  {
+    name: `${THREADS}#listDeletedThreadsAwaitingPurge`,
+    run: (db) => listDeletedThreadsAwaitingPurge(db),
+  },
+  {
+    name: `${THREADS}#listDeletedThreadsAwaitingPurgeOnHost`,
+    run: (db, _fixture, seed) =>
+      listDeletedThreadsAwaitingPurgeOnHost(db, { hostId: seed.busiestHostId }),
+  },
+  {
+    name: `${THREADS}#listProjectDeletionThreads`,
+    growsWith: {
+      history:
+        "Returns every thread of the project being deleted, and the seed grows the project's thread count",
+    },
+    run: (db, _fixture, seed) =>
+      listProjectDeletionThreads(db, { projectId: seed.busiestProjectId }),
+  },
+  {
+    name: `${THREADS}#hasProjectThreads`,
+    run: (db, _fixture, seed) => hasProjectThreads(db, seed.busiestProjectId),
+  },
+  {
+    name: `${PROJECTS}#listDeletedProjectIds`,
+    run: (db) => listDeletedProjectIds(db),
+  },
+  {
+    name: `${ENVIRONMENTS}#listProvisioningEnvironmentIds`,
+    run: (db) => listProvisioningEnvironmentIds(db),
+  },
+  {
+    name: `${LEGACY_DEFERRED}#legacyDeferredThreadMessagesTableExists`,
+    run: (db) => legacyDeferredThreadMessagesTableExists(db),
+  },
+  {
+    name: `${LEGACY_DEFERRED}#listLegacyDeferredThreadMessages`,
+    run: (db) => listLegacyDeferredThreadMessages(db),
+  },
+  {
+    name: `${LEGACY_DEFERRED}#deleteLegacyDeferredThreadMessage`,
+    run: (db, fixture) =>
+      deleteLegacyDeferredThreadMessage(db, fixture.queuedMessageId),
+  },
+  {
+    name: `${LEGACY_DEFERRED}#dropLegacyDeferredThreadMessagesTable`,
+    run: (db) => dropLegacyDeferredThreadMessagesTable(db),
+  },
+];
+
 export const THREADS_COST_GROUP = registerCostGroup<ThreadsSeed>({
   name: "threads",
   seed: seedThreads,
@@ -781,5 +987,6 @@ export const THREADS_COST_GROUP = registerCostGroup<ThreadsSeed>({
     ...PRUNING_CASES,
     ...PURGE_CASES,
     ...PROMPT_HISTORY_CASES,
+    ...THREAD_LIFECYCLE_CASES,
   ],
 });

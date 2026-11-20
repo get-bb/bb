@@ -7,7 +7,6 @@ import {
   defineCli,
   type BbPluginApi,
   type PluginCliContext,
-  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { AutomationService } from "./service.js";
@@ -250,20 +249,6 @@ type UpdateOptionValues = ExecutionOptionValues &
 
 function cliError(message: string, code: string): PluginCliError {
   return new PluginCliError(message, { code });
-}
-
-async function attempt(
-  work: () => Promise<PluginCliResult>,
-): Promise<PluginCliResult> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof PluginCliError) throw error;
-    throw new PluginCliError(
-      error instanceof Error ? error.message : String(error),
-      { code: "automation_failed" },
-    );
-  }
 }
 
 function jsonOutput(value: unknown): string {
@@ -1131,30 +1116,29 @@ export function registerAutomationCli(args: {
           constraints: [
             { kind: "at-most-one", options: ["project", "target-thread"] },
           ],
-          run: (input, ctx) =>
-            attempt(async () => {
-              const targetThreadId = input.options["target-thread"];
-              const result = service.list(
-                targetThreadId === undefined
-                  ? {
-                      projectId: requireProjectId(input.options.project, ctx),
-                    }
-                  : {
-                      targetThreadId: requireOptionValue(
-                        "target-thread",
-                        targetThreadId,
-                      ),
-                    },
-              );
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(result)
-                  : result.length === 0
-                    ? "No automations found\n"
-                    : printAutomationTable(result),
-              };
-            }),
+          run: async (input, ctx) => {
+            const targetThreadId = input.options["target-thread"];
+            const result = service.list(
+              targetThreadId === undefined
+                ? {
+                    projectId: requireProjectId(input.options.project, ctx),
+                  }
+                : {
+                    targetThreadId: requireOptionValue(
+                      "target-thread",
+                      targetThreadId,
+                    ),
+                  },
+            );
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(result)
+                : result.length === 0
+                  ? "No automations found\n"
+                  : printAutomationTable(result),
+            };
+          },
         }),
         create: cliCommand({
           summary: "Create an automation",
@@ -1182,51 +1166,49 @@ export function registerAutomationCli(args: {
             { kind: "requires", option: "cron", needs: ["timezone"] },
             { kind: "requires", option: "timezone", needs: ["cron"] },
           ],
-          run: (input, ctx) =>
-            attempt(async () => {
-              const projectId = requireProjectId(input.options.project, ctx);
-              const { execution, scriptSource } = await buildExecution(
-                bb,
-                input.options,
-                ctx,
-              );
-              const request: ResolvedCreateAutomationInput = {
-                projectId,
-                name: input.options.name,
-                enabled: !input.options.disabled,
-                trigger: buildTrigger(input.options),
-                execution,
-                origin: ctx.threadId ? "agent" : "human",
-                ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
-              };
-              const created = await service.create(request);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(created)
-                  : `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptSource)}`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const projectId = requireProjectId(input.options.project, ctx);
+            const { execution, scriptSource } = await buildExecution(
+              bb,
+              input.options,
+              ctx,
+            );
+            const request: ResolvedCreateAutomationInput = {
+              projectId,
+              name: input.options.name,
+              enabled: !input.options.disabled,
+              trigger: buildTrigger(input.options),
+              execution,
+              origin: ctx.threadId ? "agent" : "human",
+              ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
+            };
+            const created = await service.create(request);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(created)
+                : `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptSource)}`,
+            };
+          },
         }),
         show: cliCommand({
           summary: "Show automation details",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const found = await service.get({
-                projectId: requireProjectId(input.options.project, ctx),
-                automationId: input.positionals.automationId,
-              });
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(found)
-                  : "problem" in found
-                    ? printAutomationProblem(found)
-                    : printAutomation(found),
-              };
-            }),
+          run: async (input, ctx) => {
+            const found = await service.get({
+              projectId: requireProjectId(input.options.project, ctx),
+              automationId: input.positionals.automationId,
+            });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(found)
+                : "problem" in found
+                  ? printAutomationProblem(found)
+                  : printAutomation(found),
+            };
+          },
         }),
         update: cliCommand({
           summary: "Update automation configuration",
@@ -1250,59 +1232,56 @@ export function registerAutomationCli(args: {
             { kind: "requires", option: "cron", needs: ["timezone"] },
             { kind: "requires", option: "timezone", needs: ["cron"] },
           ],
-          run: (input, ctx) =>
-            attempt(async () => {
-              const { request, scriptSource } = await buildUpdateRequest(
-                bb,
-                service,
-                input.options,
-                input.positionals.automationId,
-                ctx,
-              );
-              const updated = await service.update(request);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(updated)
-                  : `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const { request, scriptSource } = await buildUpdateRequest(
+              bb,
+              service,
+              input.options,
+              input.positionals.automationId,
+              ctx,
+            );
+            const updated = await service.update(request);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(updated)
+                : `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
+            };
+          },
         }),
         pause: cliCommand({
           summary: "Pause an automation",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const updated = service.pause({
-                projectId: requireProjectId(input.options.project, ctx),
-                automationId: input.positionals.automationId,
-              });
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(updated)
-                  : `Automation ${updated.id} paused\n`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const updated = service.pause({
+              projectId: requireProjectId(input.options.project, ctx),
+              automationId: input.positionals.automationId,
+            });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(updated)
+                : `Automation ${updated.id} paused\n`,
+            };
+          },
         }),
         resume: cliCommand({
           summary: "Resume an automation",
           positionals: [AUTOMATION_ID_POSITIONAL],
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const updated = service.resume({
-                projectId: requireProjectId(input.options.project, ctx),
-                automationId: input.positionals.automationId,
-              });
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(updated)
-                  : `Automation ${updated.id} resumed\n`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const updated = service.resume({
+              projectId: requireProjectId(input.options.project, ctx),
+              automationId: input.positionals.automationId,
+            });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(updated)
+                : `Automation ${updated.id} resumed\n`,
+            };
+          },
         }),
         run: cliCommand({
           summary: "Run an automation now",
@@ -1317,24 +1296,23 @@ export function registerAutomationCli(args: {
             },
             json: JSON_OPTION,
           },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const idempotencyKey = input.options["idempotency-key"];
-              const result = await service.run({
-                projectId: requireProjectId(input.options.project, ctx),
-                automationId: input.positionals.automationId,
-                ...(idempotencyKey ? { idempotencyKey } : {}),
-              });
-              const threadLine = result.run.threadId
-                ? `Thread: ${result.run.threadId}\n`
-                : "";
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(result)
-                  : `Run started: ${result.run.id}\n${threadLine}`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const idempotencyKey = input.options["idempotency-key"];
+            const result = await service.run({
+              projectId: requireProjectId(input.options.project, ctx),
+              automationId: input.positionals.automationId,
+              ...(idempotencyKey ? { idempotencyKey } : {}),
+            });
+            const threadLine = result.run.threadId
+              ? `Thread: ${result.run.threadId}\n`
+              : "";
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(result)
+                : `Run started: ${result.run.id}\n${threadLine}`,
+            };
+          },
         }),
         runs: cliCommand({
           summary: "List automation runs",
@@ -1356,40 +1334,39 @@ export function registerAutomationCli(args: {
             },
             json: JSON_OPTION,
           },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const result = service.runs({
-                projectId: requireProjectId(input.options.project, ctx),
-                automationId: input.positionals.automationId,
-                limit: input.options.limit,
-              });
-              const outputRunId = input.options.output;
-              if (outputRunId) {
-                const run = result.runs.find(
-                  (candidate) => candidate.id === outputRunId,
+          run: async (input, ctx) => {
+            const result = service.runs({
+              projectId: requireProjectId(input.options.project, ctx),
+              automationId: input.positionals.automationId,
+              limit: input.options.limit,
+            });
+            const outputRunId = input.options.output;
+            if (outputRunId) {
+              const run = result.runs.find(
+                (candidate) => candidate.id === outputRunId,
+              );
+              if (!run) {
+                throw cliError(
+                  `Run ${outputRunId} not found in returned runs. Increase --limit if it is older.`,
+                  "not_found",
                 );
-                if (!run) {
-                  throw cliError(
-                    `Run ${outputRunId} not found in returned runs. Increase --limit if it is older.`,
-                    "not_found",
-                  );
-                }
-                return {
-                  exitCode: 0,
-                  stdout: input.options.json
-                    ? jsonOutput(run)
-                    : `${run.output ?? ""}\n`,
-                };
               }
               return {
                 exitCode: 0,
                 stdout: input.options.json
-                  ? jsonOutput(result)
-                  : result.runs.length === 0
-                    ? "No runs found\n"
-                    : printRunTable(result.runs),
+                  ? jsonOutput(run)
+                  : `${run.output ?? ""}\n`,
               };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput(result)
+                : result.runs.length === 0
+                  ? "No runs found\n"
+                  : printRunTable(result.runs),
+            };
+          },
         }),
         delete: cliCommand({
           summary: "Delete an automation",
@@ -1402,24 +1379,23 @@ export function registerAutomationCli(args: {
             },
             json: JSON_OPTION,
           },
-          run: (input, ctx) =>
-            attempt(async () => {
-              if (!input.options.yes) {
-                throw cliError(
-                  "Deletion requires --yes when run through the plugin CLI.",
-                  "missing_required",
-                );
-              }
-              const projectId = requireProjectId(input.options.project, ctx);
-              const automationId = input.positionals.automationId;
-              await service.delete({ projectId, automationId });
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput({ ok: true, id: automationId })
-                  : `Automation ${automationId} deleted\n`,
-              };
-            }),
+          run: async (input, ctx) => {
+            if (!input.options.yes) {
+              throw cliError(
+                "Deletion requires --yes when run through the plugin CLI.",
+                "missing_required",
+              );
+            }
+            const projectId = requireProjectId(input.options.project, ctx);
+            const automationId = input.positionals.automationId;
+            await service.delete({ projectId, automationId });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? jsonOutput({ ok: true, id: automationId })
+                : `Automation ${automationId} deleted\n`,
+            };
+          },
         }),
       },
     }),

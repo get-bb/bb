@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, isNull, lt, notExists, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  isNotNull,
+  isNull,
+  lt,
+  notExists,
+  sql,
+} from "drizzle-orm";
 import {
   ProjectAttachmentError,
   type ProjectAttachmentOwnershipMode,
@@ -183,4 +192,43 @@ export function claimProjectAttachments(
     },
     { behavior: "immediate" },
   );
+}
+
+export function markProjectAttachmentReady(
+  db: DbQueryConnection,
+  args: { attachmentId: string; readyAt: number },
+): void {
+  db.update(projectAttachments)
+    .set({ readyAt: args.readyAt })
+    .where(eq(projectAttachments.id, args.attachmentId))
+    .run();
+}
+
+export function claimUnreadyProjectAttachmentDeletion(
+  db: DbQueryConnection,
+  args: { attachmentId: string; claimedAt: number },
+): void {
+  db.update(projectAttachments)
+    .set({ deletionClaimedAt: args.claimedAt })
+    .where(
+      and(
+        eq(projectAttachments.id, args.attachmentId),
+        isNull(projectAttachments.readyAt),
+      ),
+    )
+    .run();
+}
+
+export function deleteClaimedProjectAttachment(
+  db: DbQueryConnection,
+  attachmentId: string,
+): void {
+  db.delete(projectAttachments)
+    .where(
+      and(
+        eq(projectAttachments.id, attachmentId),
+        isNotNull(projectAttachments.deletionClaimedAt),
+      ),
+    )
+    .run();
 }

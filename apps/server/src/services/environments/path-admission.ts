@@ -1,14 +1,14 @@
 import {
   environmentHasLiveThreads,
-  environments,
   findEnvironmentPathClaim,
+  findOtherLiveThreadAtEnvironmentPath,
   getHost,
   getPreparingEnvironment,
   getThread,
+  setEnvironmentColumns,
   type EnvironmentRow,
 } from "@bb/db";
 import { canonicalizeHostPath } from "@bb/domain";
-import { eq } from "drizzle-orm";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hooks.js";
@@ -59,26 +59,24 @@ function findBlockingClaim(
         const reusable =
           (claim.status === "ready" && claim.path !== null) ||
           environmentHasLiveThreads(deps.db, claim.id);
-        const updated = deps.db
-          .update(environments)
-          .set(
-            reusable
-              ? {
-                  updatedAt: Date.now(),
-                  ownerThreadId: null,
-                  claimPath: null,
-                  statusMessage: null,
-                  retireAt: null,
-                }
-              : {
-                  updatedAt: Date.now(),
-                  teardownStatus: "running",
-                  retireAt: Date.now(),
-                },
-          )
-          .where(eq(environments.id, claim.id))
-          .run();
-        if (updated.changes === 0) return { claim, settling: false };
+        const updated = setEnvironmentColumns(
+          deps.db,
+          claim.id,
+          reusable
+            ? {
+                updatedAt: Date.now(),
+                ownerThreadId: null,
+                claimPath: null,
+                statusMessage: null,
+                retireAt: null,
+              }
+            : {
+                updatedAt: Date.now(),
+                teardownStatus: "running",
+                retireAt: Date.now(),
+              },
+        );
+        if (updated === 0) return { claim, settling: false };
         deps.hub.notifyEnvironment(claim.id, ["metadata-changed"]);
         if (!reusable)
           return {
@@ -129,6 +127,14 @@ export function assertEnvironmentPathAvailable(
       ? CHECKOUT_BUSY_MESSAGE
       : "Workspace cleanup is pending. Try again shortly.",
   );
+}
+
+export function assertNoOtherLiveThreadUsesPath(
+  deps: PathAdmissionDeps,
+  args: { hostId: string; path: string; threadId: string | null },
+): void {
+  if (findOtherLiveThreadAtEnvironmentPath(deps.db, args) !== null)
+    throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
 }
 
 export function settlingPathClaim(error: unknown): EnvironmentRow | null {

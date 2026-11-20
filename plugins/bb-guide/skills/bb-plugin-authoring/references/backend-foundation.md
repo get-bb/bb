@@ -40,7 +40,12 @@ Listeners are different: `bb.events.on`, settings `onChange`, `onDispose`, and
 
 `bb.log.debug|info|warn|error(message: string)` — goes to the server log
 (prefixed `[plugin:<id>]`) and to the per-plugin JSONL file behind
-`bb plugin logs <id> [-n N] [-f]`.
+`bb plugin logs <id> [-n N] [-f]`. The same file records bb's own lines
+about the plugin: load and reload failures (a factory throw included),
+`onInstall`, handler, hook, RPC and CLI throws, service crashes, a throwing
+`contributeInstructions` or `deriveProviderOptions`, and each host worker's
+stdout, stderr and unexpected exit. Lines for a thrown error carry its
+`stack`.
 
 ### bb.settings
 

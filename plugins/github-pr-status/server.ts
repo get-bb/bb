@@ -1,6 +1,7 @@
 import {
   cliCommand,
   defineCli,
+  experimental_BbHttpError,
   experimental_PluginRpcRefusal,
   PluginCliError,
   type BbPluginApi,
@@ -59,15 +60,6 @@ type Environment = Awaited<
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function httpStatusOf(error: unknown): number | null {
-  return typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-    ? error.status
-    : null;
 }
 
 function refuse(message: string): never {
@@ -144,7 +136,8 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     try {
       return await bb.sdk.environments.get({ environmentId });
     } catch (error) {
-      if (httpStatusOf(error) === 404) return null;
+      if (error instanceof experimental_BbHttpError && error.status === 404)
+        return null;
       throw error;
     }
   }

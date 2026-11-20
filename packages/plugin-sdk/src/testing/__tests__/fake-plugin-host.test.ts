@@ -921,6 +921,15 @@ describe("cli", () => {
       stdout: "",
       stderr: "bb docs failed: bad flag",
     });
+    const machine = await harness.runCli(["crash", "--json"]);
+    expect(machine).toMatchObject({
+      exitCode: 1,
+      stderr: "bb docs failed: bad flag",
+    });
+    expect(JSON.parse(machine.stdout)).toEqual({
+      ok: false,
+      error: { code: "command_failed", message: "bb docs failed: bad flag" },
+    });
   });
 
   it("mirrors production output-limit errors without truncating", async () => {
@@ -948,7 +957,10 @@ describe("cli", () => {
     const machine = await harness.runCli(["--json"]);
     expect(machine.exitCode).toBe(1);
     expect(machine.stderr).toBe("");
-    expect(JSON.parse(machine.stdout)).toEqual({ error: machine.error });
+    expect(JSON.parse(machine.stdout)).toEqual({
+      ok: false,
+      error: machine.error,
+    });
   });
 
   it("uses the production host's reserved CLI names", () => {
@@ -2220,6 +2232,7 @@ describe("environment targets", () => {
       for (const declaration of [
         {
           ...presentation,
+          apiVersion: 2 as const,
           create: async () => ({
             status: "created" as const,
             path: "/workspace",
@@ -2264,6 +2277,7 @@ describe("environment targets", () => {
     });
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "sandbox",
         displayName: "Conflicting concrete provider",
         description: "Prepare a workspace for this thread.",
@@ -2287,6 +2301,7 @@ describe("environment targets", () => {
     });
     const inputs = z.object({ image: z.string(), cpus: z.number().default(2) });
     bb.experimental_environments.register({
+      apiVersion: 2,
       id: "container",
       displayName: "  Docker container  ",
       description: "Prepare a workspace for this thread.",
@@ -2330,6 +2345,7 @@ describe("environment targets", () => {
     });
     const register = (icon: string) =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "env",
         displayName: "Environment",
         description: "Prepare a workspace for this thread.",
@@ -2353,6 +2369,7 @@ describe("environment targets", () => {
   it("defaults every requirement to false", () => {
     const { bb, harness } = createFakePluginHost();
     bb.experimental_environments.register({
+      apiVersion: 2,
       id: "plain",
       displayName: "Plain",
       description: "Prepare a workspace for this thread.",
@@ -2383,6 +2400,7 @@ describe("environment targets", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "ok",
         displayName: "x",
         description: "Prepare a workspace for this thread.",
@@ -2403,6 +2421,7 @@ describe("environment targets", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "bad id!",
         displayName: "x",
         description: "Prepare a workspace for this thread.",
@@ -2418,6 +2437,7 @@ describe("environment targets", () => {
     for (const id of ["x", "Uppercase", "under_score"]) {
       expect(() =>
         bb.experimental_environments.register({
+          apiVersion: 2,
           id,
           displayName: "x",
           description: "Prepare a workspace for this thread.",
@@ -2448,6 +2468,7 @@ describe("environment targets", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "ok",
         displayName: "x",
         description: "Prepare a workspace for this thread.",
@@ -2468,6 +2489,7 @@ describe("environment targets", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "scratch",
         displayName: "Scratch",
         description: "Prepare a workspace for this thread.",
@@ -2487,6 +2509,7 @@ describe("environment targets", () => {
     const { bb } = createFakePluginHost();
     expect(() =>
       bb.experimental_environments.register({
+        apiVersion: 2,
         id: "scratch",
         displayName: "Scratch",
         description: "Prepare a workspace for this thread.",
@@ -2505,6 +2528,7 @@ describe("environment targets", () => {
   it("normalizes a checkout provider that does not need git", () => {
     const { bb, harness } = createFakePluginHost();
     bb.experimental_environments.register({
+      apiVersion: 2,
       id: "syncy",
       displayName: "Syncy",
       description: "Prepare a workspace for this thread.",
@@ -2532,6 +2556,7 @@ describe("environment targets", () => {
   it("normalizes a host-scoped checkout provider", () => {
     const { bb, harness } = createFakePluginHost();
     bb.experimental_environments.register({
+      apiVersion: 2,
       id: "branchy",
       displayName: "Branchy",
       description: "Prepare a workspace for this thread.",

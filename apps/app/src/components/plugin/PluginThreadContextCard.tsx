@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useId,
   useLayoutEffect,
   useMemo,
@@ -10,10 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom } from "jotai";
-import type {
-  ExperimentalThreadContextCardProps,
-  ExperimentalThreadContextKind,
-} from "@get-bb/plugin-sdk";
+import type { ExperimentalThreadContextCardProps } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
@@ -33,16 +28,18 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { InfoSectionHeading } from "@/components/secondary-panel/info/info-list";
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
+import {
+  ThreadContextCardPaneContext,
+  usePaneState,
+} from "./thread-context-card-pane";
 import {
   THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS,
   ThreadContextCardSectionScopeContext,
   useThreadContextCardSectionCollapse,
 } from "./ThreadContextCardSection";
-import {
-  CORE_THREAD_CONTEXT_OWNER,
-  threadContextSegmentKey,
-} from "./PluginThreadContextSegments";
+import { threadContextSegmentKey } from "./PluginThreadContextSegments";
 
 export interface CoreThreadContextCardRow {
   id: string;
@@ -84,7 +81,7 @@ export function resolveThreadContextCardLayout(
 
 const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
 
-interface ThreadContextCardPaneState {
+export interface ThreadContextCardPaneState {
   props: ExperimentalThreadContextCardProps;
   rows: readonly ThreadContextCardRowEntry[];
   sections: readonly ThreadContextCardSectionEntry[];
@@ -97,9 +94,6 @@ interface ThreadContextCardPaneState {
   cardRevealed: boolean;
   setCardRevealedForThreadId(threadId: string | null): void;
 }
-
-const ThreadContextCardPaneContext =
-  createContext<ThreadContextCardPaneState | null>(null);
 
 function sortByPlacement<Item>(
   items: readonly Item[],
@@ -218,18 +212,6 @@ export function WithoutThreadContextCard({
   );
 }
 
-function usePaneState(): ThreadContextCardPaneState | null {
-  const state = useContext(ThreadContextCardPaneContext);
-  return state !== null && state.rows.length + state.sections.length > 0
-    ? state
-    : null;
-}
-
-export function useThreadContextKind(): ExperimentalThreadContextKind {
-  const state = usePaneState();
-  return state === null || state.layout === "banner" ? "banner" : "card";
-}
-
 function isCardShown(
   state: ThreadContextCardPaneState,
   pinned: boolean,
@@ -242,9 +224,7 @@ export function useThreadContextCardTranscriptCenteredMinWidth():
   | undefined {
   const state = usePaneState();
   const [pinned] = useAtom(pinnedAtom);
-  return state !== null &&
-    state.layout === "card" &&
-    isCardShown(state, pinned)
+  return state !== null && state.layout === "card" && isCardShown(state, pinned)
     ? TRANSCRIPT_CENTERED_MIN_WIDTH_PX
     : undefined;
 }
@@ -367,9 +347,7 @@ function ThreadContextCardContent({
       {state.sections.map((entry) => {
         const Component = entry.slot.component;
         const pluginId =
-          entry.owner === "core"
-            ? CORE_THREAD_CONTEXT_OWNER
-            : entry.slot.pluginId;
+          entry.owner === "core" ? CORE_PLUGIN_ID : entry.slot.pluginId;
         return (
           <ThreadContextCardSectionView
             key={

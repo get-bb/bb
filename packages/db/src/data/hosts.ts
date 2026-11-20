@@ -1,5 +1,5 @@
 import { prepareCachedQuery } from "../connection.js";
-import { and, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
 import {
   resolveEnvironmentHostLifecycle,
   type HostChangeKind,
@@ -320,4 +320,34 @@ export function updateHost(
   const updated = getHost(db, hostId);
   notifyHostMutation(db, notifier, existing, updated);
   return updated;
+}
+
+export function setHostColumns(
+  db: DbQueryConnection,
+  hostId: string,
+  change: Partial<HostRow>,
+): void {
+  db.update(hosts).set(change).where(eq(hosts.id, hostId)).run();
+}
+
+export function getLatestHostAttemptForLaunchKey(
+  db: DbQueryConnection,
+  launchKey: string,
+): number | null {
+  return (
+    db
+      .select({ attempt: hosts.attempt })
+      .from(hosts)
+      .where(eq(hosts.launchKey, launchKey))
+      .orderBy(desc(hosts.attempt))
+      .limit(1)
+      .get()?.attempt ?? null
+  );
+}
+
+export function insertHost(
+  db: DbQueryConnection,
+  values: typeof hosts.$inferInsert,
+): void {
+  db.insert(hosts).values(values).run();
 }
