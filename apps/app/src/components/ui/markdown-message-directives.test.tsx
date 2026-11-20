@@ -897,14 +897,14 @@ describe("ThreadTimelineRows message directive subscription", () => {
       expect(screen.getByText(/Intro/)).toBeTruthy();
       expect(screen.queryByText(/::inline-vis/)).toBeNull();
 
-      act(() =>
+      act(() => {
         setPluginSlotRegistrations(
           "demo",
           emptyRegistrationSet({
             messageDirectives: [{ id: "inline-vis", component: InlineVis }],
           }),
-        ),
-      );
+        );
+      });
 
       expect(screen.getByTestId("inline-vis").getAttribute("data-file")).toBe(
         "late.html",
@@ -916,7 +916,9 @@ describe("ThreadTimelineRows message directive subscription", () => {
       renderRow();
       expect(screen.queryByText(/::inline-vis/)).toBeNull();
 
-      act(() => markPluginFrontendsSettled());
+      act(() => {
+        markPluginFrontendsSettled();
+      });
 
       expect(screen.getByText(/::inline-vis\{file="late.html"\}/)).toBeTruthy();
     });
