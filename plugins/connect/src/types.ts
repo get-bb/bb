@@ -10,7 +10,6 @@ export interface ShareListing {
   port: number;
   createdAt: number;
   url: string;
-  nextUrl?: string;
   unavailableReason?: string;
 }
 

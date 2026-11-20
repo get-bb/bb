@@ -242,7 +242,11 @@ describe("@bb/sdk", () => {
       startedAt: 1,
     };
     const replies: Array<() => Response> = [
-      () => jsonResponse({ body: { job: { ...base, state: "running" } }, status: 202 }),
+      () =>
+        jsonResponse({
+          body: { job: { ...base, state: "running" } },
+          status: 202,
+        }),
       () => {
         throw new TypeError("Load failed");
       },
@@ -268,7 +272,8 @@ describe("@bb/sdk", () => {
         fetch: async (input, init) => {
           urls.push(`${init?.method ?? "GET"} ${String(input)}`);
           const reply = replies.shift();
-          if (reply === undefined) throw new Error("No queued SDK test response");
+          if (reply === undefined)
+            throw new Error("No queued SDK test response");
           return reply();
         },
         runtime: "node",
@@ -2267,6 +2272,29 @@ describe("@bb/sdk", () => {
               manageable: true,
               registrySkillId: null,
             },
+            {
+              id: `skill_${"b".repeat(64)}`,
+              name: "released-codex-skill",
+              description: null,
+              provider: "codex",
+              scope: "codex-user",
+              pluginId: null,
+              filePath: "/home/u/.codex/skills/released-codex-skill/SKILL.md",
+              manageable: true,
+              registrySkillId: null,
+            },
+            {
+              id: `skill_${"c".repeat(64)}`,
+              name: "shared-skill",
+              description: null,
+              provider: null,
+              providers: ["claude-code", "codex"],
+              scope: "provider-user",
+              pluginId: null,
+              filePath: "/home/u/.agents/skills/shared-skill/SKILL.md",
+              manageable: true,
+              registrySkillId: null,
+            },
           ],
         },
       },
@@ -2298,9 +2326,30 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await expect(
-      sdk.skills.list({ projectId: "proj_123", environmentId: null }),
-    ).resolves.toMatchObject({ skills: [{ name: "local-skill" }] });
+    const listed = await sdk.skills.list({
+      projectId: "proj_123",
+      environmentId: null,
+    });
+    expect(listed).toEqual({
+      skills: [
+        expect.objectContaining({
+          name: "local-skill",
+          provider: null,
+          providers: [],
+        }),
+        expect.objectContaining({
+          name: "released-codex-skill",
+          provider: "codex",
+          providers: ["codex"],
+          scope: "codex-user",
+        }),
+        expect.objectContaining({
+          name: "shared-skill",
+          provider: null,
+          providers: ["claude-code", "codex"],
+        }),
+      ],
+    });
     await expect(sdk.skills.registry.search()).resolves.toMatchObject({
       skills: [registrySkill],
     });

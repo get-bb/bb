@@ -243,6 +243,7 @@ function createOpeningWebSocket(
       onclose: null,
       onerror: null,
       send: vi.fn(),
+      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),
@@ -491,16 +492,25 @@ describe("createHostDaemonApp", () => {
         "configured",
       );
       if (!socket) throw new Error("Expected daemon socket");
-      socket.onmessage?.({
-        data: JSON.stringify({
-          seq: 1,
-          ack: 0,
-          message: {
-            type: "machine-environment.replace",
-            environment: { revision: 1, entries: [] },
-          },
-        }),
-      });
+      const invalidateMaintenance = vi.spyOn(
+        app.runtimeManager,
+        "invalidateProviderMaintenanceRuntime",
+      );
+      const replaceMachineEnvironment = (seq: number) =>
+        socket?.onmessage?.({
+          data: JSON.stringify({
+            seq,
+            ack: 0,
+            message: {
+              type: "machine-environment.replace",
+              environment: { revision: seq, entries: [] },
+            },
+          }),
+        });
+      replaceMachineEnvironment(1);
+      expect(invalidateMaintenance).toHaveBeenCalledOnce();
+      replaceMachineEnvironment(2);
+      expect(invalidateMaintenance).toHaveBeenCalledOnce();
       expect(process.env.MACHINE_DAEMON_TEST).toBe("original");
       expect(readChild()).toBe("original");
       expect(app.runtimeManager.getShellEnv()).not.toHaveProperty(
@@ -822,6 +832,7 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.list_commands",
+        contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         cwd: "/tmp/worktree",
@@ -853,6 +864,7 @@ describe("createHostDaemonApp", () => {
         type: "provider.health",
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        contributedEnv: [],
       },
       method: "providerHealth",
       waitsForFreshShellEnv: true,
@@ -862,6 +874,7 @@ describe("createHostDaemonApp", () => {
         type: "provider.installation.status",
         providerId: "codex",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        contributedEnv: [],
       },
       method: "providerInstallationStatus",
       waitsForFreshShellEnv: true,
@@ -869,6 +882,7 @@ describe("createHostDaemonApp", () => {
     {
       command: {
         type: "provider.installation.run",
+        contributedEnv: [],
         providerId: "codex",
         action: "install",
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
@@ -1001,6 +1015,7 @@ describe("createHostDaemonApp", () => {
         requestId: "first-env-list-commands",
         command: {
           type: "provider.list_commands",
+          contributedEnv: [],
           providerId: "codex",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           cwd: "/tmp/worktree",

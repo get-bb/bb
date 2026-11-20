@@ -22,6 +22,7 @@ import {
   pluginMarketplaceRefreshRequestSchema,
   pluginMarketplaceRefreshResponseSchema,
   pluginMarketplaceRemoveResponseSchema,
+  pluginMarketplaceSetEnabledRequestSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
   pluginInstallJobListResponseSchema,
@@ -166,6 +167,11 @@ export interface PluginMarketplaceRemoveArgs {
   name: string;
 }
 
+export interface PluginMarketplaceSetEnabledArgs {
+  name: string;
+  enabled: boolean;
+}
+
 export interface PluginReloadArgs {
   pluginId?: string;
 }
@@ -256,6 +262,7 @@ export type PluginCatalogInstallPlanResult = PluginCatalogInstallPlanContract;
 export type PluginMarketplaceListResult = PluginMarketplaceContract[];
 export type PluginMarketplaceAddResult = PluginMarketplaceContract;
 export type PluginMarketplaceRefreshResult = PluginMarketplaceRefreshContract[];
+export type PluginMarketplaceSetEnabledResult = PluginMarketplaceContract;
 
 export interface PluginMarketplaceRemoveResult {
   convertedPluginIds: string[];
@@ -280,6 +287,9 @@ export interface PluginMarketplacesArea {
   remove(
     args: PluginMarketplaceRemoveArgs,
   ): Promise<PluginMarketplaceRemoveResult>;
+  setEnabled(
+    args: PluginMarketplaceSetEnabledArgs,
+  ): Promise<PluginMarketplaceSetEnabledResult>;
 }
 
 export interface PluginInstallJobsArea {
@@ -367,7 +377,10 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     return schema.parse(json);
   }
 
-  function jsonInit(method: "POST" | "PUT", body: unknown): RequestInit {
+  function jsonInit(
+    method: "PATCH" | "POST" | "PUT",
+    body: unknown,
+  ): RequestInit {
     return {
       method,
       headers: { "content-type": "application/json" },
@@ -583,6 +596,18 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         { method: "DELETE" },
       );
       return { convertedPluginIds: response.convertedPluginIds };
+    },
+    async setEnabled(input) {
+      const name = pluginMarketplaceNameSchema.parse(input.name);
+      const body = pluginMarketplaceSetEnabledRequestSchema.parse({
+        enabled: input.enabled,
+      });
+      const response = await requestParsed(
+        `/api/v1/marketplaces/${encodeURIComponent(name)}`,
+        pluginMarketplaceMutationResponseSchema,
+        jsonInit("PATCH", body),
+      );
+      return response.marketplace;
     },
   };
 

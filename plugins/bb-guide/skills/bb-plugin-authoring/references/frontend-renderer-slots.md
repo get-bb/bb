@@ -7,10 +7,11 @@
   `{ id, title, description?, component }`. Like `experimental_threadList`
   each slot is **exclusive** — one renderer at a time; a plugin the user
   installed wins over one bundled with bb, then the first in slot order, and
-  a missing, disabled, or crashing replacement falls back to bb's
-  renderer. Installing and enabling the plugin activates it, and the user can
-  pin bb's renderer or a specific provider under
-  **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
+  a crashing replacement falls back to bb's renderer. Installing and enabling
+  the plugin activates it, and the user can pin bb's renderer or a specific
+  provider under **Settings → Appearance** ("Source code" / "Diffs"), per
+  client. A pinned provider whose plugin is disabled or uninstalled behaves as
+  Automatic until it returns. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, Original }`;
@@ -46,8 +47,9 @@ Original }`. `experimental_fullFileContents` is either
   Registration: `{ id, title, description?, component }`. Exclusive like
   `experimental_threadList`: a composer from a plugin the user installed wins
   over the bundled Composer plugin; users choose under **Settings → Appearance
-  → Composer** (`composer.provider`). With no composer plugin enabled, no
-  composer is shown. bb's own composer is the bundled `plugins/composer`
+  → Composer** (`composer.provider`). A pinned composer whose plugin is
+  disabled or uninstalled behaves as Automatic until it returns. With no
+  composer plugin enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
   plugin, built on this slot; copy it to make your own.
 
   Read and write the draft with `useComposer()` (`draft`, `replace`) and
@@ -215,26 +217,29 @@ message, Original }` — render fenced code blocks of chosen languages in
   `"embedded-chat"` (omitted = both); an empty or unknown list fails
   registration. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
-  `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
+  `run(context)` with `{ threadId, message, selectedText?, composer }` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context)
+  `{ sdk, navigate, panel }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
   an internal timeline row); `experimental_messageSeq` is the recorded message
   sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
-  `experimental_panel` is the thread view's
-  [panel controller](frontend-hooks-and-ui.md#panel-controller). Errors from `run` (sync or
+  `navigate` and `panel` act on that thread view (terminals,
+  files and URLs open in its side panel). Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
   component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
-  receive `{ threadId, projectId, experimental_panel }`, where `threadId` and
-  `projectId` are null on surfaces without one and `experimental_panel` is the
-  focused surface's [panel controller](frontend-hooks-and-ui.md#panel-controller). `isAvailable` is called for palette listing and keyboard invocation — keep
+  receive `{ threadId, projectId }` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context), where
+  `threadId` and `projectId` are null on surfaces without one, and
+  `navigate` and `panel` act on the focused surface. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
-  `experimental_panel` declines (returning false) when the focused surface has
+  `panel` declines (returning false) when the focused surface has
   no such tab.
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this
@@ -252,6 +257,9 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A focused terminal keeps unmodified keys and plain Control+letter for the
+  shell, so prefer a chord with Command, Alt or Shift, or a function key,
+  when the command should also run from a terminal.
   Registered shortcuts match by physical key when the active layout types a
   non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
   character on Latin layouts such as Dvorak. A plugin that handles keys

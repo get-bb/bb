@@ -124,7 +124,7 @@ These entries are startup-only:
 - `BB_APP_SURFACE`, `BB_APP_URL` (when set through `bb-app env`),
   `BB_DATA_DIR`, `BB_DEV_APP_PORT`, and `BB_EXTERNAL_URL`
 - `BB_HOST_DAEMON_PORT` and `BB_INHERITED_SKILLS_ROOTS`
-- `BB_CONNECT_GATE_KEYS_URL`, `BB_LOG_LEVEL`,
+- `BB_LOG_LEVEL`,
   `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`, `BB_MARKETPLACE_URL`,
   `BB_PERF_DIAGNOSTICS`, `BB_POSTHOG_API_KEY`, `BB_QUERY_PLAN_AUDIT`, and
   `BB_TELEMETRY`
@@ -245,7 +245,6 @@ change the host-daemon protocol.
 | `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links, allowed browser origins, and the allowed DNS hostname for requests. Leave empty for local-only use. Live when set with `bb-app config`.                                                                                                                                              |
 | `BB_EXTERNAL_URL`              | `bb-app env`, or environment                       | Startup-only            | Internet-facing HTTPS base URL for generated public links; the fallback for `machineServerUrl`.                                                                                                                                                                                                                                     |
 | `BB_MARKETPLACE_URL`           | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` marketplace. Default `https://getbb.app/marketplace/v2/marketplace.json` (falls back to v1 on 404); a custom URL is requested without fallback. Changes only `bb-community`.                                                                                                            |
-| `BB_CONNECT_GATE_KEYS_URL`     | `bb-app env`, or environment                       | Startup-only testing    | Public key set the bb connect next tunnel ingress verifies gate assertions with. Default `https://getbb.app/.well-known/bb-connect-gate-keys.json`. See [connect-next.md](connect-next.md).                                                                                                                                         |
 | `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server targeted by the standalone `bb` CLI and `host-daemon` commands on this machine. Defaults to `http://127.0.0.1:38886`. It does not change where `npx bb-app` binds.                                                                                                                                                           |
 | `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host: `127.0.0.1` (default) or `0.0.0.0`. Not a `bb-app config` key. See [Startup Flags](#startup-flags).                                                                                                                                                                                                           |
 | `BB_SERVER_PORT`               | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`.                                                                                                                                                                                                                                                                                            |
@@ -260,7 +259,9 @@ change the host-daemon protocol.
 | `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server            | Nested bb servers       | Machine token this nested server presents to the parent hub. Both parent variables must be well formed or proxying stays off.                                                                                                                                                                                                       |
 
 BB accepts request hosts that are `localhost`, IP addresses (including LAN and
-Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or
+Tailscale IPs), the address of an available machine access provider (such as
+the Tailscale plugin's `https://<machine>.<tailnet>.ts.net` once Serve is set
+up), or the hostname in `BB_APP_URL`. For a custom DNS name or
 reverse proxy, set `BB_APP_URL` (for example `https://bb.example.com`) before
 connecting, including from the CLI or SDK; a matching `Host`/`Origin` or
 `X-Forwarded-Host` cannot authorize an unconfigured name. A proxy can preserve
@@ -594,6 +595,14 @@ unbinds a command. Overrides may be scoped to `mac`, `windows`, or `linux`. Plug
 commands bind as `plugin:<plugin-id>/<command-id>`. See
 `bb guide customization` for scoping and plugin-binding rules.
 
+A focused terminal keeps the keys a shell reads: keys without Ctrl, Alt or
+Cmd (Escape, Enter, arrows, typing) and plain Ctrl+letter, Ctrl+Space, Ctrl+[,
+Ctrl+], Ctrl+\ and Ctrl+/, such as Ctrl+C, Ctrl+D, Ctrl+R and Ctrl+W. Those keys
+reach the shell even when a command is bound to them, so on Windows and Linux
+`Mod+K`, `Mod+W` and `Mod+J` go to the shell while a terminal has focus. Every
+other bound shortcut, including function keys and Ctrl+Shift, Alt or Cmd
+chords, runs its command from the terminal.
+
 `showKeyboardHints` (default `true`; `bb settings keyboard hints <true|false>`)
 shows delayed shortcut badges while the modifier is held; shortcuts work
 either way.
@@ -858,6 +867,15 @@ and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
 
+Only providers that are enabled and installed on the host are indexed, the
+same set `bb provider list` shows. Each listed skill's `providers` names every
+one of them that reads its file. Several providers can read the same file, for
+example one under `~/.agents/skills` or `~/.claude/skills`, or a Claude Code
+plugin skill that Grok also loads. The Skills page lists such a skill once as
+Shared, and under each of those providers in the Provider filter; `bb skill
+list` prints `shared`. bb skills and configured shared roots have an empty
+`providers` list and are listed as bb.
+
 ## Multi-machine
 
 Multi-machine execution lets this server dispatch work to host daemons on
@@ -875,7 +893,9 @@ the SDK and CLI, and machine credentials cannot change it. Read it with
 **Machine server access.** `machineServerUrl` (Settings → Machines → Server URL
 reachable by machines; HTTP or HTTPS without embedded credentials) falls back
 to `BB_EXTERNAL_URL` when unset. `defaultMachineAccess` selects the access
-provider; unset selects bb connect, and `direct` (Manual) uses your own URL.
+provider; unset selects the provider of the earliest-installed plugin (bb
+connect unless it was removed), `tailscale` uses the Tailscale plugin's Serve
+address, and `direct` (Manual) uses your own URL.
 An explicit provider must be installed and available. Set them with
 `bb settings general machineServerUrl <url-or-null>` and
 `bb settings general defaultMachineAccess <provider-id-or-null>`.
@@ -959,19 +979,23 @@ ui_preference_conflict`. Read and write them with `bb settings ui
 list|get|set|reset` or `sdk.system.uiPreferences` (see
 `bb guide customization`).
 
-| Key                           | Value                                                                                                                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one                                      |
-| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`                                            |
-| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                                                                |
-| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                                                              |
-| `sidebar.footerOrder`         | Footer action order                                                                                                                                                                         |
-| `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                                                              |
-| `sidebar.updates.providerCli` | `true` (default) counts provider CLI updates in the sidebar update button; `false` leaves them out of its count, card, and Update all (Settings → Updates and `bb updates` still list them) |
-| `threadContextCard.pinned`    | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header                                   |
-| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                               |
+| Key                                   | Value                                                                                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidebar.threadListProvider`          | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one                                                        |
+| `sidebar.navigationProvider`          | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`                                                              |
+| `sidebar.pluginPanelOrder`            | Navigation destination order                                                                                                                                                                                  |
+| `sidebar.visiblePluginPanels`         | Navigation destinations shown, or `null` for every destination                                                                                                                                                |
+| `sidebar.footerOrder`                 | Footer action order                                                                                                                                                                                           |
+| `sidebar.hiddenFooterItems`           | Footer actions moved into More                                                                                                                                                                                |
+| `sidebar.updates.providerCli`         | `true` (default) counts provider CLI updates in the sidebar update button; `false` leaves them out of its count, card, and the card's update button (Settings → Updates and `bb updates` still list them)     |
+| `sidebar.updates.skipped`             | Updates hidden by Skip on the sidebar update card; the button stays hidden until an update outside this list arrives, and `[]` (default) shows it again (Settings → Updates and `bb updates` still list them) |
+| `threadContextCard.pinned`            | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header                                                     |
+| `threadContextCard.collapsedSections` | Folded thread context card sections (`<pluginId>/<sectionId>`, or `bb--core/<sectionId>` for bb's own); sections start open and the list is shared by every thread                                            |
+| `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
+A provider key whose plugin is disabled or uninstalled behaves as
+`__automatic__` until the plugin returns.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
@@ -1516,33 +1540,18 @@ the bb mobile app (`bb connect machine-code`, see `bb guide machines`). Mobile
 builds, the optional `GOOGLE_SERVICES_JSON` Firebase config, and publishing
 are documented in [`apps/mobile/README.md`](../apps/mobile/README.md).
 
-### Connect next (beta)
-
-The builtin connect-next plugin is disabled by default. Enabled
-(`bb plugin enable bb--connect-next`) and switched on, it also makes this server
-reachable at `https://<label>.next.getbb.app` through the Fly gate, next to
-its connect address. The domain follows the bb account: `next.<host of the
-account's base URL>` (`next.vibecodethis.site` on staging). While it is on,
-every enrolled machine's daemon also serves the ports shared from it with
-`bb connect expose <port> --host <machine>` at
-`https://<machine-label>--<port>.next.getbb.app`, downloading `frpc` into
-`<daemon data dir>/connect-next/frp/`. See the `connect-next` skill and
-[`connect-next.md`](connect-next.md).
-
-| Connect next setting | Default | Effect                                                                      |
-| -------------------- | ------- | --------------------------------------------------------------------------- |
-| `enabled`            | `true`  | "Reach this bb at its next address (beta)". Also `bb connect-next on\|off`. |
-
 The realtime client WebSocket (`/ws`) negotiates `permessage-deflate`, so
 messages of 1 KB or more, such as timeline pushes, are compressed (about 4x for
-timeline JSON). It helps clients that reach the server over a network,
-including connect next; the bb connect relay re-frames messages and does not
-carry it. Terminal, host daemon, and plugin WebSockets are never compressed.
-
-| Variable                 | Effect                                                                                                                            |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_CONNECT_FRPC`        | Path of an `frpc` binary to run instead of the frp 0.71.0 release the plugin (or a host daemon) downloads and verifies.           |
-| `BB_CONNECT_NEXT_SERVER` | `ws://host:port` or `wss://host:port` of the frp server to dial instead of `wss://tunnel.<next domain>` derived from the account. |
+timeline JSON). It helps clients that reach the server over a network;
+the bb connect relay re-frames messages and does not carry it. Terminal
+(`/ws/terminals/:id`) and host daemon (`/internal/ws`) WebSockets negotiate the
+same compression only when the peer is on another machine: a non-loopback
+address, or a request that arrived through a proxy such as Tailscale Serve
+(`X-Forwarded-For` or `Forwarded`). From the same machine they stay
+uncompressed, since compressing there costs CPU and saves nothing. Daemons
+compress what they send at level 1 above 1 KB, as the server does, except
+file contents read for a download or preview, which are often already
+compressed. Plugin WebSockets are never compressed.
 
 ### Modal machines
 
@@ -1563,6 +1572,25 @@ never modifies the user's global npm installation. See the
 `browser-automation` skill and `plugins/browser-automation/README.md`. For
 isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` and
 `DEV_BROWSER_SMOKE_CHROME` select absolute binary and Chrome paths.
+
+### Tailscale
+
+The official Tailscale plugin (`bb plugin install tailscale`, plugin id
+`bb--tailscale`) makes this server reachable at
+`https://<machine>.<tailnet>.ts.net` through Tailscale Serve. Settings →
+Tailscale → **Set up** or `bb tailscale setup` runs
+`tailscale serve --bg --yes --https=443 <loopback URL>`, or uses bb's own port
+(for example `:38886`) when another service has 443 or already listens on the
+tailnet address at that port; a Serve mapping to bb made by hand is adopted
+unchanged. bb changes Serve only on setup and on **Remove** (`bb tailscale
+teardown`), which removes only the mapping bb created; stopping bb or
+disabling the plugin leaves it in place. Once Serve reaches bb, the address is
+the `tailscale` machine access provider, and bb accepts it as a request host
+without `BB_APP_URL`. See the `tailscale` skill.
+
+| Variable           | Effect                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `BB_TAILSCALE_CLI` | Path of the `tailscale` binary to run instead of the platform's standard install path. |
 
 ### MCP server
 

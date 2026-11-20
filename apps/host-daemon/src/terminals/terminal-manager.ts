@@ -31,8 +31,8 @@ const DEFAULT_SCROLLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
-const OUTPUT_FLOW_PAUSE_BYTES = 1024 * 1024;
-const OUTPUT_FLOW_RESUME_BYTES = 512 * 1024;
+const OUTPUT_STREAM_PAUSE_BYTES = 1024 * 1024;
+const OUTPUT_STREAM_RESUME_BYTES = 512 * 1024;
 const PAUSED_PROCESS_EXIT_POLL_MS = 50;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
 const DEFAULT_MAX_EXITED_TERMINALS = 32;
@@ -128,7 +128,7 @@ interface UnacknowledgedOutputChunk {
   seq: number;
 }
 
-interface TerminalOutputFlow {
+interface TerminalOutputStream {
   acknowledgedNextSeq: number;
   pausedExitPoll: ReturnType<typeof setInterval> | null;
   unacknowledgedBytes: number;
@@ -145,7 +145,7 @@ interface TerminalSession {
   nextSeq: number;
   outputBuffers: Buffer[];
   outputBytes: number;
-  outputFlow: TerminalOutputFlow | null;
+  outputStream: TerminalOutputStream | null;
   outputFlushCancel: (() => void) | null;
   pendingPrimaryDeviceAttributesQuery: PendingPrimaryDeviceAttributesQuery;
   pty: TerminalPtyProcess;
@@ -528,15 +528,15 @@ export class TerminalManager {
   }
 
   dispose(): void {
-    this.releaseOutputFlowControl();
+    this.releaseOutputStreams();
     for (const terminalId of [...this.exitedSessions.keys()]) {
       this.forgetExitedSession(terminalId);
     }
   }
 
-  releaseOutputFlowControl(): void {
+  releaseOutputStreams(): void {
     for (const session of this.sessions.values()) {
-      this.disableOutputFlow(session);
+      this.stopOutputStream(session);
     }
   }
 
@@ -573,8 +573,8 @@ export class TerminalManager {
           terminalId: message.terminalId,
         });
         return;
-      case "terminal.flow-control":
-        this.setOutputFlowControl(message.terminalId, message.enabled);
+      case "terminal.stream":
+        this.setOutputStream(message.terminalId, message.enabled);
         return;
       case "terminal.ack":
         this.acknowledgeOutput(message.terminalId, message.nextSeq);
@@ -639,7 +639,7 @@ export class TerminalManager {
         nextSeq: 0,
         outputBuffers: [],
         outputBytes: 0,
-        outputFlow: null,
+        outputStream: null,
         outputFlushCancel: null,
         pendingPrimaryDeviceAttributesQuery: "",
         pty,
@@ -818,7 +818,6 @@ export class TerminalManager {
       return;
     }
     session.closeReason = args.reason;
-    this.disableOutputFlow(session);
     session.closeTimeout = setTimeout(() => {
       session.closeTimeout = null;
       void this.runTerminalOperation({
@@ -875,7 +874,7 @@ export class TerminalManager {
     if (!session) {
       return;
     }
-    this.disableOutputFlow(session);
+    this.stopOutputStream(session);
     try {
       session.pty.kill();
     } catch (error) {
@@ -984,7 +983,10 @@ export class TerminalManager {
       session.scrollback.push(entry);
       session.scrollbackBytes += entry.byteLength;
       this.pruneScrollback(session);
-      this.recordUnacknowledgedOutput(session, entry);
+      if (session.outputStream === null) {
+        continue;
+      }
+      this.recordUnacknowledgedOutput(session, session.outputStream, entry);
       this.options.sendMessage({
         type: "terminal.output",
         terminalId: session.terminalId,
@@ -993,19 +995,19 @@ export class TerminalManager {
     }
   }
 
-  private setOutputFlowControl(terminalId: string, enabled: boolean): void {
+  private setOutputStream(terminalId: string, enabled: boolean): void {
     const session = this.sessions.get(terminalId);
     if (!session) {
       return;
     }
     if (!enabled) {
-      this.disableOutputFlow(session);
+      this.stopOutputStream(session);
       return;
     }
-    if (session.outputFlow !== null || session.closeReason !== null) {
+    if (session.outputStream !== null || session.closeReason !== null) {
       return;
     }
-    session.outputFlow = {
+    session.outputStream = {
       acknowledgedNextSeq: session.nextSeq,
       pausedExitPoll: null,
       unacknowledgedBytes: 0,
@@ -1015,7 +1017,7 @@ export class TerminalManager {
 
   private acknowledgeOutput(terminalId: string, nextSeq: number): void {
     const session = this.sessions.get(terminalId);
-    const flow = session?.outputFlow;
+    const flow = session?.outputStream;
     if (!session || !flow || nextSeq <= flow.acknowledgedNextSeq) {
       return;
     }
@@ -1031,7 +1033,7 @@ export class TerminalManager {
     flow.unacknowledgedChunks.splice(0, acknowledgedChunks);
     if (
       flow.pausedExitPoll !== null &&
-      flow.unacknowledgedBytes <= OUTPUT_FLOW_RESUME_BYTES
+      flow.unacknowledgedBytes <= OUTPUT_STREAM_RESUME_BYTES
     ) {
       this.resumeOutput(session, flow);
     }
@@ -1039,12 +1041,9 @@ export class TerminalManager {
 
   private recordUnacknowledgedOutput(
     session: TerminalSession,
+    flow: TerminalOutputStream,
     entry: ScrollbackEntry,
   ): void {
-    const flow = session.outputFlow;
-    if (flow === null) {
-      return;
-    }
     flow.unacknowledgedChunks.push({
       byteLength: entry.byteLength,
       seq: entry.chunk.seq,
@@ -1052,21 +1051,22 @@ export class TerminalManager {
     flow.unacknowledgedBytes += entry.byteLength;
     if (
       flow.pausedExitPoll !== null ||
-      flow.unacknowledgedBytes <= OUTPUT_FLOW_PAUSE_BYTES
+      flow.unacknowledgedBytes <= OUTPUT_STREAM_PAUSE_BYTES ||
+      session.pty.hasExited()
     ) {
       return;
     }
     session.pty.pause();
     flow.pausedExitPoll = setInterval(() => {
       if (session.pty.hasExited()) {
-        this.disableOutputFlow(session);
+        this.resumeOutput(session, flow);
       }
     }, PAUSED_PROCESS_EXIT_POLL_MS);
   }
 
   private resumeOutput(
     session: TerminalSession,
-    flow: TerminalOutputFlow,
+    flow: TerminalOutputStream,
   ): void {
     if (flow.pausedExitPoll === null) {
       return;
@@ -1076,12 +1076,12 @@ export class TerminalManager {
     session.pty.resume();
   }
 
-  private disableOutputFlow(session: TerminalSession): void {
-    const flow = session.outputFlow;
+  private stopOutputStream(session: TerminalSession): void {
+    const flow = session.outputStream;
     if (flow === null) {
       return;
     }
-    session.outputFlow = null;
+    session.outputStream = null;
     this.resumeOutput(session, flow);
   }
 
@@ -1110,7 +1110,7 @@ export class TerminalManager {
       args.session.pendingPrimaryDeviceAttributesQuery = "";
     }
     this.flushTerminalOutput(args.session);
-    this.disableOutputFlow(args.session);
+    this.stopOutputStream(args.session);
     if (args.session.closeTimeout !== null) {
       clearTimeout(args.session.closeTimeout);
       args.session.closeTimeout = null;

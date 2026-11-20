@@ -46,7 +46,7 @@ import type { JsonValue } from "./json-value.js";
 import type { PluginMentionTrigger } from "./backend-contract.js";
 
 /**
- * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * The `@get-bb/plugin-sdk/app` contract — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
  * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
  * `@get-bb/plugin-sdk/app`.
@@ -60,32 +60,20 @@ import type { PluginMentionTrigger } from "./backend-contract.js";
 
 /** Props passed to a `homepageSection` component. */
 export interface PluginHomepageSectionProps {
-  /** Project in view on the compose surface; null when none is selected. */
+  /**
+   * Project selected in the New thread composer; null when the composer is
+   * set to "No project".
+   */
   projectId: string | null;
 }
 
 /**
  * Props passed to a `settingsSection` component.
  *
- * Versioned additive like the other slot props.
+ * Deliberately empty while sections read live app state through SDK hooks;
+ * versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {
-  /**
-   * Internal to bb's bundled connect plugin; not part of the plugin API.
-   * Set only when the setup guide renders the section; call it when the user
-   * starts setting it up.
-   */
-  internal_DO_NOT_USE_onSetupStarted?: () => void;
-  /**
-   * Internal to bb's bundled connect plugin; not part of the plugin API.
-   * Set only when the setup guide renders the section; call it when a setup
-   * attempt fails, with the stage that failed and, when known, why.
-   */
-  internal_DO_NOT_USE_onSetupFailed?: (
-    stage: InternalDoNotUseSetupFailureStage,
-    detail?: InternalDoNotUseSetupFailureDetail,
-  ) => void;
-}
+export interface PluginSettingsSectionProps {}
 
 /**
  * Stage of a setup guide section's setup attempt that failed.
@@ -359,7 +347,8 @@ export interface ExperimentalSidebarNavigationItem {
   isVisible: boolean;
   /**
    * A plugin panel remembered from the last session whose bundle has not
-   * registered yet. Activating it does nothing until it loads.
+   * registered yet. Activating it opens the panel's page, which shows the
+   * panel once the bundle loads.
    */
   isLoading: boolean;
   /**
@@ -564,10 +553,9 @@ export interface PluginThreadListProps {
    */
   onNavigate: () => void;
   /**
-   * Compatibility value for the former sidebar search field. BB now searches
-   * threads in the quick palette, so the host always supplies "".
-   *
-   * @deprecated The quick palette owns thread search. Ignore this value.
+   * @internal Retired: the sidebar search field was removed and the quick
+   * palette owns thread search. The host still passes "" so lists built
+   * against older SDKs keep rendering.
    */
   searchQuery: string;
 }
@@ -607,7 +595,12 @@ export interface ExperimentalPluginBrowserPage {
 }
 
 export interface ExperimentalPluginBrowserToolbarActionProps {
-  /** Thread that owns the Browser tab. */
+  /**
+   * Owner of the Browser tab. In a thread's side panel it is the thread id. On
+   * the New thread screen and plugin pages it is an opaque panel key that is
+   * not a thread id. Pass it with `tabId` as the `threadId` of
+   * `sdk.experimental_desktopBrowsers` calls to reach this tab.
+   */
   threadId: string;
   /** Browser tab currently rendering the action. */
   tabId: string;
@@ -1112,11 +1105,9 @@ export interface PluginNavPanelRegistration {
  * The action is thread-only and is never offered on the root New thread
  * screen, so `threadId` is always present.
  */
-export interface ExperimentalThreadTabActionContext {
+export interface ExperimentalThreadTabActionContext extends ExperimentalPluginActionContext {
   /** The thread whose panel launcher invoked the action. */
   threadId: string;
-  /** The side panel of the thread view that invoked the action. */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** Where a plugin tab belongs. Navigation panels are owned by the registering plugin. */
@@ -1150,7 +1141,7 @@ type ExperimentalTabLifecycle<Props, Context> =
       /** Default persisted params when opened without explicit params. */
       params?: JsonValue;
       run?(
-        context: Context & { experimental_panel: ExperimentalPanelController },
+        context: Context & ExperimentalPluginActionContext,
       ): void | Promise<void>;
     };
 
@@ -1185,9 +1176,8 @@ type ExperimentalTabInput<
       >;
       params?: JsonValue;
       run?(
-        context: ExperimentalTabContextProps<C> & {
-          experimental_panel: ExperimentalPanelController;
-        },
+        context: ExperimentalTabContextProps<C> &
+          ExperimentalPluginActionContext,
       ): void | Promise<void>;
       experimental_target?: never;
     });
@@ -1236,14 +1226,13 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
   );
 
 /** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
-export interface PluginNewThreadPanelActionContext {
+/**
+ * `panel` is the New thread screen's side panel. Address this
+ * action's tab as `{ id, context: { kind: "thread" }, availability: "action" }`.
+ */
+export interface PluginNewThreadPanelActionContext extends ExperimentalPluginActionContext {
   /** Project selected in the root composer; null in projectless compose. */
   projectId: string | null;
-  /**
-   * The New thread screen's side panel. Address this action's tab as
-   * `{ id, context: { kind: "thread" }, availability: "action" }`.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** Registration for the root New thread screen's panel Actions list. */
@@ -1281,8 +1270,11 @@ export interface PluginPendingInteractionRegistration {
   component: ComponentType<PluginPendingInteractionProps>;
 }
 
-/** Context handed to a `sidebarFooterAction`'s `run`. */
-export interface PluginSidebarFooterActionContext {
+/**
+ * Context handed to a `sidebarFooterAction`'s `run`. `navigate` and
+ * `panel` act on the focused surface, as for commands.
+ */
+export interface PluginSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /**
    * Navigate to this plugin's detail page in Tools, where declarative settings
    * and `settingsSection` slots render.
@@ -1310,8 +1302,11 @@ export interface PluginSidebarFooterActionRegistration {
   run(context: PluginSidebarFooterActionContext): void | Promise<void>;
 }
 
-/** Context handed to an experimental sidebar-footer action. */
-export interface ExperimentalSidebarFooterActionContext {
+/**
+ * Context handed to an experimental sidebar-footer action. `navigate` and
+ * `panel` act on the focused surface, as for commands.
+ */
+export interface ExperimentalSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /** Navigate to this plugin's detail page in Tools. */
   openPluginDetails(): void;
 }
@@ -1841,8 +1836,8 @@ export interface PluginSidebarThreadDraftState {
  * the content-script context's `experimental_setThreadRowStatus` (see
  * {@link PluginSdkApp.useSidebarThreadRowStatus}). bb's row draws it in
  * place of the draft glyph while it is set; a replaced list should do the
- * same so a status set by, say, the drafts or workflows plugin does not
- * vanish when the list changes hands.
+ * same so a status another plugin set does not vanish when the list changes
+ * hands. No bundled plugin sets one; only content scripts can.
  */
 export type PluginSidebarThreadRowStatus = PluginComposerThreadRowStatus;
 
@@ -2221,8 +2216,12 @@ export type ExperimentalThreadContextKind = "banner" | "card";
  * `experimental_threadInfoRow`. Render one or more
  * `experimental_ThreadContextCardRow` elements, or null to show nothing for
  * this thread. bb draws the card and places it, and mounts rows only in panes
- * whose thread context kind is `card`. A crash removes only this row for that
- * thread.
+ * whose thread context kind is `card`. The card is behind the "Thread context
+ * card" experiment, off by default, and never shows on a phone (a compact
+ * viewport with a coarse pointer); every other pane uses the `banner` kind, so
+ * register an `experimental_threadContextSegment` or
+ * `experimental_threadInfoRow` as well to reach it. A crash removes only this
+ * row for that thread.
  */
 export interface ExperimentalThreadContextCardRowRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2240,16 +2239,20 @@ export interface ExperimentalThreadContextCardRowRegistration {
 }
 
 /**
- * A titled section of the thread context card, below its rows; the card's
- * counterpart of `experimental_threadInfoSection`. bb draws the title and a
- * divider above it, and hides the section while its component renders
- * nothing. A crash removes only this section for that thread.
+ * A section of the thread context card, below its rows; the card's
+ * counterpart of `experimental_threadInfoSection`. Render one
+ * `experimental_InfoSection`, or null to hide the section for this thread. In
+ * the card, bb draws the section's label as a button that folds it and a
+ * divider above it. Sections start open; bb remembers the ones the person folds
+ * by `pluginId/id` across threads and restarts. While folded, the component
+ * stays mounted and the `experimental_InfoSection` children unmount. Like
+ * card rows, sections mount only where the card shows: behind the "Thread
+ * context card" experiment, off by default, and never on a phone. A crash
+ * removes only this section for that thread.
  */
 export interface ExperimentalThreadContextCardSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Heading bb draws above the section's rows. */
-  title: string;
   /**
    * Sections sort by `group` (string compare), then by `order` within a group
    * (unset sorts last), then by registration order, with bb's own sections
@@ -2452,37 +2455,30 @@ export interface PluginThreadActionDataInput {
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
-export interface PluginThreadActionItemInput<Data> {
+/**
+ * `panel` is the focused surface's side panel, as for plugin
+ * commands. Thread menus are not inside a side panel, so calls return false
+ * when the focused surface has no such tab.
+ */
+export interface PluginThreadActionItemInput<
+  Data,
+> extends ExperimentalPluginActionContext {
   thread: PluginThreadActionTarget;
   /** What `useData` last returned; undefined when the registration has none. */
   data: Data;
-  /** The registering plugin's `useSdk()` client. */
-  sdk: PluginBrowserBbSdk;
-  /** The registering plugin's `useBbNavigate()`. */
-  navigate: BbNavigate;
-  /**
-   * The focused surface's side panel, as for plugin commands. Thread menus
-   * are not inside a side panel, so calls return false when the focused
-   * surface has no such tab.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /**
  * What a registration's `experimental_bulkItem` receives for a selection
  * of several threads.
  */
-export interface PluginThreadActionBulkItemInput<Data> {
+export interface PluginThreadActionBulkItemInput<
+  Data,
+> extends ExperimentalPluginActionContext {
   /** The selected threads in the surface's list order; always two or more. */
   threads: readonly PluginThreadActionTarget[];
   /** What `useData` last returned; undefined when the registration has none. */
   data: Data;
-  /** The registering plugin's `useSdk()` client. */
-  sdk: PluginBrowserBbSdk;
-  /** The registering plugin's `useBbNavigate()`, as for `item`. */
-  navigate: BbNavigate;
-  /** The focused surface's side panel, as for `item`. */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /**
@@ -2529,7 +2525,8 @@ export interface PluginThreadActionRegistration<Data = undefined> {
    * (see {@link PluginThreadActionsContextMenuProps}). Pure and
    * synchronous like `item`, with every selected thread in `useData`'s
    * `threadIds`; `run` acts on all of them. Omit it, or return null, to leave
-   * the action out of selection menus. Experimental: see docs/api_to_audit.md.
+   * the action out of selection menus. Unused with `placement: "header"`,
+   * which selection menus leave out. Experimental: see docs/api_to_audit.md.
    */
   experimental_bulkItem?(
     input: PluginThreadActionBulkItemInput<Data>,
@@ -2540,9 +2537,11 @@ export interface PluginThreadActionRegistration<Data = undefined> {
  * Where a thread action shows.
  *
  * - `"menu"`: every thread actions menu and the quick-action picker.
- * - `"header"`: only the open thread's header, as an outline button labelled
- *   with the action's `label`, after the workspace's Open button. Several
- *   header actions share one split button, the first as its main action. At
+ * - `"header"`: only the open thread's header, as an outline button with the
+ *   action's `icon` and `label`, after the workspace's Open button. `detail`
+ *   is the button's tooltip and `variant: "destructive"` colors it. Several
+ *   header actions share one split button, the first as its main action and
+ *   the rest as menu rows drawn like the thread menu's. At
  *   compact width and in narrow split panes the buttons fold into the
  *   header's thread menu as rows at its top, after Open. `group` and `order`
  *   sort header actions among themselves. Header actions never appear in
@@ -3623,8 +3622,36 @@ export interface ExperimentalMessageMetadataRegistration {
 /** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
 export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
 
+/**
+ * What every plugin callback's context carries besides its own fields:
+ * commands, message actions, thread actions, panel and New thread panel
+ * actions, sidebar footer actions, and composer commands and menu items.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalPluginActionContext {
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /**
+   * The registering plugin's `useBbNavigate()`, bound to the surface that
+   * invoked the callback, so terminals, files and links open there.
+   */
+  navigate: BbNavigate;
+  /** The side panel of the surface that invoked the callback. */
+  panel: ExperimentalPanelController;
+}
+
+/**
+ * Context handed to a composer command's or composer menu item's `run`.
+ * `navigate` and `panel` act on the surface showing the
+ * composer.
+ */
+export interface ExperimentalComposerActionContext extends ExperimentalPluginActionContext {
+  /** The handling composer, bound to this plugin like `useComposer()`. */
+  composer: PluginComposerApi;
+}
+
 /** Context handed to a `messageAction`'s `run`. */
-export interface PluginMessageActionContext {
+export interface PluginMessageActionContext extends ExperimentalPluginActionContext {
   /** The thread whose timeline surfaced the action. */
   threadId: string;
   message: ThreadChatMessageReference;
@@ -3633,8 +3660,6 @@ export interface PluginMessageActionContext {
    * the exact text the user highlighted inside `message`.
    */
   selectedText?: string;
-  /** The side panel of the thread view whose timeline surfaced the action. */
-  experimental_panel: ExperimentalPanelController;
   /**
    * The composer of the thread the message is in, or null when that thread's
    * composer is not available on this surface. The same handle
@@ -3671,21 +3696,20 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
-/** Current context for palette and keyboard command invocations. */
-export interface PluginCommandContext {
+/**
+ * Current context for palette and keyboard command invocations. `navigate`
+ * and `panel` act on the focused surface: the thread view or
+ * New thread screen in focus, or the focused plugin page. On the New thread
+ * screen, a `{ context: { kind: "thread" }, availability: "action" }` tab
+ * resolves against `experimental_newThreadPanelAction` with the same id, so
+ * register both slots with the same id to support commands on both screens.
+ * Panel calls return false when the focused surface has no such tab or no
+ * side panel; guard with `isAvailable` rather than assuming.
+ */
+export interface PluginCommandContext extends ExperimentalPluginActionContext {
   /** The thread in view, or null on a surface without one. */
   threadId: string | null;
   projectId: string | null;
-  /**
-   * The focused surface's side panel: the thread view or New thread screen
-   * in focus, or the focused plugin page. On the New thread screen, a
-   * `{ context: { kind: "thread" }, availability: "action" }` tab resolves
-   * against `experimental_newThreadPanelAction` with the same id, so register
-   * both slots with the same id to support commands on both screens. Calls
-   * return false when the focused surface has no such tab or no side panel;
-   * guard with `isAvailable` rather than assuming.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** A default keyboard shortcut. Omitted modifiers are false. */
@@ -3752,7 +3776,7 @@ export interface ExperimentalComposerCommandRegistration {
    * Runs with the handling composer, bound to this plugin like `useComposer()`.
    * Errors (sync or async) are contained and logged.
    */
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /** Registers commands for bb's command palette. */
@@ -4046,7 +4070,7 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadHeaderTitleRegistration,
   ): void;
   /**
-   * Add a row to the thread context card of every thread pane (see
+   * Add a row to the thread context card, in panes that show one (see
    * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
@@ -4054,7 +4078,7 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadContextCardRowRegistration,
   ): void;
   /**
-   * Add a titled section to the thread context card of every thread pane (see
+   * Add a section to the thread context card, in panes that show one (see
    * {@link ExperimentalThreadContextCardSectionRegistration}). Experimental:
    * see docs/api_to_audit.md.
    */
@@ -4342,7 +4366,13 @@ export type PluginComposerScope =
 export interface ComposerCustomization {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Composer kinds where this customization is active; omit for all kinds. */
+  /**
+   * Composer kinds where this customization is active; omit for all kinds.
+   * The sent-message editor reports `"thread"` and runs only what the user
+   * invokes there: `plusMenu` rows, the popups they open, and composer
+   * commands. It mounts no `actions`, `banners`, `sendMenu` rows or
+   * `richText` effects.
+   */
   scopes?: readonly PluginComposerScope["kind"][];
   /**
    * Controls rendered in the composer's action row, before the voice, stop
@@ -4385,7 +4415,7 @@ export interface ComposerPlusMenuItem {
   /** Accessible description for the host-rendered row. */
   description?: string;
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /**
@@ -4401,7 +4431,7 @@ export interface ComposerSendMenuItem {
   /** Accessible description for the host-rendered row. */
   description?: string;
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /**
@@ -4911,7 +4941,7 @@ export interface ThreadChatMessageAction {
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
- * deliberate exception to the no-host-components rule (§5.5): a stable
+ * deliberate exception to the no-host-components rule: a stable
  * product capability, not a UI kit. Versioned additive like slot props;
  * internal timeline rows, query hooks, and prompt-box configuration are
  * deliberately not exposed.
@@ -5141,7 +5171,7 @@ export interface NewThreadRequest {
  * rendered by the BB app inside a plugin slot.
  *
  * It is the create-side counterpart to `ThreadChat`: same deliberate
- * exception to the no-host-components rule (§5.5), same additive versioning.
+ * exception to the no-host-components rule, same additive versioning.
  */
 export interface NewThreadComposerProps {
   /**
@@ -5462,10 +5492,24 @@ export interface ExperimentalPanelTabIconProps {
   tabKey: string;
 }
 
+/** A plugin nav panel page; see {@link BbContext.experimental_pluginPanel}. */
+export interface ExperimentalPluginPanelPage {
+  pluginId: string;
+  /** The panel's registered `path`. */
+  path: string;
+  /** The location inside the panel, percent-encoded like the component's `subPath` prop; empty at the panel's root. */
+  subPath: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
   threadId: string | null;
+  /**
+   * The plugin nav panel the route shows (any plugin's), or null on other
+   * pages. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_pluginPanel: ExperimentalPluginPanelPage | null;
 }
 
 export interface BbNavigate {
@@ -5490,14 +5534,17 @@ export interface BbNavigate {
   ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
-   * `initialPrompt` to seed the composer draft (serialized thread, project,
-   * and section mention tokens become pills) and `focusPrompt` to focus the
-   * composer on arrival — the pairing behind "Create via chat" style entry
-   * points that drop the user into chat with a prefilled prompt.
-   * `projectId` makes that project the composer's selection; `placement`
-   * files the new thread in a section and pin state (omitted: unpinned,
-   * outside sections); `environmentId` reuses that environment and `hostId`
-   * picks a machine for a new one (`environmentId` wins when both are set).
+   * `initialPrompt` to seed the composer draft when it is empty (serialized
+   * thread, project, and section mention tokens become pills) and
+   * `focusPrompt` to focus the composer on arrival — the pairing behind
+   * "Create via chat" style entry points that drop the user into chat with a
+   * prefilled prompt. `projectId` makes that project the composer's
+   * selection; `placement` files the new thread in a section and pin state.
+   * Without `placement`, the screen keeps the placement it already shows,
+   * unless `environmentId` or `hostId` is set, which resets it to unpinned
+   * and outside sections. `environmentId` reuses that environment and
+   * `hostId` picks a machine for a new one (`environmentId` wins when both
+   * are set).
    */
   toCompose(options?: {
     projectId?: string;
@@ -5541,8 +5588,8 @@ export interface BbNavigate {
 // The whole runtime surface. Declaration-versus-runtime parity is tested
 // against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
-// Components are deliberately NOT part of this surface (removed 2026-07-03,
-// plugin design §5.5): plugins vendor shadcn-style component source from the
+// Generic UI components are deliberately NOT part of this surface: plugins
+// vendor shadcn-style component source from the
 // BB registry (`npx shadcn add @bb/<name>`) and own it. `bb plugin build`
 // shims react, the shared-singleton packages (portal radix families,
 // sonner, vaul, @pierre/diffs) and the host-resident libraries every plugin
@@ -6163,9 +6210,9 @@ export interface PluginSdkApp {
     request: ExperimentalSaveFileRequest,
   ): Promise<ExperimentalSaveFileOutcome>;
   /**
-   * The host-owned chat component (see {@link ThreadChatProps}). Together
-   * with `Markdown`, the only components the SDK ships — everything else
-   * stays vendored per §5.5.
+   * The host-owned chat component (see {@link ThreadChatProps}): bb's own
+   * chat, not a generic UI kit. Generic primitives stay vendored from the BB
+   * registry.
    */
   ThreadChat: ComponentType<ThreadChatProps>;
   /**
@@ -6248,10 +6295,12 @@ export interface PluginSdkApp {
    */
   experimental_Diff: ComponentType<DiffProps>;
   /**
-   * The thread Info tab's section frame (see
+   * The section frame of the thread Info tab and the thread context card (see
    * {@link ExperimentalInfoSectionProps}), the one bb's own sections use.
-   * Inside an `experimental_threadInfoSection` it collapses, and the host
-   * remembers that per registration. Experimental: see docs/api_to_audit.md.
+   * Inside an `experimental_threadInfoSection` it collapses, and inside an
+   * `experimental_threadContextCardSection` it folds in the card's style; the
+   * host remembers either per registration. Experimental: see
+   * docs/api_to_audit.md.
    */
   experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
   /**

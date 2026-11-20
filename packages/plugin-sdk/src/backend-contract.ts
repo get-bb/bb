@@ -69,7 +69,7 @@ export interface PluginLogger {
 }
 
 // ---------------------------------------------------------------------------
-// Settings (design §4.2).
+// Settings.
 // ---------------------------------------------------------------------------
 
 export type PluginSettingDescriptor =
@@ -171,7 +171,7 @@ export interface PluginSettings {
 }
 
 // ---------------------------------------------------------------------------
-// Storage (design §4.3).
+// Storage.
 // ---------------------------------------------------------------------------
 
 export interface PluginKvStorage {
@@ -205,7 +205,7 @@ export interface PluginStorage {
 }
 
 // ---------------------------------------------------------------------------
-// Thread lifecycle events (design §4.5).
+// Thread lifecycle events.
 // ---------------------------------------------------------------------------
 
 /**
@@ -289,7 +289,7 @@ export interface PluginTurnFailedEvent {
 }
 
 /**
- * Lifecycle events a plugin can observe with `bb.events.on` (design §4.5).
+ * Lifecycle events a plugin can observe with `bb.events.on`.
  *
  * **Events are announcements core makes.** Something already happened; a
  * handler is told about it and whatever it returns is IGNORED. Handlers run
@@ -852,7 +852,7 @@ export interface PluginHooks {
 }
 
 // ---------------------------------------------------------------------------
-// Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
+// Wire surfaces: HTTP, rpc, realtime.
 // ---------------------------------------------------------------------------
 
 export type PluginHttpAuthMode = "local" | "token" | "none";
@@ -965,7 +965,7 @@ export interface PluginRealtime {
 }
 
 // ---------------------------------------------------------------------------
-// Background services and schedules (design §4.8).
+// Background services and schedules.
 // ---------------------------------------------------------------------------
 
 export interface PluginBackground {
@@ -994,7 +994,7 @@ export interface PluginBackground {
 }
 
 // ---------------------------------------------------------------------------
-// Agent-facing CLI subcommands (design §4.4).
+// Agent-facing CLI subcommands.
 // ---------------------------------------------------------------------------
 
 export interface PluginCliCommandInfo {
@@ -1133,11 +1133,11 @@ export interface PluginCli {
 }
 
 // ---------------------------------------------------------------------------
-// Agent surfaces: per-turn context and native tools (design §4.4).
+// Agent surfaces: per-turn context and native tools.
 // ---------------------------------------------------------------------------
 
-/** Per-turn context handed to bb.agents context providers (design §4.4). */
-/** MCP-style content parts a native tool may return (design §4.4). */
+/** Per-turn context handed to bb.agents context providers. */
+/** MCP-style content parts a native tool may return. */
 export type PluginAgentToolContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -1146,7 +1146,7 @@ export type PluginAgentToolResult =
   | string
   | { content: PluginAgentToolContentPart[]; isError?: boolean };
 
-/** Per-call context handed to a native tool's execute (design §4.4). */
+/** Per-call context handed to a native tool's execute. */
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
@@ -1736,7 +1736,7 @@ export interface PluginAgents {
     ) => PluginAgentConfiguration,
   ): void;
   /**
-   * Register a native dynamic tool (design §4.4). `parameters` is either a
+   * Register a native dynamic tool. `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
    * plain JSON-schema object (no validation; execute receives the raw
    * arguments as `unknown`). Tool-set changes apply on the NEXT session
@@ -1851,12 +1851,12 @@ export interface ExperimentalPluginProviderEnvHealth {
 }
 
 // ---------------------------------------------------------------------------
-// Host-rendered UI contributions (design §4.9).
+// Host-rendered UI contributions.
 // ---------------------------------------------------------------------------
 
 export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
 
-/** Search context handed to a mention provider (design §4.9). `projectId`/
+/** Search context handed to a mention provider. `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 export interface PluginMentionSearchContext {
   trigger: PluginMentionTrigger;
@@ -1937,7 +1937,7 @@ export interface PluginUi {
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
   /**
-   * Register a mention provider for the shipped app's composer (design §4.9).
+   * Register a mention provider for the shipped app's composer.
    * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or
    * `~` with `triggers`. Items group under `label` in the mention menu; a
    * picked item becomes a `{ kind: "plugin" }` mention resource whose context
@@ -1994,41 +1994,6 @@ export interface PluginServerApi {
    * not a place to write.
    */
   readonly experimental_dataDir: string;
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Open (or share) this server's tunnel ingress for `audience`, a private
-   * listener on 127.0.0.1 with an ephemeral port. For a plugin that runs a
-   * tunnel client for bb connect next: point the client at `baseUrl`.
-   *
-   * Every HTTP request and WebSocket upgrade must carry an
-   * `x-bb-gate-assertion` signed by the bb connect gate for `audience`
-   * (`server:<serverId>`), the request method and the exact path and query;
-   * anything else is answered 401. A verified request reaches the same app
-   * as `loopbackBaseUrl`, authenticated only by the gate's claims.
-   *
-   * Opening the same audience again shares the listener; it stops when every
-   * handle is closed. Handles close when the plugin is disabled or unloaded.
-   */
-  internal_DO_NOT_USE_openTunnelIngress(
-    options: InternalDoNotUsePluginTunnelIngressOptions,
-  ): Promise<InternalDoNotUsePluginTunnelIngress>;
-}
-
-/** Options for `bb.server.internal_DO_NOT_USE_openTunnelIngress`. */
-export interface InternalDoNotUsePluginTunnelIngressOptions {
-  /** The gate assertion audience this ingress accepts, e.g. `server:<id>`. */
-  audience: string;
-}
-
-/** A handle on an open tunnel ingress. */
-export interface InternalDoNotUsePluginTunnelIngress {
-  /** Base URL of the ingress listener, e.g. "http://127.0.0.1:41234". */
-  readonly baseUrl: string;
-  /** Release this handle; idempotent. */
-  close(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -2038,7 +2003,7 @@ export interface InternalDoNotUsePluginTunnelIngress {
 /** Options for one `complete` call. */
 export interface PluginAiCompleteOptions {
   /**
-   * Aborted when bb stops waiting: the task timed out (5 seconds for titles
+   * Aborted when bb stops waiting: the task timed out (8 seconds for titles
    * and commit messages) or the request was cancelled. Pass it to `fetch`.
    */
   readonly signal: AbortSignal;
@@ -2046,7 +2011,7 @@ export interface PluginAiCompleteOptions {
 
 /** Options for one `transcribe` call. */
 export interface PluginAiTranscribeOptions {
-  /** Aborted when bb stops waiting (10 seconds) or the request was cancelled. */
+  /** Aborted when bb stops waiting (70 seconds) or the request was cancelled. */
   readonly signal: AbortSignal;
   /**
    * Vocabulary the speaker is likely to use (names, identifiers), for
@@ -2128,48 +2093,6 @@ export interface PluginSharedPortTunnelIdentity {
   baseDomain: string;
 }
 
-/** The frp server a machine's next tunnel dials. */
-export interface InternalDoNotUsePluginNextTunnelServer {
-  /** `wss` for TLS, `websocket` for plain `ws://` (local runs only). */
-  protocol: "wss" | "websocket";
-  /** Host name without a port, e.g. "tunnel.next.getbb.app". */
-  host: string;
-  port: number;
-}
-
-/** Where every eligible machine serves its port shares through bb connect next. */
-export interface InternalDoNotUsePluginNextTunnelConfig {
-  /**
-   * Next domain without a scheme, with a port only for local runs, e.g.
-   * "next.getbb.app". A share answers at `<machine-label>--<port>.<domain>`.
-   */
-  domain: string;
-  server: InternalDoNotUsePluginNextTunnelServer;
-}
-
-/** One machine's next tunnel, as its daemon last reported it. */
-export interface InternalDoNotUsePluginHostNextTunnelStatus {
-  hostId: string;
-  hostName: string;
-  /**
-   * `idle` while the machine shares no port or next is off, `refused` when
-   * the gate refused the machine credential (retried after five minutes),
-   * `offline` when the gate cannot be reached (retried with backoff),
-   * `error` when the daemon could not start frpc or refused the configuration.
-   */
-  state: "idle" | "connecting" | "connected" | "refused" | "offline" | "error";
-  /** The machine's gate label, or null before the daemon learned it. */
-  label: string | null;
-  lastError: string | null;
-  nextRetryAt: number | null;
-  since: number;
-  shares: Array<{
-    port: number;
-    state: "pending" | "active" | "refused";
-    error: string | null;
-  }>;
-}
-
 export interface PluginHosts {
   /** Create the owning plugin's typed client for its singular `bb.host` entry. */
   experimental_client<
@@ -2199,38 +2122,6 @@ export interface PluginHosts {
    * here: it is owned by the daemon's trusted enrollment.
    */
   declareSharedPorts(hostId: string, ports: readonly number[]): void;
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Turn bb connect next machine tunnels on (a config) or off (`null`). The
-   * server sends the config to every connected daemon that holds a bb connect
-   * machine credential and speaks a protocol that knows next tunnels; each
-   * such daemon runs frpc with one proxy per port declared with
-   * `declareSharedPorts`, at `<machine-label>--<port>.<domain>`. The daemon
-   * refuses a domain or tunnel server outside its trusted enrollment's
-   * domain. One plugin owns the setting at a time; another plugin's call
-   * throws while it is set. Cleared when the owning plugin is disabled.
-   */
-  internal_DO_NOT_USE_setNextTunnels(
-    config: InternalDoNotUsePluginNextTunnelConfig | null,
-  ): void;
-
-  /** Internal to bb's own connect plugins; do not use. The last next-tunnel status of every connected daemon that reported one. */
-  internal_DO_NOT_USE_nextTunnelStatuses(): InternalDoNotUsePluginHostNextTunnelStatus[];
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Call `listener` whenever a daemon reports a changed next-tunnel status or
-   * its session ends. Returns an unsubscribe function; plugin disposal also
-   * unsubscribes.
-   */
-  internal_DO_NOT_USE_onNextTunnelStatusChange(
-    listener: () => void,
-  ): () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -2239,11 +2130,13 @@ export interface PluginHosts {
 
 export interface PluginStatusApi {
   /**
-   * Mark this plugin `needs-configuration` (with a message shown in
-   * `bb plugin list` and the UI) instead of failing — e.g. a factory or
-   * service that finds no API key configured. Cleared on the next load;
-   * saving settings does not auto-reload in V1, so ask the user to
-   * `bb plugin reload <id>` after configuring.
+   * Mark this plugin `needs-configuration` instead of failing — e.g. a
+   * factory or service that finds no API key configured. `bb plugin list`
+   * shows the message; the plugin's page shows it only when the plugin has no
+   * settings, and otherwise links to its settings instead. Cleared on the next
+   * load. Saving settings that change a value reloads a plugin in this state,
+   * so the factory runs again with the new values; without settings, the
+   * user reloads it from the plugin's page or with `bb plugin reload <id>`.
    */
   needsConfiguration(message: string): void;
 }
@@ -2282,7 +2175,7 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
 };
 
 /**
- * The API object handed to a plugin's factory (design §4). Implemented by
+ * The API object handed to a plugin's factory. Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
  */
@@ -2293,28 +2186,28 @@ export interface BbPluginApi {
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */
   readonly log: PluginLogger;
-  /** Declarative settings (design §4.2). */
+  /** Declarative settings. */
   readonly settings: PluginSettings;
-  /** Namespaced KV + per-plugin database (design §4.3). */
+  /** Namespaced KV + per-plugin database. */
   readonly storage: PluginStorage;
-  /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
+  /** HTTP routes under /api/v1/plugins/<id>/http/*. */
   readonly http: PluginHttp;
-  /** RPC methods under /api/v1/plugins/<id>/rpc/<method> (design §4.6). */
+  /** RPC methods under /api/v1/plugins/<id>/rpc/<method>. */
   readonly rpc: PluginRpc;
-  /** Ephemeral push to connected frontends (design §4.7). */
+  /** Ephemeral push to connected frontends. */
   readonly realtime: PluginRealtime;
-  /** Long-lived services + cron schedules (design §4.8). */
+  /** Long-lived services + cron schedules. */
   readonly background: PluginBackground;
-  /** Agent-facing `bb` CLI subcommand (design §4.4). */
+  /** Agent-facing `bb` CLI subcommand. */
   readonly cli: PluginCli;
-  /** Per-turn agent context contributions (design §4.4). */
+  /** Per-turn agent context contributions. */
   readonly agents: PluginAgents;
   /** Agent provider registration (docs/provider-plugin-api.md §1). */
   readonly providers: PluginProviders;
-  /** Host-rendered UI contributions (design §4.9). */
+  /** Host-rendered UI contributions. */
   readonly ui: PluginUi;
   /**
-   * Additive plugin lifecycle listeners (design §4.5). Announcements core
+   * Additive plugin lifecycle listeners. Announcements core
    * makes: a handler's return value is ignored.
    */
   readonly events: PluginEvents;
@@ -2327,7 +2220,7 @@ export interface BbPluginApi {
   readonly experimental_hooks: PluginHooks;
   /**
    * Environment targets: places a thread can run that this plugin
-   * provisions (plans/plugin-environment-providers.md). Experimental: see
+   * provisions. Experimental: see
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
@@ -2346,7 +2239,7 @@ export interface BbPluginApi {
    */
   readonly experimental_aiServices: PluginAiServices;
   /**
-   * The full BB SDK, bound to this server over loopback (design §4.1).
+   * The full BB SDK, bound to this server over loopback.
    * Bind-gated: reading this before the host binds the SDK throws. The real
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer

@@ -42,7 +42,7 @@ import { ThreadTimelinePanelLoadingSkeleton } from "@/components/thread/timeline
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
 import {
   ThreadContextCard,
-  useThreadContextCardContentInset,
+  useThreadContextCardTranscriptCenteredMinWidth,
   WithoutThreadContextCard,
 } from "@/components/plugin/PluginThreadContextCard";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
@@ -525,7 +525,8 @@ export function ThreadScreen({
     threadId: thread.id,
   });
   const systemConfigQuery = useSystemConfig();
-  const contextCardInset = useThreadContextCardContentInset();
+  const transcriptCenteredMinWidth =
+    useThreadContextCardTranscriptCenteredMinWidth();
   const pendingInteractionsQuery = useThreadPendingInteractions(thread.id);
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const hasPendingInteraction = pendingInteractions.length > 0;
@@ -693,7 +694,7 @@ export function ThreadScreen({
             key={thread.id}
             scrollBehavior="bottom-anchor"
             scrollAnchorThreadId={thread.id}
-            scrollContentInsetEndPx={contextCardInset}
+            scrollContentCenteredMinWidthPx={transcriptCenteredMinWidth}
             shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
             scrollAreaClassName="scroll-pt-4"
             contentClassName="gap-2 pt-4"

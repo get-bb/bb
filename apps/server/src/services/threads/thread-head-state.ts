@@ -102,9 +102,15 @@ export function listOpenTurnRequestRows(
   const requestKeys: ThreadClientTurnRequestKey[] = decodeRows(
     db,
     acceptedRows,
-  ).flatMap(({ event }) =>
+  ).flatMap(({ event, meta }) =>
     event.type === "turn/input/accepted"
-      ? [{ requestId: event.clientRequestId, threadId: event.threadId }]
+      ? [
+          {
+            acceptedSequence: meta.seq,
+            requestId: event.clientRequestId,
+            threadId: event.threadId,
+          },
+        ]
       : [],
   );
   return [

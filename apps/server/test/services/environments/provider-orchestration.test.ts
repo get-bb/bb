@@ -658,13 +658,23 @@ describe("core environment orchestration", () => {
           reportEnvironmentHookProgress(harness.deps, "host_foreign", {
             type: "environment.hook.progress",
             operationId: command.operationId,
-            entry: { type: "output", text: "foreign output", status: null },
+            entry: {
+              type: "output",
+              key: "fixture",
+              text: "foreign output",
+              status: null,
+              startedAt: null,
+              metadata: null,
+            },
           });
           reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
             type: "environment.hook.progress",
             operationId: command.operationId,
             entry: {
               type: "step",
+              key: "fixture",
+              startedAt: null,
+              metadata: null,
               text: "Running teardown",
               status: "started",
             },
@@ -672,7 +682,14 @@ describe("core environment orchestration", () => {
           reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
             type: "environment.hook.progress",
             operationId: command.operationId,
-            entry: { type: "output", text: "hook output", status: null },
+            entry: {
+              type: "output",
+              key: "fixture",
+              text: "hook output",
+              status: null,
+              startedAt: null,
+              metadata: null,
+            },
           });
         },
       });
@@ -687,7 +704,14 @@ describe("core environment orchestration", () => {
         reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
           type: "environment.hook.progress",
           operationId,
-          entry: { type: "output", text: "late output", status: null },
+          entry: {
+            type: "output",
+            key: "fixture",
+            text: "late output",
+            status: null,
+            startedAt: null,
+            metadata: null,
+          },
         });
       }
       expect(

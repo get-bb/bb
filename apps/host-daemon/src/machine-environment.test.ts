@@ -7,7 +7,7 @@ it("makes machine settings available to arbitrary child commands and removes sta
   const environment = new MachineEnvironment(target, {
     MACHINE_EXISTING: "shell-original",
   });
-  environment.replace([
+  const firstEntries = [
     {
       name: "MACHINE_EXISTING",
       value: "configured",
@@ -20,7 +20,9 @@ it("makes machine settings available to arbitrary child commands and removes sta
       source: { core: "machine-environment" },
       reason: "test",
     },
-  ]);
+  ] as const;
+  expect(environment.replace(firstEntries)).toBe(true);
+  expect(environment.replace(firstEntries)).toBe(false);
   const readChild = () =>
     execFileSync(
       process.execPath,
@@ -35,16 +37,19 @@ it("makes machine settings available to arbitrary child commands and removes sta
     MACHINE_EXISTING: "configured",
     MACHINE_NEW: "first",
   });
-  environment.replace([
-    {
-      name: "MACHINE_NEW",
-      value: "second",
-      source: { core: "machine-environment" },
-      reason: "test",
-    },
-  ]);
+  expect(
+    environment.replace([
+      {
+        name: "MACHINE_NEW",
+        value: "second",
+        source: { core: "machine-environment" },
+        reason: "test",
+      },
+    ]),
+  ).toBe(true);
   expect(JSON.parse(readChild())).toEqual(["original", "second"]);
-  environment.replace([]);
+  expect(environment.replace([])).toBe(true);
+  expect(environment.replace([])).toBe(false);
   expect(JSON.parse(readChild())).toEqual(["original", null]);
   expect(
     environment.shellEnvironment({

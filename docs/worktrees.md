@@ -112,6 +112,9 @@ pnpm install
 Contract:
 
 - The script runs with `env bash`, working directory set to the new worktree.
+- It gets the daemon's sanitized environment overlaid with your login shell's
+  environment (including its `PATH`), plus the variables you configured for the
+  machine and project. Teardown gets the same environment.
 - stdin is closed. stdout and stderr stream into the thread's provisioning
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and

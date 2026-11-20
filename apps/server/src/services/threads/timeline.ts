@@ -1300,6 +1300,7 @@ function selectStandardTimelineEventRows(
         !existingRequests.has(parseAcceptedInputClientRequestId(row, decode)),
     )
     .map((row) => ({
+      acceptedSequence: row.sequence,
       threadId: thread.id,
       requestId: parseAcceptedInputClientRequestId(row, decode),
     }));
@@ -2149,6 +2150,20 @@ export function buildThreadConversationOutlineProjectionKey(
   ]);
 }
 
+function buildConversationOutlineCheckpointKey(
+  thread: Thread,
+  options: BuildThreadConversationOutlineOptions,
+): string {
+  return JSON.stringify([
+    CONVERSATION_OUTLINE_PROJECTION_VERSION,
+    getThreadEventRewriteGeneration(thread.id),
+    thread.providerId,
+    options.providerDisplayName ?? null,
+    options.completedTurnDisplay,
+    options.includeClearedContextHistory,
+  ]);
+}
+
 function parseThreadConversationOutlineItems(
   itemsJson: string,
 ): ThreadConversationOutlineItem[] | null {
@@ -2196,7 +2211,7 @@ export function loadThreadConversationOutline(
         items: projectConversationOutlineIncrementally({
           db,
           threadId: thread.id,
-          key: buildThreadConversationOutlineProjectionKey(thread, 0, options),
+          key: buildConversationOutlineCheckpointKey(thread, options),
           maxSeq: options.maxSeq,
           historySequenceStart,
           resolveProjectionState: (classificationSequenceStart, previous) => {

@@ -23,8 +23,6 @@ import { useDesktopPlatform } from "./desktop-platform";
 import { DOWNLOAD_PAGE_PATH, GITHUB_STARS, formatStarCount } from "./site";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
-const NAV_DOWNLOAD_CLASS = "btn btn-primary btn-sm nav-download";
-
 type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
 
 function NavMenu({
@@ -235,7 +233,10 @@ export function SiteNav({
       </div>
       <div className="nav-actions">
         <GitHubStarsLink stars={GITHUB_STARS} />
-        <a className={NAV_DOWNLOAD_CLASS} href={DOWNLOAD_PAGE_PATH}>
+        <a
+          className="btn btn-primary btn-sm nav-download"
+          href={DOWNLOAD_PAGE_PATH}
+        >
           Download
         </a>
       </div>

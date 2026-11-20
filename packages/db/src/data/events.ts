@@ -94,7 +94,6 @@ import {
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
-const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
 const turnRequestIdSql = sql<string>`json_extract(${events.data}, '$.requestId')`;
 const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
   type.startsWith("item/"),
@@ -1434,6 +1433,7 @@ export interface ListOpenTurnInputAcceptedRowsByThreadIdsArgs {
 }
 
 export interface ThreadClientTurnRequestKey {
+  acceptedSequence: number;
   requestId: ClientTurnRequestId;
   threadId: string;
 }
@@ -2017,34 +2017,38 @@ export function listStoredClientTurnRequestRowsByKeys(
   db: DbQueryConnection,
   args: ListStoredClientTurnRequestRowsByKeysArgs,
 ): StoredEventRow[] {
+  const requestType = "client/turn/requested" satisfies ThreadEventType;
   const rows = queryInSqliteVariableBatches({
     dedupeKey: (key) => `${key.threadId}\0${key.requestId}`,
     fixedVariableCount: 1,
-    maximumValueCount: CLIENT_TURN_REQUEST_KEY_BATCH_SIZE,
-    queryBatch: (keys) => {
-      const requestType = "client/turn/requested" satisfies ThreadEventType;
-      const requestIdsByThread = new Map<string, string[]>();
-      for (const key of keys) {
-        const requestIds = requestIdsByThread.get(key.threadId) ?? [];
-        requestIds.push(key.requestId);
-        requestIdsByThread.set(key.threadId, requestIds);
-      }
-      const keyConditions = [...requestIdsByThread].map(
-        ([threadId, requestIds]) =>
-          and(
-            eq(events.threadId, threadId),
-            inArray(turnRequestIdSql, requestIds),
-          ),
-      );
-      return db
+    queryBatch: (keys) =>
+      db
         .select(storedEventRowFields)
-        .from(events)
-        .where(and(eq(events.type, requestType), or(...keyConditions)))
-        .orderBy(events.threadId, events.sequence)
-        .all();
-    },
+        .from(
+          sql`(VALUES ${sql.join(
+            keys.map(
+              (key) =>
+                sql`(${key.threadId}, ${key.requestId}, ${key.acceptedSequence})`,
+            ),
+            sql`, `,
+          )}) AS requested`,
+        )
+        .innerJoin(
+          events,
+          sql`${events.id} = (
+            SELECT candidate.id
+            FROM ${events} AS candidate INDEXED BY events_thread_type_sequence_idx
+            WHERE candidate.thread_id = requested.column1
+              AND candidate.type = ${requestType}
+              AND candidate.sequence < requested.column3
+              AND json_extract(candidate.data, '$.requestId') = requested.column2
+            ORDER BY candidate.sequence DESC
+            LIMIT 1
+          )`,
+        )
+        .all(),
     values: args.keys,
-    variableCountPerValue: 2,
+    variableCountPerValue: 3,
   });
   return rows.sort(
     (left, right) =>

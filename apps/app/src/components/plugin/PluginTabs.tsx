@@ -6,10 +6,10 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   isNavTab,
   isThreadTab,
+  useIsPluginFrontendSettled,
   usePluginSlotKind,
   type PluginNavTabSlot,
   type PluginTabSlot,
@@ -158,7 +158,10 @@ function Visibility({
   return <VisibilityResult {...props} visible={false} />;
 }
 
-export function usePluginTabs(context: PluginTabContext | null) {
+export function usePluginTabs(
+  context: PluginTabContext | null,
+  awaitedPluginIds: readonly string[] | null,
+) {
   const tabs = usePluginSlotKind("tabs");
   const contextKey =
     context === null
@@ -240,10 +243,11 @@ export function usePluginTabs(context: PluginTabContext | null) {
               />
             </PluginTabScope>
           ));
-  const settled = usePluginFrontendsSettled();
+  const isPluginSettled = useIsPluginFrontendSettled();
   const isReady =
     context !== null &&
-    settled &&
+    awaitedPluginIds !== null &&
+    awaitedPluginIds.every(isPluginSettled) &&
     applicable.every(
       (slot) =>
         slot.useVisible === undefined ||

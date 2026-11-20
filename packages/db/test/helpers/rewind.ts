@@ -154,6 +154,30 @@ export function dropPluginFailureLabelColumns(db: DbConnection): void {
   }
 }
 
+export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(hosts)")
+    .all();
+  const names = new Set(columns.map((existing) => existing.name));
+  if (names.has("teardown_blocked_by_environment_id")) {
+    db.$client.exec(
+      "ALTER TABLE hosts DROP COLUMN teardown_blocked_by_environment_id",
+    );
+  }
+  if (names.has("remove_retry_at") && !names.has("suspend_retry_at")) {
+    db.$client.exec("ALTER TABLE hosts ADD COLUMN suspend_retry_at integer");
+  }
+}
+
+export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "enabled")) {
+    db.$client.exec("ALTER TABLE plugin_marketplaces DROP COLUMN enabled");
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

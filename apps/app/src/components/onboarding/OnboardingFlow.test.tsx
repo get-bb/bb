@@ -345,40 +345,13 @@ describe("OnboardingFlow", () => {
   it("keeps showing agents whose checks answered while slower checks are still running", () => {
     vi.useFakeTimers();
     const { queryClient } = renderFlow({ initialStep: "agent" });
-    const catalogEntry = (id: string): SystemProviderCatalogEntry => ({
-      id,
-      displayName: id,
-      pluginId: `provider-${id}`,
-      pluginName: id,
-      pluginEnabled: true,
-      enabled: true,
-      available: true,
-      logoUrl: null,
-      info: null,
-    });
-    const claudeCode: SystemProviderState = {
-      providerId: "claude-code",
-      displayName: "Claude Code",
-      status: "ready",
-      statusMessage: null,
-      accountEmail: null,
-      planLabel: null,
-      installedVersion: "2.1.0",
-      minimumSupportedVersion: null,
-      canInstall: true,
-      canUpdate: true,
-      loginCommand: "claude auth login",
-      localLoginCommand: null,
-      internal_DO_NOT_USE_guidedSignIn: false,
-      internal_DO_NOT_USE_setupGuidePlanLabel: null,
-    };
     act(() => {
       queryClient.setQueryData(
         hostProviderStateQueryKey({
           hostId: "host_1",
           providerId: "claude-code",
         }),
-        { providers: [claudeCode] },
+        { providers: [providerState("claude-code")] },
       );
       queryClient.setQueryData(systemProviderCatalogQueryKey(), [
         catalogEntry("claude-code"),
@@ -521,25 +494,6 @@ describe("OnboardingFlow", () => {
         "codex",
       ]),
     );
-  });
-
-  it("says the machine can't be reached when every check failed while it is offline", async () => {
-    providerStateAnswers.set("", () => Promise.reject(new Error("boom")));
-    providerStateAnswers.set("claude-code", () =>
-      Promise.reject(new Error("boom")),
-    );
-    providerStateAnswers.set("codex", () => Promise.reject(new Error("boom")));
-    renderFlow({
-      initialStep: "agent",
-      catalog: ["claude-code", "codex"],
-      hostStatus: "disconnected",
-    });
-
-    expect(
-      await screen.findByText(
-        "Can't reach bee. Make sure bb is running there, then retry.",
-      ),
-    ).toBeTruthy();
   });
 
   it.each([

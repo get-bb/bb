@@ -10,6 +10,10 @@ import {
   windowsInstallerFailureScript,
 } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
+import {
+  refreshServerAccessOrigins,
+  restoreServerAccessOrigins,
+} from "./services/machines/server-access.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
@@ -19,14 +23,9 @@ import {
 } from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
-  declineWebSocketCompression,
+  declineSameMachineWebSocketCompression,
   WEB_SOCKET_COMPRESSION,
 } from "./ws/compression.js";
-import { createGateKeyStore } from "./services/connect-next/gate-keys.js";
-import {
-  createTunnelIngressManager,
-  type TunnelIngressManager,
-} from "./services/connect-next/tunnel-ingress.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
@@ -76,6 +75,7 @@ import {
 } from "./services/plugins/plugin-server-access-registry.js";
 import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
+import { requestHostDerivedStateRefreshForPluginChange } from "./services/hosts/host-derived-state.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -142,6 +142,7 @@ import { apiJsonCompression } from "./api-response-compression.js";
 import { APP_SURFACE_WEB, type AppSurface } from "@bb/config/app-surface";
 import type { ServerBindHost } from "@bb/config/server";
 import { registerServerMoveRoutes } from "./routes/server-move.js";
+import { registerServerSweepRoutes } from "./routes/server-sweeps.js";
 import {
   INTERNAL_SERVER_MOVE_PENDING_PATH,
   registerInternalServerMoveRoutes,
@@ -174,7 +175,6 @@ interface ServerApp {
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
   serverMove: ServerMoveCoordinator;
-  tunnelIngress: TunnelIngressManager;
 }
 
 interface CloseWebSocketServerArgs {
@@ -215,7 +215,6 @@ interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   performanceDiagnosticsEnabled?: () => boolean;
   staticDir?: string;
-  tunnelIngressNow?: () => number;
 }
 
 interface StaticResponseHeadersArgs {
@@ -465,18 +464,6 @@ export function createApp(
     app,
   });
   wss.options.perMessageDeflate = WEB_SOCKET_COMPRESSION;
-  const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
-  const tunnelIngress = createTunnelIngressManager({
-    app,
-    injectWebSocket,
-    keys: createGateKeyStore({
-      url: () => deps.config.connectGateKeysUrl,
-      logger: deps.logger,
-      now: tunnelIngressNow,
-    }),
-    loopbackOrigin: () => `http://127.0.0.1:${deps.config.serverPort}`,
-    logger: deps.logger,
-  });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
   const bbAppArtifactService =
@@ -796,11 +783,15 @@ export function createApp(
         }),
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
-    openTunnelIngress: (audience) => tunnelIngress.open(audience),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
+      requestHostDerivedStateRefreshForPluginChange(deps);
+    },
+    onPluginsChanged: () => {
+      requestHostDerivedStateRefreshForPluginChange(deps);
+      refreshServerAccessOrigins(deps);
     },
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
@@ -844,7 +835,9 @@ export function createApp(
     ),
   );
   setServerAccessBridge(pluginService.serverAccessProviders);
+  restoreServerAccessOrigins(deps);
   setServerAccessRecheckHandler(() => {
+    refreshServerAccessOrigins(deps);
     deps.hub.notifySystem(["config-changed"]);
   });
   setEnvironmentProviderRecheckHandler((pluginId) => {
@@ -942,6 +935,7 @@ export function createApp(
   );
   registerSkillsRegistryRoutes(publicApi, deps);
   registerServerMoveRoutes(publicApi, deps, serverMove);
+  registerServerSweepRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -999,7 +993,7 @@ export function createApp(
     "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
-      declineWebSocketCompression(context);
+      declineSameMachineWebSocketCompression(context);
       const terminalId = context.req.param("terminalId");
       if (terminalId === undefined) {
         throw new ApiError(404, "terminal_not_found", "missing terminal id");
@@ -1041,7 +1035,7 @@ export function createApp(
   app.get(
     "/internal/ws",
     upgradeWebSocket(async (context) => {
-      declineWebSocketCompression(context);
+      declineSameMachineWebSocketCompression(context);
       const target = await validateDaemonWebSocket(deps, {
         authorizationHeader: context.req.header("authorization"),
         protocolHeader: context.req.header("sec-websocket-protocol"),
@@ -1091,6 +1085,5 @@ export function createApp(
     pluginService,
     pluginCatalogService,
     serverMove,
-    tunnelIngress,
   };
 }

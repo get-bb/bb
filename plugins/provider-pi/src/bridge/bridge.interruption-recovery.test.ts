@@ -30,7 +30,7 @@ async function start(
   });
   h = harness;
   vi.stubEnv("FAKE_PI_SETTLEMENT", options.settlement === false ? "0" : "1");
-  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.84.0");
+  vi.stubEnv("FAKE_PI_VERSION", options.version ?? "0.84.3");
   vi.stubEnv("FAKE_PI_FINAL_LEAF", "settled-leaf");
   vi.stubEnv("FAKE_PI_COMMAND_LOG", join(harness.workspaceDir, "commands.log"));
   vi.stubEnv("FAKE_PI_EVENT_LOG", join(harness.workspaceDir, "events.jsonl"));
@@ -87,7 +87,7 @@ async function start(
   return { harness, send, turn, run, deltas, wireEvents, commands };
 }
 
-it.each(["0.84.0", "1.0.2"])(
+it.each(["0.84.3", "1.0.2"])(
   "uses authoritative settlement and its checkpoint on Pi %s",
   async (version) => {
     const t = await start({ version, duplicate: true });

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execHostFileCallback } from "@bb/process-utils";
 import { readdir, readFile, readlink, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -104,7 +104,7 @@ function runDarwinTool(
   args: string[],
 ): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(
+    execHostFileCallback(
       command,
       args,
       {

@@ -39,6 +39,7 @@ import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { HostEnvironmentSync } from "../services/hosts/host-environment-sync.js";
+import { requestHostDerivedStateRefresh } from "../services/hosts/host-derived-state.js";
 
 const sessionOpenCompatibilitySchema = z
   .object({
@@ -71,7 +72,9 @@ export function registerInternalSessionRoutes(
   plugins: PluginService,
   serverMove: ServerMoveSessionGate,
 ): void {
-  const machineEnvironment = new HostEnvironmentSync(deps);
+  const machineEnvironment = new HostEnvironmentSync(deps, (hostId) =>
+    requestHostDerivedStateRefresh(deps, hostId),
+  );
   let launcherAgentCpuPriority: boolean | null = null;
   const syncLauncherAgentCpuPriority = (): void => {
     const { agentCpuPriority } = getExperiments(deps.db);
@@ -247,13 +250,6 @@ export function registerInternalSessionRoutes(
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
         ),
-        ...(deps.sharedPorts.hostSupportsNextTunnel(daemon.hostId)
-          ? {
-              connectNext: deps.sharedPorts.reconcileNextTunnelForHost(
-                daemon.hostId,
-              ),
-            }
-          : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
         endedInteractiveRequests,

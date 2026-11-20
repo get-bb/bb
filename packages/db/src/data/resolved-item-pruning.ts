@@ -42,7 +42,17 @@ export function emptyResolvedItemPruningProbe(): ResolvedItemPruningProbe {
 
 const RESOLVED_ITEM_PRUNING_DELETE_CHUNK = 16;
 const RESOLVED_ITEM_PRUNING_PAGE_SIZE = 64;
-const RESTING_CURSOR_VERSION = 2;
+export const RESOLVED_ITEM_PRUNING_KINDS = [
+  "deltas",
+  "background",
+  "file-change-diffs",
+] as const;
+export type ResolvedItemPruningKind = (typeof RESOLVED_ITEM_PRUNING_KINDS)[number];
+const RESTING_CURSOR_VERSION_BY_KIND: Record<ResolvedItemPruningKind, number> = {
+  deltas: 3,
+  background: 2,
+  "file-change-diffs": 1,
+};
 
 const deltaKinds: Partial<Record<ThreadEventType, string>> = {
   "item/agentMessage/delta": "agentMessage",
@@ -108,6 +118,32 @@ const prepareCompletion = (db: DbQueryConnection) =>
     "events_thread_turn_type_item_sequence_idx",
     completionPredicate,
   );
+
+function hasStartedRowBefore(
+  db: DbQueryConnection,
+  threadId: string,
+  candidate: ResolvedItemPruningCandidate,
+): boolean {
+  return (
+    prepareCachedQuery(db, prepareStarted).get({
+      threadId,
+      turnId: candidate.turnId,
+      itemId: candidate.itemId,
+      parentToolCallId: candidate.parentToolCallId,
+      beforeSequence: candidate.sequence,
+    }) !== undefined
+  );
+}
+
+const prepareStarted = (db: DbQueryConnection) =>
+  db
+    .select({ id: sql<string>`${events.id}` })
+    .from(sql`events INDEXED BY events_thread_turn_type_item_sequence_idx`)
+    .where(
+      sql`thread_id = ${sql.placeholder("threadId")} AND turn_id = ${sql.placeholder("turnId")} AND type = 'item/started' AND item_id = ${sql.placeholder("itemId")} AND sequence < ${sql.placeholder("beforeSequence")} AND item_kind = 'commandExecution' AND parent_tool_call_id IS ${sql.placeholder("parentToolCallId")}`,
+    )
+    .limit(1)
+    .prepare();
 
 function pruneResolvedItemCandidates(
   db: DbQueryConnection,
@@ -217,7 +253,12 @@ function pruneResolvedItemCandidates(
                   row.hasOutput !== 0))),
       );
       if (match) {
-        if (args.kind === "background" || probe.probePhase === 1) {
+        if (
+          args.kind === "background" ||
+          probe.probePhase === 1 ||
+          (candidate.type === "item/commandExecution/outputDelta" &&
+            hasStartedRowBefore(db, args.threadId, candidate))
+        ) {
           discarded.push(candidate.id);
           finished = true;
         } else {
@@ -249,10 +290,25 @@ function pruneResolvedItemCandidates(
 
 function resolvedItemResumeSequence(
   db: DbQueryConnection,
-  args: { threadId: string; kind: "deltas" | "background"; provenThrough: number },
+  args: { threadId: string; kind: ResolvedItemPruningKind; provenThrough: number },
 ): number {
   const row =
-    args.kind === "deltas"
+    args.kind === "file-change-diffs"
+      ? db.get<{ sequence: number | null }>(sql`
+          SELECT MIN(candidate.sequence) AS sequence
+          FROM events witness INDEXED BY events_thread_type_item_kind_sequence_idx
+          CROSS JOIN events candidate INDEXED BY events_thread_turn_type_item_sequence_idx
+          WHERE witness.thread_id = ${args.threadId}
+            AND witness.type = 'item/completed'
+            AND witness.item_kind = 'fileChange'
+            AND witness.sequence > ${args.provenThrough}
+            AND candidate.thread_id = witness.thread_id
+            AND candidate.turn_id = witness.turn_id
+            AND candidate.type = 'item/started'
+            AND candidate.item_id = witness.item_id
+            AND candidate.sequence <= ${args.provenThrough}
+        `)
+      : args.kind === "deltas"
       ? db.get<{ sequence: number | null }>(sql`
           SELECT MIN(candidate.sequence) AS sequence
           FROM events witness INDEXED BY events_thread_type_sequence_idx
@@ -294,7 +350,10 @@ export function rewindResolvedItemPruning(
     SET sequence = MIN(sequence, ${through}),
       upper_sequence = MIN(upper_sequence, ${through}),
       probe_event_id = NULL, probe_phase = 0, probe_sequence = 0, probe_witness_id = NULL
-    WHERE scope = ${args.threadId} AND policy IN ('deltas', 'background')
+    WHERE scope = ${args.threadId} AND policy IN (${sql.join(
+      RESOLVED_ITEM_PRUNING_KINDS.map((kind) => sql`${kind}`),
+      sql`, `,
+    )})
       AND upper_sequence > ${through}`);
 }
 
@@ -302,11 +361,12 @@ export function advanceLiveEventPruning(
   db: DbQueryConnection,
   args: {
     threadId: string;
-    kind: "deltas" | "background";
+    kind: ResolvedItemPruningKind;
     limit: number;
     deadline: number;
   },
 ) {
+  const version = RESTING_CURSOR_VERSION_BY_KIND[args.kind];
   const key = and(
     eq(threadPruningCursors.scope, args.threadId),
     eq(threadPruningCursors.policy, args.kind),
@@ -317,7 +377,7 @@ export function advanceLiveEventPruning(
   if (!latest) return { removed: 0, scanned: 0, complete: true };
   const passUpper = latest.sequence - 1;
   let cursor = db.select().from(threadPruningCursors).where(key).get();
-  if (!cursor || cursor.version !== RESTING_CURSOR_VERSION) {
+  if (!cursor || cursor.version !== version) {
     if (cursor) db.delete(threadPruningCursors).where(key).run();
     cursor = db
       .insert(threadPruningCursors)
@@ -325,7 +385,7 @@ export function advanceLiveEventPruning(
         policy: args.kind,
         scope: args.threadId,
         threadId: args.threadId,
-        version: RESTING_CURSOR_VERSION,
+        version,
         updatedAt: Date.now(),
         upperSequence: passUpper,
       })
@@ -342,31 +402,50 @@ export function advanceLiveEventPruning(
     cursor.upperSequence = passUpper;
     Object.assign(cursor, emptyResolvedItemPruningProbe());
   }
-  const types =
-    args.kind === "background"
-      ? ["item/backgroundTask/progress"]
-      : Object.keys(deltaKinds);
   const budget = { remaining: args.limit, started: false };
   let scanned = 0;
   let removed = 0;
   let complete = false;
   while (budget.remaining > 0) {
     const pageSize = Math.min(RESOLVED_ITEM_PRUNING_PAGE_SIZE, budget.remaining);
-    const candidates = listResolvedItemCandidates(db, {
+    const window = {
       threadId: args.threadId,
-      types,
       afterSequence: cursor.sequence,
       throughSequence: cursor.upperSequence,
       limit: pageSize,
-    });
-    const result = pruneResolvedItemCandidates(db, {
-      threadId: args.threadId,
-      kind: args.kind,
-      candidates,
-      probe: cursor,
-      budget,
-      deadline: args.deadline,
-    });
+    };
+    let candidates: readonly ResolvedItemPruningCandidate[];
+    let result: ReturnType<typeof pruneResolvedItemCandidates>;
+    if (args.kind === "deltas" || args.kind === "background") {
+      candidates = listResolvedItemCandidates(db, {
+        ...window,
+        types:
+          args.kind === "background"
+            ? ["item/backgroundTask/progress"]
+            : Object.keys(deltaKinds),
+      });
+      result = pruneResolvedItemCandidates(db, {
+        threadId: args.threadId,
+        kind: args.kind,
+        candidates,
+        probe: cursor,
+        budget,
+        deadline: args.deadline,
+      });
+    } else {
+      candidates = listStartedFileChangeCandidates(db, window);
+      budget.remaining -= Math.max(1, candidates.length);
+      budget.started = true;
+      result = {
+        removed: stripCompletedFileChangeDiffs(
+          db,
+          candidates.map((candidate) => candidate.id),
+        ),
+        sequence: candidates.at(-1)?.sequence ?? 0,
+        processed: candidates.length,
+        complete: true,
+      };
+    }
     scanned += result.processed;
     removed += result.removed;
     if (result.sequence > 0) cursor.sequence = result.sequence;
@@ -423,4 +502,54 @@ function listResolvedItemCandidates(
     FROM candidate_ids JOIN events ON events.rowid = candidate_ids.eventRowid
     ORDER BY events.sequence
   `);
+}
+
+function listStartedFileChangeCandidates(
+  db: DbQueryConnection,
+  args: {
+    threadId: string;
+    afterSequence: number;
+    throughSequence: number;
+    limit: number;
+  },
+): ResolvedItemPruningCandidate[] {
+  return db.all<ResolvedItemPruningCandidate>(sql`
+    SELECT id, sequence, type, turn_id AS turnId, item_id AS itemId,
+      parent_tool_call_id AS parentToolCallId
+    FROM events INDEXED BY events_thread_type_item_kind_sequence_idx
+    WHERE thread_id = ${args.threadId} AND type = 'item/started' AND item_kind = 'fileChange'
+      AND sequence > ${args.afterSequence} AND sequence <= ${args.throughSequence}
+    ORDER BY sequence LIMIT ${args.limit}
+  `);
+}
+
+function stripCompletedFileChangeDiffs(
+  db: DbQueryConnection,
+  ids: readonly string[],
+): number {
+  if (ids.length === 0) return 0;
+  return db.run(sql`UPDATE events
+    SET data = json_set(data, '$.item.changes', (
+      SELECT json_group_array(json_remove(change.value, '$.diff'))
+      FROM json_each(events.data, '$.item.changes') AS change
+    ))
+    WHERE id IN (${sql.join(
+      ids.map((id) => sql`${id}`),
+      sql`, `,
+    )}) AND type = 'item/started' AND item_kind = 'fileChange'
+      AND turn_id IS NOT NULL AND item_id IS NOT NULL
+      AND CASE WHEN json_valid(data) THEN EXISTS (
+        SELECT 1 FROM json_each(events.data, '$.item.changes') AS change
+        WHERE json_type(change.value, '$.diff') IS NOT NULL
+      ) ELSE 0 END
+      AND EXISTS (
+        SELECT 1 FROM events completion INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE completion.thread_id = events.thread_id
+          AND completion.turn_id = events.turn_id
+          AND completion.type = 'item/completed'
+          AND completion.item_id = events.item_id
+          AND completion.sequence > events.sequence
+          AND completion.item_kind = 'fileChange'
+          AND completion.parent_tool_call_id IS events.parent_tool_call_id
+      )`).changes;
 }

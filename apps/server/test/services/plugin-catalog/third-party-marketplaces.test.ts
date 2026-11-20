@@ -617,13 +617,16 @@ describe("third-party marketplaces", () => {
           }),
         ]),
         [ACME_URL]: manifest("acme-plugins", [
-          entry({ source: { npm: { package: "bb-plugin-notes" } } }),
+          entry({ source: { npm: { package: "acme-notes" } } }),
         ]),
       }),
     });
     await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace({ source: ACME_URL, subdirectory: null });
 
+    expect(
+      (await catalog.search("notes")).map((result) => result.marketplace),
+    ).toEqual(["bb-community", "acme-plugins"]);
     await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
       "notes@bb-community, notes@acme-plugins",
     );
@@ -635,7 +638,7 @@ describe("third-party marketplaces", () => {
         marketplace: "acme-plugins",
         confirmedSource: {
           kind: "npm",
-          package: "bb-plugin-notes",
+          package: "acme-notes",
           resolvedVersion: "1.4.2",
           resolvedIntegrity: "sha512-listed",
         },
@@ -646,10 +649,124 @@ describe("third-party marketplaces", () => {
         marketplace: "acme-plugins",
         entryId: "notes",
         pluginId: "notes",
-        source: "npm:bb-plugin-notes",
+        source: "npm:acme-notes",
         selection: { kind: "root" },
         expectedNpmVersion: "1.4.2",
         expectedNpmIntegrity: "sha512-listed",
+      },
+    ]);
+  });
+
+  it("lists one plugin for entries that share an id and source across marketplaces", async () => {
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [OFFICIAL_URL]: manifest("bb-community", [
+          entry({
+            source: {
+              git: {
+                url: "https://github.com/acme/plugins.git",
+                subdir: "notes",
+                range: "^1.0.0",
+              },
+            },
+          }),
+        ]),
+        [ACME_URL]: manifest("acme-plugins", [
+          entry({
+            displayName: "Acme Notes (vendored listing)",
+            source: {
+              git: {
+                url: "https://github.com/Acme/plugins/",
+                subdir: "./notes",
+                range: "^1.2.0",
+              },
+            },
+          }),
+        ]),
+      }),
+    });
+    await refreshCuratedMarketplace(catalog, 1_000);
+    await catalog.addMarketplace({ source: ACME_URL, subdirectory: null });
+
+    const [only, ...rest] = await catalog.search("acme plugins");
+    expect(rest).toEqual([]);
+    expect(only).toMatchObject({
+      marketplace: "bb-community",
+      displayName: "Acme Notes",
+      installed: false,
+      conflictingInstallSource: null,
+      listings: [
+        {
+          marketplace: "bb-community",
+          entryId: "notes",
+          official: true,
+          source:
+            "git:https://github.com/acme/plugins.git@^1.0.0#notes (tags vX.Y.Z)",
+        },
+        {
+          marketplace: "acme-plugins",
+          marketplaceDisplayName: "Acme Plugins",
+          entryId: "notes",
+          official: false,
+          source:
+            "git:https://github.com/Acme/plugins/@^1.2.0#./notes (tags vX.Y.Z)",
+        },
+      ],
+    });
+
+    upsertInstalledPlugin(db, {
+      id: "notes",
+      source: "git:https://github.com/Acme/plugins/@semver:^1.2.0",
+      provenance: {
+        kind: "catalog",
+        marketplace: "acme-plugins",
+        entryId: "notes",
+      },
+      sourceIntent: {
+        kind: "git",
+        url: "https://github.com/Acme/plugins/",
+        subdirectory: "notes",
+        selector: {
+          kind: "range",
+          range: "^1.2.0",
+          tagPrefix: "",
+          resolvedTag: "v1.2.0",
+        },
+      },
+      exactResolution: { kind: "git", commit: "a".repeat(40) },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/managed/notes",
+      version: "1.2.0",
+      enabled: true,
+      enabledFollowsDefault: false,
+    });
+    expect(await catalog.search("notes")).toMatchObject([
+      {
+        marketplace: "acme-plugins",
+        displayName: "Acme Notes (vendored listing)",
+        installed: true,
+        conflictingInstallSource: null,
+        listings: [
+          { marketplace: "bb-community" },
+          { marketplace: "acme-plugins" },
+        ],
+      },
+    ]);
+
+    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
+      "catalog installation stopped by test",
+    );
+    expect(installedCatalogEntries).toMatchObject([
+      {
+        marketplace: "bb-community",
+        source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+        selection: { kind: "subdirectory", path: "notes" },
       },
     ]);
   });
@@ -849,6 +966,67 @@ describe("third-party marketplaces", () => {
     expect(
       getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
     ).toBeUndefined();
+  });
+
+  it("stops reading, listing, and installing from a disabled marketplace", async () => {
+    const fetched: string[] = [];
+    const documents = marketplaceFetch({
+      [OFFICIAL_URL]: manifest("bb-community", [
+        entry({ id: "official-notes" }),
+      ]),
+      [ACME_URL]: manifest("acme-plugins", [
+        entry({ source: { npm: { package: "bb-plugin-notes" } } }),
+      ]),
+    });
+    const catalog = service({
+      fetch: async (url, init) => {
+        fetched.push(url);
+        return documents(url, init);
+      },
+    });
+    await refreshCuratedMarketplace(catalog, 1_000);
+    await catalog.addMarketplace({ source: ACME_URL, subdirectory: null });
+
+    await expect(
+      catalog.setMarketplaceEnabled("bb-official", false),
+    ).rejects.toThrow("cannot be disabled");
+    expect(
+      await catalog.setMarketplaceEnabled("bb-community", false),
+    ).toMatchObject({ name: "bb-community", enabled: false, canDisable: true });
+    await catalog.setMarketplaceEnabled("acme-plugins", false);
+    fetched.length = 0;
+
+    expect(await catalog.search("")).toEqual([]);
+    expect(catalog.status().pluginCount).toBe(0);
+    expect(
+      (await catalog.refreshMarketplaces()).map((result) => result.name),
+    ).toEqual(["bb-official"]);
+    await expect(
+      catalog.refreshMarketplaces({ name: "bb-community" }),
+    ).rejects.toThrow('marketplace "bb-community" is disabled');
+    await expect(
+      catalog.install({ entryId: "notes", marketplace: "acme-plugins" }),
+    ).rejects.toThrow('marketplace "acme-plugins" is disabled');
+    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
+      'unknown plugin catalog entry "notes"',
+    );
+    catalog.startPeriodicRefresh();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    catalog.stopPeriodicRefresh();
+    expect(fetched).toEqual([]);
+    expect(
+      catalog.listMarketplaces().map((row) => [row.name, row.enabled]),
+    ).toEqual([
+      ["bb-official", true],
+      ["bb-community", false],
+      ["acme-plugins", false],
+    ]);
+
+    await catalog.setMarketplaceEnabled("acme-plugins", true);
+    await expect.poll(() => fetched).toContain(ACME_URL);
+    expect((await catalog.search("")).map((result) => result.entryId)).toEqual([
+      "notes",
+    ]);
   });
 
   it("leaves bb-community serving when a third-party refresh fails", async () => {

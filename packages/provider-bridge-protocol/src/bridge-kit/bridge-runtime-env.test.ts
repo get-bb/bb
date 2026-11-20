@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { withoutBridgeRuntimeEnv } from "./bridge-runtime-env.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildProviderCliEnv,
+  withoutBridgeRuntimeEnv,
+} from "./bridge-runtime-env.js";
+
+const platform = process.platform;
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  Object.defineProperty(process, "platform", { value: platform });
+});
 
 describe("bridge runtime env", () => {
   it("removes bridge-only Electron runtime flags from child env", () => {
@@ -23,5 +33,18 @@ describe("bridge runtime env", () => {
         BB_CLI: "/usr/local/bin/bb",
       }),
     ).toEqual({ BB_CLI: "/usr/local/bin/bb" });
+  });
+});
+
+describe("buildProviderCliEnv", () => {
+  it("replaces an inherited Windows variable whatever its case", () => {
+    vi.stubEnv("Path", "C:\\Windows");
+    Object.defineProperty(process, "platform", { value: "win32" });
+
+    const env = buildProviderCliEnv({ PATH: "C:\\thread\\bin" });
+
+    expect(
+      Object.entries(env).filter(([name]) => name.toUpperCase() === "PATH"),
+    ).toEqual([["PATH", "C:\\thread\\bin"]]);
   });
 });

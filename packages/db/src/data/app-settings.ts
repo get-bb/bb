@@ -8,11 +8,13 @@ import {
   defaultAppSettings,
   disabledProviderIdsSchema,
   pluginPackageJsonSchema,
+  serverAccessOriginsSchema,
   type AiServiceSelection,
   type AiServiceSelections,
   type AiTask,
   type AppKeybindingOverrides,
   type AppSettings,
+  type ServerAccessOrigin,
 } from "@bb/domain";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -38,6 +40,7 @@ const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
 const SKIPPED_APP_UPDATE_KEY = "skippedAppUpdate";
 const AUTO_APP_UPDATE_KEY = "autoAppUpdate";
+const SERVER_ACCESS_ORIGINS_KEY = "serverAccessOrigins";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -389,4 +392,23 @@ export function getAutoAppUpdate(db: DbQueryConnection): boolean {
 
 export function setAutoAppUpdate(db: DbQueryConnection, enabled: boolean): void {
   writeValue(db, AUTO_APP_UPDATE_KEY, enabled, Date.now());
+}
+
+export function getServerAccessOrigins(db: DbConnection): ServerAccessOrigin[] {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, SERVER_ACCESS_ORIGINS_KEY))
+    .get();
+  const parsed = serverAccessOriginsSchema.safeParse(
+    row === undefined ? [] : parseStoredValue(row.value),
+  );
+  return parsed.success ? parsed.data : [];
+}
+
+export function setServerAccessOrigins(
+  db: DbConnection,
+  origins: readonly ServerAccessOrigin[],
+): void {
+  writeValue(db, SERVER_ACCESS_ORIGINS_KEY, origins, Date.now());
 }

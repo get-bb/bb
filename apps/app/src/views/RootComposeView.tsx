@@ -86,6 +86,7 @@ import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
+import { useProviderCliStatusRecheckOnFocus } from "@/hooks/useProviderCliStatusRecheckOnFocus";
 import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
@@ -116,7 +117,11 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
+import {
+  AppNavigationHostCapture,
+  AppNavigationSurfaceProvider,
+  useAppNavigationHostRef,
+} from "@/lib/app-navigation-host";
 import { useAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
@@ -498,6 +503,7 @@ function RootComposeSurface({
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const surfaceProjectId = isProjectless ? null : projectId;
   const pluginComposerHost = useMemo(
     () => ({
       ...sharedPluginComposerHost,
@@ -676,6 +682,10 @@ function RootComposeSurface({
       ? selectedProviderCliStatus
       : null;
   const isProviderCliBlocked = blockingProviderCliStatus !== null;
+  useProviderCliStatusRecheckOnFocus({
+    hostId: rootProjectHostId,
+    blocked: isProviderCliBlocked,
+  });
   const selectedProviderCliIssue = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return null;
@@ -844,7 +854,7 @@ function RootComposeSurface({
     onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
     preserveWorkspaceTabsAcrossContexts: true,
     projectHostId: rootProjectHostId,
-    projectId: isProjectless ? null : projectId,
+    projectId: surfaceProjectId,
     storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
   });
@@ -958,9 +968,10 @@ function RootComposeSurface({
     close: closeWorkspacePanel,
     destinations: panelDestinations,
   });
+  const surfaceHost = useAppNavigationHostRef();
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
-    panel,
-    projectId: isProjectless ? null : projectId,
+    hostRef: surfaceHost,
+    projectId: surfaceProjectId,
   });
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
@@ -1425,6 +1436,7 @@ function RootComposeSurface({
               capabilities={appNavigationCapabilities}
               isFocused={isFocusedPane}
             >
+              <AppNavigationHostCapture hostRef={surfaceHost} />
               <AppPanelTabsPublisher
                 publish={panel.publishTabs}
                 activeTabId={activeFixedSecondaryTabId}
@@ -1449,6 +1461,7 @@ function RootComposeSurface({
                 }
                 isSecondaryPanelOpen={isSecondaryPanelOpen}
                 onToggleSecondaryPanel={handleToggleSecondaryPanel}
+                projectId={surfaceProjectId}
                 secondaryPanel={{
                   activeTab: activeFixedSecondaryTab,
                   environmentId: rootPanelEnvironmentId ?? undefined,

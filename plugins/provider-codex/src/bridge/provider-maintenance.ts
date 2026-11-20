@@ -47,8 +47,10 @@ function fetchCodexUsage(headers: Headers): Promise<Response> {
   });
 }
 
-async function readCredentials(): Promise<CodexAuthCredentials | null> {
-  const auth = await readCodexAuthFile();
+async function readCredentials(
+  env: NodeJS.ProcessEnv,
+): Promise<CodexAuthCredentials | null> {
+  const auth = await readCodexAuthFile(env);
   switch (auth.state) {
     case "ok":
       return auth.credentials;
@@ -83,18 +85,19 @@ function codexUpdateCommand(): {
 }
 
 export async function getCodexProviderInstallationStatus(
-  requirement?: "thread_rewind",
-  checkUpdates = true,
+  env: NodeJS.ProcessEnv,
+  requirement: "thread_rewind" | undefined,
+  checkUpdates: boolean,
 ): Promise<ProviderInstallationStatus> {
   const minimumSupportedVersion =
     minimumSupportedVersionForRequirement(requirement);
   const [resolvedExecutable, versionOutput, latestVersion, npmGlobal] =
     await Promise.all([
-      resolveExecutablePath("codex"),
-      commandOutput("codex", ["--version"]),
-      checkUpdates ? npmLatestVersion(CODEX_NPM_PACKAGE) : null,
+      resolveExecutablePath("codex", env),
+      commandOutput("codex", ["--version"], env),
+      checkUpdates ? npmLatestVersion(CODEX_NPM_PACKAGE, env) : null,
       checkUpdates
-        ? probeNpmGlobalPackage(CODEX_NPM_PACKAGE)
+        ? probeNpmGlobalPackage(CODEX_NPM_PACKAGE, env)
         : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
@@ -146,9 +149,10 @@ export async function getCodexProviderInstallationStatus(
 }
 
 export async function getCodexProviderInstallationRun(
+  env: NodeJS.ProcessEnv,
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getCodexProviderInstallationStatus();
+  const status = await getCodexProviderInstallationStatus(env, undefined, true);
   return buildCodexProviderInstallationRun(status, action);
 }
 
@@ -205,11 +209,13 @@ function healthResult(
   };
 }
 
-export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
-  if ((await resolveExecutablePath("codex")) === null) {
+export async function getCodexProviderHealth(
+  env: NodeJS.ProcessEnv,
+): Promise<ProviderHealthResult> {
+  if ((await resolveExecutablePath("codex", env)) === null) {
     return healthResult("not_installed");
   }
-  const version = await readCliVersion("codex");
+  const version = await readCliVersion("codex", env);
   if (
     version !== null &&
     compareVersions(version, CODEX_MINIMUM_SUPPORTED_VERSION) < 0
@@ -217,7 +223,7 @@ export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
     return healthResult("unsupported_version", { installedVersion: version });
   }
   try {
-    const credentials = await readCredentials();
+    const credentials = await readCredentials(env);
     if (credentials === null) {
       return healthResult("unauthenticated", { installedVersion: version });
     }
@@ -324,13 +330,15 @@ function normalizeUsage(raw: unknown, email: string | null): ProviderUsage {
   };
 }
 
-export async function getCodexProviderUsage(): Promise<ProviderUsageResult> {
-  if ((await resolveExecutablePath("codex")) === null) {
+export async function getCodexProviderUsage(
+  env: NodeJS.ProcessEnv,
+): Promise<ProviderUsageResult> {
+  if ((await resolveExecutablePath("codex", env)) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
   let credentials: CodexAuthCredentials | null;
   try {
-    credentials = await readCredentials();
+    credentials = await readCredentials(env);
   } catch (error) {
     return {
       supported: true,

@@ -426,7 +426,6 @@ function runWindowsUserPathScript(
       {
         env: { ...env, ...extraEnv },
         stdio: ["ignore", "pipe", "ignore"],
-        windowsHide: true,
       },
     );
     let stdout = "";

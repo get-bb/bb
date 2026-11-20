@@ -19,6 +19,7 @@ The official plugins are:
 | `plugins/github`             | `bb-plugin-github`             | `github`             | `github`             |
 | `plugins/docs`               | `bb-plugin-simple-notes`       | `docs`               | `simple-notes`       |
 | `plugins/memory`             | `bb-plugin-memory`             | `memory`             | `memory`             |
+| `plugins/tailscale`          | `bb-plugin-bb--tailscale`      | `tailscale`          | `bb--tailscale`      |
 | `plugins/tasks`              | `bb-plugin-tasks`              | `tasks`              | `tasks`              |
 
 ## Releasing a change

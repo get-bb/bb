@@ -70,7 +70,6 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     retiredEnvironmentIds: [],
     endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
-    connectNext: { generation: 0, config: null },
     pluginHostGenerations: [],
     sessionId: args.sessionId,
     watchSet: {
@@ -156,6 +155,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
       onclose: null,
       onerror: null,
       send: vi.fn(),
+      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),
@@ -1161,6 +1161,50 @@ describe("ServerConnection", () => {
         type: "host-rpc.cancel",
         requestId: "rpc-cancelled",
       });
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("sends file chunk replies without compression and other messages with it", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      vi.mocked(socket.send).mockClear();
+      const chunk = {
+        type: "host-rpc.response" as const,
+        requestId: "request-chunk",
+        commandType: "host.read_file_chunk" as const,
+        ok: true as const,
+        result: {
+          path: "/tmp/clip.mp4",
+          sizeBytes: 3,
+          modifiedAtMs: 1,
+          mimeType: "video/mp4",
+          revision: "a".repeat(64),
+          offset: 0,
+          content: "AAEC",
+        },
+      };
+      const reply = {
+        type: "host-rpc.response" as const,
+        requestId: "request-paths",
+        commandType: "host.paths_exist" as const,
+        ok: true as const,
+        result: { existence: { "/tmp": true } },
+      };
+
+      connection.sendMessage(chunk);
+      connection.sendMessage(reply);
+
+      expect(
+        vi
+          .mocked(socket.sendUncompressed)
+          .mock.calls.map(([frame]) => JSON.parse(frame).message),
+      ).toEqual([chunk]);
+      expect(webSocket.sentMessages(socket)).toEqual([reply]);
     } finally {
       await connection.shutdown();
     }

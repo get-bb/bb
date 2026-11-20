@@ -89,7 +89,7 @@ describe("createAgentRuntime command contracts", () => {
     });
 
     try {
-      await runtime.listModels({ providerId: "fake" });
+      await runtime.listModels({ providerId: "fake", contributedEnv: [] });
       await runtime.startThread({
         environmentId: "env-1",
         threadId: "t1",
@@ -153,7 +153,11 @@ describe("createAgentRuntime command contracts", () => {
     });
 
     try {
-      await runtime.listModels({ providerId: "acp-custom", bridgeLaunch });
+      await runtime.listModels({
+        providerId: "acp-custom",
+        bridgeLaunch,
+        contributedEnv: [],
+      });
       await runtime.startThread({
         bridgeLaunch,
         environmentId: "env-1",

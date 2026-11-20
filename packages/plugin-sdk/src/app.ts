@@ -35,10 +35,9 @@ export type {
  * its components before or after installing a runtime. Calling a hook or
  * rendering a component with no runtime installed throws.
  *
- * Shared hooks and host components, including experimental_Icon. The generic
- * host-provided UI kit was removed 2026-07-03,
- * plugin design §5.5: other components are vendored shadcn-style source from the
- * BB registry (`npx shadcn add @bb/<name>`); `toast` comes from
+ * Shared hooks and host components, including experimental_Icon. There is no
+ * generic host-provided UI kit: other components are vendored shadcn-style
+ * source from the BB registry (`npx shadcn add @bb/<name>`); `toast` comes from
  * `import { toast } from "sonner"` (runtime-shimmed to the host toaster).
  */
 
@@ -205,7 +204,6 @@ export const experimental_useCanOpenFileExternally = runtimeFunction(
 export const experimental_useTabVisible = runtimeFunction(
   "experimental_useTabVisible",
 );
-// The viewing client's servers (experimental — see docs/api_to_audit.md).
 export const experimental_useServers = runtimeFunction(
   "experimental_useServers",
 );

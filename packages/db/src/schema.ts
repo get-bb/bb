@@ -131,12 +131,12 @@ export const hosts = sqliteTable(
       .default("active"),
     suspendedAt: integer("suspended_at"),
     statusMessage: text("status_message"),
-    suspendRetryAt: integer("suspend_retry_at"),
     removeRetryAt: integer("remove_retry_at"),
     teardownAttempt: integer("teardown_attempt").notNull().default(0),
     teardownStatus: text("teardown_status").$type<
       "running" | "failed" | "removed"
     >(),
+    teardownBlockedByEnvironmentId: text("teardown_blocked_by_environment_id"),
     maxPermissionMode: text("max_permission_mode")
       .$type<PermissionMode>()
       .notNull()
@@ -389,6 +389,7 @@ export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
   lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
   lastError: text("last_error"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

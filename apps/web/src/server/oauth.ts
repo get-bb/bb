@@ -50,7 +50,7 @@ const REFRESH_SUCCESSOR_CONTEXT = "bb-mcp-refresh-successor-v1";
 
 export type OAuthEnv = Pick<
   Env,
-  "APP_URL" | "BASE_DOMAIN" | "BETTER_AUTH_SECRET" | "NEXT_BASE_DOMAIN"
+  "APP_URL" | "BASE_DOMAIN" | "BETTER_AUTH_SECRET"
 >;
 
 export interface OAuthAuthorizeDeps {
@@ -108,11 +108,6 @@ export interface OAuthAuthorizationServerMetadata {
   scopes_supported: string[];
   client_id_metadata_document_supported: boolean;
   authorization_response_iss_parameter_supported: boolean;
-}
-
-function nextBaseDomain(env: Pick<Env, "NEXT_BASE_DOMAIN">): string | null {
-  const value = env.NEXT_BASE_DOMAIN?.trim() ?? "";
-  return value === "" ? null : value;
 }
 
 export function oauthIssuer(env: Pick<Env, "APP_URL">): string {
@@ -458,7 +453,6 @@ async function validateAuthorization(
       ? null
       : parseMcpResource(rawResource, {
           baseDomain: env.BASE_DOMAIN,
-          nextBaseDomain: nextBaseDomain(env),
           allowHttp,
         });
   if (parsedResource === null) {
@@ -790,7 +784,6 @@ function resourceMatches(
   if (presented === null) return true;
   const parsed = parseMcpResource(presented, {
     baseDomain: env.BASE_DOMAIN,
-    nextBaseDomain: nextBaseDomain(env),
     allowHttp: issuerAllowsHttp(oauthIssuer(env)),
   });
   return parsed !== null && parsed.resource === stored;

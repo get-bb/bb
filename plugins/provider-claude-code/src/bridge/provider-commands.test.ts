@@ -57,11 +57,12 @@ describe("toProviderCommandsState", () => {
 });
 
 describe("createClaudeCodeBridgeCommandListMemo", () => {
-  it("caches each folder separately and retries after a failure", async () => {
+  it("caches each folder and contributed env separately and retries after a failure", async () => {
     const list = vi
       .fn<
         (
           cwd: string,
+          envVars: Readonly<Record<string, string>>,
         ) => Promise<{ commands: { name: string; description: string }[] }>
       >()
       .mockRejectedValueOnce(new Error("probe failed"))
@@ -74,14 +75,20 @@ describe("createClaudeCodeBridgeCommandListMemo", () => {
       ttlMs: 1_000,
     });
 
-    await expect(memo("/a")).rejects.toThrow("probe failed");
-    await expect(memo("/a")).resolves.toEqual({
+    await expect(memo("/a", {})).rejects.toThrow("probe failed");
+    await expect(memo("/a", {})).resolves.toEqual({
       commands: [{ name: "/a", description: "" }],
     });
-    await memo("/a");
-    await expect(memo("/b")).resolves.toEqual({
+    await memo("/a", {});
+    await expect(memo("/b", {})).resolves.toEqual({
       commands: [{ name: "/b", description: "" }],
     });
-    expect(list.mock.calls.map(([cwd]) => cwd)).toEqual(["/a", "/a", "/b"]);
+    await memo("/a", { BB_CLAUDE_CODE_EXECUTABLE: "/opt/claude" });
+    expect(list.mock.calls).toEqual([
+      ["/a", {}],
+      ["/a", {}],
+      ["/b", {}],
+      ["/a", { BB_CLAUDE_CODE_EXECUTABLE: "/opt/claude" }],
+    ]);
   });
 });

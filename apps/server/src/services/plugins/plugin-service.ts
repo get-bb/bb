@@ -960,6 +960,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       changes.push("provider-registrations-changed");
     }
     deps.hub.notifySystem(changes);
+    deps.onPluginsChanged?.();
   }
 
   function compactPath(path: string): string {
@@ -1203,7 +1204,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       deps.db,
       row.catalogMarketplaceName ?? CURATED_PLUGIN_MARKETPLACE_NAME,
     );
-    if (marketplace === undefined) return { kind: "release" };
+    if (marketplace === undefined || !marketplace.enabled) {
+      return { kind: "release" };
+    }
     const manifest = cachedMarketplaceManifest(marketplace);
     if (manifest === null) return { kind: "none" };
     const entry = manifest.plugins.find(
@@ -1300,7 +1303,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               manifest,
               entry,
               base: marketplaceRowIconBase(marketplace),
-              warn: (message) => logger.warn(message),
             }),
             collections: marketplaceEntryCollections(manifest, entry.id),
           });

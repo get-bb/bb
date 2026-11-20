@@ -1,13 +1,15 @@
 import { toast } from "sonner";
 import type { PluginMessageActionContext } from "@get-bb/plugin-sdk/app";
-import { getAppBridge } from "./bridge.js";
 
 const WORKTREE_PROVIDER_ID = "git-worktree";
 
 export async function forkToNewWorkspace(
-  context: Pick<PluginMessageActionContext, "threadId" | "message">,
+  context: Pick<
+    PluginMessageActionContext,
+    "threadId" | "message" | "sdk" | "navigate"
+  >,
 ): Promise<void> {
-  const { sdk, navigate } = getAppBridge();
+  const { sdk, navigate } = context;
   const source = await sdk.threads.get({ threadId: context.threadId });
   const environmentId = source.environmentId;
   const environment =
@@ -27,7 +29,7 @@ export async function forkToNewWorkspace(
           : {
               machine: { type: "existing", hostId: environment.hostId },
             }),
-        inputs: null,
+        inputs: {},
       },
     });
     navigate.toThread(fork.id);

@@ -417,6 +417,10 @@ import {
   type ServerMoveStatus,
   type ServerMoveStatusResponse,
 } from "./api/server-move.js";
+import type {
+  ServerSweepFailuresResponse,
+  ServerSweepRetryResponse,
+} from "./api/server-sweeps.js";
 import {
   updateUiPreferenceRequestSchema,
   type PathUiPreferenceKey,
@@ -1095,6 +1099,18 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest(),
       response: binaryResponse<Uint8Array>(),
+    }),
+    sweepFailures: defineRoute({
+      path: "/server/sweep-failures",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ServerSweepFailuresResponse>(),
+    }),
+    retrySweepFailures: defineRoute({
+      path: "/server/sweep-failures/retry",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<ServerSweepRetryResponse>(),
     }),
   },
 

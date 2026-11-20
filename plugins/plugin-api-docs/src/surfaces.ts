@@ -107,6 +107,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalPageTitle",
           "ExperimentalPageBreadcrumb",
           "useBbContext",
+          "BbContext.experimental_pluginPanel",
+          "ExperimentalPluginPanelPage",
           "useBbNavigate",
           "BbNavigate.toPluginPanel",
           "BbNavigate.experimental_openTerminal",
@@ -257,7 +259,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           'Add a button to the header of an open thread: a thread action with placement "header". With this, a plugin can:',
         bullets: [
-          "Show a labelled button after the workspace's Open button, only while it applies to the thread",
+          "Show an icon-and-label button after the workspace's Open button while it applies",
           "Fold into the thread menu on phones and in narrow split panes",
           "Load data only for the threads whose header is on screen",
         ],
@@ -317,12 +319,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "thread-context-card",
         title: "Thread context card",
         summary:
-          "Add a row or a titled section to the context card of every thread pane. With this, a plugin can:",
+          "Add a row or a section to the thread context card. With this, a plugin can:",
         bullets: [
           "Keep a pull request, change counts, or related threads in view while messages scroll",
-          "Sit among bb's own rows in the Info tab's groups, drawn with the same row",
+          "Sit among bb's own rows and sections in the Info tab's groups, drawn with the same row and section",
           "Hide a matching context segment while the pane shows the card",
-          "Leave the card, placement, and the header button to bb",
+          "Appear only with the Thread context card experiment on (off by default), never on phones",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadContextCardRow",
@@ -403,11 +405,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear under messages on hover, or on text selected in a reply",
           "Show in bb's thread view, in embedded ThreadChat, or in only one of them",
           "Receive the message with the sequence its link uses, or the selected text",
-          "Open a [side-panel tab](thread-panel) or write into the composer with the result",
+          "Open a [side-panel tab](thread-panel), fill the composer, or call bb's SDK and navigation",
         ],
         apiSymbols: [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
+          "ExperimentalPluginActionContext",
           "ThreadChatMessageReference",
           "PluginMessageActionRegistration.experimental_surfaces",
           "ExperimentalMessageActionSurface",
@@ -536,7 +539,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         reference: [
           "Register tabs with app.slots.experimental_tab({ id, title, icon, tooltip?, layout?, context, availability, useVisible?, component }). context is { kind: 'thread' } or { kind: 'nav-panel', panelId }. Thread tabs and their useVisible receive threadId and environment ({ id } | null, taken from the thread and null only without one) and read anything else about the environment themselves; navigation-page tabs receive subPath. Core Info and the Git plugin's Diff use thread + fixed registrations. tooltip defaults to title; layout is padded (default) or flush.",
           "availability: 'fixed' creates one pinned, non-closable destination per owner and tab id. availability: 'action' adds a launcher for closable instances; only actions accept run, default params and persisted instance params. Identical params focus the existing instance; different params open siblings. useVisible controls the fixed tab or launcher, never existing action instances. Hooks and components run in plugin scope with crash isolation.",
-          "Open, toggle and close through the surface's panel controller: experimental_useAppPanel() in components, or ctx.experimental_panel in commands, thread actions, message actions, New-thread panel actions and action tabs' run. openTab({ tab: { id, context, availability }, target?, params?, title? }) takes a session-only target for fixed tabs (validated by the tab's experimental_target and read with experimental_useFixedTabTarget, on thread and navigation-page fixed tabs) and persisted params plus a title for action tabs. toggleTab closes the side panel when that tab is showing, otherwise opens it; close() closes the side panel. Unknown, hidden or wrong-context destinations return false. bb's panel toggle, Info and tab-strip controls and the Git plugin's Mod+D command use the same controller.",
+          "Open, toggle and close through the surface's panel controller: experimental_useAppPanel() in components, or ctx.panel in commands, thread actions, message actions, New-thread panel actions and action tabs' run. openTab({ tab: { id, context, availability }, target?, params?, title? }) takes a session-only target for fixed tabs (validated by the tab's experimental_target and read with experimental_useFixedTabTarget, on thread and navigation-page fixed tabs) and persisted params plus a title for action tabs. toggleTab closes the side panel when that tab is showing, otherwise opens it; close() closes the side panel. Unknown, hidden or wrong-context destinations return false. bb's panel toggle, Info and tab-strip controls and the Git plugin's Mod+D command use the same controller.",
           "List every open tab, bb's and other plugins', with experimental_usePanelTabs(): { open, selectedKey, tabs } in the tab strip's order, each { key, title, status, closable, detail } where detail is info, file, browser, terminal, new-tab, plugin (with its tab reference and params) or plugin-details. getTabs() on the panel controller reads the same list once for commands and other non-component code; selectTab(key) and closeTab(key) run the strip's own select and close; experimental_PanelTabIcon draws a tab's icon. The strip, the phone pager and these calls share one list on the thread view, plugin pages, the New thread screen and the Plugins browse page.",
           "experimental_useTabVisible() is true while the tab is selected and the side panel is open, and false while the panel is closed, suppressed or showing another tab. A closed panel keeps its tab mounted, so pause reads that only feed the tab while it is false.",
           "Identity and order survive hiding, disabling and reload. Thread fixed tabs persist as { id, kind: 'plugin-fixed', pluginId, tabId }; navigation-page fixed tabs and action instances keep their existing storage identities. SDK threads.tabs.get/update and CLI bb thread tabs show/set support thread tab entries with revision checks. Selection stays client-local. See the authoring skill's Tab API migration section for upgrading source registrations.",
@@ -561,10 +564,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalThreadActionTabProps",
           "ExperimentalThreadTabProps",
           "ExperimentalThreadTabActionContext",
-          "PluginCommandContext.experimental_panel",
-          "PluginMessageActionContext.experimental_panel",
-          "PluginThreadActionItemInput.experimental_panel",
-          "PluginNewThreadPanelActionContext.experimental_panel",
+          "ExperimentalPluginActionContext.panel",
         ],
         firstParty: [
           "Docs",
@@ -644,13 +644,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run plugin actions from the palette or a keyboard shortcut",
           "Suggest a default shortcut that people can rebind",
           "Show a command only when the current thread or project fits",
-          "Open a plugin panel for the focused thread or New thread screen",
+          "Open a plugin panel, call bb's SDK, or navigate from the focused screen",
         ],
         apiSymbols: [
           "PluginAppBuilder.commands",
           "PluginAppCommands",
           "PluginCommandRegistration",
           "PluginCommandContext",
+          "ExperimentalPluginActionContext",
           "PluginCommandShortcut",
           "experimental_matchesShortcutKey",
           "ExperimentalShortcutKeyEvent",
@@ -750,8 +751,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Read the draft's text, @-mentions, and attachments",
           "Insert or rewrite text, @-mentions, and thread pills in one step",
-          "Lock the prompt box while the plugin works, then release it",
-          "Write into any prompt box on screen from a panel or page",
+          "Lock the prompt box while the plugin works, then release it, from a composer slot",
+          "Write into any prompt box on screen from a panel or page, without locking it",
         ],
         apiSymbols: [
           "useComposer",
@@ -812,6 +813,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "ComposerPlusMenuItem",
           "ComposerSendMenuItem",
+          "ExperimentalComposerActionContext",
           "ComposerSubmitOptions",
         ],
         firstParty: ["Automations", "BB guide", "Drafts", "Send later"],
@@ -879,6 +881,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginComposerApi.experimental_closePopup",
           "PluginAppComposer.experimental_registerCommand",
           "ExperimentalComposerCommandRegistration",
+          "ExperimentalComposerActionContext",
           "PluginComposerApi.setSelection",
           "PluginComposerApi.selection",
           "ComposerSelection",
@@ -1005,8 +1008,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add a needs-configuration warning to the plugin's page. With this, a plugin can:",
         bullets: [
-          "Tell people what's missing instead of failing silently",
-          "Send them to Settings, then reload after they save",
+          "Tell people what's missing in bb plugin list, and on this page when there are no settings",
+          "Send them to Settings; saving a changed value loads the plugin again",
         ],
         apiSymbols: ["PluginStatusApi"],
         firstParty: [
@@ -1540,6 +1543,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "UnansweredInteractionAnswer",
           "UnansweredInteractionWarningArgs",
           "experimental_readBoundedLines",
+          "experimental_buildProviderCliEnv",
           "experimental_resolveExecutablePath",
           "experimental_readCliVersion",
           "experimental_commandOutput",

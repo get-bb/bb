@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -67,6 +68,7 @@ interface AppCommandProviderValue {
     command: KeyboardCommandId,
     registration: Omit<AppCommandHandlerRegistration, "sequence">,
   ) => () => void;
+  subscribeToAvailability: (listener: () => void) => () => void;
 }
 
 const AppCommandContextValue = createContext<AppCommandProviderValue | null>(
@@ -124,6 +126,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     new Map<AppCommandContextKey, Set<symbol>>(),
   );
   const sequenceRef = useRef(0);
+  const availabilityListenersRef = useRef(new Set<() => void>());
   const attemptedEventsRef = useRef(new WeakSet<KeyboardEvent>());
 
   useEffect(() => {
@@ -186,42 +189,65 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
 
-  const registerHandler = useCallback<
-    AppCommandProviderValue["registerHandler"]
-  >((command, registration) => {
-    const token = Symbol(command);
-    const registrations = handlersRef.current.get(command) ?? new Map();
-    sequenceRef.current += 1;
-    registrations.set(token, {
-      ...registration,
-      sequence: sequenceRef.current,
-    });
-    handlersRef.current.set(command, registrations);
+  const subscribeToAvailability = useCallback<
+    AppCommandProviderValue["subscribeToAvailability"]
+  >((listener) => {
+    const listeners = availabilityListenersRef.current;
+    listeners.add(listener);
     return () => {
-      registrations.delete(token);
-      if (registrations.size === 0) {
-        handlersRef.current.delete(command);
-      }
+      listeners.delete(listener);
     };
   }, []);
 
+  const notifyAvailabilityChanged = useCallback(() => {
+    for (const listener of availabilityListenersRef.current) listener();
+  }, []);
+
+  const registerHandler = useCallback<
+    AppCommandProviderValue["registerHandler"]
+  >(
+    (command, registration) => {
+      const token = Symbol(command);
+      const registrations = handlersRef.current.get(command) ?? new Map();
+      sequenceRef.current += 1;
+      registrations.set(token, {
+        ...registration,
+        sequence: sequenceRef.current,
+      });
+      handlersRef.current.set(command, registrations);
+      notifyAvailabilityChanged();
+      return () => {
+        registrations.delete(token);
+        if (registrations.size === 0) {
+          handlersRef.current.delete(command);
+        }
+        notifyAvailabilityChanged();
+      };
+    },
+    [notifyAvailabilityChanged],
+  );
+
   const registerContext = useCallback<
     AppCommandProviderValue["registerContext"]
-  >((key, source, active) => {
-    const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
-    if (active) {
-      sources.add(source);
-      activeContextsRef.current.set(key, sources);
-    } else {
-      sources.delete(source);
-      if (sources.size === 0) {
-        activeContextsRef.current.delete(key);
+  >(
+    (key, source, active) => {
+      const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
+      if (active) {
+        sources.add(source);
+        activeContextsRef.current.set(key, sources);
+      } else {
+        sources.delete(source);
+        if (sources.size === 0) {
+          activeContextsRef.current.delete(key);
+        }
       }
-    }
-    if (key === "splitActive") {
-      getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
-    }
-  }, []);
+      if (key === "splitActive") {
+        getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
+      }
+      notifyAvailabilityChanged();
+    },
+    [notifyAvailabilityChanged],
+  );
 
   const dispatch = useCallback(
     (command: KeyboardCommandId, target: EventTarget | null): boolean => {
@@ -422,6 +448,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       isCommandAvailable,
       registerContext,
       registerHandler,
+      subscribeToAvailability,
     }),
     [
       dispatch,
@@ -431,6 +458,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       isCommandAvailable,
       registerContext,
       registerHandler,
+      subscribeToAvailability,
     ],
   );
 
@@ -524,6 +552,18 @@ export function useAppCommandRunner(): AppCommandRunner {
         value?.isCommandAvailable(command, target) ?? false,
     }),
     [value],
+  );
+}
+
+function subscribeToNothing(): () => void {
+  return () => {};
+}
+
+export function useIsAppCommandAvailable(command: KeyboardCommandId): boolean {
+  const value = useContext(AppCommandContextValue);
+  return useSyncExternalStore(
+    value?.subscribeToAvailability ?? subscribeToNothing,
+    () => value?.isCommandAvailable(command, null) ?? false,
   );
 }
 

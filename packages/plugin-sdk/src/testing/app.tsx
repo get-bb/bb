@@ -27,6 +27,7 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type ExperimentalPageTitle,
   type BbContext,
+  type ExperimentalPluginPanelPage,
   type BbNavigate,
   type BranchesState,
   type ComposerCustomization,
@@ -113,7 +114,6 @@ import {
   type ExperimentalThreadHeaderRowRegistration,
   type ExperimentalThreadHeaderTitleRegistration,
   type ExperimentalThreadContextCardRowRegistration,
-  type ExperimentalThreadContextCardSectionRegistration,
   type ExperimentalThreadContextKind,
   type ExperimentalThreadContextCardRowProps,
   type ExperimentalPanelTabIconProps,
@@ -2161,7 +2161,7 @@ export interface CapturedPluginApp {
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
-  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
+  threadContextCardSections: import("../internal/plugin-app-registration-collector.js").CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -2383,8 +2383,12 @@ export interface RenderSlotOptions<
   experimental_rpcContract?: NoInfer<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
   settings?: Record<string, string | number | boolean>;
-  /** `useBbContext()` selection; both default to null. */
-  context?: { projectId?: string | null; threadId?: string | null };
+  /** `useBbContext()` selection; each defaults to null. */
+  context?: {
+    projectId?: string | null;
+    threadId?: string | null;
+    experimental_pluginPanel?: ExperimentalPluginPanelPage | null;
+  };
   /** `experimental_usePluginId()` value; defaults to `test-plugin`. */
   pluginId?: string;
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
@@ -3433,7 +3437,12 @@ export function renderSlot<
     realtimeHandlers,
     realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
-    bbContext: { projectId, threadId },
+    bbContext: {
+      projectId,
+      threadId,
+      experimental_pluginPanel:
+        options.context?.experimental_pluginPanel ?? null,
+    },
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
       shortcuts: new Map(),

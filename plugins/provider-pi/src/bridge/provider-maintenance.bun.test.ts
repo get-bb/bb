@@ -61,7 +61,7 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
       mkdir(path.dirname(probeState.executablePath), { recursive: true }),
     ]);
     await Promise.all([
-      writeFile(bunPi, "#!/bin/sh\nprintf '0.84.0\\n'\n", { mode: 0o755 }),
+      writeFile(bunPi, "#!/bin/sh\nprintf '0.84.3\\n'\n", { mode: 0o755 }),
       writeFile(
         probeState.executablePath,
         `#!/bin/sh\nexec "${bunPi}" "$@"\n`,
@@ -73,8 +73,8 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
       chmod(probeState.executablePath, 0o755),
     ]);
 
-    const status = await getPiProviderInstallationStatus();
-    const run = await getPiProviderInstallationRun("update");
+    const status = await getPiProviderInstallationStatus(process.env, true);
+    const run = await getPiProviderInstallationRun(process.env, "update");
 
     expect(status.installAction?.command).toBe(
       "bun add -g @earendil-works/pi-coding-agent@latest",
@@ -88,10 +88,13 @@ describeOnPosix("Pi provider maintenance with a Bun-managed executable", () => {
     });
 
     vi.clearAllMocks();
-    const compatibilityStatus = await getPiProviderInstallationStatus(false);
+    const compatibilityStatus = await getPiProviderInstallationStatus(
+      process.env,
+      false,
+    );
     expect(compatibilityStatus).toMatchObject({
       installed: true,
-      currentVersion: "0.84.0",
+      currentVersion: "0.84.3",
       latestVersion: null,
       versionUnsupported: false,
     });

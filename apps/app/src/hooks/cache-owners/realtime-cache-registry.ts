@@ -38,6 +38,7 @@ import {
   allPluginSettingsQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
+  pluginMarketplacesQueryKey,
   pluginSafeModeQueryKey,
   allProjectCommandsQueryKeyPrefix,
   allThreadStorageFilePreviewQueryKeyPrefix,
@@ -535,7 +536,11 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
     dirty: [dirtyProjectCommandCatalogQueries],
   },
   "provider-cli-status-changed": {
-    dirty: [dirtyHostProviderCliStatusQueries],
+    dirty: [
+      dirtyHostProviderCliStatusQueries,
+      dirtySystemProviderQueries,
+      dirtyHostSystemExecutionOptionQueries,
+    ],
   },
   "provider-cli-install-jobs-changed": {
     dirty: [dirtyHostProviderCliInstallJobQueries],
@@ -1198,6 +1203,7 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginSettingsQueryKeyPrefix(),
     allPluginSourceQueryKeyPrefix(),
     allPluginCatalogSearchQueryKeyPrefix(),
+    pluginMarketplacesQueryKey(),
     pluginSafeModeQueryKey(),
   ];
 }

@@ -151,8 +151,10 @@ import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
+  AppNavigationHostCapture,
   AppNavigationSurfaceProvider,
   useAppNavigationHost,
+  useAppNavigationHostRef,
 } from "@/lib/app-navigation-host";
 import { getFileBasename } from "@/lib/live-file-navigation";
 import {
@@ -747,8 +749,9 @@ function ThreadDetailViewInternal(
     if (isSecondaryPanelOpen) panel.close();
     else toggleWorkspacePanel();
   }, [isSecondaryPanelOpen, panel, toggleWorkspacePanel]);
+  const surfaceHost = useAppNavigationHostRef();
   const pluginPanelActions = usePluginPanelActions({
-    panel,
+    hostRef: surfaceHost,
     threadId,
     environmentId: threadTabEnvironmentId,
     actions: threadFixedTabs.actions,
@@ -1680,6 +1683,7 @@ function ThreadDetailViewInternal(
             capabilities={appNavigationCapabilities}
             isFocused={isFocused}
           >
+            <AppNavigationHostCapture hostRef={surfaceHost} />
             <AppPanelTabsPublisher
               publish={panel.publishTabs}
               activeTabId={activeFixedSecondaryTabId}

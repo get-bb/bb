@@ -213,12 +213,15 @@ describe("ConversationMessageContent assistant thread mentions", () => {
       projectId: "proj_personal",
       title: "Plugin composer support on root new-thread page",
     });
-    const messageDirectiveRegistry: MessageDirectiveRegistry = new Map([
-      [
-        "inline-vis",
-        { status: "collision", pluginIds: ["plugin-a", "plugin-b"] },
-      ],
-    ]);
+    const messageDirectiveRegistry: MessageDirectiveRegistry = {
+      directives: new Map([
+        [
+          "inline-vis",
+          { status: "collision", pluginIds: ["plugin-a", "plugin-b"] },
+        ],
+      ]),
+      unclaimed: "literal",
+    };
 
     render(
       <MemoryRouter>

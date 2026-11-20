@@ -65,7 +65,7 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
   const data = useData({ threadIds: [] });
   const sdk: PluginBrowserBbSdk = useSdk();
   const navigate: BbNavigate = useBbNavigate();
-  const experimental_panel = experimental_useAppPanel();
+  const panel = experimental_useAppPanel();
   collected.current = {
     item: (thread) =>
       moveThreadAction.item({
@@ -73,7 +73,7 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
         data,
         sdk,
         navigate,
-        experimental_panel,
+        panel,
       }),
     bulkItem: (threads) =>
       moveThreadAction.experimental_bulkItem?.({
@@ -81,7 +81,7 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
         data,
         sdk,
         navigate,
-        experimental_panel,
+        panel,
       }) ?? null,
   };
   return null;

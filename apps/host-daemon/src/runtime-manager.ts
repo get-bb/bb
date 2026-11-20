@@ -14,7 +14,6 @@ import { sliceUtf16Tail } from "@bb/text-utils";
 import { type ThreadEvent, threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
-  HostDaemonContributedEnvEntry,
   HostDaemonLoadedEnvironment,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
@@ -41,7 +40,6 @@ import {
 } from "./provider-installation-gate.js";
 import type { SkillTreeTransport } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
-import { runSetupScript } from "./environment-lifecycle-script.js";
 import { runInSerialLane } from "./serial-lane.js";
 import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
@@ -139,8 +137,6 @@ interface InjectedSkillsChangedNotification {
 export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
-  setupScriptTimeoutMs?: number | null;
-  setupContributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetThreadId?: string;
   workspacePath?: string;
   provision?: ProvisionWorkspaceArgs;
@@ -1224,17 +1220,6 @@ export class RuntimeManager {
       throw new Error(
         `Missing workspace path for environment ${args.environmentId}`,
       );
-    }
-
-    if (args.setupScriptTimeoutMs != null) {
-      await runSetupScript({
-        workspacePath: provision.path,
-        timeoutMs: args.setupScriptTimeoutMs,
-        contributedEnv: args.setupContributedEnv,
-        shellPath: this.getShellEnv().PATH,
-        signal: args.provisionSignal,
-        onProgress: provision.onProgress,
-      });
     }
 
     const workspace = await this.provisionHostWorkspace({

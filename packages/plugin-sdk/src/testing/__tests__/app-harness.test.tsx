@@ -5,7 +5,9 @@ import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
+  BbNavigate,
   PluginAppSlots,
+  PluginBrowserBbSdk,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -1512,7 +1514,13 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", async () => {
-    const experimental_panel = makePanelController({
+    const unused = <T extends object>(name: string): T =>
+      new Proxy({} as T, {
+        get() {
+          throw new Error(`${name} is not used by this test`);
+        },
+      });
+    const panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
@@ -1528,8 +1536,10 @@ describe("loadPluginApp", () => {
         experimental_messageSeq: 12,
       },
       selectedText: "answer",
-      experimental_panel,
+      panel,
       composer: null,
+      sdk: unused<PluginBrowserBbSdk>("sdk"),
+      navigate: unused<BbNavigate>("navigate"),
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({

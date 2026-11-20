@@ -87,7 +87,7 @@ it("still warns when hook recovery has an unknown outcome", async () => {
     }),
   ).resolves.toMatchObject({
     ok: false,
-    errorCode: "command_failed",
+    errorCode: "environment_hook_outcome_unknown",
     errorMessage: "Environment hook outcome is unknown after daemon restart",
   });
   expect(logger.warn).toHaveBeenCalledExactlyOnceWith(

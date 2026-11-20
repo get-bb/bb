@@ -599,6 +599,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   const reportedStaleErrors = new WeakSet<PluginContextStaleError>();
   const pluginCodeLocations = new Map<string, string>();
+  const pluginCodeContext = new AsyncLocalStorage<string>();
 
   function listPluginCodeOwners(): { location: string; owner: string }[] {
     return [...pluginCodeLocations].map(([location, pluginId]) => ({
@@ -629,14 +630,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return true;
   }
 
+  function hasCodeFrames(error: unknown): boolean {
+    if (!(error instanceof Error) || typeof error.stack !== "string")
+      return false;
+    return error.stack.split("\n").some((line) => {
+      const location = /^\s+at (?:async )?(?:.*\()?(.+):\d+:\d+\)?$/.exec(
+        line,
+      )?.[1];
+      return location !== undefined && !location.startsWith("node:");
+    });
+  }
+
   function containPluginError(error: unknown): boolean {
     if (reportStaleError(error)) return true;
-    const pluginId = pluginOwningStack(error);
+    const stackOwner = pluginOwningStack(error);
+    const pluginId =
+      stackOwner ??
+      (hasCodeFrames(error) ? undefined : pluginCodeContext.getStore());
     if (pluginId === undefined) return false;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
       { err: error },
-      `[plugin:${pluginId}] uncaught error: ${message}`,
+      stackOwner === undefined
+        ? `[plugin:${pluginId}] uncaught error from work this plugin started (its stack names no code): ${message}`
+        : `[plugin:${pluginId}] uncaught error: ${message}`,
     );
     if (statuses.get(pluginId)?.status === "running") {
       setStatus(pluginId, "running", `uncaught error: ${message}`);
@@ -887,11 +904,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function listPluginServerAccessProviders() {
-    return [...loaded].flatMap(([pluginId, plugin]) =>
-      [...plugin.handle.serverAccessProviders.values()].map((provider) =>
-        ownedRecord({ pluginId, provider }, plugin),
-      ),
-    );
+    return [...loaded]
+      .filter(([, plugin]) => plugin.handle.serverAccessProviders.size > 0)
+      .map(([pluginId, plugin]) => ({
+        pluginId,
+        plugin,
+        installedAt:
+          getInstalledPlugin(deps.db, pluginId)?.installedAt ??
+          Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.installedAt - b.installedAt)
+      .flatMap(({ pluginId, plugin }) =>
+        [...plugin.handle.serverAccessProviders.values()].map((provider) =>
+          ownedRecord({ pluginId, provider }, plugin),
+        ),
+      );
   }
 
   function listPluginMachineProviders(): PluginMachineProviderRecord[] {
@@ -945,8 +972,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const signal = call.signal;
     const stats = statsFor(id);
     const startedAt = performance.now();
-    const execution = runEventLoopWork(`plugin:${id} ${label}`, () =>
-      run(signal),
+    const execution = pluginCodeContext.run(id, () =>
+      runEventLoopWork(`plugin:${id} ${label}`, () => run(signal)),
     );
     const settled = execution.then(
       () => undefined,
@@ -1940,20 +1967,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ports,
         });
       },
-      setNextTunnels: (config) => {
-        if (!deps.sharedPorts) {
-          throw new Error("host shared-port control plane is unavailable");
-        }
-        deps.sharedPorts.setNextTunnelConfig(row.id, config);
-      },
-      nextTunnelStatuses: () =>
-        (deps.sharedPorts?.listNextTunnelStatuses() ?? []).map((entry) => ({
-          hostId: entry.hostId,
-          hostName: entry.hostName,
-          ...entry.status,
-        })),
-      onNextTunnelStatusChange: (listener) =>
-        deps.sharedPorts?.onNextTunnelStatusChange(listener) ?? (() => {}),
       replaceDeclaredSharedPorts: (declarations) => {
         if (declarations.length > 0 && !deps.sharedPorts) {
           throw new Error("host shared-port control plane is unavailable");
@@ -1974,12 +1987,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...args,
           artifact: hostArtifactCandidate,
         });
-      },
-      openTunnelIngress: (audience) => {
-        if (!deps.openTunnelIngress) {
-          throw new Error("tunnel ingress is unavailable in this plugin host");
-        }
-        return deps.openTunnelIngress(audience);
       },
       registerAiService: (declaration) =>
         deps.aiServices.register({
@@ -2046,7 +2053,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         const filename = runtimeRequire.resolve(serverEntry.path);
         pluginCodeLocations.set(filename, row.id);
         try {
-          const exported: unknown = runtimeRequire(filename);
+          const exported: unknown = pluginCodeContext.run(row.id, () =>
+            runtimeRequire(filename),
+          );
           mod =
             typeof exported === "function"
               ? { default: exported }
@@ -2064,7 +2073,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         rollbackGenerations.push(mutation.rollback);
         candidateModuleRootUrls.add(mutation.rootUrl);
         pluginCodeLocations.set(mutation.rootUrl, row.id);
-        mod = (await import(pathToFileURL(serverEntry.path).href)) as {
+        mod = (await pluginCodeContext.run(
+          row.id,
+          () => import(pathToFileURL(serverEntry.path).href),
+        )) as {
           default?: unknown;
         };
       }
@@ -2074,10 +2086,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
         );
       }
-      await runEventLoopWork(`plugin:${row.id} load`, () =>
-        runFactoryTimeBoxed(
-          factory as (api: BbPluginApi) => unknown,
-          handle.api,
+      await pluginCodeContext.run(row.id, () =>
+        runEventLoopWork(`plugin:${row.id} load`, () =>
+          runFactoryTimeBoxed(
+            factory as (api: BbPluginApi) => unknown,
+            handle.api,
+          ),
         ),
       );
     } catch (error) {

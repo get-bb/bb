@@ -86,6 +86,7 @@ interface RecoverableMessage {
 
 interface PendingSocketPayload {
   bytes: number;
+  compress: boolean;
   payload: string;
   recoverable: RecoverableMessage | null;
 }
@@ -101,8 +102,6 @@ function recoverableMessageKey(
   switch (message.type) {
     case "connect-tunnel.identity":
       return "connect-tunnel.identity";
-    case "connect-next.status":
-      return "connect-next.status";
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
     case "environment-metadata-change":
@@ -112,6 +111,13 @@ function recoverableMessageKey(
     default:
       return null;
   }
+}
+
+function isFileChunkResponse(message: HostDaemonDaemonWsMessage): boolean {
+  return (
+    message.type === "host-rpc.response" &&
+    message.commandType === "host.read_file_chunk"
+  );
 }
 
 function isTerminalDaemonOutputMessage(
@@ -222,6 +228,7 @@ export class ServerConnection {
     }
 
     const payload = JSON.stringify(parsed);
+    const compress = !isFileChunkResponse(parsed);
     const websocket = this.connectedWebSocket();
     if (
       websocket === null ||
@@ -229,17 +236,17 @@ export class ServerConnection {
         (this.pendingSocketPayloads.length > 0 ||
           (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES))
     ) {
-      return this.enqueueSocketPayload(payload, recoverable);
+      return this.enqueueSocketPayload(payload, recoverable, compress);
     }
     if (
       isTerminalDaemonLifecycleMessage(parsed) &&
       this.pendingSocketPayloads.length > 0
     ) {
-      const queued = this.enqueueSocketPayload(payload, recoverable);
+      const queued = this.enqueueSocketPayload(payload, recoverable, compress);
       this.flushSocketPayloads(true);
       return queued;
     }
-    return this.writeSocketPayload(websocket, payload, recoverable);
+    return this.writeSocketPayload(websocket, payload, recoverable, compress);
   }
 
   private connectedWebSocket(): ReconnectingWebSocketLike | null {
@@ -258,6 +265,7 @@ export class ServerConnection {
     websocket: ReconnectingWebSocketLike,
     payload: string,
     recoverable: RecoverableMessage | null,
+    compress: boolean,
   ): boolean {
     const sequencer = this.sequencer;
     if (sequencer === null) {
@@ -270,16 +278,21 @@ export class ServerConnection {
         seq: sequencer.sentSeq,
       });
     }
-    this.sendFrame(websocket, frame);
+    this.sendFrame(websocket, frame, compress);
     return true;
   }
 
   private sendFrame(
     websocket: ReconnectingWebSocketLike,
     frame: string,
+    compress = true,
   ): boolean {
     try {
-      websocket.send(frame);
+      if (compress) {
+        websocket.send(frame);
+      } else {
+        websocket.sendUncompressed(frame);
+      }
       return true;
     } catch (error) {
       this.options.logger.warn(
@@ -295,6 +308,7 @@ export class ServerConnection {
   private enqueueSocketPayload(
     payload: string,
     recoverable: RecoverableMessage | null,
+    compress: boolean,
   ): boolean {
     const bytes = Buffer.byteLength(payload, "utf8");
     if (this.pendingSocketBytes + bytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
@@ -309,7 +323,7 @@ export class ServerConnection {
       this.websocket?.reconnect(1013, "terminal-backpressure");
       return false;
     }
-    this.pendingSocketPayloads.push({ bytes, payload, recoverable });
+    this.pendingSocketPayloads.push({ bytes, compress, payload, recoverable });
     this.pendingSocketBytes += bytes;
     if (this.connectedWebSocket() !== null) {
       this.scheduleSocketDrain();
@@ -340,7 +354,12 @@ export class ServerConnection {
         break;
       }
       this.pendingSocketBytes -= pending.bytes;
-      this.writeSocketPayload(websocket, pending.payload, pending.recoverable);
+      this.writeSocketPayload(
+        websocket,
+        pending.payload,
+        pending.recoverable,
+        pending.compress,
+      );
       websocket = this.connectedWebSocket();
     }
     if (websocket !== null && this.pendingSocketPayloads.length > 0) {
@@ -939,22 +958,6 @@ export class ServerConnection {
           "Connect shares handler failed",
         );
       });
-      return;
-    }
-
-    if (message.data.type === "connect-next.replace") {
-      const nextMessage = message.data;
-      try {
-        this.options.onConnectNextReplace?.(nextMessage);
-      } catch (error) {
-        this.options.logger.warn(
-          {
-            generation: nextMessage.generation,
-            ...runtimeErrorLogFields(error),
-          },
-          "Connect next handler failed",
-        );
-      }
       return;
     }
 

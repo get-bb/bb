@@ -3,6 +3,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { AppDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { resolveBridgeLaunchForProviderId } from "../system/provider-bridge-launch.js";
+import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 
 export const PROVIDER_LIVE_COMMANDS_FRESH_MS = 60_000;
 const PROVIDER_LIVE_COMMANDS_MAX_ENTRIES = 256;
@@ -101,8 +102,17 @@ export async function listProviderLiveCommands(
   }
   const logFields = { hostId: args.hostId, providerId: args.providerId };
   try {
+    const contributedEnv = await resolveHostProviderEnv(
+      args.hostId,
+      args.providerId,
+    );
     return await deps.providerLiveCommands.read({
-      key: JSON.stringify([args.hostId, args.providerId, args.cwd]),
+      key: JSON.stringify([
+        args.hostId,
+        args.providerId,
+        args.cwd,
+        contributedEnv.map((entry) => [entry.name, entry.value]),
+      ]),
       load: async () => {
         const result = await callHostRetryableOnlineRpc(deps, {
           hostId: args.hostId,
@@ -112,6 +122,7 @@ export async function listProviderLiveCommands(
             providerId: args.providerId,
             bridgeLaunch,
             cwd: args.cwd,
+            contributedEnv,
           },
         });
         return result.commands;

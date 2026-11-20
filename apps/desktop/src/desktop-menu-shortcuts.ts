@@ -1,4 +1,5 @@
 import {
+  isAppKeybindingAvailableForClient,
   type AppCommandId,
   type AppKeybindings,
   type AppShortcut,
@@ -7,9 +8,11 @@ import {
 export interface ApplicationMenuAccelerators {
   closeWindowOrSideTab: string | undefined;
   createNewWindow: string | undefined;
+  forceReloadWindow: string | undefined;
   openNewTab: string | undefined;
   openNewThread: string | undefined;
   openSettings: string | undefined;
+  reloadWindow: string | undefined;
   reopenClosedTab: string | undefined;
 }
 
@@ -17,9 +20,11 @@ export const DEFAULT_APPLICATION_MENU_ACCELERATORS: ApplicationMenuAccelerators 
   {
     closeWindowOrSideTab: "CommandOrControl+W",
     createNewWindow: "CommandOrControl+Shift+N",
+    forceReloadWindow: "CommandOrControl+Shift+R",
     openNewTab: "CommandOrControl+T",
     openNewThread: "CommandOrControl+N",
     openSettings: "CommandOrControl+,",
+    reloadWindow: "CommandOrControl+R",
     reopenClosedTab: "CommandOrControl+Shift+T",
   };
 
@@ -75,10 +80,14 @@ export function formatElectronAccelerator(
 function acceleratorForCommand(
   keybindings: AppKeybindings,
   command: AppCommandId,
+  platform: string,
 ): string | undefined {
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
-    if (binding?.command === command) {
+    if (
+      binding?.command === command &&
+      isAppKeybindingAvailableForClient(binding, { isDesktop: true, platform })
+    ) {
       return formatElectronAccelerator(binding.shortcut);
     }
   }
@@ -87,16 +96,18 @@ function acceleratorForCommand(
 
 export function resolveApplicationMenuAccelerators(
   keybindings: AppKeybindings,
+  platform: string,
 ): ApplicationMenuAccelerators {
+  const accelerator = (command: AppCommandId) =>
+    acceleratorForCommand(keybindings, command, platform);
   return {
-    closeWindowOrSideTab: acceleratorForCommand(keybindings, "panel.close"),
-    createNewWindow: acceleratorForCommand(keybindings, "window.new"),
-    openNewTab: acceleratorForCommand(keybindings, "panel.newTab"),
-    openNewThread: acceleratorForCommand(keybindings, "thread.new"),
-    openSettings: acceleratorForCommand(keybindings, "settings.open"),
-    reopenClosedTab: acceleratorForCommand(
-      keybindings,
-      "panel.reopenClosedTab",
-    ),
+    closeWindowOrSideTab: accelerator("panel.close"),
+    createNewWindow: accelerator("window.new"),
+    forceReloadWindow: accelerator("window.forceReload"),
+    openNewTab: accelerator("panel.newTab"),
+    openNewThread: accelerator("thread.new"),
+    openSettings: accelerator("settings.open"),
+    reloadWindow: accelerator("window.reload"),
+    reopenClosedTab: accelerator("panel.reopenClosedTab"),
   };
 }

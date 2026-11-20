@@ -247,8 +247,7 @@ function leftoverEnvironments(retired: Environment[], threads: Thread[]) {
   return retired.filter((env) => !occupied.has(env.id));
 }
 const interruptedCleanup = (env: Environment) =>
-  env.lifecycle.teardown?.status === "failed" &&
-  (env.lifecycle.teardown.message?.startsWith("Needs recovery:") ?? false);
+  env.lifecycle.teardown?.needsRecovery === true;
 type LeftoverCleanup = HostStorageLeftoverWorktree["cleanup"];
 function leftoverFailure(error: unknown): LeftoverCleanup {
   const text = error instanceof Error ? error.message : String(error);
@@ -260,7 +259,13 @@ function leftoverFailure(error: unknown): LeftoverCleanup {
     text.includes("setup or a hook is still running")
   )
     return { state: "processesRunning" };
-  if (text.includes("Needs recovery")) return { state: "interrupted" };
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "environment_needs_recovery"
+  )
+    return { state: "interrupted" };
   return { state: "failed", message: text.replace(/^HTTP \d+: /, "") };
 }
 const isStorageEntry = (name: string) =>

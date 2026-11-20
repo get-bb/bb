@@ -28,6 +28,8 @@ import {
   buildFocusedSurfacePaletteActions,
 } from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
@@ -64,6 +66,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const isCompact = useIsCompactViewport();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
+  const bindPluginActionContext = useBindPluginActionContext();
+  const navigationHost = useAppNavigationHost();
 
   const [open, setOpen] = useState(false);
   const [openCount, setOpenCount] = useState(0);
@@ -115,6 +119,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       slots: [slot],
       threadId,
       projectId,
+      bind: bindPluginActionContext,
+      host: navigationHost,
     })[0];
     if (!action) return false;
     action.run();
@@ -136,6 +142,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           slots: appPluginCommands,
           threadId,
           projectId,
+          bind: bindPluginActionContext,
+          host: navigationHost,
         }),
         ...buildPluginComposerCommandActions({
           slots: composerPluginCommands,
@@ -151,7 +159,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     ],
     [
       appPluginCommands,
+      bindPluginActionContext,
       composerPluginCommands,
+      navigationHost,
       projectId,
       pluginShortcuts,
       runner.dispatch,

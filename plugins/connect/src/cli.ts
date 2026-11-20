@@ -68,9 +68,7 @@ function shareLine(share: ShareListing): string {
   const address =
     share.url === ""
       ? `unavailable: ${share.unavailableReason ?? "unknown reason"}`
-      : share.nextUrl === undefined
-        ? share.url
-        : `${share.url}  ${share.nextUrl}`;
+      : share.url;
   return `${share.hostName} (${share.hostId})  ${share.port}  ${address}`;
 }
 
@@ -321,10 +319,7 @@ export function registerConnectCli(args: {
               }
               return {
                 exitCode: 0,
-                stdout:
-                  listing.nextUrl === undefined
-                    ? `${listing.url}\n`
-                    : `${listing.url}\n${listing.nextUrl}\n`,
+                stdout: `${listing.url}\n`,
               };
             }),
         }),

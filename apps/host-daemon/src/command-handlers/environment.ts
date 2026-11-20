@@ -43,8 +43,6 @@ export async function provisionEnvironment(
     const entry = await options.runtimeManager.ensureEnvironment({
       environmentId: command.environmentId,
       provision: toProvisionWorkspaceOptions(command, onProgress),
-      setupScriptTimeoutMs: command.setupScriptTimeoutMs,
-      setupContributedEnv: command.contributedEnv,
     });
 
     const [branchName, resolvedDefaultBranch] = await Promise.all([

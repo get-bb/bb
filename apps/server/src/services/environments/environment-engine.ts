@@ -2,7 +2,16 @@ import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
-import { getLatestThreadSequence, updateThread } from "@bb/db";
+import {
+  getLatestThreadSequence,
+  nextPersistedRetryAt,
+  persistedRetryExhausted,
+  updateThread,
+} from "@bb/db";
+import {
+  TEARDOWN_RETRY_DELAYS_MS,
+  needsRecoveryMessage,
+} from "../lib/persisted-retry.js";
 import {
   assertEnvironmentPathAvailable,
   findBlockingEnvironmentPathClaim,
@@ -17,8 +26,10 @@ import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { foreignProjectOwnedPathRefusal } from "../threads/workspace-path-claims.js";
 import {
   cancelPendingEnvironmentHook,
+  isEnvironmentHookOutcomeUnknown,
   runEnvironmentHook,
-  ENVIRONMENT_HOOK_TIMEOUT_MS,
+  runEnvironmentTeardownHook,
+  type EnvironmentHookProgressSink,
 } from "./environment-hooks.js";
 import { eq, and, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
@@ -102,6 +113,7 @@ import {
   expectedLiveHostCommandErrorLogFields,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
+  settleLiveHostCommandFailure,
 } from "../hosts/live-command.js";
 import { runThreadLifecycleInTransaction } from "../threads/lifecycle/run.js";
 import {
@@ -345,8 +357,6 @@ function runTrackedOperation(args: {
   return operation;
 }
 
-const REMOVE_RETRY_MS = 60_000;
-const MAX_REMOVE_ATTEMPTS = 5;
 const PROVIDER_OWNER_MISMATCH_MESSAGE =
   "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
 
@@ -750,12 +760,11 @@ async function runRemove(
   await withHostCleanup(deps, row.hostId, async () => {
     try {
       if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
-        await runEnvironmentHook(deps, {
+        await runEnvironmentTeardownHook(deps, {
           projectId: row.projectId,
           id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
           hostId: row.hostId,
           path: row.path,
-          kind: "teardown",
           resumeOnly,
           report: {
             step: () => undefined,
@@ -830,18 +839,23 @@ function writeEnvironmentTeardownFailure(
 ): void {
   const row = getEnvironment(deps.db, environmentId);
   if (row === null) return;
-  const exhausted = row.teardownAttempt >= MAX_REMOVE_ATTEMPTS;
+  const retireAt = nextPersistedRetryAt(
+    TEARDOWN_RETRY_DELAYS_MS,
+    row.teardownAttempt,
+    Date.now(),
+  );
   const written = deps.db
     .update(environments)
     .set({
       teardownStatus: "failed",
-      teardownMessage: exhausted
-        ? `Needs recovery: ${message} Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`
-        : message,
-      retireAt: exhausted
-        ? null
-        : Date.now() +
-          REMOVE_RETRY_MS * 2 ** Math.max(0, row.teardownAttempt - 1),
+      teardownMessage:
+        retireAt === null
+          ? needsRecoveryMessage(
+              message,
+              `Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
+            )
+          : message,
+      retireAt,
       updatedAt: Date.now(),
     })
     .where(
@@ -942,16 +956,15 @@ async function sweepProviderEnvironmentInSlot(
       });
     return;
   }
-  if (row.teardownAttempt >= MAX_REMOVE_ATTEMPTS) {
-    if (
-      row.retireAt !== null ||
-      !row.teardownMessage?.startsWith("Needs recovery:")
-    )
+  if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt)) {
+    if (row.teardownStatus !== "failed")
       writeEnvironmentTeardownFailure(
         deps,
         environmentId,
         row.teardownMessage ?? "Cleanup did not complete.",
       );
+    else if (row.retireAt !== null)
+      writeEnvironment(deps, environmentId, { retireAt: null });
     return;
   }
   if (row.retireAt === null) {
@@ -1069,10 +1082,10 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
   )
     return false;
   if (row.teardownStatus === "removed") return true;
-  if (row.teardownAttempt >= MAX_REMOVE_ATTEMPTS)
+  if (persistedRetryExhausted(TEARDOWN_RETRY_DELAYS_MS, row.teardownAttempt))
     throw new ApiError(
       409,
-      "invalid_request",
+      "environment_needs_recovery",
       `Needs recovery. Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
     );
   writeEnvironment(deps, environmentId, { retireAt: Date.now() });
@@ -1554,29 +1567,6 @@ function settleEnvironmentProvisionOutcome(
 ): CommandResultSideEffectsResult {
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
-  if (
-    args.command.setupScriptTimeoutMs !== null &&
-    (args.report.ok || args.report.errorCode === "setup_script_failed")
-  ) {
-    const environment = getEnvironment(
-      args.deps.db,
-      args.command.environmentId,
-    );
-    if (environment !== null)
-      args.deps.db
-        .update(environmentHookOperations)
-        .set({
-          finishedAt: Date.now(),
-          error: args.report.ok ? null : args.report.errorMessage,
-        })
-        .where(
-          eq(
-            environmentHookOperations.id,
-            `environment:${environment.id}:${environment.environmentProviderInstanceKey}:setup`,
-          ),
-        )
-        .run();
-  }
   if (!initiator && !args.report.ok) {
     const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
       args.deps,
@@ -1925,46 +1915,186 @@ export async function runTrackedEnvironmentAttach(
   await operation.done;
 }
 
-async function runEnvironmentProvisionCommand(
+const SETUP_TRANSCRIPT_BATCH_MS = 1_000;
+
+function createSetupTranscript(
   deps: CommandResultSideEffectsDeps,
-  args: StartTrackedEnvironmentProvisionCommandArgs,
-): Promise<void> {
-  if (args.request.command.setupScriptTimeoutMs !== null) {
-    const environment = args.environment;
-    const id = `environment:${environment.id}:${environment.environmentProviderInstanceKey}:setup`;
-    const existing = deps.db
-      .select({ finishedAt: environmentHookOperations.finishedAt })
-      .from(environmentHookOperations)
-      .where(eq(environmentHookOperations.id, id))
-      .get();
-    if (
-      existing !== undefined &&
-      existing.finishedAt === null &&
-      !args.setupRunsOnConnectedDaemon
-    ) {
+  args: {
+    environmentId: string;
+    initiator: EnvironmentProvisionRequest["command"]["initiator"];
+  },
+): { push: EnvironmentHookProgressSink; flush: () => void } {
+  const initiator = args.initiator;
+  const pending: ProvisioningTranscriptEntry[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (initiator === null || pending.length === 0) return;
+    const entries = pending.splice(0, pending.length);
+    const thread = getThread(deps.db, initiator.threadId);
+    if (thread === null || thread.deletedAt !== null) return;
+    appendThreadProvisioningEvent(deps, {
+      threadId: initiator.threadId,
+      environmentId: args.environmentId,
+      provisioningId: initiator.provisioningId,
+      status: "active",
+      entries,
+    });
+  };
+  return {
+    push: (entry) => {
+      if (initiator === null) return;
+      pending.push(entry);
+      if (timer === null) {
+        timer = setTimeout(flush, SETUP_TRANSCRIPT_BATCH_MS);
+        timer.unref?.();
+      }
+    },
+    flush,
+  };
+}
+
+function provisionCancelledError(): ApiError {
+  return new ApiError(
+    409,
+    "provision_cancelled",
+    "Environment provisioning was cancelled",
+  );
+}
+
+async function runEnvironmentSetup(
+  deps: CommandResultSideEffectsDeps,
+  args: StartTrackedEnvironmentProvisionCommandArgs & {
+    signal: AbortSignal;
+  },
+): Promise<"ready" | "stopped" | { failed: Error }> {
+  const environment = args.environment;
+  const id = `environment:${environment.id}:${environment.environmentProviderInstanceKey}:setup`;
+  const unknownOutcomeReason = `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`;
+  const existing = deps.db
+    .select({ finishedAt: environmentHookOperations.finishedAt })
+    .from(environmentHookOperations)
+    .where(eq(environmentHookOperations.id, id))
+    .get();
+  if (
+    existing !== undefined &&
+    existing.finishedAt === null &&
+    !args.setupRunsOnConnectedDaemon
+  ) {
+    interruptUnrecoverableEnvironmentProvisioning(deps, {
+      environmentId: environment.id,
+      reason: unknownOutcomeReason,
+    });
+    return "stopped";
+  }
+  const transcript = createSetupTranscript(deps, {
+    environmentId: environment.id,
+    initiator: args.request.command.initiator,
+  });
+  try {
+    await runEnvironmentHook(deps, {
+      id,
+      projectId: environment.projectId,
+      hostId: environment.hostId,
+      path: args.request.command.path,
+      kind: "setup",
+      resumeOnly: false,
+      onProgress: transcript.push,
+      signal: args.signal,
+    });
+    return args.signal.aborted
+      ? { failed: provisionCancelledError() }
+      : "ready";
+  } catch (error) {
+    if (args.signal.aborted) return { failed: provisionCancelledError() };
+    if (error instanceof Error && isHostUnavailableApiError(error)) {
+      deps.logger.info(
+        {
+          environmentId: environment.id,
+          hostId: environment.hostId,
+        },
+        "Environment provisioning waiting for host reconnect",
+      );
+      return "stopped";
+    }
+    if (isEnvironmentHookOutcomeUnknown(error)) {
       interruptUnrecoverableEnvironmentProvisioning(deps, {
         environmentId: environment.id,
-        reason: `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`,
+        reason: unknownOutcomeReason,
+      });
+      return "stopped";
+    }
+    return {
+      failed: error instanceof Error ? error : new Error(String(error)),
+    };
+  } finally {
+    transcript.flush();
+  }
+}
+
+function logEnvironmentProvisionFailure(
+  deps: CommandResultSideEffectsDeps,
+  args: StartTrackedEnvironmentProvisionCommandArgs & {
+    error: unknown;
+    executionId: string;
+  },
+): void {
+  const expectedErrorFields =
+    args.error instanceof Error
+      ? expectedLiveHostCommandErrorLogFields(args.error)
+      : null;
+  if (expectedErrorFields !== null) {
+    deps.logger.debug(
+      {
+        commandType: args.request.command.type,
+        environmentId: args.environment.id,
+        ...expectedErrorFields,
+        executionId: args.executionId,
+        hostId: args.environment.hostId,
+        initiatorThreadId: args.request.command.initiator?.threadId ?? null,
+        provisioningId: args.request.command.initiator?.provisioningId ?? null,
+      },
+      "Live environment provisioning cancelled",
+    );
+    return;
+  }
+  deps.logger.warn(
+    {
+      commandType: args.request.command.type,
+      err: args.error,
+      environmentId: args.environment.id,
+      executionId: args.executionId,
+      hostId: args.environment.hostId,
+    },
+    "Live environment provision command failed",
+  );
+}
+
+async function runEnvironmentProvisionCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: StartTrackedEnvironmentProvisionCommandArgs & { signal: AbortSignal },
+): Promise<void> {
+  const execution = createLiveHostCommandExecution(args.environment.hostId);
+  if (args.environment.providerOwnsPath) {
+    const setup = await runEnvironmentSetup(deps, args);
+    if (setup === "stopped") return;
+    if (setup !== "ready") {
+      logEnvironmentProvisionFailure(deps, {
+        ...args,
+        error: setup.failed,
+        executionId: execution.id,
+      });
+      await settleLiveHostCommandFailure(deps, {
+        command: args.request.command,
+        execution,
+        error: setup.failed,
       });
       return;
     }
-    deps.db
-      .insert(environmentHookOperations)
-      .values({
-        id,
-        operationId: id,
-        hostId: environment.hostId,
-        path: args.request.command.path,
-        kind: "setup",
-        startedAt: Date.now(),
-      })
-      .onConflictDoUpdate({
-        target: environmentHookOperations.id,
-        set: { startedAt: Date.now(), finishedAt: null, error: null },
-      })
-      .run();
   }
-  const execution = createLiveHostCommandExecution(args.environment.hostId);
   await runLiveHostCommand(deps, {
     command: args.request.command,
     execution,
@@ -1984,36 +2114,11 @@ async function runEnvironmentProvisionCommand(
       );
       return;
     }
-    const expectedErrorFields =
-      error instanceof Error
-        ? expectedLiveHostCommandErrorLogFields(error)
-        : null;
-    if (expectedErrorFields !== null) {
-      deps.logger.debug(
-        {
-          commandType: args.request.command.type,
-          environmentId: args.environment.id,
-          ...expectedErrorFields,
-          executionId: execution.id,
-          hostId: args.environment.hostId,
-          initiatorThreadId: args.request.command.initiator?.threadId ?? null,
-          provisioningId:
-            args.request.command.initiator?.provisioningId ?? null,
-        },
-        "Live environment provisioning cancelled",
-      );
-      return;
-    }
-    deps.logger.warn(
-      {
-        commandType: args.request.command.type,
-        err: error,
-        environmentId: args.environment.id,
-        executionId: execution.id,
-        hostId: args.environment.hostId,
-      },
-      "Live environment provision command failed",
-    );
+    logEnvironmentProvisionFailure(deps, {
+      ...args,
+      error,
+      executionId: execution.id,
+    });
   });
 }
 
@@ -2045,9 +2150,6 @@ function recoverEnvironmentProvisionRequest(
           provisioningId: context.state.provisioningId,
         },
         path: environment.path,
-        setupScriptTimeoutMs: environment.providerOwnsPath
-          ? ENVIRONMENT_HOOK_TIMEOUT_MS
-          : null,
       }),
     };
   }
@@ -2102,6 +2204,7 @@ export async function advanceEnvironmentProvisioning(
           ),
         );
     const active = map.get(row.id);
+    if (active?.kind === "attach") active.controller.abort();
     if (active !== undefined) active.cancellation ??= cancel();
     else runTrackedOperation({ kind: "attach", map, key: row.id, run: cancel });
     return;
@@ -2273,11 +2376,12 @@ export async function advanceEnvironmentProvisioning(
     kind: "attach",
     map,
     key: row.id,
-    run: () =>
+    run: (signal) =>
       runEnvironmentProvisionCommand(deps, {
         environment: row,
         request,
         setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon === true,
+        signal,
       }),
   });
 }

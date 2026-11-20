@@ -58,8 +58,14 @@ import {
   type PluginTabContext,
 } from "./PluginTabs";
 
+const AWAITED_PLUGIN_IDS = ["example"];
+
 function Host({ context }: { context: PluginTabContext }) {
-  const { slots: available, observers, isReady } = usePluginTabs(context);
+  const {
+    slots: available,
+    observers,
+    isReady,
+  } = usePluginTabs(context, AWAITED_PLUGIN_IDS);
   const slots = useMemo(
     () => available.filter((slot) => slot.pluginId === "example"),
     [available],

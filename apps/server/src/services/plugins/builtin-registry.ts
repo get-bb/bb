@@ -76,11 +76,6 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "connect-next",
-    pluginId: "bb--connect-next",
-    defaultEnabled: false,
-  },
-  {
     name: "environment-project-checkout",
     pluginId: "environment-project-checkout",
     defaultEnabled: true,
@@ -279,6 +274,11 @@ export const OFFICIAL_PLUGINS = [
   {
     name: "theme-preview",
     pluginId: "theme-preview",
+    defaultEnabled: true,
+  },
+  {
+    name: "tailscale",
+    pluginId: "bb--tailscale",
     defaultEnabled: true,
   },
 ].map((plugin): BundledPluginDefinition => ({

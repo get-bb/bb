@@ -691,13 +691,8 @@ Local machine enrollment follows the same origin: local `http:` server URLs
 produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
 enrollment remains HTTPS-only.
 
-For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
-`NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
-worker's `GATE_SECRET` (the account API answers 404 without it),
-`BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
 `BB_CLOUD_DEV_STATE_DIR` moves the local Durable Object state away from
-`.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
-see [connect-next.md](connect-next.md#local-end-to-end-run).
+`.wrangler/cloud-dev`.
 
 The AI gateway answers `503 unavailable` until an OpenRouter key is present.
 Export `OPENROUTER_API_KEY` in the shell before `pnpm cloud:dev` to pass it
@@ -1107,6 +1102,22 @@ payloads. A daemon on another `HOST_DAEMON_PROTOCOL_VERSION` is rejected with
 reconnects. Auto-update-enabled daemons install the server's matching `bb-app`
 artifact; disabled or failed updates leave the machine disconnected until a
 manual update succeeds. The commit that bumps the version records what changed.
+
+## Terminal Output Streaming
+
+A daemon sends a terminal's output to the server only while the server has
+asked for it with `terminal.stream` (`enabled: true`). The server asks just
+before it attaches a terminal client, or before it catches clients up after a
+daemon reconnect, and stops the stream when the last client detaches. While a
+terminal is not streamed, its output stays in the daemon's scrollback ring
+(4 MiB per terminal) and reaches clients through the attach replay. A dropped
+daemon session stops every stream.
+
+A streamed terminal never has more than 1 MiB of output that the server has not
+acknowledged; past that, the daemon pauses the PTY until `terminal.ack` arrives.
+The server acknowledges up to what the fastest visible, acknowledging client
+has parsed. With no such client (hidden, stalled, or not sending acks), it
+acknowledges output as it arrives, so the PTY runs at the link rate.
 
 ## Opt-in server performance diagnostics
 

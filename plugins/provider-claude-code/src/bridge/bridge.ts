@@ -27,7 +27,7 @@ import {
   decodeBridgeJsonRpcResponse,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
-  withoutBridgeRuntimeEnv,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   type BridgeToolCallRequest,
   type UnansweredInteractionCause,
   experimental_defineProviderBridge,
@@ -73,6 +73,7 @@ import {
 import {
   PROVIDER_COMMANDS_STATE_KIND,
   createClaudeCodeBridgeCommandListMemo,
+  listClaudeCodeBridgeCommands,
   toProviderCommandsState,
 } from "./provider-commands.js";
 import {
@@ -871,6 +872,8 @@ async function applyLiveSessionSettings(
 
 const PROVIDER_CATALOG_MEMO_TTL_MS = 2 * 60_000;
 const listCommandsMemoized = createClaudeCodeBridgeCommandListMemo({
+  list: (cwd, envVars) =>
+    listClaudeCodeBridgeCommands(cwd, buildSessionEnv(envVars)),
   ttlMs: PROVIDER_CATALOG_MEMO_TTL_MS,
 });
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
@@ -1821,11 +1824,10 @@ async function closeClaudeThreadSession(
 }
 
 function buildSessionEnv(
-  envOverrides: Record<string, string>,
+  envVars: Readonly<Record<string, string>>,
 ): NodeJS.ProcessEnv {
   const sessionEnv: NodeJS.ProcessEnv = {
-    ...withoutBridgeRuntimeEnv(process.env),
-    ...envOverrides,
+    ...buildProviderCliEnv(envVars),
     CLAUDE_CODE_ENTRYPOINT: "cli",
   };
   delete sessionEnv.CLAUDE_AGENT_SDK_CLIENT_APP;
@@ -2372,7 +2374,13 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "commands/list":
       try {
-        sendResult(request.id, await listCommandsMemoized(request.params.cwd));
+        sendResult(
+          request.id,
+          await listCommandsMemoized(
+            request.params.cwd,
+            request.params.envVars ?? {},
+          ),
+        );
       } catch (error) {
         if (error instanceof MissingClaudeCliError) {
           sendError(
@@ -2386,21 +2394,37 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       }
       break;
     case "provider/health":
-      sendResult(request.id, await getClaudeProviderHealth());
+      sendResult(
+        request.id,
+        await getClaudeProviderHealth(
+          buildSessionEnv(request.params.envVars ?? {}),
+        ),
+      );
       break;
     case "provider/usage":
-      sendResult(request.id, await getClaudeProviderUsage());
+      sendResult(
+        request.id,
+        await getClaudeProviderUsage(
+          buildSessionEnv(request.params.envVars ?? {}),
+        ),
+      );
       break;
     case "provider/installation/status":
       sendResult(
         request.id,
-        await getClaudeProviderInstallationStatus(request.params.checkUpdates),
+        await getClaudeProviderInstallationStatus(
+          buildSessionEnv(request.params.envVars ?? {}),
+          request.params.checkUpdates,
+        ),
       );
       break;
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getClaudeProviderInstallationRun(request.params.action),
+        await getClaudeProviderInstallationRun(
+          buildSessionEnv(request.params.envVars ?? {}),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":
@@ -2620,7 +2644,9 @@ async function toClaudeSessionParams(
             roots: configuredSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
-            claudeDir: claudeSkillsConfigDirectory(),
+            claudeDir: claudeSkillsConfigDirectory(
+              buildSessionEnv(params.options.envVars ?? {}),
+            ),
           }),
         );
   return buildClaudeSessionParams({
