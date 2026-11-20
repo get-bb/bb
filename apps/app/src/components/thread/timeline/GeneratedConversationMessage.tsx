@@ -37,7 +37,7 @@ import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {} from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { formatShortMessageTime, MessageTime } from "./message-time.js";
+import { formatShortMessageTime, MessageTime } from "@bb/shared-ui/message-time";
 import { useIsOverflowing } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";

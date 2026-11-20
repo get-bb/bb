@@ -6,10 +6,12 @@ import {
   type PluginThreadActionItemInput,
   type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
-import { definePluginApp } from "@/lib/plugin-app-definition";
-import { copyToClipboard } from "@/lib/clipboard";
-import { useBbContext } from "@/lib/plugin-bb-context";
-import { useSidebarSplitLayout } from "@/lib/plugin-split-layout";
+import {
+  definePluginApp,
+  experimental_copyToClipboard,
+  useBbContext,
+  useSidebarSplitLayout,
+} from "@get-bb/plugin-sdk/app";
 import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
@@ -260,7 +262,9 @@ const coreThreadActions = definePluginApp((app) => {
       label: "Copy link",
       icon: "Copy",
       run: async () => {
-        if (await copyToClipboard({ text: getThreadUrl(thread) })) {
+        if (
+          await experimental_copyToClipboard({ text: getThreadUrl(thread) })
+        ) {
           appToast.success("Thread link copied");
         } else {
           appToast.error("Failed to copy thread link");
