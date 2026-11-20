@@ -121,6 +121,17 @@ export const worktreeHostContract = defineRpcContract({
       })
       .strict(),
   },
+  readRemoteBase: {
+    input: z.object({ sourcePath: z.string().min(1) }).strict(),
+    output: z
+      .object({
+        ref: z.string().min(1),
+        commit: z.string().min(1),
+        offline: z.boolean(),
+      })
+      .strict()
+      .nullable(),
+  },
   handOff: {
     input: z
       .object({
@@ -128,15 +139,12 @@ export const worktreeHostContract = defineRpcContract({
         path: z.string().min(1),
         fromBranch: z.string().min(1),
         toBranch: z.string().min(1),
+        baseBranch: z.string().min(1),
+        baseCommit: z.string().min(1),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
-      z
-        .object({
-          status: z.literal("handed-off"),
-          baseBranch: z.string().min(1),
-        })
-        .strict(),
+      z.object({ status: z.literal("handed-off") }).strict(),
       z
         .object({ status: z.literal("refused"), reason: z.string().min(1) })
         .strict(),

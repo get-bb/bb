@@ -1580,21 +1580,28 @@ describe("warm worktree handoff", () => {
       }),
     );
     if (created.status !== "created") throw new Error(created.message);
-    return { sourcePath, clone, harness, path: created.path };
+    const head = (await git(created.path, "rev-parse", "HEAD")).trim();
+    const at = (toBranch: string) => ({
+      sourcePath: clone,
+      path: created.path,
+      fromBranch: "bb/env_warm",
+      toBranch,
+      baseBranch: "origin/main",
+      baseCommit: head,
+    });
+    return { sourcePath, clone, harness, path: created.path, head, at };
   }
 
   it("renames the placeholder branch in place without moving the checkout", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
-    const head = (await git(path, "rev-parse", "HEAD")).trim();
-    const result = await harness.experimental_call("handOff", {
-      sourcePath: clone,
-      path,
-      fromBranch: "bb/env_warm",
-      toBranch: "bb/fix-login-thr_1",
-    });
-    expect(result).toEqual({ status: "handed-off", baseBranch: "origin/main" });
+    const { clone, harness, path, head, at } =
+      await warmWorktree(onTestFinished);
+    const result = await harness.experimental_call(
+      "handOff",
+      at("bb/fix-login-thr_1"),
+    );
+    expect(result).toEqual({ status: "handed-off" });
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/fix-login-thr_1",
     );
@@ -1605,47 +1612,65 @@ describe("warm worktree handoff", () => {
     );
   });
 
-  it("refuses a warm worktree that is behind the last fetched base, then reports it after a fetch", async ({
+  it("reads a remote base commit that has not been fetched yet, and refuses a warm worktree behind it", async ({
     onTestFinished,
   }) => {
-    const { sourcePath, clone, harness, path } =
+    const { sourcePath, clone, harness, path, head } =
       await warmWorktree(onTestFinished);
-    const head = (await git(path, "rev-parse", "HEAD")).trim();
     const upstream = await commitIn(sourcePath, "upstream.txt");
-    const refreshed = await harness.experimental_call("refreshPoolBase", {
+    const remote = await harness.experimental_call("readRemoteBase", {
       sourcePath: clone,
-      memberPaths: [path],
     });
-    expect(refreshed).toEqual({
+    expect(remote).toEqual({
       ref: "origin/main",
       commit: upstream,
-      members: [{ path, head, branch: "bb/env_warm" }],
+      offline: false,
     });
+    expect(
+      (await git(clone, "rev-parse", "refs/remotes/origin/main")).trim(),
+    ).toBe(head);
     expect(
       await harness.experimental_call("handOff", {
         sourcePath: clone,
         path,
         fromBranch: "bb/env_warm",
         toBranch: "bb/late-thr_2",
+        baseBranch: "origin/main",
+        baseCommit: upstream,
       }),
     ).toEqual({ status: "refused", reason: "it is behind origin/main" });
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/env_warm",
     );
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: clone,
+        memberPaths: [path],
+      }),
+    ).toEqual({
+      ref: "origin/main",
+      commit: upstream,
+      members: [{ path, head, branch: "bb/env_warm" }],
+    });
+  });
+
+  it("falls back to the last fetched base when the remote cannot be reached", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, head } = await warmWorktree(onTestFinished);
+    await git(clone, "remote", "set-url", "origin", `${clone}-missing`);
+    expect(
+      await harness.experimental_call("readRemoteBase", { sourcePath: clone }),
+    ).toEqual({ ref: "origin/main", commit: head, offline: true });
   });
 
   it("refuses a warm worktree that sits on another branch while its placeholder still exists", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    const { clone, harness, path, at } = await warmWorktree(onTestFinished);
     await git(path, "switch", "-c", "someone-elses");
     expect(
-      await harness.experimental_call("handOff", {
-        sourcePath: clone,
-        path,
-        fromBranch: "bb/env_warm",
-        toBranch: "bb/taken-thr_3",
-      }),
+      await harness.experimental_call("handOff", at("bb/taken-thr_3")),
     ).toEqual({ status: "refused", reason: "it was used on someone-elses" });
     expect(await branchExists(clone, "bb/taken-thr_3")).toBe(false);
   });
@@ -1653,14 +1678,9 @@ describe("warm worktree handoff", () => {
   it("leaves no branch behind when a handoff is refused after the rename", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    const { clone, harness, path, at } = await warmWorktree(onTestFinished);
     expect(
-      await harness.experimental_call("handOff", {
-        sourcePath: clone,
-        path,
-        fromBranch: "bb/env_warm",
-        toBranch: "bb/orphan-thr_4",
-      }),
+      await harness.experimental_call("handOff", at("bb/orphan-thr_4")),
     ).toMatchObject({ status: "handed-off" });
     expect(
       await harness.experimental_call("restorePoolMember", {
@@ -1691,13 +1711,8 @@ describe("warm worktree handoff", () => {
   it("puts the placeholder back on a checkout that was used, so removal owns that branch", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
-    await harness.experimental_call("handOff", {
-      sourcePath: clone,
-      path,
-      fromBranch: "bb/env_warm",
-      toBranch: "bb/used-thr_5",
-    });
+    const { clone, harness, path, at } = await warmWorktree(onTestFinished);
+    await harness.experimental_call("handOff", at("bb/used-thr_5"));
     await commitIn(path, "work.txt");
     expect(
       await harness.experimental_call("restorePoolMember", {
@@ -1715,16 +1730,11 @@ describe("warm worktree handoff", () => {
   it("renames the branch back when the handoff fails after renaming it", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    const { clone, harness, path, at } = await warmWorktree(onTestFinished);
     await rm(`${path}.completed`, { force: true });
     await mkdir(`${path}.completed`);
     await expect(
-      harness.experimental_call("handOff", {
-        sourcePath: clone,
-        path,
-        fromBranch: "bb/env_warm",
-        toBranch: "bb/failed-thr_6",
-      }),
+      harness.experimental_call("handOff", at("bb/failed-thr_6")),
     ).rejects.toThrow();
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/env_warm",
@@ -1735,7 +1745,7 @@ describe("warm worktree handoff", () => {
   it("answers busy quickly instead of waiting behind a git ref update", async ({
     onTestFinished,
   }) => {
-    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    const { clone, harness, path, at } = await warmWorktree(onTestFinished);
     const commonDir = (
       await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
     ).trim();
@@ -1750,12 +1760,7 @@ describe("warm worktree handoff", () => {
     });
     const started = Date.now();
     expect(
-      await harness.experimental_call("handOff", {
-        sourcePath: clone,
-        path,
-        fromBranch: "bb/env_warm",
-        toBranch: "bb/busy-thr_7",
-      }),
+      await harness.experimental_call("handOff", at("bb/busy-thr_7")),
     ).toEqual({ status: "busy" });
     expect(Date.now() - started).toBeLessThan(10_000);
     expect((await git(path, "branch", "--show-current")).trim()).toBe(

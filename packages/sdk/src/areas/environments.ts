@@ -104,7 +104,8 @@ interface EnvironmentCreateBaseArgs {
  * `hold: "user"` keeps the environment until the user deletes it and lets
  * threads join it. `hold: "plugin"` keeps it for plugin `pluginId`: threads
  * cannot join it, and it loses the hold when that plugin's provider hands it
- * to a new thread from `create`.
+ * to a new thread from `create`, or when that plugin is disabled or
+ * uninstalled.
  */
 export type EnvironmentCreateArgs = EnvironmentCreateBaseArgs &
   ({ hold: "user" } | { hold: "plugin"; pluginId: string });

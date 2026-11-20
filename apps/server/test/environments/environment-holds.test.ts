@@ -2,13 +2,14 @@ import {
   adoptHeldEnvironment,
   environmentHookOperations,
   environments,
+  events,
   getEnvironment,
   getThread,
   type EnvironmentRow,
 } from "@bb/db";
 import type { JsonValue } from "@bb/domain";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import {
   advanceEnvironmentProvisioning,
@@ -35,7 +36,11 @@ import {
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  installTestBuiltinPlugin,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const POOL_PLUGIN = "held-plugin";
 const POOL_PROVIDER = "held-worktree";
@@ -52,6 +57,7 @@ function installProviders(
   args: {
     adopt?: () => EnvironmentRow | null;
     afterAdopt?: () => Promise<void> | undefined;
+    stepAfterAdopt?: string;
     createdPath?: () => string | undefined;
   } = {},
 ) {
@@ -88,6 +94,8 @@ function installProviders(
           }
         }
         await args.afterAdopt?.();
+        if (args.stepAfterAdopt !== undefined)
+          context.report.step(args.stepAfterAdopt);
         return {
           status: "created",
           path:
@@ -451,6 +459,80 @@ describe("plugin holds", () => {
         mergeBaseBranch: "origin/main",
       });
       expect(setupRows(harness)).toEqual(setupBefore);
+    });
+  });
+
+  it("shows a step the provider reports after adopt on the thread and the environment", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      const step = "Using a warm worktree at origin/main (abc1234)";
+      installProviders({ adopt: () => handOff, stepAfterAdopt: step });
+      const { host, project } = seed(harness);
+      handOff = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      harness.db
+        .update(environments)
+        .set({ pendingLog: "output from before the thread existed" })
+        .where(eq(environments.id, handOff.id))
+        .run();
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.environmentId)
+        .toBe(handOff.id);
+      expect(getEnvironment(harness.db, handOff.id)?.statusMessage).toBe(step);
+      const provisioningSteps = harness.db
+        .select({ data: events.data })
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, thread.id),
+            eq(events.type, "system/thread-provisioning"),
+          ),
+        )
+        .all()
+        .flatMap(
+          (row) =>
+            (JSON.parse(row.data) as { entries?: { text?: string }[] })
+              .entries ?? [],
+        )
+        .map((entry) => entry.text);
+      expect(provisioningSteps).toContain(step);
+      expect(provisioningSteps).not.toContain(
+        "output from before the thread existed",
+      );
+    });
+  });
+
+  it("releases a plugin's holds when the plugin is disabled, so its environments retire", async () => {
+    await withTestHarness(async (harness) => {
+      installProviders();
+      await installTestBuiltinPlugin(harness, "keep-awake");
+      const { project } = seed(harness);
+      const held = await readyHeldEnvironment(
+        harness,
+        project.id,
+        "plugin:keep-awake",
+      );
+      const kept = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      await harness.pluginService.setEnabled("keep-awake", false);
+      expect(getEnvironment(harness.db, held.id)).toMatchObject({
+        heldBy: null,
+        retireAt: expect.any(Number),
+      });
+      expect(getEnvironment(harness.db, kept.id)).toMatchObject({
+        heldBy: `plugin:${POOL_PLUGIN}`,
+        retireAt: null,
+      });
     });
   });
 

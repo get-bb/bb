@@ -11,7 +11,7 @@ import {
   makeHostResponse,
   type ExperimentalFakeHostRpcCall,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin from "./server.js";
 
@@ -58,9 +58,10 @@ async function setup(args: {
   handOff?: (
     call: ExperimentalFakeHostRpcCall,
   ) =>
-    | { status: "handed-off"; baseBranch: string }
+    | { status: "handed-off" }
     | { status: "refused"; reason: string }
     | { status: "busy" };
+  remoteBase?: { ref: string; commit: string; offline: boolean } | null;
   baseCommit?: string;
   heads?: Record<string, string>;
   branches?: Record<string, string>;
@@ -70,6 +71,7 @@ async function setup(args: {
   refuseAdopt?: string[];
 }) {
   const hostCalls: ExperimentalFakeHostRpcCall[] = [];
+  let remoteReads = 0;
   const created: unknown[] = [];
   const deleted: string[] = [];
   const members = [...args.members];
@@ -77,14 +79,15 @@ async function setup(args: {
   const { bb, harness } = createFakePluginHost({
     pluginId: PLUGIN_ID,
     experimental_callHostRpc: async (call) => {
+      if (call.method === "readRemoteBase") {
+        remoteReads += 1;
+        return args.remoteBase === undefined
+          ? { ref: "origin/main", commit: "base", offline: false }
+          : args.remoteBase;
+      }
       hostCalls.push(call);
       if (call.method === "handOff")
-        return (
-          args.handOff?.(call) ?? {
-            status: "handed-off",
-            baseBranch: "origin/main",
-          }
-        );
+        return args.handOff?.(call) ?? { status: "handed-off" };
       if (call.method === "refreshPoolBase") {
         const input = call.input as { memberPaths: string[] };
         return {
@@ -190,6 +193,7 @@ async function setup(args: {
   const setups: string[] = [];
   const adopted: string[] = [];
   const adoptedResources: JsonValue[] = [];
+  const steps: string[] = [];
   const context = (
     environmentId: string,
     branch: string | (() => Promise<string>),
@@ -219,7 +223,12 @@ async function setup(args: {
     },
     attempt: 1,
     pathKey: environmentId,
-    report: { step() {}, log() {} },
+    report: {
+      step(text) {
+        steps.push(text);
+      },
+      log() {},
+    },
     signal: new AbortController().signal,
   });
   return {
@@ -227,6 +236,8 @@ async function setup(args: {
     provider,
     context,
     hostCalls,
+    remoteReads: () => remoteReads,
+    steps,
     created,
     deleted,
     setups,
@@ -270,7 +281,70 @@ describe("warm worktree handoff", () => {
       path: READY.path,
       fromBranch: "bb/env_warm",
       toBranch: "bb/fix-login-thr_1",
+      baseBranch: "origin/main",
+      baseCommit: "base",
     });
+    expect(fixture.steps).toEqual([
+      "Using a warm worktree at origin/main (base)",
+    ]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("reads the remote base while the branch name is still pending", async () => {
+    const fixture = await setup({ members: [READY] });
+    let nameBranch: (name: string) => void = () => {};
+    const creating = fixture.provider.create(
+      fixture.context(
+        "env_thread",
+        () =>
+          new Promise<string>((resolve) => {
+            nameBranch = resolve;
+          }),
+      ),
+    );
+    await vi.waitFor(() => expect(fixture.remoteReads()).toBe(1));
+    expect(fixture.hostCalls).toEqual([]);
+    nameBranch("bb/titled-thr_t");
+    expect(await creating).toMatchObject({ path: READY.path });
+    expect(fixture.remoteReads()).toBe(1);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("keeps the warm worktree and builds a fresh one when the remote base cannot be read", async () => {
+    const fixture = await setup({ members: [READY], remoteBase: null });
+    const result = await fixture.provider.create(
+      fixture.context("env_thread", "bb/unknown-thr_u"),
+    );
+    expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
+    expect(fixture.hostCalls.map((call) => call.method)).toEqual([
+      "create",
+      "nameBranch",
+    ]);
+    expect(fixture.adopted).toEqual([]);
+    expect(fixture.deleted).toEqual([]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("says a warm worktree may be out of date when the remote could not be reached", async () => {
+    const fixture = await setup({
+      members: [READY],
+      remoteBase: {
+        ref: "origin/main",
+        commit: "0123456789abcdef",
+        offline: true,
+      },
+    });
+    expect(
+      await fixture.provider.create(
+        fixture.context("env_thread", "bb/offline-thr_o"),
+      ),
+    ).toMatchObject({ path: READY.path });
+    expect(fixture.hostCalls[0]?.input).toMatchObject({
+      baseCommit: "0123456789abcdef",
+    });
+    expect(fixture.steps).toEqual([
+      "Using a warm worktree at the last fetched origin/main (0123456); it may be out of date",
+    ]);
     await fixture.harness.lifecycle.dispose();
   });
 

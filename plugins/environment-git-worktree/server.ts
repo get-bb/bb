@@ -327,7 +327,13 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             context.adopt(environmentId, handedOffResource(handed)),
           signal: context.signal,
         });
-        if (warm !== null)
+        if (warm !== null) {
+          const commit = warm.baseCommit.slice(0, 7);
+          context.report.step(
+            warm.offline
+              ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
+              : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
+          );
           return {
             status: "created",
             path: warm.path,
@@ -335,6 +341,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             mergeBaseBranch: warm.baseBranch,
             resource: handedOffResource(warm),
           };
+        }
       }
       const created = await createManagedWorktree(context, {
         branchName: null,

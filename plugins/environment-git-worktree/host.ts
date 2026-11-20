@@ -12,6 +12,7 @@ import {
 } from "./host/paths.js";
 import {
   handOffWorktree,
+  readRemoteBase,
   refreshDefaultBase,
   restorePoolMember,
 } from "./host/handoff.js";
@@ -99,12 +100,20 @@ export function createWorktreeHostEntry() {
           signal: context.signal,
         });
       },
+      async readRemoteBase(input, context) {
+        return readRemoteBase({
+          sourcePath: input.sourcePath,
+          signal: context.signal,
+        });
+      },
       async handOff(input, context) {
         return handOffWorktree({
           sourcePath: input.sourcePath,
           path: input.path,
           fromBranch: input.fromBranch,
           toBranch: input.toBranch,
+          baseBranch: input.baseBranch,
+          baseCommit: input.baseCommit,
           completionPath: completionPathForWorktree(input.path),
           signal: context.signal,
         });

@@ -83,6 +83,8 @@ interface Counters {
 export interface WarmHandOff {
   path: string;
   baseBranch: string;
+  baseCommit: string;
+  offline: boolean;
   branchName: string;
 }
 
@@ -555,15 +557,35 @@ export async function createWarmPools(args: {
     });
     if (creating.heldBy !== null) return null;
     const tried = new Set<string>();
+    const readRemoteBase = () =>
+      host.call(
+        "readRemoteBase",
+        { sourcePath: request.sourcePath },
+        {
+          hostId: request.hostId,
+          signal: request.signal,
+          timeoutMs: HANDOFF_TIMEOUT_MS,
+        },
+      );
+    let remoteBase: ReturnType<typeof readRemoteBase> | null = null;
     for (;;) {
       const member = await serialFor(request)(() => reserve(request, tried));
       if (member === null || member.path === null || member.branchName === null)
         break;
       tried.add(member.id);
+      remoteBase ??= readRemoteBase();
       let result;
       let toBranch;
+      let base;
       try {
-        toBranch = await request.branchName();
+        [toBranch, base] = await Promise.all([
+          request.branchName(),
+          remoteBase,
+        ]);
+        if (base === null) {
+          reserved.delete(member.id);
+          break;
+        }
         result = await host.call(
           "handOff",
           {
@@ -571,6 +593,8 @@ export async function createWarmPools(args: {
             path: member.path,
             fromBranch: member.branchName,
             toBranch,
+            baseBranch: base.ref,
+            baseCommit: base.commit,
           },
           {
             hostId: request.hostId,
@@ -597,7 +621,9 @@ export async function createWarmPools(args: {
       }
       const handed: WarmHandOff = {
         path: member.path,
-        baseBranch: result.baseBranch,
+        baseBranch: base.ref,
+        baseCommit: base.commit,
+        offline: base.offline,
         branchName: toBranch,
       };
       try {

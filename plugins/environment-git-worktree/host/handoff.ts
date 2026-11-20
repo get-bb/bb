@@ -6,9 +6,14 @@ import {
 } from "bb-environment-provider-host/git";
 import { withGitRefMutationLock } from "bb-environment-provider-host/locks";
 import { resolveWorktreeBaseBranch } from "./base-branch.js";
-import { fetchRemoteBaseBranch } from "./worktree.js";
+import {
+  fetchRemoteBaseBranch,
+  isFetchFailureWithFallback,
+  resolveRemoteBaseBranch,
+} from "./worktree.js";
 
 const HANDOFF_LOCK_TIMEOUT_MS = 2_000;
+const REMOTE_BASE_READ_TIMEOUT_MS = 10_000;
 
 function signalOption(signal: AbortSignal | undefined) {
   return signal === undefined ? {} : { signal };
@@ -64,6 +69,56 @@ export async function refreshDefaultBase(args: {
       })),
     ),
   };
+}
+
+export interface RemoteBase {
+  ref: string;
+  commit: string;
+  offline: boolean;
+}
+
+export async function readRemoteBase(args: {
+  sourcePath: string;
+  signal: AbortSignal | undefined;
+}): Promise<RemoteBase | null> {
+  const base = await resolveWorktreeBaseBranch(args.sourcePath, {
+    kind: "default",
+  });
+  if (base === null) return null;
+  const local = async (offline: boolean): Promise<RemoteBase | null> => {
+    const commit = await readCommit(args.sourcePath, base.ref, args.signal);
+    return commit === null ? null : { ref: base.ref, commit, offline };
+  };
+  const remote = await resolveRemoteBaseBranch(
+    args.sourcePath,
+    base.ref,
+    args.signal,
+  );
+  if (remote === null) return local(false);
+  let listed;
+  try {
+    listed = await runGit(
+      ["ls-remote", remote.remote, `refs/heads/${remote.branch}`],
+      {
+        cwd: args.sourcePath,
+        ...signalOption(args.signal),
+        env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        timeoutMs: REMOTE_BASE_READ_TIMEOUT_MS,
+      },
+    );
+  } catch (error) {
+    if (
+      base.fetchFailureFallback &&
+      !args.signal?.aborted &&
+      isFetchFailureWithFallback(error)
+    )
+      return local(true);
+    throw error;
+  }
+  const commit = listed.stdout.trim().split(/\s+/, 1)[0] ?? "";
+  return /^[0-9a-f]{40,64}$/.test(commit)
+    ? { ref: base.ref, commit, offline: false }
+    : null;
 }
 
 export type PlaceholderState =
@@ -127,7 +182,7 @@ export async function restorePoolMember(args: {
 }
 
 export type HandOffResult =
-  | { status: "handed-off"; baseBranch: string }
+  | { status: "handed-off" }
   | { status: "refused"; reason: string }
   | { status: "busy" };
 
@@ -136,14 +191,11 @@ export async function handOffWorktree(args: {
   path: string;
   fromBranch: string;
   toBranch: string;
+  baseBranch: string;
+  baseCommit: string;
   completionPath: string;
   signal: AbortSignal | undefined;
 }): Promise<HandOffResult> {
-  const base = await resolveWorktreeBaseBranch(args.sourcePath, {
-    kind: "default",
-  });
-  if (base === null)
-    return { status: "refused", reason: "the default base is unknown" };
   let locked = false;
   try {
     return await withGitRefMutationLock(
@@ -161,14 +213,14 @@ export async function handOffWorktree(args: {
             status: "refused",
             reason: `it was used on ${placeholder.branch ?? "a detached HEAD"}`,
           };
-        const [baseCommit, head] = await Promise.all([
-          readCommit(args.sourcePath, base.ref, args.signal),
-          readCommit(args.path, "HEAD", args.signal),
-        ]);
-        if (head === null || baseCommit === null)
+        const head = await readCommit(args.path, "HEAD", args.signal);
+        if (head === null)
           return { status: "refused", reason: "the worktree has no commit" };
-        if (head !== baseCommit)
-          return { status: "refused", reason: `it is behind ${base.ref}` };
+        if (head !== args.baseCommit)
+          return {
+            status: "refused",
+            reason: `it is behind ${args.baseBranch}`,
+          };
         await runGit(["branch", "-m", args.fromBranch, args.toBranch], {
           cwd: args.path,
           ...signalOption(args.signal),
@@ -181,7 +233,7 @@ export async function handOffWorktree(args: {
           });
           throw error;
         }
-        return { status: "handed-off", baseBranch: base.ref };
+        return { status: "handed-off" };
       },
       { ...signalOption(args.signal), timeoutMs: HANDOFF_LOCK_TIMEOUT_MS },
     );

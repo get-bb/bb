@@ -59,6 +59,7 @@ import {
   claimEnvironmentPath,
   bindEnvironmentPath,
   adoptHeldEnvironment,
+  releaseEnvironmentHolds,
   listProviderLifecycleEnvironments,
   updatePreparingEnvironment,
   type DbConnection,
@@ -267,18 +268,21 @@ function mutateProvisioning(
 
 function provisioningReporter(
   deps: Deps,
-  provisioning: EnvironmentRow,
+  current: () => EnvironmentRow,
 ): PluginEnvironmentProviderProgress {
   const report = (
     change: (row: EnvironmentRow) => void,
     step: string | null,
   ) => {
+    const provisioning = current();
     const before = getEnvironment(deps.db, provisioning.id);
     if (
       !mutateProvisioning(
         deps,
         provisioning,
-        ["creating", "provisioning"],
+        before?.status === "ready" && before.createPending
+          ? ["ready"]
+          : ["creating", "provisioning"],
         change,
       )
     )
@@ -679,7 +683,7 @@ async function runCreate(
       inputs: context.inputs,
       pathKey: provisioning.environmentProviderInstanceKey ?? provisioning.id,
       attempt: provisioning.attempt,
-      report: provisioningReporter(deps, provisioning),
+      report: provisioningReporter(deps, () => provisioning),
       signal: signal,
     };
     const located = await locateEnvironment(deps, record, {
@@ -1501,6 +1505,22 @@ export function providerEnvironmentHasPendingWork(
   const row = getPreparingEnvironment(db, threadId);
   if (row === null) return false;
   return row.teardownStatus !== "removed";
+}
+
+export function releasePluginEnvironmentHolds(
+  deps: {
+    db: DbConnection | DbTransaction;
+    hub: Pick<Deps["hub"], "notifyEnvironment">;
+  },
+  pluginId: string,
+): void {
+  for (const environmentId of releaseEnvironmentHolds(
+    deps.db,
+    `plugin:${pluginId}`,
+  )) {
+    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
+    refreshProviderRetirement(deps, environmentId);
+  }
 }
 
 export function refreshProviderRetirement(
