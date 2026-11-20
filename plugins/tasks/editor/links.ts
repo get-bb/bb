@@ -17,9 +17,6 @@ export function handleEditorLinkClick(
     !(event.target instanceof Element)
   )
     return false;
-  const selecting =
-    event.target.ownerDocument.getSelection()?.isCollapsed === false;
-  if (selecting && !event.metaKey && !event.ctrlKey) return false;
   const href = event.target.closest("a[href]")?.getAttribute("href");
   if (!href) return false;
   const handled = URL_SCHEME.test(href)

@@ -199,30 +199,6 @@ describe("links", () => {
       expect(slot.navigateCalls).toEqual([]);
     },
   );
-
-  it.each([
-    [{}, []],
-    [
-      { metaKey: true },
-      [{ method: "openUrl", url: "https://example.com/guide" }],
-    ],
-  ])(
-    "opens a link with selected text only on a modifier click (%o)",
-    async (init, calls) => {
-      const slot = renderSlot(
-        { component: TasksEditor },
-        {
-          value: "Read [the guide](https://example.com/guide).",
-          onChange: () => undefined,
-        },
-        { openUrl: () => true },
-      );
-      const link = await slot.findByRole("link", { name: "the guide" });
-      document.getSelection()!.selectAllChildren(link);
-      fireEvent.click(link, init);
-      expect(slot.navigateCalls).toEqual(calls);
-    },
-  );
 });
 
 describe("mention extension", () => {
