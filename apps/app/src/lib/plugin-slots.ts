@@ -1,7 +1,8 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
 import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import type {
   ExperimentalTabRegistration,
   ComposerCustomization,
@@ -521,6 +522,8 @@ let batchMaxHoldMs = 0;
 let snapshotStale = false;
 let notifyPending = false;
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let stagedLoadingPluginIds: ReadonlySet<string> | null = null;
+let loadingPluginIds: ReadonlySet<string> | null = null;
 
 function rebuildIfStale(): void {
   if (!snapshotStale) return;
@@ -536,6 +539,10 @@ function flushChange(): void {
     batchFlushTimer = null;
   }
   rebuildIfStale();
+  if (loadingPluginIds !== stagedLoadingPluginIds) {
+    loadingPluginIds = stagedLoadingPluginIds;
+    notifyPending = true;
+  }
   if (snapshot.icons !== appliedIcons) {
     appliedIcons = snapshot.icons;
     const icons = new Map<string, PluginIconSlot>();
@@ -568,6 +575,10 @@ function flushChange(): void {
 
 function emitChange(): void {
   snapshotStale = true;
+  scheduleFlush();
+}
+
+function scheduleFlush(): void {
   if (openBatchDepth === 0) {
     flushChange();
     return;
@@ -618,6 +629,49 @@ export function removePluginSlotRegistrations(pluginId: string): void {
   if (!registrationsByPluginId.delete(pluginId)) return;
   flattenedByPluginId.delete(pluginId);
   emitChange();
+}
+
+export function setLoadingPluginFrontends(pluginIds: readonly string[]): void {
+  const current = stagedLoadingPluginIds;
+  if (
+    current !== null &&
+    current.size === pluginIds.length &&
+    pluginIds.every((pluginId) => current.has(pluginId))
+  ) {
+    return;
+  }
+  stagedLoadingPluginIds = new Set(pluginIds);
+  scheduleFlush();
+}
+
+export function settleLoadingPluginFrontend(pluginId: string): void {
+  if (stagedLoadingPluginIds?.has(pluginId) !== true) return;
+  const next = new Set(stagedLoadingPluginIds);
+  next.delete(pluginId);
+  stagedLoadingPluginIds = next;
+  scheduleFlush();
+}
+
+function getLoadingPluginIds(): ReadonlySet<string> | null {
+  return loadingPluginIds;
+}
+
+export function useIsPluginFrontendSettled(): (pluginId: string) => boolean {
+  const allSettled = usePluginFrontendsSettled();
+  const loading = useSyncExternalStore(
+    subscribePluginSlots,
+    getLoadingPluginIds,
+    getLoadingPluginIds,
+  );
+  return useMemo(
+    () => (pluginId: string) =>
+      allSettled || (loading !== null && !loading.has(pluginId)),
+    [allSettled, loading],
+  );
+}
+
+export function usePluginFrontendSettled(pluginId: string): boolean {
+  return useIsPluginFrontendSettled()(pluginId);
 }
 
 export function subscribePluginSlots(listener: () => void): () => void {
@@ -683,6 +737,7 @@ export function resetPluginSlotStoreForTest(): void {
   registrationsByPluginId.clear();
   generationByPluginId.clear();
   flattenedByPluginId.clear();
+  stagedLoadingPluginIds = null;
   openBatchDepth = 0;
   emitChange();
 }

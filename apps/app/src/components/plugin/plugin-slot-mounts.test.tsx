@@ -1,5 +1,6 @@
 import { useThreadFixedTabs } from "./PluginThreadFixedTabs";
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import {
   MemoryRouter,
@@ -1989,7 +1990,19 @@ describe("plugin thread panel actions", () => {
     return hostRef;
   }
 
-  function ActionsProbe({
+  function ActionsProbe(props: {
+    threadId: string | null;
+    openPluginPanel: (args: OpenPluginPanelArgs) => void;
+  }) {
+    const [queryClient] = useState(() => new QueryClient());
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ActionsProbeBody {...props} />
+      </QueryClientProvider>
+    );
+  }
+
+  function ActionsProbeBody({
     threadId,
     openPluginPanel,
   }: {
@@ -2221,7 +2234,11 @@ describe("plugin thread panel actions", () => {
       );
     }
 
-    render(<BothActionsHarness />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BothActionsHarness />
+      </QueryClientProvider>,
+    );
     fireEvent.click(screen.getByText("Thread action"));
     fireEvent.click(screen.getByText("Root action"));
 

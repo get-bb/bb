@@ -306,7 +306,7 @@ export function SidebarNavigationModelProvider({
     return {
       activate(itemId, options) {
         const found = lookup(itemId);
-        if (!found || found.item.isDisabled || found.item.isLoading) return;
+        if (!found || found.item.isDisabled) return;
         const { current, row, item } = found;
         const content = getSidebarNavigationRowContent(row);
         const legacySplit =

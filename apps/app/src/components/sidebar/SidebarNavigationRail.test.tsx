@@ -479,6 +479,29 @@ describe("Rail", () => {
     expect(railButton("Demo board")).toBe(remembered);
   });
 
+  it("opens a remembered plugin panel clicked before its bundle registers", async () => {
+    resetPluginSlotStoreForTest();
+    resetPluginFrontendBootStateForTest();
+    await registerNavigationPlugin();
+    writeLastKnownPluginNavPanelChrome([
+      {
+        pluginId: "demo",
+        id: "board",
+        path: "board",
+        title: "Demo board",
+        icon: "columns",
+        hideFromNavigation: false,
+      },
+    ]);
+    renderRail(THREAD_PATH);
+
+    fireEvent.click(railButton("Demo board"));
+
+    expect(pathname()).toBe(
+      getPluginPanelRoutePath({ pluginId: "demo", path: "board" }),
+    );
+  });
+
   it("drops a remembered plugin panel that never registers once frontends have settled", async () => {
     resetPluginSlotStoreForTest();
     resetPluginFrontendBootStateForTest();
