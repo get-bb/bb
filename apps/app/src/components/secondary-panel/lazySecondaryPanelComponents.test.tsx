@@ -125,9 +125,9 @@ describe("LazyThreadSecondaryPanel thread info placeholder", () => {
       renderLoadingPanel({
         renderAsDrawer,
         activeTab: {
-          id: "plugin-fixed:core:info",
+          id: "plugin-fixed:bb--core:info",
           kind: "plugin-fixed",
-          pluginId: "core",
+          pluginId: "bb--core",
           tabId: "info",
         },
         metadataContent: <p>Thread details</p>,

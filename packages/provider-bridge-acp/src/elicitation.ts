@@ -32,6 +32,11 @@ export type AcpElicitationPlan =
 interface AcpElicitationChoice {
   value: string;
   label: string;
+  description?: string;
+}
+
+export interface AcpElicitationPresentation {
+  descriptionIsHeading: boolean;
 }
 
 type AcpElicitationField =
@@ -77,9 +82,11 @@ function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
       if (!isJsonObject(entry) || typeof entry["const"] !== "string") {
         return null;
       }
+      const description = readString(entry, "description")?.trim();
       choices.push({
         value: entry["const"],
         label: readString(entry, "title") ?? entry["const"],
+        ...(description ? { description } : {}),
       });
     }
     return choices.length > 0 ? choices : null;
@@ -188,13 +195,17 @@ function questionFor(
   required: boolean,
   other: OtherCompanion | null,
   message: string | undefined,
+  presentation: AcpElicitationPresentation,
 ): PendingInteractionUserQuestionQuestion {
   const label = readString(schema, "title")?.trim() || name;
-  const description = readString(schema, "description")?.trim();
+  const description = readString(schema, "description")?.trim() || undefined;
+  const heading = presentation.descriptionIsHeading ? description : undefined;
+  const detail = presentation.descriptionIsHeading ? undefined : description;
+  const lead = message !== undefined && message !== label ? message : undefined;
   const lines = [
-    ...(message ? [message, ""] : []),
+    ...(lead ? [lead, ""] : []),
     label,
-    ...(description ? [description] : []),
+    ...(detail ? [detail] : []),
     ...(field.kind === "typedChoice"
       ? [`One of: ${field.choices.map((choice) => choice.label).join(", ")}`]
       : []),
@@ -205,7 +216,7 @@ function questionFor(
   const base = {
     id: name,
     prompt: lines.join("\n"),
-    shortLabel: label,
+    shortLabel: heading ?? label,
     required,
   };
   switch (field.kind) {
@@ -372,7 +383,10 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
   };
 }
 
-export function planAcpElicitation(params: unknown): AcpElicitationPlan {
+export function planAcpElicitation(
+  params: unknown,
+  presentation: AcpElicitationPresentation,
+): AcpElicitationPlan {
   if (!isJsonObject(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
   }
@@ -452,6 +466,7 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
         entry.required,
         other,
         planned.length === 0 ? message : undefined,
+        presentation,
       ),
     });
   }

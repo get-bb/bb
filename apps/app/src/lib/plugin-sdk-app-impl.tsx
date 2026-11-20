@@ -59,8 +59,8 @@ import { CollapsibleStackCard } from "@/components/promptbox/banner/CollapsibleS
 import { usePluginThreadExtensionState } from "@/components/plugin/usePluginThreadExtensionState";
 import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
 import { definePluginApp } from "./plugin-app-definition";
+import { useBbContext } from "./plugin-bb-context";
 import {
-  useBbContext,
   useBbNavigate,
   usePluginCanOpenFileExternally,
   useComposer,
@@ -92,10 +92,8 @@ import {
   useSidebarThreadShortcut,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
-import {
-  useSidebarSplitLayout,
-  useSidebarThreadSplit,
-} from "./plugin-sidebar-split";
+import { useSidebarSplitLayout } from "./plugin-split-layout";
+import { useSidebarThreadSplit } from "./plugin-sidebar-split";
 import { useExperiment } from "./plugin-experiments";
 import {
   experimental_PluginRpcCallError,
@@ -127,7 +125,7 @@ import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import { DetailRow } from "@/components/ui/detail-card";
 import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
 import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection";
-import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
+import { useThreadContextKind } from "@/components/plugin/thread-context-card-pane";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
 import { useServerChoices } from "@/hooks/useServerChoices";
 import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";

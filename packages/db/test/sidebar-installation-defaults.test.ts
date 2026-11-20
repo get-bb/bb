@@ -19,6 +19,8 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
+  dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -105,6 +107,8 @@ describe.each(["project", "thread", "preference"] as const)(
           dropPluginFailureLabelColumns(db);
           rewindMachineTeardownRecoveryColumns(db);
           dropPluginMarketplaceEnabledColumn(db);
+          dropQueuedMessageRecheckAtColumn(db);
+          dropForkHistoryCopyIndex(db);
           dropEnvironmentHoldColumns(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")

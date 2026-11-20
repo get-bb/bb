@@ -67,10 +67,6 @@ export function recordQueuedMessageDrainFailure(
       id: args.row.id,
       threadId: args.row.threadId,
       waitingOn: { kind: "host-offline", hostName: host.name },
-      // An offline host is not a schedule. Whatever instant this row carried
-      // has already passed by the time a drain picked it up, and keeping it
-      // would leave the due sweep re-claiming a row that cannot dispatch.
-      sendAt: null,
     });
     return;
   }

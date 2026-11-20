@@ -2375,6 +2375,11 @@ export interface PluginThreadActionTarget {
   pinnedAt: number | null;
   sectionId: string | null;
   isUnread: boolean;
+  /**
+   * True for threads bb keeps out of its own list, such as side chats; pins
+   * and sections on them have no visible effect.
+   */
+  isHidden: boolean;
   status: ThreadStatus;
   /**
    * The thread's environment when a new thread can reuse it, null otherwise.

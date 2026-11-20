@@ -7,6 +7,7 @@ import { z } from "zod";
  * routes and CLI can address back.
  */
 export const GIT_PLUGIN_ID = "bb--git";
+export const CORE_PLUGIN_ID = "bb--core";
 
 export const pluginIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 

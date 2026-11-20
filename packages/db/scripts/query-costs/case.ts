@@ -1,5 +1,6 @@
 import type { DbConnection } from "../../src/connection.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
+import type { QueryPlanAllowlistEntry } from "../../src/query-plan-guard.js";
 
 export type GrowthAxisKey = "history" | "turnSize";
 
@@ -15,8 +16,14 @@ export interface QueryCostCase<TSeed = undefined> {
   run: (db: DbConnection, fixture: HistoryFixture, seed: TSeed) => unknown;
 }
 
+export interface PluginDatabaseCosts {
+  auditedTables: readonly string[];
+  allowedFindings: readonly QueryPlanAllowlistEntry[];
+}
+
 export interface QueryCostGroup<TSeed> {
   name: string;
+  pluginDatabase?: PluginDatabaseCosts;
   seed: (db: DbConnection, fixture: HistoryFixture, scale: number) => TSeed;
   cases: readonly QueryCostCase<TSeed>[];
 }
@@ -25,7 +32,9 @@ export type SeedsByGroup = Readonly<Record<string, unknown>>;
 
 export interface RegisteredCostCase {
   name: string;
+  group: string;
   label: string;
+  pluginDatabase?: PluginDatabaseCosts;
   ceilingMs?: number;
   reason?: string;
   growsWith?: DeclaredGrowth;
@@ -43,6 +52,7 @@ export interface RegisteredCostCase {
 
 export interface RegisteredCostGroup {
   name: string;
+  pluginDatabase?: PluginDatabaseCosts;
   seed: (db: DbConnection, fixture: HistoryFixture, scale: number) => unknown;
   cases: readonly RegisteredCostCase[];
 }
@@ -53,15 +63,22 @@ export function registerCostGroup<TSeed>(
   const seedOf = (seeds: SeedsByGroup) => seeds[group.name] as TSeed;
   return {
     name: group.name,
+    ...(group.pluginDatabase === undefined
+      ? {}
+      : { pluginDatabase: group.pluginDatabase }),
     seed: group.seed,
     cases: group.cases.map((costCase) => {
       const { prepare } = costCase;
       return {
         name: costCase.name,
+        group: group.name,
         label:
           costCase.variant === undefined
             ? costCase.name
             : `${costCase.name} (${costCase.variant})`,
+        ...(group.pluginDatabase === undefined
+          ? {}
+          : { pluginDatabase: group.pluginDatabase }),
         ...(costCase.ceilingMs === undefined
           ? {}
           : { ceilingMs: costCase.ceilingMs }),
@@ -99,7 +116,7 @@ export const GROWTH_BOUNDED_LIMIT = GROWTH_STEP ** GROWTH_BOUNDED_EXPONENT;
 export const GROWTH_WARN_LIMIT = GROWTH_STEP ** GROWTH_WARN_EXPONENT;
 export const GROWTH_FAIL_LIMIT = GROWTH_STEP ** GROWTH_FAIL_EXPONENT;
 export const GROWTH_FLOOR_MS = 2;
-export const DEFAULT_CEILING_MS = 250;
+export const DEFAULT_CEILING_MS = 100;
 export const KILL_AFTER_MS = 5_000;
 
 export function scaled(count: number, scale: number): number {

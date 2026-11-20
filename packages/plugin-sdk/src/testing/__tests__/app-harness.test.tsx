@@ -2238,6 +2238,7 @@ describe("thread actions menu fake", () => {
     pinnedAt: null,
     sectionId: null,
     isUnread: false,
+    isHidden: false,
     status: "idle" as const,
     environment: null,
   };

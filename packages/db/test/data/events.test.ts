@@ -64,6 +64,7 @@ import {
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import {
+  archiveThread,
   createThread,
   searchThreadsWithPendingInteractionState,
 } from "../../src/data/threads.js";
@@ -4592,6 +4593,11 @@ describe("events", () => {
     });
     expect(
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: otherHost.id }),
+    ).toEqual([]);
+
+    archiveThread(db, noopNotifier, thread.id);
+    expect(
+      listOpenBackgroundTaskItemRowsForHost(db, { hostId: host.id }),
     ).toEqual([]);
   });
 

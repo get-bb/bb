@@ -28,7 +28,7 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
   ),
   acceptedEventsIndex(
-    "apps/server/src/services/threads/environment-directory-continuation.ts#findEnvironmentDirectoryContinuation",
+    `${EVENTS}#getLatestStoredTurnSystemOperationData`,
     "system/operation events are rare per thread",
   ),
   acceptedEventsIndex(

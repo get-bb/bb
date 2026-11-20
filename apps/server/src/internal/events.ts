@@ -1,11 +1,11 @@
 import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
-import { and, desc, eq, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
   findLastCompletedRootStoredTurn,
   findLatestUnresolvedClientTurnRequestIdAfterSequence,
+  getLatestStoredThreadProvisioningStatus,
   getThread,
   getLatestThreadSequence,
   hasRootStoredTurnStarted,
@@ -13,7 +13,6 @@ import {
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
-  events as storedEvents,
 } from "@bb/db";
 import type {
   AcceptedDaemonEvent,
@@ -128,22 +127,10 @@ function preserveTerminalProvisioningStatus(
   if (event.type !== "system/thread-provisioning") {
     return entry;
   }
-  const latest = deps.db
-    .select({
-      status: sql<unknown>`json_extract(${storedEvents.data}, '$.status')`,
-    })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, entry.envelope.threadId),
-        eq(storedEvents.type, "system/thread-provisioning"),
-        sql`json_extract(${storedEvents.data}, '$.provisioningId') = ${event.provisioningId}`,
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
-  const status = latest?.status;
+  const status = getLatestStoredThreadProvisioningStatus(deps.db, {
+    provisioningId: event.provisioningId,
+    threadId: entry.envelope.threadId,
+  });
   if (status !== "completed" && status !== "failed" && status !== "cancelled") {
     return entry;
   }

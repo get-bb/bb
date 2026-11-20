@@ -15,13 +15,10 @@ import {
   type PluginThreadContextSegmentSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
-
-export const CORE_THREAD_CONTEXT_OWNER = "bb--core";
+import type { CoreContributionSlot } from "@/lib/core-contributions";
 
 export type CoreThreadContextSegment =
-  ExperimentalThreadContextSegmentRegistration & {
-    pluginId: typeof CORE_THREAD_CONTEXT_OWNER;
-  };
+  CoreContributionSlot<"threadContextSegments">;
 
 export type ThreadContextSegmentEntry =
   | { owner: "core"; slot: CoreThreadContextSegment }

@@ -2001,7 +2001,10 @@ function handleElicitationRequest(
     answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
-  const plan = planAcpElicitation(params);
+  const plan = planAcpElicitation(params, {
+    descriptionIsHeading:
+      session.dialect.elicitationDescriptionIsHeading === true,
+  });
   if (plan.kind === "unsupported") {
     answerWithoutUser(session, responder, {
       kind: "unshowable-request",

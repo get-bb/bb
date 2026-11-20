@@ -1,6 +1,7 @@
 import { and, asc, eq, gt, gte, ne, notInArray, sql } from "drizzle-orm";
 import { storedAttachmentPaths } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
+import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   events,
   projectAttachmentBackfills,
@@ -38,11 +39,18 @@ export function ensureProjectAttachmentBackfill(
     })
     .onConflictDoNothing()
     .run();
+  return getProjectAttachmentBackfill(db, projectId)!;
+}
+
+export function getProjectAttachmentBackfill(
+  db: DbQueryConnection,
+  projectId: string,
+): AttachmentBackfill | undefined {
   return db
     .select()
     .from(projectAttachmentBackfills)
     .where(eq(projectAttachmentBackfills.projectId, projectId))
-    .get()!;
+    .get();
 }
 
 export function nextProjectAttachmentBackfill(
@@ -245,4 +253,60 @@ export function readAttachmentBackfillInput(
       nextThread?.id ?? "",
     ),
   };
+}
+
+export function nextCompletedProjectAttachmentBackfill(
+  db: DbQueryConnection,
+  args: { afterProjectId: string; excludedProjectIds: ReadonlySet<string> },
+): string | null {
+  return (
+    db
+      .select({ id: projectAttachmentBackfills.projectId })
+      .from(projectAttachmentBackfills)
+      .where(
+        and(
+          eq(projectAttachmentBackfills.phase, "done"),
+          gt(projectAttachmentBackfills.projectId, args.afterProjectId),
+          args.excludedProjectIds.size === 0
+            ? undefined
+            : notInArray(projectAttachmentBackfills.projectId, [
+                ...args.excludedProjectIds,
+              ]),
+        ),
+      )
+      .orderBy(asc(projectAttachmentBackfills.projectId))
+      .limit(1)
+      .get()?.id ?? null
+  );
+}
+
+export function commitAttachmentBackfillStep(
+  db: DbConnection,
+  step: {
+    paths: readonly string[];
+    next: AttachmentBackfill;
+    threadId: string | null;
+  },
+): void {
+  db.transaction(
+    (tx) => {
+      const { threadId } = step;
+      if (
+        threadId &&
+        tx
+          .select({ id: threads.id })
+          .from(threads)
+          .where(eq(threads.id, threadId))
+          .get()
+      )
+        acquireProjectAttachmentOwnership(
+          tx,
+          threadId,
+          step.paths,
+          "best-effort",
+        );
+      updateAttachmentBackfill(tx, step.next);
+    },
+    { behavior: "immediate" },
+  );
 }

@@ -1,31 +1,22 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { useAtomValue } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   experimental_THREAD_ACTION_GROUPS as GROUPS,
   type PluginThreadAction,
   type PluginThreadActionItemInput,
-  type PluginThreadActionRegistration,
   type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
-import { threadParentNotificationsSchema } from "@bb/domain";
+import { definePluginApp } from "@/lib/plugin-app-definition";
+import { copyToClipboard } from "@/lib/clipboard";
+import { useBbContext } from "@/lib/plugin-bb-context";
+import { useSidebarSplitLayout } from "@/lib/plugin-split-layout";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import { useRouteState } from "@/hooks/useRouteState";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { appToast } from "@/components/ui/app-toast";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { resolveThread } from "@/lib/cached-thread";
-import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { countPanes, listPanes } from "@/lib/split-layout";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-
-function coreThreadAction<Data>(
-  registration: PluginThreadActionRegistration<Data>,
-): PluginThreadActionRegistration<unknown> {
-  return registration;
-}
 
 export function getThreadUrl(thread: PluginThreadActionTarget): string {
   return new URL(
@@ -42,26 +33,15 @@ interface SplitAvailability {
 
 function useSplitAvailability(): SplitAvailability {
   const isCompact = useIsCompactViewport();
-  const layout = useAtomValue(splitLayoutAtom);
-  const { threadId } = useRouteState();
-  const panes =
-    layout !== null && countPanes(layout.root) > 1
-      ? listPanes(layout.root)
-      : [];
-  const focusedPane = panes.find(
-    (pane) => pane.paneId === layout?.focusedPaneId,
-  );
+  const layout = useSidebarSplitLayout();
+  const { threadId } = useBbContext();
+  const panes = layout?.panes ?? [];
+  const focusedPane = panes.find((pane) => pane.isFocused);
   const focusedThreadId =
-    panes.length === 0
-      ? (threadId ?? null)
-      : focusedPane?.content.kind === "thread"
-        ? focusedPane.content.threadId
-        : null;
+    panes.length === 0 ? threadId : (focusedPane?.threadId ?? null);
   const otherPaneThreadIdsKey = panes
     .flatMap((pane) =>
-      pane !== focusedPane && pane.content.kind === "thread"
-        ? [pane.content.threadId]
-        : [],
+      pane !== focusedPane && pane.threadId !== null ? [pane.threadId] : [],
     )
     .join("\n");
   return useMemo(
@@ -96,6 +76,26 @@ async function runForEach(
   }
 }
 
+type ParentNotifications = PluginThreadActionTarget["parentNotifications"];
+
+const PARENT_NOTIFICATIONS_LABELS = {
+  auto: "Auto",
+  stuck: "When stuck",
+  off: "Off",
+} satisfies Record<ParentNotifications, string>;
+
+function isParentNotifications(
+  value: string | undefined,
+): value is ParentNotifications {
+  return (
+    value !== undefined && Object.hasOwn(PARENT_NOTIFICATIONS_LABELS, value)
+  );
+}
+
+const PARENT_NOTIFICATIONS_VALUES = Object.keys(
+  PARENT_NOTIFICATIONS_LABELS,
+).filter(isParentNotifications);
+
 function parentNotificationsAction(
   threads: readonly PluginThreadActionTarget[],
   children: readonly PluginThreadActionTarget[],
@@ -110,9 +110,7 @@ function parentNotificationsAction(
     : null;
   return {
     label: "Notify parent",
-    detail:
-      PARENT_NOTIFICATIONS_OPTIONS.find((option) => option.value === shared)
-        ?.label ?? "Mixed",
+    detail: shared === null ? "Mixed" : PARENT_NOTIFICATIONS_LABELS[shared],
     icon: "Megaphone02",
     choices: {
       ...(children.length < threads.length
@@ -120,24 +118,23 @@ function parentNotificationsAction(
             hint: `Applies to ${describeThreadCount(children.length)} with a parent`,
           }
         : {}),
-      items: PARENT_NOTIFICATIONS_OPTIONS.map((option) => ({
-        id: option.value,
-        label: option.label,
-        selected: option.value === shared,
+      items: PARENT_NOTIFICATIONS_VALUES.map((parentNotifications) => ({
+        id: parentNotifications,
+        label: PARENT_NOTIFICATIONS_LABELS[parentNotifications],
+        selected: parentNotifications === shared,
       })),
     },
     run: async ({ value }) => {
-      const parentNotifications =
-        threadParentNotificationsSchema.safeParse(value);
-      if (!parentNotifications.success) return;
+      if (!isParentNotifications(value)) return;
+      const parentNotifications = value;
       await runForEach(
         children.filter(
-          (thread) => thread.parentNotifications !== parentNotifications.data,
+          (thread) => thread.parentNotifications !== parentNotifications,
         ),
         (thread) =>
           sdk.threads.update({
             threadId: thread.id,
-            parentNotifications: parentNotifications.data,
+            parentNotifications,
           }),
         children.length === 1
           ? "Failed to change parent notifications."
@@ -206,300 +203,307 @@ function useLifecycleHandlers(): LifecycleHandlers {
   );
 }
 
-export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknown>[] =
-  [
-    coreThreadAction({
-      id: "split",
-      group: GROUPS.open,
-      order: 10,
-      title: "Open in split",
-      icon: "Columns2",
-      useData: useSplitAvailability,
-      item: ({ thread, data, navigate }) =>
-        !data.available || data.focusedThreadId === thread.id
-          ? null
-          : {
-              label: data.otherPaneThreadIds.has(thread.id)
-                ? "Focus split"
-                : "Open in split",
-              icon: "Columns2",
-              run: () => navigate.toThread(thread.id, { split: true }),
+const coreThreadActions = definePluginApp((app) => {
+  app.slots.experimental_threadAction({
+    id: "split",
+    group: GROUPS.open,
+    order: 10,
+    title: "Open in split",
+    icon: "Columns2",
+    useData: useSplitAvailability,
+    item: ({ thread, data, navigate }) =>
+      !data.available || data.focusedThreadId === thread.id
+        ? null
+        : {
+            label: data.otherPaneThreadIds.has(thread.id)
+              ? "Focus split"
+              : "Open in split",
+            icon: "Columns2",
+            run: () => navigate.toThread(thread.id, { split: true }),
+          },
+  });
+  app.slots.experimental_threadAction({
+    id: "newThreadInEnvironment",
+    group: GROUPS.open,
+    order: 30,
+    title: "New thread in environment",
+    icon: "MessageSquarePlus",
+    useData: useIsCompactViewport,
+    item: ({ thread, data: isCompact, navigate }) => {
+      const environment = thread.environment;
+      if (!isCompact || environment === null || environment.path === null) {
+        return null;
+      }
+      return {
+        label: "New thread in environment",
+        icon: "MessageSquarePlus",
+        run: () =>
+          navigate.toCompose({
+            projectId: thread.projectId,
+            environmentId: environment.id,
+            placement: {
+              sectionId: thread.sectionId,
+              pinned: thread.pinnedAt !== null,
             },
-    }),
-    coreThreadAction({
-      id: "newThreadInEnvironment",
-      group: GROUPS.open,
-      order: 30,
-      title: "New thread in environment",
-      icon: "MessageSquarePlus",
-      useData: useIsCompactViewport,
-      item: ({ thread, data: isCompact, navigate }) => {
-        const environment = thread.environment;
-        if (!isCompact || environment === null || environment.path === null) {
-          return null;
+            focusPrompt: true,
+          }),
+      };
+    },
+  });
+  app.slots.experimental_threadAction({
+    id: "copyLink",
+    group: GROUPS.open,
+    order: 20,
+    title: "Copy link",
+    icon: "Copy",
+    item: ({ thread }) => ({
+      label: "Copy link",
+      icon: "Copy",
+      run: async () => {
+        if (await copyToClipboard({ text: getThreadUrl(thread) })) {
+          appToast.success("Thread link copied");
+        } else {
+          appToast.error("Failed to copy thread link");
         }
-        return {
-          label: "New thread in environment",
-          icon: "MessageSquarePlus",
-          run: () =>
-            navigate.toCompose({
-              projectId: thread.projectId,
-              environmentId: environment.id,
-              placement: {
-                sectionId: thread.sectionId,
-                pinned: thread.pinnedAt !== null,
-              },
-              focusPrompt: true,
-            }),
-        };
       },
     }),
-    coreThreadAction({
-      id: "copyLink",
-      group: GROUPS.open,
-      order: 20,
-      title: "Copy link",
-      icon: "Copy",
-      item: ({ thread }) => ({
-        label: "Copy link",
-        icon: "Copy",
-        run: () =>
-          copyToClipboardWithToast(getThreadUrl(thread), {
-            successMessage: "Thread link copied",
-            errorMessage: "Failed to copy thread link",
-          }).then(() => undefined),
-      }),
+  });
+  app.slots.experimental_threadAction({
+    id: "read",
+    group: GROUPS.state,
+    order: 30,
+    title: "Mark read / unread",
+    icon: "MailOpen",
+    item: ({ thread, sdk }) => ({
+      label: thread.isUnread ? "Mark read" : "Mark unread",
+      icon: thread.isUnread ? "MailOpen" : "Mail",
+      run: async () => {
+        try {
+          if (thread.isUnread) {
+            await sdk.threads.markRead({ threadId: thread.id });
+          } else {
+            await sdk.threads.markUnread({ threadId: thread.id });
+          }
+        } catch (error) {
+          showMutationErrorToast({
+            error,
+            fallbackMessage: thread.isUnread
+              ? "Failed to mark thread read"
+              : "Failed to mark thread unread",
+          });
+        }
+      },
     }),
-    coreThreadAction({
-      id: "read",
-      group: GROUPS.state,
-      order: 30,
-      title: "Mark read / unread",
-      icon: "MailOpen",
-      item: ({ thread, sdk }) => ({
-        label: thread.isUnread ? "Mark read" : "Mark unread",
-        icon: thread.isUnread ? "MailOpen" : "Mail",
+    experimental_bulkItem: ({ threads, sdk }) => {
+      const anyUnread = threads.some((thread) => thread.isUnread);
+      return {
+        label: anyUnread ? "Mark read" : "Mark unread",
+        icon: anyUnread ? "MailOpen" : "Mail",
+        run: () =>
+          runForEach(
+            threads,
+            (thread) =>
+              anyUnread
+                ? sdk.threads.markRead({ threadId: thread.id })
+                : sdk.threads.markUnread({ threadId: thread.id }),
+            anyUnread
+              ? "Failed to mark threads read"
+              : "Failed to mark threads unread",
+          ),
+      };
+    },
+  });
+  app.slots.experimental_threadAction({
+    id: "pin",
+    group: GROUPS.state,
+    order: 20,
+    title: "Pin",
+    icon: "Pin",
+    item: ({ thread, sdk }) => {
+      const isPinned = thread.pinnedAt !== null;
+      if (thread.isHidden && !isPinned) return null;
+      return {
+        label: isPinned ? "Unpin" : "Pin",
+        icon: isPinned ? "PinOff" : "Pin",
         run: async () => {
           try {
-            if (thread.isUnread) {
-              await sdk.threads.markRead({ threadId: thread.id });
+            if (isPinned) {
+              await sdk.threads.unpin({ threadId: thread.id });
             } else {
-              await sdk.threads.markUnread({ threadId: thread.id });
+              await sdk.threads.pin({ threadId: thread.id });
             }
           } catch (error) {
             showMutationErrorToast({
               error,
-              fallbackMessage: thread.isUnread
-                ? "Failed to mark thread read"
-                : "Failed to mark thread unread",
+              fallbackMessage: isPinned
+                ? "Failed to unpin thread."
+                : "Failed to pin thread.",
             });
           }
         },
-      }),
-      experimental_bulkItem: ({ threads, sdk }) => {
-        const anyUnread = threads.some((thread) => thread.isUnread);
-        return {
-          label: anyUnread ? "Mark read" : "Mark unread",
-          icon: anyUnread ? "MailOpen" : "Mail",
-          run: () =>
-            runForEach(
+      };
+    },
+    experimental_bulkItem: ({ threads, sdk }) => {
+      const allPinned = threads.every((thread) => thread.pinnedAt !== null);
+      return {
+        label: allPinned ? "Unpin" : "Pin",
+        icon: allPinned ? "PinOff" : "Pin",
+        run: async () => {
+          if (allPinned) {
+            await runForEach(
               threads,
-              (thread) =>
-                anyUnread
-                  ? sdk.threads.markRead({ threadId: thread.id })
-                  : sdk.threads.markUnread({ threadId: thread.id }),
-              anyUnread
-                ? "Failed to mark threads read"
-                : "Failed to mark threads unread",
+              (thread) => sdk.threads.unpin({ threadId: thread.id }),
+              "Failed to unpin threads.",
+            );
+            return;
+          }
+          try {
+            for (const thread of threads
+              .filter((candidate) => candidate.pinnedAt === null)
+              .reverse()) {
+              await sdk.threads.pin({ threadId: thread.id });
+            }
+          } catch (error) {
+            showMutationErrorToast({
+              error,
+              fallbackMessage: "Failed to pin threads.",
+            });
+          }
+        },
+      };
+    },
+  });
+  app.slots.experimental_threadAction({
+    id: "parentNotifications",
+    group: GROUPS.state,
+    order: 60,
+    title: "Notify parent",
+    icon: "Megaphone02",
+    item: ({ thread, sdk }) =>
+      parentNotificationsAction([thread], childThreads([thread]), sdk),
+    experimental_bulkItem: ({ threads, sdk }) =>
+      parentNotificationsAction(threads, childThreads(threads), sdk),
+  });
+  app.slots.experimental_threadAction({
+    id: "rename",
+    group: GROUPS.organize,
+    order: 10,
+    title: "Rename",
+    icon: "Edit",
+    item: ({ thread }) => ({
+      label: "Rename",
+      icon: "Edit",
+      run: ({ requestRename }) => requestRename(thread.id),
+    }),
+  });
+  app.slots.experimental_threadAction({
+    id: "regenerateTitle",
+    group: GROUPS.organize,
+    order: 20,
+    title: "Regenerate title",
+    icon: "RotateCcw",
+    item: ({ thread, sdk }) => ({
+      label: "Regenerate title",
+      icon: "RotateCcw",
+      run: async () => {
+        const toastId = appToast.loading("Regenerating title");
+        try {
+          await sdk.threads.experimental_regenerateTitle({
+            threadId: thread.id,
+          });
+          appToast.dismiss(toastId);
+        } catch (error) {
+          appToast.dismiss(toastId);
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to regenerate title.",
+          });
+        }
+      },
+    }),
+  });
+  app.slots.experimental_threadAction({
+    id: "archive",
+    group: GROUPS.lifecycle,
+    title: "Archive",
+    icon: "Archive",
+    useData: useLifecycleHandlers,
+    item: ({ thread, data, sdk }) => {
+      const isArchived = thread.archivedAt !== null;
+      return {
+        label: isArchived ? "Unarchive" : "Archive",
+        icon: isArchived ? "ArchiveRestore" : "Archive",
+        run: async () => {
+          if (!isArchived) {
+            afterMenuCloses(() => void data.archive([thread.id]));
+            return;
+          }
+          try {
+            await sdk.threads.unarchive({ threadId: thread.id });
+          } catch (error) {
+            showMutationErrorToast({
+              error,
+              fallbackMessage: "Failed to unarchive thread.",
+            });
+          }
+        },
+      };
+    },
+    experimental_bulkItem: ({ threads, data, sdk }) => {
+      const active = threads.filter((thread) => thread.archivedAt === null);
+      if (active.length > 0) {
+        return {
+          label: `Archive ${describeThreadCount(active.length)}`,
+          icon: "Archive",
+          run: () =>
+            afterMenuCloses(
+              () => void data.archive(active.map((thread) => thread.id)),
             ),
         };
-      },
-    }),
-    coreThreadAction({
-      id: "pin",
-      group: GROUPS.state,
-      order: 20,
-      title: "Pin",
-      icon: "Pin",
-      item: ({ thread, sdk }) => {
-        const isPinned = thread.pinnedAt !== null;
-        return {
-          label: isPinned ? "Unpin" : "Pin",
-          icon: isPinned ? "PinOff" : "Pin",
-          run: async () => {
-            try {
-              if (isPinned) {
-                await sdk.threads.unpin({ threadId: thread.id });
-              } else {
-                await sdk.threads.pin({ threadId: thread.id });
-              }
-            } catch (error) {
-              showMutationErrorToast({
-                error,
-                fallbackMessage: isPinned
-                  ? "Failed to unpin thread."
-                  : "Failed to pin thread.",
-              });
-            }
-          },
-        };
-      },
-      experimental_bulkItem: ({ threads, sdk }) => {
-        const allPinned = threads.every((thread) => thread.pinnedAt !== null);
-        return {
-          label: allPinned ? "Unpin" : "Pin",
-          icon: allPinned ? "PinOff" : "Pin",
-          run: async () => {
-            if (allPinned) {
-              await runForEach(
-                threads,
-                (thread) => sdk.threads.unpin({ threadId: thread.id }),
-                "Failed to unpin threads.",
-              );
-              return;
-            }
-            try {
-              for (const thread of threads
-                .filter((candidate) => candidate.pinnedAt === null)
-                .reverse()) {
-                await sdk.threads.pin({ threadId: thread.id });
-              }
-            } catch (error) {
-              showMutationErrorToast({
-                error,
-                fallbackMessage: "Failed to pin threads.",
-              });
-            }
-          },
-        };
-      },
-    }),
-    coreThreadAction({
-      id: "parentNotifications",
-      group: GROUPS.state,
-      order: 60,
-      title: "Notify parent",
-      icon: "Megaphone02",
-      item: ({ thread, sdk }) =>
-        parentNotificationsAction([thread], childThreads([thread]), sdk),
-      experimental_bulkItem: ({ threads, sdk }) =>
-        parentNotificationsAction(threads, childThreads(threads), sdk),
-    }),
-    coreThreadAction({
-      id: "rename",
-      group: GROUPS.organize,
-      order: 10,
-      title: "Rename",
-      icon: "Edit",
-      item: ({ thread }) => ({
-        label: "Rename",
-        icon: "Edit",
-        run: ({ requestRename }) => requestRename(thread.id),
-      }),
-    }),
-    coreThreadAction({
-      id: "regenerateTitle",
-      group: GROUPS.organize,
-      order: 20,
-      title: "Regenerate title",
-      icon: "RotateCcw",
-      item: ({ thread, sdk }) => ({
-        label: "Regenerate title",
-        icon: "RotateCcw",
+      }
+      return {
+        label: `Unarchive ${describeThreadCount(threads.length)}`,
+        icon: "ArchiveRestore",
         run: async () => {
-          const toastId = appToast.loading("Regenerating title");
           try {
-            await sdk.threads.experimental_regenerateTitle({
-              threadId: thread.id,
-            });
-            appToast.dismiss(toastId);
+            for (const thread of threads) {
+              await sdk.threads.unarchive({ threadId: thread.id });
+            }
           } catch (error) {
-            appToast.dismiss(toastId);
             showMutationErrorToast({
               error,
-              fallbackMessage: "Failed to regenerate title.",
+              fallbackMessage: "Failed to unarchive threads.",
             });
           }
         },
-      }),
-    }),
-    coreThreadAction({
-      id: "archive",
-      group: GROUPS.lifecycle,
-      title: "Archive",
-      icon: "Archive",
-      useData: useLifecycleHandlers,
-      item: ({ thread, data, sdk }) => {
-        const isArchived = thread.archivedAt !== null;
-        return {
-          label: isArchived ? "Unarchive" : "Archive",
-          icon: isArchived ? "ArchiveRestore" : "Archive",
-          run: async () => {
-            if (!isArchived) {
-              afterMenuCloses(() => void data.archive([thread.id]));
-              return;
-            }
-            try {
-              await sdk.threads.unarchive({ threadId: thread.id });
-            } catch (error) {
-              showMutationErrorToast({
-                error,
-                fallbackMessage: "Failed to unarchive thread.",
-              });
-            }
-          },
-        };
-      },
-      experimental_bulkItem: ({ threads, data, sdk }) => {
-        const active = threads.filter((thread) => thread.archivedAt === null);
-        if (active.length > 0) {
-          return {
-            label: `Archive ${describeThreadCount(active.length)}`,
-            icon: "Archive",
-            run: () =>
-              afterMenuCloses(
-                () => void data.archive(active.map((thread) => thread.id)),
-              ),
-          };
-        }
-        return {
-          label: `Unarchive ${describeThreadCount(threads.length)}`,
-          icon: "ArchiveRestore",
-          run: async () => {
-            try {
-              for (const thread of threads) {
-                await sdk.threads.unarchive({ threadId: thread.id });
-              }
-            } catch (error) {
-              showMutationErrorToast({
-                error,
-                fallbackMessage: "Failed to unarchive threads.",
-              });
-            }
-          },
-        };
-      },
-    }),
-    coreThreadAction({
-      id: "delete",
-      group: GROUPS.lifecycle,
-      title: "Delete",
+      };
+    },
+  });
+  app.slots.experimental_threadAction({
+    id: "delete",
+    group: GROUPS.lifecycle,
+    title: "Delete",
+    icon: "Trash2",
+    useData: useLifecycleHandlers,
+    item: ({ thread, data }) => ({
+      label: "Delete",
       icon: "Trash2",
-      useData: useLifecycleHandlers,
-      item: ({ thread, data }) => ({
-        label: "Delete",
-        icon: "Trash2",
-        variant: "destructive",
-        run: () => afterMenuCloses(() => void data.requestDelete([thread.id])),
-      }),
-      experimental_bulkItem: ({ threads, data }) => ({
-        label: `Delete ${describeThreadCount(threads.length)}`,
-        icon: "Trash2",
-        variant: "destructive",
-        run: () =>
-          afterMenuCloses(
-            () => void data.requestDelete(threads.map((thread) => thread.id)),
-          ),
-      }),
+      variant: "destructive",
+      run: () => afterMenuCloses(() => void data.requestDelete([thread.id])),
     }),
-  ];
+    experimental_bulkItem: ({ threads, data }) => ({
+      label: `Delete ${describeThreadCount(threads.length)}`,
+      icon: "Trash2",
+      variant: "destructive",
+      run: () =>
+        afterMenuCloses(
+          () => void data.requestDelete(threads.map((thread) => thread.id)),
+        ),
+    }),
+  });
+});
+
+export const CORE_THREAD_ACTIONS = collectCoreContributionSlots(
+  coreThreadActions,
+  "threadActions",
+);

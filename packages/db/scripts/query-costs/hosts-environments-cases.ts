@@ -4,10 +4,20 @@ import {
   recordProvisionedEnvironmentWorkspace,
 } from "../../src/data/environment-lifecycle.js";
 import {
+  acknowledgeInterruptedEnvironmentHookOperation,
+  finishEnvironmentHookOperation,
+  getEnvironmentHookOperation,
+  hasEnvironmentHookOperation,
+  insertEnvironmentHookOperation,
+  listUnfinishedEnvironmentHookOperationIdsOnHost,
+  restartEnvironmentHookOperation,
+} from "../../src/data/environment-hook-operations.js";
+import {
   bindEnvironmentPath,
   claimEnvironmentPath,
   createEnvironment,
   environmentHasLiveThreads,
+  environmentHasOtherStartingOrActiveThread,
   findEnvironmentPathClaim,
   findForeignManagedEnvironmentAtHostPath,
   findOtherLiveThreadAtEnvironmentPath,
@@ -15,32 +25,50 @@ import {
   insertHeldEnvironment,
   findProviderEnvironmentContainingPath,
   getEnvironment,
+  getFailedTeardownEnvironmentOnHost,
   getPreparingEnvironment,
+  getStartingLiveEnvironmentThread,
   listEnvironments,
+  listEnvironmentThreads,
+  listHostEnvironmentRemovalStates,
+  listLiveThreadHosts,
   listProviderLifecycleEnvironments,
+  listProvisioningEnvironmentIdsOnHost,
+  listReadyEnvironmentWatchTargets,
   listRetiredLoadedEnvironmentIdsOnHost,
+  listStartingLiveEnvironmentThreadIds,
+  listStoppingLiveEnvironmentThreads,
+  listUndeletedEnvironmentThreads,
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
+  recordEnvironmentTeardownFailure,
   releaseFinishedEnvironmentPreparationOwners,
   reserveEnvironment,
+  retryFailedEnvironmentTeardownsOnHost,
+  setEnvironmentColumns,
   updateEnvironmentMetadata,
   updatePreparingEnvironment,
   type EnvironmentRow,
 } from "../../src/data/environments.js";
 import {
   getHost,
+  getLatestHostAttemptForLaunchKey,
   getNonDestroyedHost,
   getNonDestroyedHostByLaunchKey,
+  insertHost,
   listHosts,
   listHostsByIds,
   listNonDestroyedHostsByIds,
   listPublicHosts,
   markHostSeen,
+  setHostColumns,
   updateHost,
   upsertHost,
 } from "../../src/data/hosts.js";
 import {
+  hostHasRunningTurnThread,
   listProviderMachines,
+  listRunningTurnThreadsOnHost,
   machineHasLiveThreadLaunch,
   machineHasLiveThreads,
   machineHasPendingThreads,
@@ -102,6 +130,7 @@ import {
   getLatestSessionForHost,
   getSessionById,
   heartbeatSession,
+  listActiveSessionIdsForHost,
   listLatestClosedSessionsForHosts,
   openSession,
 } from "../../src/data/sessions.js";
@@ -109,6 +138,7 @@ import {
   countTerminalSessions,
   createTerminalSession,
   getTerminalSession,
+  listOpenTerminalSessionIdsOnHost,
   listTerminalSessions,
   pruneExitedTerminalSessions,
   updateTerminalSession,
@@ -126,6 +156,7 @@ import {
 
 const ENVIRONMENTS = "packages/db/src/data/environments.ts";
 const ENVIRONMENT_LIFECYCLE = "packages/db/src/data/environment-lifecycle.ts";
+const ENVIRONMENT_HOOKS = "packages/db/src/data/environment-hook-operations.ts";
 const HOSTS = "packages/db/src/data/hosts.ts";
 const MACHINES = "packages/db/src/data/machines.ts";
 const BACKFILL = "packages/db/src/data/project-attachment-backfill.ts";
@@ -427,6 +458,160 @@ const ENVIRONMENT_CASES: readonly Case[] = [
         seed.sharedEnvironmentId,
       ),
   },
+  {
+    name: `${ENVIRONMENTS}#setEnvironmentColumns`,
+    run: (db, _fixture, seed) =>
+      setEnvironmentColumns(db, seed.readyEnvironmentId, {
+        retireAt: Date.now(),
+        teardownStatus: "running",
+      }),
+  },
+  {
+    name: `${ENVIRONMENTS}#recordEnvironmentTeardownFailure`,
+    run: (db, _fixture, seed) =>
+      recordEnvironmentTeardownFailure(db, seed.readyEnvironmentId, {
+        teardownMessage: "Workspace is still in use",
+        retireAt: Date.now() + 60_000,
+        updatedAt: Date.now(),
+      }),
+  },
+  {
+    name: `${ENVIRONMENTS}#listProvisioningEnvironmentIdsOnHost`,
+    run: (db, _fixture, seed) =>
+      listProvisioningEnvironmentIdsOnHost(db, seed.busyHostId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listHostEnvironmentRemovalStates`,
+    growsWith: {
+      history:
+        "Lists every environment on the host while it is forgotten, and the seed grows the busy host's environments",
+    },
+    run: (db, _fixture, seed) =>
+      listHostEnvironmentRemovalStates(db, seed.busyHostId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listUndeletedEnvironmentThreads`,
+    run: (db, _fixture, seed) =>
+      listUndeletedEnvironmentThreads(db, seed.readyEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listStoppingLiveEnvironmentThreads`,
+    run: (db, _fixture, seed) =>
+      listStoppingLiveEnvironmentThreads(db, seed.sharedEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listEnvironmentThreads`,
+    run: (db, _fixture, seed) =>
+      listEnvironmentThreads(db, seed.readyEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#getStartingLiveEnvironmentThread`,
+    run: (db, _fixture, seed) =>
+      getStartingLiveEnvironmentThread(db, seed.sharedEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listStartingLiveEnvironmentThreadIds`,
+    run: (db, _fixture, seed) =>
+      listStartingLiveEnvironmentThreadIds(db, seed.sharedEnvironmentId),
+  },
+  {
+    name: `${ENVIRONMENTS}#environmentHasOtherStartingOrActiveThread`,
+    run: (db, fixture, seed) =>
+      environmentHasOtherStartingOrActiveThread(db, {
+        environmentId: seed.sharedEnvironmentId,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${ENVIRONMENTS}#retryFailedEnvironmentTeardownsOnHost`,
+    run: (db, _fixture, seed) =>
+      retryFailedEnvironmentTeardownsOnHost(db, seed.machineHostId, Date.now()),
+  },
+  {
+    name: `${ENVIRONMENTS}#getFailedTeardownEnvironmentOnHost`,
+    run: (db, _fixture, seed) =>
+      getFailedTeardownEnvironmentOnHost(db, seed.machineHostId),
+  },
+  {
+    name: `${ENVIRONMENTS}#listReadyEnvironmentWatchTargets`,
+    run: (db, _fixture, seed) =>
+      listReadyEnvironmentWatchTargets(db, seed.loadedEnvironmentIds),
+  },
+  {
+    name: `${ENVIRONMENTS}#listLiveThreadHosts`,
+    run: (db, fixture, seed) =>
+      listLiveThreadHosts(db, [
+        fixture.threadId,
+        ...fixture.neighborThreadIds,
+        seed.ownedEnvironmentThreadId,
+      ]),
+  },
+];
+
+const ENVIRONMENT_HOOK_CASES: readonly Case[] = [
+  {
+    name: `${ENVIRONMENT_HOOKS}#getEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      getEnvironmentHookOperation(db, seed.readyEnvironmentSetupOperationId),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#hasEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      hasEnvironmentHookOperation(db, seed.readyEnvironmentSetupOperationId),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#insertEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      insertEnvironmentHookOperation(db, {
+        id: `environment:${seed.readyEnvironmentId}:query-cost:teardown`,
+        hostId: seed.busyHostId,
+        path: seed.readyEnvironmentPath,
+        kind: "teardown",
+        startedAt: Date.now(),
+      }),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#restartEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      restartEnvironmentHookOperation(
+        db,
+        seed.readyEnvironmentSetupOperationId,
+        Date.now(),
+      ),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#finishEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      finishEnvironmentHookOperation(
+        db,
+        seed.readyEnvironmentSetupOperationId,
+        {
+          finishedAt: Date.now(),
+          error: "Environment hook cancelled",
+        },
+      ),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#acknowledgeInterruptedEnvironmentHookOperation`,
+    run: (db, _fixture, seed) =>
+      acknowledgeInterruptedEnvironmentHookOperation(db, {
+        id: seed.readyEnvironmentSetupOperationId,
+        hostId: seed.busyHostId,
+        path: seed.readyEnvironmentPath,
+        kind: "setup",
+        finishedAt: Date.now(),
+        error: "Interrupted hook acknowledged by explicit cleanup recovery",
+      }),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#listUnfinishedEnvironmentHookOperationIdsOnHost`,
+    growsWith: {
+      history:
+        "No index covers environment_hook_operations.host_id, so it reads every hook operation, and the seed grows them with the environments",
+    },
+    run: (db, _fixture, seed) =>
+      listUnfinishedEnvironmentHookOperationIdsOnHost(db, seed.machineHostId),
+  },
 ];
 
 const HOST_CASES: readonly Case[] = [
@@ -484,6 +669,40 @@ const HOST_CASES: readonly Case[] = [
         destroyedAt: Date.now(),
       }),
   },
+  {
+    name: `${HOSTS}#setHostColumns`,
+    run: (db, _fixture, seed) =>
+      setHostColumns(db, seed.machineHostId, {
+        serverAccessProviderId: "direct",
+        serverAccessGrantId: "grant-1",
+        statusMessage: null,
+      }),
+  },
+  {
+    name: `${HOSTS}#getLatestHostAttemptForLaunchKey`,
+    run: (db, _fixture, seed) =>
+      getLatestHostAttemptForLaunchKey(db, seed.machineLaunchKey),
+  },
+  {
+    name: `${HOSTS}#insertHost`,
+    run: (db) =>
+      insertHost(db, {
+        id: "host_query_cost_insert",
+        name: "Modal Sandbox abc123",
+        type: "persistent",
+        machineProviderId: "modal-sandbox",
+        machineOperationId: "environment-modal-sandbox:op-1",
+        launchKey: "launch-query-cost-insert",
+        inputs: {},
+        attempt: 1,
+        phase: "creating",
+        resource: null,
+        statusMessage: "Creating Modal Sandbox…",
+        pendingLog: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+  },
 ];
 
 const MACHINE_CASES: readonly Case[] = [
@@ -514,6 +733,16 @@ const MACHINE_CASES: readonly Case[] = [
     name: `${MACHINES}#machineHasProvisioningEnvironment`,
     run: (db, _fixture, seed) =>
       machineHasProvisioningEnvironment(db, seed.machineHostId),
+  },
+  {
+    name: `${MACHINES}#listRunningTurnThreadsOnHost`,
+    run: (db, _fixture, seed) =>
+      listRunningTurnThreadsOnHost(db, seed.machineHostId),
+  },
+  {
+    name: `${MACHINES}#hostHasRunningTurnThread`,
+    run: (db, _fixture, seed) =>
+      hostHasRunningTurnThread(db, seed.machineHostId),
   },
 ];
 
@@ -882,6 +1111,11 @@ const SESSION_CASES: readonly Case[] = [
     run: (db, _fixture, seed) =>
       heartbeatSession(db, seed.machineActiveSessionId, Date.now() + 30_000),
   },
+  {
+    name: `${SESSIONS}#listActiveSessionIdsForHost`,
+    run: (db, _fixture, seed) =>
+      listActiveSessionIdsForHost(db, seed.machineHostId),
+  },
 ];
 
 const TERMINAL_CASES: readonly Case[] = [
@@ -957,6 +1191,11 @@ const TERMINAL_CASES: readonly Case[] = [
         limit: TERMINAL_PRUNE_BATCH,
       }),
   },
+  {
+    name: `${TERMINALS}#listOpenTerminalSessionIdsOnHost`,
+    run: (db, _fixture, seed) =>
+      listOpenTerminalSessionIdsOnHost(db, seed.machineHostId),
+  },
 ];
 
 export const HOSTS_ENVIRONMENTS_COST_GROUP = registerCostGroup({
@@ -964,6 +1203,7 @@ export const HOSTS_ENVIRONMENTS_COST_GROUP = registerCostGroup({
   seed: seedHostsEnvironments,
   cases: [
     ...ENVIRONMENT_CASES,
+    ...ENVIRONMENT_HOOK_CASES,
     ...HOST_CASES,
     ...MACHINE_CASES,
     ...BACKFILL_CASES,

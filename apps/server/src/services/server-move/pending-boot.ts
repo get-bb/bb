@@ -1,13 +1,12 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { eq } from "drizzle-orm";
 import {
   countAppliedMigrations,
   getAppSettings,
   getHost,
   getPluginKvValue,
-  hostDaemonSessions,
+  listActiveSessionHosts,
   rerootServerOwnedPluginPaths,
   setAppSettings,
   swapServerHostRoles,
@@ -91,14 +90,6 @@ export interface ServerImportBootResult {
   importedDaemonSessions: ImportedDaemonSession[];
   manualImportPending: boolean;
   pendingMove: PendingServerMove | null;
-}
-
-function listActiveDaemonSessions(db: DbConnection): ImportedDaemonSession[] {
-  return db
-    .select({ hostId: hostDaemonSessions.hostId, id: hostDaemonSessions.id })
-    .from(hostDaemonSessions)
-    .where(eq(hostDaemonSessions.status, "active"))
-    .all();
 }
 
 export type ManualServerImportCompletion =
@@ -396,7 +387,7 @@ export async function applyServerImportAtBoot(
             targetHostId,
           })
         : null;
-    importedDaemonSessions = listActiveDaemonSessions(args.db);
+    importedDaemonSessions = listActiveSessionHosts(args.db);
     await writeServerImportFile(args.dataDir, {
       ...marker,
       fixupsAppliedAt: args.now,

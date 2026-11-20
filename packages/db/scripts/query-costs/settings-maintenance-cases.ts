@@ -51,6 +51,7 @@ import {
   interruptPendingInteractionsForThreads,
   listActivePluginPendingInteractions,
   listActiveProviderPendingInteractionsForHost,
+  listHostThreadIdsWithInterruptiblePendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
@@ -84,7 +85,7 @@ import {
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
 } from "../../src/data/sweeps.js";
-import { listHostThreadIds } from "../../src/data/threads.js";
+import { listRuntimeHostThreadIds } from "../../src/data/threads.js";
 import {
   deleteSweepItemFailures,
   deleteSweepItemFailuresAfterAttempts,
@@ -772,6 +773,13 @@ const INTERACTION_CASES: readonly Case[] = [
       }),
   },
   {
+    name: `${PENDING_INTERACTIONS}#listHostThreadIdsWithInterruptiblePendingInteractions`,
+    run: (db, fixture) =>
+      listHostThreadIdsWithInterruptiblePendingInteractions(db, {
+        hostId: fixture.hostId,
+      }),
+  },
+  {
     name: `${PENDING_INTERACTIONS}#listActivePluginPendingInteractions`,
     run: (db) => listActivePluginPendingInteractions(db),
   },
@@ -821,10 +829,10 @@ const INTERACTION_CASES: readonly Case[] = [
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreads`,
     growsWith: {
       history:
-        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+        "Probes pending interactions once per passed thread, and the case passes every live or running thread on the host, which the seed grows with the thread count",
     },
     prepare: (db, fixture) => {
-      hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
+      hostThreadIds = listRuntimeHostThreadIds(db, { hostId: fixture.hostId });
     },
     run: (db) =>
       interruptPendingInteractionsForThreads(db, {
@@ -837,10 +845,10 @@ const INTERACTION_CASES: readonly Case[] = [
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreadIds`,
     growsWith: {
       history:
-        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+        "Probes pending interactions once per passed thread, and the case passes every live or running thread on the host, which the seed grows with the thread count",
     },
     prepare: (db, fixture) => {
-      hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
+      hostThreadIds = listRuntimeHostThreadIds(db, { hostId: fixture.hostId });
     },
     run: (db) =>
       interruptPendingInteractionsForThreadIds(db, {

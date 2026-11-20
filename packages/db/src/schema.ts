@@ -712,6 +712,11 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+    index("threads_fork_history_copy_idx")
+      .on(table.id)
+      .where(
+        sql`(CASE WHEN json_valid(${table.startupContext}) THEN json_extract(${table.startupContext}, '$.historyCopy') END) IS NOT NULL`,
+      ),
   ],
 );
 
@@ -1112,6 +1117,7 @@ export const queuedThreadMessages = sqliteTable(
       .default(false),
     state: text("state", { enum: queuedMessageStateValues }).notNull(),
     sendAt: integer("send_at"),
+    recheckAt: integer("recheck_at"),
     waitingOn: text("waiting_on"),
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
     failureReason: text("failure_reason"),
@@ -1154,6 +1160,9 @@ export const queuedThreadMessages = sqliteTable(
       table.sendAt,
       table.id,
     ),
+    index("queued_thread_messages_recheck_idx")
+      .on(table.state, table.recheckAt, table.id)
+      .where(sql`${table.recheckAt} IS NOT NULL`),
     index("queued_thread_messages_retry_idx").on(
       table.state,
       table.nextAttemptAt,

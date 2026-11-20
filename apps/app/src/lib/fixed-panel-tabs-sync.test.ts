@@ -89,9 +89,9 @@ describe("fixed panel tab server sync", () => {
         tabId: "diff",
       },
       {
-        id: "plugin-fixed:core:info",
+        id: "plugin-fixed:bb--core:info",
         kind: "plugin-fixed",
-        pluginId: "core",
+        pluginId: "bb--core",
         tabId: "info",
       },
     ];

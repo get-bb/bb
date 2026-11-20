@@ -1,4 +1,5 @@
 import { memo, Suspense, useMemo } from "react";
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   ExperimentalMessageMetadataContext,
@@ -66,7 +67,7 @@ export const MessageMetadata = memo(function MessageMetadata({
       data-message-action-metadata={placement === "actionRow" ? "" : undefined}
     >
       {contributions.map((slot) =>
-        slot.pluginId === "core" ? (
+        slot.pluginId === CORE_PLUGIN_ID ? (
           <div key={`core/${slot.id}`} className="contents">
             <slot.component message={message} />
           </div>
