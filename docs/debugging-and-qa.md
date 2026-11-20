@@ -704,7 +704,14 @@ work after the restart. The host daemon intentionally rejects remote origins
 that are not configured; otherwise any webpage could drive its local editor
 API.
 
-For CLI QA, `pnpm bb:dev` derives this checkout's server and daemon endpoints.
+The dev server trusts no browser for its address. Sign the dev browser in once
+with `pnpm bb:dev access pair --url http://localhost:<app port> --open`; it opens
+a one-time sign-in link and the browser keeps a 30-day cookie. Scripts and
+`curl` against the dev server send `Authorization: Bearer bbl_<contents of
+<data dir>/local-access-token>`.
+
+For CLI QA, `pnpm bb:dev` derives this checkout's server and daemon endpoints
+and data directory (`BB_DATA_DIR`, where the CLI reads the local token).
 In the test shell, clear inherited endpoint and thread context overrides first
 so commands target the dev instance. Keep these changes inside that shell.
 

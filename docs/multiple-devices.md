@@ -64,9 +64,9 @@ shown in Settings and `bb server access list`. Connected machines learn the
 route the next time their session opens and Settings → Machines shows "via
 Local network" for those using it.
 
-Anyone on that network can use bb: the public API is unauthenticated and
-permits command execution and file reads. Add it only for a network you
-trust, and never on public Wi-Fi.
+Devices on that network still have to sign in (see [Sign in](#sign-in)), but
+the traffic is plain HTTP that anyone on the network can read. Add it only for
+a network you trust, and never on public Wi-Fi.
 
 Every route is optional and each keeps its own trust boundary: the local
 network trusts the network, the Tailscale route trusts the tailnet's ACLs, a
@@ -81,10 +81,51 @@ within 30 seconds. Attachments and daemon updates stay on an
 encrypted (HTTPS) route while a machine uses the local network, unless the
 local network is the only route.
 
-For compatibility, `npx bb-app --server-bind-host 0.0.0.0` restores direct
-IPv4 network access on every interface. The public API is unauthenticated and permits command
-execution and file reads, so use wildcard binding only behind a trusted network
-boundary and never through Funnel or the public internet.
+`npx bb-app --server-bind-host 0.0.0.0` serves bb on every IPv4 interface, so
+other devices on a trusted network can open `http://<lan-ip>:38886` and sign in.
+
+### Sign in
+
+Every request to bb needs a credential, including requests from the server
+machine itself. bb never trusts a request for its address: Tailscale Serve,
+nginx, socat or an SSH forward all reach the server from loopback, and some of
+them hide the real client. What each client uses:
+
+| Client                                                                      | Credential                                                                      | Setup                                                                                                              |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `bb` CLI, agents and scripts on the server machine                          | the local token in `<data dir>/local-access-token` (readable only by your user) | none: the CLI reads it for a loopback `BB_SERVER_URL`; set `BB_DATA_DIR` if the server uses another data directory |
+| bb desktop app on the server machine                                        | a browser session it creates from the local token                               | none                                                                                                               |
+| A browser on the server machine                                             | an HttpOnly session cookie                                                      | open the sign-in link `npx bb-app` prints at startup, or run `bb access pair --open`                               |
+| A browser elsewhere (LAN, Tailscale, reverse proxy)                         | an HttpOnly session cookie                                                      | enter a pairing code                                                                                               |
+| bb mobile app, desktop app on a remote server, `bb` CLI on another computer | a token bound to a key that never leaves the device (DPoP)                      | enter a pairing code; `bb access login --code <code>` for the CLI                                                  |
+| Execution machines                                                          | their machine key                                                               | none: the daemon's loopback proxy signs agents' `bb` commands in                                                   |
+| A browser bb connect signed in                                              | the bb connect gate's verdict                                                   | bb account sign-in                                                                                                 |
+
+To sign a device in:
+
+1. Make a one-time code on something already trusted: run `bb access pair`
+   on the server machine, or open Settings → Devices → **Sign in another
+   device** on a signed-in device (QR code, the code, and a countdown). Codes
+   last 10 minutes and work once.
+2. On the new device, open bb and enter the code, or scan the QR code.
+3. Settings → Devices and `bb access list` show every signed-in device;
+   **Revoke** or `bb access revoke <id>` signs one out at once and closes its
+   open connections.
+
+Browser sessions end after 30 days without use. Device-bound sessions renew
+while the device uses them and end after 30 days without use; their access
+tokens last an hour, and a token copied off the network is useless without the
+device's key. The bb mobile app's and desktop app's web views get a cookie that
+lasts at most an hour and is renewed by the app with its key.
+
+A sign-in made over HTTPS (Tailscale Serve, a TLS reverse proxy) is never
+accepted over plain HTTP: the browser cookie is `Secure`, the server refuses it
+on an HTTP request, and the CLI sends a token only to the exact origin it signed
+in at. Ten wrong codes within five minutes pause code sign-in for a few
+minutes.
+
+A local MCP client uses the local address `bb mcp status` prints with the
+header `Authorization: Bearer bbl_<contents of local-access-token>`.
 
 Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
 container runtime must still publish that port to the host (for example,
@@ -184,8 +225,9 @@ you can remove it. After a removal, the app drops the
 credential and asks the local server again.
 
 To point the desktop app at a direct server (a custom URL such as a LAN or
-Tailscale address), sign its window in with a pairing code the first time; the
-app keeps that browser sign-in.
+Tailscale address), enter a pairing code in its window the first time. The app
+keeps a device key for that server, encrypted with the OS keychain, and renews
+its sign-in while you use it.
 
 A remote server has no realtime link for keybindings and theme. The app re-reads
 them when it starts, when it becomes active, and every five minutes.

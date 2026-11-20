@@ -346,26 +346,27 @@ dashboard code with `npx -p bb-app@latest bb connect --code <code>`.
 
 ## Sign in other devices
 
-The server machine never signs in: a request from a local process, with a
-loopback `Host` and no non-loopback proxy header, is the owner. So is a browser
-that bb connect signed in. Every other request (LAN, Tailscale Serve, a reverse
-proxy, `--server-bind-host 0.0.0.0`) needs a sign-in, or gets 401
-`unauthenticated`.
+Every request needs a credential; bb trusts no request for its address. On the
+server machine the CLI, agents and scripts present the local token from
+`<data dir>/local-access-token` (mode 0600), which the CLI reads for a loopback
+`BB_SERVER_URL`; set `BB_DATA_DIR` when the server uses a non-default data
+directory. Without a credential the API answers 401 `unauthenticated`.
 
-- `bb access pair [--url <origin>] [--json]` mints a one-time, 10-minute code
-  (`XXXXX-XXXXX`) on a trusted surface; Settings → Devices shows the same code
-  as a QR code. Enter it in the sign-in screen that bb shows on any new browser,
-  phone, or desktop window. `--url` also prints `<origin>/pair#code=<code>`.
-- `bb access login --code <code> [--label <name>]` signs this CLI in to
-  `BB_SERVER_URL`. The token is stored per origin in
-  `<data dir>/server-credentials.json` (mode 0600) and sent only to that origin.
-  `bb access logout` revokes it and forgets it; `bb access status` shows how the
-  CLI is let in.
+- `bb access pair [--url <origin>] [--open] [--json]` mints a one-time,
+  10-minute code (`XXXXX-XXXXX`); Settings → Devices shows the same code as a
+  QR code. `--url` prints `<origin>/pair#code=<code>`; `--open` opens that link
+  (default origin `BB_SERVER_URL`) in this computer's browser, which signs it in.
+- `bb access login --code <code> [--label <name>]` signs this CLI in to a
+  remote `BB_SERVER_URL` with a P-256 key it creates. The key and a one-hour
+  access token are stored per origin in `<data dir>/server-credentials.json`
+  (mode 0600); every request carries a DPoP proof, tokens renew automatically,
+  and a copied token is useless without the key. `bb access logout` revokes it
+  and forgets it; `bb access status` shows how the CLI is let in.
 - `bb access list [--json]` lists signed-in devices; `bb access revoke <id>`
   signs one out and closes its open connections.
 
 A sign-in made over HTTPS is refused over plain HTTP. Ten wrong codes in five
-minutes pause sign-in for everyone for up to five minutes. Agents on an
+minutes pause sign-in for everyone for up to five minutes. Agents on another
 enrolled machine reach the server through the daemon's loopback proxy, which
 signs them in with the machine's credential; machine credentials cannot mint
 codes or sign devices out.

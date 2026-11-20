@@ -1881,7 +1881,8 @@ plugin sees them. Plugins whose source is not `builtin` get a throw. Only caller
 Internal to bb's bundled `mcp` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
 `internal_DO_NOT_USE_requestAccess(context)` returns who core decided sent the
-request a plugin HTTP route is handling: `server-machine`, `signed-in-device`,
+request a plugin HTTP route is handling: `server-machine` (the local token, a
+plugin's caller token, or an in-process request), `signed-in-device`,
 `connect-session`, `machine`, `oauth` or `anonymous`. It reads the same
 resolution core's own routes use (`apps/server/src/request-access.ts`). Only
 caller: `plugins/mcp/src/server.ts`, which serves the server machine and
@@ -5368,17 +5369,21 @@ operation id instead of the in-memory status.
 ## Signing devices in (`bb.sdk.experimental_access`)
 
 `experimental_access` wraps `/api/v1/access/*`. `session()` says how the caller
-is let in (`{ authenticated, via: "local" | "connect" | "credential" |
-"machine" | null, credentialId, problem }`). `createPairing()` mints a 10-minute,
-single-use `XXXXX-XXXXX` code (owner only; machine credentials get 403).
-`redeemPairing({ kind: "browser", code })` sets the HttpOnly
-`bb_session_<port>` cookie; `{ kind: "device", code, label }` returns
-`{ token, cookieName }`, usable as `Authorization: Bearer` or as that cookie.
-`listCredentials()` lists signed-in devices with `current`; `revokeCredential({
-id })` signs one out and closes its sockets; `signOut()` revokes the caller's
-own. A credential redeemed over HTTPS is refused over plain HTTP
-(`credential_requires_https`). Core callers: the app's pairing screen and
-Settings → Devices, `bb access`, and the mobile app's direct-profile sign-in.
+is let in (`{ authenticated, via: "local" | "plugin" | "connect" | "credential"
+| "machine" | null, credentialId, problem }`). `createPairing()` mints a
+10-minute, single-use `XXXXX-XXXXX` code (owner only; machine credentials get
+403). `redeemPairing({ kind: "browser", code })` sets the HttpOnly
+`bb_session_<port>` cookie (30 days without use). `pairDevice({ code, label,
+signer })` redeems as a device: it sends a DPoP proof made with the caller's
+P-256 key and returns a one-hour access token bound to that key (`Authorization:
+DPoP` plus a proof per request; renew at `POST /api/v1/access/token`).
+`listCredentials()` lists signed-in devices with `current`, `expiresAt` and
+`deviceBound`; `revokeCredential({ id })` signs one out and closes its sockets;
+`signOut()` revokes the caller's own. A credential redeemed over HTTPS is
+refused over plain HTTP (`credential_requires_https`). Core callers: the app's
+pairing screen and Settings → Devices, and `bb access` (`pair`, `login` via
+`pairDevice`, `list`, `revoke`, `logout`). Desktop and mobile call the
+renewal, device-browser-session and websocket-ticket routes directly.
 
 Before stabilization, audit: whether plugins should be able to mint pairing
 codes at all (a plugin already acts as the owner over loopback), credential
