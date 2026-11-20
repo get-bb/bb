@@ -145,7 +145,8 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   the default provider is out of usage, for example
   `bb settings general fallbackProviderId codex`. It applies when the caller
   did not explicitly pick the provider, model, service tier, reasoning level,
-  permission mode, or session options, and the default provider's usage on
+  or permission mode (session options passed with `--option` also count), and
+  the default provider's usage on
   the thread's machine has a window at 100% that has not reset (a window for
   one model counts only for that model). The thread then starts on the
   fallback with that provider's own defaults. Forks and running threads do not

@@ -841,7 +841,8 @@ export async function createThreadFromRequest(
   const fallbackEligible =
     childHostId !== null &&
     request.originKind === null &&
-    Object.keys(request.sessionOptions ?? {}).length === 0 &&
+    (request.executionInputSources !== undefined ||
+      Object.keys(request.sessionOptions ?? {}).length === 0) &&
     FALLBACK_BLOCKING_FIELDS.every(
       (field) => !isExplicitCreateExecutionValue(requestInput, field),
     );
@@ -864,16 +865,6 @@ export async function createThreadFromRequest(
         })
       : null;
   if (providerFallback !== null) {
-    deps.logger.info(
-      {
-        projectId: request.projectId,
-        fromProviderId: providerFallback.fromProviderId,
-        providerId: providerFallback.providerId,
-        usageWindow: providerFallback.exhausted.label,
-        resetsAt: providerFallback.exhausted.resetsAt,
-      },
-      "Starting the thread on the fallback provider because the default is out of usage",
-    );
     ({
       defaultModel: inheritedDefaultModel,
       providerId,
@@ -889,9 +880,21 @@ export async function createThreadFromRequest(
     delete request.model;
     delete request.serviceTier;
     delete request.reasoningLevel;
-    delete request.permissionMode;
     delete request.sessionOptions;
+    const fallbackPermissionModes =
+      deps.providerRegistry.getSupportedPermissionModes(providerId);
+    const permissionMode = request.permissionMode;
+    const permissionModeSource = request.executionInputSources?.permissionMode;
     delete request.executionInputSources;
+    if (
+      permissionMode === undefined ||
+      (fallbackPermissionModes !== null &&
+        !fallbackPermissionModes.includes(permissionMode))
+    ) {
+      delete request.permissionMode;
+    } else if (permissionModeSource !== undefined) {
+      request.executionInputSources = { permissionMode: permissionModeSource };
+    }
   }
   const catalogDefault = await resolveCatalogDefaultModel(deps, {
     ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
@@ -903,6 +906,21 @@ export async function createThreadFromRequest(
   });
   if (catalogDefault !== null) {
     request.providerId = catalogDefault.providerId;
+  }
+  if (
+    providerFallback !== null &&
+    request.providerId === providerFallback.providerId
+  ) {
+    deps.logger.info(
+      {
+        projectId: request.projectId,
+        fromProviderId: providerFallback.fromProviderId,
+        providerId: providerFallback.providerId,
+        usageWindow: providerFallback.exhausted.label,
+        resetsAt: providerFallback.exhausted.resetsAt,
+      },
+      "Starting the thread on the fallback provider because the default is out of usage",
+    );
   }
   assertProviderAcceptsPromptActions(deps.providerRegistry, {
     input: request.input,

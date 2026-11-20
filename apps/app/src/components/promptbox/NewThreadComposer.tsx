@@ -1776,16 +1776,15 @@ export function NewThreadComposer({
       ? reuseEnvironmentQuery.data?.id === reuseEnvironmentId
         ? reuseEnvironmentQuery.data.hostId
         : null
-      : providerMachine === null
+      : providerSelection === null
         ? primaryHostId
-        : providerMachine.type === "existing"
+        : providerMachine?.type === "existing"
           ? providerMachine.hostId
           : null;
   const providerFallback = useNewThreadProviderFallback({
     enabled:
       fallbackHostId !== null &&
-      !Object.values(executionInputSources).includes("explicit") &&
-      Object.keys(sessionOptionSelections).length === 0,
+      !Object.values(executionInputSources).includes("explicit"),
     hostId: fallbackHostId,
     providerId: selectedProviderId,
     model: selectedThreadModel.length > 0 ? selectedThreadModel : null,

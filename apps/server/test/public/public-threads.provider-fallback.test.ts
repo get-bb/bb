@@ -337,4 +337,23 @@ describe("provider fallback for new threads", () => {
       expect(Date.now() - started).toBeLessThan(10_000);
     });
   });
+
+  it("drops remembered session options from the app and keeps a supported permission mode", async () => {
+    await withTestHarness(async (harness) => {
+      const { create } = await setUp(harness, {
+        usageByProvider: { "claude-code": CLAUDE_OUT, codex: CODEX_OK },
+      });
+      const { thread, start } = await create({
+        providerId: "claude-code",
+        permissionMode: "full",
+        sessionOptions: { fast: true },
+        executionInputSources: {
+          providerId: "client-preference",
+          permissionMode: "client-preference",
+        },
+      });
+      expect(thread.providerId).toBe("codex");
+      expect(start).toMatchObject({ options: { permissionMode: "full" } });
+    });
+  });
 });

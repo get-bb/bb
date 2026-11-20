@@ -118,6 +118,14 @@ describe("decideProviderFallback", () => {
     ["the default has usage left", { providerUsage: fine }],
     ["the default usage is unknown", { providerUsage: { status: "error" } }],
     ["the fallback is out of usage too", { fallbackUsage: full }],
+    [
+      "the fallback is not installed",
+      { fallbackUsage: { status: "not_installed" } },
+    ],
+    [
+      "the fallback is signed out",
+      { fallbackUsage: { status: "unauthenticated" } },
+    ],
   ])("keeps the default when %s", (_, change) => {
     expect(decideProviderFallback({ ...base, ...change })).toBeNull();
   });

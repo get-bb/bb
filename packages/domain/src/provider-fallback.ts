@@ -47,6 +47,12 @@ export function findExhaustedUsageWindow(
   return null;
 }
 
+const UNUSABLE_FALLBACK_STATUSES: ReadonlySet<string> = new Set([
+  "not_installed",
+  "unauthenticated",
+  "expired",
+]);
+
 export interface ProviderFallbackUsage {
   status: string;
   windows?: readonly unknown[];
@@ -80,6 +86,12 @@ export function decideProviderFallback(args: {
     now: args.now,
   });
   if (exhausted === null) return null;
+  if (
+    args.fallbackUsage !== null &&
+    UNUSABLE_FALLBACK_STATUSES.has(args.fallbackUsage.status)
+  ) {
+    return null;
+  }
   if (
     args.fallbackUsage?.status === "ok" &&
     findExhaustedUsageWindow(args.fallbackUsage.windows ?? [], {
