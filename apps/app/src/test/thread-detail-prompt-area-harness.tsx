@@ -160,7 +160,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         submitLabel?: string;
         submitIcon?: string;
         submitTitle?: string;
-        submitMode: { kind: string; reason?: string };
+        submitMode: {
+          kind: string;
+          reason?: string;
+          declinesPendingApprovals?: boolean;
+        };
       } | null;
       environmentSummary?: ReactNode;
       execution: {
@@ -229,7 +233,14 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         </div>
         <div data-testid="composer-boundary" />
         <div data-testid="composer-hidden">
-          {composer === null || pendingInteraction ? "true" : "false"}
+          {composer === null ||
+          (pendingInteraction &&
+            !(
+              composer.submitMode.kind === "queue" &&
+              composer.submitMode.declinesPendingApprovals
+            ))
+            ? "true"
+            : "false"}
         </div>
         <div data-testid="submit-mode">
           {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}

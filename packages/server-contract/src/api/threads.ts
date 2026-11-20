@@ -306,6 +306,7 @@ const sendMessageRequestFieldsSchema = z.object({
    * `mode: "steer"`. Absent ⇒ send without compacting.
    */
   compactFirst: z.literal(true).optional(),
+  declinePendingApprovals: z.literal(true).optional(),
 });
 
 export const sendMessageRequestSchema = sendMessageRequestFieldsSchema;
@@ -356,6 +357,7 @@ export const editMessageRequestSchema = sendMessageRequestFieldsSchema
     sendAt: true,
     pluginSubmission: true,
     compactFirst: true,
+    declinePendingApprovals: true,
   })
   .extend({
     operationId: z.string().min(1),

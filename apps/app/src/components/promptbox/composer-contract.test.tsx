@@ -244,7 +244,11 @@ function followUpSurface({
           steerActiveThreadOnEnter: submitMode === "steer",
           submitMode:
             submitMode === "steer"
-              ? { kind: "queue", onStop: () => {} }
+              ? {
+                  kind: "queue",
+                  onStop: () => {},
+                  declinesPendingApprovals: false,
+                }
               : { kind: "ready" },
           threadRuntimeDisplayStatus:
             submitMode === "steer" ? "active" : "idle",

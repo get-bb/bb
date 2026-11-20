@@ -1,6 +1,9 @@
 import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
 import { assertNever } from "@bb/core-ui";
 
+export const DECLINE_AND_REDIRECT_PLACEHOLDER =
+  "Send a message to decline and redirect the agent";
+
 export function getFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {

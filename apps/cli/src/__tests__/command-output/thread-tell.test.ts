@@ -235,6 +235,31 @@ describe("bb thread tell command output", () => {
     });
   });
 
+  it("bb thread tell --decline-approvals asks the server to decline pending approvals", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "tell",
+        "thread-decline",
+        "do this instead",
+        "--decline-approvals",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-decline" },
+      json: {
+        input: [{ type: "text", text: "do this instead", mentions: [] }],
+        mode: "steer-if-active",
+        declinePendingApprovals: true,
+      },
+    });
+  });
+
   it("bb thread tell --mode auto preserves explicit legacy auto delivery", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

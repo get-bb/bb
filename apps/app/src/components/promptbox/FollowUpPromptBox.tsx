@@ -264,6 +264,8 @@ function FollowUpPromptBoxWithComposer({
   const submitMode = composer.submitMode;
   const hasPendingInteraction =
     pendingInteraction !== null && pendingInteraction !== undefined;
+  const declinesPendingApprovals =
+    submitMode.kind === "queue" && submitMode.declinesPendingApprovals;
   const isStopping = submitMode.kind === "queue-while-stopping";
   const canQueueFollowUp = submitMode.kind === "queue" || isStopping;
   const canSubmit = submitMode.kind === "ready" || canQueueFollowUp;
@@ -291,7 +293,9 @@ function FollowUpPromptBoxWithComposer({
     return promptBoxRef.current !== null;
   }, []);
   const steerOnPrimarySubmit =
-    submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
+    submitMode.kind === "queue" &&
+    !declinesPendingApprovals &&
+    composer.steerActiveThreadOnEnter;
   const onModifierSubmit = composer.canModifierSubmit
     ? composer.onModifierSubmit
     : undefined;
@@ -710,7 +714,7 @@ function FollowUpPromptBoxWithComposer({
       data-follow-up-composer-footer-visible={
         isCompactViewport && isEditorExpanded ? "" : undefined
       }
-      hidden={hasPendingInteraction}
+      hidden={hasPendingInteraction && !declinesPendingApprovals}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
       onPointerDownCapture={handleComposerPointerDown}
@@ -748,28 +752,31 @@ function FollowUpPromptBoxWithComposer({
                 ? "Unavailable"
                 : undefined,
           onModifierSubmit,
-          queuesDraft: submitMode.kind === "queue",
+          queuesDraft: submitMode.kind === "queue" && !declinesPendingApprovals,
           swapSubmitActions: steerOnPrimarySubmit,
-          showModifierSubmitAction: submitMode.kind === "queue",
+          showModifierSubmitAction:
+            submitMode.kind === "queue" && !declinesPendingApprovals,
           title: composer.isFollowUpSubmitting
             ? "Submitting..."
             : canSubmit && compactBeforeSend?.compactFirst
               ? `Compact ${formatCompactTokenCount(compactBeforeSend.tokens)} tokens, then send (Enter)`
               : canSubmit && composer.submitTitle !== undefined
                 ? composer.submitTitle
-                : isStopping
-                  ? "Queue for after the stop (Enter)"
-                  : canQueueFollowUp
-                    ? steerOnPrimarySubmit
-                      ? isSteeringWhenReady
-                        ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
-                        : `Steer current run (Enter)${modifierSubmitHint("queue")}`
-                      : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
-                    : isLoadingExecutionOptions
-                      ? "Loading models..."
-                      : isUnavailable
-                        ? "Unavailable"
-                        : "Submit (Enter)",
+                : declinesPendingApprovals
+                  ? "Decline and send (Enter)"
+                  : isStopping
+                    ? "Queue for after the stop (Enter)"
+                    : canQueueFollowUp
+                      ? steerOnPrimarySubmit
+                        ? isSteeringWhenReady
+                          ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                          : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                        : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
+                      : isLoadingExecutionOptions
+                        ? "Loading models..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

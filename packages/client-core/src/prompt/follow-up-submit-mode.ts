@@ -12,6 +12,6 @@ export type FollowUpBlockedReason =
  */
 export type FollowUpSubmitMode =
   | { kind: "ready" }
-  | { kind: "queue"; onStop: () => void }
+  | { kind: "queue"; onStop: () => void; declinesPendingApprovals: boolean }
   | { kind: "queue-while-stopping" }
   | { kind: "blocked"; reason: FollowUpBlockedReason };

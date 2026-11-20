@@ -1,5 +1,7 @@
 import {
   createStandaloneBuiltinCompactCommandInput,
+  type ApprovalPendingInteractionPayload,
+  type PendingInteraction,
   type PromptInput,
   type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
@@ -9,6 +11,7 @@ import {
   buildFollowUpShortcutRequest,
   buildFollowUpSubmitMode,
   canSubmitFollowUpShortcut,
+  classifyFollowUpPendingInteractions,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
 } from "../src/prompt/threadDetailPromptSubmission.js";
@@ -106,6 +109,7 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildAutoFollowUpRequest({
         compactFirst: false,
+        declinePendingApprovals: false,
         execution: {
           model: "gpt-5",
           permissionMode: "full",
@@ -137,6 +141,7 @@ describe("threadDetailPromptSubmission", () => {
     (input, expected) => {
       const request = buildAutoFollowUpRequest({
         compactFirst: true,
+        declinePendingApprovals: false,
         execution: null,
         input,
         threadId: "thread-1",
@@ -149,6 +154,7 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildAutoFollowUpRequest({
         compactFirst: false,
+        declinePendingApprovals: false,
         execution: null,
         input: textInput,
         threadId: "thread-1",
@@ -164,6 +170,7 @@ describe("threadDetailPromptSubmission", () => {
     expect(
       buildAutoFollowUpRequest({
         compactFirst: false,
+        declinePendingApprovals: false,
         execution: {
           model: "gpt-5",
           permissionMode: "accept-edits",
@@ -346,13 +353,13 @@ describe("threadDetailPromptSubmission", () => {
     for (const runtimeDisplayStatus of queueableStatuses) {
       expect(
         buildFollowUpSubmitMode({
-          hasPendingInteraction: false,
+          pendingInteractions: "none",
           isDefaultExecutionOptionsLoading: true,
           isStopRequested: false,
           onStop,
           runtimeDisplayStatus,
         }),
-      ).toEqual({ kind: "queue", onStop });
+      ).toEqual({ kind: "queue", onStop, declinesPendingApprovals: false });
     }
   });
 
@@ -360,7 +367,7 @@ describe("threadDetailPromptSubmission", () => {
     const onStop = () => undefined;
     expect(
       buildFollowUpSubmitMode({
-        hasPendingInteraction: false,
+        pendingInteractions: "none",
         isDefaultExecutionOptionsLoading: false,
         isStopRequested: true,
         onStop,
@@ -369,12 +376,181 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({ kind: "queue-while-stopping" });
     expect(
       buildFollowUpSubmitMode({
-        hasPendingInteraction: true,
+        pendingInteractions: "blocking",
         isDefaultExecutionOptionsLoading: false,
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "starting",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
+  });
+
+  it("lets the user send while only approvals are pending, declining them", () => {
+    const onStop = () => undefined;
+    expect(
+      buildFollowUpSubmitMode({
+        pendingInteractions: "approvals",
+        isDefaultExecutionOptionsLoading: false,
+        isStopRequested: false,
+        onStop,
+        runtimeDisplayStatus: "active",
+      }),
+    ).toEqual({ kind: "queue", onStop, declinesPendingApprovals: true });
+  });
+});
+
+describe("buildAutoFollowUpRequest with declinePendingApprovals", () => {
+  it("steers the message into the waiting turn and asks the server to decline", () => {
+    expect(
+      buildAutoFollowUpRequest({
+        compactFirst: true,
+        declinePendingApprovals: true,
+        execution: null,
+        input: [{ type: "text", text: "Do this instead", mentions: [] }],
+        threadId: "thread-1",
+      }),
+    ).toEqual({
+      id: "thread-1",
+      input: [{ type: "text", text: "Do this instead", mentions: [] }],
+      mode: "steer-if-active",
+      declinePendingApprovals: true,
+    });
+  });
+});
+
+const interactionBase = {
+  threadId: "thread-1",
+  turnId: "turn-1",
+  providerId: "codex",
+  providerThreadId: "provider-thread-1",
+  providerRequestId: "request-1",
+  origin: {
+    kind: "provider",
+    providerId: "codex",
+    providerThreadId: "provider-thread-1",
+    providerRequestId: "request-1",
+  },
+  resolution: null,
+  statusReason: null,
+  createdAt: 1,
+  resolvedAt: null,
+} as const;
+
+function interaction(
+  payload: ApprovalPendingInteractionPayload,
+  status: PendingInteraction["status"] = "pending",
+): PendingInteraction {
+  return {
+    ...interactionBase,
+    id: `interaction-${payload.subject.kind}-${status}`,
+    payload,
+    status,
+  };
+}
+
+function questionInteraction(): PendingInteraction {
+  return {
+    ...interactionBase,
+    id: "interaction-question",
+    payload: {
+      kind: "user_question",
+      questions: [
+        {
+          id: "q1",
+          prompt: "Which branch?",
+          multiSelect: false,
+          allowFreeText: true,
+          required: true,
+        },
+      ],
+    },
+    status: "pending",
+  };
+}
+
+function approval(
+  subject: ApprovalPendingInteractionPayload["subject"],
+  availableDecisions: ApprovalPendingInteractionPayload["availableDecisions"] = [
+    "allow_once",
+    "deny",
+  ],
+): ApprovalPendingInteractionPayload {
+  return { kind: "approval", subject, reason: null, availableDecisions };
+}
+
+const commandApproval = approval({
+  kind: "command",
+  itemId: "item-1",
+  command: "git push",
+  cwd: "/tmp/project",
+  actions: [],
+  sessionGrant: null,
+});
+const planApproval = approval({
+  kind: "plan",
+  itemId: "item-plan",
+  plan: "1. Push",
+  planFilePath: null,
+});
+describe("classifyFollowUpPendingInteractions", () => {
+  it.each<[string, PendingInteraction[], string]>([
+    ["no interactions", [], "none"],
+    ["a command approval", [interaction(commandApproval)], "approvals"],
+    ["a plan approval", [interaction(planApproval)], "approvals"],
+    [
+      "an approval next to a question",
+      [interaction(commandApproval), questionInteraction()],
+      "blocking",
+    ],
+    [
+      "an approval that offers no deny",
+      [interaction(approval(commandApproval.subject, ["allow_once"]))],
+      "blocking",
+    ],
+    [
+      "only an approval that is already resolving",
+      [interaction(commandApproval, "resolving")],
+      "blocking",
+    ],
+    [
+      "a pending approval next to a resolving one",
+      [interaction(commandApproval), interaction(planApproval, "resolving")],
+      "approvals",
+    ],
+  ])("classifies %s", (_, interactions, expected) => {
+    expect(classifyFollowUpPendingInteractions(interactions)).toBe(expected);
+  });
+});
+
+function clearCommandInput(): PromptInput[] {
+  return createStandaloneBuiltinCompactCommandInput().map((item) =>
+    item.type === "text"
+      ? {
+          ...item,
+          text: "/clear",
+          mentions: item.mentions.map((mention) => ({
+            ...mention,
+            end: "/clear".length,
+            resource: { ...mention.resource, name: "clear" },
+          })),
+        }
+      : item,
+  );
+}
+
+describe("buildAutoFollowUpRequest with a built-in command", () => {
+  it.each([
+    ["/compact", createStandaloneBuiltinCompactCommandInput()],
+    ["/clear", clearCommandInput()],
+  ])("does not ask the server to decline for %s", (_, input) => {
+    const request = buildAutoFollowUpRequest({
+      compactFirst: false,
+      declinePendingApprovals: true,
+      execution: null,
+      input,
+      threadId: "thread-1",
+    });
+    expect(request).toMatchObject({ mode: "queue-if-active" });
+    expect(request).not.toHaveProperty("declinePendingApprovals");
   });
 });

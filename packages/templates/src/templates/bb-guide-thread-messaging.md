@@ -22,6 +22,7 @@ Messaging:
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --compact-first                        Compact the idle thread's context, then send when compaction finishes
+    --decline-approvals                    Decline the thread's pending approvals, then deliver the message
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path
     --image <path>                         CLI-local absolute path, file: URL, or uploaded image path
 
@@ -184,6 +185,18 @@ Queued messages:
   supports manual compaction; it cannot be combined with --send-at. The SDK
   takes `compactFirst: true` on `threads.send`, which also rejects
   `mode: "steer"`.
+
+  --decline-approvals denies every pending approval on the thread, the same as
+  the Deny button, and delivers the message to the agent once the denials
+  resolve, so the agent gets the message instead of running the command. It
+  fails with `awaiting_user_interaction` and declines nothing when a question, a
+  plugin form, or an approval without a deny decision is pending, because those
+  need an answer. If the send fails, no approval is declined. It cannot be
+  combined with --mode queue, --compact-first or --send-at. Without the flag, a
+  message sent during an approval waits in the queue and the approval stays
+  pending. The SDK takes `declinePendingApprovals: true` on `threads.send` and
+  rejects it with `mode: "start"` or `"queue-if-active"`. The app composer sends
+  it when only approvals that offer deny are pending.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already

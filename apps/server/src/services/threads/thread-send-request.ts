@@ -9,6 +9,10 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import {
+  assertPendingApprovalsCanBeDeclined,
+  declinePendingApprovals,
+} from "./decline-pending-approvals.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -29,9 +33,14 @@ export async function acceptThreadSendRequest(
     input: args.payload.input,
     providerId: args.thread.providerId,
   });
-  const { compactFirst, ...request } = args.payload;
+  const {
+    compactFirst,
+    declinePendingApprovals: decline,
+    ...request
+  } = args.payload;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
+    if (decline) throwInvalidDecline("cannot clear the context");
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
     });
@@ -66,6 +75,17 @@ export async function acceptThreadSendRequest(
       throwInvalidCompactFirst("cannot steer a turn");
     }
   }
+  if (decline) {
+    if (compactFirst)
+      throwInvalidDecline("cannot be combined with compactFirst");
+    if (request.sendAt !== undefined) {
+      throwInvalidDecline("cannot be scheduled with sendAt");
+    }
+    if (request.mode === "start" || request.mode === "queue-if-active") {
+      throwInvalidDecline("needs a mode that steers the running turn");
+    }
+    assertPendingApprovalsCanBeDeclined(deps, args.thread.id);
+  }
   const payload: SendMessageRequest = compactFirst
     ? { ...request, mode: "queue-if-active", compactFirst }
     : request;
@@ -94,11 +114,22 @@ export async function acceptThreadSendRequest(
       messageSequence: outcome.messageSequence,
     };
   }
+  if (decline && outcome.entry.waitingOn?.kind === "interaction") {
+    declinePendingApprovals(deps, args.thread.id);
+  }
   return {
     ok: true,
     delivery: "queued",
     queuedMessage: outcome.entry,
   };
+}
+
+function throwInvalidDecline(reason: string): never {
+  throw new ApiError(
+    400,
+    "invalid_request",
+    `declinePendingApprovals ${reason}`,
+  );
 }
 
 function throwInvalidCompactFirst(reason: string): never {

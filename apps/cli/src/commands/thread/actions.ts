@@ -101,6 +101,7 @@ interface ThreadTellCommandOptions {
   image?: string[];
   sendAt?: string;
   compactFirst?: boolean;
+  declineApprovals?: boolean;
 }
 
 interface ThreadActionOptions {
@@ -141,6 +142,7 @@ interface PostThreadMessageArgs {
   images?: readonly string[];
   sendAt?: number;
   compactFirst: boolean;
+  declinePendingApprovals: boolean;
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
@@ -568,6 +570,10 @@ export function registerActionsCommands(
       "--compact-first",
       "Compact the idle thread's context first, then send this message when compaction finishes",
     )
+    .option(
+      "--decline-approvals",
+      "Decline the thread's pending approvals, then deliver this message to the agent once they resolve",
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -611,6 +617,7 @@ export function registerActionsCommands(
               ? {}
               : { sendAt: parseSendAt(opts.sendAt) }),
             compactFirst: opts.compactFirst === true,
+            declinePendingApprovals: opts.declineApprovals === true,
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
@@ -762,6 +769,9 @@ async function postThreadMessage(
       ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
       ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
       ...(args.compactFirst ? { compactFirst: true } : {}),
+      ...(args.declinePendingApprovals
+        ? { declinePendingApprovals: true }
+        : {}),
     });
   } catch (error: unknown) {
     throw await withRestoreEnvironmentHint(sdk, args.threadId, error);

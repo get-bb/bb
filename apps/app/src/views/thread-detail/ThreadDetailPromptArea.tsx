@@ -18,6 +18,7 @@ import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
+  DECLINE_AND_REDIRECT_PLACEHOLDER,
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
@@ -164,6 +165,7 @@ import {
   buildFollowUpShortcutRequest,
   canCompactBeforeSend,
   canSubmitFollowUpShortcut,
+  classifyFollowUpPendingInteractions,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
@@ -1102,6 +1104,9 @@ export function ThreadDetailPromptArea({
   const orderedPendingInteractions =
     orderPendingInteractions(pendingInteractions);
   const hasPendingInteraction = orderedPendingInteractions.length > 0;
+  const followUpPendingInteractions = classifyFollowUpPendingInteractions(
+    orderedPendingInteractions,
+  );
   const shouldHideComposer =
     environmentGoneStatus !== null || thread.archivedAt !== null;
   const {
@@ -1153,7 +1158,7 @@ export function ThreadDetailPromptArea({
       };
     }
     return buildFollowUpSubmitMode({
-      hasPendingInteraction,
+      pendingInteractions: followUpPendingInteractions,
       isDefaultExecutionOptionsLoading,
       isStopRequested,
       onStop: handleStopThread,
@@ -1161,20 +1166,26 @@ export function ThreadDetailPromptArea({
     });
   }, [
     effectiveSelectedModel,
+    followUpPendingInteractions,
     handleStopThread,
-    hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
     isHandoffSelection,
     modelLoadFailed,
     isStopRequested,
     runtimeDisplayStatus,
   ]);
-  const promptPlaceholder = getFollowUpPromptPlaceholder(
-    isStopRequested ? "stopping" : runtimeDisplayStatus,
-  );
-  const compactPromptPlaceholder = getCompactFollowUpPromptPlaceholder(
-    isStopRequested ? "stopping" : runtimeDisplayStatus,
-  );
+  const declinesPendingApprovals =
+    submitMode.kind === "queue" && submitMode.declinesPendingApprovals;
+  const promptPlaceholder = declinesPendingApprovals
+    ? DECLINE_AND_REDIRECT_PLACEHOLDER
+    : getFollowUpPromptPlaceholder(
+        isStopRequested ? "stopping" : runtimeDisplayStatus,
+      );
+  const compactPromptPlaceholder = declinesPendingApprovals
+    ? DECLINE_AND_REDIRECT_PLACEHOLDER
+    : getCompactFollowUpPromptPlaceholder(
+        isStopRequested ? "stopping" : runtimeDisplayStatus,
+      );
   const providerIds = useMemo(
     () => providerOptions.map((option) => option.value),
     [providerOptions],
@@ -1272,6 +1283,7 @@ export function ThreadDetailPromptArea({
 
   const canSubmitModifierShortcut =
     !shouldHideComposer &&
+    !declinesPendingApprovals &&
     canSubmitFollowUpShortcut({
       hasPromptDraftInput,
       isFollowUpSubmitting,
@@ -1421,6 +1433,8 @@ export function ThreadDetailPromptArea({
         await sendPromptDraft(promptDraft, submittedDraft, async () => {
           const request = buildAutoFollowUpRequest({
             compactFirst: compactRequestFirst,
+            declinePendingApprovals:
+              declinesPendingApprovals && sendAt === undefined,
             threadId: thread.id,
             input: submittedInput,
             execution: followUpExecutionSelection,
@@ -1447,6 +1461,7 @@ export function ThreadDetailPromptArea({
     [
       compactFirst,
       createHandoffThread,
+      declinesPendingApprovals,
       effectiveSelectedModel,
       followUpExecutionSelection,
       isDefaultExecutionOptionsLoading,

@@ -139,7 +139,11 @@ export function Overview() {
                 canModifierSubmit: false,
                 steerActiveThreadOnEnter: false,
                 submitMode: isRunning
-                  ? { kind: "queue", onStop: noop }
+                  ? {
+                      kind: "queue",
+                      onStop: noop,
+                      declinesPendingApprovals: false,
+                    }
                   : { kind: "ready" },
                 threadRuntimeDisplayStatus,
               }}

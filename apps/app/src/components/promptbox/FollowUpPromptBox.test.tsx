@@ -681,6 +681,26 @@ describe("FollowUpPromptBox", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
 
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        composer={{
+          ...props.composer!,
+          submitMode: {
+            kind: "queue",
+            onStop: vi.fn(),
+            declinesPendingApprovals: true,
+          },
+        }}
+        pendingInteraction={
+          <div data-testid="pending-interaction">Allow file write?</div>
+        }
+      />,
+    );
+    expect(screen.getByTestId("pending-interaction")).toBeTruthy();
+    expect(composerShell?.hidden).toBe(false);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+
     rerender(<FollowUpPromptBox {...props} />);
 
     expect(screen.getByTestId("prompt-box")).toBe(promptBox);
@@ -851,6 +871,7 @@ describe("FollowUpPromptBox", () => {
       const props = createFollowUpPromptBoxProps({
         kind: "queue",
         onStop: vi.fn(),
+        declinesPendingApprovals: false,
       });
       if (!props.composer) {
         throw new Error("Expected follow-up composer props");
@@ -884,6 +905,28 @@ describe("FollowUpPromptBox", () => {
     },
   );
 
+  it("sends through the normal submit while declining approvals, even with steer-on-Enter", () => {
+    const props = createFollowUpPromptBoxProps({
+      kind: "queue",
+      onStop: vi.fn(),
+      declinesPendingApprovals: true,
+    });
+    if (!props.composer) {
+      throw new Error("Expected follow-up composer props");
+    }
+    props.composer.steerActiveThreadOnEnter = true;
+    props.composer.canModifierSubmit = false;
+    render(<FollowUpPromptBox {...props} />);
+
+    fireEvent.click(screen.getByText("Submit"));
+    expect(props.composer.onSubmit).toHaveBeenCalledOnce();
+    expect(
+      screen
+        .getByText("Modifier submit")
+        .getAttribute("data-show-modifier-action"),
+    ).toBe("false");
+  });
+
   it("keeps save shortcuts without offering an alternate send action in a ready editor", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     render(<FollowUpPromptBox {...props} />);
@@ -909,6 +952,7 @@ describe("FollowUpPromptBox", () => {
         const props = createFollowUpPromptBoxProps({
           kind: "queue",
           onStop: vi.fn(),
+          declinesPendingApprovals: false,
         });
         if (!props.composer) {
           throw new Error("Expected follow-up composer props");
@@ -929,6 +973,7 @@ describe("FollowUpPromptBox", () => {
     const props = createFollowUpPromptBoxProps({
       kind: "queue",
       onStop: vi.fn(),
+      declinesPendingApprovals: false,
     });
 
     render(

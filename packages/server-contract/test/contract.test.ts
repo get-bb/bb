@@ -599,11 +599,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "sendAt is present only when the caller is scheduling the dispatch, and compactFirst only when it asks to compact before the message; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
+      "sendAt is present only when the caller is scheduling the dispatch, compactFirst only when it asks to compact before the message, and declinePendingApprovals only when it asks to deny the thread's pending approvals before the message; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
     fields: [
       "createThreadRequestSchema.sendAt",
       "sendMessageRequestSchema.sendAt",
       "sendMessageRequestSchema.compactFirst",
+      "sendMessageRequestSchema.declinePendingApprovals",
     ],
   },
   {

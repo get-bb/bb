@@ -1,6 +1,8 @@
 import {
+  isApprovalPendingInteraction,
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
+  type PendingInteraction,
   type PermissionMode,
   type PromptInput,
   type ReasoningLevel,
@@ -49,6 +51,7 @@ interface BaseFollowUpRequestArgs {
 
 interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   compactFirst: boolean;
+  declinePendingApprovals: boolean;
   execution: FollowUpExecutionSelection;
 }
 
@@ -75,8 +78,32 @@ interface CanSubmitFollowUpShortcutArgs {
   submitModeKind: FollowUpSubmitMode["kind"];
 }
 
+export type FollowUpPendingInteractions = "none" | "approvals" | "blocking";
+
+export function classifyFollowUpPendingInteractions(
+  interactions: readonly PendingInteraction[],
+): FollowUpPendingInteractions {
+  if (interactions.length === 0) {
+    return "none";
+  }
+  let declinable = 0;
+  for (const interaction of interactions) {
+    if (!isApprovalPendingInteraction(interaction)) {
+      return "blocking";
+    }
+    if (interaction.status !== "pending") {
+      continue;
+    }
+    if (!interaction.payload.availableDecisions.includes("deny")) {
+      return "blocking";
+    }
+    declinable += 1;
+  }
+  return declinable > 0 ? "approvals" : "blocking";
+}
+
 interface BuildFollowUpSubmitModeArgs {
-  hasPendingInteraction: boolean;
+  pendingInteractions: FollowUpPendingInteractions;
   isDefaultExecutionOptionsLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
@@ -115,7 +142,7 @@ export function shouldQueueFollowUpMessage(
 }
 
 export function buildFollowUpSubmitMode({
-  hasPendingInteraction,
+  pendingInteractions,
   isDefaultExecutionOptionsLoading,
   isStopRequested,
   onStop,
@@ -124,11 +151,14 @@ export function buildFollowUpSubmitMode({
   if (isStopRequested) {
     return { kind: "queue-while-stopping" };
   }
-  if (hasPendingInteraction) {
+  if (pendingInteractions === "blocking") {
     return { kind: "blocked", reason: "pending-interaction" };
   }
+  if (pendingInteractions === "approvals") {
+    return { kind: "queue", onStop, declinesPendingApprovals: true };
+  }
   if (shouldQueueFollowUpMessage(runtimeDisplayStatus)) {
-    return { kind: "queue", onStop };
+    return { kind: "queue", onStop, declinesPendingApprovals: false };
   }
   if (isDefaultExecutionOptionsLoading) {
     return { kind: "blocked", reason: "loading-execution-options" };
@@ -182,12 +212,26 @@ export function resolveDefaultExecutionOptionsState({
 
 export function buildAutoFollowUpRequest({
   compactFirst,
+  declinePendingApprovals,
   execution,
   input,
   threadId,
 }: BuildAutoFollowUpRequestArgs): SendMessageMutationRequest | null {
   if (input.length === 0) {
     return null;
+  }
+  if (
+    declinePendingApprovals &&
+    !isStandaloneBuiltinCompactCommand(input) &&
+    !isStandaloneBuiltinClearCommand(input)
+  ) {
+    return {
+      id: threadId,
+      input,
+      mode: "steer-if-active",
+      ...buildSharedThreadExecutionRequestFields(execution),
+      declinePendingApprovals: true,
+    };
   }
 
   return {

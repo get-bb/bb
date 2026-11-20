@@ -122,6 +122,41 @@ function makePendingInteraction(): PendingInteraction {
   };
 }
 
+function makePendingApproval(): PendingInteraction {
+  return {
+    id: "interaction-approval",
+    threadId: "thr_1",
+    turnId: "turn-1",
+    providerId: "codex",
+    providerThreadId: "provider-thread-1",
+    providerRequestId: "provider-request-approval",
+    origin: {
+      kind: "provider",
+      providerId: "codex",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: "provider-request-approval",
+    },
+    payload: {
+      kind: "approval",
+      subject: {
+        kind: "command",
+        itemId: "item-push",
+        command: "git push --force",
+        cwd: "/tmp/project",
+        actions: [],
+        sessionGrant: null,
+      },
+      reason: "Needs approval",
+      availableDecisions: ["allow_once", "deny"],
+    },
+    resolution: null,
+    status: "pending",
+    statusReason: null,
+    createdAt: 2,
+    resolvedAt: null,
+  };
+}
+
 interface RenderPromptAreaOptions {
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   activeWorkflows?: TimelineWorkflowWorkRow[];
@@ -1866,6 +1901,51 @@ describe("ThreadDetailPromptArea", () => {
       "blocked:pending-interaction",
     );
     expect(screen.queryByTestId("queued-message-list")).toBeNull();
+  });
+
+  it("keeps the composer usable while only approvals are pending, and sending declines them", async () => {
+    mocks.promptDraft.text = "Do not push. Open a draft PR.";
+    renderPromptArea({
+      pendingInteractions: [makePendingApproval()],
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+
+    expect(screen.getByTestId("composer-hidden").textContent).toBe("false");
+    expect(screen.getByTestId("submit-mode").textContent).toBe("queue:");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "steer-if-active",
+        declinePendingApprovals: true,
+        input: [
+          { type: "text", text: "Do not push. Open a draft PR.", mentions: [] },
+        ],
+      }),
+    );
+  });
+
+  it("keeps the composer blocked while a question is pending next to an approval", () => {
+    renderPromptArea({
+      pendingInteractions: [makePendingApproval(), makePendingInteraction()],
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+    expect(screen.getByTestId("composer-hidden").textContent).toBe("true");
+    expect(screen.getByTestId("submit-mode").textContent).toBe(
+      "blocked:pending-interaction",
+    );
   });
 
   it("wires the Plan exit action to the current thread", () => {

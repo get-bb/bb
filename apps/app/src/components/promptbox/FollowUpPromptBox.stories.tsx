@@ -789,7 +789,11 @@ function Row({
 function StackedCardsWithPillsRow() {
   return (
     <Row
-      submitMode={{ kind: "queue", onStop: noop }}
+      submitMode={{
+        kind: "queue",
+        onStop: noop,
+        declinesPendingApprovals: false,
+      }}
       threadRuntimeDisplayStatus="active"
       initialMessage={stackedCardsWithPillsMessage}
       initialMentions={stackedCardsWithPillsMentions}
@@ -937,7 +941,11 @@ export function Overview() {
         hint="toggle the full Queue header in either direction, or collapse below the messages; hover the bottom row to inspect the composer corners"
       >
         <Row
-          submitMode={{ kind: "queue", onStop: noop }}
+          submitMode={{
+            kind: "queue",
+            onStop: noop,
+            declinesPendingApprovals: false,
+          }}
           threadRuntimeDisplayStatus="active"
           queuedMessages={queuedMessages.slice(0, 2)}
         />
@@ -947,7 +955,11 @@ export function Overview() {
         hint="collapse the queue: the header names the failed send, which outranks the newer draft; delete it to see the newest reason (the draft). Open it to check the caret row and the gap above it; the count pill sits on the composer caret's axis"
       >
         <Row
-          submitMode={{ kind: "queue", onStop: noop }}
+          submitMode={{
+            kind: "queue",
+            onStop: noop,
+            declinesPendingApprovals: false,
+          }}
           threadRuntimeDisplayStatus="active"
           queuedMessages={queuedMessagesWithReasons}
         />
@@ -963,7 +975,11 @@ export function Overview() {
         hint="runtime loading icon + lifecycle label"
       >
         <Row
-          submitMode={{ kind: "queue", onStop: noop }}
+          submitMode={{
+            kind: "queue",
+            onStop: noop,
+            declinesPendingApprovals: false,
+          }}
           threadRuntimeDisplayStatus="starting"
           environmentSummary={provisioningEnvironmentSummary}
         />
