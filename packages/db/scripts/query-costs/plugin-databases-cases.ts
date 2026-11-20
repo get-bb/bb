@@ -171,7 +171,7 @@ const AUTOMATIONS_CASES: readonly QueryCostCase<AutomationsSeed>[] = [
         execution: {
           mode: "agent",
           prompt: "Review dependency updates.",
-          providerId: "codex",
+          providerId: "provider-a",
           model: "gpt-5",
           reasoningLevel: "medium",
           permissionMode: "accept-edits",
@@ -340,7 +340,7 @@ const WORKFLOWS_CASES: readonly QueryCostCase<WorkflowsSeed>[] = [
         projectId: seed.projectId,
         originThreadId: seed.originThreadId,
         environmentId: "env_workflow",
-        originProvider: "codex",
+        originProvider: "provider-a",
         originModel: "gpt-5",
         originReasoningLevel: "high",
         originPermissionMode: "accept-edits",
@@ -485,7 +485,7 @@ const WORKFLOWS_CASES: readonly QueryCostCase<WorkflowsSeed>[] = [
           phase: null,
         },
         selection: {
-          providerId: "codex",
+          providerId: "provider-a",
           model: "gpt-5",
           reasoningLevel: "high",
           permissionMode: "accept-edits",

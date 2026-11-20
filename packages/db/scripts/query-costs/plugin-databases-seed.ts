@@ -3,7 +3,10 @@ import {
   createAutomation,
   migrations as AUTOMATIONS_MIGRATIONS,
 } from "../../../../plugins/automations/src/data.js";
-import { EMPTY_FAMILY_WEEKLY } from "../../../../plugins/account-pool/src/contracts.js";
+import {
+  EMPTY_FAMILY_WEEKLY,
+  providerSchema,
+} from "../../../../plugins/account-pool/src/contracts.js";
 import {
   PoolAffinityStore,
   QUOTA_MIGRATIONS,
@@ -140,7 +143,7 @@ export function seedAccountPool(
       );
     }
     affinity.putActiveAccount("claude", accountId(0));
-    affinity.putActiveAccount("codex", accountId(accounts - 1));
+    affinity.putActiveAccount(providerSchema.options[1], accountId(accounts - 1));
   })();
   return {
     accountId: accountId(0),
@@ -205,7 +208,7 @@ export function seedAutomations(
               mode: "agent",
               prompt:
                 "Review yesterday's merged pull requests and report regressions.",
-              providerId: "codex",
+              providerId: "provider-a",
               model: "gpt-5",
               reasoningLevel: "medium",
               permissionMode: "accept-edits",
@@ -446,7 +449,7 @@ export function seedWorkflows(db: DbConnection, scale: number): WorkflowsSeed {
        result_json, error, phase, notification_sent, notification_outcome,
        replay_safety_version, created_at, started_at, finished_at
      ) VALUES (
-       @id, @projectId, @originThreadId, 'env_workflow', 'codex', 'gpt-5',
+       @id, @projectId, @originThreadId, 'env_workflow', 'provider-a', 'gpt-5',
        'high', 'accept-edits', 'review', @source, @sourceHash, '{"pr":42}',
        @status, @resumedFromRunId, @resultJson, @error, @phase,
        @notificationSent, @notificationOutcome, 1, @createdAt, @startedAt,
@@ -460,7 +463,7 @@ export function seedWorkflows(db: DbConnection, scale: number): WorkflowsSeed {
        resolved_permission_mode, status, child_thread_id, result_json, error,
        created_at, started_at, last_activity_at, finished_at
      ) VALUES (
-       @id, @runId, @callIndex, @cacheKey, @prompt, @optionsJson, 'codex',
+       @id, @runId, @callIndex, @cacheKey, @prompt, @optionsJson, 'provider-a',
        'gpt-5', 'high', 'accept-edits', @status, @childThreadId, @resultJson,
        @error, @createdAt, @startedAt, @lastActivityAt, @finishedAt
      )`,
