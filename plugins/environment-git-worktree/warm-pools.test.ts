@@ -17,8 +17,7 @@ import plugin from "./server.js";
 
 type CreateContext = PluginEnvironmentProviderCreateContext<
   PluginEnvironmentProviderRequirements,
-  PluginEnvironmentProviderInputsSchema,
-  2
+  PluginEnvironmentProviderInputsSchema
 >;
 
 const PLUGIN_ID = "environment-git-worktree";
@@ -468,9 +467,7 @@ describe("warm worktree handoff", () => {
     );
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.adopted).toEqual([READY.id]);
-    expect(
-      fixture.hostCalls.map((call) => [call.method, call.input]),
-    ).toEqual([
+    expect(fixture.hostCalls.map((call) => [call.method, call.input])).toEqual([
       [
         "handOff",
         expect.objectContaining({
@@ -487,7 +484,10 @@ describe("warm worktree handoff", () => {
         }),
       ],
       ["create", expect.objectContaining({ branchName: null })],
-      ["nameBranch", expect.objectContaining({ branchName: "bb/refused-thr_r" })],
+      [
+        "nameBranch",
+        expect.objectContaining({ branchName: "bb/refused-thr_r" }),
+      ],
     ]);
     expect(fixture.deleted).toEqual([]);
     await fixture.harness.lifecycle.dispose();

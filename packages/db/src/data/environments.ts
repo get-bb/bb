@@ -3,6 +3,7 @@ import type {
   EnvironmentHolder,
   EnvironmentProviderSelection,
   EnvironmentStatus,
+  JsonValue,
 } from "@bb/domain";
 import { areHostPathsEqual } from "@bb/domain";
 import type {
