@@ -2,6 +2,15 @@ import { createServer, type Server } from "node:http";
 import { connect } from "node:net";
 import { Writable, type Duplex } from "node:stream";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  Agent,
+  EnvHttpProxyAgent,
+  getGlobalDispatcher,
+  setGlobalDispatcher,
+} from "undici";
+
+import { cliFetch } from "../client.js";
+import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -17,15 +26,19 @@ async function listen(server: Server): Promise<number> {
 }
 
 it.each([
-  { name: "HTTP_PROXY", proxyKey: "HTTP_PROXY", bypassKey: undefined },
-  { name: "http_proxy", proxyKey: "http_proxy", bypassKey: undefined },
-  { name: "NO_PROXY", proxyKey: "HTTP_PROXY", bypassKey: "NO_PROXY" },
-  { name: "no_proxy", proxyKey: "http_proxy", bypassKey: "no_proxy" },
-  { name: "no proxy configured", proxyKey: undefined, bypassKey: undefined },
+  {
+    name: "Node's environment proxy is on",
+    nodeEnvProxy: true,
+    hostname: "bb-proxy-regression.invalid",
+  },
+  {
+    name: "a proxy variable is set but Node's environment proxy is off",
+    nodeEnvProxy: false,
+    hostname: "127.0.0.1",
+  },
 ])(
-  "routes plugin command POSTs according to $name",
-  async ({ proxyKey, bypassKey }) => {
-    vi.resetModules();
+  "routes plugin command POSTs like core requests when $name",
+  async ({ nodeEnvProxy, hostname }) => {
     for (const key of [
       "HTTP_PROXY",
       "HTTPS_PROXY",
@@ -37,21 +50,20 @@ it.each([
       vi.stubEnv(key, undefined);
     }
     const requests: string[] = [];
-    const tunnels: string[] = [];
+    const tunnels = new Set<string>();
     const sockets = new Set<Duplex>();
     const origin = createServer((request, response) => {
       requests.push(`${request.method} ${request.url}`);
       request.resume();
       response.setHeader("content-type", "application/json");
-      response.end(
-        JSON.stringify({ exitCode: 0, stdout: "proxied command result" }),
-      );
+      response.end(JSON.stringify({ exitCode: 0, stdout: "command result" }));
     });
     const proxy = createServer();
+    const previousDispatcher = getGlobalDispatcher();
     try {
       const originPort = await listen(origin);
       proxy.on("connect", (request, downstream, head) => {
-        tunnels.push(request.url ?? "");
+        tunnels.add(request.url ?? "");
         const upstream = connect(originPort, "127.0.0.1", () => {
           downstream.write("HTTP/1.1 200 Connection Established\r\n\r\n");
           upstream.write(head);
@@ -64,16 +76,9 @@ it.each([
         upstream.on("error", () => downstream.destroy());
       });
       const proxyPort = await listen(proxy);
-      if (proxyKey !== undefined) {
-        vi.stubEnv(proxyKey, `http://127.0.0.1:${proxyPort}`);
-      }
-      if (bypassKey !== undefined) {
-        vi.stubEnv(bypassKey, "127.0.0.1");
-      }
-      const shouldProxy = proxyKey !== undefined && bypassKey === undefined;
-      const hostname = shouldProxy
-        ? "bb-proxy-regression.invalid"
-        : "127.0.0.1";
+      vi.stubEnv("HTTP_PROXY", `http://127.0.0.1:${proxyPort}`);
+      setGlobalDispatcher(nodeEnvProxy ? new EnvHttpProxyAgent() : new Agent());
+      const baseUrl = `http://${hostname}:${originPort}`;
       const writes: string[] = [];
       const stream = new Writable({
         write(chunk, _encoding, callback) {
@@ -81,20 +86,26 @@ it.each([
           callback();
         },
       });
-      const { runPluginCliCommand } = await import("../plugin-cli-proxy.js");
 
+      const coreResponse = await cliFetch(`${baseUrl}/api/v1/machines`);
+      await coreResponse.arrayBuffer();
       await expect(
-        runPluginCliCommand(
-          `http://${hostname}:${originPort}`,
-          "transport-fixture",
-          ["inspect"],
-          { stdout: stream, stderr: stream },
-        ),
+        runPluginCliCommand(baseUrl, "transport-fixture", ["inspect"], {
+          stdout: stream,
+          stderr: stream,
+        }),
       ).resolves.toBe(0);
-      expect(writes).toEqual(["proxied command result\n"]);
-      expect(requests).toEqual(["POST /api/v1/plugins/transport-fixture/cli"]);
-      expect(tunnels).toEqual(shouldProxy ? [`${hostname}:${originPort}`] : []);
+
+      expect(writes).toEqual(["command result\n"]);
+      expect(requests).toEqual([
+        "GET /api/v1/machines",
+        "POST /api/v1/plugins/transport-fixture/cli",
+      ]);
+      expect([...tunnels]).toEqual(
+        nodeEnvProxy ? [`${hostname}:${originPort}`] : [],
+      );
     } finally {
+      setGlobalDispatcher(previousDispatcher);
       for (const socket of sockets) socket.destroy();
       origin.closeAllConnections();
       proxy.closeAllConnections();

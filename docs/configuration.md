@@ -58,11 +58,6 @@ the same proxy and `NO_PROXY` settings. Libraries that create their own agents
 or sockets can still bypass Node's global proxy support; these launch defaults
 do not configure those libraries or the OS proxy settings.
 
-Plugin CLI command requests use an environment-aware dispatcher that honors
-`HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (including lowercase forms), even
-without Node's built-in environment proxy support. They retain an extended
-response-headers timeout for commands that wait for user input.
-
 ## Host executable discovery
 
 Core process launches and the Plugin SDK process helpers share one resolver.
