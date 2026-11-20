@@ -223,6 +223,48 @@ describe("fake plugin host storage directory", () => {
   );
 
   it.skipIf(!canLockDirs)(
+    "retries the original root at exit when TMPDIR is relative and the cwd changed",
+    async () => {
+      const run = await runChild(`
+        const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
+        const original = join(tmpdir(), "original");
+        const other = join(tmpdir(), "other");
+        mkdirSync(join(original, "t"), { recursive: true });
+        mkdirSync(join(other, "t"), { recursive: true });
+        process.chdir(original);
+        for (const key of ["TMPDIR", "TEMP", "TMP"]) process.env[key] = "t";
+        const host = createFakePluginHost();
+        host.bb.storage.database();
+        const [root] = readdirSync("t");
+        const [hostDir] = readdirSync(join("t", root));
+        const locked = join(original, "t", root, hostDir);
+        chmodSync(locked, 0o500);
+        try {
+          await host.harness.dispose();
+        } catch (error) {
+          console.log("dispose-failed:" + error.code);
+        }
+        chmodSync(locked, 0o700);
+        const decoy = join(other, "t", root, hostDir);
+        mkdirSync(decoy, { recursive: true });
+        writeFileSync(join(decoy, "keep"), "");
+        process.chdir(other);
+        process.on("exit", () => {
+          console.log("original-root:" + existsSync(join(original, "t", root)));
+          console.log("decoy:" + existsSync(join(decoy, "keep")));
+        });
+      `);
+      expect(run.stderr).toBe("");
+      expect(run.lines).toEqual([
+        "dispose-failed:EACCES",
+        "original-root:false",
+        "decoy:true",
+      ]);
+      expect(run.code).toBe(0);
+    },
+  );
+
+  it.skipIf(!canLockDirs)(
     "still removes the other hosts when one host dir cannot be removed",
     async () => {
       const run = await runChild(`

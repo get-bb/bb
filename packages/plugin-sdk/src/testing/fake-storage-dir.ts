@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 
 export interface FakeStorageDir {
@@ -51,7 +51,9 @@ function acquireRoot(): HostDirRoot {
   const state = rootState();
   if (state.root !== null) return state.root;
   const root: HostDirRoot = {
-    path: mkdtempSync(join(tmpdir(), `bb-fake-plugin-host-${process.pid}-`)),
+    path: mkdtempSync(
+      join(resolve(tmpdir()), `bb-fake-plugin-host-${process.pid}-`),
+    ),
     removers: new Set(),
   };
   state.root = root;
