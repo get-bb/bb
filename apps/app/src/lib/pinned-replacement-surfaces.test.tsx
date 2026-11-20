@@ -38,6 +38,7 @@ import {
 import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
+  setPluginFrontendReconcilePending,
 } from "@/lib/plugin-frontend-boot-state";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import {
@@ -186,6 +187,17 @@ describe.each(SURFACES)("pinned $name", (surface) => {
 
     expect(resolved.result.current).toBe(INSTALLED.title);
     expect(settingText()).toContain("Automatic");
+  });
+
+  it("keeps behaving as Automatic while plugins reload after boot", () => {
+    markPluginFrontendsSettled();
+    const { resolved } = setUp(surface);
+
+    act(() => setPluginFrontendReconcilePending(true));
+    expect(resolved.result.current).toBe(INSTALLED.title);
+
+    act(() => register(surface, PINNED));
+    expect(resolved.result.current).toBe(PINNED.title);
   });
 
   it("waits for the pinned plugin while plugins are still loading", () => {

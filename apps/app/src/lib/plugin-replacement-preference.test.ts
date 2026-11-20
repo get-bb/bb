@@ -21,13 +21,13 @@ function resolve(
   slots: readonly PluginThreadListSlot[],
   preference: string = AUTOMATIC_REPLACEMENT_PROVIDER,
   builtinPluginIds: ReadonlySet<string> = new Set(),
-  settled = true,
+  settledOnce = true,
 ): PluginThreadListSlot | null {
   const resolved = resolvePreferredReplacement(
     slots,
     preference,
     builtinPluginIds,
-    settled,
+    settledOnce,
   );
   return resolved.kind === "plugin" ? resolved.registration : null;
 }

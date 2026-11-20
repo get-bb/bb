@@ -1,6 +1,6 @@
 import { atomWithStorage } from "jotai/utils";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
+import { usePluginFrontendsSettledOnce } from "@/lib/plugin-frontend-boot-state";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { useBuiltinPluginIds } from "@/lib/plugin-slots";
 
@@ -60,12 +60,12 @@ export function resolvePreferredReplacement<
   slots: readonly Slot[],
   preference: string,
   builtinPluginIds: ReadonlySet<string>,
-  settled: boolean,
+  settledOnce: boolean,
 ): ResolvedReplacement<Slot> {
   if (preference === BUILT_IN_REPLACEMENT_PROVIDER) return { kind: "owner" };
   const pinned = findPinnedReplacement(slots, preference);
   if (pinned !== undefined) return { kind: "plugin", registration: pinned };
-  if (preference !== AUTOMATIC_REPLACEMENT_PROVIDER && !settled) {
+  if (preference !== AUTOMATIC_REPLACEMENT_PROVIDER && !settledOnce) {
     return { kind: "owner" };
   }
   const registration = findAutomaticReplacement(slots, builtinPluginIds);
@@ -81,6 +81,6 @@ export function usePreferredReplacement<
     slots,
     preference,
     useBuiltinPluginIds(),
-    usePluginFrontendsSettled(),
+    usePluginFrontendsSettledOnce(),
   );
 }
