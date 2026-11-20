@@ -12,8 +12,13 @@ import {
   type ReactNode,
 } from "react";
 import type { ActiveProfileConnection } from "@/lib/connection";
-import { getProfileStore, nativeAppState } from "@/lib/native";
 import {
+  getProfileStore,
+  nativeAppState,
+  nativeClientCertificates,
+} from "@/lib/native";
+import {
+  shouldForgetClientCertificate,
   useProfileStoreState,
   type NewServerProfile,
   type ProfileStoreStatus,
@@ -82,8 +87,16 @@ export function ProfilesProvider({ children }: { children: ReactNode }) {
       addProfile: (input) => store.addProfile(input),
       updateProfile: (id, patch) => store.updateProfile(id, patch),
       async removeProfile(id) {
+        const removed = storeState.profiles.find((p) => p.id === id);
         await store.removeProfile(id);
         getAppProfileClientRegistry().disposeClient(id);
+        if (
+          removed &&
+          nativeClientCertificates &&
+          shouldForgetClientCertificate(removed, storeState.profiles)
+        ) {
+          await nativeClientCertificates.forget(removed.serverUrl);
+        }
       },
       setActiveProfile: (id) => store.setActiveProfile(id),
     }),
