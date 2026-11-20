@@ -1,11 +1,14 @@
-import childProcess from "node:child_process";
 import os from "node:os";
 import { createHistogram } from "node:perf_hooks";
 import {
   EVENT_LOOP_GAP_INTERVAL_MS,
   monotonicNowMs,
   observeEventLoopGaps,
+  roundDurationMs,
 } from "./event-loop-gaps.js";
+import { execHostFile } from "./host-process.js";
+
+export { roundDurationMs } from "./event-loop-gaps.js";
 
 interface EventLoopStall {
   intervalMs: number;
@@ -31,14 +34,18 @@ interface SampleClocks {
   cpuUsage: NodeJS.CpuUsage;
 }
 
-interface StartEventLoopDelaySamplerArgs {
+type ReportSample = (sample: {
+  stall: EventLoopStall | null;
+  suspension: SystemSuspension | null;
+}) => void;
+
+type StartEventLoopDelaySamplerArgs = {
   thresholdMs?: number | (() => number);
   now?: () => number;
-  onSample: (sample: {
-    stall: EventLoopStall | null;
-    suspension: SystemSuspension | null;
-  }) => void;
-}
+} & (
+  | { onSample: ReportSample; prepareSample?: never }
+  | { onSample?: never; prepareSample: () => ReportSample }
+);
 
 interface EventLoopDelaySampler {
   stop: () => void;
@@ -86,10 +93,6 @@ export function createEventLoopDelayHistogram() {
   };
 }
 
-export function roundDurationMs(durationMs: number): number {
-  return Math.round(durationMs * 10) / 10;
-}
-
 export function isLikelySystemSuspensionDelay(args: {
   gapMs: number;
   intervalMs: number;
@@ -97,20 +100,23 @@ export function isLikelySystemSuspensionDelay(args: {
   return args.gapMs - args.intervalMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS;
 }
 
-function readDarwinSleepWindow(): { sleepAt: number; wakeAt: number } | null {
+async function readDarwinSleepWindow(): Promise<{
+  sleepAt: number;
+  wakeAt: number;
+} | null> {
   try {
-    const output = childProcess.execFileSync(
+    const { stdout } = await execHostFile(
       "/usr/sbin/sysctl",
       ["-n", "kern.sleeptime", "kern.waketime"],
       {
         encoding: "utf8",
         timeout: DARWIN_SYSCTL_TIMEOUT_MS,
         killSignal: "SIGKILL",
-        stdio: ["ignore", "pipe", "ignore"],
+        maxBuffer: 4_096,
       },
     );
     const [sleepAt, wakeAt] = Array.from(
-      output.matchAll(/sec = (\d+), usec = (\d+)/g),
+      stdout.matchAll(/sec = (\d+), usec = (\d+)/g),
       ([, seconds, microseconds]) =>
         Number(seconds) * 1_000 + Number(microseconds) / 1_000,
     );
@@ -134,7 +140,8 @@ export function startEventLoopDelaySampler(
     cpuUsage: process.cpuUsage(),
   });
 
-  const histogram = createEventLoopDelayHistogram();
+  let histogram = createEventLoopDelayHistogram();
+  let stopped = false;
   const darwinGaps: { startedAt: number; endedAt: number }[] = [];
   const gaps = observeEventLoopGaps((startedAt, endedAt) => {
     if (
@@ -162,77 +169,91 @@ export function startEventLoopDelaySampler(
     const canAccountForCpu = (awakeMs: number) =>
       processCpuMs <=
       (awakeMs + SUSPENSION_CLOCK_TOLERANCE_MS) * os.availableParallelism();
-    let durationMs = 0;
-
-    if (platform === "linux" && monotonicGapMs >= 0) {
-      durationMs =
-        current.linuxUptimeMs - previous.linuxUptimeMs - monotonicGapMs;
-    }
-    if (darwinGaps.length > 0) {
-      const sleep =
-        Math.abs(wallGapMs - monotonicGapMs) <= SUSPENSION_CLOCK_TOLERANCE_MS
-          ? readDarwinSleepWindow()
-          : null;
-      if (
-        sleep &&
-        sleep.sleepAt >= previous.wallMs &&
-        sleep.wakeAt <= current.wallMs &&
-        canAccountForCpu(monotonicGapMs - (sleep.wakeAt - sleep.sleepAt))
-      ) {
-        durationMs = sleep.wakeAt - sleep.sleepAt;
-      }
-      for (const { startedAt, endedAt } of darwinGaps) {
-        const wallAtEnd = current.wallMs - (current.monotonicMs - endedAt);
-        const wallAtStart = wallAtEnd - (endedAt - startedAt);
-        const overlapMs =
-          sleep && durationMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS
-            ? Math.max(
-                0,
-                Math.min(wallAtEnd, sleep.wakeAt) -
-                  Math.max(wallAtStart, sleep.sleepAt),
-              )
-            : 0;
-        histogram.record(startedAt, endedAt - overlapMs);
-      }
-      darwinGaps.length = 0;
-    }
-
-    const suspension: SystemSuspension | null =
-      durationMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS &&
-      (platform !== "linux" || canAccountForCpu(monotonicGapMs))
-        ? {
-            intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
-            durationMs: roundDurationMs(durationMs),
-            wallGapMs: roundDurationMs(wallGapMs),
-            monotonicGapMs: roundDurationMs(monotonicGapMs),
-            processCpuMs: roundDurationMs(processCpuMs),
-          }
-        : null;
+    const windowStart = previous;
     previous = current;
-    const delay = histogram.take();
+    const report = args.prepareSample ? args.prepareSample() : args.onSample;
     const thresholdMs =
       typeof args.thresholdMs === "function"
         ? args.thresholdMs()
         : (args.thresholdMs ?? EVENT_LOOP_STALL_THRESHOLD_MS);
-    const stalled = delay.maxDelayMs >= thresholdMs;
-    args.onSample({
-      suspension,
-      stall: stalled
-        ? {
-            intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
-            maxDelayMs: roundDurationMs(delay.maxDelayMs),
-            meanDelayMs: roundDurationMs(delay.meanDelayMs),
-            p99DelayMs: roundDurationMs(delay.p99DelayMs),
-            resolutionMs: delay.resolutionMs,
-            thresholdMs,
-          }
-        : null,
-    });
+    const windowHistogram = histogram;
+    const finishSample = (durationMs: number) => {
+      if (stopped) return;
+      const delay = windowHistogram.take();
+      report({
+        suspension:
+          durationMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS
+            ? {
+                intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
+                durationMs: roundDurationMs(durationMs),
+                wallGapMs: roundDurationMs(wallGapMs),
+                monotonicGapMs: roundDurationMs(monotonicGapMs),
+                processCpuMs: roundDurationMs(processCpuMs),
+              }
+            : null,
+        stall:
+          delay.maxDelayMs >= thresholdMs
+            ? {
+                intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
+                maxDelayMs: roundDurationMs(delay.maxDelayMs),
+                meanDelayMs: roundDurationMs(delay.meanDelayMs),
+                p99DelayMs: roundDurationMs(delay.p99DelayMs),
+                resolutionMs: delay.resolutionMs,
+                thresholdMs,
+              }
+            : null,
+      });
+    };
+
+    if (darwinGaps.length > 0) {
+      const pendingGaps = darwinGaps.splice(0);
+      histogram = createEventLoopDelayHistogram();
+      const sleepWindow =
+        Math.abs(wallGapMs - monotonicGapMs) <= SUSPENSION_CLOCK_TOLERANCE_MS
+          ? readDarwinSleepWindow()
+          : Promise.resolve(null);
+      void sleepWindow.then((sleep) => {
+        const durationMs =
+          sleep &&
+          sleep.sleepAt >= windowStart.wallMs &&
+          sleep.wakeAt <= current.wallMs &&
+          canAccountForCpu(monotonicGapMs - (sleep.wakeAt - sleep.sleepAt))
+            ? sleep.wakeAt - sleep.sleepAt
+            : 0;
+        for (const { startedAt, endedAt } of pendingGaps) {
+          const wallAtEnd = current.wallMs - (current.monotonicMs - endedAt);
+          const wallAtStart = wallAtEnd - (endedAt - startedAt);
+          const overlapMs =
+            sleep && durationMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS
+              ? Math.max(
+                  0,
+                  Math.min(wallAtEnd, sleep.wakeAt) -
+                    Math.max(wallAtStart, sleep.sleepAt),
+                )
+              : 0;
+          windowHistogram.record(startedAt, endedAt - overlapMs);
+        }
+        finishSample(durationMs);
+      });
+      return;
+    }
+
+    const linuxSuspensionMs =
+      current.linuxUptimeMs - windowStart.linuxUptimeMs - monotonicGapMs;
+    finishSample(
+      platform === "linux" &&
+        monotonicGapMs >= 0 &&
+        linuxSuspensionMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS &&
+        canAccountForCpu(monotonicGapMs)
+        ? linuxSuspensionMs
+        : 0,
+    );
   }, EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS);
   interval.unref();
 
   return {
     stop: () => {
+      stopped = true;
       clearInterval(interval);
       gaps.stop();
     },

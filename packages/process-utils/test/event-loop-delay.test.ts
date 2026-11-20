@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import childProcess from "node:child_process";
 import os from "node:os";
 import { startEventLoopDelaySampler } from "../src/event-loop-delay.js";
+import { execHostFile } from "../src/host-process.js";
+
+vi.mock("../src/host-process.js", () => ({ execHostFile: vi.fn() }));
 
 describe("event loop delay sampler", () => {
   let wallMs: number;
@@ -11,6 +13,7 @@ describe("event loop delay sampler", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.mocked(execHostFile).mockReset();
     wallMs = 1_000_000;
     monotonicMs = 0;
     uptimeMs = 0;
@@ -43,12 +46,12 @@ describe("event loop delay sampler", () => {
     monotonicMs += gaps.monotonicMs;
     uptimeMs += gaps.uptimeMs;
     cpuMs += gaps.cpuMs;
-    vi.advanceTimersByTime(5_000);
+    return vi.advanceTimersByTimeAsync(5_000);
   }
 
   it.each([0, 75_000])(
     "reports a long awake stall with %d ms of process CPU",
-    (cpuMs) => {
+    async (cpuMs) => {
       vi.stubGlobal(
         "process",
         Object.create(process, { platform: { value: "linux" } }),
@@ -56,7 +59,7 @@ describe("event loop delay sampler", () => {
       const onSample = vi.fn();
       const sampler = startEventLoopDelaySampler({ onSample });
       try {
-        advanceSample({
+        await advanceSample({
           wallMs: 95_000,
           monotonicMs: 95_000,
           uptimeMs: 95_000,
@@ -77,7 +80,7 @@ describe("event loop delay sampler", () => {
     },
   );
 
-  it("does not let a wall clock jump turn an awake Linux stall into sleep", () => {
+  it("does not let a wall clock jump turn an awake Linux stall into sleep", async () => {
     vi.stubGlobal(
       "process",
       Object.create(process, { platform: { value: "linux" } }),
@@ -85,7 +88,7 @@ describe("event loop delay sampler", () => {
     const onSample = vi.fn();
     const sampler = startEventLoopDelaySampler({ onSample });
     try {
-      advanceSample({
+      await advanceSample({
         wallMs: 95_000,
         monotonicMs: 1_000,
         uptimeMs: 1_000,
@@ -100,18 +103,19 @@ describe("event loop delay sampler", () => {
     }
   });
 
-  it("keeps a macOS stall when the kernel sleep record precedes the sample", () => {
+  it("keeps a macOS stall when the kernel sleep record precedes the sample", async () => {
     vi.stubGlobal(
       "process",
       Object.create(process, { platform: { value: "darwin" } }),
     );
-    vi.spyOn(childProcess, "execFileSync").mockReturnValue(
-      "{ sec = 900, usec = 0 }\n{ sec = 990, usec = 0 }\n",
-    );
+    vi.mocked(execHostFile).mockResolvedValue({
+      stdout: "{ sec = 900, usec = 0 }\n{ sec = 990, usec = 0 }\n",
+      stderr: "",
+    });
     const onSample = vi.fn();
     const sampler = startEventLoopDelaySampler({ onSample });
     try {
-      advanceSample({
+      await advanceSample({
         wallMs: 95_000,
         monotonicMs: 95_000,
         uptimeMs: 95_000,
@@ -126,18 +130,19 @@ describe("event loop delay sampler", () => {
     }
   });
 
-  it("keeps a macOS stall when CPU use exceeds the apparent awake period", () => {
+  it("keeps a macOS stall when CPU use exceeds the apparent awake period", async () => {
     vi.stubGlobal(
       "process",
       Object.create(process, { platform: { value: "darwin" } }),
     );
-    vi.spyOn(childProcess, "execFileSync").mockReturnValue(
-      "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
-    );
+    vi.mocked(execHostFile).mockResolvedValue({
+      stdout: "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
+      stderr: "",
+    });
     const onSample = vi.fn();
     const sampler = startEventLoopDelaySampler({ onSample });
     try {
-      advanceSample({
+      await advanceSample({
         wallMs: 90_050,
         monotonicMs: 90_050,
         uptimeMs: 90_050,
@@ -152,18 +157,19 @@ describe("event loop delay sampler", () => {
     }
   });
 
-  it("reports both suspension and the remaining awake delay on macOS", () => {
+  it("reports both suspension and the remaining awake delay on macOS", async () => {
     vi.stubGlobal(
       "process",
       Object.create(process, { platform: { value: "darwin" } }),
     );
-    vi.spyOn(childProcess, "execFileSync").mockReturnValue(
-      "{ sec = 1001, usec = 0 }\n{ sec = 1091, usec = 0 }\n",
-    );
+    vi.mocked(execHostFile).mockResolvedValue({
+      stdout: "{ sec = 1001, usec = 0 }\n{ sec = 1091, usec = 0 }\n",
+      stderr: "",
+    });
     const onSample = vi.fn();
     const sampler = startEventLoopDelaySampler({ onSample });
     try {
-      advanceSample({
+      await advanceSample({
         wallMs: 95_000,
         monotonicMs: 95_000,
         uptimeMs: 95_000,
@@ -183,20 +189,19 @@ describe("event loop delay sampler", () => {
 
   it.each(["linux", "darwin"])(
     "reports system suspension separately on %s",
-    (platform) => {
+    async (platform) => {
       vi.stubGlobal(
         "process",
         Object.create(process, { platform: { value: platform } }),
       );
-      const sysctl = vi
-        .spyOn(childProcess, "execFileSync")
-        .mockReturnValue(
-          "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
-        );
+      const sysctl = vi.mocked(execHostFile).mockResolvedValue({
+        stdout: "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
+        stderr: "",
+      });
       const onSample = vi.fn();
       const sampler = startEventLoopDelaySampler({ onSample });
       try {
-        advanceSample({
+        await advanceSample({
           wallMs: 90_050,
           monotonicMs: platform === "linux" ? 50 : 90_050,
           uptimeMs: 90_050,
@@ -211,7 +216,7 @@ describe("event loop delay sampler", () => {
         });
         expect(sysctl).toHaveBeenCalledTimes(platform === "darwin" ? 1 : 0);
 
-        advanceSample({
+        await advanceSample({
           wallMs: 5_000,
           monotonicMs: 50,
           uptimeMs: 50,

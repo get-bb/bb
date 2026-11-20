@@ -18,27 +18,29 @@ export function startEventLoopStallMonitor(
   return startEventLoopDelaySampler({
     now: options.now,
     thresholdMs: options.thresholdMs,
-    onSample: ({ stall, suspension }) => {
+    prepareSample: () => {
       const work = takeEventLoopWorkWindowSnapshot();
-      if (suspension !== null)
-        options.logger.info(suspension, "System suspension observed");
-      if (stall !== null) {
-        const hasCandidate =
-          work.longestSynchronousWorkWallMs !== null &&
-          work.longestSynchronousWorkWallMs + stall.resolutionMs >=
-            stall.maxDelayMs;
-        options.logger.info(
-          {
-            ...stall,
-            ...work,
-            stallAttribution: hasCandidate ? "candidate" : "unattributed",
-            stallCauseCandidate: hasCandidate
-              ? work.longestSynchronousWork
-              : null,
-          },
-          "Event loop stalled",
-        );
-      }
+      return ({ stall, suspension }) => {
+        if (suspension !== null)
+          options.logger.info(suspension, "System suspension observed");
+        if (stall !== null) {
+          const hasCandidate =
+            work.longestSynchronousWorkWallMs !== null &&
+            work.longestSynchronousWorkWallMs + stall.resolutionMs >=
+              stall.maxDelayMs;
+          options.logger.info(
+            {
+              ...stall,
+              ...work,
+              stallAttribution: hasCandidate ? "candidate" : "unattributed",
+              stallCauseCandidate: hasCandidate
+                ? work.longestSynchronousWork
+                : null,
+            },
+            "Event loop stalled",
+          );
+        }
+      };
     },
   });
 }
