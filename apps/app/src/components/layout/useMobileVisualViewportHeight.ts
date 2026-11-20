@@ -91,7 +91,8 @@ function attachMobileVisualViewportHeight(
     const editorFocused = isKeyboardFocusTarget(document.activeElement);
     const heightMismatch = Math.abs(layoutHeight - height) > 1;
     const compensatePan =
-      (offsetTop > 1 || scrollY > 0) && (editorFocused || heightMismatch);
+      (offsetTop > 1 || scrollY > 0) &&
+      (!settleIOSViewport || editorFocused || heightMismatch);
     setKeyboardInset(
       viewportHeightBeforeKeyboard !== null &&
         editorFocused &&
@@ -104,7 +105,7 @@ function attachMobileVisualViewportHeight(
     }
 
     let top = Math.round(scrollY + offsetTop);
-    if (compensatePan && scrollY > 0) {
+    if (compensatePan && (!settleIOSViewport || scrollY > 0)) {
       window.scrollTo(0, 0);
       top = Math.round(window.scrollY + visualViewport.offsetTop);
     }
@@ -158,6 +159,16 @@ function attachMobileVisualViewportHeight(
     layoutHeightStale = true;
     handleViewportChange();
   };
+  const handleViewportScroll = () => {
+    if (
+      !settleIOSViewport &&
+      appliedOverride === null &&
+      !isKeyboardFocusTarget(document.activeElement)
+    ) {
+      return;
+    }
+    handleViewportChange();
+  };
   const handleFocusOut = (event: FocusEvent) => {
     if (!isKeyboardFocusTarget(event.target)) return;
     if (isKeyboardFocusTarget(event.relatedTarget)) return;
@@ -179,7 +190,7 @@ function attachMobileVisualViewportHeight(
     reconcile();
   }
   visualViewport.addEventListener("resize", handleViewportChange);
-  visualViewport.addEventListener("scroll", handleViewportChange);
+  visualViewport.addEventListener("scroll", handleViewportScroll);
   window.addEventListener("resize", handleLayoutChange);
   window.addEventListener("orientationchange", handleLayoutChange);
   document.addEventListener("focusout", handleFocusOut);
@@ -187,7 +198,7 @@ function attachMobileVisualViewportHeight(
 
   return () => {
     visualViewport.removeEventListener("resize", handleViewportChange);
-    visualViewport.removeEventListener("scroll", handleViewportChange);
+    visualViewport.removeEventListener("scroll", handleViewportScroll);
     window.removeEventListener("resize", handleLayoutChange);
     window.removeEventListener("orientationchange", handleLayoutChange);
     window.removeEventListener("pageshow", handleLayoutChange);
