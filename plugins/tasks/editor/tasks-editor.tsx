@@ -22,6 +22,8 @@ import {
   type MentionSuggestionHandle,
 } from "./extensions.js";
 import { isNonImeKey } from "@/lib/ime-keyboard";
+import { handleEditorLinkClick } from "./links.js";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 
 const STYLE_MARKER = "data-bb-tasks-editor-styles";
 const EDITOR_CSS = `
@@ -240,6 +242,9 @@ export function TasksEditor({
   onSubmitRef.current = onSubmit;
   const readyRef = useRef(onEditorReady);
   readyRef.current = onEditorReady;
+  const navigate = useBbNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const initialValueRef = useRef(value);
   const isPointerCoarse = usePointerCoarse();
   const canSubmitWithEnterKey = Boolean(onSubmit) && !isPointerCoarse;
@@ -333,6 +338,12 @@ export function TasksEditor({
       content: initialValueRef.current,
       autofocus: false,
       editorProps: {
+        handleDOMEvents: {
+          click: (_view, event) =>
+            handleEditorLinkClick(event, {
+              url: (href) => navigateRef.current.openUrl(href),
+            }),
+        },
         handleKeyDown(_view, event) {
           if (!onSubmitRef.current || readOnly) return false;
           if (!isNonImeKey(event, "Enter")) return false;
