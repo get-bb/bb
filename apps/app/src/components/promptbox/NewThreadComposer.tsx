@@ -1237,17 +1237,6 @@ export function NewThreadComposer({
     () => providerOptions.map((option) => option.value),
     [providerOptions],
   );
-  const providerFallback = useNewThreadProviderFallback({
-    enabled:
-      !(
-        "providerId" in executionInputSources &&
-        executionInputSources.providerId === "explicit"
-      ) && executionInputSources.model !== "explicit",
-    hostId: executionOptionsRouting.hostId ?? null,
-    providerId: selectedProviderId,
-    model: selectedThreadModel.length > 0 ? selectedThreadModel : null,
-    fallbackSelectable: (providerId) => providerIds.includes(providerId),
-  });
   const providerLabel = useCallback(
     (providerId: string) =>
       providerOptions.find((option) => option.value === providerId)?.label ??
@@ -1781,6 +1770,27 @@ export function NewThreadComposer({
       : null;
   const projectHostId =
     reuseEnvironmentId !== null ? null : (providerHostId ?? primaryHostId);
+  const reuseEnvironmentQuery = useEnvironment(reuseEnvironmentId);
+  const fallbackHostId =
+    reuseEnvironmentId !== null
+      ? reuseEnvironmentQuery.data?.id === reuseEnvironmentId
+        ? reuseEnvironmentQuery.data.hostId
+        : null
+      : providerMachine === null
+        ? primaryHostId
+        : providerMachine.type === "existing"
+          ? providerMachine.hostId
+          : null;
+  const providerFallback = useNewThreadProviderFallback({
+    enabled:
+      fallbackHostId !== null &&
+      !Object.values(executionInputSources).includes("explicit") &&
+      Object.keys(sessionOptionSelections).length === 0,
+    hostId: fallbackHostId,
+    providerId: selectedProviderId,
+    model: selectedThreadModel.length > 0 ? selectedThreadModel : null,
+    fallbackSelectable: (providerId) => providerIds.includes(providerId),
+  });
   const panelThreadId = resolvePanelThreadId(
     reuseEnvironmentId,
     reuseThreadOptions,

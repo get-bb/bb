@@ -604,13 +604,21 @@ function resolveCreateThreadPluginMetadata(
   };
 }
 
+const FALLBACK_BLOCKING_FIELDS = [
+  "providerId",
+  "model",
+  "serviceTier",
+  "reasoningLevel",
+  "permissionMode",
+] as const;
+
 function isExplicitCreateExecutionValue(
   request: {
-    executionInputSources?: Partial<Record<"model" | "providerId", string>>;
-    model?: string;
-    providerId?: string;
-  },
-  field: "model" | "providerId",
+    executionInputSources?: Partial<
+      Record<(typeof FALLBACK_BLOCKING_FIELDS)[number], string>
+    >;
+  } & Partial<Record<(typeof FALLBACK_BLOCKING_FIELDS)[number], string>>,
+  field: (typeof FALLBACK_BLOCKING_FIELDS)[number],
 ): boolean {
   if (request[field] === undefined) return false;
   const sources = request.executionInputSources;
@@ -819,15 +827,40 @@ export async function createThreadFromRequest(
   if (childHostId !== null) {
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
   }
-  const providerFallback =
+  const modelCatalogCwd =
+    resolvedEnvironment !== null
+      ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
+      : request.environment.type === "provider" &&
+          request.environment.machine?.type === "existing"
+        ? projectCheckoutPathOnHost(
+            deps,
+            request.projectId,
+            request.environment.machine.hostId,
+          )
+        : undefined;
+  const fallbackEligible =
     childHostId !== null &&
     request.originKind === null &&
-    !isExplicitCreateExecutionValue(requestInput, "providerId") &&
-    !isExplicitCreateExecutionValue(requestInput, "model")
+    Object.keys(request.sessionOptions ?? {}).length === 0 &&
+    FALLBACK_BLOCKING_FIELDS.every(
+      (field) => !isExplicitCreateExecutionValue(requestInput, field),
+    );
+  const providerFallback =
+    fallbackEligible && childHostId !== null
       ? await resolveProviderFallback(deps, {
           hostId: childHostId,
           providerId,
           model: requestedModel ?? inheritedDefaultModel,
+          resolveDefaultModel: async () => {
+            const result = await loadCatalogDefaultForProvider(deps, {
+              ...(modelCatalogCwd !== undefined
+                ? { cwd: modelCatalogCwd }
+                : {}),
+              hostId: childHostId,
+              providerId,
+            });
+            return result instanceof ApiError ? null : result.model;
+          },
         })
       : null;
   if (providerFallback !== null) {
@@ -844,7 +877,6 @@ export async function createThreadFromRequest(
     ({
       defaultModel: inheritedDefaultModel,
       providerId,
-      providerFallbackCandidates,
       requestedModel,
     } = resolveProjectExecutionDefaultsForCreate(deps, {
       executionInputSources: { providerId: "explicit" },
@@ -852,29 +884,15 @@ export async function createThreadFromRequest(
       projectId: request.projectId,
       providerId: providerFallback.providerId,
     }));
+    providerFallbackCandidates = [providerFallback.fromProviderId];
     request.providerId = providerId;
+    delete request.model;
+    delete request.serviceTier;
+    delete request.reasoningLevel;
+    delete request.permissionMode;
     delete request.sessionOptions;
-    if (request.executionInputSources !== undefined) {
-      const {
-        providerId: _providerSource,
-        model: _modelSource,
-        serviceTier: _serviceTierSource,
-        ...otherSources
-      } = request.executionInputSources;
-      request.executionInputSources = otherSources;
-    }
+    delete request.executionInputSources;
   }
-  const modelCatalogCwd =
-    resolvedEnvironment !== null
-      ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
-      : request.environment.type === "provider" &&
-          request.environment.machine?.type === "existing"
-        ? projectCheckoutPathOnHost(
-            deps,
-            request.projectId,
-            request.environment.machine.hostId,
-          )
-        : undefined;
   const catalogDefault = await resolveCatalogDefaultModel(deps, {
     ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
     defaultModel: inheritedDefaultModel,

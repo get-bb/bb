@@ -26,6 +26,7 @@ function useProviderUsage(args: {
       )[args.providerId] ?? null,
     enabled: args.enabled,
     staleTime: PROVIDER_USAGE_STALE_MS,
+    refetchInterval: PROVIDER_USAGE_STALE_MS,
   });
 }
 

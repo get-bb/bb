@@ -53,6 +53,12 @@ describe("findExhaustedUsageWindow", () => {
       null,
     ],
     ["a malformed window", [{ label: "Weekly limit" }], null, null],
+    [
+      "a full window with a null model, as OpenCode sends",
+      [{ label: "Monthly", model: null, usedPercent: 100, resetsAt: LATER }],
+      "opencode-go/kimi",
+      "Monthly",
+    ],
   ])("%s", (_, windows, model, expected) => {
     expect(
       findExhaustedUsageWindow(windows, { model, now: NOW })?.label ?? null,

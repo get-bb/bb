@@ -4,12 +4,23 @@ const usageWindowSchema = z.object({
   label: z.string(),
   usedPercent: z.number(),
   resetsAt: z.string().nullable(),
-  model: z.string().min(1).optional(),
+  model: z.string().min(1).nullish(),
 });
 
 export interface ExhaustedUsageWindow {
   label: string;
   resetsAt: string | null;
+}
+
+export function hasFullModelWindow(windows: readonly unknown[]): boolean {
+  return windows.some((raw) => {
+    const parsed = usageWindowSchema.safeParse(raw);
+    return (
+      parsed.success &&
+      typeof parsed.data.model === "string" &&
+      parsed.data.usedPercent >= 100
+    );
+  });
 }
 
 export function findExhaustedUsageWindow(
@@ -25,7 +36,7 @@ export function findExhaustedUsageWindow(
       window.resetsAt === null ? Number.NaN : Date.parse(window.resetsAt);
     if (Number.isFinite(resetsAtMs) && resetsAtMs <= args.now) continue;
     if (
-      window.model !== undefined &&
+      typeof window.model === "string" &&
       (args.model === null ||
         !args.model.toLowerCase().includes(window.model.toLowerCase()))
     ) {

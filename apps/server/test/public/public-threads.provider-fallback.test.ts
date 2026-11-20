@@ -35,6 +35,7 @@ vi.mock("../../src/services/system/usage-limits.js", () => ({
     const providerId = query.providerId ?? "";
     const result = usageMock.usageByProvider[providerId];
     if (result instanceof Error) throw result;
+    if (result === "hang") return new Promise(() => {});
     return result === undefined ? {} : { [providerId]: result };
   },
 }));
@@ -59,10 +60,12 @@ function usage(
 
 const CLAUDE_OUT = usage([{ label: "Weekly limit", usedPercent: 100 }]);
 const CODEX_OK = usage([{ label: "Weekly limit", usedPercent: 20 }]);
+const HANGING = "hang";
 
 interface FallbackSetup {
+  claudeDefaultModel?: string;
   fallbackProviderId?: string | null;
-  usageByProvider: Record<string, ProviderUsage | Error>;
+  usageByProvider: Record<string, ProviderUsage | Error | typeof HANGING>;
 }
 
 async function setUp(harness: TestAppHarness, setup: FallbackSetup) {
@@ -74,14 +77,28 @@ async function setUp(harness: TestAppHarness, setup: FallbackSetup) {
     hostId: host.id,
     providerId: "claude-code",
     models: [
-      availableModelFixture({ model: "claude-opus-5-5", isDefault: true }),
-      availableModelFixture({ model: "claude-fable-5-2" }),
+      availableModelFixture({
+        model: "claude-opus-5-5",
+        isDefault:
+          (setup.claudeDefaultModel ?? "claude-opus-5-5") === "claude-opus-5-5",
+      }),
+      availableModelFixture({
+        model: "claude-fable-5-2",
+        isDefault: setup.claudeDefaultModel === "claude-fable-5-2",
+      }),
     ],
   });
   await seedModelCatalog(harness, {
     hostId: host.id,
     providerId: "codex",
     models: [availableModelFixture({ model: "gpt-6.1-sol", isDefault: true })],
+  });
+  await seedModelCatalog(harness, {
+    hostId: host.id,
+    providerId: "pi",
+    models: [
+      availableModelFixture({ model: "openai/codex-mini", isDefault: true }),
+    ],
   });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
@@ -243,6 +260,81 @@ describe("provider fallback for new threads", () => {
       });
       expect((await create()).thread.providerId).toBe("claude-code");
       expect(usageCalls()).toBe(0);
+    });
+  });
+
+  it.each<[string, string, Record<string, unknown>]>([
+    [
+      "a remembered reasoning level the fallback does not offer",
+      "codex",
+      {
+        reasoningLevel: "high",
+        executionInputSources: { reasoningLevel: "client-preference" },
+      },
+    ],
+    [
+      "a remembered permission mode the fallback does not offer",
+      "pi",
+      {
+        permissionMode: "workspace-write",
+        executionInputSources: { permissionMode: "client-preference" },
+      },
+    ],
+  ])("drops %s", async (_, fallbackProviderId, body) => {
+    await withTestHarness(async (harness) => {
+      const { create } = await setUp(harness, {
+        fallbackProviderId,
+        usageByProvider: {
+          "claude-code": CLAUDE_OUT,
+          [fallbackProviderId]: CODEX_OK,
+        },
+      });
+      expect((await create(body)).thread.providerId).toBe(fallbackProviderId);
+    });
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    [
+      "an explicit reasoning level",
+      {
+        reasoningLevel: "low",
+        executionInputSources: { reasoningLevel: "explicit" },
+      },
+    ],
+    ["session options", { sessionOptions: { daybreak: true } }],
+  ])("keeps the default with %s", async (_, body) => {
+    await withTestHarness(async (harness) => {
+      const { create, usageCalls } = await setUp(harness, {
+        usageByProvider: { "claude-code": CLAUDE_OUT, codex: CODEX_OK },
+      });
+      expect((await create(body)).thread.providerId).toBe("claude-code");
+      expect(usageCalls()).toBe(0);
+    });
+  });
+
+  it("uses the catalog default model for a model window when no model is remembered", async () => {
+    await withTestHarness(async (harness) => {
+      const { create } = await setUp(harness, {
+        claudeDefaultModel: "claude-fable-5-2",
+        usageByProvider: {
+          "claude-code": usage([
+            { label: "Fable", model: "fable", usedPercent: 100 },
+          ]),
+          codex: CODEX_OK,
+        },
+      });
+      expect((await create()).thread.providerId).toBe("codex");
+    });
+  });
+
+  it("keeps the default when usage does not answer in time", async () => {
+    await withTestHarness(async (harness) => {
+      const { create } = await setUp(harness, {
+        usageByProvider: { "claude-code": HANGING, codex: CODEX_OK },
+      });
+      const started = Date.now();
+      expect((await create()).thread.providerId).toBe("claude-code");
+      expect(Date.now() - started).toBeLessThan(10_000);
     });
   });
 });
