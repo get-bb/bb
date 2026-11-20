@@ -498,11 +498,14 @@ export async function promoteImmutableDir(args: {
   await rm(`${args.targetDir}.promoting`, { recursive: true, force: true });
   const corruptDir = `${args.targetDir}.corrupt`;
   let movedCorruptTarget = false;
+  if (
+    (await hashInstallDir(args.targetDir).catch(() => null)) ===
+    args.contentHash
+  ) {
+    await rm(args.stagingDir, { recursive: true, force: true });
+    return;
+  }
   try {
-    if ((await hashInstallDir(args.targetDir)) === args.contentHash) {
-      await rm(args.stagingDir, { recursive: true, force: true });
-      return;
-    }
     await rm(corruptDir, { recursive: true, force: true });
     await rename(args.targetDir, corruptDir);
     movedCorruptTarget = true;
