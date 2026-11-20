@@ -58,8 +58,10 @@ import {
 import { TerminalWebSocketTransport } from "@bb/client-core";
 import {
   useAppCommandHandler,
+  useAppCommandKeyDispatch,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
+import { createTerminalAppCommandKeyHandler } from "./terminal-app-command-keys";
 import { TerminalFindBar } from "./TerminalFindBar";
 import {
   createTerminalFileLinkProvider,
@@ -681,6 +683,7 @@ interface MountThreadTerminalOptions {
   autoFocusRef: RefObject<boolean>;
   controlActiveRef: RefObject<boolean>;
   copyTerminalContextValue: (text: string, successMessage: string) => void;
+  dispatchAppCommandKeyRef: RefObject<(event: KeyboardEvent) => boolean>;
   isPanelOpenRef: RefObject<boolean>;
   lastPointerReleaseAnchorRef: RefObject<SelectionAnchor | null>;
   lastStatusNoticeRef: RefObject<TerminalSessionStatusNotice | null>;
@@ -711,6 +714,7 @@ function mountThreadTerminal({
   autoFocusRef,
   controlActiveRef,
   copyTerminalContextValue,
+  dispatchAppCommandKeyRef,
   isPanelOpenRef,
   lastPointerReleaseAnchorRef,
   lastStatusNoticeRef,
@@ -792,12 +796,16 @@ function mountThreadTerminal({
       theme: buildTerminalTheme(),
     });
     terminalRef.current = terminal;
+    const handleClipboardKey = createTerminalClipboardKeyHandler({
+      terminal,
+      copy: (text) => copyTerminalContextValue(text, "Selection copied"),
+      paste: pasteFromClipboard,
+    });
+    const handleAppCommandKey = createTerminalAppCommandKeyHandler((event) =>
+      dispatchAppCommandKeyRef.current(event),
+    );
     terminal.attachCustomKeyEventHandler(
-      createTerminalClipboardKeyHandler({
-        terminal,
-        copy: (text) => copyTerminalContextValue(text, "Selection copied"),
-        paste: pasteFromClipboard,
-      }),
+      (event) => handleClipboardKey(event) && handleAppCommandKey(event),
     );
     const loadedSearchAddon = new LoadedSearchAddon();
     terminal.loadAddon(loadedSearchAddon);
@@ -1134,6 +1142,11 @@ export function ThreadTerminalView({
     appNavigationRef.current = appNavigation;
   }, [appNavigation]);
   const commandRunner = useAppCommandRunner();
+  const dispatchAppCommandKey = useAppCommandKeyDispatch();
+  const dispatchAppCommandKeyRef = useRef(dispatchAppCommandKey);
+  useLayoutEffect(() => {
+    dispatchAppCommandKeyRef.current = dispatchAppCommandKey;
+  }, [dispatchAppCommandKey]);
   const handleOpenLinkByPreference = useCallback<MarkdownPreviewLinkHandler>(
     ({ href }) => appNavigation.openUrl({ url: href }),
     [appNavigation],
@@ -1438,6 +1451,7 @@ export function ThreadTerminalView({
       autoFocusRef,
       controlActiveRef,
       copyTerminalContextValue,
+      dispatchAppCommandKeyRef,
       isPanelOpenRef,
       lastPointerReleaseAnchorRef,
       lastStatusNoticeRef,
