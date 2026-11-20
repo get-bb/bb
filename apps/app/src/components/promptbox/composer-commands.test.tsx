@@ -81,10 +81,12 @@ function Composer({
   composerKey,
   role,
   onFocusCommand,
+  suppressPluginComposerCustomizations = false,
 }: {
   composerKey: string;
   role: "primary" | "secondary";
   onFocusCommand(): void;
+  suppressPluginComposerCustomizations?: boolean;
 }) {
   const host: PluginComposerHost = {
     scope: { kind: "new-thread", projectId: null },
@@ -108,6 +110,9 @@ function Composer({
           onChange={vi.fn()}
           onSubmit={vi.fn()}
           onFocusCommand={onFocusCommand}
+          suppressPluginComposerCustomizations={
+            suppressPluginComposerCustomizations
+          }
           autoFocus={false}
           mentionMenuPlacement="bottom"
           typeahead={testTypeaheadConfig()}
@@ -153,6 +158,12 @@ function renderComposers() {
           composerKey="side"
           role="secondary"
           onFocusCommand={() => focused.push("side")}
+        />
+        <Composer
+          composerKey="sent-message"
+          role="secondary"
+          onFocusCommand={() => focused.push("sent-message")}
+          suppressPluginComposerCustomizations
         />
         <button type="button">Elsewhere</button>
         <div data-app-terminal="" tabIndex={-1}>
@@ -221,6 +232,16 @@ describe("composer commands", () => {
     expect(runs).toEqual(["side", "main"]);
     expect(focused).toEqual(["side", "main"]);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("runs in a composer that mounts no plugin customizations, like the sent-message editor", () => {
+    const runs: string[] = [];
+    registerPluginCommand(runs);
+    const { editorIn } = renderComposers();
+
+    press(editorIn("sent-message"), "r");
+
+    expect(runs).toEqual(["sent-message"]);
   });
 
   it("leaves the terminal's shortcut alone", () => {

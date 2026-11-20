@@ -210,8 +210,10 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows also appear in the sent-message
-  editor (scope `thread`), where the other customizations do not mount.
+  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu`
+  rows, the popups they open, and composer commands also work in the
+  sent-message editor (scope `thread`), where actions, banners, `sendMenu` rows
+  and rich text do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the
