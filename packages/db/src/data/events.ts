@@ -82,6 +82,7 @@ import {
 } from "./event-rewrite-generation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
+  listRuntimeHostThreadIds,
   upsertThreadSearchSegments,
   type UpsertThreadSearchSegmentInput,
   upsertThreadSearchSegmentBatch,
@@ -5208,49 +5209,57 @@ export function listOpenBackgroundTaskItemRowsForHost(
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const settled = alias(events, "settled_background_task");
 
-  const rows = db
-    .select({
-      data: events.data,
-      environmentId: threads.environmentId,
-      itemId: events.itemId,
-      providerThreadId: events.providerThreadId,
-      threadId: events.threadId,
-      type: events.type,
-    })
-    .from(events)
-    .innerJoin(threads, eq(events.threadId, threads.id))
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        sql`${events.itemKind} = 'backgroundTask'`,
-        inArray(events.type, [startedType, progressType]),
-        isNotNull(events.itemId),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(settled)
-            .where(
-              and(
-                eq(settled.threadId, events.threadId),
-                sql`${settled.itemKind} = 'backgroundTask'`,
-                eq(settled.itemId, events.itemId),
-                eq(settled.type, completedType),
-              ),
+  const rows = queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
+    fixedVariableCount: 5,
+    values: listRuntimeHostThreadIds(db, args),
+    variableCountPerValue: 1,
+    queryBatch: (threadIds) =>
+      db
+        .select({
+          data: sql<string>`${events.data}`,
+          environmentId: sql<string | null>`${threads.environmentId}`,
+          itemId: sql<string | null>`${events.itemId}`,
+          providerThreadId: sql<string | null>`${events.providerThreadId}`,
+          threadId: sql<string>`${events.threadId}`,
+          type: sql<ThreadEventType>`${events.type}`,
+        })
+        .from(
+          sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+        )
+        .innerJoin(threads, eq(events.threadId, threads.id))
+        .where(
+          and(
+            inArray(events.threadId, threadIds),
+            sql`${events.itemKind} = 'backgroundTask'`,
+            inArray(events.type, [startedType, progressType]),
+            isNotNull(events.itemId),
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(settled)
+                .where(
+                  and(
+                    eq(settled.threadId, events.threadId),
+                    sql`${settled.itemKind} = 'backgroundTask'`,
+                    eq(settled.itemId, events.itemId),
+                    eq(settled.type, completedType),
+                  ),
+                ),
             ),
-        ),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.item_kind = 'backgroundTask'
-            AND latest.item_id = ${events.itemId}
-            AND latest.type IN (${startedType}, ${progressType})
-        )`,
-      ),
-    )
-    .orderBy(events.threadId, events.sequence)
-    .all();
+            sql`${events.sequence} = (
+              SELECT MAX(latest.sequence)
+              FROM events latest
+              WHERE latest.thread_id = ${events.threadId}
+                AND latest.item_kind = 'backgroundTask'
+                AND latest.item_id = ${events.itemId}
+                AND latest.type IN (${startedType}, ${progressType})
+            )`,
+          ),
+        )
+        .orderBy(events.threadId, events.sequence)
+        .all(),
+  });
 
   return rows.flatMap((row) =>
     row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],

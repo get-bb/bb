@@ -7,11 +7,18 @@ import {
   createPendingInteraction,
   getActivePendingInteractionForThread,
   getPendingInteractionByProviderRequest,
+  interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
+  listHostThreadIdsWithInterruptiblePendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionResolved,
+  setPendingInteractionResolving,
 } from "../../src/data/pending-interactions.js";
-import { createThread } from "../../src/data/threads.js";
+import {
+  archiveThread,
+  createThread,
+  markThreadDeleted,
+} from "../../src/data/threads.js";
 import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
@@ -242,4 +249,96 @@ describe("pending interactions", () => {
     },
   );
 
+  it("lists exactly the host threads an interrupt of every host thread would reach", () => {
+    const db = createMigratedConnection();
+    const host = upsertHost(db, noopNotifier, { name: "interrupt-host" });
+    const otherHost = upsertHost(db, noopNotifier, { name: "other-host" });
+    const { project } = createProject(db, noopNotifier, {
+      name: "interrupt-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/interrupt" },
+    });
+    const environmentOn = (hostId: string, path: string) =>
+      createEnvironment(db, noopNotifier, {
+        providerOwnsPath: false,
+        projectId: project.id,
+        hostId,
+        path,
+        status: "ready",
+      });
+    const environment = environmentOn(host.id, "/tmp/interrupt-host");
+    const otherEnvironment = environmentOn(otherHost.id, "/tmp/interrupt-other");
+    const newThread = (environmentId: string) =>
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        environmentId,
+        providerId: "codex",
+      }).id;
+    let request = 0;
+    const providerInteraction = (threadId: string) =>
+      createPendingInteraction(db, {
+        threadId,
+        turnId: "turn-1",
+        providerId: "codex",
+        providerThreadId: `provider-${threadId}`,
+        providerRequestId: `request-${(request += 1)}`,
+        payload: commandApprovalPayload("git push", `item-${request}`),
+      });
+    const pluginInteraction = (threadId: string) =>
+      createPendingInteraction(db, {
+        threadId,
+        originKind: "plugin",
+        pluginId: "plugin-1",
+        rendererId: "renderer-1",
+        turnId: null,
+        payload: "{}",
+      });
+
+    const providerPending = newThread(environment.id);
+    providerInteraction(providerPending);
+    const providerResolving = newThread(environment.id);
+    setPendingInteractionResolving(db, {
+      id: providerInteraction(providerResolving).id,
+      resolution: "{}",
+    });
+    const providerResolved = newThread(environment.id);
+    setPendingInteractionResolved(db, {
+      id: providerInteraction(providerResolved).id,
+      resolution: "{}",
+    });
+    const pluginResolving = newThread(environment.id);
+    setPendingInteractionResolving(db, {
+      id: pluginInteraction(pluginResolving).id,
+      resolution: "{}",
+    });
+    const archivedPending = newThread(environment.id);
+    pluginInteraction(archivedPending);
+    archiveThread(db, noopNotifier, archivedPending);
+    const deletedPending = newThread(environment.id);
+    providerInteraction(deletedPending);
+    markThreadDeleted(db, noopNotifier, { threadId: deletedPending });
+    newThread(environment.id);
+    providerInteraction(newThread(otherEnvironment.id));
+
+    const listed = listHostThreadIdsWithInterruptiblePendingInteractions(db, {
+      hostId: host.id,
+    });
+    const interrupted = interruptPendingInteractionsForThreadIds(db, {
+      statusReason: "Host daemon disconnected",
+      threadIds: [
+        providerPending,
+        providerResolving,
+        providerResolved,
+        pluginResolving,
+        archivedPending,
+        deletedPending,
+      ],
+    });
+
+    expect([...listed].sort()).toEqual(
+      [providerPending, pluginResolving, archivedPending, deletedPending].sort(),
+    );
+    expect(new Set(interrupted.map((row) => row.threadId))).toEqual(
+      new Set(listed),
+    );
+  });
 });
