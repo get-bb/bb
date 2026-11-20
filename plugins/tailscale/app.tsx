@@ -282,34 +282,7 @@ function useTailscaleStatus() {
     [accept, refetch, rpc],
   );
 
-  const check = useCallback(() => {
-    const id = toast.loading("Checking Tailscale…");
-    rpc.call("status").then(
-      (result) => {
-        const next = asStatus(result);
-        if (next === null) {
-          toast.error("Couldn't check Tailscale", {
-            id,
-            description: "Unexpected status payload.",
-          });
-          return;
-        }
-        accept(next);
-        toast.success("Tailscale checked", {
-          id,
-          description: viewOf(next).title,
-        });
-      },
-      (error: unknown) => {
-        toast.error("Couldn't check Tailscale", {
-          id,
-          description: errorText(error),
-        });
-      },
-    );
-  }, [accept, rpc]);
-
-  return { status, loadError, run, check };
+  return { status, loadError, run, refetch };
 }
 
 function CheckAgainButton({ onClick }: { onClick: () => void }) {
@@ -379,7 +352,7 @@ function CopyAddressButton({ url }: { url: string }) {
 }
 
 function TailscaleSettingsSection() {
-  const { status, loadError, run, check } = useTailscaleStatus();
+  const { status, loadError, run, refetch } = useTailscaleStatus();
 
   if (loadError !== null) {
     return (
@@ -402,7 +375,7 @@ function TailscaleSettingsSection() {
             <StatusDot tone={view.tone} />
             <span className="truncate text-sm font-medium">{view.title}</span>
           </div>
-          <CheckAgainButton onClick={check} />
+          <CheckAgainButton onClick={refetch} />
         </div>
         {serve !== null ? (
           <div className="flex min-w-0 items-center gap-1.5">
