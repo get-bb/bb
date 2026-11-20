@@ -584,11 +584,30 @@ policy, at any size; the app renders an HTML iframe only for files up
 to 5 MiB and shows larger HTML as source or, past 25 MB, as a Download.
 
 The server uses `host.read_file_chunk` for a metadata-only probe (`length: 0`),
-then reads at most 1 MiB per RPC as the HTTP consumer pulls data. HEAD, `304`,
-and `416` responses read no contents. Cancelling or aborting stops subsequent
-reads; an already in-flight RPC can finish. Each RPC opens and closes its file
+then reads at most 64 KiB per RPC, keeping up to 16 RPCs in flight ahead of
+the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
+frame (a 4-byte header length, the JSON frame, then the raw bytes) instead of
+base64 inside JSON. HEAD, `304`, and `416` responses read no contents.
+Cancelling, aborting, or a failed chunk stops subsequent reads and aborts the
+RPCs still in flight. Each RPC opens and closes its file
 handle, so no remote read session needs cleanup. Offsets and lengths are
 validated at the daemon boundary, and paths remain confined to the route's root.
+
+The daemon's session socket keeps small messages ahead of bulk data. Terminal
+output and file chunks queue per terminal or per chunk RPC and take turns;
+everything else (RPC replies, heartbeats, events, and terminal output under
+4 KiB such as keystroke echo whose terminal has nothing queued) is written at
+once. Bulk is written only while the socket buffers at most 64 KiB and the
+bulk the server has not yet acknowledged fits a send window; the server
+acknowledges every 32 KiB it receives. The window starts at 256 KiB and adapts
+between 64 KiB and 4 MiB by 64 KiB per round trip: it grows while
+acknowledgement round trips stay near the lowest seen in the last 10–20
+seconds, and shrinks while its own bulk keeps more than about 144 KiB and 10 ms
+queued on the path. A
+terminal's exit, error, and replay messages stay behind its queued output.
+Without the window, bulk bytes sat in kernel and network buffers and a reply
+waited behind them: on a 45 ms, 3.6 MB/s link, replies took about 400 ms
+during a file download.
 
 The daemon returns a revision based on device, inode, size, and nanosecond
 mtime/ctime. Every content read checks the expected revision before and after

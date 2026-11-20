@@ -13,6 +13,9 @@ import * as contract from "../src/index.js";
 import {
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_FILE_CHUNK_MAX_BYTES,
+  decodeHostDaemonDaemonWsMessage,
+  encodeHostDaemonDaemonWsMessage,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
   hostDaemonEnrollRequestSchema,
@@ -76,9 +79,11 @@ const ACP_LAUNCH_SPEC = {
   },
 };
 
+type WireResultFixture = Record<string, unknown>;
+
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
-  JsonObject
+  WireResultFixture
 >;
 type SettledResponseResultFixtures = Record<
   HostDaemonSettledCommandType,
@@ -327,7 +332,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   },
   "host.read_file_chunk": {
     path: "/tmp/clip.mp4",
-    content: "AAEC",
+    content: new Uint8Array([0, 1, 2]),
     offset: 0,
     sizeBytes: 3,
     modifiedAtMs: 1234,
@@ -579,8 +584,8 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
 
 function buildHostRpcResponseMessage(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
-): JsonObject {
+  result: WireResultFixture,
+): WireResultFixture {
   return {
     type: "host-rpc.response",
     requestId: `rpc-${commandType}`,
@@ -592,11 +597,21 @@ function buildHostRpcResponseMessage(
 
 function expectHostRpcResponseRoundTrip(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
+  result: WireResultFixture,
   name: string,
 ): void {
   const message = buildHostRpcResponseMessage(commandType, result);
-  const jsonRoundTripped = JSON.parse(JSON.stringify(message));
+  const encoded = encodeHostDaemonDaemonWsMessage(
+    hostDaemonDaemonWsMessageSchema.parse(message),
+  );
+  const decoded = decodeHostDaemonDaemonWsMessage(
+    JSON.parse(encoded.json),
+    encoded.attachment,
+  );
+  if (!decoded.ok) {
+    throw new Error(`${name} did not decode`);
+  }
+  const jsonRoundTripped = decoded.message;
 
   expect(
     hostDaemonOnlineRpcResponseMessageSchema.parse(jsonRoundTripped),
@@ -3692,13 +3707,13 @@ describe("bounded file read contract", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         ...command,
         offset: 32 * 1024 * 1024,
-        length: 1024 * 1024,
+        length: HOST_FILE_CHUNK_MAX_BYTES,
         revision: "a".repeat(64),
       }),
-    ).toMatchObject({ length: 1024 * 1024 });
+    ).toMatchObject({ length: HOST_FILE_CHUNK_MAX_BYTES });
   });
   it.each([
-    { length: 1024 * 1024 + 1 },
+    { length: HOST_FILE_CHUNK_MAX_BYTES + 1 },
     { length: -1 },
     { length: 1.5 },
     { offset: -1 },
