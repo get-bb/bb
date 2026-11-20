@@ -77,7 +77,7 @@ the most-parsed commands ends with the same shape.
     {total}
 
   bb thread search <query> --json
-    {active: {total, results}, archived: {total, results}}
+    {active: {total, totalCapped, results}, archived: {total, totalCapped, results}}    (total counts matching threads up to 100; totalCapped is true when more match)
 
   bb prompt-history list --json
     {entries: [{id, createdAt, input, projectId, threadId, scope}], nextCursor: string | null}

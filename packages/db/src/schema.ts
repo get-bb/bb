@@ -717,6 +717,11 @@ export const threads = sqliteTable(
       .where(
         sql`(CASE WHEN json_valid(${table.startupContext}) THEN json_extract(${table.startupContext}, '$.historyCopy') END) IS NOT NULL`,
       ),
+    index("threads_search_order_idx")
+      .on(sql`(${table.archivedAt} IS NOT NULL)`, table.updatedAt, table.id)
+      .where(
+        sql`${table.deletedAt} IS NULL AND ${table.visibility} = 'visible'`,
+      ),
   ],
 );
 

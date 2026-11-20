@@ -584,12 +584,13 @@ describe("CommandPalette", () => {
     modeState.searchResponse = {
       active: {
         total: 8,
+        totalCapped: false,
         results: Array.from({ length: 8 }, (_, i) => ({
           thread: makeThread(`match-${i}`),
           matches: [],
         })),
       },
-      archived: { total: 0, results: [] },
+      archived: { total: 0, totalCapped: false, results: [] },
     };
     renderPalette({ layout: splitLayout });
     await openThreadSearch();
@@ -602,8 +603,8 @@ describe("CommandPalette", () => {
     expect(screen.getAllByRole("option")).toHaveLength(8);
     expect(openThreadInSplitMock).not.toHaveBeenCalled();
     modeState.searchResponse = {
-      active: { total: 0, results: [] },
-      archived: { total: 0, results: [] },
+      active: { total: 0, totalCapped: false, results: [] },
+      archived: { total: 0, totalCapped: false, results: [] },
     };
     fireEvent.change(searchField(), { target: { value: "missing" } });
     await screen.findByText("No matching threads");
@@ -612,9 +613,10 @@ describe("CommandPalette", () => {
 
   it("preserves archived message anchors for split opening", async () => {
     modeState.searchResponse = {
-      active: { total: 0, results: [] },
+      active: { total: 0, totalCapped: false, results: [] },
       archived: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("archived-message", { archivedAt: Date.now() }),
@@ -1081,9 +1083,10 @@ describe("CommandPalette", () => {
     ];
     modeState.threadDraftIds.add("newer");
     modeState.searchResponse = {
-      active: { total: 0, results: [] },
+      active: { total: 0, totalCapped: false, results: [] },
       archived: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("archived", { archivedAt: Date.now() }),
@@ -1210,10 +1213,12 @@ describe("CommandPalette", () => {
       modeState.searchResponse = {
         active: {
           total: 7,
+          totalCapped: false,
           results: active.map((thread) => ({ thread, matches: [] })),
         },
         archived: {
           total: 4,
+          totalCapped: false,
           results: archived.map((thread) => ({ thread, matches: [] })),
         },
       };
@@ -1265,6 +1270,7 @@ describe("CommandPalette", () => {
     modeState.searchResponse = {
       active: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: active,
@@ -1279,7 +1285,11 @@ describe("CommandPalette", () => {
           },
         ],
       },
-      archived: { total: 1, results: [{ thread: archived, matches: [] }] },
+      archived: {
+        total: 1,
+        totalCapped: false,
+        results: [{ thread: archived, matches: [] }],
+      },
     };
     renderPalette({ lifecycles: ["active", "archived"] });
     await openThreadSearch();
@@ -1335,10 +1345,12 @@ describe("CommandPalette", () => {
     modeState.searchResponse = {
       active: {
         total: 8,
+        totalCapped: false,
         results: active.map((thread) => ({ thread, matches: [] })),
       },
       archived: {
         total: 8,
+        totalCapped: false,
         results: archived.map((thread) => ({ thread, matches: [] })),
       },
     };
@@ -1436,6 +1448,7 @@ describe("CommandPalette", () => {
     setSearchResponse({
       active: {
         total: 2,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("message-only", { title: "Weekly sync" }),
@@ -1461,7 +1474,7 @@ describe("CommandPalette", () => {
           },
         ],
       },
-      archived: { total: 0, results: [] },
+      archived: { total: 0, totalCapped: false, results: [] },
     });
     expect(optionTitles()).toEqual([
       expect.stringContaining("Fix 0"),
@@ -1504,6 +1517,7 @@ describe("CommandPalette", () => {
     setSearchResponse({
       active: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("fx-rollout", { title: "Fx rollout" }),
@@ -1518,7 +1532,7 @@ describe("CommandPalette", () => {
           },
         ],
       },
-      archived: { total: 0, results: [] },
+      archived: { total: 0, totalCapped: false, results: [] },
     });
     expectText(selectedOption(), "Fix 5");
     fireEvent.keyDown(input, { key: "ArrowUp" });
@@ -1572,6 +1586,7 @@ describe("CommandPalette", () => {
     modeState.searchResponse = {
       active: {
         total: 5,
+        totalCapped: false,
         results: [
           {
             thread: sceneSeed,
@@ -1622,7 +1637,7 @@ describe("CommandPalette", () => {
           },
         ],
       },
-      archived: { total: 0, results: [] },
+      archived: { total: 0, totalCapped: false, results: [] },
     };
     renderPalette();
     await openThreadSearch();
@@ -1717,10 +1732,11 @@ describe("CommandPalette", () => {
         }),
       );
       modeState.searchResponse = {
-        active: { total: 0, results: [] },
-        archived: { total: 0, results: [] },
+        active: { total: 0, totalCapped: false, results: [] },
+        archived: { total: 0, totalCapped: false, results: [] },
         [lifecycle]: {
           total: 7,
+          totalCapped: false,
           results: threads.map((thread) => ({ thread, matches: [] })),
         },
       };
@@ -1753,10 +1769,12 @@ describe("CommandPalette", () => {
     modeState.searchResponse = {
       active: {
         total: 1,
+        totalCapped: false,
         results: [{ thread: makeThread("active"), matches: [] }],
       },
       archived: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("archived", { archivedAt: Date.now() }),
@@ -1830,9 +1848,10 @@ describe("CommandPalette", () => {
       modeState.searchResponse = {
         active: {
           total: threads.length,
+          totalCapped: false,
           results: threads.map((thread) => ({ thread, matches: [] })),
         },
-        archived: { total: 0, results: [] },
+        archived: { total: 0, totalCapped: false, results: [] },
       };
       renderPalette();
       await openThreadSearch();
@@ -1939,9 +1958,10 @@ describe("CommandPalette", () => {
 
   it("opens an archived message match with its anchor", async () => {
     modeState.searchResponse = {
-      active: { total: 0, results: [] },
+      active: { total: 0, totalCapped: false, results: [] },
       archived: {
         total: 1,
+        totalCapped: false,
         results: [
           {
             thread: makeThread("archived-message", {
