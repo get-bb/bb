@@ -6,6 +6,8 @@ export const SHELL_SAFE_AREA_BOTTOM_PROPERTY = "--bb-safe-area-bottom";
 
 export const KEYBOARD_OPEN_MIN_SHRINK_PX = 80;
 
+const IOS_VIEWPORT_SETTLE_MS = 400;
+
 function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
 }
@@ -32,7 +34,10 @@ function attachMobileVisualViewportHeight(
   let appliedOverride: { top: number; height: number } | null = null;
   let shellContainingBlockHeight = 0;
   let shellContainingBlockHeightStale = true;
+  let layoutViewportWidth = 0;
   let viewportHeightBeforeKeyboard: number | null = null;
+  let dismissedKeyboardBaseline: number | null = null;
+  let viewportRecheck: number | null = null;
   let appliedKeyboardInset = false;
   const setKeyboardInset = (open: boolean) => {
     if (open === appliedKeyboardInset) return;
@@ -46,7 +51,7 @@ function attachMobileVisualViewportHeight(
       viewportStyleRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
     }
   };
-  const updateKeyboardInset = () => {
+  const updateKeyboardInset = (viewportHeight: number) => {
     if (
       viewportHeightBeforeKeyboard === null ||
       !isKeyboardFocusTarget(document.activeElement)
@@ -55,7 +60,7 @@ function attachMobileVisualViewportHeight(
       return;
     }
     setKeyboardInset(
-      viewportHeightBeforeKeyboard - visualViewport.height >=
+      viewportHeightBeforeKeyboard - viewportHeight >=
         KEYBOARD_OPEN_MIN_SHRINK_PX,
     );
   };
@@ -68,16 +73,40 @@ function attachMobileVisualViewportHeight(
   };
   const updateHeight = () => {
     animationFrame = null;
-    updateKeyboardInset();
+    const viewportHeight = visualViewport.height;
     if (visualViewport.scale !== 1) {
+      updateKeyboardInset(viewportHeight);
       clearViewportOverride();
       return;
     }
 
-    const visualViewportHeight = Math.round(visualViewport.height);
+    const visualViewportHeight = Math.round(viewportHeight);
     if (shellContainingBlockHeightStale) {
       shellContainingBlockHeight = document.body.clientHeight;
       shellContainingBlockHeightStale = false;
+      if (
+        restoreImmediatelyOnKeyboardDismissal &&
+        layoutViewportWidth !== window.innerWidth
+      ) {
+        layoutViewportWidth = window.innerWidth;
+        if (isKeyboardFocusTarget(document.activeElement)) {
+          viewportHeightBeforeKeyboard = shellContainingBlockHeight;
+        }
+        if (dismissedKeyboardBaseline !== null) {
+          dismissedKeyboardBaseline = shellContainingBlockHeight;
+        }
+      }
+    }
+    updateKeyboardInset(viewportHeight);
+    if (dismissedKeyboardBaseline !== null) {
+      if (
+        dismissedKeyboardBaseline - viewportHeight >=
+        KEYBOARD_OPEN_MIN_SHRINK_PX
+      ) {
+        clearViewportOverride();
+        return;
+      }
+      dismissedKeyboardBaseline = null;
     }
     const hasVisualViewportPan =
       visualViewport.offsetTop > 1 || window.scrollY > 0;
@@ -118,6 +147,41 @@ function attachMobileVisualViewportHeight(
     shellContainingBlockHeightStale = true;
     scheduleUpdate();
   };
+  const cancelViewportRecheck = () => {
+    if (viewportRecheck === null) return;
+    window.clearTimeout(viewportRecheck);
+    viewportRecheck = null;
+  };
+  const scheduleViewportRecheck = () => {
+    cancelViewportRecheck();
+    viewportRecheck = window.setTimeout(() => {
+      viewportRecheck = null;
+      scheduleContainingBlockUpdate();
+    }, IOS_VIEWPORT_SETTLE_MS);
+  };
+  const recheckDuringKeyboardResize = () => {
+    if (
+      restoreImmediatelyOnKeyboardDismissal &&
+      (appliedKeyboardInset || dismissedKeyboardBaseline !== null)
+    ) {
+      scheduleViewportRecheck();
+    }
+  };
+  const handleVisualViewportResize = () => {
+    recheckDuringKeyboardResize();
+    scheduleUpdate();
+  };
+  const handleWindowResize = () => {
+    recheckDuringKeyboardResize();
+    scheduleContainingBlockUpdate();
+  };
+  const reconcileViewport = () => {
+    scheduleContainingBlockUpdate();
+    if (restoreImmediatelyOnKeyboardDismissal) scheduleViewportRecheck();
+  };
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "visible") reconcileViewport();
+  };
   const handleVisualViewportScroll = () => {
     if (
       appliedOverride === null &&
@@ -131,6 +195,16 @@ function attachMobileVisualViewportHeight(
   const handleFocusOut = (event: FocusEvent) => {
     if (!isKeyboardFocusTarget(event.target)) return;
     if (isKeyboardFocusTarget(event.relatedTarget)) return;
+    if (
+      restoreImmediatelyOnKeyboardDismissal &&
+      viewportHeightBeforeKeyboard !== null &&
+      (appliedKeyboardInset ||
+        viewportHeightBeforeKeyboard - visualViewport.height >=
+          KEYBOARD_OPEN_MIN_SHRINK_PX)
+    ) {
+      dismissedKeyboardBaseline = viewportHeightBeforeKeyboard;
+      scheduleViewportRecheck();
+    }
     viewportHeightBeforeKeyboard = null;
     setKeyboardInset(false);
     if (!restoreImmediatelyOnKeyboardDismissal) return;
@@ -142,31 +216,44 @@ function attachMobileVisualViewportHeight(
   };
   const handleFocusIn = (event: FocusEvent) => {
     if (!isKeyboardFocusTarget(event.target)) return;
-    viewportHeightBeforeKeyboard ??= visualViewport.height;
+    if (viewportHeightBeforeKeyboard === null) {
+      cancelViewportRecheck();
+      viewportHeightBeforeKeyboard = Math.max(
+        visualViewport.height,
+        dismissedKeyboardBaseline ?? 0,
+      );
+      if (dismissedKeyboardBaseline !== null) scheduleViewportRecheck();
+      dismissedKeyboardBaseline = null;
+    }
     scheduleContainingBlockUpdate();
   };
 
   updateHeight();
-  visualViewport.addEventListener("resize", scheduleUpdate);
+  recheckDuringKeyboardResize();
+  visualViewport.addEventListener("resize", handleVisualViewportResize);
   visualViewport.addEventListener("scroll", handleVisualViewportScroll);
-  window.addEventListener("resize", scheduleContainingBlockUpdate);
-  window.addEventListener("orientationchange", scheduleContainingBlockUpdate);
+  window.addEventListener("resize", handleWindowResize);
+  window.addEventListener("orientationchange", reconcileViewport);
+  if (restoreImmediatelyOnKeyboardDismissal) {
+    window.addEventListener("pageshow", reconcileViewport);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  }
   document.addEventListener("focusout", handleFocusOut);
   document.addEventListener("focusin", handleFocusIn);
 
   return () => {
-    visualViewport.removeEventListener("resize", scheduleUpdate);
+    visualViewport.removeEventListener("resize", handleVisualViewportResize);
     visualViewport.removeEventListener("scroll", handleVisualViewportScroll);
-    window.removeEventListener("resize", scheduleContainingBlockUpdate);
-    window.removeEventListener(
-      "orientationchange",
-      scheduleContainingBlockUpdate,
-    );
+    window.removeEventListener("resize", handleWindowResize);
+    window.removeEventListener("orientationchange", reconcileViewport);
+    window.removeEventListener("pageshow", reconcileViewport);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     document.removeEventListener("focusout", handleFocusOut);
     document.removeEventListener("focusin", handleFocusIn);
     if (animationFrame !== null) {
       window.cancelAnimationFrame(animationFrame);
     }
+    cancelViewportRecheck();
     setKeyboardInset(false);
     clearViewportOverride();
   };
@@ -182,5 +269,5 @@ export function useMobileVisualViewportHeight(
       shell,
       restoreImmediatelyOnKeyboardDismissal,
     );
-  }, [restoreImmediatelyOnKeyboardDismissal, shell]);
+  }, [shell, restoreImmediatelyOnKeyboardDismissal]);
 }

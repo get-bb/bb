@@ -346,6 +346,91 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
+  it.each([
+    { dismissal: "after blur", focus: "blur", restoredHeight: 852 },
+    {
+      dismissal: "with the editor still focused",
+      focus: "retain",
+      restoredHeight: 852,
+    },
+    {
+      dismissal: "to a shorter viewport after blur",
+      focus: "blur",
+      restoredHeight: 830,
+    },
+    {
+      dismissal: "when another editor takes focus during dismissal",
+      focus: "refocus",
+      restoredHeight: 852,
+    },
+  ])(
+    "recovers from an early resize $dismissal",
+    async ({ focus, restoredHeight }) => {
+      const visualViewport = new FakeVisualViewport();
+      visualViewport.height = 852;
+      visualViewport.offsetTop = 0;
+      await withElementClientHeight(
+        document.body,
+        () => 852,
+        () =>
+          withFakeVisualViewport(visualViewport, async () => {
+            render(<VisualViewportShell enabled />);
+            const shell = screen.getByTestId("shell");
+            const root = screen.getByTestId("shell-height-root");
+            const editor = screen.getByTestId("editor");
+            const otherEditor = screen.getByTestId("other-editor");
+
+            act(() => {
+              editor.focus();
+              visualViewport.height = 552;
+              visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await flushScheduledViewportPass();
+            expect(shell.style.height).toBe("552px");
+            expect(root.style.getPropertyValue("--bb-shell-height")).toBe(
+              "552px",
+            );
+            expect(
+              root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+            ).toBe("0px");
+
+            act(() => {
+              if (focus !== "retain") editor.blur();
+              visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await flushScheduledViewportPass();
+            if (focus !== "retain") {
+              expect(shell.style.height).toBe("");
+              expect(root.style.getPropertyValue("--bb-shell-height")).toBe("");
+            }
+            if (focus === "refocus") {
+              act(() => otherEditor.focus());
+              await flushScheduledViewportPass();
+              expect(shell.style.height).toBe("552px");
+            }
+            visualViewport.height = restoredHeight;
+            const expectedOverride =
+              restoredHeight === 852 ? "" : `${restoredHeight}px`;
+
+            await waitFor(() => {
+              expect(shell.style.height).toBe(expectedOverride);
+              expect(root.style.getPropertyValue("--bb-shell-height")).toBe(
+                expectedOverride,
+              );
+              expect(
+                root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+              ).toBe("");
+            });
+            expect(document.activeElement).toBe(
+              { retain: editor, blur: document.body, refocus: otherEditor }[
+                focus
+              ],
+            );
+          }),
+      );
+    },
+  );
+
   it("keeps the shortened shell when focus moves between keyboard targets", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
