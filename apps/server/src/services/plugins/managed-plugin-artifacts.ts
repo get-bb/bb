@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { CORE_PLUGIN_DIRECTORIES, derivePluginId } from "@bb/domain";
 import {
@@ -41,6 +41,7 @@ import {
   gitArtifactCacheDir,
   hashInstallDir,
   nestedPluginRoots,
+  normalizePluginSubdirectory,
   npmArtifactCacheDir,
   npmPackageRoot,
   parsePluginSource,
@@ -147,10 +148,31 @@ async function installNpmCandidate(args: {
   ]);
 }
 
+const COLLECTION_MANIFEST_DIRECTORY = ".bb";
+const SPARSE_CHECKOUT_PATTERN_CHARACTERS = /[*?[\]\\]/;
+
+function sparseCheckoutDirectories(
+  selection: PluginSourceSelection,
+): string[] | null {
+  switch (selection.kind) {
+    case "root":
+      return null;
+    case "subdirectory": {
+      const subdirectory = normalizePluginSubdirectory(selection.path);
+      return SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(subdirectory)
+        ? null
+        : [subdirectory];
+    }
+    case "entry":
+      return [COLLECTION_MANIFEST_DIRECTORY];
+  }
+}
+
 async function fetchGitCommitShallow(
   url: string,
   stagingDir: string,
   commit: string,
+  sparseDirectories: string[] | null,
   notFoundHint: string | undefined,
 ): Promise<boolean> {
   await runInstallCommand("git", ["init", "--quiet", stagingDir], {
@@ -160,14 +182,33 @@ async function fetchGitCommitShallow(
     await runInstallCommand("git", [
       "-C",
       stagingDir,
+      "remote",
+      "add",
+      "origin",
+      url,
+    ]);
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
       "fetch",
       "--quiet",
       "--depth",
       "1",
       "--no-tags",
-      url,
+      ...(sparseDirectories === null ? [] : ["--filter=blob:none"]),
+      "origin",
       commit,
     ]);
+    if (sparseDirectories !== null) {
+      await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "sparse-checkout",
+        "set",
+        "--cone",
+        ...sparseDirectories,
+      ]);
+    }
     await runInstallCommand("git", [
       "-C",
       stagingDir,
@@ -184,16 +225,115 @@ async function fetchGitCommitShallow(
   }
 }
 
+async function disableSparseCheckout(stagingDir: string): Promise<false> {
+  await runInstallCommand("git", [
+    "-C",
+    stagingDir,
+    "sparse-checkout",
+    "disable",
+  ]);
+  return false;
+}
+
+interface GitCheckout {
+  subdirectory: string | null;
+  withFullTreeFallback<T>(fn: () => Promise<T>): Promise<T>;
+  finish(): Promise<void>;
+}
+
+function gitCheckout(
+  stagingDir: string,
+  subdirectory: string | null,
+  initiallySparse: boolean,
+): GitCheckout {
+  let sparse = initiallySparse;
+  return {
+    subdirectory,
+    async withFullTreeFallback(fn) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (!sparse || error instanceof PluginInstallCancelledError) {
+          throw error;
+        }
+        sparse = false;
+        try {
+          await disableSparseCheckout(stagingDir);
+        } catch (expandError) {
+          if (expandError instanceof PluginInstallCancelledError) {
+            throw expandError;
+          }
+          throw error;
+        }
+        return await fn();
+      }
+    },
+    async finish() {
+      await rm(join(stagingDir, ".git"), { recursive: true, force: true });
+    },
+  };
+}
+
+async function addSparseCheckoutDirectory(
+  stagingDir: string,
+  subdirectory: string,
+): Promise<boolean> {
+  if (SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(subdirectory)) {
+    return disableSparseCheckout(stagingDir);
+  }
+  try {
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "sparse-checkout",
+      "add",
+      subdirectory,
+    ]);
+    return true;
+  } catch (error) {
+    if (error instanceof PluginInstallCancelledError) throw error;
+    return disableSparseCheckout(stagingDir);
+  }
+}
+
+async function keepSparseCheckoutIfResolvable(
+  stagingDir: string,
+  path: string,
+): Promise<boolean> {
+  const resolvable = await realpath(path).then(
+    () => true,
+    () => false,
+  );
+  return resolvable || disableSparseCheckout(stagingDir);
+}
+
+type GitCheckoutTarget =
+  | { selection: PluginSourceSelection; sourceLabel: string }
+  | { subdirectory: string | null };
+
+function checkoutTargetSelection(
+  target: GitCheckoutTarget,
+): PluginSourceSelection {
+  if ("selection" in target) return target.selection;
+  return target.subdirectory === null
+    ? { kind: "root" }
+    : { kind: "subdirectory", path: target.subdirectory };
+}
+
 async function cloneGitCommit(
   url: string,
   stagingDir: string,
   commit: string,
+  target: GitCheckoutTarget,
   notFoundHint?: string,
-): Promise<void> {
+): Promise<GitCheckout> {
+  const selection = checkoutTargetSelection(target);
+  const sparseDirectories = sparseCheckoutDirectories(selection);
   const shallow = await fetchGitCommitShallow(
     url,
     stagingDir,
     commit,
+    sparseDirectories,
     notFoundHint,
   );
   if (!shallow) {
@@ -220,7 +360,33 @@ async function cloneGitCommit(
       `git resolved ${commit}, but checked out ${checkedOutCommit}`,
     );
   }
-  await rm(join(stagingDir, ".git"), { recursive: true, force: true });
+  let sparse = shallow && sparseDirectories !== null;
+  if (sparse && selection.kind === "entry") {
+    sparse = await keepSparseCheckoutIfResolvable(
+      stagingDir,
+      join(stagingDir, COLLECTION_MANIFEST_DIRECTORY, "plugins.json"),
+    );
+  }
+  const subdirectory =
+    "selection" in target
+      ? await resolveSelectedSubdirectory({
+          checkoutDir: stagingDir,
+          selection: target.selection,
+          sourceLabel: target.sourceLabel,
+        })
+      : target.subdirectory;
+  if (sparse && subdirectory !== null && sparseDirectories !== null) {
+    if (!sparseDirectories.includes(subdirectory)) {
+      sparse = await addSparseCheckoutDirectory(stagingDir, subdirectory);
+    }
+    if (sparse) {
+      sparse = await keepSparseCheckoutIfResolvable(
+        stagingDir,
+        pluginRootDir(stagingDir, subdirectory),
+      );
+    }
+  }
+  return gitCheckout(stagingDir, subdirectory, sparse);
 }
 
 function npmSourceString(intent: NpmSourceIntentForResolution): string {
@@ -573,6 +739,12 @@ export function createManagedPluginArtifacts(
     );
   }
 
+  function installedCheckoutRoots(checkoutRoot: string): string[] {
+    return listPluginArtifactsAtOrUnderPath(deps.db, checkoutRoot, sep).map(
+      (artifact) => relative(checkoutRoot, artifact.path),
+    );
+  }
+
   async function refreshAncestorArtifactHashes(args: {
     checkoutRoot: string;
     changedRoot: string;
@@ -676,12 +848,13 @@ export function createManagedPluginArtifacts(
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetDir });
-      await cloneGitCommit(args.parsed.url, stagingDir, args.candidate.commit);
-      const subdirectory = await resolveSelectedSubdirectory({
-        checkoutDir: stagingDir,
-        selection: args.selection,
-        sourceLabel: args.source,
-      });
+      const checkout = await cloneGitCommit(
+        args.parsed.url,
+        stagingDir,
+        args.candidate.commit,
+        { selection: args.selection, sourceLabel: args.source },
+      );
+      const { subdirectory } = checkout;
       const root = pluginRootDir(stagingDir, subdirectory);
       const realRoot = await realPathInside(
         stagingDir,
@@ -689,7 +862,9 @@ export function createManagedPluginArtifacts(
         "git plugin subdirectory",
         subdirectory === null,
       );
-      const manifest = await readPluginManifest(realRoot);
+      const manifest = await checkout.withFullTreeFallback(() =>
+        readPluginManifest(realRoot),
+      );
       assertExpectedPluginId(args.context, manifest.id, args.source);
       const compatibility = evaluateCompatibility({
         bbRange: manifest.bbEngineRange,
@@ -843,17 +1018,14 @@ export function createManagedPluginArtifacts(
       await mkdir(dirname(targetDir), { recursive: true });
       try {
         deps.onArtifactMaterialize?.({ path: targetDir });
-        await cloneGitCommit(
+        const checkout = await cloneGitCommit(
           parsed.url,
           stagingDir,
           resolvedCommit,
+          { selection, sourceLabel: source },
           '"git" was not found on PATH — git: plugin installs require git',
         );
-        const stagedSubdirectory = await resolveSelectedSubdirectory({
-          checkoutDir: stagingDir,
-          selection,
-          sourceLabel: source,
-        });
+        const stagedSubdirectory = checkout.subdirectory;
         const stagedRegistrationIdentity = identityFor(stagedSubdirectory);
         const stagedTargetRoot = pluginRootDir(targetDir, stagedSubdirectory);
         const stagedRealRoot = await realPathInside(
@@ -862,7 +1034,9 @@ export function createManagedPluginArtifacts(
           "git plugin subdirectory",
           stagedSubdirectory === null,
         );
-        const stagedManifest = await readPluginManifest(stagedRealRoot);
+        const stagedManifest = await checkout.withFullTreeFallback(() =>
+          readPluginManifest(stagedRealRoot),
+        );
         assertExpectedPluginId(context, stagedManifest.id, source);
         assertInstallRegistrationAvailable(
           getInstalledPlugin(deps.db, stagedManifest.id),
@@ -870,11 +1044,14 @@ export function createManagedPluginArtifacts(
           stagedManifest.id,
         );
         refuseBuiltinShadow(stagedManifest.id);
-        await validateInstallDir({
-          rootDir: stagedRealRoot,
-          source,
-          refuseEngineMismatch: true,
-        });
+        await checkout.withFullTreeFallback(() =>
+          validateInstallDir({
+            rootDir: stagedRealRoot,
+            source,
+            refuseEngineMismatch: true,
+          }),
+        );
+        await checkout.finish();
         const contentHash = await hashInstallDir(stagedRealRoot);
         const artifact = ownedOrCreatedArtifact({
           owned: getPluginArtifactByResolution(deps.db, {
@@ -914,6 +1091,7 @@ export function createManagedPluginArtifacts(
               subdirectory: stagedSubdirectory,
               contentHash,
               preserveNestedRoots: preservedNestedRoots(stagedTargetRoot),
+              installedRoots: installedCheckoutRoots(targetDir),
             });
             await refreshAncestorArtifactHashes({
               checkoutRoot: targetDir,
@@ -1263,10 +1441,11 @@ export function createManagedPluginArtifacts(
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetRoot });
-      await cloneGitCommit(
+      const checkout = await cloneGitCommit(
         url,
         stagingDir,
         args.commit,
+        { subdirectory: args.row.sourceGitSubdirectory },
         '"git" was not found on PATH — git plugin updates require git',
       );
       const pluginRoot = pluginRootDir(
@@ -1289,7 +1468,9 @@ export function createManagedPluginArtifacts(
       }
       let manifest: PluginManifest;
       try {
-        manifest = await readPluginManifest(realPluginRoot);
+        manifest = await checkout.withFullTreeFallback(() =>
+          readPluginManifest(realPluginRoot),
+        );
       } catch (error) {
         return {
           outcome: "invalid",
@@ -1316,17 +1497,20 @@ export function createManagedPluginArtifacts(
         };
       }
       try {
-        await (args.promote ? validateInstallDir : validateManifestOnly)({
-          rootDir: realPluginRoot,
-          source: args.row.source,
-          refuseEngineMismatch: true,
-        });
+        await checkout.withFullTreeFallback(() =>
+          (args.promote ? validateInstallDir : validateManifestOnly)({
+            rootDir: realPluginRoot,
+            source: args.row.source,
+            refuseEngineMismatch: true,
+          }),
+        );
       } catch (error) {
         return {
           outcome: "invalid",
           detail: error instanceof Error ? error.message : String(error),
         };
       }
+      await checkout.finish();
       let artifactId: string | null = null;
       if (args.promote) {
         if (args.activationSelector === undefined) {
@@ -1371,6 +1555,7 @@ export function createManagedPluginArtifacts(
               subdirectory: args.row.sourceGitSubdirectory,
               contentHash,
               preserveNestedRoots: preservedNestedRoots(targetRoot),
+              installedRoots: installedCheckoutRoots(targetDir),
             });
             await refreshAncestorArtifactHashes({
               checkoutRoot: targetDir,

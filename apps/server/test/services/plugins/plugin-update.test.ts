@@ -606,6 +606,44 @@ describe("plugin update service and routes", () => {
     expect(materializationCount).toBe(2);
   });
 
+  it("updates a subdirectory plugin that imports from outside its directory", async () => {
+    await installSubdirectoryUpdater();
+    await mkdir(join(repo, "shared"));
+    await writeFile(
+      join(repo, "shared", "message.ts"),
+      'export const message = "shared one";',
+    );
+    await writeFile(
+      join(repo, "plugins", "updater", "server.ts"),
+      'import { message } from "../../shared/message.js";\nexport default function plugin(bb: any) { bb.log.info(message); }',
+    );
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Import a shared module"]);
+    const nextCommit = await git(repo, ["rev-parse", "HEAD"]);
+
+    expect(await service.checkForUpdates("updater")).toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: nextCommit },
+      },
+    ]);
+    await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
+    const installed = getInstalledPluginRegistration(db, "updater");
+    expect(installed).toMatchObject({ gitResolvedCommit: nextCommit });
+    const rootDir = service
+      .list()
+      .find((entry) => entry.id === "updater")?.rootDir;
+    if (rootDir === undefined) throw new Error("updater has no rootDir");
+    expect(
+      await readFile(join(rootDir, "dist", "server.js"), "utf8"),
+    ).toContain("shared one");
+    await stat(join(rootDir, "..", "..", "shared", "message.ts"));
+  });
+
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",
     async (selector) => {
