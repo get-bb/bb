@@ -64,12 +64,52 @@ describe("app shortcut keys across keyboard layouts", () => {
     { layout: "Dvorak", input: press("k", "KeyV", ctrl), key: "k" },
     { layout: "Colemak", input: press("e", "KeyK", ctrl), key: "e" },
     { layout: "AZERTY", input: press("a", "KeyQ", ctrl), key: "a" },
-    { layout: "AZERTY", input: press("&", "Digit1", ctrl), key: "&" },
+    { layout: "AZERTY", input: press("&", "Digit1", ctrl), key: "1" },
+    { layout: "no code", input: press("&", "", ctrl), key: "&" },
+    { layout: "numpad", input: press("1", "Numpad1", ctrl), key: "1" },
     { layout: "QWERTZ", input: press("z", "KeyY", ctrl), key: "z" },
     { layout: "QWERTZ", input: press("ü", "BracketLeft", ctrl), key: "ü" },
     { layout: "Turkish", input: press("ı", "KeyI", ctrl), key: "ı" },
   ])("$layout $input.key on $input.code is $key", ({ input, key }) => {
     expect(normalizeAppShortcutInputKey(input).toLowerCase()).toBe(key);
+  });
+
+  it.each([
+    ["1", "&"],
+    ["2", "é"],
+    ["3", '"'],
+    ["4", "'"],
+    ["5", "("],
+    ["6", "§"],
+    ["7", "è"],
+    ["8", "!"],
+    ["9", "ç"],
+    ["0", "à"],
+  ])("uses the digit row for %s shortcuts and recording", (digit, symbol) => {
+    for (const useMetaForMod of [true, false]) {
+      for (const shiftKey of [true, false]) {
+        const input = press(shiftKey ? digit : symbol, `Digit${digit}`, {
+          metaKey: useMetaForMod,
+          ctrlKey: !useMetaForMod,
+          shiftKey,
+        });
+        expect(
+          matchesAppShortcut(
+            input,
+            shortcut(digit, { mod: true, shift: shiftKey }),
+            useMetaForMod,
+          ),
+        ).toBe(true);
+        expect(normalizeAppShortcutInputKey(input)).toBe(digit);
+        expect(
+          matchesAppShortcut(
+            input,
+            shortcut(digit, { mod: true, shift: !shiftKey }),
+            useMetaForMod,
+          ),
+        ).toBe(false);
+      }
+    }
   });
 
   it.each([
@@ -118,11 +158,15 @@ describe("app shortcut keys across keyboard layouts", () => {
     ).toBe(true);
   });
 
-  it("still matches shortcuts saved under a non-Latin character", () => {
+  it.each([
+    ["л", "KeyK"],
+    ["&", "Digit1"],
+    ["é", "Digit2"],
+  ])("still matches shortcuts saved under %s", (key, code) => {
     expect(
       matchesAppShortcut(
-        press("л", "KeyK", ctrl),
-        shortcut("л", { mod: true }),
+        press(key, code, ctrl),
+        shortcut(key, { mod: true }),
         false,
       ),
     ).toBe(true);
