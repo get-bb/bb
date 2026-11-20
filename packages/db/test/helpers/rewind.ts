@@ -184,6 +184,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
 }
 
@@ -197,6 +198,10 @@ export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
       "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
     );
   }
+}
+
+export function dropForkHistoryCopyIndex(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS threads_fork_history_copy_idx");
 }
 
 export function dropEnvironmentHoldColumns(db: DbConnection): void {

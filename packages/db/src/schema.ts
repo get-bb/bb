@@ -712,6 +712,11 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+    index("threads_fork_history_copy_idx")
+      .on(table.id)
+      .where(
+        sql`(CASE WHEN json_valid(${table.startupContext}) THEN json_extract(${table.startupContext}, '$.historyCopy') END) IS NOT NULL`,
+      ),
   ],
 );
 

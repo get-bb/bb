@@ -264,7 +264,7 @@ export function listThreadIdsCopyingForkHistory(db: DbConnection): string[] {
     .where(
       and(
         isNull(threads.deletedAt),
-        sql`json_extract(${threads.startupContext}, '$.historyCopy') = ${FORK_HISTORY_COPY_MARK}`,
+        sql`(CASE WHEN json_valid(${threads.startupContext}) THEN json_extract(${threads.startupContext}, '$.historyCopy') END) = ${FORK_HISTORY_COPY_MARK}`,
       ),
     )
     .all()

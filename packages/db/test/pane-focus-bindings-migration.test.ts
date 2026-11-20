@@ -17,6 +17,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -69,6 +70,7 @@ function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")

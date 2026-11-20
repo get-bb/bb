@@ -5,6 +5,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
@@ -23,6 +24,7 @@ function databaseBeforeHandoff(
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(

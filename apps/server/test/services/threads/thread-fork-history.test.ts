@@ -249,6 +249,25 @@ describe("fork history copy", () => {
     });
   });
 
+  it("finds forks still copying history through an index instead of scanning every thread", () => {
+    const db = createMigratedConnection();
+    const { fork } = seedSource(db);
+    const prepare = vi.spyOn(db.$client, "prepare");
+
+    expect(listThreadIdsCopyingForkHistory(db)).toEqual([fork.id]);
+
+    const [sweepSql] = prepare.mock.calls.map(([sql]) => sql);
+    prepare.mockRestore();
+    const plan = db.$client
+      .prepare<string[], { detail: string }>(`EXPLAIN QUERY PLAN ${sweepSql}`)
+      .all("copying")
+      .map((row) => row.detail);
+    expect(plan).toEqual([
+      "SCAN threads USING INDEX threads_fork_history_copy_idx",
+    ]);
+    db.$client.close();
+  });
+
   it("refuses to dispatch a fork while its history is being copied", async () => {
     await withTestHarness(async (harness) => {
       const { fork } = seedSource(harness.db);
