@@ -169,7 +169,7 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async ({ offset = 0, limit = 500 } = {}) =>
+          list: async ({ offset = 0, limit }) =>
             rows.slice(offset, offset + limit),
           archive: async ({ threadId }) => {
             if (threadId === "thr_001") throw new Error("offline");

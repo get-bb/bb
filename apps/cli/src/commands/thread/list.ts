@@ -74,7 +74,9 @@ export function registerListCommand(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ThreadListCommandOptions) => {
-        const limit = parseNonNegativeIntegerOption(opts.limit, "--limit");
+        const limit =
+          parseNonNegativeIntegerOption(opts.limit, "--limit") ??
+          LIST_PAGE_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const projectId = resolveExplicitIdFlag({
@@ -131,7 +133,7 @@ export function registerListCommand(
           ...(sectionId ? { sectionId } : {}),
           ...(opts.unsectioned ? { unsectioned: true } : {}),
           ...(opts.includeHidden ? { includeHidden: true } : {}),
-          ...(limit === undefined ? {} : { limit }),
+          limit,
           ...(offset === undefined ? {} : { offset }),
         });
         if (outputJson(opts, threads)) return;

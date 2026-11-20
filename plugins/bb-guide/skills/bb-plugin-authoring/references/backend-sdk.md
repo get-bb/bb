@@ -263,10 +263,10 @@ await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 `threads.list` filters on `projectId`, `environmentId`, `hostId`,
 `parentThreadId`, `sourceThreadId`, `sectionId`, `originKind`,
 `originPluginId`, `archived`, `unsectioned`, `hasParent`, and `includeHidden`,
-and it returns one page: `limit` defaults to 200 and is rejected above 500,
-so a caller that needs every match pages with `offset` until a page comes back
+and it returns one page: `limit` is required and is rejected above 500, so a
+caller that needs every match pages with `offset` until a page comes back
 shorter than its `limit` (`environments.list` pages the same way). `threadIds`
-(at most 200, so a full batch fits the default page) narrows it to
+(at most 200, so pass `limit: 200` to get a full batch in one page) narrows it to
 those threads and leaves out unknown or deleted IDs, so it also answers which
 of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,

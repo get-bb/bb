@@ -34,7 +34,7 @@ Listing:
   The list prints one page: 200 threads unless --limit says otherwise, at
   most 500. When a page is full, the table is followed by a note on stderr
   naming the --offset of the next page; --json prints only the page
-  (SDK: `threads.list({ limit, offset })`, same bounds).
+  (SDK: `threads.list({ limit, offset })`, where `limit` is required).
 
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages

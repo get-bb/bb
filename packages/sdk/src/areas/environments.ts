@@ -80,11 +80,12 @@ export interface EnvironmentListArgs {
   hostId?: string;
   instanceKey?: string;
   /**
-   * Page size: 200 rows when omitted, at most 500; a larger value is rejected.
-   * A caller that needs every row pages with `offset` until a page comes back
-   * shorter than its `limit`.
+   * Page size, at most 500; a larger value is rejected. A caller that needs
+   * every row pages with `offset` until a page comes back shorter than its
+   * `limit`. Plugins built before `limit` was required may still omit it at
+   * runtime; the server then returns its default page of 200.
    */
-  limit?: number;
+  limit: number;
   /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   path?: string;
@@ -133,7 +134,7 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
-  list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
+  list(args: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
     args?: EnvironmentListProvidersArgs,
   ): Promise<EnvironmentListProvidersResult>;

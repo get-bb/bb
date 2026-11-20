@@ -24,6 +24,7 @@ export async function readThreadsById(
     rows.push(
       ...(await bb.sdk.threads.list({
         includeHidden: true,
+        limit: 200,
         threadIds: threadIds.slice(offset, offset + 200),
         signal,
       })),

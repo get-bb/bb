@@ -113,8 +113,7 @@ const GIT_COMMAND_REPLACEMENTS: Record<
 
 function parseEnvironmentHolder(value: string): EnvironmentHolder {
   const parsed = environmentHolderSchema.safeParse(value);
-  if (!parsed.success)
-    throw new Error('--held-by must be "user".');
+  if (!parsed.success) throw new Error('--held-by must be "user".');
   return parsed.data;
 }
 
@@ -305,7 +304,9 @@ export function registerEnvironmentCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: EnvironmentListCommandOptions) => {
-        const limit = parseNonNegativeIntegerOption(opts.limit, "--limit");
+        const limit =
+          parseNonNegativeIntegerOption(opts.limit, "--limit") ??
+          LIST_PAGE_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const hostId =
@@ -326,7 +327,7 @@ export function registerEnvironmentCommands(
           ...(opts.status === undefined
             ? {}
             : { status: parseEnvironmentStatus(opts.status) }),
-          ...(limit === undefined ? {} : { limit }),
+          limit,
           ...(offset === undefined ? {} : { offset }),
         });
         if (outputJson(opts, rows)) return;

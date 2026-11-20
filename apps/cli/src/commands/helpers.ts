@@ -4,7 +4,6 @@ import {
   reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
-import { LIST_PAGE_DEFAULT_LIMIT } from "@bb/server-contract";
 import type { ResolvedId } from "../context-env.js";
 
 export {
@@ -119,13 +118,13 @@ export function parseNonNegativeIntegerOption(
 
 interface PrintListPageNoticeArgs {
   count: number;
-  limit: number | undefined;
+  limit: number;
   noun: string;
   offset: number | undefined;
 }
 
 export function printListPageNotice(args: PrintListPageNoticeArgs): void {
-  if (args.count < (args.limit ?? LIST_PAGE_DEFAULT_LIMIT)) return;
+  if (args.count < args.limit) return;
   const offset = args.offset ?? 0;
   console.error(
     `(Showing ${args.count} ${args.noun} from offset ${offset}; more may follow. Use --offset ${offset + args.count} for the next page.)`,
