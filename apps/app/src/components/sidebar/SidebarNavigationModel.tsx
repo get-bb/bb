@@ -21,6 +21,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   useAppCommandRunner,
   useAppCommandShortcut,
+  useIsAppCommandAvailable,
   useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
@@ -199,10 +200,7 @@ export function SidebarNavigationModelProvider({
   const setPluginEnabled = useSetPluginEnabled();
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
-  const searchThreadsDisabled = !commandRunner.isCommandAvailable(
-    "thread.search",
-    null,
-  );
+  const searchThreadsDisabled = !useIsAppCommandAvailable("thread.search");
   const newThreadDisabled = host.onNewChat === undefined;
 
   const rawItems = useMemo(() => {
