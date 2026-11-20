@@ -45,6 +45,7 @@ function buildTestRestartCommand(): string {
     logPath: "/tmp/bb logs/host-daemon.log",
     parentPid: 789,
     pidPath: "/tmp/bb-restart.pid",
+    serverDataDir: "/tmp/bb server data",
     serverUrl: "http://127.0.0.1:3334",
   });
 }
@@ -314,6 +315,7 @@ describe("standalone restart command", () => {
       logPath: "/tmp/host-daemon.log",
       parentPid: 789,
       pidPath: "/tmp/host-daemon-restart.pid",
+      serverDataDir: "/tmp/bb server data",
       serverUrl: "http://127.0.0.1:3334",
     });
 
@@ -335,8 +337,18 @@ describe("standalone restart command", () => {
     const logPath = path.join(tempDir, "host-daemon.log");
     const entrypoint = path.join(tempDir, "daemon-child.mjs");
     const lifeline = await createProcessLifeline();
+    const serverDataDir = path.join(tempDir, "server-data");
+    await fs.mkdir(serverDataDir);
+    await fs.writeFile(
+      path.join(serverDataDir, "local-access-token"),
+      "qa-secret\n",
+      "utf8",
+    );
     const server = createServer((request, response) => {
-      if (request.url === "/api/v1/hosts") {
+      if (
+        request.url === "/api/v1/hosts" &&
+        request.headers.authorization === "Bearer bbl_qa-secret"
+      ) {
         response.setHeader("content-type", "application/json");
         response.end('[{"id":"host_123","status":"connected"}]');
         return;
@@ -381,6 +393,7 @@ describe("standalone restart command", () => {
         logPath,
         parentPid: process.pid,
         pidPath,
+        serverDataDir,
         serverUrl: `http://127.0.0.1:${address.port}`,
       });
 

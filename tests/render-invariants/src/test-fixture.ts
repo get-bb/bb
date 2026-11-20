@@ -31,7 +31,12 @@ export function useRenderFixture() {
       threadId: string,
       run: (session: RenderSession) => Promise<void>,
     ): Promise<void> {
-      const session = await openThread(browser, fixture.serverUrl, threadId);
+      const session = await openThread(
+        browser,
+        fixture.serverUrl,
+        fixture.harness.server.localAuthorization,
+        threadId,
+      );
       try {
         await run(session);
       } finally {

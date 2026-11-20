@@ -1,5 +1,7 @@
 import path from "path";
-import { defineConfig } from "vite";
+import type { ClientRequest } from "node:http";
+import { defineConfig, type HttpProxy } from "vite";
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import tailwindcss from "@tailwindcss/vite";
 import { resolveCurrentDevInstanceConfig } from "@bb/config/runtime";
 import { forkablePluginPaths } from "../vite-forkable-plugin-paths.js";
@@ -12,6 +14,15 @@ const devInstance = resolveCurrentDevInstanceConfig(repoRoot);
 const trustedDevAppHeaders = {
   origin: devInstance.serverUrl,
 };
+
+function signInDevServerProxy(proxy: HttpProxy.Server): void {
+  const authorize = (request: ClientRequest): void => {
+    const token = readLocalAccessTokenSync(devInstance.dataDir);
+    if (token !== null) request.setHeader("authorization", `Bearer ${token}`);
+  };
+  proxy.on("proxyReq", authorize);
+  proxy.on("proxyReqWs", authorize);
+}
 
 export default defineConfig({
   plugins: [
@@ -47,12 +58,14 @@ export default defineConfig({
         target: devInstance.serverUrl,
         changeOrigin: true,
         headers: trustedDevAppHeaders,
+        configure: signInDevServerProxy,
       },
       "/ws": {
         target: devInstance.serverUrl,
         changeOrigin: true,
         ws: true,
         headers: trustedDevAppHeaders,
+        configure: signInDevServerProxy,
       },
     },
   },

@@ -54,6 +54,7 @@ import {
 } from "bb-plugin-bb--git/contract";
 import { z } from "zod";
 import { createNodeBbSdk } from "@bb/sdk/node";
+import { createIntegrationFetch } from "./fetch.js";
 
 export interface CreateHostThreadOptions {
   execution?: ThreadExecutionRequestOptions;
@@ -259,12 +260,20 @@ export async function getEnvironment(
   return environmentSchema.parse(await response.json());
 }
 
+export interface IntegrationServerAccess {
+  baseUrl: string;
+  localAuthorization: string;
+}
+
 function callGitPlugin(
-  baseUrl: string,
+  server: IntegrationServerAccess,
   method: string,
   input: JsonValue,
 ): Promise<unknown> {
-  return createNodeBbSdk({ baseUrl }).plugins.callRpc({
+  return createNodeBbSdk({
+    baseUrl: server.baseUrl,
+    fetch: createIntegrationFetch(server.localAuthorization),
+  }).plugins.callRpc({
     pluginId: GIT_PLUGIN_ID,
     method,
     input,
@@ -273,22 +282,22 @@ function callGitPlugin(
 }
 
 export async function getEnvironmentBranches(
-  baseUrl: string,
+  server: IntegrationServerAccess,
   environmentId: string,
 ): Promise<GitBranchOptions> {
   return gitBranchOptionsSchema.parse(
-    await callGitPlugin(baseUrl, "branches", { environmentId }),
+    await callGitPlugin(server, "branches", { environmentId }),
   );
 }
 
 export async function getEnvironmentDiff(
   api: PublicApiClient,
-  baseUrl: string,
+  server: IntegrationServerAccess,
   environmentId: string,
 ): Promise<ThreadGitDiffResponse> {
   const mergeBaseBranch = await requireMergeBaseBranch(api, environmentId);
   const result = gitDiffResultSchema.parse(
-    await callGitPlugin(baseUrl, "diff", {
+    await callGitPlugin(server, "diff", {
       environmentId,
       target: { type: "all", mergeBaseBranch },
     }),
@@ -299,11 +308,11 @@ export async function getEnvironmentDiff(
 }
 
 export async function getEnvironmentDiffFiles(
-  baseUrl: string,
+  server: IntegrationServerAccess,
   environmentId: string,
 ): Promise<GitFilesResult> {
   return gitFilesResultSchema.parse(
-    await callGitPlugin(baseUrl, "files", {
+    await callGitPlugin(server, "files", {
       environmentId,
       target: { type: "uncommitted" },
       ignoreWhitespace: false,
@@ -312,7 +321,7 @@ export async function getEnvironmentDiffFiles(
 }
 
 export async function getEnvironmentDiffPatches(
-  baseUrl: string,
+  server: IntegrationServerAccess,
   environmentId: string,
   files: readonly { path: string; revision: string }[],
 ): Promise<Record<string, GitPatchResult>> {
@@ -327,17 +336,17 @@ export async function getEnvironmentDiffPatches(
   );
   return z
     .record(z.string(), gitPatchResultSchema)
-    .parse(await callGitPlugin(baseUrl, "patches", { keys }));
+    .parse(await callGitPlugin(server, "patches", { keys }));
 }
 
 export async function getEnvironmentStatus(
   api: PublicApiClient,
-  baseUrl: string,
+  server: IntegrationServerAccess,
   environmentId: string,
 ): Promise<GitStatusResult> {
   const mergeBaseBranch = await requireMergeBaseBranch(api, environmentId);
   return gitStatusResultSchema.parse(
-    await callGitPlugin(baseUrl, "workspaceStatus", {
+    await callGitPlugin(server, "workspaceStatus", {
       environmentId,
       mergeBaseBranch,
     }),

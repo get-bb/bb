@@ -392,7 +392,7 @@ describe("spawnLoggedProcess", () => {
     );
 
     await expect(
-      createHostEnrollKey("http://127.0.0.1:4567"),
+      createHostEnrollKey("http://127.0.0.1:4567", "Bearer bbl_qa"),
     ).resolves.toMatchObject({
       enrollKey: "bbde_standalone",
       hostId: "host_standalone",

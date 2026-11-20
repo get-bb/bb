@@ -291,6 +291,7 @@ async function main(): Promise<void> {
   const details = {
     hostId: harness.hostId,
     projectId: project.id,
+    serverDataDir: harness.server.config.dataDir,
     serverUrl: harness.serverUrl,
     threads: {
       completed: completed.thread.id,

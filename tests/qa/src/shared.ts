@@ -1,3 +1,8 @@
+import {
+  formatLocalAccessTokenPath,
+  LOCAL_ACCESS_TOKEN_PREFIX,
+  readLocalAccessTokenSync,
+} from "@bb/config/local-access-token";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import type { ChildProcess, ExecFileException } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
@@ -119,6 +124,7 @@ interface BuildDaemonRestartCommandArgs {
   logPath: string;
   parentPid: number;
   pidPath: string;
+  serverDataDir: string;
   serverUrl: string;
 }
 
@@ -292,13 +298,25 @@ export async function createTestGitRepo(repoDir: string): Promise<string> {
   return repoDir;
 }
 
+export function readQaServerAuthorization(serverDataDir: string): string {
+  const token = readLocalAccessTokenSync(serverDataDir);
+  if (token === null) {
+    throw new Error(
+      `The QA server wrote no local access token to ${formatLocalAccessTokenPath(serverDataDir)}`,
+    );
+  }
+  return `Bearer ${token}`;
+}
+
 export async function createProject(
   serverUrl: string,
+  authorization: string,
   project: CreateProjectRequest,
 ): Promise<ProjectResponse> {
   const response = await fetch(`${serverUrl}/api/v1/projects`, {
     method: "POST",
     headers: {
+      authorization,
       "content-type": "application/json",
     },
     body: JSON.stringify(project),
@@ -313,10 +331,12 @@ export async function createProject(
 
 export async function createHostEnrollKey(
   serverUrl: string,
+  authorization: string,
 ): Promise<HostDaemonEnrollKeyResponse> {
   const response = await fetch(`${serverUrl}/internal/hosts/enroll-key`, {
     method: "POST",
     headers: {
+      authorization,
       "content-type": "application/json",
     },
     body: JSON.stringify({}),
@@ -766,7 +786,7 @@ export function buildDaemonRestartCommand(
   const startCommand = `(${startScript}) </dev/null >> ${shellSingleQuote(args.logPath)} 2>&1`;
   const waitForReconnectCommand = [
     "connected=0",
-    `for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if curl -fsS ${shellSingleQuote(`${args.serverUrl}/api/v1/hosts`)} | jq -e ${shellSingleQuote(`any(.[]; .id == ${JSON.stringify(args.hostId)} and .status == "connected")`)} >/dev/null; then connected=1; break; fi`,
+    `for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if curl -fsS -H "Authorization: Bearer ${LOCAL_ACCESS_TOKEN_PREFIX}$(cat ${shellSingleQuote(formatLocalAccessTokenPath(args.serverDataDir))})" ${shellSingleQuote(`${args.serverUrl}/api/v1/hosts`)} | jq -e ${shellSingleQuote(`any(.[]; .id == ${JSON.stringify(args.hostId)} and .status == "connected")`)} >/dev/null; then connected=1; break; fi`,
     "sleep 1",
     "done",
     `[ "$connected" = 1 ]`,
@@ -798,12 +818,17 @@ async function waitFor<TResult>(
   throw new Error(`Timed out waiting for ${options.description}`);
 }
 
-export async function waitForConnectedHost(serverUrl: string): Promise<Host> {
+export async function waitForConnectedHost(
+  serverUrl: string,
+  authorization: string,
+): Promise<Host> {
   return waitFor(
     async () => {
       let response;
       try {
-        response = await fetch(`${serverUrl}/api/v1/hosts`);
+        response = await fetch(`${serverUrl}/api/v1/hosts`, {
+          headers: { authorization },
+        });
       } catch {
         return null;
       }
@@ -824,7 +849,7 @@ async function waitForServerReady(serverUrl: string): Promise<boolean> {
   return waitFor(
     async () => {
       try {
-        const response = await fetch(`${serverUrl}/api/v1/system/config`);
+        const response = await fetch(`${serverUrl}/health`);
         return response.ok ? true : null;
       } catch {
         return null;

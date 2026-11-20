@@ -70,7 +70,9 @@ describe("createIntegrationFetch", () => {
   it("retries an idempotent GET after a transient socket reset", async () => {
     const server = await startResetServer({ resetFirstRequest: true });
     try {
-      const response = await createIntegrationFetch()(server.baseUrl);
+      const response = await createIntegrationFetch("Bearer bbl_test")(
+        server.baseUrl,
+      );
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ attempts: 2, ok: true });
@@ -84,7 +86,9 @@ describe("createIntegrationFetch", () => {
     const server = await startResetServer({ resetFirstRequest: true });
     try {
       await expect(
-        createIntegrationFetch()(server.baseUrl, { method: "POST" }),
+        createIntegrationFetch("Bearer bbl_test")(server.baseUrl, {
+          method: "POST",
+        }),
       ).rejects.toThrow("fetch failed");
       expect(server.getAttempts()).toBe(1);
     } finally {

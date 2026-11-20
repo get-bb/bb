@@ -33,7 +33,11 @@ import {
 } from "@bb/host-daemon/test";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
-import { createAccessService } from "../../../apps/server/src/services/access/access-service.js";
+import {
+  createAccessService,
+  readOrCreateAccessSigningKey,
+  readOrCreateLocalAccessToken,
+} from "../../../apps/server/src/services/access/access-service.js";
 import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
@@ -108,6 +112,7 @@ const testLogger: ServerLogger = {
 export interface RunningTestServer {
   sweepEnvironments(): Promise<void>;
   baseUrl: string;
+  localAuthorization: string;
   close(): Promise<void>;
   config: ServerRuntimeConfig;
   db: DbConnection;
@@ -331,7 +336,11 @@ async function startIntegrationServer(
     },
   });
   const serverDeps = {
-    access: createAccessService({ db }),
+    access: createAccessService({
+      db,
+      localToken: await readOrCreateLocalAccessToken(serverDataDir),
+      signingKey: await readOrCreateAccessSigningKey(serverDataDir),
+    }),
     appUpdate,
     cliCommand: createCliCommandService({
       env: {},
@@ -411,6 +420,7 @@ async function startIntegrationServer(
   return {
     sweepEnvironments: () => sweepProviderLifecycles(serverDeps),
     baseUrl,
+    localAuthorization: `Bearer ${await readOrCreateLocalAccessToken(serverDataDir)}`,
     config,
     db,
     hub,
@@ -640,7 +650,7 @@ export async function createIntegrationHarness(
   try {
     server = await startIntegrationServer(tmpRoot, options);
     const api = createPublicApiClient(server.baseUrl, {
-      fetch: createIntegrationFetch(),
+      fetch: createIntegrationFetch(server.localAuthorization),
     });
     if (options.proxyDaemonConnection === true) {
       daemonProxy = await startDaemonConnectionProxy(server.baseUrl);

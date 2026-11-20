@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { startRenderFixture } from "./fixture.js";
 
 const DEFAULT_PORT = 41_997;
@@ -14,9 +15,20 @@ function readPort(): number {
 
 const startedAt = Date.now();
 const fixture = await startRenderFixture({ port: readPort() });
+const pairingResponse = await fetch(
+  `${fixture.serverUrl}/api/v1/access/pairings`,
+  {
+    method: "POST",
+    headers: { authorization: fixture.harness.server.localAuthorization },
+  },
+);
+const pairing = z
+  .object({ code: z.string() })
+  .parse(await pairingResponse.json());
 process.stdout.write(
   `${JSON.stringify({
     serverUrl: fixture.serverUrl,
+    signInUrl: `${fixture.serverUrl}/pair#code=${pairing.code}`,
     timelineThread: `${fixture.serverUrl}/threads/${fixture.timelineThreadId}`,
     questionThread: `${fixture.serverUrl}/threads/${fixture.questionThreadId}`,
     sidebarThreads: fixture.sidebarThreadIds.length,
