@@ -113,6 +113,10 @@ import {
 import { cn } from "@/lib/utils";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { isNonImeKey } from "@/lib/ime-keyboard";
+import {
+  handleEditorLinkClick,
+  isAllowedEditorLink,
+} from "./editor-links.js";
 
 interface Vault {
   id: string;
@@ -165,8 +169,7 @@ function dirname(value: string): string {
 }
 
 function documentLinkPath(notePath: string, href: string): string | null {
-  if (/^(?:[a-z][a-z0-9+.-]*:|[\/#?])/i.test(href) || href.includes("\\"))
-    return null;
+  if (/^[/#?]/.test(href) || href.includes("\\")) return null;
   try {
     const target = new URL(
       href,
@@ -540,7 +543,12 @@ function TiptapEditor(props: {
       extensions: [
         StarterKit,
         createProposalDiff({ getBaseDocument: () => baselineRef.current }),
-        Link.configure({ openOnClick: false, autolink: true }),
+        Link.configure({
+          openOnClick: false,
+          autolink: true,
+          isAllowedUri: (href, { defaultValidate }) =>
+            isAllowedEditorLink(href, defaultValidate),
+        }),
         Image.configure({ allowBase64: false }),
         TightTaskList,
         TaskItem.configure({ nested: true }),
@@ -572,24 +580,17 @@ function TiptapEditor(props: {
           "aria-multiline": "true",
         },
         handleDOMEvents: {
-          click(_view, event) {
-            if (event.button !== 0 || !(event.target instanceof Element))
-              return false;
-            const href = event.target.closest("a[href]")?.getAttribute("href");
-            if (!href) return false;
-            if (
-              /^https?:\/\//i.test(href) &&
-              navigateRef.current.openUrl(href)
-            ) {
-              event.preventDefault();
-              return true;
-            }
-            const path = documentLinkPath(latest.current.notePath, href);
-            if (path === null || !latest.current.onOpenDocument) return false;
-            event.preventDefault();
-            latest.current.onOpenDocument(path);
-            return true;
-          },
+          click: (_view, event) =>
+            handleEditorLinkClick(event, {
+              url: (href) => navigateRef.current.openUrl(href),
+              relative: (href) => {
+                const path = documentLinkPath(latest.current.notePath, href);
+                const openDocument = latest.current.onOpenDocument;
+                if (path === null || !openDocument) return false;
+                openDocument(path);
+                return true;
+              },
+            }),
         },
         handleKeyDown(view, event) {
           if (!inline || !isNonImeKey(event, "Escape")) return false;

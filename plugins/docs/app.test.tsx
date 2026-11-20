@@ -1061,6 +1061,11 @@ describe("Docs nav panel", () => {
           modifiers: {},
         },
         {
+          href: "nested/deep.md",
+          path: "articles/nested/deep.md",
+          modifiers: {},
+        },
+        {
           href: "note%20title.markdown",
           path: "articles/note title.markdown",
           modifiers: {},
@@ -1107,6 +1112,15 @@ describe("Docs nav panel", () => {
           expect(slot.navigateCalls).toEqual([]);
         },
       );
+
+      it("never renders a script link", async () => {
+        const slot = renderLinkedDocument(
+          surface,
+          "[Run](javascript:alert(1)) [Reference](reference.md)",
+        );
+        await slot.findByRole("link", { name: "Reference" });
+        expect(slot.queryByRole("link", { name: /Run/ })).toBeNull();
+      });
 
       it("does not navigate when opening the link context menu", async () => {
         const slot = renderLinkedDocument(surface, "[Reference](reference.md)");
