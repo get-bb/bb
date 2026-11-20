@@ -178,6 +178,17 @@ export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
   }
 }
 
+export function dropQueuedMessageRequestedSendAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "requested_send_at")) {
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN requested_send_at",
+    );
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

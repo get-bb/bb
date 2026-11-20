@@ -479,13 +479,16 @@ async function runDispatchAttempt(
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,
   ): DispatchAttemptOutcome => {
+    const requestedSendAt =
+      waitingOn.kind === "time" ? null : futureSendAt(payload.sendAt, sendNow);
     const entry = recordQueuedMessageWait(deps, {
       thread,
       message: queuedMessage,
       placement:
         retriesGoFirst && args.queuePayload.kind === "retry" ? "front" : "back",
       waitingOn,
-      sendAt,
+      sendAt: laterSendAt(sendAt, requestedSendAt),
+      requestedSendAt,
       claimed,
     });
     if (entry === null) {
@@ -790,6 +793,24 @@ async function runDispatchAttempt(
 }
 
 class DispatchThreadStatusChangedError extends Error {}
+
+function futureSendAt(
+  sendAt: number | undefined,
+  sendNow: boolean,
+): number | null {
+  return !sendNow && sendAt !== undefined && sendAt > Date.now()
+    ? sendAt
+    : null;
+}
+
+export function laterSendAt(
+  left: number | null,
+  right: number | null,
+): number | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.max(left, right);
+}
 
 async function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,

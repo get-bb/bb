@@ -93,6 +93,7 @@ export interface CreateQueuedThreadMessageInput {
    */
   waitingOn: QueuedMessageWaitingOn | null;
   sendAt: number | null;
+  requestedSendAt?: number | null;
   payload: QueuedMessagePayload;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
@@ -140,6 +141,7 @@ type QueuedMessageStateColumns = Pick<
   | "failureCount"
   | "failureReason"
   | "nextAttemptAt"
+  | "requestedSendAt"
   | "sendAt"
   | "waitHolder"
   | "waitingOn"
@@ -149,9 +151,10 @@ type QueuedMessageTransition =
   | {
       event: "wait.recorded";
       sendAt: number | null;
+      requestedSendAt: number | null;
       waitingOn: QueuedMessageWaitingOn;
     }
-  | { event: "wait.cleared" }
+  | { event: "wait.cleared"; requestedSendAt: number | null }
   | { claimToken: string; event: "dispatch.claimed" }
   | { event: "claim.released" }
   | {
@@ -179,12 +182,18 @@ function queuedMessageTransitionPatch(
         waitingOn: JSON.stringify(transition.waitingOn),
         waitHolder: waitHolderFor(transition.waitingOn),
         sendAt: transition.sendAt,
+        requestedSendAt: transition.requestedSendAt,
         failureReason: null,
         failureCount: 0,
         nextAttemptAt: null,
       };
     case "wait.cleared":
-      return { waitingOn: null, waitHolder: null, sendAt: null };
+      return {
+        waitingOn: null,
+        waitHolder: null,
+        sendAt: null,
+        requestedSendAt: transition.requestedSendAt,
+      };
     case "dispatch.claimed":
       return { claimedAt: now, claimToken: transition.claimToken };
     case "claim.released":
@@ -836,6 +845,7 @@ export function createQueuedThreadMessageInTransaction(
       failureCount: 0,
       failureReason: null,
       nextAttemptAt: null,
+      requestedSendAt: input.requestedSendAt ?? null,
       sendAt: input.sendAt,
       waitHolder: null,
       waitingOn,
@@ -861,6 +871,7 @@ export function createQueuedThreadMessageInTransaction(
       waitHolder:
         input.waitingOn === null ? null : waitHolderFor(input.waitingOn),
       sendAt: input.sendAt,
+      requestedSendAt: input.requestedSendAt ?? null,
       systemNotice:
         input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
       payloadKind: input.payload.kind,
@@ -995,10 +1006,15 @@ function rescheduleTransition(
   sendAt: number | null,
 ): QueuedMessageTransition | null {
   if (sendAt !== null) {
-    return { event: "wait.recorded", sendAt, waitingOn: { kind: "time" } };
+    return {
+      event: "wait.recorded",
+      sendAt,
+      requestedSendAt: null,
+      waitingOn: { kind: "time" },
+    };
   }
-  return row.sendAt !== null || hasTimeWait(row)
-    ? { event: "wait.cleared" }
+  return row.sendAt !== null || row.requestedSendAt !== null || hasTimeWait(row)
+    ? { event: "wait.cleared", requestedSendAt: null }
     : null;
 }
 
@@ -1292,6 +1308,7 @@ export function supersedeQueuedRetriesInTransaction(
       transition: {
         event: "wait.recorded",
         sendAt: null,
+        requestedSendAt: current.requestedSendAt,
         waitingOn: { kind: "superseded" },
       },
     });
@@ -1826,6 +1843,7 @@ export interface RequeueClaimedQueuedThreadMessagesArgs {
   threadId: string;
   waitingOn: QueuedMessageWaitingOn;
   sendAt: number | null;
+  requestedSendAt: number | null;
 }
 
 export function requeueClaimedQueuedThreadMessages(
@@ -1838,6 +1856,7 @@ export function requeueClaimedQueuedThreadMessages(
   const transition: QueuedMessageTransition = {
     event: "wait.recorded",
     sendAt: args.sendAt,
+    requestedSendAt: args.requestedSendAt,
     waitingOn: args.waitingOn,
   };
   const queued = db.transaction(
@@ -2195,6 +2214,7 @@ export function setQueuedThreadMessageWaitingOn(
         transition: {
           event: "wait.recorded",
           sendAt: args.sendAt,
+          requestedSendAt: existing.requestedSendAt,
           waitingOn: args.waitingOn,
         },
       });
@@ -2335,7 +2355,10 @@ export function clearQueuedThreadMessageWaitingOn(
       return transitionQueuedMessage(tx, {
         now: Date.now(),
         row: existing,
-        transition: { event: "wait.cleared" },
+        transition: {
+          event: "wait.cleared",
+          requestedSendAt: existing.requestedSendAt,
+        },
       });
     },
     { behavior: "immediate" },

@@ -48,6 +48,7 @@ export function queueInputForStartingTurn(
           placement: "back",
           waitingOn: { kind: "turn-starting" },
           sendAt: null,
+          requestedSendAt: null,
           claimed: args.claimed,
         },
       );

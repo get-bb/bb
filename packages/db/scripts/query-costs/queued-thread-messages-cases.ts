@@ -615,6 +615,7 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
         threadId: fixture.threadId,
         waitingOn: { kind: "thread-busy" },
         sendAt: null,
+        requestedSendAt: null,
       }),
   },
   {

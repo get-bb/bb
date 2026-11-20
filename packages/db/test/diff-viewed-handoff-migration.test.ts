@@ -3,6 +3,7 @@ import { createConnection, migrate } from "../src/index.js";
 import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
+  dropQueuedMessageRequestedSendAtColumn,
   rewindMachineTeardownRecoveryColumns,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
@@ -20,6 +21,7 @@ function databaseBeforeHandoff(
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
+  dropQueuedMessageRequestedSendAtColumn(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(
     "INSERT INTO diff_viewed_files (environment_id, target_key, path, revision, updated_at) VALUES (?, ?, ?, ?, ?)",

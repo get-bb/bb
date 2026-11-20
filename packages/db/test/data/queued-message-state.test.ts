@@ -65,6 +65,7 @@ describe("queued message state", () => {
       threadId,
       waitingOn: { kind: "plugin", pluginId: "limiter", reason: "full" },
       sendAt: null,
+      requestedSendAt: null,
     });
     expect(requeued).toMatchObject({
       state: "waiting",

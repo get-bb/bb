@@ -54,7 +54,11 @@ import {
   isActiveTurnMainRunIdle,
   isManualCompactionActive,
 } from "./thread-events.js";
-import { attemptDispatch, threadTargetHostId } from "./dispatch-attempt.js";
+import {
+  attemptDispatch,
+  laterSendAt,
+  threadTargetHostId,
+} from "./dispatch-attempt.js";
 import {
   QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
   QUEUED_MESSAGE_CLAIM_LOST_CODE,
@@ -492,6 +496,10 @@ async function sendClaimedQueuedMessageForThread(
       ? sendModeForDeliveryMode(args.queuedMessages)
       : args.mode;
   const systemNotice = parseStoredQueuedThreadMessageSystemNotice(lead);
+  const requestedSendAt = args.queuedMessages.reduce<number | null>(
+    (later, row) => laterSendAt(later, row.requestedSendAt),
+    null,
+  );
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: {
@@ -503,6 +511,7 @@ async function sendClaimedQueuedMessageForThread(
           )
         : { input, mode }),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
+      ...(requestedSendAt === null ? {} : { sendAt: requestedSendAt }),
     },
     source: {
       kind: "drain",

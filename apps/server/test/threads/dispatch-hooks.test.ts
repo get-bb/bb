@@ -249,7 +249,7 @@ describe("message.dispatch hook context", () => {
         pluginId: "drafts",
         reason: "Draft",
       });
-      expect(onlyQueuedRow(harness, thread.id).sendAt).toBeNull();
+      expect(onlyQueuedRow(harness, thread.id).sendAt).toBe(sendAt);
     });
   });
 
@@ -1437,6 +1437,261 @@ describe("message.dispatch hooks on the queue drain", () => {
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([]);
+    });
+  });
+});
+
+describe("a scheduled send held by a plugin wait", () => {
+  const SCHEDULED_IN_MS = 60 * 60_000;
+
+  type Release = "recheck" | "plugin-unregistered";
+
+  async function release(harness: TestAppHarness, how: Release): Promise<void> {
+    switch (how) {
+      case "recheck":
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "plugin-recheck",
+        });
+        return;
+      case "plugin-unregistered":
+        setPluginHookProvider(undefined);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "plugin-unregistered",
+          pluginId: "limiter",
+        });
+        return;
+    }
+  }
+
+  const cases: {
+    name: string;
+    pluginSendAt: (scheduledAt: number) => number | null;
+    how: Release;
+  }[] = [
+    {
+      name: "a capacity wait, released by recheck",
+      pluginSendAt: () => null,
+      how: "recheck",
+    },
+    {
+      name: "a capacity wait whose plugin is removed",
+      pluginSendAt: () => null,
+      how: "plugin-unregistered",
+    },
+    {
+      name: "a wait that asks to be re-attempted before the scheduled time",
+      pluginSendAt: (scheduledAt) => scheduledAt - SCHEDULED_IN_MS / 2,
+      how: "recheck",
+    },
+
+    {
+      name: "a wait that asks to be re-attempted after the scheduled time",
+      pluginSendAt: (scheduledAt) => scheduledAt + SCHEDULED_IN_MS,
+      how: "recheck",
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(`does not send before the scheduled time under ${testCase.name}`, async () => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        const scheduledAt = Date.now() + SCHEDULED_IN_MS;
+        const pluginSendAt = testCase.pluginSendAt(scheduledAt);
+        let atCapacity = true;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () =>
+                atCapacity
+                  ? {
+                      action: "wait",
+                      reason: "1 of 1 running",
+                      sendAt: pluginSendAt,
+                    }
+                  : { action: "proceed" },
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-scheduled-${cases.indexOf(testCase)}`,
+          status: "idle",
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        const response = await acceptThreadSendRequest(harness.deps, {
+          payload: {
+            input: textInput("at the scheduled time"),
+            mode: "auto",
+            sendAt: scheduledAt,
+          },
+          thread,
+        });
+        expect(response.delivery).toBe("queued");
+        expect(onlyQueuedRow(harness, thread.id).sendAt).toBe(
+          Math.max(scheduledAt, pluginSendAt ?? scheduledAt),
+        );
+
+        vi.setSystemTime(Date.now() + 5_000);
+        atCapacity = false;
+        await release(harness, testCase.how);
+
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+        const held = onlyQueuedRow(harness, thread.id);
+        expect(held.waitingOn).toEqual({ kind: "time" });
+        expect(held.sendAt).toBe(scheduledAt);
+
+        vi.setSystemTime(scheduledAt + 1);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: scheduledAt + 1,
+        });
+
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+        expect(queuedRows(harness, thread.id)).toEqual([]);
+      });
+    });
+  }
+
+  it("keeps the scheduled time across a re-attempt the plugin still holds", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const scheduledAt = Date.now() + SCHEDULED_IN_MS;
+      let atCapacity = true;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () =>
+              atCapacity
+                ? { action: "wait", reason: "1 of 1 running" }
+                : { action: "proceed" },
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-scheduled-held-twice",
+        status: "idle",
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("still scheduled"),
+          mode: "auto",
+          sendAt: scheduledAt,
+        },
+        thread,
+      });
+
+      vi.setSystemTime(Date.now() + 5_000);
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        waitingOn: { kind: "plugin", pluginId: "limiter" },
+        sendAt: scheduledAt,
+      });
+
+      vi.setSystemTime(Date.now() + 5_000);
+      atCapacity = false;
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        waitingOn: { kind: "time" },
+        sendAt: scheduledAt,
+      });
+    });
+  });
+
+  it("sends once released when the sender clears the scheduled time", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      let atCapacity = true;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () =>
+              atCapacity
+                ? { action: "wait", reason: "1 of 1 running" }
+                : { action: "proceed" },
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-scheduled-cleared",
+        status: "idle",
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("no longer scheduled"),
+          mode: "auto",
+          sendAt: Date.now() + SCHEDULED_IN_MS,
+        },
+        thread,
+      });
+      const row = onlyQueuedRow(harness, thread.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${row.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            expectedUpdatedAt: row.updatedAt,
+            sendAt: null,
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      vi.setSystemTime(Date.now() + 5_000);
+      atCapacity = false;
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+      await sendNextQueuedMessageIfPresent(harness.deps, {
+        threadId: thread.id,
+      });
+
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
+  it("leaves a plugin that still holds the row at the scheduled time holding it with no time", async () => {
+    await withTestHarness(async (harness) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const scheduledAt = Date.now() + SCHEDULED_IN_MS;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () => ({ action: "wait", reason: "1 of 1 running" }),
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-scheduled-held-past",
+        status: "idle",
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("held past its time"),
+          mode: "auto",
+          sendAt: scheduledAt,
+        },
+        thread,
+      });
+
+      vi.setSystemTime(scheduledAt + 1);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: scheduledAt + 1,
+      });
+
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        waitingOn: { kind: "plugin", pluginId: "limiter" },
+        sendAt: null,
+      });
     });
   });
 });

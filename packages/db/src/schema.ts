@@ -1107,6 +1107,7 @@ export const queuedThreadMessages = sqliteTable(
       .default(false),
     state: text("state", { enum: queuedMessageStateValues }).notNull(),
     sendAt: integer("send_at"),
+    requestedSendAt: integer("requested_send_at"),
     waitingOn: text("waiting_on"),
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
     failureReason: text("failure_reason"),
