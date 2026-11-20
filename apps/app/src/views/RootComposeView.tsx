@@ -503,6 +503,7 @@ function RootComposeSurface({
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
+  const surfaceProjectId = isProjectless ? null : projectId;
   const pluginComposerHost = useMemo(
     () => ({
       ...sharedPluginComposerHost,
@@ -853,7 +854,7 @@ function RootComposeSurface({
     onCloseLastTab: secondaryPanelDrawerVisibility.closeDrawer,
     preserveWorkspaceTabsAcrossContexts: true,
     projectHostId: rootProjectHostId,
-    projectId: isProjectless ? null : projectId,
+    projectId: surfaceProjectId,
     storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
   });
@@ -970,7 +971,7 @@ function RootComposeSurface({
   const surfaceHost = useAppNavigationHostRef();
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
     hostRef: surfaceHost,
-    projectId: isProjectless ? null : projectId,
+    projectId: surfaceProjectId,
   });
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
@@ -1460,6 +1461,7 @@ function RootComposeSurface({
                 }
                 isSecondaryPanelOpen={isSecondaryPanelOpen}
                 onToggleSecondaryPanel={handleToggleSecondaryPanel}
+                projectId={surfaceProjectId}
                 secondaryPanel={{
                   activeTab: activeFixedSecondaryTab,
                   environmentId: rootPanelEnvironmentId ?? undefined,

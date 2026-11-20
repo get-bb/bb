@@ -150,7 +150,7 @@ describe("PluginHomepageSections", () => {
     );
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginHomepageSections />
+        <PluginHomepageSections projectId={null} />
       </MemoryRouter>,
     );
     expect(screen.getByText("plugin broken crashed")).toBeDefined();

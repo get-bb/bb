@@ -3,10 +3,11 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { defaultAppSettings } from "@bb/domain";
+import type { PluginHomepageSectionProps } from "@get-bb/plugin-sdk/app";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import {
@@ -64,17 +65,22 @@ vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
 vi.mock("@/views/RootComposeSecondaryContent", async () => {
   const { ContractSecondaryPanel } =
     await import("@/test/panel-controller-contract");
+  const { PluginHomepageSections } =
+    await import("@/components/plugin/PluginHomepageSections");
   return {
     useRootComposePinnedPanelToggleBoxClassName: () => "",
     RootComposeSecondaryContent: ({
       children,
+      projectId,
       secondaryPanel,
     }: {
       children: ReactNode;
+      projectId: string | null;
       secondaryPanel: Parameters<typeof ContractSecondaryPanel>[0];
     }) => (
       <>
         {children}
+        <PluginHomepageSections projectId={projectId} />
         <ContractSecondaryPanel {...secondaryPanel} />
       </>
     ),
@@ -128,7 +134,13 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {
       sections: [],
-      projects: [],
+      projects: [
+        makeProjectWithThreadsResponse({
+          id: "proj_alpha",
+          name: "Alpha",
+          sources: [],
+        }),
+      ],
       personalProject: makeProjectWithThreadsResponse({
         id: "personal",
         kind: "personal",
@@ -247,8 +259,83 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.sessionStorage.clear();
   resetPluginSlotStoreForTest();
   resetFocusedAppNavigationSurfacesForTest();
+});
+
+function renderNewThreadScreen(sink: ContractStateSink) {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <DefaultPaneContextProvider
+            paneId="main"
+            onRequestClose={null}
+            navigateInPane={() => {}}
+          >
+            <ContractStateProbe
+              panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
+              syncThreadId={null}
+              sink={sink}
+            />
+            <RootComposeView />
+          </DefaultPaneContextProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/"] },
+  );
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>
+    </QueryClientProvider>,
+  );
+}
+
+function HomepageProjectProbe({ projectId }: PluginHomepageSectionProps) {
+  return <div data-testid="homepage-project">{projectId ?? "no project"}</div>;
+}
+
+describe("New thread screen homepage sections", () => {
+  beforeEach(() => {
+    setPluginSlotRegistrations(
+      "homepage-probe",
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.slots.homepageSection({
+            id: "probe",
+            title: "Probe",
+            component: HomepageProjectProbe,
+          });
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    { stored: "proj_alpha", expected: "proj_alpha" },
+    { stored: null, expected: "no project" },
+    { stored: "proj_deleted", expected: "no project" },
+  ])(
+    "receive the composer's project when it starts on $stored",
+    async ({ stored, expected }) => {
+      if (stored !== null) {
+        window.sessionStorage.setItem("bb.root-compose.project-id", stored);
+      }
+      renderNewThreadScreen({ current: null });
+      expect((await screen.findByTestId("homepage-project")).textContent).toBe(
+        expected,
+      );
+    },
+  );
 });
 
 describePanelControllerContract(
@@ -256,39 +343,7 @@ describePanelControllerContract(
   { fixedTabs: false, actionTabs: true, navigation: true },
   async () => {
     const sink: ContractStateSink = { current: null };
-    const router = createMemoryRouter(
-      [
-        {
-          path: "/",
-          element: (
-            <DefaultPaneContextProvider
-              paneId="main"
-              onRequestClose={null}
-              navigateInPane={() => {}}
-            >
-              <ContractStateProbe
-                panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
-                syncThreadId={null}
-                sink={sink}
-              />
-              <RootComposeView />
-            </DefaultPaneContextProvider>
-          ),
-        },
-      ],
-      { initialEntries: ["/"] },
-    );
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <Provider>
-          <RouterProvider router={router} />
-        </Provider>
-      </QueryClientProvider>,
-    );
+    renderNewThreadScreen(sink);
     await screen.findByTestId("new-thread-prompt-box");
     await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
     const panel = createPluginPanelController(

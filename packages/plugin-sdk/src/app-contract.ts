@@ -60,7 +60,10 @@ import type { PluginMentionTrigger } from "./backend-contract.js";
 
 /** Props passed to a `homepageSection` component. */
 export interface PluginHomepageSectionProps {
-  /** Project in view on the compose surface; null when none is selected. */
+  /**
+   * Project selected in the New thread composer; null when the composer is
+   * set to "No project".
+   */
   projectId: string | null;
 }
 
@@ -549,10 +552,9 @@ export interface PluginThreadListProps {
    */
   onNavigate: () => void;
   /**
-   * Compatibility value for the former sidebar search field. BB now searches
-   * threads in the quick palette, so the host always supplies "".
-   *
-   * @deprecated The quick palette owns thread search. Ignore this value.
+   * @internal Retired: the sidebar search field was removed and the quick
+   * palette owns thread search. The host still passes "" so lists built
+   * against older SDKs keep rendering.
    */
   searchQuery: string;
 }
@@ -592,7 +594,12 @@ export interface ExperimentalPluginBrowserPage {
 }
 
 export interface ExperimentalPluginBrowserToolbarActionProps {
-  /** Thread that owns the Browser tab. */
+  /**
+   * Owner of the Browser tab. In a thread's side panel it is the thread id. On
+   * the New thread screen and plugin pages it is an opaque panel key that is
+   * not a thread id. Pass it with `tabId` as the `threadId` of
+   * `sdk.experimental_desktopBrowsers` calls to reach this tab.
+   */
   threadId: string;
   /** Browser tab currently rendering the action. */
   tabId: string;

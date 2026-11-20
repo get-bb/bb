@@ -10,7 +10,6 @@ const LABEL = "Beta";
 function BetaThreadList({
   activeProjectId,
   activeThreadId,
-  searchQuery,
 }: PluginThreadListProps) {
   const [shouldCrash, setShouldCrash] = useState(false);
   if (shouldCrash) throw new Error("Beta thread-list test crash");
@@ -27,8 +26,6 @@ function BetaThreadList({
           <dd className="truncate font-mono">{activeThreadId ?? "none"}</dd>
           <dt>Project</dt>
           <dd className="truncate font-mono">{activeProjectId ?? "none"}</dd>
-          <dt>Search</dt>
-          <dd className="truncate font-mono">{searchQuery || "empty"}</dd>
         </dl>
         <p className="text-muted-foreground">
           Disable Alpha to see Automatic reveal this provider.

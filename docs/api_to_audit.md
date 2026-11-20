@@ -749,6 +749,11 @@ SawyerHood/sawyer-plugins, VKirill/bb-plugin-project-folders among them).
 Remove them at the next major; callers switch to `submit`, `setSelection`,
 `onSubmitted` and `replace`.
 
+`PluginThreadListProps.searchQuery` is `@internal` the same way. The sidebar
+search field it carried is gone, so the host passes `""`. Lists built against
+older SDKs still read it (often `searchQuery.trim()`), so the runtime keeps
+passing it until the next major.
+
 ## Settings schemas and server writes
 
 `PluginSettingDescriptor.experimental_schema` is a synchronous,
@@ -2994,10 +2999,7 @@ Docs: `frontend-registration.md`.
    host-rendered. Confirm no real sidebar needs to claim more, and that
    passing those regions down as props (letting a plugin place them, at the
    risk of dropping them) stays the wrong trade.
-4. **Search compatibility.** Confirm released plugins no longer need the
-   required deprecated `searchQuery` field before removing it in a deliberate
-   breaking change. Until then, the host supplies `""`.
-5. **Accessibility.** Confirm the host can still guarantee list semantics,
+4. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup;
    `onNavigate` is currently the plugin's responsibility to call.
 
@@ -3860,14 +3862,20 @@ Docs: `frontend-registration.md`.
 
 Renders a plugin component beside the address bar in each Browser tab. It
 receives `threadId`, `tabId`, `url` and a compact-viewport hint, with a crash
-boundary per tab mount.
+boundary per tab mount. `threadId` is the tab's desktop-browser owner key: a
+thread id in a thread's side panel, an opaque panel key on the New thread
+screen and plugin pages. `sdk.experimental_desktopBrowsers` scopes take the
+same key under the same misleading name.
 
 Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.** Confirm the toolbar can hold multiple plugin
 controls without crowding the address field, whether ordering needs a user
 preference, and whether plugins need browser instance or environment identity
-instead of resolving it server-side from the thread and tab ids.
+instead of resolving it server-side from the thread and tab ids. Rename the
+owner key here and in the desktop-browser scopes together, and decide whether
+the toolbar should also receive a nullable thread id; thread-scoped plugins
+call `sdk.threads.*` with a panel key today and get a 404.
 
 ## `ExperimentalPluginBrowserToolbarActionProps.experimental_page` (`@get-bb/plugin-sdk/app`)
 
