@@ -178,6 +178,27 @@ export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
   }
 }
 
+const QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP = 1795210022396;
+
+export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
+  db.$client
+    .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+    .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  dropQueuedMessageRecheckAtColumn(db);
+}
+
+export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS queued_thread_messages_recheck_idx");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "recheck_at")) {
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
+    );
+  }
+}
+
 export function dropEnvironmentHoldColumns(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(environments)")

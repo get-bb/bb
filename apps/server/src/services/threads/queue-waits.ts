@@ -86,12 +86,13 @@ export interface RecordQueuedMessageWaitArgs {
   placement: "back" | "front";
   waitingOn: QueuedMessageWaitingOn;
   /**
-   * The row's scheduled instant. Passed every time the wait is written rather
-   * than left alone, because writing a wait is a fresh statement of when this
-   * row may run: a `time` wait sets it, a plugin wait with a `sendAt` sets it,
-   * and every other wait clears it by passing null.
+   * The sender's time, while it is still ahead. Passed every time the wait is
+   * written rather than left alone, because writing a wait is a fresh
+   * statement of when this row may run. Only the sender's time lives here, so
+   * whatever the row waits on, it never dispatches before it.
    */
   sendAt: number | null;
+  recheckAt: number | null;
   /**
    * Rows already claimed from the queue that this call is RETURNING rather
    * than creating. Present on every drain re-attempt; absent when an inline
@@ -138,6 +139,7 @@ export function recordQueuedMessageWait(
           serviceTier: args.message.execution.serviceTier,
           waitingOn: args.waitingOn,
           sendAt: args.sendAt,
+          ...(args.recheckAt === null ? {} : { recheckAt: args.recheckAt }),
           payload: args.message.payload,
           systemNotice: args.message.systemNotice,
           deliveryMode: args.message.deliveryMode,
@@ -157,6 +159,7 @@ export function recordQueuedMessageWait(
       threadId: args.thread.id,
       waitingOn: args.waitingOn,
       sendAt: args.sendAt,
+      recheckAt: args.recheckAt,
     });
   }
 

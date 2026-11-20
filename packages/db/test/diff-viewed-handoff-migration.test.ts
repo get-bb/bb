@@ -5,6 +5,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
 } from "./helpers/rewind.js";
@@ -21,6 +22,7 @@ function databaseBeforeHandoff(
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
+  dropQueuedMessageRecheckAtColumn(db);
   dropEnvironmentHoldColumns(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(

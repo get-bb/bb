@@ -65,6 +65,7 @@ describe("queued message state", () => {
       threadId,
       waitingOn: { kind: "plugin", pluginId: "limiter", reason: "full" },
       sendAt: null,
+      recheckAt: null,
     });
     expect(requeued).toMatchObject({
       state: "waiting",
@@ -124,7 +125,6 @@ describe("queued message state", () => {
         id: row.id,
         threadId,
         waitingOn: { kind: "thread-busy" },
-        sendAt: null,
       }),
     ).toMatchObject({
       state: "waiting",

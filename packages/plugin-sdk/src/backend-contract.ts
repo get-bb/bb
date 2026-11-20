@@ -597,19 +597,21 @@ export type PluginDispatchEnvironmentIntent =
  *
  * `proceed` lets the attempt continue. `wait` QUEUES the message as a row
  * whose `waitingOn` names this plugin and carries `reason` verbatim; the
- * row stays queued until `sendAt` comes due, capacity frees, the user sends
+ * row stays queued until `recheckAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
- * running. `sendAt` (epoch ms) sets the row's own `sendAt`, so core's due sweep
- * re-attempts at that instant without the plugin holding a timer of its own —
- * which is what a rate-limit window wants. `reject` refuses the attempt
- * outright: `message` is shown to the user verbatim.
+ * running. `recheckAt` (epoch ms) is when core's due sweep re-asks, without
+ * the plugin holding a timer of its own — which is what a rate-limit window
+ * wants. It is not the message's schedule: the row's `sendAt` stays the
+ * sender's time, and a message the sender scheduled never dispatches before
+ * that time, even when this hook proceeds earlier. `reject` refuses the attempt outright:
+ * `message` is shown to the user verbatim.
  *
  * There is deliberately no "handled it myself" answer and no amendment arm —
  * a hook is a decision, never an owner or an author of the work.
  */
 export type MessageDispatchHookDecision =
   | { action: "proceed" }
-  | { action: "wait"; reason: string; sendAt?: number | null }
+  | { action: "wait"; reason: string; recheckAt?: number | null }
   | { action: "reject"; message: string };
 
 /**
@@ -809,7 +811,7 @@ export interface PluginHooks {
    *
    * Fail-closed: a handler that throws or exceeds the 10 second decision box
    * FAILS THE ATTEMPT with this plugin named. Decide in milliseconds — if the
-   * answer needs real work, return `wait` with a `sendAt` and answer again on
+   * answer needs real work, return `wait` with a `recheckAt` and answer again on
    * the re-attempt.
    *
    * The whole pass runs under one server-wide lock, so a counting handler never
@@ -829,7 +831,7 @@ export interface PluginHooks {
    *
    * **The pair to `on`.** `on` answers the question core asks; `recheck`
    * asks core to ask it again. Core owns the re-draining and the clock — the
-   * `sendAt` due sweep is still core's — and a plugin owns every other
+   * `recheckAt` due sweep is still core's — and a plugin owns every other
    * condition its own waits depend on. When that condition changes, say so
    * here and answer the hook again on the re-attempt; there is no way to
    * release a specific row, and there does not need to be.
