@@ -855,7 +855,7 @@ function printPlugin(plugin: PluginEntry): void {
     console.log(`  note: ${plugin.sourceNotice}`);
   }
   const stats = plugin.handlerStats;
-  if (stats && stats.count > 0) {
+  if (stats && (stats.count > 0 || stats.errorCount > 0)) {
     const errors = stats.errorCount > 0 ? `, ${stats.errorCount} errors` : "";
     console.log(
       `  handlers: ${stats.count} calls / ${formatMs(stats.totalMs)} total / ${formatMs(stats.maxMs)} max${errors}`,

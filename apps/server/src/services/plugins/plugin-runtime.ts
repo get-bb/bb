@@ -728,9 +728,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     });
     service.consecutiveCrashes += 1;
     service.state = "backoff";
+    statsFor(id).errorCount += 1;
     logger.warn(
       `[plugin:${id}] service ${name} crashed: ${message} — restarting in ${delayMs}ms`,
     );
+    if (statuses.get(id)?.status === "running") {
+      setStatus(id, "running", `service ${name} crashed: ${message}`);
+    }
     const timer = setTimeout(() => {
       service.restartTimer = null;
       if (!service.disposed) runService(id, service);
