@@ -8,7 +8,10 @@ import {
 } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { afterEach, expect, it, vi } from "vitest";
-import { diffRendererProviderAtom } from "@/components/code/codeRendererProvider";
+import {
+  diffRendererProviderAtom,
+  sourceCodeRendererProviderAtom,
+} from "@/components/code/codeRendererProvider";
 import {
   LazyPluginDiff,
   LazyPluginSourceCode,
@@ -50,6 +53,10 @@ afterEach(() => {
     diffRendererProviderAtom,
     AUTOMATIC_REPLACEMENT_PROVIDER,
   );
+  getDefaultStore().set(
+    sourceCodeRendererProviderAtom,
+    AUTOMATIC_REPLACEMENT_PROVIDER,
+  );
   vi.useRealTimers();
 });
 
@@ -74,15 +81,21 @@ it("warms selected implementations after startup and idle, skips replacements, a
             component: () => <p>Replacement diff</p>,
           },
         ],
+        sourceCodeRenderers: [
+          {
+            id: "source",
+            title: "Source",
+            component: () => <p>Replacement source</p>,
+          },
+        ],
       }),
     );
     markPluginFrontendsSettled();
     release();
   });
   await act(async () => vi.advanceTimersByTimeAsync(2000));
-  await settleLazyModules();
   expect(imports.diff).not.toHaveBeenCalled();
-  expect(imports.source).toHaveBeenCalledTimes(1);
+  expect(imports.source).not.toHaveBeenCalled();
 
   const store = getDefaultStore();
   act(() => store.set(diffRendererProviderAtom, BUILT_IN_REPLACEMENT_PROVIDER));
@@ -94,8 +107,10 @@ it("warms selected implementations after startup and idle, skips replacements, a
 
   act(() => {
     store.set(diffRendererProviderAtom, BUILT_IN_REPLACEMENT_PROVIDER);
+    store.set(sourceCodeRendererProviderAtom, BUILT_IN_REPLACEMENT_PROVIDER);
   });
   expect(imports.diff).not.toHaveBeenCalled();
+  expect(imports.source).not.toHaveBeenCalled();
   await act(async () => vi.advanceTimersByTimeAsync(2000));
   await settleLazyModules();
   expect(imports.diff).toHaveBeenCalledTimes(1);

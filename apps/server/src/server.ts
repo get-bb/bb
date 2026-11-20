@@ -1,6 +1,9 @@
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
-import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
+import {
+  recheckEnvironmentProvisioning,
+  recheckEnvironmentProviderCreations,
+} from "./services/threads/thread-environment-providers.js";
 import {
   enrolledInstallerScript,
   enrolledWindowsInstallerScript,
@@ -58,6 +61,7 @@ import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-ev
 import { setPathPluginPreserver } from "./services/plugins/path-plugin-preservation.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
+  setEnvironmentProviderRecheckHandler,
   setEnvironmentProvisioningRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
@@ -66,6 +70,7 @@ import {
   setServerAccessRecheckHandler,
 } from "./services/plugins/plugin-server-access-registry.js";
 import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
+import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
 import { requestHostDerivedStateRefreshForPluginChange } from "./services/hosts/host-derived-state.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -825,6 +830,11 @@ export function createApp(
   setServerAccessBridge(pluginService.serverAccessProviders);
   setServerAccessRecheckHandler(() => {
     deps.hub.notifySystem(["config-changed"]);
+  });
+  setEnvironmentProviderRecheckHandler((pluginId) => {
+    invalidateEnvironmentProviderMachineAvailability();
+    deps.hub.notifySystem(["config-changed"]);
+    recheckEnvironmentProviderCreations(deps, pluginId);
   });
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);

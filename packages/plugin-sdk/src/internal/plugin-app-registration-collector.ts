@@ -32,6 +32,7 @@ import type {
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  PluginSourceCodeRendererRegistration,
   ExperimentalThreadContextSegmentRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
@@ -387,6 +388,7 @@ export interface CollectedPluginAppRegistrations {
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
+  sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
   composers: ExperimentalComposerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
@@ -532,6 +534,7 @@ export function collectPluginAppRegistrations(
     threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
+    sourceCodeRenderers: [],
     diffRenderers: [],
     composers: [],
     messageDirectives: [],
@@ -574,6 +577,7 @@ export function collectPluginAppRegistrations(
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
+    sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
     composer: new Set<string>(),
     messageDirective: new Set<string>(),
@@ -1230,6 +1234,15 @@ export function collectPluginAppRegistrations(
           extensions,
           component: requireComponent(kind, registration.component),
         });
+      },
+      experimental_sourceCodeRenderer(registration) {
+        collected.sourceCodeRenderers.push(
+          collectTitledComponent(
+            "slots.experimental_sourceCodeRenderer",
+            seenIds.sourceCodeRenderer,
+            registration,
+          ),
+        );
       },
       experimental_diffRenderer(registration) {
         collected.diffRenderers.push(

@@ -1,4 +1,5 @@
 import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
+import { listEnvironmentProviders } from "../plugins/plugin-environment-provider-registry.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
@@ -35,6 +36,20 @@ export function scheduleEnvironmentProvisioning(
       context.request.environmentIntent.environmentProviderId,
     timer,
   });
+}
+
+export function recheckEnvironmentProviderCreations(
+  deps: ThreadProvisioningDeps,
+  pluginId: string,
+): void {
+  const owned = new Set(
+    listEnvironmentProviders()
+      .filter((record) => record.pluginId === pluginId)
+      .map((record) => record.provider.id),
+  );
+  for (const entry of listThreadProvisionSchedules())
+    if (owned.has(entry.environmentProviderId))
+      scheduleEnvironmentProvisioning(deps, entry.threadId, Date.now());
 }
 
 export function recheckEnvironmentProvisioning(

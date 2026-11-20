@@ -45,6 +45,7 @@ export function makePluginRegistrationSet(
     threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
+    sourceCodeRenderers: [],
     diffRenderers: [],
     composers: [],
     messageDirectives: [],

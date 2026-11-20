@@ -1,18 +1,20 @@
 # Renderer and action slots
 
-- `experimental_diffRenderer` →
-  replace bb's diff renderer everywhere it draws supplied content:
-  timeline file diffs, the environment diff panel's file bodies, and every
-  plugin calling `experimental_Diff`. Registration:
+- `experimental_sourceCodeRenderer` / `experimental_diffRenderer` →
+  replace bb's source or diff renderer everywhere it draws supplied content:
+  the native file preview, timeline file diffs, the environment diff panel's
+  file bodies, and every plugin calling the host components. Registration:
   `{ id, title, description?, component }`. Like `experimental_threadList`
-  the slot is **exclusive** — one renderer at a time; a plugin the user
+  each slot is **exclusive** — one renderer at a time; a plugin the user
   installed wins over one bundled with bb, then the first in slot order, and
   a missing, disabled, or crashing replacement falls back to bb's
   renderer. Installing and enabling the plugin activates it, and the user can
   pin bb's renderer or a specific provider under
-  **Settings → Appearance** ("Diffs"), per client. There are no
+  **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
   scope or extension filters on the registration, so conditional behavior
-  belongs in the component. Props:
+  belongs in the component. Source props:
+  `{ content, path, overflow, highlightedLines, Original }`;
+  diff props:
   `{ patch, path, view, overflow, showLineNumbers, experimental_fullFileContents,
 Original }`. `experimental_fullFileContents` is either
   `{ old: { path, content }, new: { path, content } }` or `null`; a replacement

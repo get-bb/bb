@@ -2319,6 +2319,8 @@ describe("environment targets", () => {
     });
     expect(target?.inputs).toBe(inputs);
     expect(target?.create).toBe(create);
+    await bb.experimental_environments.recheck();
+    expect(harness.recheckCount).toBe(1);
   });
 
   it("enforces environment icon ownership and rejects escaping asset paths", () => {

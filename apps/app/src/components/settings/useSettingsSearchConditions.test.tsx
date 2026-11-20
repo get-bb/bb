@@ -67,6 +67,9 @@ describe("useSettingsSearchConditions", () => {
       "inkwell",
       makePluginRegistrationSet({
         threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
+        sourceCodeRenderers: [
+          { id: "source", title: "Inkwell source", component: () => null },
+        ],
         diffRenderers: [
           { id: "diffs", title: "Inkwell diffs", component: () => null },
         ],
@@ -92,6 +95,7 @@ describe("useSettingsSearchConditions", () => {
       "fileOpeners",
       "localhostLinkRewrite",
       "performanceDiagnostics",
+      "sourceCodeRenderers",
       "threadLists",
     ]);
   });

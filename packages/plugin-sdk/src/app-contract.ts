@@ -764,6 +764,24 @@ export interface DiffProps {
 }
 
 /**
+ * Props passed to an `experimental_sourceCodeRenderer` component. Every value
+ * is already resolved — the replacement never re-applies a host default.
+ */
+export interface PluginSourceCodeRendererProps {
+  content: string;
+  path: string;
+  overflow: CodeOverflowMode;
+  highlightedLines: SourceCodeLineRange | null;
+  /**
+   * BB's source renderer, bound to this request. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  Original: ComponentType;
+}
+
+/**
  * Props passed to an `experimental_diffRenderer` component. `patch` is always
  * a complete single-file unified patch, whatever shape the caller supplied,
  * and optional full-file context is resolved to an object or `null`.
@@ -2801,15 +2819,32 @@ export interface PluginFileOpenerRegistration {
 }
 
 /**
+ * Replace BB's source-code renderer everywhere it renders supplied source
+ * text — the native file preview and every plugin that calls
+ * `experimental_SourceCode`. Like `experimental_threadList` this slot is
+ * **exclusive**: one renderer at a time. Registering activates it while the
+ * plugin is enabled; if several are registered, one from a plugin the user
+ * installed wins over one bundled with bb, then the first in deterministic
+ * slot order. A missing, disabled, or crashing replacement falls back to BB's
+ * renderer, and a replacement can render `Original` to delegate
+ * per call (behind its own setting, by language, by size — whatever it needs).
+ */
+export interface PluginSourceCodeRendererRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<PluginSourceCodeRendererProps>;
+}
+
+/**
  * Replace BB's diff renderer everywhere it renders supplied diff content — the
  * timeline file diffs, the environment diff panel's text bodies, and every
- * plugin that calls `experimental_Diff`. Like `experimental_threadList` this
- * slot is **exclusive**: one renderer at a time. Registering activates it
- * while the plugin is enabled; if several are registered, one from a plugin
- * the user installed wins over one bundled with bb, then the first in
- * deterministic slot order. A missing, disabled, or crashing replacement falls
- * back to BB's renderer, and a replacement can render `Original` to delegate
- * per call (behind its own setting, by language, by size — whatever it needs).
+ * plugin that calls `experimental_Diff`. Exclusive, with the same activation,
+ * fallback, and `Original` delegation rules as
+ * {@link PluginSourceCodeRendererRegistration}.
  */
 export interface PluginDiffRendererRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -4052,6 +4087,14 @@ export interface PluginAppSlots {
     registration: ExperimentalPluginBrowserToolbarActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
+  /**
+   * Replace BB's source-code renderer (see
+   * {@link PluginSourceCodeRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sourceCodeRenderer(
+    registration: PluginSourceCodeRendererRegistration,
+  ): void;
   /**
    * Replace BB's diff renderer (see
    * {@link PluginDiffRendererRegistration}). Experimental: see
@@ -5403,8 +5446,8 @@ export type ExperimentalPanelTabDetail =
 /** One tab open in a surface's side panel. */
 export interface ExperimentalPanelTab {
   /**
-   * Identifies the tab while it stays open; pass it to `selectTab`
-   * or `closeTab`. Do not store it: a reopened
+   * Identifies the tab while it stays open; pass it to `selectTab`,
+   * `closeTab`, or `experimental_PanelTabIcon`. Do not store it: a reopened
    * tab may get another key.
    */
   key: string;
@@ -5424,6 +5467,12 @@ export interface ExperimentalPanelTabs {
   /** The selected tab's key, or null when none is selected. */
   selectedKey: string | null;
   tabs: readonly ExperimentalPanelTab[];
+}
+
+/** Props of `experimental_PanelTabIcon`. */
+export interface ExperimentalPanelTabIconProps {
+  /** An {@link ExperimentalPanelTab.key}; renders nothing for a closed tab. */
+  tabKey: string;
 }
 
 /** A plugin nav panel page; see {@link BbContext.experimental_pluginPanel}. */
@@ -5647,11 +5696,43 @@ export interface ExperimentalRpcMutationState<
 }
 
 /**
+ * A bb server this client can switch to (see
+ * {@link PluginSdkApp.experimental_useServers}).
+ */
+export interface ExperimentalServer {
+  /** Stable while the user keeps the server. Editing a custom server's URL gives it a new id. */
+  id: string;
+  name: string;
+  /** Scheme, host and port only, never login details or a path. */
+  origin: string;
+  /** `local` is bb Desktop's built-in server, `account` comes from the user's bb account, and `custom` is an address the user added. */
+  kind: "local" | "account" | "custom";
+  /** True for the server this page is loaded from. */
+  active: boolean;
+}
+
+/** The viewing client's servers (see {@link PluginSdkApp.experimental_useServers}). */
+export interface ExperimentalServers {
+  /** `loading` until bb Desktop answers, briefly after the page loads. The mobile app's list is ready at once. */
+  status: "loading" | "ready";
+  /** In the client's own order; empty while loading. Changes as the user adds, renames or removes servers. */
+  servers: readonly ExperimentalServer[];
+  /** Switch this client to the server and reload the page on it, unloading every plugin. Ignores the active server and unknown ids. */
+  switchTo(id: string): void;
+}
+
+/**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  /** List URL schemes approved for this BB site in the viewing client's localStorage. Core Settings uses the same implementation. */
+  experimental_getApplicationLinkApprovals(): Promise<string[]>;
+  /** Revoke one scheme, or all with null, for this BB site on this client. Does not grant permission. */
+  experimental_revokeApplicationLinkApproval(
+    scheme: string | null,
+  ): Promise<string[]>;
   experimental_PluginRpcCallError: typeof experimental_PluginRpcCallError;
   experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
   /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
@@ -5772,6 +5853,11 @@ export interface PluginSdkApp {
    * tabs. Experimental: see docs/api_to_audit.md.
    */
   experimental_useTabVisible(): boolean;
+  /**
+   * The servers this client can switch between, the list bb's command palette
+   * offers. Null when the client keeps no server list: any web browser.
+   */
+  experimental_useServers(): ExperimentalServers | null;
   /**
    * The side panel of the surface the calling component renders in: the
    * thread view, the plugin page, or the New thread screen.
@@ -6172,7 +6258,8 @@ export interface PluginSdkApp {
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code
-   * theme. Experimental: see docs/api_to_audit.md.
+   * theme, and honours an active `experimental_sourceCodeRenderer`
+   * replacement. Experimental: see docs/api_to_audit.md.
    */
   experimental_SourceCode: ComponentType<SourceCodeProps>;
   /**
@@ -6219,6 +6306,12 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadContextCardRow: ComponentType<ExperimentalThreadContextCardRowProps>;
+  /**
+   * The icon bb's tab strip draws for an open side panel tab (see
+   * {@link ExperimentalPanelTabIconProps}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_PanelTabIcon: ComponentType<ExperimentalPanelTabIconProps>;
   /**
    * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
    * one bb's own sections use. Experimental: see docs/api_to_audit.md.

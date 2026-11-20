@@ -7,8 +7,14 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { diffRendererProviderAtom } from "@/components/code/codeRendererProvider";
-import { BUILT_IN_REPLACEMENT_PROVIDER } from "@/lib/plugin-replacement-preference";
+import {
+  diffRendererProviderAtom,
+  sourceCodeRendererProviderAtom,
+} from "@/components/code/codeRendererProvider";
+import {
+  AUTOMATIC_REPLACEMENT_PROVIDER,
+  BUILT_IN_REPLACEMENT_PROVIDER,
+} from "@/lib/plugin-replacement-preference";
 import { CodeRendererSettings } from "./CodeRendererSettings";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
@@ -28,12 +34,16 @@ describe("CodeRendererSettings", () => {
       </JotaiProvider>,
     );
 
+    expect(screen.queryByRole("button", { name: "Source code" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Diffs" })).toBeNull();
   });
 
-  it("pins BB's diff renderer", async () => {
+  it("pins BB's diff renderer without touching the source-code choice", async () => {
     setPluginSlotRegistrations("inkwell", {
       ...EMPTY_REGISTRATIONS,
+      sourceCodeRenderers: [
+        { id: "source", title: "Inkwell source", component: () => null },
+      ],
       diffRenderers: [
         { id: "diffs", title: "Inkwell diffs", component: () => null },
       ],
@@ -53,6 +63,9 @@ describe("CodeRendererSettings", () => {
 
     expect(store.get(diffRendererProviderAtom)).toBe(
       BUILT_IN_REPLACEMENT_PROVIDER,
+    );
+    expect(store.get(sourceCodeRendererProviderAtom)).toBe(
+      AUTOMATIC_REPLACEMENT_PROVIDER,
     );
   });
 

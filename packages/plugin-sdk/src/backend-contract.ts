@@ -493,6 +493,12 @@ export interface PluginEnvironments {
           remove?: never;
         },
   ): void;
+  /**
+   * Ask core to re-ask this plugin's waiting providers now instead of at their
+   * `sendAt`. Resolves on scheduling, exactly like
+   * `experimental_hooks.recheck`.
+   */
+  recheck(): Promise<void>;
 }
 
 export type PluginMachineValidateDecision =

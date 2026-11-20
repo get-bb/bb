@@ -201,10 +201,9 @@ anything into the transcript the model or the user reads back.
 It clears when the row's `sendAt` comes due, when any plugin calls
 `bb.experimental_hooks.recheck("message.dispatch")`, or when the orphan sweep
 clears a wait whose plugin stopped running. Every one of those re-runs the full
-pass, including your own handler, so a message that is still blocked simply
-re-queues. The user's Send now is the exception: it skips the hook pass and
-dispatches the row even while your handler would wait or reject, so a policy
-plugin cannot hold back a message the user forces through.
+pass, including your own handler, so a still-blocked message re-queues. The
+user's Send now skips the hook pass and dispatches the row even while your
+handler would wait or reject.
 
 ```ts
 // The condition your waits depend on changed. Ask core to re-ask.
@@ -280,7 +279,8 @@ using the resolved project, host, checkout, remote and inputs. The optional
 reuses a recorded environment at that path on the selected host instead of
 calling `create`, and null requests normal creation. Create waits for startup
 registrations to settle, then rejects an unknown provider id; existing threads
-wait if their registered provider disappears.
+wait if their registered provider disappears. `bb.experimental_environments.recheck()`
+re-asks this plugin's waiting provisioning now instead of at its scheduled time.
 
 `create` receives the resolved facts, thread, `suggestedBranchName`,
 monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds

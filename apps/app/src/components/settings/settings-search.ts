@@ -18,6 +18,7 @@ export type SettingsSearchCondition =
   | "performanceDiagnostics"
   | "pluginUpdates"
   | "sidebarNavigations"
+  | "sourceCodeRenderers"
   | "threadLists";
 
 interface SettingsSearchSetting {
@@ -160,6 +161,11 @@ export const SETTINGS_SEARCH_INDEX: Record<
         title: "Sidebar thread list",
         keywords: ["threads", "plugin"],
         when: "threadLists",
+      },
+      {
+        title: "Source code",
+        keywords: ["viewer", "renderer", "syntax highlighting", "files"],
+        when: "sourceCodeRenderers",
       },
       {
         title: "Diffs",

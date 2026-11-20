@@ -1,18 +1,17 @@
 import type { SourceCodeProps } from "@get-bb/plugin-sdk";
-import { BbSourceCodeSplit } from "@/components/code/BbSourceCodeSplit";
-import { DEFAULT_CODE_OVERFLOW } from "@/components/code/code-rendering";
+import { SourceCodeHost } from "@/components/code/SourceCodeHost";
 import { useSelectionAddToChat } from "@/components/thread/SelectionAddToChatContext";
 
 export function PluginSourceCode({
   content,
   path,
-  overflow = DEFAULT_CODE_OVERFLOW,
+  overflow,
   highlightedLines,
   className,
 }: SourceCodeProps) {
   const onSelectionAddToChat = useSelectionAddToChat();
   return (
-    <BbSourceCodeSplit
+    <SourceCodeHost
       content={content}
       path={path}
       overflow={overflow}

@@ -71,6 +71,44 @@ Before stabilization, decide whether callers need grapheme-safe cuts (joined
 emoji, combining marks) rather than surrogate-safe ones, and whether
 `/app` and the root need the tail variant.
 
+## Application link approvals (`@get-bb/plugin-sdk/app`)
+
+`experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
+viewing client. `experimental_revokeApplicationLinkApproval(scheme)` removes one;
+`null` resets all. Both return the remaining scheme list. They use the same
+`applicationLinkApprovals` implementation as core Settings → General → Links →
+Application link approvals. All clients use web localStorage scoped to the
+current origin and device profile. Neither API can grant approvals. The shared
+web UI owns consent; native clients validate and launch the approved URL.
+
+Docs: Plugin Guide, Host components (`plugins/plugin-api-docs/src/surfaces.ts`).
+Before stabilization, verify consent and revoke flows on all supported native
+platforms, per-origin scope, old-client launch errors, and storage recovery. Core
+callers are `ApplicationLinkApprovalsSettings` and the URL confirmation dispatcher.
+
+## Server list (`experimental_useServers`, `@get-bb/plugin-sdk/app`)
+
+`experimental_useServers()` returns `{ status, servers, switchTo }` on bb Desktop and
+the mobile app, and null in a web browser, whose server list would be scoped to
+one origin. Each `ExperimentalServer` has an `id`, `name`, `origin` (scheme,
+host and port only; desktop custom URLs can embed login details and paths),
+`kind` (`local`, `account` or `custom`) and `active`. On desktop, `status` is
+`loading` with no servers until the main process answers; the mobile app
+injects its list with the bridge handshake, so it starts `ready`. Both then
+push changes, and a change that arrives during a read wins over the read. `switchTo(id)` reloads the client on that server, unloading every
+plugin; it ignores the active server and unknown ids. Core's command palette
+server switcher uses the same `useServerChoices` implementation, so the mobile
+app now offers the switcher too. Desktop pages served by an older desktop
+release get null until it updates. Plugins can't add, edit, rename or remove
+servers, and can't call another server. The list lives in the client, so the
+`bb` CLI has no server list to reach and no command.
+
+Docs: Plugin Guide, Sidebar footer items (`plugins/plugin-api-docs/src/surfaces.ts`).
+Before stabilization, find a plugin caller beyond core's palette, decide
+whether desktop custom-server ids should survive a URL edit (they hash the
+URL today), and verify switching on iOS, Android and desktop with account and
+custom servers, including a mobile route pinned to a profile by a deep link.
+
 ## Composer popups
 
 `ComposerCustomization.experimental_popups` registers `{ id, label, component }`
@@ -840,15 +878,16 @@ policy asks without replaying the event log. Attempt caps are entirely the
 plugin's; core enforces no ceiling beyond one live retry row per original
 request.
 
-## `bb.experimental_environments.register`
+## `bb.experimental_environments` (`register`, `recheck`)
 
 Registers an environment provider: a named place threads run. Ids are flat
 and first-wins, and the persisted owner plugin is the only one that can
 recover or remove its resources. It declares `requires` eligibility facts,
 Standard Schema `inputs`, optional `validate`, and durable `create`/`remove`
-resource operations that core drives. The built-in checkout, worktree and
-personal workspace behaviors are first-party plugins. `recheck` was removed
-with no caller in bb, Conductor or the community catalog.
+resource operations that core drives. `recheck` schedules another pending
+launch attempt for every thread waiting on one of the calling plugin's
+providers. No plugin calls it yet. The built-in checkout, worktree and
+personal workspace behaviors are first-party plugins.
 
 Docs: `backend-events.md`.
 
@@ -3059,8 +3098,8 @@ among them). Items 2–4 all change the prop surface.
 Host-owned renderers for supplied code. `experimental_SourceCode` takes text
 and a path. `experimental_Diff` takes a single-file patch, a path and
 optional `experimental_fullFileContents` (`{ old, new }`). They are the same
-components bb's own surfaces use, so an active `experimental_diffRenderer`
-replacement covers `experimental_Diff`.
+components bb's own surfaces use, so an active renderer replacement covers
+both.
 
 Docs: `frontend-components.md`.
 
@@ -3160,18 +3199,19 @@ Docs: `frontend-renderer-slots.md`.
    but is used outside composers. Decide whether it belongs in
    `frontend-components.md`.
 
-## `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
 
-**Kept experimental (2026-08-22).** One community registration (image-diff)
-and none bundled with bb.
+**Kept experimental (2026-08-22).** `experimental_diffRenderer` has one
+community registration (image-diff); `experimental_sourceCodeRenderer` has
+none, and bb bundles neither. "Two slots or one" changes the registration
+shape.
 
-An exclusive slot that replaces bb's diff renderer everywhere it draws
-supplied diff content, including other plugins' calls to `experimental_Diff`.
+Exclusive slots that replace bb's source or diff renderer everywhere it draws
+supplied content, including other plugins' calls to the public components.
 Automatic selection prefers a registration from a plugin the user installed
 over one bundled with bb, then the first in slot order, and the user can pin
-bb's renderer or a provider per client. A crash falls back to bb's renderer.
-Its source-code sibling, `experimental_sourceCodeRenderer`, was removed with
-no registration in bb, Conductor or the community catalog.
+bb's renderer or a provider per client in Settings → Appearance. A crash falls
+back to bb's renderer.
 
 Docs: `frontend-renderer-slots.md`.
 
@@ -3183,12 +3223,15 @@ global, other plugins' surfaces included; replacements receive
 **Audit before stabilizing.**
 
 1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
-   selection model.
+   selection model. The two renderers pin independently; confirm users do not
+   instead expect one "code rendering" choice.
 2. **Global reach as precedent.** No other slot lets a plugin reach into
    another plugin's rendered output. Audit that before it is copied.
 3. **Capability parity.** Selection-to-chat and the deleted-file gate remain
    host-only. Confirm that asymmetry is acceptable, or promote either
    capability before stabilization.
+4. **Two slots or one.** Confirm source and diff should stay separately
+   replaceable rather than one "code renderer" registration.
 
 ## `app.slots.experimental_codeFenceRenderer` (`@get-bb/plugin-sdk/app`)
 
@@ -5056,9 +5099,9 @@ own value, so plugins built against the old constant keep working.
 
 - **Stabilization:** audit focus resolution for commands and thread actions across split panes and plugin pages, `toggleTab` against compact drawers and plugin-detail overlays, `close()` acceptance when the panel is already closed, and whether a nav-panel action reference should resolve on thread surfaces. Remove the retired shims after published callers migrate, then rename project-wide and remove this entry.
 
-## Open panel tabs (`experimental_usePanelTabs`, `ExperimentalPanelController.getTabs`/`selectTab`/`closeTab`)
+## Open panel tabs (`experimental_usePanelTabs`, `ExperimentalPanelController.getTabs`/`selectTab`/`closeTab`, `experimental_PanelTabIcon`)
 
-- **Surface:** `experimental_usePanelTabs(): ExperimentalPanelTabs` returns `{ open, selectedKey, tabs }` for the side panel of the surface the component renders in, following live changes. Each `ExperimentalPanelTab` is `{ key, title, status, closable, detail }`; `ExperimentalPanelTabDetail` is `info`, `file` (`path`), `browser` (`url`), `terminal` (`terminalId`), `new-tab`, `plugin` (`pluginId`, the tab's `ExperimentalTabReference`, action `params`) or `plugin-details` (`pluginId`). `ExperimentalPanelController.getTabs()` returns the same list once, for commands, thread actions and other non-component callers (from the focused surface for commands). `selectTab(key)` and `closeTab(key)` act on any listed tab and return false for a key that is not open (and `closeTab` for a tab without a close button). The testing harness takes `experimental_panelTabs` and logs `selectTab`/`closeTab` in `experimental_panelCalls`; `@get-bb/plugin-sdk/testing` exports `experimental_makePanelController(overrides?)`, a controller that declines every call except the overrides, for tests that run a command or action directly.
+- **Surface:** `experimental_usePanelTabs(): ExperimentalPanelTabs` returns `{ open, selectedKey, tabs }` for the side panel of the surface the component renders in, following live changes. Each `ExperimentalPanelTab` is `{ key, title, status, closable, detail }`; `ExperimentalPanelTabDetail` is `info`, `file` (`path`), `browser` (`url`), `terminal` (`terminalId`), `new-tab`, `plugin` (`pluginId`, the tab's `ExperimentalTabReference`, action `params`) or `plugin-details` (`pluginId`). `ExperimentalPanelController.getTabs()` returns the same list once, for commands, thread actions and other non-component callers (from the focused surface for commands). `selectTab(key)` and `closeTab(key)` act on any listed tab and return false for a key that is not open (and `closeTab` for a tab without a close button). `experimental_PanelTabIcon({ tabKey })` draws the strip's icon for a key. The testing harness takes `experimental_panelTabs` and logs `selectTab`/`closeTab` in `experimental_panelCalls`; `@get-bb/plugin-sdk/testing` exports `experimental_makePanelController(overrides?)`, a controller that declines every call except the overrides, for tests that run a command or action directly.
 - **Behavior:** the list is the tab strip's, in its order: fixed tabs (Info, plugin fixed and page tabs), then content tabs. `title`, `status` and `closable` are what the strip shows; `selectTab` and `closeTab` call the strip's own `onSelect`/`onClose`, so closing a terminal ends it and selecting reveals the panel (the compact drawer on phones). Plugin components re-render only when the listed data changes. Keys are the core tab ids and are documented as valid only while the tab is open. A surface without a side panel reports a closed, empty list.
 - **Core callers:** every surface builds its strip from `usePanelTabPresenter` (`apps/app/src/components/secondary-panel/usePanelTabPresenter.tsx`) and renders `AppPanelTabsPublisher` (`apps/app/src/lib/app-panel-tabs.tsx`) with the same tab objects it hands `ThreadSecondaryPanel`: `ThreadDetailView`, `RootComposeView`, `PluginPanelRightPanelHost`, and the Plugins browse page (`PluginsView`, which now has its own panel controller). The publisher writes into the surface's `useAppPanelController` store in `apps/app/src/lib/app-fixed-tab-navigation.tsx`; the plugin hook, `selectTab`, `closeTab` and the icon read that store. Contract tests: the panel controller contract in `apps/app/src/test/panel-controller-contract.tsx`, run against the thread view, New thread screen and plugin page, plus `app-panel-tabs.test.tsx`.
 - **Stabilization:** audit whether every plugin should see other tabs' URLs and file paths; whether split panes need a per-pane list or `selectedKey` per pane (today it is the focused pane's tab); whether reorder, move between panes or pin should join `selectTab`/`closeTab`; and whether `detail` needs more (a file's source or line range, a terminal's target). Then rename project-wide and remove this entry.
@@ -5154,12 +5197,12 @@ standard tool directories.
 PATH npm with the Node that owns it, else the bundled npm; self-update uses it.
 `bundledNpmCli` throws where the `npm`
 package cannot be resolved next to the calling bundle. `experimental_spawnHostProcess`,
-`experimental_execHostFile`, and
+`experimental_forkHostProcess`, `experimental_execHostFile`, and
 `experimental_execHostFileCallback` use it to launch processes and never wait for
 discovery. Missing executables and exit 127 start a background refresh; running
 commands are never replayed automatically. When a launch's leading Node
-options carry
-`--use-env-proxy`, `command` drops the flag if
+options (or a fork's `execArgv`, which defaults to the parent's) carry
+`--use-env-proxy`, `command` and `experimental_forkHostProcess` drop the flag if
 the child's `HTTP_PROXY`/`HTTPS_PROXY` (either case) is not an `http:`/`https:`
 URL, drop network flags opted out with `NODE_USE_ENV_PROXY=0` or
 `NODE_USE_SYSTEM_CA=0`, and otherwise append loopback hosts to the child's
@@ -5170,9 +5213,6 @@ launchers, daemon provider installation and terminals, provider workers,
 plugin workers, watcher workers, self-update, and server move. The MCP,
 automations, browser automation, and provider plugins use this SDK path.
 The Plugin Guide's Provider bridges card lists the symbols.
-`experimental_forkHostProcess` was removed from the SDK with no caller in bb,
-Conductor or the community catalog; core still forks through
-`forkHostProcess` in `@bb/process-utils`.
 
 Before stabilization, verify native Windows shims and registry refresh,
 macOS launchd and Electron updates, mise/asdf installations, caller environment

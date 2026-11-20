@@ -227,6 +227,9 @@ onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
   harness records both calls in `navigateCalls` and gates them with the
   `openFilePreview` / `openFileExternally` behavior options; its
   `canOpenFileExternally` option answers the hook.
+- `experimental_PanelTabIcon` — `{ tabKey }`; the icon bb's tab strip draws
+  for an open side panel tab, from `experimental_usePanelTabs()`; see
+  frontend-panel-tabs.md.
 - `experimental_useAppPanel` — returns the current surface's
   `ExperimentalPanelController`; see
   [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted

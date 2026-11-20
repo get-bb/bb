@@ -1595,6 +1595,10 @@ function createFakePluginHostInternal(
         throw new Error(providerIconRefusalMessage(target.id, problem));
       environmentProviders.set(target.id, target);
     },
+    async recheck() {
+      assertLive();
+      requestedDrains += 1;
+    },
   };
 
   const unavailableMachineBootstrap = (): never => {

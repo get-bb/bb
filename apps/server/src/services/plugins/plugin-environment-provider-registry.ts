@@ -32,6 +32,7 @@ export interface PluginEnvironmentProviderBridge {
 }
 
 let bridge: PluginEnvironmentProviderBridge | undefined;
+let recheckHandler: ((pluginId: string) => void) | undefined;
 
 export function setPluginEnvironmentProviderBridge(
   next: PluginEnvironmentProviderBridge | undefined,
@@ -63,6 +64,16 @@ export async function invokeEnvironmentProvider<T>(
 
 export function environmentProviderDecisionTimeoutMs(): number {
   return bridge?.decisionTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
+}
+
+export function setEnvironmentProviderRecheckHandler(
+  handler: ((pluginId: string) => void) | undefined,
+): void {
+  recheckHandler = handler;
+}
+
+export function requestEnvironmentProviderRecheck(pluginId: string): void {
+  recheckHandler?.(pluginId);
 }
 
 let provisioningRecheckHandler: ((threadId: string) => void) | undefined;

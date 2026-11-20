@@ -20,18 +20,18 @@ describe("Plugin Guide agent references", () => {
     expect(reference.identity).toEqual({
       provider: "surface",
       id: "code-renderers",
-      label: "Diff renderers",
+      label: "Code & diff renderers",
     });
     expect(reference.resource).toEqual({
       kind: "plugin",
       pluginId: PLUGIN_GUIDE_PLUGIN_ID,
       icon: null,
       itemId: "surface:code-renderers",
-      label: "Diff renderers",
+      label: "Code & diff renderers",
     });
     expect(reference.context.split("\n")).toHaveLength(3);
     expect(reference.clipboard.text).toBe(
-      "Build a plugin that uses @Diff renderers ",
+      "Build a plugin that uses @Code & diff renderers ",
     );
   });
 
@@ -47,12 +47,8 @@ describe("Plugin Guide agent references", () => {
   it("includes live read and mutation semantics in the RPC agent reference", () => {
     const context = pluginSurfaceAgentContext("wire");
 
-    expect(context).toContain(
-      "isLoading means an enabled read is fetching never-loaded data",
-    );
-    expect(context).toContain(
-      "Shared predictions stay until confirmed reads arrive",
-    );
+    expect(context).toContain("isLoading means an enabled read is fetching never-loaded data");
+    expect(context).toContain("Shared predictions stay until confirmed reads arrive");
     expect(context).toContain("Newer server codes become unknown_error");
   });
 

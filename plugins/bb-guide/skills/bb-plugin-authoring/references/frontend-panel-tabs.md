@@ -17,10 +17,12 @@ Act on a tab with the panel controller from `experimental_useAppPanel()`:
 `selectTab(key)` selects it and reveals the side panel, and `closeTab(key)`
 closes it as its close button does, so closing a terminal's tab ends the
 terminal. Both return false for a key that is not open, and `closeTab` for a
-tab without a close button.
+tab without a close button. `experimental_PanelTabIcon` draws the icon bb's
+strip shows for a key.
 
 ```tsx
 import {
+  experimental_PanelTabIcon as PanelTabIcon,
   experimental_useAppPanel,
   experimental_usePanelTabs,
 } from "@get-bb/plugin-sdk/app";
@@ -36,7 +38,7 @@ function OpenTerminals() {
         aria-pressed={tab.key === selectedKey}
         onClick={() => panel.selectTab(tab.key)}
       >
-        {tab.title}
+        <PanelTabIcon tabKey={tab.key} /> {tab.title}
       </button>
     ));
 }
