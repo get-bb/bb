@@ -45,6 +45,7 @@ import { getWrappedImageIndex } from "@bb/shared-ui/lib/image-preview";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { remarkInlineDollarMath } from "./markdown-inline-dollar-math.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
+import { remarkSlackDateTokens } from "./markdown-slack-date-tokens.js";
 import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout.js";
 import {
   markdownMayContainMath,
@@ -1884,6 +1885,7 @@ function MarkdownPreviewComponent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       remarkInlineDollarMath,
+      remarkSlackDateTokens,
     ];
     if (headingAnchors) {
       plugins.push(remarkHeadingIds);
