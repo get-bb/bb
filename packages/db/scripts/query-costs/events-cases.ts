@@ -54,6 +54,7 @@ import {
   hasStoredSpawnAgentToolCall,
   hasStoredTurnCompleted,
   hasStoredTurnStarted,
+  getPromptCacheRequestStartAt,
   isStoredTurnContextCompactionOnly,
   isStoredTurnMainRunIdle,
   isStoredTurnProviderCompactionRunning,
@@ -516,6 +517,16 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
     variant: LIVE_TURN,
     run: (db, fixture) =>
       isStoredTurnProviderCompactionRunning(db, {
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getPromptCacheRequestStartAt`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getPromptCacheRequestStartAt(db, {
+        beforeSequence: Number.MAX_SAFE_INTEGER,
         threadId: fixture.liveTurn.threadId,
         turnId: fixture.liveTurn.turnId,
       }),

@@ -565,11 +565,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Context snapshots are omitted when the latest measurement has no breakdown, session cost when the provider reports none, and the compaction offer time unless the compactExpiredCache experiment is on and the provider reported a prompt-cache lifetime for a context of at least 100k tokens.",
+      "Context snapshots are omitted when the latest measurement has no breakdown, session cost when the provider reports none, the compaction offer time unless the compactExpiredCache experiment is on and the provider reported a prompt-cache lifetime for a context of at least 100k tokens, and the idle compaction time unless that offer exists for a visible root thread whose cache lasts at least 1 hour.",
     fields: [
       "threadTimelineResponseSchema.contextWindowUsage.snapshot",
       "threadTimelineResponseSchema.contextWindowUsage.cost",
       "threadTimelineResponseSchema.contextWindowUsage.compactionOfferAt",
+      "threadTimelineResponseSchema.contextWindowUsage.idleCompactionAt",
     ],
   },
   {
