@@ -2,7 +2,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
-import type { BbDesktopServerChoice } from "@bb/desktop-contract";
+import type {
+  BbDesktopServerChoice,
+  BbDesktopServerList,
+} from "@bb/desktop-contract";
 import {
   buildBridgeEventScript,
   buildBridgeInjectionScript,
@@ -73,6 +76,42 @@ function installDesktop() {
   };
 }
 
+function installDesktopWithServerList() {
+  const listeners = new Set<(list: BbDesktopServerList) => void>();
+  const responses: ((list: BbDesktopServerList) => void)[] = [];
+  const addServer = vi.fn();
+  const signInToConnect = vi.fn();
+  window.bbDesktop = {
+    ...createDesktopApi(),
+    listServerChoices: async () => [],
+    onServerChoicesChange: () => () => {},
+    getServerList: () =>
+      new Promise((resolve) => {
+        responses.push(resolve);
+      }),
+    onServerListChange: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    selectServer: () => {},
+    addServer,
+    signInToConnect,
+  };
+  return {
+    addServer,
+    signInToConnect,
+    async respond(index: number, list: BbDesktopServerList) {
+      responses[index]?.(list);
+      await Promise.resolve();
+    },
+    change(next: BbDesktopServerList) {
+      for (const listener of listeners) listener(next);
+    },
+  };
+}
+
 const handshake: NativeShellHandshake = {
   bridgeVersion: 4,
   appVersion: "0.50.0",
@@ -83,14 +122,17 @@ const handshake: NativeShellHandshake = {
   capabilities: ["haptic", "badge", "share", "open-external", "safe-area"],
 };
 
-function installMobile(servers?: readonly BridgeServer[]) {
+function installMobile(
+  servers?: readonly BridgeServer[],
+  shellHandshake: NativeShellHandshake = handshake,
+) {
   const posted: string[] = [];
   Object.defineProperty(window, "ReactNativeWebView", {
     configurable: true,
     value: { postMessage: (raw: string) => posted.push(raw) },
   });
   // eslint-disable-next-line no-new-func
-  new Function("window", buildBridgeInjectionScript(handshake, servers))(
+  new Function("window", buildBridgeInjectionScript(shellHandshake, servers))(
     window,
   );
   return {
@@ -146,6 +188,49 @@ describe("server choices", () => {
     expect(result.current?.servers).toEqual(switched);
     result.current?.switchTo("builtin");
     expect(desktop.selectServer).toHaveBeenCalledWith("builtin");
+    expect(result.current).toMatchObject({
+      addServer: null,
+      accountSignIn: null,
+    });
+  });
+
+  it("offers desktop's Add Server and bb Connect sign-in where its Server menu does", async () => {
+    const desktop = installDesktopWithServerList();
+    const { result } = renderHook(useServerChoices);
+    await act(() =>
+      desktop.respond(0, {
+        servers: [local],
+        connectServersSkipReason: "no-credential",
+      }),
+    );
+    expect(result.current).toMatchObject({
+      status: "ready",
+      servers: [local],
+      accountSignIn: { label: "Sign in to bb Connect…" },
+    });
+    result.current?.accountSignIn?.start();
+    expect(desktop.signInToConnect).toHaveBeenCalledTimes(1);
+    result.current?.addServer?.();
+    expect(desktop.addServer).toHaveBeenCalledTimes(1);
+    act(() =>
+      desktop.change({
+        servers: [local],
+        connectServersSkipReason: "unauthorized",
+      }),
+    );
+    expect(result.current?.accountSignIn?.label).toBe(
+      "Sign in to bb Connect again…",
+    );
+    act(() =>
+      desktop.change({
+        servers: [local, studio],
+        connectServersSkipReason: "unavailable",
+      }),
+    );
+    expect(result.current).toMatchObject({
+      servers: [local, studio],
+      accountSignIn: null,
+    });
   });
 
   it("keeps a change desktop pushed while an older read was still in flight", async () => {
@@ -197,6 +282,24 @@ describe("server choices", () => {
     expect(message).toEqual({
       ok: true,
       message: { type: "switch-server", id: "profile-2" },
+    });
+    expect(result.current).toMatchObject({
+      addServer: null,
+      accountSignIn: null,
+    });
+  });
+
+  it("asks a bridge 5 mobile app to open its Add server screen", () => {
+    const mobile = installMobile([{ ...studio, active: true }], {
+      ...handshake,
+      bridgeVersion: 5,
+      capabilities: [...handshake.capabilities, "open-native"],
+    });
+    const { result } = renderHook(useServerChoices);
+    result.current?.addServer?.();
+    expect(parsePageToShellMessage(mobile.posted.at(-1))).toEqual({
+      ok: true,
+      message: { type: "open-native", screen: "add-server" },
     });
   });
 

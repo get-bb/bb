@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentType,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
@@ -54,23 +55,59 @@ import {
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
-function footerItemKey(item: PluginSidebarFooterItemSlot): string {
-  return `${item.pluginId}/${item.id}/${item.generation}`;
+export interface BuiltinFooterDisclosure {
+  id: BuiltinFooterId;
+  label: string;
+  component: ComponentType<{ dismiss(): void }>;
 }
 
-function footerDisclosureId(item: PluginSidebarFooterItemSlot): string {
-  return `plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}-${item.generation}`;
+type FooterDisclosureItem =
+  | PluginSidebarFooterItemSlot
+  | BuiltinFooterDisclosure;
+
+function isPluginFooterItem(
+  item: FooterDisclosureItem,
+): item is PluginSidebarFooterItemSlot {
+  return "pluginId" in item;
 }
 
-function footerTriggerId(item: PluginSidebarFooterItemSlot): string {
-  return `plugin-sidebar-footer-trigger-${item.pluginId}-${item.id}-${item.generation}`;
+function footerItemKey(item: FooterDisclosureItem): string {
+  return isPluginFooterItem(item)
+    ? `${item.pluginId}/${item.id}/${item.generation}`
+    : `builtin:${item.id}`;
 }
 
-export function usePluginSidebarFooterDisclosure() {
+function footerDisclosureId(item: FooterDisclosureItem): string {
+  return isPluginFooterItem(item)
+    ? `plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}-${item.generation}`
+    : `sidebar-footer-disclosure-${item.id}`;
+}
+
+function footerItemDisclosure(
+  item: FooterItem,
+  builtInDisclosures: readonly BuiltinFooterDisclosure[],
+): FooterDisclosureItem | null {
+  if (item.kind === "plugin")
+    return item.slot.kind === "disclosure" ? item.slot : null;
+  return builtInDisclosures.find(({ id }) => id === item.id) ?? null;
+}
+
+function footerTriggerId(item: FooterDisclosureItem): string {
+  return isPluginFooterItem(item)
+    ? `plugin-sidebar-footer-trigger-${item.pluginId}-${item.id}-${item.generation}`
+    : `sidebar-footer-${item.id}`;
+}
+
+export function usePluginSidebarFooterDisclosure(
+  builtInDisclosures: readonly BuiltinFooterDisclosure[] = [],
+) {
   const sidebarFooterItems = usePluginSlotKind("sidebarFooterItems");
   const disclosures = useMemo(
-    () => sidebarFooterItems.filter((item) => item.kind === "disclosure"),
-    [sidebarFooterItems],
+    (): FooterDisclosureItem[] => [
+      ...builtInDisclosures,
+      ...sidebarFooterItems.filter((item) => item.kind === "disclosure"),
+    ],
+    [builtInDisclosures, sidebarFooterItems],
   );
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [restoreFocusKey, setRestoreFocusKey] = useState<string | null>(null);
@@ -147,7 +184,7 @@ export function PluginSidebarFooterDisclosure({
   item,
   onDismiss,
 }: {
-  item: PluginSidebarFooterItemSlot | null;
+  item: FooterDisclosureItem | null;
   onDismiss: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -165,13 +202,19 @@ export function PluginSidebarFooterDisclosure({
     });
   }, [item]);
 
-  if (item === null || item.kind !== "disclosure") return null;
+  if (item === null) return null;
+  const isPlugin = isPluginFooterItem(item);
+  if (isPlugin && item.kind !== "disclosure") return null;
   const Component = item.component;
   return (
     <section
       id={footerDisclosureId(item)}
       aria-label={item.label}
-      data-testid={`plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}`}
+      data-testid={
+        isPlugin
+          ? `plugin-sidebar-footer-disclosure-${item.pluginId}-${item.id}`
+          : `sidebar-footer-disclosure-${item.id}`
+      }
       className="box-content overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/50 transition-[height] duration-200 ease-out motion-reduce:transition-none"
       style={{ height: contentHeight ?? undefined }}
     >
@@ -179,13 +222,17 @@ export function PluginSidebarFooterDisclosure({
         ref={contentRef}
         className="flex max-h-[50svh] flex-col overflow-auto"
       >
-        <PluginSlotMount
-          pluginId={item.pluginId}
-          slotKind="experimental_sidebarFooter"
-          slotId={item.id}
-        >
+        {isPlugin ? (
+          <PluginSlotMount
+            pluginId={item.pluginId}
+            slotKind="experimental_sidebarFooter"
+            slotId={item.id}
+          >
+            <Component dismiss={onDismiss} />
+          </PluginSlotMount>
+        ) : (
           <Component dismiss={onDismiss} />
-        </PluginSlotMount>
+        )}
       </div>
     </section>
   );
@@ -205,6 +252,7 @@ export function PluginSidebarFooterItems({
   onNavigate,
   onCustomize,
   builtInActions = [],
+  builtInDisclosures = [],
 }: {
   activeDisclosureKey: string | null;
   onDisclosureCommand: (
@@ -215,6 +263,7 @@ export function PluginSidebarFooterItems({
   onNavigate?: () => void;
   onCustomize: () => void;
   builtInActions?: readonly BuiltinFooterAction[];
+  builtInDisclosures?: readonly BuiltinFooterDisclosure[];
 }) {
   const navigate = useNavigate();
   const actionContext = bindFocusedSurfaceActionContext(
@@ -231,7 +280,8 @@ export function PluginSidebarFooterItems({
   useMeasureSidebarFooterCapacity(menuRef, moreRef);
   const isAvailable = (item: FooterItem) =>
     item.kind === "plugin" ||
-    builtInActions.some((action) => action.id === item.id);
+    builtInActions.some((action) => action.id === item.id) ||
+    builtInDisclosures.some((disclosure) => disclosure.id === item.id);
   const items = preferences.items.filter(isAvailable);
   const visible = preferences.footer.filter(isAvailable);
   const hidden = items.filter((item) => !visible.includes(item));
@@ -240,17 +290,17 @@ export function PluginSidebarFooterItems({
   );
   useEffect(() => {
     for (const item of items) {
+      const disclosure = footerItemDisclosure(item, builtInDisclosures);
       if (
-        item.kind === "plugin" &&
-        item.slot.kind === "disclosure" &&
+        disclosure !== null &&
         preferences.hidden.includes(item.key) &&
         !previousHidden.current.includes(item.key)
       ) {
-        onDisclosureCommand(footerItemKey(item.slot), "close");
+        onDisclosureCommand(footerItemKey(disclosure), "close");
       }
     }
     previousHidden.current = preferences.hidden;
-  }, [items, preferences.hidden, onDisclosureCommand]);
+  }, [items, preferences.hidden, onDisclosureCommand, builtInDisclosures]);
 
   function customize() {
     customizeAfterClose.current = true;
@@ -271,6 +321,11 @@ export function PluginSidebarFooterItems({
 
   function activate(item: FooterItem) {
     if (item.kind === "builtin") {
+      const disclosure = footerItemDisclosure(item, builtInDisclosures);
+      if (disclosure !== null) {
+        onDisclosureCommand(footerItemKey(disclosure), "toggle");
+        return;
+      }
       builtInActions.find((action) => action.id === item.id)?.onActivate();
       return;
     }
@@ -314,9 +369,10 @@ export function PluginSidebarFooterItems({
               item.kind === "builtin"
                 ? builtInActions.find((action) => action.id === item.id)
                 : undefined;
+            const disclosure = footerItemDisclosure(item, builtInDisclosures);
             const active =
-              item.kind === "plugin" &&
-              footerItemKey(item.slot) === activeDisclosureKey;
+              disclosure !== null &&
+              footerItemKey(disclosure) === activeDisclosureKey;
             const label = builtin?.ariaLabel ?? item.label;
             return (
               <ContextMenu key={item.key}>
@@ -347,11 +403,10 @@ export function PluginSidebarFooterItems({
                             : `plugin-sidebar-footer-item-${item.slot.pluginId}-${item.slot.id}`
                           : undefined
                       }
-                      {...(item.kind === "plugin" &&
-                      item.slot.kind === "disclosure"
+                      {...(disclosure !== null
                         ? {
                             "aria-expanded": active,
-                            "aria-controls": footerDisclosureId(item.slot),
+                            "aria-controls": footerDisclosureId(disclosure),
                           }
                         : {})}
                       onClick={

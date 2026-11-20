@@ -152,6 +152,7 @@ export function ProfileWebViewScreen() {
     onPath: rememberPath,
     onOpenNative: (screen) => {
       if (screen === "device-settings") openDeviceSettings();
+      if (screen === "add-server") router.push("/settings/servers/add");
     },
     onSwitchServer: (id) => {
       if (!canSwitchToProfile(profiles, activeProfile?.id ?? null, id)) return;

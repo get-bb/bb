@@ -7,8 +7,10 @@ import {
 } from "../src/server-target.js";
 import { createConnectServerSync } from "../src/connect-server-sync.js";
 import {
+  BB_DESKTOP_ADD_SERVER_CHANNEL,
   BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
   BB_DESKTOP_SELECT_SERVER_CHANNEL,
+  BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 
 const ipc = vi.hoisted(() => ({ handle: vi.fn(), on: vi.fn() }));
@@ -68,16 +70,24 @@ describe("server choice IPC", () => {
     registerServerChoiceIpc({
       applicationWindowWebContentsIds: new Set([7]),
       onListRequested: sync.onListRequested,
-      list: () =>
-        buildDesktopServerChoices(store, servers, "http://127.0.0.1:1234/app"),
+      list: () => ({
+        servers: buildDesktopServerChoices(
+          store,
+          servers,
+          "http://127.0.0.1:1234/app",
+        ),
+        connectServersSkipReason: null,
+      }),
       select: async () => undefined,
+      addServer: () => undefined,
+      signInToConnect: () => undefined,
       onError: () => undefined,
     });
     const list = ipc.handle.mock.calls.find(
       ([channel]) => channel === BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
     )?.[1];
     if (!list) throw new Error("Missing list handler");
-    const initial = list(event);
+    const initial = list(event).servers;
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(initial).toEqual([
       {
@@ -98,7 +108,7 @@ describe("server choice IPC", () => {
     expect(JSON.stringify(initial)).not.toContain("password");
     expect(JSON.stringify(initial)).not.toContain("/private");
     await sync.syncNow();
-    expect(list(event)).toContainEqual({
+    expect(list(event).servers).toContainEqual({
       id: "connect:remote",
       name: "remote.example",
       origin: "https://remote.example",
@@ -121,12 +131,15 @@ describe("server choice IPC", () => {
       "https://user:password@custom.example/private",
       "Office",
     );
-    expect(list(event)).toContainEqual({ ...initial[1], name: "Office" });
+    expect(list(event).servers).toContainEqual({
+      ...initial[1],
+      name: "Office",
+    });
     await store.setCustomServerName(
       "https://user:password@custom.example/private",
       null,
     );
-    expect(list(event)).toContainEqual(initial[1]);
+    expect(list(event).servers).toContainEqual(initial[1]);
   });
 
   it("accepts only inactive native choices from the application main frame", async () => {
@@ -135,23 +148,28 @@ describe("server choice IPC", () => {
     registerServerChoiceIpc({
       applicationWindowWebContentsIds: new Set([7]),
       onListRequested: () => undefined,
-      list: () => [
-        {
-          id: "builtin",
-          name: "Local",
-          origin: "http://127.0.0.1:38886",
-          kind: "local",
-          active: true,
-        },
-        {
-          id: "remote",
-          name: "Remote",
-          origin: "https://remote.example",
-          kind: "custom",
-          active: false,
-        },
-      ],
+      list: () => ({
+        servers: [
+          {
+            id: "builtin",
+            name: "Local",
+            origin: "http://127.0.0.1:38886",
+            kind: "local",
+            active: true,
+          },
+          {
+            id: "remote",
+            name: "Remote",
+            origin: "https://remote.example",
+            kind: "custom",
+            active: false,
+          },
+        ],
+        connectServersSkipReason: null,
+      }),
       select,
+      addServer: () => undefined,
+      signInToConnect: () => undefined,
       onError,
     });
     const request = ipc.on.mock.calls.find(
@@ -171,5 +189,34 @@ describe("server choice IPC", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ message: "disk full" }),
     );
+  });
+
+  it("opens Add Server and bb Connect sign-in only for the application main frame", () => {
+    const addServer = vi.fn();
+    const signInToConnect = vi.fn();
+    registerServerChoiceIpc({
+      applicationWindowWebContentsIds: new Set([7]),
+      onListRequested: () => undefined,
+      list: () => ({ servers: [], connectServersSkipReason: "no-credential" }),
+      select: async () => undefined,
+      addServer,
+      signInToConnect,
+      onError: () => undefined,
+    });
+    const handler = (channel: string) => {
+      const found = ipc.on.mock.calls.find(([name]) => name === channel)?.[1];
+      if (!found) throw new Error(`Missing ${channel} handler`);
+      return found;
+    };
+    for (const [channel, action] of [
+      [BB_DESKTOP_ADD_SERVER_CHANNEL, addServer],
+      [BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL, signInToConnect],
+    ] as const) {
+      handler(channel)({ ...event, senderFrame: {} });
+      handler(channel)({ ...event, sender: { id: 99, mainFrame: frame } });
+      expect(action).not.toHaveBeenCalled();
+      handler(channel)(event);
+      expect(action).toHaveBeenCalledTimes(1);
+    }
   });
 });

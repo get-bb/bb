@@ -38,7 +38,11 @@ import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
   usePluginSidebarFooterDisclosure,
+  type BuiltinFooterDisclosure,
 } from "./PluginSidebarFooterItems";
+import { SidebarServerSwitcher } from "@/components/sidebar/SidebarServerSwitcher";
+import { resetServerChoicesForTests } from "@/lib/server-choices";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   collectPluginAppRegistrations,
   definePluginApp,
@@ -77,10 +81,12 @@ function renderWithProviders(ui: ReactNode, store = createStore()) {
 
 function FooterHarness({
   onCustomize = () => {},
+  builtInDisclosures,
 }: {
   onCustomize?: () => void;
+  builtInDisclosures?: readonly BuiltinFooterDisclosure[];
 }) {
-  const disclosure = usePluginSidebarFooterDisclosure();
+  const disclosure = usePluginSidebarFooterDisclosure(builtInDisclosures);
   return (
     <>
       <PluginSidebarFooterDisclosure
@@ -92,6 +98,7 @@ function FooterHarness({
           onCustomize={onCustomize}
           activeDisclosureKey={disclosure.activeKey}
           onDisclosureCommand={disclosure.handleCommand}
+          builtInDisclosures={builtInDisclosures}
         />
       </SidebarMenu>
     </>
@@ -113,6 +120,8 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
+  Reflect.deleteProperty(window, "bbDesktop");
+  resetServerChoicesForTests();
   vi.restoreAllMocks();
 });
 
@@ -723,5 +732,105 @@ describe("PluginSidebarFooterItems", () => {
       await screen.findByRole("menuitem", { name: "Report a bug" }),
     );
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the built-in server switcher like a plugin disclosure, from the footer and from More", async () => {
+    const selectServer = vi.fn();
+    const addServer = vi.fn();
+    window.bbDesktop = {
+      ...createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform: "macos",
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "test",
+      }),
+      listServerChoices: async () => [],
+      onServerChoicesChange: () => () => {},
+      getServerList: async () => ({
+        servers: [
+          {
+            id: "builtin",
+            name: "This Mac",
+            origin: "http://127.0.0.1:38886",
+            kind: "local",
+            active: true,
+          },
+          {
+            id: "connect:studio",
+            name: "Studio",
+            origin: "https://studio.getbb.app",
+            kind: "account",
+            active: false,
+          },
+        ],
+        connectServersSkipReason: null,
+      }),
+      onServerListChange: () => () => {},
+      selectServer,
+      addServer,
+    };
+    setPluginSlotRegistrations(
+      "usage-plugin",
+      collectPluginAppRegistrations(
+        definePluginApp((app) => {
+          app.experimental_sidebarFooter.register({
+            kind: "disclosure",
+            id: "usage",
+            label: "Provider usage",
+            icon: "ChartColumn",
+            component: UsageDisclosure,
+          });
+        }),
+      ),
+    );
+    const store = createStore();
+    renderWithProviders(
+      <FooterHarness
+        builtInDisclosures={[
+          { id: "servers", label: "Servers", component: SidebarServerSwitcher },
+        ]}
+      />,
+      store,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Servers" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("region", { name: "Servers" }).id).toBe(
+      trigger.getAttribute("aria-controls"),
+    );
+    const studio = await screen.findByRole("button", { name: /Studio/ });
+    expect(
+      screen
+        .getByRole("button", { name: /This Mac/ })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+    fireEvent.click(studio);
+    expect(selectServer).toHaveBeenCalledWith("connect:studio");
+    expect(studio.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("button", { name: "Add server…" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
+    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    act(() => store.set(sidebarFooterHiddenAtom, ["builtin:servers"]));
+    expect(screen.queryByRole("button", { name: "Servers" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More footer actions" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Servers" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add server…" }));
+    expect(addServer).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
   });
 });

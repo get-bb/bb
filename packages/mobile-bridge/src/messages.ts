@@ -61,7 +61,7 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-export const NATIVE_SCREENS = ["device-settings"] as const;
+export const NATIVE_SCREENS = ["device-settings", "add-server"] as const;
 export const nativeScreenSchema = z.enum(NATIVE_SCREENS);
 export type NativeScreen = z.infer<typeof nativeScreenSchema>;
 

@@ -122,7 +122,10 @@ const electronMock = vi.hoisted(() => {
       invoke(channel: string): Promise<unknown> {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:get-server-choices")
-          return Promise.resolve(serverChoices);
+          return Promise.resolve({
+            servers: serverChoices,
+            connectServersSkipReason: "no-credential",
+          });
         if (channel === "bb-desktop:browser:list-threads-with-tabs") {
           return Promise.resolve(["thread-1", "thread-2"]);
         }
@@ -191,6 +194,10 @@ describe("desktop preload browser API", () => {
     const local = await api.listServerChoices?.();
     expect(local).toHaveLength(1);
     expect(await api.getServerChoices?.()).toEqual(local);
+    expect(await api.getServerList?.()).toEqual({
+      servers: local,
+      connectServersSkipReason: "no-credential",
+    });
   });
 
   it("validates server updates and unsubscribes while sending only opaque selection IDs", async () => {
@@ -202,28 +209,43 @@ describe("desktop preload browser API", () => {
       active: false,
     };
     const updates = vi.fn();
+    const listUpdates = vi.fn();
     const stop = api.onServerChoicesChange?.(updates);
+    const stopList = api.onServerListChange?.(listUpdates);
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",
-      payload: [{ ...remote, url: "https://user:password@remote.example" }],
+      payload: {
+        servers: [{ ...remote, url: "https://user:password@remote.example" }],
+        connectServersSkipReason: null,
+      },
     });
     expect(updates).not.toHaveBeenCalled();
+    expect(listUpdates).not.toHaveBeenCalled();
+    const list = { servers: [remote], connectServersSkipReason: null };
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",
-      payload: [remote],
+      payload: list,
     });
     expect(updates).toHaveBeenCalledWith([remote]);
+    expect(listUpdates).toHaveBeenCalledWith(list);
     stop?.();
+    stopList?.();
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",
-      payload: [],
+      payload: { servers: [], connectServersSkipReason: null },
     });
     expect(updates).toHaveBeenCalledTimes(1);
+    expect(listUpdates).toHaveBeenCalledTimes(1);
     api.selectServer?.("remote");
-    expect(electronMock.sendCalls).toContainEqual({
-      channel: "bb-desktop:select-server",
-      payload: "remote",
-    });
+    api.addServer?.();
+    api.signInToConnect?.();
+    expect(electronMock.sendCalls).toEqual(
+      expect.arrayContaining([
+        { channel: "bb-desktop:select-server", payload: "remote" },
+        { channel: "bb-desktop:add-server", payload: undefined },
+        { channel: "bb-desktop:sign-in-to-connect", payload: undefined },
+      ]),
+    );
   });
 
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {

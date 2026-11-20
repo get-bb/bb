@@ -27,7 +27,10 @@ import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
   usePluginSidebarFooterDisclosure,
+  type BuiltinFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
+import { getServerChoices } from "@/lib/server-choices";
+import { SidebarServerSwitcher } from "./SidebarServerSwitcher";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
@@ -74,6 +77,11 @@ import {
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
+
+const SERVER_SWITCHER: readonly BuiltinFooterDisclosure[] = [
+  { id: "servers", label: "Servers", component: SidebarServerSwitcher },
+];
+const NO_DISCLOSURES: readonly BuiltinFooterDisclosure[] = [];
 
 interface ThreadShortcuts {
   targets: readonly SidebarThreadShortcutTarget[];
@@ -128,7 +136,10 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
-  const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
+  const builtInDisclosures =
+    getServerChoices() === null ? NO_DISCLOSURES : SERVER_SWITCHER;
+  const pluginSidebarFooter =
+    usePluginSidebarFooterDisclosure(builtInDisclosures);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -328,6 +339,7 @@ export function AppSidebar({
               },
             },
           ]}
+          builtInDisclosures={builtInDisclosures}
         />
         <SidebarPluginAttentionGlyph
           className={SIDEBAR_FOOTER_ACTION_CLASS}

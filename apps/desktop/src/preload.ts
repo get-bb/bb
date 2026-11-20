@@ -1,8 +1,9 @@
 import {
-  bbDesktopServerChoicesSchema,
+  bbDesktopServerListSchema,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   type BbDesktopServerChoice,
+  type BbDesktopServerList,
 } from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
@@ -100,6 +101,8 @@ import {
   BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
   BB_DESKTOP_SELECT_SERVER_CHANNEL,
+  BB_DESKTOP_ADD_SERVER_CHANNEL,
+  BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
@@ -140,9 +143,7 @@ function createInitialDesktopWindowState(): BbDesktopWindowState {
   };
 }
 
-const serverChoiceListeners = new Set<
-  (choices: BbDesktopServerChoice[]) => void
->();
+const serverListListeners = new Set<(list: BbDesktopServerList) => void>();
 const listeners = new Set<BbDesktopInfoChangeHandler>();
 const appCommandListeners = new Set<BbDesktopAppCommandHandler>();
 const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
@@ -265,10 +266,14 @@ function addListener<T>(listeners: Set<T>, listener: T): () => void {
   };
 }
 
-async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
-  return bbDesktopServerChoicesSchema.parse(
+async function getServerList(): Promise<BbDesktopServerList> {
+  return bbDesktopServerListSchema.parse(
     await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
   );
+}
+
+async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
+  return (await getServerList()).servers;
 }
 
 function forwardParsed<T>(
@@ -442,10 +447,22 @@ const bbDesktopApi: BbDesktopApi = {
   getServerChoices: listServerChoices,
   listServerChoices,
   onServerChoicesChange(listener) {
-    return addListener(serverChoiceListeners, listener);
+    return addListener(serverListListeners, (list: BbDesktopServerList) =>
+      listener(list.servers),
+    );
+  },
+  getServerList,
+  onServerListChange(listener) {
+    return addListener(serverListListeners, listener);
   },
   selectServer(id) {
     ipcRenderer.send(BB_DESKTOP_SELECT_SERVER_CHANNEL, id);
+  },
+  addServer() {
+    ipcRenderer.send(BB_DESKTOP_ADD_SERVER_CHANNEL);
+  },
+  signInToConnect() {
+    ipcRenderer.send(BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL);
   },
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
@@ -550,8 +567,8 @@ const bbDesktopApi: BbDesktopApi = {
 
 forwardParsed(
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
-  bbDesktopServerChoicesSchema,
-  serverChoiceListeners,
+  bbDesktopServerListSchema,
+  serverListListeners,
 );
 
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {

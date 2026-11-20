@@ -2536,8 +2536,8 @@ export interface RenderSlotOptions<
   tabVisible?: boolean;
   /**
    * Answer for `experimental_useServers()`. Omitted → null, as in a web
-   * browser. Pass `{ status, servers, switchTo }` to act as bb Desktop or the
-   * mobile app.
+   * browser. Pass `{ status, servers, switchTo, addServer, accountSignIn }` to
+   * act as bb Desktop or the mobile app.
    */
   servers?: ExperimentalServers | null;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */

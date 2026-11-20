@@ -5725,6 +5725,10 @@ export interface ExperimentalServers {
   servers: readonly ExperimentalServer[];
   /** Switch this client to the server and reload the page on it, unloading every plugin. Ignores the active server and unknown ids. */
   switchTo(id: string): void;
+  /** Open the client's own add-server screen: bb Desktop's Add Server dialog or the mobile app's Add server screen. Null when the client has none, such as an app from before this API. */
+  addServer: (() => void) | null;
+  /** Set while bb Desktop can't list the user's account servers until they sign in to bb Connect. `label` is the desktop's own wording, also used in its Server menu; `start()` opens the sign-in window. Always null on the mobile app. */
+  accountSignIn: { label: string; start(): void } | null;
 }
 
 /**

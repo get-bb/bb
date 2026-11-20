@@ -13,3 +13,30 @@ export const bbDesktopServerChoicesSchema = z.array(
   bbDesktopServerChoiceSchema,
 );
 export type BbDesktopServerChoice = z.infer<typeof bbDesktopServerChoiceSchema>;
+
+export const bbDesktopConnectServersSkipReasonSchema = z.enum([
+  "no-credential",
+  "plugin-disabled",
+  "not-paired",
+  "unauthorized",
+  "unavailable",
+]);
+export type BbDesktopConnectServersSkipReason = z.infer<
+  typeof bbDesktopConnectServersSkipReasonSchema
+>;
+
+export const BB_DESKTOP_CONNECT_SIGN_IN_LABELS: Partial<
+  Record<BbDesktopConnectServersSkipReason, string>
+> = {
+  "no-credential": "Sign in to bb Connect…",
+  unauthorized: "Sign in to bb Connect again…",
+};
+
+export const bbDesktopServerListSchema = z
+  .object({
+    servers: bbDesktopServerChoicesSchema,
+    connectServersSkipReason:
+      bbDesktopConnectServersSkipReasonSchema.nullable(),
+  })
+  .strict();
+export type BbDesktopServerList = z.infer<typeof bbDesktopServerListSchema>;
