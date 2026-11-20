@@ -400,12 +400,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
         db,
         requirePreparedEnvironment(),
         seed.bindTargetPath,
-        {
-          target: seed.sharedEnvironmentId,
-          providerPluginId: "environment-git-worktree",
-          resource: null,
-          mergeBaseBranch: undefined,
-        },
+        seed.sharedEnvironmentId,
       ),
   },
 ];

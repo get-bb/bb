@@ -3,7 +3,6 @@ import type {
   EnvironmentHolder,
   EnvironmentProviderSelection,
   EnvironmentStatus,
-  JsonValue,
 } from "@bb/domain";
 import { areHostPathsEqual } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -342,14 +341,7 @@ export function findEnvironmentPathClaim(db: EnvironmentWriteConnection, hostId:
   )).limit(1).get() ?? null;
 }
 
-export interface ProducedEnvironmentPath {
-  target: string | null;
-  providerPluginId: string;
-  resource: JsonValue | null;
-  mergeBaseBranch: string | null | undefined;
-}
-
-export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentRow, path: string, produced: ProducedEnvironmentPath): EnvironmentRow {
+export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentRow, path: string, targetId: string | null): EnvironmentRow {
   return db.transaction((tx) => {
     const current = getEnvironment(tx, provisioning.id);
     if (current === null || current.attempt !== provisioning.attempt || current.ownerThreadId !== provisioning.ownerThreadId) throw new Error("Environment preparation is no longer current");
@@ -357,7 +349,7 @@ export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentR
     if (existing === undefined || existing.id === current.id) return current;
     const discarded = { ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null } as const;
     if (current.teardownStatus !== null) return tx.update(environments).set(discarded).where(eq(environments.id, current.id)).returning().get()!;
-    if (existing.id !== produced.target || current.ownerThreadId === null) throw new Error(`Workspace ${path} already belongs to environment ${existing.id}`);
+    if (existing.id !== targetId || current.ownerThreadId === null) throw new Error(`Workspace ${path} already belongs to environment ${existing.id}`);
     if (existing.teardownStatus !== null || (existing.status !== "ready" && existing.status !== "provisioning")) throw new Error("Workspace is not ready or cleanup is still pending");
     if (existing.ownerThreadId !== null) throw new Error("Workspace is still being prepared by another thread");
     tx.update(environments).set(discarded).where(eq(environments.id, current.id)).run();

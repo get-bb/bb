@@ -433,12 +433,7 @@ describe("environment path claims", () => {
         fixture.db,
         { ...preparing, claimPath: "/tmp/shared-checkout" },
         "/tmp/shared-checkout",
-        {
-          target: existing.id,
-          providerPluginId: "test-plugin",
-          resource: null,
-          mergeBaseBranch: undefined,
-        },
+        existing.id,
       );
 
       expect(bound).toMatchObject({
@@ -492,12 +487,7 @@ describe("environment path claims", () => {
         fixture.db,
         preparing,
         "/tmp/shared-checkout",
-        {
-          target: existing.id,
-          providerPluginId: "test-plugin",
-          resource: null,
-          mergeBaseBranch: undefined,
-        },
+        existing.id,
       );
 
       expect(bound).toMatchObject({
@@ -534,12 +524,7 @@ describe("environment path claims", () => {
       statusMessage: "Creating environment",
     });
     expect(() =>
-      bindEnvironmentPath(fixture.db, preparing, "/tmp/undeclared", {
-        target: null,
-        providerPluginId: "test-plugin",
-        resource: null,
-        mergeBaseBranch: undefined,
-      }),
+      bindEnvironmentPath(fixture.db, preparing, "/tmp/undeclared", null),
     ).toThrow(
       `Workspace /tmp/undeclared already belongs to environment ${existing.id}`,
     );

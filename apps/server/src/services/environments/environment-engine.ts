@@ -60,7 +60,6 @@ import {
   type DbQueryConnection,
   threads,
   markHostEnvironmentsDestroyed,
-  type ProducedEnvironmentPath,
 } from "@bb/db";
 import {
   areHostPathsEqual,
@@ -565,10 +564,7 @@ async function runCreate(
       provisioning.status === "creating" ? null : provisioning.path,
   };
   const target: { row: EnvironmentRow | null } = { row: null };
-  const bindPath = async (
-    producedPath: string,
-    produced: Omit<ProducedEnvironmentPath, "providerPluginId" | "target">,
-  ) => {
+  const bindPath = async (producedPath: string) => {
     await ensureHostSessionReadyForWork(deps, { hostId: context.host.id });
     findBlockingEnvironmentPathClaim(deps, {
       hostId: context.host.id,
@@ -596,11 +592,12 @@ async function runCreate(
           existingProviderOwnsLifecycle = declared.environmentProviderId !== null;
         }
         const reservedId = provisioning.id;
-        provisioning = bindEnvironmentPath(deps.db, provisioning, producedPath, {
-          ...produced,
-          target: declared?.id ?? null,
-          providerPluginId: record.pluginId,
-        });
+        provisioning = bindEnvironmentPath(
+          deps.db,
+          provisioning,
+          producedPath,
+          declared?.id ?? null,
+        );
         adoptedExistingEnvironment ||= provisioning.id !== reservedId;
       },
       { behavior: "immediate" },
@@ -619,9 +616,7 @@ async function runCreate(
       throw new Error(
         `Setup can't run at ${path}: it belongs to environment ${declared.id}`,
       );
-    await bindPath(path, { resource: null, mergeBaseBranch: undefined });
-    if (adoptedExistingEnvironment)
-      throw new Error(`${path} belongs to another environment`);
+    await bindPath(path);
     requested.path = path;
     mutateProvisioning(deps, provisioning, ["creating"], (row) => {
       row.path = path;
@@ -752,10 +747,7 @@ async function runCreate(
           );
       } else {
         try {
-          await bindPath(producedPath, {
-            resource: created.resource ?? null,
-            mergeBaseBranch: created.mergeBaseBranch,
-          });
+          await bindPath(producedPath);
         } catch (error) {
           mutateProvisioning(
             deps,
