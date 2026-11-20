@@ -269,6 +269,21 @@
       }
     },
     {
+      "files": ["apps/app/src/core-contributions/**/*.{ts,tsx}"],
+      "rules": {
+        "bb/core-contribution-imports": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/app/src/core-contributions/**/*.test.{ts,tsx}",
+        "apps/app/src/core-contributions/**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/core-contribution-imports": "off"
+      }
+    },
+    {
       "files": [
         "apps/**/*.{ts,tsx}",
         "packages/**/*.{ts,tsx}",

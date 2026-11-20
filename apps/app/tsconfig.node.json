@@ -18,6 +18,7 @@
     "vite-journey-chunks.ts",
     "vite-forkable-plugin-paths.ts",
     "vite-shared-ui-seam.ts",
+    "vite-core-plugin-sdk-app.ts",
     "vite-react-compiler.ts",
     "vite-plugin-zod-runtime.ts",
     "vite-test-lazy-imports.ts"

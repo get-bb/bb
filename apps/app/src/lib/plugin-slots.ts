@@ -1,5 +1,6 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
-import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
+import coreMessageTime from "@/core-contributions/message-time";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
@@ -51,6 +52,11 @@ import {
   type CollectedSidebarNavigationRegistration,
   type CollectedThreadContextCardSectionRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+
+const coreMessageMetadata = collectCoreContributionSlots(
+  coreMessageTime,
+  "messageMetadata",
+);
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
