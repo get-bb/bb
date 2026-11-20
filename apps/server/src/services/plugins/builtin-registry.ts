@@ -238,7 +238,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "server-switcher",
     pluginId: "bb--server-switcher",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,

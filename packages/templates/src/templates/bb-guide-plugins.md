@@ -165,9 +165,9 @@ Each bundled plugin documents its commands and behavior in its own skill.
   or `bb keep-awake hosts <host-id>...`.
 - GitHub Star (builtin): asks once for a GitHub star after more than five
   prompts. `bb plugin disable bb--github-star` stops it from asking.
-- Server switcher (builtin): a Servers item in the sidebar footer of bb
-  Desktop and the mobile app to switch servers, add one, or sign in to bb
-  Connect. `bb plugin disable bb--server-switcher` removes it.
+- Server switcher (builtin, off by default): a Servers item in the sidebar
+  footer of bb Desktop and the mobile app to switch servers, add one, or sign
+  in to bb Connect. `bb plugin enable bb--server-switcher` adds it.
 - Concurrency limit (builtin): caps running threads overall and per host.
   `bb concurrency-limit status|global|host`; see the `concurrency-limit`
   skill.
