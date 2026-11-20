@@ -1,4 +1,5 @@
 import {
+  experimental_BbHttpError,
   experimental_PluginRpcRefusal,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
@@ -10,8 +11,6 @@ import {
   type WorkspaceDiffTarget,
 } from "../contract.js";
 import { requireGitEnvironment } from "./reads.js";
-
-const ENVIRONMENT_PAGE_SIZE = 500;
 
 export interface GitViewed {
   list(
@@ -98,17 +97,15 @@ export function createGitViewed(
     await bb.storage.kv.delete(VIEWED_MARKS_FROM_CORE_KEY);
   }
 
-  async function listEveryEnvironment(filter: { status?: "destroyed" }) {
-    const environments: Awaited<ReturnType<typeof bb.sdk.environments.list>> =
-      [];
-    for (let offset = 0; ; offset += ENVIRONMENT_PAGE_SIZE) {
-      const page = await bb.sdk.environments.list({
-        ...filter,
-        limit: ENVIRONMENT_PAGE_SIZE,
-        offset,
-      });
-      environments.push(...page);
-      if (page.length < ENVIRONMENT_PAGE_SIZE) return environments;
+  async function environmentExists(environmentId: string): Promise<boolean> {
+    try {
+      await bb.sdk.environments.get({ environmentId });
+      return true;
+    } catch (error) {
+      if (error instanceof experimental_BbHttpError && error.status === 404) {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -121,18 +118,12 @@ export function createGitViewed(
           .pluck()
           .all(),
       );
-    if (marked.length === 0) return;
-    const [listed, destroyed] = await Promise.all([
-      listEveryEnvironment({}),
-      listEveryEnvironment({ status: "destroyed" }),
-    ]);
-    const existing = new Set(
-      [...listed, ...destroyed].map((environment) => environment.id),
-    );
     const remove = db.prepare(
       "DELETE FROM viewed_files WHERE environment_id = ?",
     );
-    for (const id of marked) if (!existing.has(id)) remove.run(id);
+    for (const id of marked) {
+      if (!(await environmentExists(id))) remove.run(id);
+    }
   }
 
   const ready = importCoreMarks().catch((error: unknown) =>
