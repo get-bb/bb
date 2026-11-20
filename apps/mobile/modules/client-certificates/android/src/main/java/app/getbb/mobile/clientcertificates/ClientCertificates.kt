@@ -3,6 +3,7 @@ package app.getbb.mobile.clientcertificates
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -75,6 +76,13 @@ internal object ClientCertificates {
       }
     } catch (_: IOException) {
     }
+  }
+
+  fun restartApp() {
+    val intent = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName) ?: return
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    appContext.startActivity(intent)
+    Runtime.getRuntime().exit(0)
   }
 
   fun choiceChanged() {

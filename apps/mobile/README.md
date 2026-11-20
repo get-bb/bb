@@ -502,8 +502,11 @@ user certificate.
   clears an earlier "no certificate" answer for that host and port, so a
   server that you declined by mistake asks again.
 - Long-press a Direct URL server in Settings → Servers to choose another
-  certificate or to stop using one. For the active server, the page reloads.
-  Removing the last server with that host and port forgets the choice.
+  certificate or to stop using one. After the change, bb restarts. The
+  WebView keeps its open connections and TLS sessions, and Android has no
+  API that closes them, so without a restart the old setting stays in use
+  (Chrome also keeps a site's certificate until it restarts). Removing the
+  last server with that host and port forgets the choice.
 - If the saved certificate is removed from the device, the app asks again
   on the next connection.
 - The local Expo module `modules/client-certificates` holds the choices
