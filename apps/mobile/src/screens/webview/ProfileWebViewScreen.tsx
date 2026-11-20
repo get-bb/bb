@@ -25,7 +25,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
 import { revealApp, useProfiles } from "@/app-shell";
-import { nativeSessionCache } from "@/lib/native";
+import {
+  getDeviceAccessStore,
+  getDeviceAuthRegistry,
+  nativeDeviceCrypto,
+  nativeSessionCache,
+} from "@/lib/native";
+import { adoptDirectDevice } from "@/lib/profiles";
+import { describeThisDevice } from "@/lib/device-label";
+import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
 import {
   allowsSubframeLoad,
   bridgeServersForProfiles,
@@ -65,13 +73,21 @@ const ANDROID_VERSION_CODE = Number(nativeBuildVersion);
 
 const IDLE_SESSION = { status: "idle" } as const;
 
+const adoptionFetch = createMobileFetch((input, init) => fetch(input, init));
+
 export function ProfileWebViewScreen() {
   const { tokens } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ profileId?: string; path?: string }>();
-  const { status, profiles, activeProfile, connection, setActiveProfile } =
-    useProfiles();
+  const {
+    status,
+    profiles,
+    activeProfile,
+    connection,
+    setActiveProfile,
+    updateProfile,
+  } = useProfiles();
 
   const requestedProfileId = firstParam(params.profileId);
   const requestedPath = firstParam(params.path);
@@ -160,6 +176,22 @@ export function ProfileWebViewScreen() {
       if (screen === "add-server") router.push("/settings/servers/add");
     },
     onRenewSession: () => getActiveProfileConnector().renewBrowserSession(),
+    onAdoptDevice: async (code) => {
+      if (profile?.mode !== "direct" || profile.access !== null) return false;
+      const device = await adoptDirectDevice({
+        serverUrl: profile.serverUrl,
+        code,
+        label: `bb mobile on ${describeThisDevice()}`,
+        crypto: nativeDeviceCrypto,
+        fetchImpl: adoptionFetch,
+        store: getDeviceAccessStore(),
+      });
+      if (device === null) return false;
+      const access = { credentialId: device.credentialId };
+      await getDeviceAuthRegistry().forProfile({ ...profile, access });
+      await updateProfile(profile.id, { access });
+      return true;
+    },
     onSwitchServer: (id) => {
       if (!canSwitchToProfile(profiles, activeProfile?.id ?? null, id)) return;
       router.setParams({ profileId: undefined, path: undefined });
@@ -259,9 +291,11 @@ export function ProfileWebViewScreen() {
         "open-external",
         "safe-area",
         "open-native",
-        ...(profile.mode === "direct" && profile.access !== null
-          ? (["device-sign-in"] as const)
-          : []),
+        ...(profile.mode !== "direct"
+          ? []
+          : profile.access === null
+            ? (["device-adopt"] as const)
+            : (["device-sign-in"] as const)),
       ],
       ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
         ? { nativeDownloads: true as const }

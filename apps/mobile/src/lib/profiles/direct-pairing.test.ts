@@ -4,7 +4,12 @@ import {
   FAKE_SERVER_URL,
   nodeDeviceCrypto,
 } from "../device-auth/fake-dpop-server";
-import { checkDirectServer, pairDirectServer } from "./direct-pairing";
+import type { DeviceAccessRecord } from "../device-auth";
+import {
+  adoptDirectDevice,
+  checkDirectServer,
+  pairDirectServer,
+} from "./direct-pairing";
 
 function server() {
   return createFakeDpopServer({ validCode: "ABCDE-FGHJK", now: Date.now });
@@ -53,5 +58,40 @@ describe("direct server sign-in", () => {
       kind: "needs-code",
       message: expect.stringContaining("wrong"),
     });
+  });
+
+  it("stores the adopted device key only when the code pairs", async () => {
+    const written = new Map<string, DeviceAccessRecord>();
+    const store = {
+      read: async (id: string) => written.get(id) ?? null,
+      write: async (id: string, record: DeviceAccessRecord) => {
+        written.set(id, record);
+      },
+      remove: async (id: string) => {
+        written.delete(id);
+      },
+    };
+    const args = {
+      serverUrl: FAKE_SERVER_URL,
+      label: "bb mobile on test",
+      crypto: nodeDeviceCrypto,
+      store,
+    };
+    expect(
+      await adoptDirectDevice({
+        ...args,
+        code: "WRONG-CODE0",
+        fetchImpl: server().fetch,
+      }),
+    ).toBeNull();
+    expect(written.size).toBe(0);
+
+    const device = await adoptDirectDevice({
+      ...args,
+      code: "ABCDE-FGHJK",
+      fetchImpl: server().fetch,
+    });
+    expect(device?.credentialId).toBe("acc_phone");
+    expect(written.get("acc_phone")).toEqual(device);
   });
 });

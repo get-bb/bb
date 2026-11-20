@@ -59,6 +59,12 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("adopt-device"),
+      payload: z.object({ code: z.string().min(1).max(64) }).strict(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("clipboard"),
       payload: z
         .object({ text: z.string().max(100000), imageUrl: httpUrlSchema })

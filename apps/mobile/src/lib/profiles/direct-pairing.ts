@@ -102,3 +102,12 @@ export async function pairDirectServer(
   }
   return probeFailure(probe.stage, probe.error);
 }
+
+export async function adoptDirectDevice(
+  args: PairDirectServerArgs & { store: DeviceAccessStore },
+): Promise<DeviceAccessRecord | null> {
+  const check = await pairDirectServer(args);
+  if (check.kind !== "ready" || check.device === null) return null;
+  await args.store.write(check.device.credentialId, check.device);
+  return check.device;
+}

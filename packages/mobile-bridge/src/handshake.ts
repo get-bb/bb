@@ -19,6 +19,7 @@ export const NATIVE_CAPABILITIES = [
   "safe-area",
   "open-native",
   "device-sign-in",
+  "device-adopt",
 ] as const;
 
 export const nativeCapabilitySchema = z.enum(NATIVE_CAPABILITIES);

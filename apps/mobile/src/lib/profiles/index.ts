@@ -8,6 +8,7 @@ export {
 export { validateDirectServerUrl } from "./direct-url";
 export { probeServer } from "./probe";
 export {
+  adoptDirectDevice,
   checkDirectServer,
   pairDirectServer,
   type DirectServerCheck,
