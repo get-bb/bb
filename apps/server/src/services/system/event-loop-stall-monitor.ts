@@ -18,8 +18,10 @@ export function startEventLoopStallMonitor(
   return startEventLoopDelaySampler({
     now: options.now,
     thresholdMs: options.thresholdMs,
-    onSample: ({ stall }) => {
+    onSample: ({ stall, suspension }) => {
       const work = takeEventLoopWorkWindowSnapshot();
+      if (suspension !== null)
+        options.logger.info(suspension, "System suspension observed");
       if (stall !== null) {
         const hasCandidate =
           work.longestSynchronousWorkWallMs !== null &&
