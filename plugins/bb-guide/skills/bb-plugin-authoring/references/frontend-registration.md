@@ -149,11 +149,9 @@ export default definePluginApp((app) => {
 ### A button in the thread header
 
 A thread action with `placement: "header"` is a button in the open thread's
-header instead of a menu entry. It shows after the workspace's Open button
-with its `icon` and `label`, `detail` as its tooltip, and red text for
-`variant: "destructive"` (several share one split button, whose menu rows
-look like the thread menu's). On phones and in narrow
-split panes it folds into the header's thread menu, as a row at the top. It
+header after the workspace's Open button: `icon` and `label`, `detail` as its
+tooltip, red for `variant: "destructive"`; several share a split button. On
+phones and narrow split panes it folds into the thread menu, at the top. It
 never appears in other menus, the quick-action picker, or
 `experimental_useThreadActions`. Its `useData` receives only the threads
 whose header is on screen. Return null from `item` whenever the button does
