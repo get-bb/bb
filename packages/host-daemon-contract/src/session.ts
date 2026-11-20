@@ -519,10 +519,13 @@ const hostDaemonOnlineRpcResponseFailureSchema = z
   })
   .strict();
 
-export const hostDaemonOnlineRpcResponseMessageSchema = z.union([
-  hostDaemonOnlineRpcResponseSuccessSchema,
-  hostDaemonOnlineRpcResponseFailureSchema,
-]);
+export const hostDaemonOnlineRpcResponseMessageSchema = z.discriminatedUnion(
+  "ok",
+  [
+    hostDaemonOnlineRpcResponseSuccessSchema,
+    hostDaemonOnlineRpcResponseFailureSchema,
+  ],
+);
 export type HostDaemonOnlineRpcResponseMessage = z.infer<
   typeof hostDaemonOnlineRpcResponseMessageSchema
 >;
@@ -843,7 +846,7 @@ const hostDaemonTerminalErrorMessageSchema = z
   })
   .strict();
 
-export const hostDaemonDaemonWsMessageSchema = z.union([
+export const hostDaemonDaemonWsMessageSchema = z.discriminatedUnion("type", [
   desktopBrowserChangedSchema,
   hostDaemonMachineShutdownAckMessageSchema,
   hostDaemonHeartbeatMessageSchema,
