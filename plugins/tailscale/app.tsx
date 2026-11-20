@@ -10,7 +10,8 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
+import { CopyIconButton } from "@bb/shared-ui/copy-button";
+import { useSdkClipboardCopy } from "@bb/shared-ui/sdk-clipboard-copy";
 import {
   Tooltip,
   TooltipContent,
@@ -364,7 +365,18 @@ function PrimaryButton({
   }
 }
 
-const TEXT_ACTION_CLASS = "h-auto px-0 text-xs text-muted-foreground";
+function CopyAddressButton({ url }: { url: string }) {
+  const { copied, copy } = useSdkClipboardCopy({ text: url });
+  return (
+    <CopyIconButton
+      label="Copy address"
+      className="size-6 shrink-0 rounded-md hover:bg-state-hover"
+      iconClassName="size-3.5"
+      copied={copied}
+      onCopy={() => void copy()}
+    />
+  );
+}
 
 function TailscaleSettingsSection() {
   const { status, loadError, run, check } = useTailscaleStatus();
@@ -393,7 +405,7 @@ function TailscaleSettingsSection() {
           <CheckAgainButton onClick={check} />
         </div>
         {serve !== null ? (
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-1.5">
             <UrlLink
               href={serve.url}
               target="_blank"
@@ -402,18 +414,7 @@ function TailscaleSettingsSection() {
             >
               {serve.url}
             </UrlLink>
-            <Button
-              size="sm"
-              variant="link"
-              className={TEXT_ACTION_CLASS}
-              onClick={() =>
-                void copyTextWithSdkToast(serve.url, {
-                  successMessage: "Address copied",
-                })
-              }
-            >
-              Copy
-            </Button>
+            <CopyAddressButton url={serve.url} />
           </div>
         ) : null}
         {view.body !== null ? (
