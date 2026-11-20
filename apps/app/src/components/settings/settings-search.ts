@@ -56,6 +56,21 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["history", "clear context"],
       },
       {
+        title: "Resume interrupted threads after a restart",
+        keywords: [
+          "resume",
+          "restart",
+          "interrupted",
+          "crash",
+          "update",
+          "retry",
+        ],
+      },
+      {
+        title: "Summarize shell commands",
+        keywords: ["summarize", "shell", "commands", "output"],
+      },
+      {
         title: "Setup guide",
         keywords: ["onboarding", "getting started", "welcome"],
       },
@@ -83,6 +98,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
         title: "Rewrite localhost links",
         keywords: ["url", "port", "remote"],
         when: "localhostLinkRewrite",
+      },
+      {
+        title: "Copy on select",
+        keywords: ["terminal", "clipboard", "selection", "paste"],
       },
       {
         title: "New branch prefix",
@@ -201,7 +220,13 @@ export const SETTINGS_SEARCH_INDEX: Record<
     settings: [
       {
         title: "File preferences",
-        keywords: ["editor", "directory default", "file default", "open with"],
+        keywords: [
+          "editor",
+          "directory default",
+          "file default",
+          "open with",
+          "local editor integration",
+        ],
         when: "filePreferences",
       },
       {
@@ -226,7 +251,16 @@ export const SETTINGS_SEARCH_INDEX: Record<
     settings: [],
   },
   mobile: {
-    keywords: ["phone", "ios", "iphone", "android", "testflight", "apk"],
+    keywords: [
+      "phone",
+      "ios",
+      "iphone",
+      "android",
+      "testflight",
+      "apk",
+      "connection method",
+      "server address",
+    ],
     settings: [],
   },
   "environment-variables": {
@@ -257,13 +291,45 @@ export const SETTINGS_SEARCH_INDEX: Record<
     settings: [
       { title: "Early adopter", keywords: ["beta", "opt in", "preview"] },
       {
+        title: "Lower agent CPU priority",
+        keywords: ["performance", "responsive", "processes", "nice"],
+      },
+      {
+        title: "Compact before resuming expired sessions",
+        keywords: ["prompt cache", "tokens", "context", "compaction"],
+      },
+      {
+        title: "Faster styles inside plugins",
+        keywords: ["css", "stylesheet", "performance"],
+      },
+      {
+        title: "Server move",
+        keywords: ["migrate", "export", "import", "machine"],
+      },
+      {
         title: "Server performance diagnostics",
         keywords: ["cpu profile", "logs"],
         when: "performanceDiagnostics",
       },
       {
-        title: "Server move",
-        keywords: ["migrate", "export", "import", "machine"],
+        title: "Plugin updates",
+        keywords: ["upgrade", "outdated", "badge"],
+      },
+      {
+        title: "Keep machines connected through network drops",
+        keywords: ["reconnect", "connection", "offline", "daemon"],
+      },
+      {
+        title: "Skip notifications for the thread you're viewing",
+        keywords: ["alerts", "focused", "mute"],
+      },
+      {
+        title: "Thread context card",
+        keywords: ["pull request", "changes", "child threads", "parent"],
+      },
+      {
+        title: "Background database checkpoints",
+        keywords: ["sqlite", "wal", "writes", "performance"],
       },
     ],
   },

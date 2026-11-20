@@ -16,10 +16,18 @@ import {
   getSettingsSectionRoutePath,
   SETTINGS_NAV_SECTIONS,
   type SettingsNavSection,
+  type SettingsSectionId,
 } from "./settings-sections";
 
 const LOCAL_URL = "http://localhost:3000/";
 const REMOTE_URL = "http://192.168.1.20:3000/";
+
+const UNINDEXED_STATE_DEPENDENT_ROWS: Partial<
+  Record<SettingsSectionId, readonly string[]>
+> = {
+  files: ["Directory default", "File default", ".md files"],
+  mobile: ["Server address"],
+};
 
 const sectionsWithSettings = SETTINGS_NAV_SECTIONS.filter(
   (section) => SETTINGS_SEARCH_INDEX[section.id].settings.length > 0,
@@ -78,6 +86,12 @@ function missingAnchors(titles: readonly string[]): string[] {
   return titles.filter((title) => !rendered.has(title));
 }
 
+function renderedRowLabels(): string[] {
+  return [...document.querySelectorAll<HTMLElement>("[data-settings-anchor]")]
+    .filter((element) => element.tagName !== "SECTION")
+    .flatMap((element) => element.dataset.settingsAnchor ?? []);
+}
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -114,6 +128,29 @@ describe("settings search index", () => {
       await waitFor(() => {
         expect(missingAnchors(titles)).toEqual([]);
       });
+    },
+  );
+
+  it.each(SETTINGS_NAV_SECTIONS)(
+    "indexes every setting row on the $label page",
+    async (section) => {
+      jsdom.reconfigure({ url: REMOTE_URL });
+      registerReplacementPlugin();
+      renderSection(section);
+
+      const indexed = SETTINGS_SEARCH_INDEX[section.id].settings.map(
+        (setting) => setting.title,
+      );
+      const stateDependent = UNINDEXED_STATE_DEPENDENT_ROWS[section.id] ?? [];
+      await waitFor(() => {
+        expect(missingAnchors([...indexed, ...stateDependent])).toEqual([]);
+      });
+      expect(
+        renderedRowLabels().filter(
+          (label) =>
+            !indexed.includes(label) && !stateDependent.includes(label),
+        ),
+      ).toEqual([]);
     },
   );
 });

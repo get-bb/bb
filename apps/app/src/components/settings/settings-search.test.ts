@@ -59,6 +59,18 @@ describe("searchSettings", () => {
     ]);
   });
 
+  it("finds the restart and shell command toggles in General", () => {
+    expect(searchTitles("resume")[0]).toBe(
+      "General › Resume interrupted threads after a restart",
+    );
+    expect(searchTitles("crash")).toContain(
+      "General › Resume interrupted threads after a restart",
+    );
+    expect(searchTitles("shell output")).toEqual([
+      "General › Summarize shell commands",
+    ]);
+  });
+
   it("matches words in any order and ignores case and extra spaces", () => {
     expect(searchTitles("  PREFIX   branch ")).toEqual([
       "General › New branch prefix",
