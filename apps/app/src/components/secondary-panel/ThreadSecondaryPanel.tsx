@@ -838,7 +838,7 @@ function ThreadSecondaryPanelContent({
   };
 
   const shouldEnableSidebarSplits =
-    !renderAsDrawer && splitPanelStateId !== undefined && areFixedTabsReady;
+    !renderAsDrawer && splitPanelStateId !== undefined;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
         ...fixedTabs.map((fixedTab) => ({
@@ -873,6 +873,7 @@ function ThreadSecondaryPanelContent({
       canNavigateTabs={canNavigateTabs && isLayoutOpen}
       fixedTabIds={fixedTabs.map((tab) => tab.tab.id)}
       hasNewTabButton={showNewTabButton}
+      isTabListReady={areFixedTabsReady}
       onTabNavigated={(paneId, isNewTabButton) => {
         window.requestAnimationFrame(() => {
           const control = isNewTabButton

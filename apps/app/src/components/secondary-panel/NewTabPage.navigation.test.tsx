@@ -66,6 +66,7 @@ function mountPage({
         <SidebarProvider>
           <TooltipProvider>
             <SidebarSplitContainer
+              isTabListReady
               activeTabId="new-tab"
               canNavigateTabs={canNavigateTabs}
               isFullScreen={false}
