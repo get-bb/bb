@@ -469,6 +469,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#searchThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Collects every matching segment's FTS key once, and the seed grows the matches; the thread walk stops at the page and 101 counted matches",
+    },
     run: (db) =>
       searchThreadsWithPendingInteractionState(db, {
         query: "tests",
