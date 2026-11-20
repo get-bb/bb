@@ -294,7 +294,7 @@ export default definePluginApp((app) => {
         sourceThreadId: context.threadId,
         anchorText,
         sourceSeqEnd: context.message.sourceSeqEnd,
-        panel: context.experimental_panel,
+        panel: context.panel,
       });
     },
   });
@@ -311,7 +311,7 @@ export default definePluginApp((app) => {
         sourceThreadId: context.threadId,
         anchorText: "",
         sourceSeqEnd: null,
-        panel: context.experimental_panel,
+        panel: context.panel,
       });
     },
   });

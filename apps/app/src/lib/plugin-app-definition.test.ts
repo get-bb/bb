@@ -1,3 +1,4 @@
+import { unavailablePluginActionContext } from "@/lib/plugin-action-context-provider";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalSidebarFooterDisclosureController,
@@ -401,7 +402,10 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     expect(compatibilityItem?.kind).toBe("action");
     if (compatibilityItem?.kind !== "action")
       throw new Error("expected action");
-    await compatibilityItem.onActivate({ openPluginDetails });
+    await compatibilityItem.onActivate({
+      ...unavailablePluginActionContext("legacy-plugin"),
+      openPluginDetails,
+    });
     expect(legacyRun).toHaveBeenCalledOnce();
     expect(openPluginDetails).toHaveBeenCalledOnce();
 

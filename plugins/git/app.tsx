@@ -31,7 +31,7 @@ export default definePluginApp((app) => {
     defaultShortcut: { key: "d", mod: true },
     isAvailable: (context) => context.threadId !== null,
     run(context) {
-      context.experimental_panel.toggleTab({
+      context.panel.toggleTab({
         tab: {
           id: GIT_DIFF_TAB_ID,
           context: { kind: "thread" },

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { unavailablePluginActionContext } from "@/lib/plugin-action-context-provider";
+import { createPluginPanelController } from "@/lib/plugin-panel-controller";
 import {
   useEffect,
   useLayoutEffect,
@@ -1743,9 +1745,9 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ experimental_panel }) => {
+          run: ({ panel }) => {
             accepted.push(
-              experimental_panel.openTab({
+              panel.openTab({
                 tab: {
                   id: "inspect-project",
                   context: { kind: "thread" },
@@ -1760,7 +1762,13 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      panel: getFocusedAppPanelController(),
+      actionContext: (pluginId) => ({
+        ...unavailablePluginActionContext(pluginId),
+        panel: createPluginPanelController(
+          pluginId,
+          getFocusedAppPanelController,
+        ),
+      }),
     });
     await act(async () => {
       command.run();

@@ -1,7 +1,16 @@
-import { useCallback, useContext, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk";
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  matchPath,
+  useLocation,
+  useNavigate,
+  type NavigateFunction,
+} from "react-router-dom";
+import type {
+  BbNavigate,
+  ExperimentalPluginActionContext,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
@@ -20,7 +29,10 @@ import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel
 import { lookupCachedThread } from "@/lib/cached-thread";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
-import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  useAppNavigationHost,
+  type ResolvedAppNavigationHostCapabilities,
+} from "@/lib/app-navigation-host";
 import {
   normalizeExperimentalFileOpenOptions,
   normalizeExperimentalFilePreviewOptions,
@@ -28,6 +40,7 @@ import {
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
+  withRetiredPanelAlias,
 } from "@/lib/plugin-panel-controller";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
@@ -43,18 +56,31 @@ export function useSdk(): PluginBrowserBbSdk {
   return getPluginBoundSdk(sdk, pluginId, queryClient);
 }
 
-export function useBbNavigate(): BbNavigate {
-  const pluginId = usePluginId();
-  const onNavigate = useContext(RouteNavigationCallbackContext);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const appNavigation = useAppNavigationHost();
-  const store = useStore();
-  const queryClient = useQueryClient();
-  const isCompact = useIsCompactViewport();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
-  const toThread = useCallback<BbNavigate["toThread"]>(
-    (threadId, options) => {
+export type BindPluginActionContext = (
+  pluginId: string,
+  host: () => ResolvedAppNavigationHostCapabilities,
+) => ExperimentalPluginActionContext;
+
+interface BbNavigateDeps {
+  navigate: NavigateFunction;
+  onNavigate: (() => void) | null;
+  pathname: string;
+  store: ReturnType<typeof useStore>;
+  queryClient: QueryClient;
+  isCompact: boolean;
+  setRootComposeProjectId: (projectId: string) => void;
+}
+
+function createBbNavigate(
+  pluginId: string,
+  host: () => ResolvedAppNavigationHostCapabilities,
+  latest: () => BbNavigateDeps,
+): BbNavigate & {
+  openThreadPanel: ReturnType<typeof createRetiredOpenPanel>;
+} {
+  return {
+    toThread(threadId, options) {
+      const { isCompact, navigate, onNavigate, queryClient, store } = latest();
       onNavigate?.();
       const open = (projectId: string) => {
         store.set(getThreadConversationCollapsedAtom(threadId), false);
@@ -82,17 +108,13 @@ export function useBbNavigate(): BbNavigate {
         .then((thread) => open(thread.projectId))
         .catch(() => navigate(`/threads/${threadId}`));
     },
-    [isCompact, navigate, onNavigate, queryClient, store],
-  );
-  const toProject = useCallback(
-    (projectId: string) => {
+    toProject(projectId) {
+      const { navigate, onNavigate } = latest();
       onNavigate?.();
       void navigate(getProjectComposeRoutePath(projectId));
     },
-    [navigate, onNavigate],
-  );
-  const toPluginPanel = useCallback(
-    (path: string, options?: { subPath?: string; replace?: boolean }) => {
+    toPluginPanel(path, options) {
+      const { navigate, onNavigate } = latest();
       const route = getPluginPanelRoutePath({
         pluginId,
         path,
@@ -101,13 +123,12 @@ export function useBbNavigate(): BbNavigate {
       onNavigate?.();
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
-    [navigate, onNavigate, pluginId],
-  );
-  const toCompose = useCallback<BbNavigate["toCompose"]>(
-    (options) => {
+    toCompose(options) {
+      const { navigate, onNavigate, pathname, setRootComposeProjectId } =
+        latest();
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
-        isAutomationEditRoutePath(location.pathname);
+        isAutomationEditRoutePath(pathname);
       if (options?.projectId !== undefined) {
         setRootComposeProjectId(options.projectId);
       }
@@ -131,32 +152,14 @@ export function useBbNavigate(): BbNavigate {
         },
       });
     },
-    [
-      location.pathname,
-      navigate,
-      onNavigate,
-      pluginId,
-      setRootComposeProjectId,
-    ],
-  );
-  const openThreadPanel = useMemo(
-    () =>
-      createRetiredOpenPanel(
-        createPluginPanelController(pluginId, () => appNavigation.panel),
-      ),
-    [appNavigation.panel, pluginId],
-  );
-  const openUrl = useCallback<BbNavigate["openUrl"]>(
-    (url) => appNavigation.openUrl({ url }),
-    [appNavigation],
-  );
-  const experimental_openFilePreview = useCallback<
-    BbNavigate["experimental_openFilePreview"]
-  >(
-    (options) => {
+    openThreadPanel: createRetiredOpenPanel(
+      createPluginPanelController(pluginId, () => host().panel),
+    ),
+    openUrl: (url) => host().openUrl({ url }),
+    experimental_openFilePreview(options) {
       const normalized = normalizeExperimentalFilePreviewOptions(options);
       if (normalized === null) return false;
-      return appNavigation.openFilePreview(
+      return host().openFilePreview(
         normalized.opener === null
           ? normalized.options
           : {
@@ -165,55 +168,54 @@ export function useBbNavigate(): BbNavigate {
             },
       );
     },
-    [appNavigation, pluginId],
-  );
-  const experimental_openFileExternally = useCallback<
-    BbNavigate["experimental_openFileExternally"]
-  >(
-    (options) => {
+    experimental_openFileExternally(options) {
       const normalized = normalizeExperimentalFileOpenOptions(options);
-      return (
-        normalized !== null && appNavigation.openFileExternally(normalized)
-      );
+      return normalized !== null && host().openFileExternally(normalized);
     },
-    [appNavigation],
-  );
-  const experimental_openTerminal = useCallback<
-    BbNavigate["experimental_openTerminal"]
-  >(
-    async ({ terminalId }) => {
+    async experimental_openTerminal({ terminalId }) {
       const session = await sdk.terminals
         .get({ terminalId })
         .catch((error: unknown) => {
           if (error instanceof BbHttpError && error.status === 404) return null;
           throw error;
         });
-      return session !== null && appNavigation.openTerminal(session);
+      return session !== null && host().openTerminal(session);
     },
-    [appNavigation],
-  );
-  return useMemo<BbNavigate & { openThreadPanel: typeof openThreadPanel }>(
-    () => ({
-      toThread,
-      toProject,
-      toPluginPanel,
-      toCompose,
-      openThreadPanel,
-      experimental_openFileExternally,
-      experimental_openFilePreview,
-      experimental_openTerminal,
-      openUrl,
-    }),
-    [
-      toThread,
-      toProject,
-      toPluginPanel,
-      toCompose,
-      openThreadPanel,
-      experimental_openFileExternally,
-      experimental_openFilePreview,
-      experimental_openTerminal,
-      openUrl,
-    ],
+  };
+}
+
+export function usePluginActionContextBinder(): BindPluginActionContext {
+  const deps: BbNavigateDeps = {
+    navigate: useNavigate(),
+    onNavigate: useContext(RouteNavigationCallbackContext),
+    pathname: useLocation().pathname,
+    store: useStore(),
+    queryClient: useQueryClient(),
+    isCompact: useIsCompactViewport(),
+    setRootComposeProjectId: useSetRootComposeProjectId(),
+  };
+  const latest = useRef(deps);
+  useLayoutEffect(() => {
+    latest.current = deps;
+  });
+  const [bind] = useState(() => {
+    const bindContext: BindPluginActionContext = (pluginId, host) =>
+      withRetiredPanelAlias({
+        sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
+        navigate: createBbNavigate(pluginId, host, () => latest.current),
+        panel: createPluginPanelController(pluginId, () => host().panel),
+      });
+    return bindContext;
+  });
+  return bind;
+}
+
+export function useBbNavigate(): BbNavigate {
+  const pluginId = usePluginId();
+  const appNavigation = useAppNavigationHost();
+  const bind = usePluginActionContextBinder();
+  return useMemo(
+    () => bind(pluginId, () => appNavigation).navigate,
+    [appNavigation, bind, pluginId],
   );
 }

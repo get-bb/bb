@@ -354,6 +354,74 @@ and saved binding lifecycle before stabilizing the keyboard shortcut
 contract. Audit cross-platform conflicts and plugin lifecycle before
 extending the context model or default binding policy.
 
+## `ExperimentalPluginActionContext` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.167.
+
+`{ sdk, navigate, panel }`: the registering plugin's `useSdk()`
+client, its `useBbNavigate()`, and the panel controller of the surface that
+invoked the callback. Every plugin callback context extends it:
+`PluginCommandContext`, `PluginMessageActionContext`,
+`PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`,
+`ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`,
+`PluginNewThreadPanelActionContext`, `PluginSidebarFooterActionContext`,
+`ExperimentalSidebarFooterActionContext`, and
+`ExperimentalComposerActionContext` (composer commands, `plusMenu` and
+`sendMenu` rows). `navigate` and `panel` act on the focused
+surface for commands, thread actions and sidebar footer actions; on the
+thread view that showed the message for message actions; on the launching
+surface for panel actions; and on the composer's surface for composer
+callbacks. Commands and message actions gained `sdk`/`navigate` here; thread
+actions already had them under the same names. `experimental_panel` is renamed `panel`;
+`withRetiredPanelAlias` (`apps/app/src/lib/plugin-panel-controller.ts`) keeps
+the old name on every context at runtime, and
+`packages/plugin-build/src/retired-sdk-members.ts` warns plugins that still
+use it.
+
+Docs: `frontend-hooks-and-ui.md#callback-context`.
+
+Core callers: `usePluginActionContextBinder`
+(`apps/app/src/lib/plugin-navigation-hooks.ts`) is the one implementation
+behind `useBbNavigate` and every callback context, including bb's own thread
+actions (`thread-action-registry.tsx`). `PluginActionContextProvider`
+(`apps/app/src/lib/plugin-action-context-provider.tsx`, mounted in
+`main.tsx`) binds it once for `CommandPalette`, `ThreadTimelineRows`, panel
+action launchers, sidebar footer items and composer callbacks, so they do not
+subscribe to the router. Panel action launchers read their surface's host
+through `AppNavigationHostCapture`. Contract tests: the panel controller
+contract table in `ThreadDetailView.contract.test.tsx` runs the terminal,
+file preview and URL cases against message actions and palette commands.
+
+Plugin caller: Conductor's Run command and "Fork to new workspace" message
+action, which replaced an invisible `experimental_appOverlay` that copied
+`useSdk()`/`useBbNavigate()` into module globals.
+
+Before stabilizing, remove the runtime `experimental_panel` alias once
+marketplace plugins have moved to `panel`, and decide whether `BbContext`
+should describe the invoking surface too.
+
+## `BbContext.experimental_pluginPanel` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.167.
+
+`useBbContext().experimental_pluginPanel` is `{ pluginId, path, subPath }`
+(type `ExperimentalPluginPanelPage`) when the route shows a plugin nav panel,
+any plugin's, else null. `subPath` is percent-encoded like the panel
+component's `subPath` prop.
+
+Docs: `frontend-hooks-and-ui.md`.
+
+Core callers: derived with `paneContentForPathname`
+(`apps/app/src/views/thread-detail/splitThreadNavigation.ts`), the same parse
+`AppLayout` uses to pick the plugin panel it mounts.
+
+Plugin caller: Conductor's sidebar highlights the workspace whose Untitled
+page is open, replacing its own store of mounted pages.
+
+Before stabilizing, decide whether `BbContext` should describe every page
+(thread, New thread, settings, plugin panel) as one union, and whether split
+panes need the focused pane's page or every pane's.
+
 ## `experimental_matchesShortcutKey` (`@get-bb/plugin-sdk/app`)
 
 `experimental_matchesShortcutKey(event, key)` says whether a keydown presses
@@ -1371,31 +1439,6 @@ Devices step, which renders `PluginSetupGuideSections` for `connect`.
 **Audit before stabilizing.** Decide whether other plugins should contribute
 setup guide rows, which groups they may target, and whether the guide should
 own the row chrome instead of the plugin rendering `SetupOptionRow`.
-
-## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` and `internal_DO_NOT_USE_onSetupFailed` (`@get-bb/plugin-sdk/app`)
-
-Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
-
-`internal_DO_NOT_USE_onSetupStarted` is meant to be set only when a setup
-guide renders a plugin's settings section inline. The section calls it when the
-user actually starts setting up: bb connect calls it when getbb.app sign-in
-starts, a pairing code is submitted, or Turn on is pressed, matching when the
-setup guide section's `onSetupStarted` fires.
-`internal_DO_NOT_USE_onSetupFailed(stage)` is its failure counterpart, called
-with the same `InternalDoNotUseSetupFailureStage` and optional
-`InternalDoNotUseSetupFailureDetail` the setup guide section's
-`onSetupFailed` receives (`sign_in` when getbb.app sign-in
-can't start or ends denied, expired, or failed; `pairing` when a pairing code
-is rejected; `turn_on` when turning remote access on fails). Core's
-`PluginSettingsSections` passes them through its `onSetupStarted` and
-`onSetupFailed` props; Settings never sets them.
-
-Callers: the bundled `connect` plugin only. Core caller: none. The setup
-guide's Devices step renders `PluginSetupGuideSections` instead, and Settings
-never sets these props.
-
-**Audit before stabilizing.** Remove both members, `PluginSettingsSections`'
-`onSetupStarted` and `onSetupFailed` props, and connect's handling of them.
 
 ## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 
@@ -2797,7 +2840,7 @@ Before stabilization, audit:
    Connected Files and others), and 4 through `experimental_tab` (maxwell,
    bureaucat, todo, jira; rebryk's repository has one of each). Check whether they
    pass the same component to both, which would favor merging. Decided: both
-   contexts open tabs through `experimental_panel` (see Panel controller),
+   contexts open tabs through `panel` (see Panel controller),
    where a thread-context action reference resolves against this slot on the
    New thread screen. Audit only whether the two contexts should merge.
 
@@ -4891,16 +4934,16 @@ own value, so plugins built against the old constant keep working.
 
 #6125 moved pull requests into the bundled GitHub PR Status plugin (`bb--github-pr-status`) and deleted these four `PluginBbSdk.environments` methods with core's routes, so published plugins that still called them threw a TypeError from bb 0.47.0. They are gone from the public typings, the Plugin Guide and the authoring docs; the plugin's RPC contract (`pullRequests`, `markReady`, `markDraft`, `merge`) replaces them. Published and git-sourced plugins keep working: `packages/sdk/src/areas/retired-environment-pull-requests.ts` adds runtime adapters that call `POST /api/v1/plugins/bb--github-pr-status/rpc/<method>` and return the old shapes. `pullRequest` returns the environment's keyed row (`available` with `pullRequest`, `absent`, or `unavailable` with `message`; the plugin's row schema is the old `ThreadPullRequest`), and `unavailable` when the plugin returns no row. The actions return `{ ok: true, action: "pull_request_ready" | "pull_request_draft" | "pull_request_merge", message }`, plus `method` for merge. A plugin `not_found` refusal becomes 404 `environment_not_found` and a `conflict` refusal becomes 409 `pull_request_action_failed` with the plugin's reason. When the plugin is disabled they fail with the RPC error, as the Git read adapters do. Inside a server plugin, `bb.sdk.environments` builds these adapters, and the Git read adapters, on the plugin's caller-token `plugins.callRpc` (`wrapSdkForPlugin` in `apps/server/src/services/plugins/plugin-api.ts`, through `createRetiredEnvironmentMembers` from `@bb/sdk`). The GitHub PR Status plugin therefore treats a `pullRequest` call as a plugin read and waits for a row fresher than 10 seconds. Without the token it would be an app viewer read, answered from the saved row, which for a merged PR can still say open. `bb-plugin-build` warns on calls to them with the replacement RPC call (`packages/plugin-build/src/retired-sdk-members.ts`), the same scan and log paths as the Git reads, and never fails a build. Callers are marketplace plugins written against the old SDK (genui and linear among them). Remove the adapters after those plugins migrate.
 
-## Panel controller (`experimental_useAppPanel`, `ExperimentalPanelController`, `ExperimentalOpenTabOptions`, `experimental_panel`)
+## Panel controller (`experimental_useAppPanel`, `ExperimentalPanelController`, `ExperimentalOpenTabOptions`, `ExperimentalPluginActionContext.panel`)
 
-- **Surface:** `experimental_useAppPanel(): ExperimentalPanelController` for components, and `experimental_panel: ExperimentalPanelController` on every launcher context: `PluginCommandContext`, `PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`, `PluginMessageActionContext`, `PluginNewThreadPanelActionContext`, `ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`. `openTab(options)`, `toggleTab(options)` and `close()` each return host acceptance. `ExperimentalOpenTabOptions` is `{ tab: ExperimentalTabReference, target? }` for fixed tabs (session-only, validated by the tab's `experimental_target`) or `{ tab, params?, title? }` for action tabs (persisted; the same params focus the existing instance). The types reject `target` on action tabs and `params`/`title` on fixed tabs.
+- **Surface:** `experimental_useAppPanel(): ExperimentalPanelController` for components, and `panel: ExperimentalPanelController` on every callback context through `ExperimentalPluginActionContext`. Contexts still carry the retired name `experimental_panel` at runtime for plugins built against it, and the plugin build warns with the new name. `openTab(options)`, `toggleTab(options)` and `close()` each return host acceptance. `ExperimentalOpenTabOptions` is `{ tab: ExperimentalTabReference, target? }` for fixed tabs (session-only, validated by the tab's `experimental_target`) or `{ tab, params?, title? }` for action tabs (persisted; the same params focus the existing instance). The types reject `target` on action tabs and `params`/`title` on fixed tabs.
 - **Behavior:** components get the controller of the surface they render in (thread view, plugin nav-panel page, New thread screen); commands and thread actions get the focused surface's; message actions get the thread view's; tab and New-thread actions get the surface that launched them. `toggleTab` closes the side panel when a fixed tab is selected with the panel open (target ignored) or the action instance with the same params is selected, and otherwise calls `openTab`. `close()` closes the side panel. Declines: no side panel, a tab not registered by this plugin for the surface or hidden, wrong availability, non-JSON or invalid target/params. On the New thread screen a `{ context: { kind: "thread" }, availability: "action" }` reference resolves against `experimental_newThreadPanelAction` with the same id.
-- **Core callers:** `useAppPanelController` and `createAppPanelController` in `apps/app/src/lib/app-fixed-tab-navigation.tsx` are the one implementation; `ThreadDetailView`, `PluginPanelRightPanelHost` and `RootComposeView` build it from their destinations and route bb's own controls through it: the Git plugin's Mod+D command is `toggleTab` on its Diff tab through `ctx.experimental_panel`, `panel.toggle` and the header/page toggle close through `close()` (opening restores the last tab), Info, the fixed-tab strip and Diff file/commit opens use `openTab`, and the panel close/collapse buttons, `panel.close` and the window-close request use `close()`. Plugin calls map through `createPluginPanelController` in `apps/app/src/lib/plugin-panel-controller.ts`. Contract tests: `app-fixed-tab-navigation.test.ts` and the surface tests that run the shared table.
+- **Core callers:** `useAppPanelController` and `createAppPanelController` in `apps/app/src/lib/app-fixed-tab-navigation.tsx` are the one implementation; `ThreadDetailView`, `PluginPanelRightPanelHost` and `RootComposeView` build it from their destinations and route bb's own controls through it: the Git plugin's Mod+D command is `toggleTab` on its Diff tab through `ctx.panel`, `panel.toggle` and the header/page toggle close through `close()` (opening restores the last tab), Info, the fixed-tab strip and Diff file/commit opens use `openTab`, and the panel close/collapse buttons, `panel.close` and the window-close request use `close()`. Plugin calls map through `createPluginPanelController` in `apps/app/src/lib/plugin-panel-controller.ts`. Contract tests: `app-fixed-tab-navigation.test.ts` and the surface tests that run the shared table.
 - **Retired members (2026-10-26):** removed from public typings, the Plugin Guide and the authoring docs; runtime shims call the controller and `bb plugin build` warns with the replacement call (`packages/plugin-build/src/retired-sdk-members.ts`).
 
   | Retired                                                                                                                                                                                                          | Replacement                                                                                                                         |
   | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-  | `ctx.openPanel(options?)` on every launcher context                                                                                                                                                              | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+  | `ctx.openPanel(options?)` on every launcher context                                                                                                                                                              | `ctx.panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`                            |
   | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                                                                                                                                                 | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
   | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`                                                                                                                                       | `experimental_useAppPanel().openTab(options)`                                                                                       |
   | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId?, id }, target? })`                                                                                                                           | `experimental_useAppPanel().openTab({ tab: { id, context, availability: "fixed" }, target })`                                       |

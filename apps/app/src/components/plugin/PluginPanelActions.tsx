@@ -1,6 +1,9 @@
 import { PluginTabScope } from "./PluginTabs";
-import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
-import { useMemo, type ReactNode } from "react";
+import type {
+  ExperimentalPluginActionContext,
+  ExperimentalThreadEnvironment,
+} from "@get-bb/plugin-sdk";
+import { useMemo, type ReactNode, type RefObject } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
@@ -29,12 +32,10 @@ import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 import {
   getThreadFixedTabOwnerId,
   type AppFixedTabDestination,
-  type AppPanelController,
 } from "@/lib/app-fixed-tab-navigation";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "@/lib/plugin-panel-controller";
+import { createRetiredOpenPanel } from "@/lib/plugin-panel-controller";
+import type { ResolvedAppNavigationHostCapabilities } from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 export interface OpenPluginPanelArgs {
   pluginId: string;
   actionId: string;
@@ -131,43 +132,40 @@ function runPanelActionLauncher(
 
 interface RunPluginPanelActionArgs {
   action: Extract<PluginTabSlot, { availability: "action" }>;
-  panel: AppPanelController;
   context: import("./PluginTabs").PluginTabContext;
+  actionContext: ExperimentalPluginActionContext;
 }
 
 export function runPluginPanelAction({
   action,
-  panel,
   context,
+  actionContext,
 }: RunPluginPanelActionArgs): void {
-  const experimental_panel = createPluginPanelController(
-    action.pluginId,
-    () => panel,
-  );
+  const { panel } = actionContext;
   const ownTab = {
     id: action.id,
     context: action.context,
     availability: "action",
   } as const;
-  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  const openPanel = createRetiredOpenPanel(panel, ownTab);
   runPanelActionLauncher(action, "threadPanelAction", () => {
     if (action.run === undefined) {
-      experimental_panel.openTab({ tab: ownTab });
+      panel.openTab({ tab: ownTab });
       return;
     }
     if (isThreadTab(action) && context.kind === "thread") {
       const runContext = {
+        ...actionContext,
         threadId: context.threadId,
         environment: context.environment,
-        experimental_panel,
         openPanel,
       };
       return action.run(runContext);
     }
     if (isNavTab(action) && context.kind === "nav-panel") {
       const runContext = {
+        ...actionContext,
         subPath: context.subPath,
-        experimental_panel,
         openPanel,
       };
       return action.run(runContext);
@@ -177,40 +175,37 @@ export function runPluginPanelAction({
 
 function runPluginNewThreadPanelAction({
   action,
-  panel,
   projectId,
+  actionContext,
 }: {
   action: PluginNewThreadPanelActionSlot;
-  panel: AppPanelController;
   projectId: string | null;
+  actionContext: ExperimentalPluginActionContext;
 }): void {
-  const experimental_panel = createPluginPanelController(
-    action.pluginId,
-    () => panel,
-  );
+  const { panel } = actionContext;
   const ownTab = {
     id: action.id,
     context: { kind: "thread" },
     availability: "action",
   } as const;
-  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  const openPanel = createRetiredOpenPanel(panel, ownTab);
   runPanelActionLauncher(action, "experimental_newThreadPanelAction", () => {
     if (action.run === undefined) {
-      experimental_panel.openTab({ tab: ownTab });
+      panel.openTab({ tab: ownTab });
       return;
     }
-    const runContext = { projectId, experimental_panel, openPanel };
+    const runContext = { ...actionContext, projectId, openPanel };
     return action.run(runContext);
   });
 }
 
 export function usePluginPanelActions({
-  panel,
+  hostRef,
   threadId,
   environmentId,
   actions,
 }: {
-  panel: AppPanelController;
+  hostRef: RefObject<ResolvedAppNavigationHostCapabilities>;
   threadId: string | null | undefined;
   environmentId: string | null;
   actions: readonly Extract<
@@ -218,6 +213,7 @@ export function usePluginPanelActions({
     { context: { kind: "thread" }; availability: "action" }
   >[];
 }): readonly PluginPanelActionEntry[] {
+  const bind = useBindPluginActionContext();
   return useMemo(() => {
     if (threadId === null || threadId === undefined || threadId.length === 0) {
       return [];
@@ -231,25 +227,26 @@ export function usePluginPanelActions({
       onSelect: () =>
         runPluginPanelAction({
           action,
-          panel,
           context: {
             kind: "thread",
             threadId,
             environment: environmentId === null ? null : { id: environmentId },
           },
+          actionContext: bind(action.pluginId, () => hostRef.current),
         }),
     }));
-  }, [panel, threadId, environmentId, actions]);
+  }, [actions, bind, environmentId, hostRef, threadId]);
 }
 
 export function usePluginNewThreadPanelActions({
-  panel,
+  hostRef,
   projectId,
 }: {
-  panel: AppPanelController;
+  hostRef: RefObject<ResolvedAppNavigationHostCapabilities>;
   projectId: string | null;
 }): readonly PluginPanelActionEntry[] {
   const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
+  const bind = useBindPluginActionContext();
   return useMemo(
     () =>
       newThreadPanelActions.map((action) => ({
@@ -260,11 +257,11 @@ export function usePluginNewThreadPanelActions({
         onSelect: () =>
           runPluginNewThreadPanelAction({
             action,
-            panel,
             projectId,
+            actionContext: bind(action.pluginId, () => hostRef.current),
           }),
       })),
-    [newThreadPanelActions, panel, projectId],
+    [bind, hostRef, newThreadPanelActions, projectId],
   );
 }
 

@@ -15,7 +15,7 @@ Demonstrates the SDK's host-owned `ThreadChat` component and the
 - **Message action "Open in demo panel"** — appears on every chat message's
   action bar and in the assistant-message text-selection menu. It opens this
   plugin's own thread panel via
-  `context.experimental_panel.openTab({ tab, params })`,
+  `context.panel.openTab({ tab, params })`,
   passing the anchored message text (or the exact selection) through `params`,
   and renders the current thread compactly with
   `<ThreadChat variant="compact" />`.

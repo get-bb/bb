@@ -86,7 +86,7 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
   const data = commitThreadAction.useData!({ threadIds: ["thr-1"] });
   const sdk = useSdk();
   const navigate = useBbNavigate();
-  const experimental_panel = experimental_useAppPanel();
+  const panel = experimental_useAppPanel();
   useLayoutEffect(() => {
     onItem((thread) =>
       commitThreadAction.item({
@@ -94,7 +94,7 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
         data,
         sdk,
         navigate,
-        experimental_panel,
+        panel,
       }),
     );
   });

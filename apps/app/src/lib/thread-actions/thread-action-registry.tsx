@@ -4,16 +4,15 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type {
-  BbNavigate,
-  ExperimentalPanelController,
+  ExperimentalPluginActionContext,
   PluginBoundThreadAction,
-  PluginBrowserBbSdk,
   PluginThreadAction,
   PluginThreadActionEntry,
   PluginThreadActionPlacement,
@@ -25,13 +24,10 @@ import type {
 import { PluginContext } from "@/components/plugin/plugin-context";
 import {
   FocusedAppNavigationSurfaceProvider,
-  getFocusedAppPanelController,
+  getFocusedAppNavigationSurface,
+  useAppNavigationHost,
 } from "@/lib/app-navigation-host";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "@/lib/plugin-panel-controller";
-import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
+import { usePluginActionContextBinder } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 
@@ -47,9 +43,7 @@ export interface ThreadActionRegistrationRecord {
 
 interface CollectedThreadAction {
   data: unknown;
-  sdk: PluginBrowserBbSdk;
-  navigate: BbNavigate;
-  panel: ExperimentalPanelController;
+  context: ExperimentalPluginActionContext;
 }
 
 interface ThreadActionRegistrySnapshot {
@@ -90,9 +84,7 @@ function publishCollected(key: string, value: CollectedThreadAction): void {
   if (
     current !== undefined &&
     Object.is(current.data, value.data) &&
-    current.sdk === value.sdk &&
-    current.navigate === value.navigate &&
-    current.panel === value.panel
+    current.context === value.context
   ) {
     return;
   }
@@ -242,33 +234,6 @@ function reportFailure(key: string, phase: string, error: unknown): void {
   console.error(`thread action "${key}" failed in ${phase}`, error);
 }
 
-function useLatestNavigate(
-  navigate: BbNavigate,
-  panel: ExperimentalPanelController,
-): BbNavigate {
-  const latest = useRef(navigate);
-  useLayoutEffect(() => {
-    latest.current = navigate;
-  });
-  const [stable] = useState<
-    BbNavigate & { openThreadPanel: ReturnType<typeof createRetiredOpenPanel> }
-  >(() => ({
-    toThread: (...args) => latest.current.toThread(...args),
-    toProject: (...args) => latest.current.toProject(...args),
-    toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
-    toCompose: (...args) => latest.current.toCompose(...args),
-    openThreadPanel: createRetiredOpenPanel(panel),
-    openUrl: (...args) => latest.current.openUrl(...args),
-    experimental_openFilePreview: (...args) =>
-      latest.current.experimental_openFilePreview(...args),
-    experimental_openFileExternally: (...args) =>
-      latest.current.experimental_openFileExternally(...args),
-    experimental_openTerminal: (...args) =>
-      latest.current.experimental_openTerminal(...args),
-  }));
-  return stable;
-}
-
 type ThreadActionUseData = PluginThreadActionRegistration<unknown>["useData"];
 
 interface ThreadActionDataHostProps {
@@ -321,14 +286,15 @@ function ThreadActionPublisher({
   record: ThreadActionRegistrationRecord;
   data: unknown;
 }) {
-  const sdk = useSdk();
-  const [panel] = useState(() =>
-    createPluginPanelController(record.pluginId, getFocusedAppPanelController),
+  const bind = usePluginActionContextBinder();
+  const host = useAppNavigationHost();
+  const context = useMemo(
+    () => bind(record.pluginId, () => getFocusedAppNavigationSurface() ?? host),
+    [bind, host, record.pluginId],
   );
-  const navigate = useLatestNavigate(useBbNavigate(), panel);
   useLayoutEffect(() => {
-    publishCollected(record.key, { data, sdk, navigate, panel });
-  }, [data, navigate, panel, record.key, sdk]);
+    publishCollected(record.key, { data, context });
+  }, [context, data, record.key]);
   useLayoutEffect(() => () => dropCollected(record.key), [record.key]);
   return null;
 }
@@ -471,18 +437,14 @@ function evaluateRecord(
     const action =
       target.kind === "thread"
         ? registration.item({
+            ...input.context,
             thread: target.thread,
             data: input.data,
-            sdk: input.sdk,
-            navigate: input.navigate,
-            experimental_panel: input.panel,
           })
         : (registration.experimental_bulkItem?.({
+            ...input.context,
             threads: target.threads,
             data: input.data,
-            sdk: input.sdk,
-            navigate: input.navigate,
-            experimental_panel: input.panel,
           }) ?? null);
     if (action === null) return null;
     return {

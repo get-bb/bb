@@ -1,4 +1,5 @@
 import type {
+  ExperimentalPluginActionContext,
   PluginComposerApi,
   PluginMessageActionContext,
   ThreadChatMessageReference,
@@ -7,19 +8,15 @@ import type { PluginComposerHost } from "@/components/plugin/plugin-composer-hos
 import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { detachedComposerController } from "./plugin-composer-handle";
 import type { PluginMessageActionSlot } from "./plugin-slots";
-import type { AppPanelController } from "./app-fixed-tab-navigation";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "./plugin-panel-controller";
+import { createRetiredOpenPanel } from "./plugin-panel-controller";
 
 interface RunPluginMessageActionArgs {
   slot: PluginMessageActionSlot;
   threadId: string;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  panel: AppPanelController;
   composerHost: PluginComposerHost | null;
+  actionContext: ExperimentalPluginActionContext;
 }
 
 function messageActionComposer(
@@ -42,21 +39,17 @@ export function runPluginMessageAction({
   threadId,
   message,
   selectedText,
-  panel,
   composerHost,
+  actionContext,
 }: RunPluginMessageActionArgs): void {
-  const experimental_panel = createPluginPanelController(
-    slot.pluginId,
-    () => panel,
-  );
   const context: PluginMessageActionContext & {
     openPanel: ReturnType<typeof createRetiredOpenPanel>;
   } = {
+    ...actionContext,
     threadId,
     message,
     ...(selectedText !== undefined ? { selectedText } : {}),
-    experimental_panel,
-    openPanel: createRetiredOpenPanel(experimental_panel),
+    openPanel: createRetiredOpenPanel(actionContext.panel),
     composer: messageActionComposer(slot.pluginId, threadId, composerHost),
   };
   const warn = (error: unknown) => {

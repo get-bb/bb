@@ -175,7 +175,7 @@ function Probe({
   const data = notificationsThreadAction.useData!({ threadIds });
   const sdk = useSdk();
   const navigate = useBbNavigate();
-  const experimental_panel = experimental_useAppPanel();
+  const panel = experimental_useAppPanel();
   useLayoutEffect(() => {
     onItem(
       (thread) =>
@@ -184,7 +184,7 @@ function Probe({
           data,
           sdk,
           navigate,
-          experimental_panel,
+          panel,
         }),
       (threads) =>
         notificationsThreadAction.experimental_bulkItem?.({
@@ -192,7 +192,7 @@ function Probe({
           data,
           sdk,
           navigate,
-          experimental_panel,
+          panel,
         }) ?? null,
     );
   });

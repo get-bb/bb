@@ -25,6 +25,11 @@ import {
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  bindFocusedSurfaceActionContext,
+  useBindPluginActionContext,
+} from "@/lib/plugin-action-context-provider";
 
 import {
   ContextMenu,
@@ -212,6 +217,10 @@ export function PluginSidebarFooterItems({
   builtInActions?: readonly BuiltinFooterAction[];
 }) {
   const navigate = useNavigate();
+  const actionContext = bindFocusedSurfaceActionContext(
+    useBindPluginActionContext(),
+    useAppNavigationHost(),
+  );
   const preferences = useSidebarFooterPreferences();
   const isCompactViewport = useIsCompactViewport();
   const previousHidden = useRef(preferences.hidden);
@@ -278,6 +287,7 @@ export function PluginSidebarFooterItems({
         : `experimental_sidebarFooter item "${slot.id}"`,
       () =>
         slot.onActivate({
+          ...actionContext(slot.pluginId),
           openPluginDetails: () => {
             void navigate(
               getPluginConfigurationRoutePath({ pluginId: slot.pluginId }),

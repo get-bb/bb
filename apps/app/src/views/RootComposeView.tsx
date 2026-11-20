@@ -117,7 +117,11 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
+import {
+  AppNavigationHostCapture,
+  AppNavigationSurfaceProvider,
+  useAppNavigationHostRef,
+} from "@/lib/app-navigation-host";
 import { useAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
@@ -963,8 +967,9 @@ function RootComposeSurface({
     close: closeWorkspacePanel,
     destinations: panelDestinations,
   });
+  const surfaceHost = useAppNavigationHostRef();
   const rootPluginPanelActions = usePluginNewThreadPanelActions({
-    panel,
+    hostRef: surfaceHost,
     projectId: isProjectless ? null : projectId,
   });
   const openAttachment = useCallback(
@@ -1430,6 +1435,7 @@ function RootComposeSurface({
               capabilities={appNavigationCapabilities}
               isFocused={isFocusedPane}
             >
+              <AppNavigationHostCapture hostRef={surfaceHost} />
               <AppPanelTabsPublisher
                 publish={panel.publishTabs}
                 activeTabId={activeFixedSecondaryTabId}
