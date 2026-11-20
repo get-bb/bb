@@ -321,6 +321,7 @@ const coreThreadActions = definePluginApp((app) => {
     icon: "Pin",
     item: ({ thread, sdk }) => {
       const isPinned = thread.pinnedAt !== null;
+      if (thread.isHidden && !isPinned) return null;
       return {
         label: isPinned ? "Unpin" : "Pin",
         icon: isPinned ? "PinOff" : "Pin",

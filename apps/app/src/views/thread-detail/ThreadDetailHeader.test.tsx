@@ -138,6 +138,7 @@ const THREAD_TARGET: PluginThreadActionTarget = {
   pinnedAt: null,
   sectionId: null,
   isUnread: false,
+  isHidden: false,
   status: "idle",
   environment: null,
 };

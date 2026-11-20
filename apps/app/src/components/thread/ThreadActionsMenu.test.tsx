@@ -83,7 +83,9 @@ const moveAction: PluginThreadActionRegistration = {
   group: experimental_THREAD_ACTION_GROUPS.organize,
   order: 50,
   item: ({ thread }) =>
-    thread.parentThreadId !== null || thread.archivedAt !== null
+    thread.parentThreadId !== null ||
+    thread.archivedAt !== null ||
+    thread.isHidden
       ? null
       : {
           label: "Move to section",
@@ -468,6 +470,44 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Customize actions",
         "---",
         "Unarchive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+    },
+    {
+      state: "a hidden side chat",
+      thread: makeThreadListEntry({ ...baseThread, visibility: "hidden" }),
+      route: "/",
+      layout: null,
+      desktop: [
+        "Open in split",
+        "Copy link",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "Copy link",
+        "New thread in environment",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
         "Delete",
         "---",
         "Notifications",
