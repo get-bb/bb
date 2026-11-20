@@ -1,10 +1,6 @@
 import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
-import {
-  LIST_PAGE_DEFAULT_LIMIT,
-  LIST_PAGE_MAX_LIMIT,
-} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
@@ -15,6 +11,7 @@ import {
 } from "../../table.js";
 import {
   collectOption,
+  LIST_COMMAND_DEFAULT_LIMIT,
   parseNonNegativeIntegerOption,
   printListPageNotice,
 } from "../helpers.js";
@@ -68,7 +65,7 @@ export function registerListCommand(
     .option("--include-hidden", "Include hidden threads")
     .option(
       "--limit <n>",
-      `At most this many threads (default ${LIST_PAGE_DEFAULT_LIMIT}, max ${LIST_PAGE_MAX_LIMIT})`,
+      `At most this many threads (default ${LIST_COMMAND_DEFAULT_LIMIT})`,
     )
     .option("--offset <n>", "Skip this many threads")
     .option("--json", "Print machine-readable JSON output")
@@ -76,7 +73,7 @@ export function registerListCommand(
       action(async (opts: ThreadListCommandOptions) => {
         const limit =
           parseNonNegativeIntegerOption(opts.limit, "--limit") ??
-          LIST_PAGE_DEFAULT_LIMIT;
+          LIST_COMMAND_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const projectId = resolveExplicitIdFlag({

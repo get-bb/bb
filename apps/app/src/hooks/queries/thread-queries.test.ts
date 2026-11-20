@@ -13,7 +13,6 @@ import type {
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import { LIST_PAGE_MAX_LIMIT } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import * as api from "@/lib/api";
@@ -794,18 +793,17 @@ describe("useChildThreads", () => {
   });
 
   it("falls back to the parent-keyed list request without a sidebar cache, paging past a full page", async () => {
+    const pageSize = 500;
     const { queryClient } = createQueryClientTestHarness();
-    const children = Array.from(
-      { length: LIST_PAGE_MAX_LIMIT + 1 },
-      (_, index) =>
-        makeThreadListEntry({
-          id: `child-${index}`,
-          parentThreadId: "parent-1",
-        }),
+    const children = Array.from({ length: pageSize + 1 }, (_, index) =>
+      makeThreadListEntry({
+        id: `child-${index}`,
+        parentThreadId: "parent-1",
+      }),
     );
     vi.mocked(sdk.threads.list)
-      .mockResolvedValueOnce(children.slice(0, LIST_PAGE_MAX_LIMIT))
-      .mockResolvedValueOnce(children.slice(LIST_PAGE_MAX_LIMIT));
+      .mockResolvedValueOnce(children.slice(0, pageSize))
+      .mockResolvedValueOnce(children.slice(pageSize));
 
     const readChildThreads = observeChildThreads(queryClient, "parent-1");
 
@@ -815,10 +813,10 @@ describe("useChildThreads", () => {
     expect(
       vi.mocked(sdk.threads.list).mock.calls.map(([args]) => args),
     ).toEqual(
-      [0, LIST_PAGE_MAX_LIMIT].map((offset) => ({
+      [0, pageSize].map((offset) => ({
         archived: false,
         parentThreadId: "parent-1",
-        limit: LIST_PAGE_MAX_LIMIT,
+        limit: pageSize,
         offset,
         signal: expect.any(AbortSignal),
       })),

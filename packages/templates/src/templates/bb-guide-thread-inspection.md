@@ -22,7 +22,7 @@ Listing:
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
-    --limit <n> / --offset <n>             Page through the threads (default 200, max 500)
+    --limit <n> / --offset <n>             Page through the threads (default 200)
 
   Like `bb thread count`, the list leaves out archived threads unless you
   pass --archived, --include-archived, or --thread IDs. The table prints ID,
@@ -31,8 +31,8 @@ Listing:
   characters. Project shows the project name; the personal project shows
   "-". Use --json for the full thread records.
 
-  The list prints one page: 200 threads unless --limit says otherwise, at
-  most 500. When a page is full, the table is followed by a note on stderr
+  The list prints one page: 200 threads unless --limit says otherwise.
+  When a page is full, the table is followed by a note on stderr
   naming the --offset of the next page; --json prints only the page
   (SDK: `threads.list({ limit, offset })`, where `limit` is required).
 

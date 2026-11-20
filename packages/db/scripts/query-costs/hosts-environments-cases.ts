@@ -352,20 +352,10 @@ const ENVIRONMENT_CASES: readonly Case[] = [
     name: `${ENVIRONMENTS}#listEnvironments`,
     growsWith: {
       history:
-        "Host removal reads every environment on the host to tear each one down, and the seed grows its environments",
+        "Lists every environment on the busy host, and the seed grows its environments",
     },
     run: (db, _fixture, seed) =>
       listEnvironments(db, { hostId: seed.busyHostId }),
-  },
-  {
-    name: `${ENVIRONMENTS}#listEnvironments`,
-    variant: "GET /environments page",
-    run: (db, _fixture, seed) =>
-      listEnvironments(db, {
-        hostId: seed.busyHostId,
-        limit: 500,
-        offset: 0,
-      }),
   },
   {
     name: `${ENVIRONMENTS}#markHostEnvironmentsDestroyed`,

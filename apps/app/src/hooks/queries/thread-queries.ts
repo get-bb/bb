@@ -23,7 +23,6 @@ import { useDebouncedValue } from "../useDebouncedValue";
 import {
   applyThreadTimelineDelta,
   isThreadTimelineDelta,
-  LIST_PAGE_MAX_LIMIT,
 } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
@@ -338,6 +337,8 @@ export function useArchivedThreads(
   return useInfiniteQuery(archivedThreadsQueryOptions(filters, options));
 }
 
+const LIST_EVERY_THREAD_PAGE_SIZE = 500;
+
 interface ListEveryThreadArgs extends Omit<
   ThreadListFilters,
   "limit" | "offset"
@@ -349,14 +350,14 @@ async function listEveryThread(
   args: ListEveryThreadArgs,
 ): Promise<ThreadListResponse> {
   const threads: ThreadListResponse = [];
-  for (let offset = 0; ; offset += LIST_PAGE_MAX_LIMIT) {
+  for (let offset = 0; ; offset += LIST_EVERY_THREAD_PAGE_SIZE) {
     const page = await sdk.threads.list({
       ...args,
-      limit: LIST_PAGE_MAX_LIMIT,
+      limit: LIST_EVERY_THREAD_PAGE_SIZE,
       offset,
     });
     threads.push(...page);
-    if (page.length < LIST_PAGE_MAX_LIMIT) return threads;
+    if (page.length < LIST_EVERY_THREAD_PAGE_SIZE) return threads;
   }
 }
 

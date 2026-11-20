@@ -100,10 +100,8 @@ export interface ThreadListArgs {
   hasParent?: boolean;
   includeHidden?: boolean;
   /**
-   * Page size, at most 500; a larger value is rejected. A caller that needs
-   * every row pages with `offset` until a page comes back shorter than its
-   * `limit`. Plugins built before `limit` was required may still omit it at
-   * runtime; the server then returns its default page of 200.
+   * Page size. A caller that needs every row pages with `offset` until a
+   * page comes back shorter than its `limit`.
    */
   limit: number;
   /** Rows to skip, in the list's own order; defaults to 0. */

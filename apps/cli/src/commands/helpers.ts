@@ -101,6 +101,8 @@ export function joinValues(values: readonly string[]): string {
   return values.map((value) => `'${value}'`).join(" or ");
 }
 
+export const LIST_COMMAND_DEFAULT_LIMIT = 200;
+
 export function parseNonNegativeIntegerOption(
   value: string | undefined,
   optionName: "--limit" | "--offset",

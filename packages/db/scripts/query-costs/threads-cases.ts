@@ -495,15 +495,13 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
     name: `${THREADS}#listThreadsWithPendingInteractionState`,
     growsWith: {
       history:
-        "GET /threads returns one page, but no index covers the project, pin and creation order, so SQLite sorts every matching live thread on the host to pick it, and the seed grows the thread count",
+        "Lists every live visible thread on the busiest host, and the seed grows the thread count",
     },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionState(db, {
         hostId: seed.busiestHostId,
         archived: false,
         includeHidden: false,
-        limit: 500,
-        offset: 0,
       }),
   },
   {

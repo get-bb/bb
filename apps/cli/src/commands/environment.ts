@@ -14,17 +14,14 @@ import {
   type JsonValue,
 } from "@bb/domain";
 import { Command } from "commander";
-import {
-  LIST_PAGE_DEFAULT_LIMIT,
-  LIST_PAGE_MAX_LIMIT,
-  type CommitActionResponse,
-} from "@bb/server-contract";
+import type { CommitActionResponse } from "@bb/server-contract";
 import type { EnvironmentUpdateArgs } from "@bb/sdk";
 import { action } from "../action.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 import {
+  LIST_COMMAND_DEFAULT_LIMIT,
   parseNonNegativeIntegerOption,
   prependErrorContext,
   printListPageNotice,
@@ -298,7 +295,7 @@ export function registerEnvironmentCommands(
     )
     .option(
       "--limit <n>",
-      `At most this many rows, oldest first (default ${LIST_PAGE_DEFAULT_LIMIT}, max ${LIST_PAGE_MAX_LIMIT})`,
+      `At most this many rows, oldest first (default ${LIST_COMMAND_DEFAULT_LIMIT})`,
     )
     .option("--offset <n>", "Skip this many rows")
     .option("--json", "Print machine-readable JSON output")
@@ -306,7 +303,7 @@ export function registerEnvironmentCommands(
       action(async (opts: EnvironmentListCommandOptions) => {
         const limit =
           parseNonNegativeIntegerOption(opts.limit, "--limit") ??
-          LIST_PAGE_DEFAULT_LIMIT;
+          LIST_COMMAND_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const hostId =
