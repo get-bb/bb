@@ -27,6 +27,8 @@ class ClientCertificatesModule : Module() {
         ClientCertificates.choiceChanged()
       }
 
+      Function("restartApp") { ClientCertificates.restartApp() }
+
       AsyncFunction("forget") { serverUrl: String ->
         ClientCertificates.broker.forget(server(serverUrl))
         ClientCertificates.choiceChanged()

@@ -7,7 +7,6 @@ import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { nativeClientCertificates } from "@/lib/native";
 import { supportsClientCertificate, type ServerProfile } from "@/lib/profiles";
-import { sendShellCommand } from "@/lib/shell";
 import {
   ActionSheet,
   confirmDestructive,
@@ -26,6 +25,9 @@ import {
 } from "./SettingsRows";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
+const CERTIFICATE_RESTART_DELAY_MS = 1500;
+const CERTIFICATE_RESTART_MESSAGE =
+  "bb restarts to close connections that use the old setting.";
 
 export function ServersScreen() {
   const router = useRouter();
@@ -68,8 +70,11 @@ export function ServersScreen() {
       onConfirm: () => remove(profile),
     });
 
-  const applyCertificateChange = (profile: ServerProfile) => {
-    if (profile.id === activeProfile?.id) sendShellCommand({ kind: "reload" });
+  const restartForCertificateChange = () => {
+    setTimeout(
+      () => nativeClientCertificates?.restartApp(),
+      CERTIFICATE_RESTART_DELAY_MS,
+    );
   };
 
   const chooseCertificate = (profile: ServerProfile) => {
@@ -77,8 +82,10 @@ export function ServersScreen() {
       ?.choose(profile.serverUrl)
       .then((alias) => {
         if (alias === null) return;
-        toast.success(`${profile.label} uses ${alias}`);
-        applyCertificateChange(profile);
+        toast.success(`${profile.label} uses ${alias}`, {
+          description: CERTIFICATE_RESTART_MESSAGE,
+        });
+        restartForCertificateChange();
       })
       .catch((error: unknown) => {
         toast.error("Could not choose a certificate", {
@@ -91,8 +98,10 @@ export function ServersScreen() {
     nativeClientCertificates
       ?.stopUsing(profile.serverUrl)
       .then(() => {
-        toast.success(`${profile.label} uses no client certificate`);
-        applyCertificateChange(profile);
+        toast.success(`${profile.label} uses no client certificate`, {
+          description: CERTIFICATE_RESTART_MESSAGE,
+        });
+        restartForCertificateChange();
       })
       .catch((error: unknown) => {
         toast.error("Could not stop using the certificate", {
