@@ -70,13 +70,17 @@ import {
   listRetryableFailedQueuedThreadMessages,
   listQueuedThreadMessagesByWaitHolder,
 } from "../src/data/queued-thread-messages.js";
-import { listEnvironments } from "../src/data/environments.js";
+import {
+  createEnvironment,
+  listEnvironments,
+} from "../src/data/environments.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
 import {
   createThread,
   listRunningThreads,
   listArchivedThreadsPendingTeardown,
+  listRuntimeHostThreadIds,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 import {
@@ -900,8 +904,44 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("seeks a host's live and running threads by status instead of walking its environments", () => {
+    const { db, host } = setup();
+
+    const captured = captureStatements(db, () => {
+      listRuntimeHostThreadIds(db, { hostId: host.id });
+    });
+    expect(captured).toHaveLength(2);
+    const details = captured.map((query) => queryPlanDetails({ db, ...query }));
+    expect(details[0]).toMatch(
+      /SEARCH threads USING INDEX threads_archived_status_idx \(archived_at=\?/u,
+    );
+    expect(details[1]).toMatch(
+      /SEARCH threads USING INDEX threads_active_maintenance_idx \(status=\?\)/u,
+    );
+    for (const plan of details) {
+      expect(plan).not.toMatch(
+        /SEARCH environments USING INDEX environments_/u,
+      );
+    }
+
+    db.$client.close();
+  });
+
   it("probes settled background tasks by item when listing open tasks", () => {
-    const { db, host, thread } = setup();
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/query-plan-background-tasks",
+      status: "ready",
+    });
+    const thread = createThread(db, noopNotifier, {
+      status: "idle",
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
     const lifecycle = [
       ["bg-open", "item/started"],
       ["bg-done", "item/started"],
@@ -929,10 +969,17 @@ describe("slow query index plans", () => {
           threadId: thread.id,
         }).map((row) => row.itemId),
       ).toEqual(["bg-open"]);
-      listOpenBackgroundTaskItemRowsForHost(db, { hostId: host.id });
+      expect(
+        listOpenBackgroundTaskItemRowsForHost(db, { hostId: host.id }).map(
+          (row) => row.itemId,
+        ),
+      ).toEqual(["bg-open"]);
     });
-    expect(captured).toHaveLength(2);
-    for (const query of captured) {
+    const eventQueries = captured.filter((query) =>
+      /from "?events"?/iu.test(query.sql),
+    );
+    expect(eventQueries).toHaveLength(2);
+    for (const query of eventQueries) {
       const details = queryPlanDetails({ db, ...query });
       expect(details).toMatch(
         /SEARCH \w+ USING COVERING INDEX events_background_task_thread_type_item_sequence_idx \(thread_id=\? AND type=\? AND item_id=\?\)/u,

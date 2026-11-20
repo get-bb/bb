@@ -1336,7 +1336,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
     name: `${EVENTS}#listOpenBackgroundTaskItemRowsForHost`,
     growsWith: {
       history:
-        "Probes the background-task index once per thread on the host, and the seed grows the host's threads",
+        "Probes the background-task index once per live or running thread on the host, and the seed grows live threads with the host's threads",
     },
     run: (db, fixture) =>
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: fixture.hostId }),

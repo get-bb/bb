@@ -1,5 +1,5 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
-import { getThread, markThreadDeleted } from "@bb/db";
+import { archiveThread, getThread, markThreadDeleted } from "@bb/db";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -256,7 +256,7 @@ describe("host thread runtime status notifications", () => {
     });
   });
 
-  it("publishes the disconnect fan-out in a statement count that does not grow with the host's thread count", async () => {
+  it("publishes the disconnect fan-out only to live or running threads, in a statement count that does not grow with the host's thread count", async () => {
     await withTestHarness(async (harness) => {
       const small = seedHostThreadsFixture(harness, 2);
       const large = seedHostThreadsFixture(harness, 3);
@@ -281,6 +281,22 @@ describe("host thread runtime status notifications", () => {
       markThreadDeleted(harness.db, harness.hub, {
         threadId: deletedActiveThread.id,
       });
+      const archivedIdleThreadIds = seedHostThreads(harness, {
+        count: 300,
+        fixture: large,
+        status: "idle",
+      });
+      const archivedActiveThreadId = seedThread(harness.deps, {
+        projectId: large.projectId,
+        environmentId: large.environmentId,
+        status: "active",
+      }).id;
+      for (const threadId of [
+        ...archivedIdleThreadIds,
+        archivedActiveThreadId,
+      ]) {
+        archiveThread(harness.db, harness.hub, threadId);
+      }
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
 
@@ -298,7 +314,10 @@ describe("host thread runtime status notifications", () => {
 
       expect(largeStatements).toBe(smallStatements);
 
-      for (const threadId of largeActiveThreadIds) {
+      for (const threadId of [
+        ...largeActiveThreadIds,
+        archivedActiveThreadId,
+      ]) {
         expect(
           lastStatusChange(largeMessages, threadId).metadata?.statusChange,
         ).toMatchObject({
@@ -306,14 +325,18 @@ describe("host thread runtime status notifications", () => {
           runtime: { displayStatus: "active" },
         });
       }
-      for (const threadId of [...largeIdleThreadIds, deletedActiveThread.id]) {
+      for (const threadId of largeIdleThreadIds) {
         expect(
           lastStatusChange(largeMessages, threadId).metadata?.statusChange,
         ).toBeUndefined();
       }
-      expect(
-        statusChangedMessagesFor(largeMessages, small.activeThreadId),
-      ).toEqual([]);
+      for (const threadId of [
+        ...archivedIdleThreadIds,
+        deletedActiveThread.id,
+        small.activeThreadId,
+      ]) {
+        expect(statusChangedMessagesFor(largeMessages, threadId)).toEqual([]);
+      }
     });
   });
 

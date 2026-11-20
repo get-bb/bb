@@ -59,12 +59,12 @@ import {
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listArchivedThreadsPendingTeardown,
   listExistingThreadIds,
-  listHostThreadIds,
   listLifecycleThreadDependents,
   listLiveThreadsInEnvironment,
   listNonDeletedChildThreads,
   listNonDeletedHiddenSourceThreads,
   listRunningThreads,
+  listRuntimeHostThreadIds,
   listThreadAncestors,
   listThreadDeletionTree,
   listThreadDescendants,
@@ -279,13 +279,13 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
       listExistingThreadIds(db, seed.existingLookupIds),
   },
   {
-    name: `${THREADS}#listHostThreadIds`,
+    name: `${THREADS}#listRuntimeHostThreadIds`,
     growsWith: {
       history:
-        "Returns the id of every thread on the host, and the seed grows the thread count",
+        "Returns every live or running thread on the host, and the seed grows live threads with the thread count",
     },
     run: (db, _fixture, seed) =>
-      listHostThreadIds(db, { hostId: seed.busiestHostId }),
+      listRuntimeHostThreadIds(db, { hostId: seed.busiestHostId }),
   },
   {
     name: `${THREADS}#listActiveHostThreads`,
