@@ -1070,7 +1070,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(272);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(273);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1102,7 +1102,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(269)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(270)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(271)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(272)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(272)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(273)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -3424,11 +3425,36 @@ describe("host-daemon session schemas", () => {
         type: "plugin-host.worker-exited",
         pluginId: "keep-awake",
         generation: "generation-1",
+        reason: "host plugin worker exited (1)",
       }),
     ).toEqual({
       type: "plugin-host.worker-exited",
       pluginId: "keep-awake",
       generation: "generation-1",
+      reason: "host plugin worker exited (1)",
+    });
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-exited",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+      }),
+    ).toThrow();
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-output",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+        stream: "stderr",
+        line: "TypeError: boom",
+      }),
+    ).toEqual({
+      type: "plugin-host.worker-output",
+      pluginId: "keep-awake",
+      generation: "generation-1",
+      stream: "stderr",
+      line: "TypeError: boom",
     });
 
     expect(
