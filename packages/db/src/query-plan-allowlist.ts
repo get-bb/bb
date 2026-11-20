@@ -85,9 +85,17 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
       "The unfiltered unscoped listing runs only in tests; production's unscoped caller filters by visible status through the status index",
   },
   {
-    rule: "automatic-index",
-    table: "ordered_threads",
-    caller: "packages/db/src/data/threads.ts#listThreadSearchMatchRows",
-    reason: "Automatic index over the search CTE, bounded by matching threads",
+    rule: "correlated-subquery",
+    table: "thread_search_segments",
+    caller: `${THREADS}#listThreadSearchMatchRows`,
+    reason:
+      "Thread search walks threads in result order and stops once the page and 101 counted matches are found; each probe stops at the thread's first matching segment, and a query whose rarest token matches at most 1,000 segments walks only those segments' threads; check:query-costs measures it",
+  },
+  {
+    rule: "nested-loop",
+    table: "thread_search_segments",
+    caller: `${THREADS}#listThreadSearchMatchRows`,
+    reason:
+      "query_tokens holds one row per distinct search token, so each segment probe scans only those few rows",
   },
 ];

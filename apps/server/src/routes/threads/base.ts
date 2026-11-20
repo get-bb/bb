@@ -205,6 +205,7 @@ function buildThreadSearchGroupResponse(
 
   return {
     total: args.group.total,
+    totalCapped: args.group.totalCapped,
     results: args.group.results.flatMap((result) => {
       const thread = threadEntriesById.get(result.thread.id);
       if (thread === undefined) {

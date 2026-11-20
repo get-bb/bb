@@ -570,6 +570,7 @@ export const threadSearchResultSchema = z
 export const threadSearchResultGroupSchema = z
   .object({
     total: z.number().int().nonnegative(),
+    totalCapped: z.boolean(),
     results: z.array(threadSearchResultSchema),
   })
   .strict();

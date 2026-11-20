@@ -22,6 +22,7 @@ import {
   dropEnvironmentHoldColumns,
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
+  dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -136,6 +137,7 @@ it.each([false, true])(
       dropQueuedMessageRecheckAtColumn(db);
       dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
+      dropThreadSearchOrderIndex(db);
       migrate(db);
       migrate(db);
 

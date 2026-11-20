@@ -184,6 +184,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
 }
@@ -211,6 +212,10 @@ export function dropEnvironmentHoldColumns(db: DbConnection): void {
   for (const name of ["held_by", "create_pending"])
     if (columns.some((existing) => existing.name === name))
       db.$client.exec(`ALTER TABLE environments DROP COLUMN ${name}`);
+}
+
+export function dropThreadSearchOrderIndex(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS `threads_search_order_idx`");
 }
 
 export function restoreDiffViewedFilesTable(db: DbConnection): void {

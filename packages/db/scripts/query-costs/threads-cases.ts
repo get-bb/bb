@@ -471,11 +471,8 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
     name: `${THREADS}#searchThreadsWithPendingInteractionState`,
     growsWith: {
       history:
-        "Ranks and counts every thread matching the query for group totals, and the seed grows the matches",
+        "Collects every matching segment's FTS key once, and the seed grows the matches; the thread walk stops at the page and 101 counted matches",
     },
-    ceilingMs: 250,
-    reason:
-      "Known linear cost: ranks and counts every matching thread for the group totals (10,000 threads and 80,000 matching segments at full scale); runs once per debounced search",
     run: (db) =>
       searchThreadsWithPendingInteractionState(db, {
         query: "tests",

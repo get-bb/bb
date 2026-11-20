@@ -13,7 +13,8 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread spawn":
     "the created thread: {id, status, title, projectId, environmentId, ...}",
   "thread wait": "{threadId, matched: true, target}",
-  "thread search": "{active: {total, results}, archived: {total, results}}",
+  "thread search":
+    "{active: {total, totalCapped, results}, archived: {total, totalCapped, results}}    (total counts matching threads up to 100; totalCapped is true when more match)",
   "prompt-history list":
     "{entries: [{id, createdAt, input, projectId, threadId, scope}], nextCursor: string | null}",
   "project list":
