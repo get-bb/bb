@@ -34,6 +34,9 @@ export const SHELL_SAFE_AREA_BOTTOM_PROPERTY = "--bb-safe-area-bottom";
  */
 export const KEYBOARD_OPEN_MIN_SHRINK_PX = 80;
 
+// WebKit can dispatch its last resize before the viewport getters settle.
+const IOS_VIEWPORT_SETTLE_MS = 400;
+
 function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
 }
@@ -84,10 +87,12 @@ export function useMobileVisualViewportHeight(
     // only the visual viewport.
     let shellContainingBlockHeight = 0;
     let shellContainingBlockHeightStale = true;
-    // The visual-viewport height captured when an editor took focus, and
-    // whether the keyboard is currently judged open. Both drive only the
-    // bottom-inset override, never the height override.
+    let layoutViewportWidth = 0;
+    // Keep the pre-keyboard height after blur so a late resize can still be
+    // recognized as part of the dismissed keyboard session.
     let viewportHeightBeforeKeyboard: number | null = null;
+    let dismissedKeyboardBaseline: number | null = null;
+    let viewportRecheck: number | null = null;
     let appliedKeyboardInset = false;
     const setKeyboardInset = (open: boolean) => {
       if (open === appliedKeyboardInset) return;
@@ -101,7 +106,7 @@ export function useMobileVisualViewportHeight(
         shellHeightRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
       }
     };
-    const updateKeyboardInset = () => {
+    const updateKeyboardInset = (viewportHeight: number) => {
       if (
         viewportHeightBeforeKeyboard === null ||
         !isKeyboardFocusTarget(document.activeElement)
@@ -110,7 +115,7 @@ export function useMobileVisualViewportHeight(
         return;
       }
       setKeyboardInset(
-        viewportHeightBeforeKeyboard - visualViewport.height >=
+        viewportHeightBeforeKeyboard - viewportHeight >=
           KEYBOARD_OPEN_MIN_SHRINK_PX,
       );
     };
@@ -123,13 +128,14 @@ export function useMobileVisualViewportHeight(
     };
     const updateHeight = () => {
       animationFrame = null;
-      updateKeyboardInset();
+      const viewportHeight = visualViewport.height;
       if (visualViewport.scale !== 1) {
+        updateKeyboardInset(viewportHeight);
         clearViewportOverride();
         return;
       }
 
-      const visualViewportHeight = Math.round(visualViewport.height);
+      const visualViewportHeight = Math.round(viewportHeight);
       if (shellContainingBlockHeightStale) {
         // `documentElement.clientHeight` is the visible viewport height for the
         // root element, even when that root's actual CSS box extends behind an
@@ -138,6 +144,32 @@ export function useMobileVisualViewportHeight(
         // receives.
         shellContainingBlockHeight = document.body.clientHeight;
         shellContainingBlockHeightStale = false;
+        if (
+          restoreImmediatelyOnKeyboardDismissal &&
+          layoutViewportWidth !== window.innerWidth
+        ) {
+          layoutViewportWidth = window.innerWidth;
+          // Focus can survive rotation, including when crossing the compact
+          // breakpoint remounts this effect. Use the new layout height as the
+          // baseline until the browser reports another focus session.
+          if (isKeyboardFocusTarget(document.activeElement)) {
+            viewportHeightBeforeKeyboard = shellContainingBlockHeight;
+          }
+          if (dismissedKeyboardBaseline !== null) {
+            dismissedKeyboardBaseline = shellContainingBlockHeight;
+          }
+        }
+      }
+      updateKeyboardInset(viewportHeight);
+      if (dismissedKeyboardBaseline !== null) {
+        if (
+          dismissedKeyboardBaseline - viewportHeight >=
+          KEYBOARD_OPEN_MIN_SHRINK_PX
+        ) {
+          clearViewportOverride();
+          return;
+        }
+        dismissedKeyboardBaseline = null;
       }
       const hasVisualViewportPan =
         visualViewport.offsetTop > 1 || window.scrollY > 0;
@@ -190,6 +222,41 @@ export function useMobileVisualViewportHeight(
       shellContainingBlockHeightStale = true;
       scheduleUpdate();
     };
+    const cancelViewportRecheck = () => {
+      if (viewportRecheck === null) return;
+      window.clearTimeout(viewportRecheck);
+      viewportRecheck = null;
+    };
+    const scheduleViewportRecheck = () => {
+      cancelViewportRecheck();
+      viewportRecheck = window.setTimeout(() => {
+        viewportRecheck = null;
+        scheduleContainingBlockUpdate();
+      }, IOS_VIEWPORT_SETTLE_MS);
+    };
+    const recheckDuringKeyboardResize = () => {
+      if (
+        restoreImmediatelyOnKeyboardDismissal &&
+        (appliedKeyboardInset || dismissedKeyboardBaseline !== null)
+      ) {
+        scheduleViewportRecheck();
+      }
+    };
+    const handleVisualViewportResize = () => {
+      recheckDuringKeyboardResize();
+      scheduleUpdate();
+    };
+    const handleWindowResize = () => {
+      recheckDuringKeyboardResize();
+      scheduleContainingBlockUpdate();
+    };
+    const reconcileViewport = () => {
+      scheduleContainingBlockUpdate();
+      if (restoreImmediatelyOnKeyboardDismissal) scheduleViewportRecheck();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reconcileViewport();
+    };
     const handleVisualViewportScroll = () => {
       // Keyboard-less visual-viewport pans (URL-bar collapse, momentum
       // settling) don't change the containing block and need no override —
@@ -212,6 +279,16 @@ export function useMobileVisualViewportHeight(
     const handleFocusOut = (event: FocusEvent) => {
       if (!isKeyboardFocusTarget(event.target)) return;
       if (isKeyboardFocusTarget(event.relatedTarget)) return;
+      if (
+        restoreImmediatelyOnKeyboardDismissal &&
+        viewportHeightBeforeKeyboard !== null &&
+        (appliedKeyboardInset ||
+          viewportHeightBeforeKeyboard - visualViewport.height >=
+            KEYBOARD_OPEN_MIN_SHRINK_PX)
+      ) {
+        dismissedKeyboardBaseline = viewportHeightBeforeKeyboard;
+        scheduleViewportRecheck();
+      }
       viewportHeightBeforeKeyboard = null;
       setKeyboardInset(false);
       // Clearing the height override on focus loss is the iOS-only behaviour
@@ -228,35 +305,50 @@ export function useMobileVisualViewportHeight(
       // Remember the height before the keyboard animates in; the shrink from
       // this value is the only reliable signal that it opened, because iOS may
       // resize the layout viewport too and hide the difference.
-      viewportHeightBeforeKeyboard ??= visualViewport.height;
+      if (viewportHeightBeforeKeyboard === null) {
+        cancelViewportRecheck();
+        viewportHeightBeforeKeyboard = Math.max(
+          visualViewport.height,
+          dismissedKeyboardBaseline ?? 0,
+        );
+        // A quick refocus can happen while the previous keyboard is still
+        // closing. Give the new focus session its own follow-up read.
+        if (dismissedKeyboardBaseline !== null) scheduleViewportRecheck();
+        dismissedKeyboardBaseline = null;
+      }
       // Programmatic focus (composer autofocus) can be the only trigger for a
       // keyboard, so this must always schedule a full, freshly measured pass.
       scheduleContainingBlockUpdate();
     };
 
     updateHeight();
-    visualViewport.addEventListener("resize", scheduleUpdate);
+    recheckDuringKeyboardResize();
+    visualViewport.addEventListener("resize", handleVisualViewportResize);
     visualViewport.addEventListener("scroll", handleVisualViewportScroll);
-    window.addEventListener("resize", scheduleContainingBlockUpdate);
-    window.addEventListener("orientationchange", scheduleContainingBlockUpdate);
+    window.addEventListener("resize", handleWindowResize);
+    window.addEventListener("orientationchange", reconcileViewport);
+    if (restoreImmediatelyOnKeyboardDismissal) {
+      window.addEventListener("pageshow", reconcileViewport);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
     // The focus listeners drive the bottom-inset override on every platform,
     // so they are no longer gated on the iOS keyboard-dismissal behaviour.
     document.addEventListener("focusout", handleFocusOut);
     document.addEventListener("focusin", handleFocusIn);
 
     return () => {
-      visualViewport.removeEventListener("resize", scheduleUpdate);
+      visualViewport.removeEventListener("resize", handleVisualViewportResize);
       visualViewport.removeEventListener("scroll", handleVisualViewportScroll);
-      window.removeEventListener("resize", scheduleContainingBlockUpdate);
-      window.removeEventListener(
-        "orientationchange",
-        scheduleContainingBlockUpdate,
-      );
+      window.removeEventListener("resize", handleWindowResize);
+      window.removeEventListener("orientationchange", reconcileViewport);
+      window.removeEventListener("pageshow", reconcileViewport);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("focusout", handleFocusOut);
       document.removeEventListener("focusin", handleFocusIn);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
+      cancelViewportRecheck();
       setKeyboardInset(false);
       clearViewportOverride();
     };
