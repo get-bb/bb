@@ -114,11 +114,23 @@ export class TerminalWebSocketTransport {
     this.connect("connecting");
   }
 
+  suspend(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.reconnectAttempt = 0;
+    this.closeSocket();
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
     }
     this.disposed = true;
+    this.closeSocket();
+  }
+
+  private closeSocket(): void {
     this.clearReconnectTimeout();
     this.clearDrainTimeout();
     this.stopHeartbeat();

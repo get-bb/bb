@@ -8,6 +8,7 @@ import {
   terminalsQueryKey,
   type TerminalQueryScope,
 } from "../queries/query-keys";
+import { evictTerminalRuntime } from "@/lib/terminal-runtime-cache";
 
 interface TerminalSessionCacheArgs {
   queryClient: QueryClient;
@@ -95,6 +96,7 @@ export function applyTerminalSessionMissing({
   queryClient: QueryClient;
   terminalId: string;
 }): void {
+  evictTerminalRuntime(terminalId);
   queryClient.setQueriesData<TerminalListResponse>(
     { queryKey: allTerminalsQueryKeyPrefix() },
     (current) => removeTerminalSession(current, terminalId),
@@ -109,6 +111,9 @@ export function applyTerminalSessionClose({
   session,
   terminalId,
 }: CloseTerminalSessionCacheArgs): void {
+  if (session.status === "exited") {
+    evictTerminalRuntime(terminalId);
+  }
   for (const scope of terminalScopesForSession(session)) {
     queryClient.setQueryData<TerminalListResponse>(
       terminalsQueryKey(scope),
