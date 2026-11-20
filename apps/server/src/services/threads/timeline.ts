@@ -1300,6 +1300,7 @@ function selectStandardTimelineEventRows(
         !existingRequests.has(parseAcceptedInputClientRequestId(row, decode)),
     )
     .map((row) => ({
+      acceptedSequence: row.sequence,
       threadId: thread.id,
       requestId: parseAcceptedInputClientRequestId(row, decode),
     }));
