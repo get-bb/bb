@@ -134,9 +134,10 @@ function withKeyboardViewport(
     setLayoutHeight: (height: number) => void;
     resizeVisualViewport: (height: number) => void;
   }) => Promise<void>,
+  { height = 852, settleIOSViewport = true } = {},
 ) {
   const visualViewport = new FakeVisualViewport();
-  visualViewport.height = 852;
+  visualViewport.height = height;
   visualViewport.offsetTop = 0;
   let layoutHeight = 852;
   return withElementClientHeight(
@@ -144,7 +145,7 @@ function withKeyboardViewport(
     () => layoutHeight,
     () =>
       withFakeVisualViewport(visualViewport, async () => {
-        render(<VisualViewportShell />);
+        render(<VisualViewportShell settleIOSViewport={settleIOSViewport} />);
         await run({
           visualViewport,
           editor: screen.getByTestId("editor"),
@@ -338,21 +339,25 @@ describe("useMobileVisualViewportHeight", () => {
     );
   });
 
-  it("compensates when Safari leaves the visual viewport panned", async () => {
-    const visualViewport = new FakeVisualViewport();
-    visualViewport.offsetTop = 0;
-    await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell />);
-      expect(window.scrollTo).not.toHaveBeenCalled();
-
-      act(() => {
-        visualViewport.offsetTop = 340;
-        visualViewport.dispatchEvent(new Event("scroll"));
+  it("resets layout scrolling and compensates for the remaining Safari pan", async () => {
+    try {
+      await withKeyboardViewport(async ({ editor, visualViewport, shell }) => {
+        vi.mocked(window.scrollTo).mockImplementation(() => {
+          vi.stubGlobal("scrollY", 0);
+        });
+        act(() => editor.focus());
+        act(() => {
+          vi.stubGlobal("scrollY", 75);
+          visualViewport.offsetTop = 30;
+          visualViewport.dispatchEvent(new Event("scroll"));
+        });
+        expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+        expect(shell.style.top).toBe("30px");
+        expect(shell.style.height).toBe("852px");
       });
-      await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
-      expect(screen.getByTestId("shell").style.top).toBe("340px");
-      expect(screen.getByTestId("shell").style.height).toBe("500px");
-    });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("clears the shell on blur when the viewport has already recovered", async () => {
@@ -534,20 +539,30 @@ describe("useMobileVisualViewportHeight", () => {
   });
 
   it("keeps reconciling after pageshow when an editor autofocuses", async () => {
-    await withKeyboardViewport(async (viewport) => {
-      act(() => {
-        viewport.visualViewport.height = 552;
-        window.dispatchEvent(
-          new PageTransitionEvent("pageshow", { persisted: true }),
-        );
-      });
-      await flushScheduledViewportPass();
-      expect(viewport.shell.style.height).toBe("552px");
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    try {
+      await withKeyboardViewport(async (viewport) => {
+        act(() => vi.advanceTimersByTime(400));
+        expect(vi.getTimerCount()).toBe(0);
 
-      act(() => viewport.editor.focus());
-      await flushScheduledViewportPass();
-      viewport.visualViewport.height = 852;
-      await waitFor(() => {
+        act(() => {
+          viewport.visualViewport.height = 552;
+          window.dispatchEvent(
+            new PageTransitionEvent("pageshow", { persisted: true }),
+          );
+        });
+        expect(viewport.shell.style.height).toBe("552px");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "552px",
+        );
+
+        act(() => {
+          viewport.editor.focus();
+          viewport.visualViewport.height = 852;
+          vi.advanceTimersByTime(32);
+        });
         expect(viewport.shell.style.height).toBe("");
         expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
           "",
@@ -555,9 +570,11 @@ describe("useMobileVisualViewportHeight", () => {
         expect(
           viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
         ).toBe("");
+        expect(document.activeElement).toBe(viewport.editor);
       });
-      expect(document.activeElement).toBe(viewport.editor);
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("recovers when the getter stays keyboard-sized past the first 400ms", async () => {
@@ -642,6 +659,74 @@ describe("useMobileVisualViewportHeight", () => {
       },
     );
   });
+
+  it("collapses the inset when non-iOS resizes both viewports for the keyboard", async () => {
+    await withKeyboardViewport(
+      async (viewport) => {
+        act(() => viewport.editor.focus());
+        act(() => {
+          viewport.setLayoutHeight(552);
+          viewport.resizeVisualViewport(552);
+          window.dispatchEvent(new Event("resize"));
+        });
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.height).toBe("");
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("0px");
+
+        act(() => viewport.editor.blur());
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      },
+      { settleIOSViewport: false },
+    );
+  });
+
+  it("keeps the inset on hardware-keyboard focus in an already clipped viewport", async () => {
+    await withKeyboardViewport(
+      async (viewport) => {
+        expect(viewport.shell.style.height).toBe("730px");
+        act(() => viewport.editor.focus());
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.height).toBe("730px");
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      },
+      { height: 730 },
+    );
+  });
+
+  it.each(["from rest", "after keyboard dismissal"])(
+    "ignores a full-height unfocused viewport pan %s",
+    async (history) => {
+      await withKeyboardViewport(async (viewport) => {
+        if (history === "after keyboard dismissal") {
+          act(() => {
+            viewport.editor.focus();
+            viewport.resizeVisualViewport(552);
+          });
+          expect(viewport.shell.style.height).toBe("552px");
+          act(() => viewport.editor.blur());
+        }
+
+        act(() => {
+          viewport.visualViewport.height = 852;
+          viewport.visualViewport.offsetTop = 30;
+          viewport.visualViewport.dispatchEvent(new Event("scroll"));
+        });
+        await flushScheduledViewportPass();
+        expect(document.activeElement).toBe(document.body);
+        expect(viewport.shell.style.height).toBe("");
+        expect(viewport.shell.style.top).toBe("");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "",
+        );
+      });
+    },
+  );
 
   it("leaves pinch-zoom pans alone", async () => {
     const visualViewport = new FakeVisualViewport();
@@ -748,7 +833,7 @@ describe("useMobileVisualViewportHeight", () => {
     );
   });
 
-  it("ignores visual viewport pans without a keyboard or an applied override", async () => {
+  it("ignores visual viewport pans without editor focus or a height mismatch", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withElementClientHeight(
@@ -778,7 +863,7 @@ describe("useMobileVisualViewportHeight", () => {
             visualViewport.dispatchEvent(new Event("scroll"));
           });
           await waitFor(() => expect(shell.style.top).toBe("340px"));
-          expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+          expect(window.scrollTo).not.toHaveBeenCalled();
         }),
     );
   });

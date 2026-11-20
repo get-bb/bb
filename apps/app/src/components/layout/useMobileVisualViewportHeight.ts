@@ -47,6 +47,7 @@ function attachMobileVisualViewportHeight(
 
   let animationFrame: number | null = null;
   let appliedOverride: { top: number; height: number } | null = null;
+  let viewportHeightBeforeKeyboard: number | null = null;
   let appliedKeyboardInset = false;
   let layoutHeight = 0;
   let layoutHeightStale = true;
@@ -80,7 +81,8 @@ function attachMobileVisualViewportHeight(
       layoutHeight = document.body.clientHeight;
       layoutHeightStale = false;
     }
-    const height = Math.round(visualViewport.height);
+    const viewportHeight = visualViewport.height;
+    const height = Math.round(viewportHeight);
     const offsetTop = visualViewport.offsetTop;
     const scrollY = window.scrollY;
     const scale = visualViewport.scale;
@@ -89,15 +91,12 @@ function attachMobileVisualViewportHeight(
     const editorFocused = isKeyboardFocusTarget(document.activeElement);
     const heightMismatch = Math.abs(layoutHeight - height) > 1;
     const compensatePan =
-      (offsetTop > 1 || scrollY > 0) &&
-      (!settleIOSViewport ||
-        editorFocused ||
-        heightMismatch ||
-        appliedOverride !== null);
+      (offsetTop > 1 || scrollY > 0) && (editorFocused || heightMismatch);
     setKeyboardInset(
-      scale === 1 &&
+      viewportHeightBeforeKeyboard !== null &&
         editorFocused &&
-        layoutHeight - height >= KEYBOARD_OPEN_MIN_SHRINK_PX,
+        viewportHeightBeforeKeyboard - viewportHeight >=
+          KEYBOARD_OPEN_MIN_SHRINK_PX,
     );
     if (scale !== 1 || (!heightMismatch && !compensatePan)) {
       clearViewportOverride();
@@ -105,7 +104,7 @@ function attachMobileVisualViewportHeight(
     }
 
     let top = Math.round(scrollY + offsetTop);
-    if (compensatePan && (scrollY > 0 || appliedOverride?.top !== top)) {
+    if (compensatePan && scrollY > 0) {
       window.scrollTo(0, 0);
       top = Math.round(window.scrollY + visualViewport.offsetTop);
     }
@@ -159,17 +158,17 @@ function attachMobileVisualViewportHeight(
     layoutHeightStale = true;
     handleViewportChange();
   };
-  const handleViewportScroll = () => {
-    if (
-      settleIOSViewport ||
-      appliedOverride !== null ||
-      isKeyboardFocusTarget(document.activeElement)
-    ) {
-      handleViewportChange();
-    }
+  const handleFocusOut = (event: FocusEvent) => {
+    if (!isKeyboardFocusTarget(event.target)) return;
+    if (isKeyboardFocusTarget(event.relatedTarget)) return;
+    viewportHeightBeforeKeyboard = null;
+    setKeyboardInset(false);
+    if (settleIOSViewport) handleLayoutChange();
   };
-  const handleFocusChange = (event: FocusEvent) => {
-    if (isKeyboardFocusTarget(event.target)) handleLayoutChange();
+  const handleFocusIn = (event: FocusEvent) => {
+    if (!isKeyboardFocusTarget(event.target)) return;
+    viewportHeightBeforeKeyboard ??= visualViewport.height;
+    handleLayoutChange();
   };
 
   if (settleIOSViewport) {
@@ -180,21 +179,21 @@ function attachMobileVisualViewportHeight(
     reconcile();
   }
   visualViewport.addEventListener("resize", handleViewportChange);
-  visualViewport.addEventListener("scroll", handleViewportScroll);
+  visualViewport.addEventListener("scroll", handleViewportChange);
   window.addEventListener("resize", handleLayoutChange);
   window.addEventListener("orientationchange", handleLayoutChange);
-  document.addEventListener("focusout", handleFocusChange);
-  document.addEventListener("focusin", handleFocusChange);
+  document.addEventListener("focusout", handleFocusOut);
+  document.addEventListener("focusin", handleFocusIn);
 
   return () => {
     visualViewport.removeEventListener("resize", handleViewportChange);
-    visualViewport.removeEventListener("scroll", handleViewportScroll);
+    visualViewport.removeEventListener("scroll", handleViewportChange);
     window.removeEventListener("resize", handleLayoutChange);
     window.removeEventListener("orientationchange", handleLayoutChange);
     window.removeEventListener("pageshow", handleLayoutChange);
     document.removeEventListener("visibilitychange", handleLayoutChange);
-    document.removeEventListener("focusout", handleFocusChange);
-    document.removeEventListener("focusin", handleFocusChange);
+    document.removeEventListener("focusout", handleFocusOut);
+    document.removeEventListener("focusin", handleFocusIn);
     if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     setKeyboardInset(false);
     clearViewportOverride();
