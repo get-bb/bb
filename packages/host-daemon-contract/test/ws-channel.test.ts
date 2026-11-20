@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  decodeHostDaemonDaemonWsMessage,
+  encodeHostDaemonDaemonWsMessage,
+  hostDaemonDaemonWsMessageSchema,
+} from "../src/session.js";
 import { HostDaemonWsSequencer } from "../src/ws-channel.js";
 
 function connectedPair(maxRetainedChars?: number) {
@@ -18,6 +23,7 @@ describe("HostDaemonWsSequencer", () => {
     expect(receiver.receive(first)).toEqual({
       kind: "message",
       message: { type: "heartbeat" },
+      attachment: null,
     });
     const replay = sender.replayFrom(0);
     expect(replay).toEqual([first, second, third]);
@@ -45,5 +51,68 @@ describe("HostDaemonWsSequencer", () => {
     expect(sender.receive(`{"ack":${dropped}}`)).toEqual({ kind: "ignored" });
     expect(sender.replayable).toBe(true);
     expect(sender.receive('{"ack":99}')).toEqual({ kind: "invalid" });
+  });
+
+  it("carries file chunk bytes as a binary frame in sequence with text frames and across a replay", () => {
+    const { receiver, sender } = connectedPair();
+    const content = new Uint8Array([0, 1, 2, 250, 255]);
+    const chunk = hostDaemonDaemonWsMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: "request-1",
+      commandType: "host.read_file_chunk",
+      ok: true,
+      result: {
+        path: "/tmp/clip.mp4",
+        sizeBytes: 5,
+        modifiedAtMs: 1,
+        mimeType: "video/mp4",
+        revision: "a".repeat(64),
+        offset: 0,
+        content,
+      },
+    });
+    const encoded = encodeHostDaemonDaemonWsMessage(chunk);
+    expect(encoded.json).not.toContain("content");
+    const heartbeat = sender.encode('{"type":"heartbeat"}');
+    const binary = sender.encode(encoded.json, encoded.attachment);
+    expect(binary).toBeInstanceOf(Uint8Array);
+
+    receiver.receive(heartbeat);
+    const received = receiver.receive(binary);
+    if (received.kind !== "message") {
+      throw new Error(`Expected a message, got ${received.kind}`);
+    }
+    const decoded = decodeHostDaemonDaemonWsMessage(
+      received.message,
+      received.attachment,
+    );
+    if (!decoded.ok) {
+      throw new Error("Expected the chunk to decode");
+    }
+    expect(hostDaemonDaemonWsMessageSchema.parse(decoded.message)).toEqual(
+      chunk,
+    );
+    expect(sender.replayFrom(0)).toEqual([heartbeat, binary]);
+    expect(
+      new HostDaemonWsSequencer().receive(sender.replayFrom(0)[1]!).kind,
+    ).toBe("gap");
+  });
+
+  it("rejects binary bytes on a frame or message that cannot carry them", () => {
+    const sender = new HostDaemonWsSequencer();
+    const frame = sender.encode('{"type":"heartbeat"}', new Uint8Array([1]));
+    const received = new HostDaemonWsSequencer().receive(frame);
+    if (received.kind !== "message") {
+      throw new Error(`Expected a message, got ${received.kind}`);
+    }
+    expect(
+      decodeHostDaemonDaemonWsMessage(received.message, received.attachment),
+    ).toEqual({ ok: false });
+    expect(new HostDaemonWsSequencer().receive(new Uint8Array([0, 0]))).toEqual(
+      { kind: "invalid" },
+    );
+    expect(
+      new HostDaemonWsSequencer().receive(new Uint8Array([0, 0, 0, 99, 123])),
+    ).toEqual({ kind: "invalid" });
   });
 });

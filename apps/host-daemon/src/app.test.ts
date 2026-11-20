@@ -243,7 +243,6 @@ function createOpeningWebSocket(
       onclose: null,
       onerror: null,
       send: vi.fn(),
-      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),
@@ -618,7 +617,7 @@ describe("createHostDaemonApp", () => {
     expect(
       vi
         .mocked(socket.send)
-        .mock.calls.map(([frame]) => JSON.parse(frame).message),
+        .mock.calls.map(([frame]) => JSON.parse(String(frame)).message),
     ).toContainEqual({ type: "machine.shutdown-ack" });
     expect(exitProcess).toHaveBeenCalledWith(0);
   });

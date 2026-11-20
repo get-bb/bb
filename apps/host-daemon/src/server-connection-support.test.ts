@@ -62,6 +62,7 @@ function connect(url: string): Promise<ReconnectingWebSocketLike> {
     reconnectionDelayGrowFactor: DEFAULT_RECONNECTION_DELAY_GROW_FACTOR,
     connectionTimeout: DEFAULT_CONNECTION_TIMEOUT_MS,
     maxRetries: 0,
+    onFrameWritten: () => {},
   });
   cleanups.unshift(() => socket.close());
   return new Promise((resolve) => {
@@ -70,7 +71,7 @@ function connect(url: string): Promise<ReconnectingWebSocketLike> {
 }
 
 describe("createDefaultReconnectingWebSocket", () => {
-  it("compresses frames for a server that accepts compression unless they are sent uncompressed", async () => {
+  it("compresses text frames for a server that accepts compression and sends binary frames uncompressed", async () => {
     const server = await startCompressingServer();
     const socket = await connect(server.url);
     const frame = JSON.stringify(
@@ -82,7 +83,7 @@ describe("createDefaultReconnectingWebSocket", () => {
 
     const compressed = await server.wireBytes(() => socket.send(frame));
     const uncompressed = await server.wireBytes(() =>
-      socket.sendUncompressed(frame),
+      socket.send(new TextEncoder().encode(frame)),
     );
 
     expect(server.messages).toEqual([frame, frame]);

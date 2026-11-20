@@ -9,7 +9,7 @@ export const HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON = "daemon-shutdown";
 const HOST_DAEMON_WS_MAX_RETAINED_CHARS = 16 * 1024 * 1024;
 
 const ACK_AFTER_MESSAGES = 64;
-const ACK_AFTER_CHARS = 256 * 1024;
+const ACK_AFTER_CHARS = 32 * 1024;
 
 const sequenceNumberSchema = z.number().int().nonnegative();
 
@@ -29,15 +29,68 @@ export const hostDaemonWsResumeFromSchema = z.coerce
   .int()
   .nonnegative();
 
+export type HostDaemonWsFrame = string | Uint8Array<ArrayBuffer>;
+
 type HostDaemonWsReceiveResult =
-  | { kind: "message"; message: unknown }
+  | { kind: "message"; message: unknown; attachment: Uint8Array | null }
   | { kind: "ignored" }
   | { kind: "invalid" }
   | { kind: "gap" };
 
 interface RetainedFrame {
-  frame: string;
+  frame: HostDaemonWsFrame;
   seq: number;
+}
+
+const BINARY_FRAME_HEADER_LENGTH_BYTES = 4;
+
+function frameSize(frame: string | Uint8Array): number {
+  return typeof frame === "string" ? frame.length : frame.byteLength;
+}
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+function encodeBinaryFrame(
+  header: string,
+  attachment: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  const headerBytes = textEncoder.encode(header);
+  const frame = new Uint8Array(
+    BINARY_FRAME_HEADER_LENGTH_BYTES +
+      headerBytes.byteLength +
+      attachment.byteLength,
+  );
+  new DataView(frame.buffer).setUint32(0, headerBytes.byteLength);
+  frame.set(headerBytes, BINARY_FRAME_HEADER_LENGTH_BYTES);
+  frame.set(
+    attachment,
+    BINARY_FRAME_HEADER_LENGTH_BYTES + headerBytes.byteLength,
+  );
+  return frame;
+}
+
+function decodeFrame(
+  frame: string | Uint8Array,
+): { text: string; attachment: Uint8Array | null } | null {
+  if (typeof frame === "string") {
+    return { text: frame, attachment: null };
+  }
+  if (frame.byteLength < BINARY_FRAME_HEADER_LENGTH_BYTES) {
+    return null;
+  }
+  const headerEnd =
+    BINARY_FRAME_HEADER_LENGTH_BYTES +
+    new DataView(frame.buffer, frame.byteOffset, frame.byteLength).getUint32(0);
+  if (headerEnd > frame.byteLength) {
+    return null;
+  }
+  return {
+    text: textDecoder.decode(
+      frame.subarray(BINARY_FRAME_HEADER_LENGTH_BYTES, headerEnd),
+    ),
+    attachment: frame.subarray(headerEnd),
+  };
 }
 
 export class HostDaemonWsSequencer {
@@ -77,16 +130,23 @@ export class HostDaemonWsSequencer {
     return this.droppedThroughSeq <= this.acknowledgedByPeer;
   }
 
-  encode(messageJson: string): string {
+  encode(messageJson: string): string;
+  encode(messageJson: string, attachment: Uint8Array | null): HostDaemonWsFrame;
+  encode(
+    messageJson: string,
+    attachment: Uint8Array | null = null,
+  ): HostDaemonWsFrame {
     this.lastSentSeq += 1;
     const seq = this.lastSentSeq;
-    const frame = `{"seq":${seq},"ack":${this.takeAck()},"message":${messageJson}}`;
+    const header = `{"seq":${seq},"ack":${this.takeAck()},"message":${messageJson}}`;
+    const frame =
+      attachment === null ? header : encodeBinaryFrame(header, attachment);
     this.retained.push({ frame, seq });
-    this.retainedChars += frame.length;
+    this.retainedChars += frameSize(frame);
     while (this.retainedChars > this.maxRetainedChars) {
       const dropped = this.retained.shift();
       if (!dropped) break;
-      this.retainedChars -= dropped.frame.length;
+      this.retainedChars -= frameSize(dropped.frame);
       this.droppedThroughSeq = dropped.seq;
     }
     return frame;
@@ -103,15 +163,19 @@ export class HostDaemonWsSequencer {
     );
   }
 
-  replayFrom(peerReceivedSeq: number): string[] {
+  replayFrom(peerReceivedSeq: number): HostDaemonWsFrame[] {
     this.acknowledge(peerReceivedSeq);
     return this.retained.map((retained) => retained.frame);
   }
 
-  receive(text: string): HostDaemonWsReceiveResult {
+  receive(data: string | Uint8Array): HostDaemonWsReceiveResult {
+    const frameParts = decodeFrame(data);
+    if (frameParts === null) {
+      return { kind: "invalid" };
+    }
     let decoded: unknown;
     try {
-      decoded = JSON.parse(text);
+      decoded = JSON.parse(frameParts.text);
     } catch {
       return { kind: "invalid" };
     }
@@ -121,7 +185,12 @@ export class HostDaemonWsSequencer {
     }
     const frame = parsed.data;
     this.acknowledge(frame.ack);
-    if (!("seq" in frame) || frame.seq <= this.lastReceivedSeq) {
+    if (!("seq" in frame)) {
+      return frameParts.attachment === null
+        ? { kind: "ignored" }
+        : { kind: "invalid" };
+    }
+    if (frame.seq <= this.lastReceivedSeq) {
       return { kind: "ignored" };
     }
     if (frame.seq !== this.lastReceivedSeq + 1) {
@@ -129,8 +198,12 @@ export class HostDaemonWsSequencer {
     }
     this.lastReceivedSeq = frame.seq;
     this.receivedSinceAck += 1;
-    this.receivedCharsSinceAck += text.length;
-    return { kind: "message", message: frame.message };
+    this.receivedCharsSinceAck += frameSize(data);
+    return {
+      kind: "message",
+      message: frame.message,
+      attachment: frameParts.attachment,
+    };
   }
 
   private acknowledge(ack: number): void {
@@ -140,7 +213,7 @@ export class HostDaemonWsSequencer {
     this.acknowledgedByPeer = ack;
     while (this.retained[0] !== undefined && this.retained[0].seq <= ack) {
       const acknowledged = this.retained.shift();
-      if (acknowledged) this.retainedChars -= acknowledged.frame.length;
+      if (acknowledged) this.retainedChars -= frameSize(acknowledged.frame);
     }
   }
 

@@ -122,9 +122,12 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
 }
 
 function parseSentFrames(socket: ReconnectingWebSocketLike): unknown[] {
-  return vi
-    .mocked(socket.send)
-    .mock.calls.map(([frame]) => JSON.parse(frame) as unknown);
+  return vi.mocked(socket.send).mock.calls.map(([frame]) => {
+    if (typeof frame !== "string") {
+      throw new Error("Expected a text frame");
+    }
+    return JSON.parse(frame) as unknown;
+  });
 }
 
 function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
@@ -136,6 +139,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
   >();
   const headers: Array<Record<string, string> | undefined> = [];
   const urls: string[] = [];
+  const frameWrittenHandlers = new Map<ReconnectingWebSocketLike, () => void>();
   const createWebSocket: CreateReconnectingWebSocket = (
     urlProvider,
     options,
@@ -155,7 +159,6 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
       onclose: null,
       onerror: null,
       send: vi.fn(),
-      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),
@@ -200,6 +203,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
       });
     });
     bufferedAmounts.set(socket, 0);
+    frameWrittenHandlers.set(socket, options.onFrameWritten);
     sockets.push(socket);
     void openSocket().catch((error) => socket.onerror?.(error));
     return socket;
@@ -220,6 +224,22 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
     },
     setBufferedAmount(socket: ReconnectingWebSocketLike, bytes: number) {
       bufferedAmounts.set(socket, bytes);
+    },
+    async drain(socket: ReconnectingWebSocketLike) {
+      bufferedAmounts.set(socket, 0);
+      frameWrittenHandlers.get(socket)?.();
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+    async acknowledgeSent(socket: ReconnectingWebSocketLike) {
+      const sentSeqs = parseSentFrames(socket).flatMap((frame) =>
+        typeof frame === "object" && frame !== null && "seq" in frame
+          ? [Number(frame.seq)]
+          : [],
+      );
+      socket.onmessage?.({
+        data: JSON.stringify({ ack: Math.max(0, ...sentSeqs) }),
+      });
+      await new Promise((resolve) => setImmediate(resolve));
     },
     sockets,
     urls,
@@ -914,39 +934,127 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("queues output above high water and flushes it before lifecycle messages", async () => {
-    vi.useFakeTimers();
-    const { connection, webSocket } = createConnectionFixture();
-    try {
-      await connection.start();
-      const socket = webSocket.sockets[0];
+  describe("send ordering under load", () => {
+    const BUSY_SOCKET_BYTES = 2 * 1024 * 1024;
+    const bulkOutput = (terminalId: string, seq: number) => ({
+      type: "terminal.output" as const,
+      terminalId,
+      chunk: {
+        seq,
+        dataBase64: Buffer.alloc(64 * 1024, seq).toString("base64"),
+      },
+    });
+    const keystrokeEcho = (terminalId: string, seq: number) => ({
+      type: "terminal.output" as const,
+      terminalId,
+      chunk: { seq, dataBase64: Buffer.from("a").toString("base64") },
+    });
+    const rpcReply = {
+      type: "host-rpc.response" as const,
+      requestId: "request-1",
+      commandType: "host.paths_exist" as const,
+      ok: true as const,
+      result: { existence: { "/tmp": true } },
+    };
+
+    async function startBusyConnection() {
+      const fixture = createConnectionFixture();
+      await fixture.connection.start();
+      const socket = fixture.webSocket.sockets[0];
       if (!socket) {
         throw new Error("Expected test socket");
       }
-      webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
-      const output = {
-        type: "terminal.output" as const,
-        terminalId: "term-1",
-        chunk: {
-          seq: 0,
-          dataBase64: Buffer.from("hello").toString("base64"),
-        },
-      };
+      fixture.webSocket.setBufferedAmount(socket, BUSY_SOCKET_BYTES);
+      return { ...fixture, socket };
+    }
+
+    it("sends replies and keystroke echoes ahead of queued bulk output", async () => {
+      const { connection, socket, webSocket } = await startBusyConnection();
+      try {
+        connection.sendMessage(bulkOutput("flood", 0));
+        connection.sendMessage(bulkOutput("flood", 1));
+        connection.sendMessage(rpcReply);
+        connection.sendMessage(keystrokeEcho("shell", 0));
+
+        expect(webSocket.sentMessages(socket)).toEqual([
+          rpcReply,
+          keystrokeEcho("shell", 0),
+        ]);
+
+        await webSocket.drain(socket);
+        expect(webSocket.sentMessages(socket)).toEqual([
+          rpcReply,
+          keystrokeEcho("shell", 0),
+          bulkOutput("flood", 0),
+          bulkOutput("flood", 1),
+        ]);
+      } finally {
+        await connection.shutdown();
+      }
+    });
+
+    it("keeps each terminal in order, including its exit, while terminals take turns", async () => {
+      const { connection, socket, webSocket } = await startBusyConnection();
       const exited = {
         type: "terminal.exited" as const,
-        terminalId: "term-1",
+        terminalId: "first",
         exitCode: 0,
         closeReason: "user" as const,
       };
+      try {
+        connection.sendMessage(bulkOutput("first", 0));
+        connection.sendMessage(bulkOutput("first", 1));
+        connection.sendMessage(keystrokeEcho("first", 2));
+        connection.sendMessage(exited);
+        connection.sendMessage(bulkOutput("second", 0));
+        expect(webSocket.sentMessages(socket)).toEqual([]);
 
-      expect(connection.sendMessage(output)).toBe(true);
-      expect(socket.send).not.toHaveBeenCalled();
+        vi.mocked(socket.send).mockImplementation(() => {
+          webSocket.setBufferedAmount(socket, BUSY_SOCKET_BYTES);
+        });
+        const turns: unknown[][] = [];
+        for (let turn = 0; turn < 5; turn += 1) {
+          const before = webSocket.sentMessages(socket).length;
+          await webSocket.acknowledgeSent(socket);
+          await webSocket.drain(socket);
+          turns.push(webSocket.sentMessages(socket).slice(before));
+        }
 
-      expect(connection.sendMessage(exited)).toBe(true);
-      expect(webSocket.sentMessages(socket)).toEqual([output, exited]);
-    } finally {
-      await connection.shutdown();
-    }
+        expect(turns).toEqual([
+          [bulkOutput("first", 0)],
+          [bulkOutput("second", 0)],
+          [bulkOutput("first", 1)],
+          [keystrokeEcho("first", 2)],
+          [exited],
+        ]);
+      } finally {
+        await connection.shutdown();
+      }
+    });
+
+    it("holds bulk output once the server has not acknowledged enough of it and resumes on acknowledgement", async () => {
+      const { connection, socket, webSocket } = await startBusyConnection();
+      try {
+        webSocket.setBufferedAmount(socket, 0);
+        for (let seq = 0; seq < 6; seq += 1) {
+          connection.sendMessage(bulkOutput("flood", seq));
+          await webSocket.drain(socket);
+        }
+        const sentBeforeAck = webSocket.sentMessages(socket).length;
+        expect(sentBeforeAck).toBeGreaterThan(1);
+        expect(sentBeforeAck).toBeLessThan(6);
+
+        connection.sendMessage(rpcReply);
+        expect(webSocket.sentMessages(socket).at(-1)).toEqual(rpcReply);
+
+        await webSocket.acknowledgeSent(socket);
+        expect(webSocket.sentMessages(socket).at(-1)).toEqual(
+          bulkOutput("flood", 5),
+        );
+      } finally {
+        await connection.shutdown();
+      }
+    });
   });
 
   it("delivers a terminal exit that happened while disconnected once the session resumes", async () => {
@@ -1030,8 +1138,8 @@ describe("ServerConnection", () => {
         type: "connect-tunnel.identity" as const,
         identity: { label, baseDomain: "getbb.app" },
       });
-      vi.mocked(socket.send).mockImplementation((frame: string) => {
-        if (frame.includes('"label":"older"')) {
+      vi.mocked(socket.send).mockImplementation((frame) => {
+        if (typeof frame === "string" && frame.includes('"label":"older"')) {
           webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
         }
       });
@@ -1166,7 +1274,7 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("sends file chunk replies without compression and other messages with it", async () => {
+  it("sends file chunk replies as binary frames, which go out uncompressed, and other replies as text", async () => {
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
@@ -1185,7 +1293,7 @@ describe("ServerConnection", () => {
           mimeType: "video/mp4",
           revision: "a".repeat(64),
           offset: 0,
-          content: "AAEC",
+          content: new Uint8Array([0, 1, 2]),
         },
       };
       const reply = {
@@ -1199,12 +1307,10 @@ describe("ServerConnection", () => {
       connection.sendMessage(chunk);
       connection.sendMessage(reply);
 
-      expect(
-        vi
-          .mocked(socket.sendUncompressed)
-          .mock.calls.map(([frame]) => JSON.parse(frame).message),
-      ).toEqual([chunk]);
-      expect(webSocket.sentMessages(socket)).toEqual([reply]);
+      const frames = vi.mocked(socket.send).mock.calls.map(([frame]) => frame);
+      expect(frames[0]).toBeInstanceOf(Uint8Array);
+      expect(typeof frames[1]).toBe("string");
+      expect(JSON.parse(String(frames[1])).message).toEqual(reply);
     } finally {
       await connection.shutdown();
     }

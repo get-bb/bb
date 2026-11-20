@@ -468,7 +468,7 @@ const hostReadFileCommandSchema = z
     }
   });
 
-export const HOST_FILE_CHUNK_MAX_BYTES = 1024 * 1024;
+export const HOST_FILE_CHUNK_MAX_BYTES = 64 * 1024;
 
 const hostReadFileChunkCommandSchema = z
   .object({
@@ -492,7 +492,9 @@ const hostReadFileChunkResultSchema = z
     mimeType: z.string().nullable(),
     revision: z.string().regex(/^[a-f0-9]{64}$/u),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    content: z.string().max(4 * Math.ceil(HOST_FILE_CHUNK_MAX_BYTES / 3)),
+    content: z
+      .instanceof(Uint8Array)
+      .refine((content) => content.byteLength <= HOST_FILE_CHUNK_MAX_BYTES),
   })
   .strict();
 

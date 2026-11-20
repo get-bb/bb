@@ -19,10 +19,15 @@ export function webSocketAgent(address: string | URL): http.Agent {
     : http.globalAgent;
 }
 
+interface NodeWebSocketConstructorOptions {
+  headers: Record<string, string> | undefined;
+  onFrameWritten: () => void;
+}
+
 export function createNodeWebSocketConstructor(
-  headers: Record<string, string> | undefined,
-  onCreated: (socket: NodeWebSocket) => void,
+  options: NodeWebSocketConstructorOptions,
 ): NodeWebSocketConstructor {
+  const { headers, onFrameWritten } = options;
   return class EnvProxyWebSocket extends NodeWebSocket {
     constructor(address: string | URL, protocols?: string | string[]) {
       super(address, protocols, {
@@ -30,7 +35,10 @@ export function createNodeWebSocketConstructor(
         headers,
         perMessageDeflate: SERVER_WEB_SOCKET_COMPRESSION,
       });
-      onCreated(this);
+    }
+
+    override send(data: string | Uint8Array): void {
+      super.send(data, { compress: typeof data === "string" }, onFrameWritten);
     }
   };
 }

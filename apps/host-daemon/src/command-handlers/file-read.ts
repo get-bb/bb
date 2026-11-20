@@ -394,7 +394,7 @@ export async function readFileChunkForTransport(
       mimeType: mimeTypes.lookup(args.resultPath) || null,
       revision,
       offset: args.offset,
-      content: bytes.toString("base64"),
+      content: bytes,
     };
   } finally {
     await file.close();

@@ -492,7 +492,7 @@ describe("readHostFileChunk", () => {
       revision: null,
     };
     const metadata = await readHostFileChunk(base);
-    expect(metadata.content).toBe("");
+    expect(metadata.content).toEqual(Buffer.alloc(0));
     expect(metadata.sizeBytes).toBe(offset + 4);
     const chunk = await readHostFileChunk({
       ...base,
@@ -500,7 +500,7 @@ describe("readHostFileChunk", () => {
       length: 2,
       revision: metadata.revision,
     });
-    expect(Buffer.from(chunk.content, "base64")).toEqual(Buffer.from([1, 2]));
+    expect(Buffer.from(chunk.content)).toEqual(Buffer.from([1, 2]));
     expect(chunk.offset).toBe(offset + 1);
     expect(chunk.revision).toBe(metadata.revision);
     const eof = await readHostFileChunk({
@@ -509,7 +509,7 @@ describe("readHostFileChunk", () => {
       length: 10,
       revision: metadata.revision,
     });
-    expect(Buffer.from(eof.content, "base64")).toEqual(Buffer.from([3]));
+    expect(Buffer.from(eof.content)).toEqual(Buffer.from([3]));
     await expect(
       readHostFile({
         type: "host.read_file",

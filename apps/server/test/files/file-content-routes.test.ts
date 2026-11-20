@@ -52,9 +52,12 @@ function serveFiles(
         ok: true,
         result: {
           path: command.path,
-          content: file.bytes
-            .subarray(command.offset, command.offset + command.length)
-            .toString("base64"),
+          content: new Uint8Array(
+            file.bytes.subarray(
+              command.offset,
+              command.offset + command.length,
+            ),
+          ),
           offset: command.offset,
           mimeType: file.mimeType,
           modifiedAtMs: 1234,
@@ -170,7 +173,7 @@ describe("file content routes", () => {
             ok: true,
             result: {
               path: command.path,
-              content: "",
+              content: new Uint8Array(),
               offset: 0,
               sizeBytes: 30 * 1024 * 1024,
               mimeType: "video/mp4",
@@ -330,9 +333,9 @@ describe("file content routes", () => {
             ok: true,
             result: {
               path: command.path,
-              content: bytes
-                .subarray(command.offset, command.offset + command.length)
-                .toString("base64"),
+              content: new Uint8Array(
+                bytes.subarray(command.offset, command.offset + command.length),
+              ),
               offset: command.offset,
               mimeType: "application/zip",
               modifiedAtMs: 1234,
