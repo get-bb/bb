@@ -887,11 +887,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function listPluginServerAccessProviders() {
-    return [...loaded].flatMap(([pluginId, plugin]) =>
-      [...plugin.handle.serverAccessProviders.values()].map((provider) =>
-        ownedRecord({ pluginId, provider }, plugin),
-      ),
-    );
+    return [...loaded]
+      .filter(([, plugin]) => plugin.handle.serverAccessProviders.size > 0)
+      .map(([pluginId, plugin]) => ({
+        pluginId,
+        plugin,
+        installedAt:
+          getInstalledPlugin(deps.db, pluginId)?.installedAt ??
+          Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.installedAt - b.installedAt)
+      .flatMap(({ pluginId, plugin }) =>
+        [...plugin.handle.serverAccessProviders.values()].map((provider) =>
+          ownedRecord({ pluginId, provider }, plugin),
+        ),
+      );
   }
 
   function listPluginMachineProviders(): PluginMachineProviderRecord[] {

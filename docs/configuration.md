@@ -259,7 +259,9 @@ change the host-daemon protocol.
 | `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server            | Nested bb servers       | Machine token this nested server presents to the parent hub. Both parent variables must be well formed or proxying stays off.                                                                                                                                                                                                       |
 
 BB accepts request hosts that are `localhost`, IP addresses (including LAN and
-Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or
+Tailscale IPs), the address of an available machine access provider (such as
+the Tailscale plugin's `https://<machine>.<tailnet>.ts.net` once Serve is set
+up), or the hostname in `BB_APP_URL`. For a custom DNS name or
 reverse proxy, set `BB_APP_URL` (for example `https://bb.example.com`) before
 connecting, including from the CLI or SDK; a matching `Host`/`Origin` or
 `X-Forwarded-Host` cannot authorize an unconfigured name. A proxy can preserve
@@ -891,7 +893,9 @@ the SDK and CLI, and machine credentials cannot change it. Read it with
 **Machine server access.** `machineServerUrl` (Settings → Machines → Server URL
 reachable by machines; HTTP or HTTPS without embedded credentials) falls back
 to `BB_EXTERNAL_URL` when unset. `defaultMachineAccess` selects the access
-provider; unset selects bb connect, and `direct` (Manual) uses your own URL.
+provider; unset selects the provider of the earliest-installed plugin (bb
+connect unless it was removed), `tailscale` uses the Tailscale plugin's Serve
+address, and `direct` (Manual) uses your own URL.
 An explicit provider must be installed and available. Set them with
 `bb settings general machineServerUrl <url-or-null>` and
 `bb settings general defaultMachineAccess <provider-id-or-null>`.
@@ -1568,6 +1572,25 @@ never modifies the user's global npm installation. See the
 `browser-automation` skill and `plugins/browser-automation/README.md`. For
 isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` and
 `DEV_BROWSER_SMOKE_CHROME` select absolute binary and Chrome paths.
+
+### Tailscale
+
+The official Tailscale plugin (`bb plugin install tailscale`, plugin id
+`bb--tailscale`) makes this server reachable at
+`https://<machine>.<tailnet>.ts.net` through Tailscale Serve. Settings →
+Tailscale → **Set up** or `bb tailscale setup` runs
+`tailscale serve --bg --yes --https=443 <loopback URL>`, or uses bb's own port
+(for example `:38886`) when another service has 443 or already listens on the
+tailnet address at that port; a Serve mapping to bb made by hand is adopted
+unchanged. bb changes Serve only on setup and on **Remove** (`bb tailscale
+teardown`), which removes only the mapping bb created; stopping bb or
+disabling the plugin leaves it in place. Once Serve reaches bb, the address is
+the `tailscale` machine access provider, and bb accepts it as a request host
+without `BB_APP_URL`. See the `tailscale` skill.
+
+| Variable           | Effect                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `BB_TAILSCALE_CLI` | Path of the `tailscale` binary to run instead of the platform's standard install path. |
 
 ### MCP server
 

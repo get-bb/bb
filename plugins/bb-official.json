@@ -30,6 +30,10 @@
     "category": "cloud-and-remote",
     "screenshots": []
   },
+  "tailscale": {
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
   "custom-instructions": {
     "category": "memory-and-context",
     "screenshots": []

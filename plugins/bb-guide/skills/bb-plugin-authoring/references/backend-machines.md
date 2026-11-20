@@ -235,8 +235,9 @@ credential-bearing grants in private plugin storage. Never put credentials in
 machine inputs, resources, or progress output.
 
 Machines settings select the default provider. Without a saved selection,
-core uses the first registered provider, or direct when none are registered,
-and it keeps the selected provider for later enrollment of the same machine.
+core uses the provider of the earliest-installed plugin, or direct when none
+are registered, and it keeps the selected provider for later enrollment of the
+same machine.
 The direct provider reads `machineServerUrl`, falling back to
 `BB_EXTERNAL_URL`. Declaring a URL does not prove reachability from a sandbox.
 
@@ -245,5 +246,7 @@ configuration, which checks provider availability in parallel with a
 five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
-public `serverUrl` is validated and displayed in Machines settings. Reading
-configuration never acquires access; the grant's URL is the one machines use.
+public `serverUrl` is validated and displayed in Machines settings, and while
+the provider is available core's Host and Origin guards admit its origin, so
+browsers and machines can use it without `BB_APP_URL`. Reading configuration
+never acquires access; the grant's URL is the one machines use.

@@ -276,6 +276,11 @@ export const OFFICIAL_PLUGINS = [
     pluginId: "theme-preview",
     defaultEnabled: true,
   },
+  {
+    name: "tailscale",
+    pluginId: "bb--tailscale",
+    defaultEnabled: true,
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: false,
