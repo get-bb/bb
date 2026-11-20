@@ -1529,7 +1529,15 @@ are documented in [`apps/mobile/README.md`](../apps/mobile/README.md).
 The realtime client WebSocket (`/ws`) negotiates `permessage-deflate`, so
 messages of 1 KB or more, such as timeline pushes, are compressed (about 4x for
 timeline JSON). It helps clients that reach the server over a network;
-the bb connect relay re-frames messages and does not carry it. Terminal, host daemon, and plugin WebSockets are never compressed.
+the bb connect relay re-frames messages and does not carry it. Terminal
+(`/ws/terminals/:id`) and host daemon (`/internal/ws`) WebSockets negotiate the
+same compression only when the peer is on another machine: a non-loopback
+address, or a request that arrived through a proxy such as Tailscale Serve
+(`X-Forwarded-For` or `Forwarded`). From the same machine they stay
+uncompressed, since compressing there costs CPU and saves nothing. Daemons
+compress what they send at level 1 above 1 KB, as the server does, except
+file contents read for a download or preview, which are often already
+compressed. Plugin WebSockets are never compressed.
 
 ### Modal machines
 
