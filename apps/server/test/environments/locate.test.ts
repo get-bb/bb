@@ -10,6 +10,7 @@ import {
   setPluginEnvironmentProviderBridge,
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import {
   listQueuedCommands,
@@ -523,6 +524,53 @@ describe("KT2: locate()", () => {
       expect(errorDetail(harness, thread.id)).toContain(CHECKOUT_BUSY_MESSAGE);
       expect(getEnvironment(harness.db, shared.id)?.status).toBe("ready");
       expect(listQueuedCommands(harness, "thread.start")).toEqual([]);
+    });
+  });
+  it("refuses a retried branch switch while another thread uses the checkout", async () => {
+    await withTestHarness(async (harness) => {
+      const options = { failSwitch: true };
+      const { creates } = installLocalProviders(options);
+      const { host, project } = seed(harness);
+      const shared = sharedRow(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = await startThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        inputs: { branch: { kind: "new" } },
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.status)
+        .toBe("error");
+      seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: shared.id,
+        status: "active",
+      });
+      options.failSwitch = false;
+      const failed = getThread(harness.db, thread.id);
+      if (failed === null) throw new Error("Missing thread");
+      await attemptDispatch(harness.deps, {
+        systemNotice: null,
+        thread: failed,
+        payload: { input: textInput("Retry the switch"), mode: "start" },
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: null,
+        origin: null,
+        originPluginId: null,
+        startedOnBehalfOf: null,
+        trigger: "user",
+      });
+      await expect
+        .poll(() => errorDetail(harness, thread.id))
+        .toContain(CHECKOUT_BUSY_MESSAGE);
+      expect(creates).toEqual(["switch"]);
+      expect(getThread(harness.db, thread.id)?.environmentId).not.toBe(
+        shared.id,
+      );
+      expect(getEnvironment(harness.db, shared.id)?.status).toBe("ready");
     });
   });
 });

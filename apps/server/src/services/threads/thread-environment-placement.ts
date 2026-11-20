@@ -1081,7 +1081,8 @@ export async function resolveEnvironmentProvider(
     context,
   });
   let claimPath: string | null = null;
-  if (getPreparingEnvironment(deps.db, thread.id) === null) {
+  const preparing = getPreparingEnvironment(deps.db, thread.id);
+  if (preparing === null || preparing.teardownStatus === "removed") {
     const located = await locateEnvironment(deps, record, {
       projectId: operation.project.id,
       host: operation.host,

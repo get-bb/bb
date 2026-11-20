@@ -283,7 +283,7 @@ export function reserveEnvironment(db: EnvironmentWriteConnection, input: Enviro
     const now = Date.now();
     if (existing !== null) {
       if (existing.teardownStatus !== "removed") throw new Error("Previous environment cleanup is incomplete");
-      return tx.update(environments).set({ ...input, environmentProviderInstanceKey: input.environmentProviderInstanceKey?.(existing.id) ?? null, path: null, resource: null, claimPath: null, teardownStatus: null, teardownMessage: null, teardownAttempt: 0, retireAt: null, pendingLog: "", updatedAt: now }).where(eq(environments.id, existing.id)).returning().get()!;
+      return tx.update(environments).set({ ...input, environmentProviderInstanceKey: input.environmentProviderInstanceKey?.(existing.id) ?? null, path: null, resource: null, claimPath: input.claimPath ?? null, teardownStatus: null, teardownMessage: null, teardownAttempt: 0, retireAt: null, pendingLog: "", updatedAt: now }).where(eq(environments.id, existing.id)).returning().get()!;
     }
     const id = createEnvironmentId();
     return tx.insert(environments).values({ ...input, id, environmentProviderInstanceKey: input.environmentProviderInstanceKey?.(id) ?? null, createdAt: now, updatedAt: now }).returning().get();
