@@ -8,6 +8,7 @@ export default defineConfig({
     },
   },
   test: {
+    globalSetup: ["@get-bb/plugin-sdk/testing/vitest-global-setup"],
     silent: "passed-only",
     name: "bb-plugin-tasks",
     include: ["**/*.test.{ts,tsx}"],
