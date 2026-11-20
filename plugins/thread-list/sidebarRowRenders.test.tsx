@@ -82,7 +82,6 @@ function props(activeThreadId: string): PluginThreadListProps {
     activeProjectId: PERSONAL_PROJECT_ID,
     isCompactViewport: false,
     onNavigate,
-    searchQuery: "",
   };
 }
 

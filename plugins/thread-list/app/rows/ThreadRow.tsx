@@ -418,8 +418,7 @@ function ThreadRowComponent({
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
   const childCount = parentOptions?.childCount ?? 0;
   const hasChildren = childCount > 0;
-  const reserveActionSpace =
-    crossProjectLabel !== null || (isParentRow && hasChildren);
+  const reserveActionSpace = isParentRow && hasChildren;
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const hiddenThreads =
     hasHiddenChildren && parentOptions

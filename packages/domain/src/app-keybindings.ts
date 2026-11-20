@@ -71,6 +71,7 @@ export const APP_COMMAND_IDS = [
   "window.new",
   "window.find",
   "window.reload",
+  "window.forceReload",
   "app.back",
   "settings.open",
   "settings.openServers",

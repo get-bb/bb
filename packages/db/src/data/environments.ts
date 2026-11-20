@@ -320,9 +320,11 @@ export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentR
     if (current === null || current.attempt !== provisioning.attempt || current.ownerThreadId !== provisioning.ownerThreadId) throw new Error("Environment preparation is no longer current");
     const existing = tx.select().from(environments).where(and(eq(environments.hostId, current.hostId), hostPathEquals(environments.path, path), eq(environments.projectId, current.projectId))).get();
     if (existing === undefined || existing.id === current.id) return current;
+    const discarded = { ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null } as const;
+    if (current.teardownStatus !== null) return tx.update(environments).set(discarded).where(eq(environments.id, current.id)).returning().get()!;
     if (existing.teardownStatus !== null || (existing.status !== "ready" && existing.status !== "provisioning")) throw new Error("Workspace is not ready or cleanup is still pending");
     if (existing.ownerThreadId !== null) throw new Error("Workspace is still being prepared by another thread");
-    tx.update(environments).set({ ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null }).where(eq(environments.id, current.id)).run();
+    tx.update(environments).set(discarded).where(eq(environments.id, current.id)).run();
     return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, status: existing.status, teardownStatus: current.teardownStatus, retireAt: current.retireAt, statusMessage: existing.status === "provisioning" ? existing.statusMessage : current.statusMessage, pendingLog: existing.status === "provisioning" ? existing.pendingLog : current.pendingLog, claimPath: current.claimPath, environmentProviderId: existing.environmentProviderId ?? current.environmentProviderId, environmentProviderPluginId: existing.environmentProviderId === null ? current.environmentProviderPluginId : existing.environmentProviderPluginId, environmentProviderSelection: existing.environmentProviderId === null ? current.environmentProviderSelection : existing.environmentProviderSelection, environmentProviderInstanceKey: existing.environmentProviderId === null ? current.environmentProviderInstanceKey : existing.environmentProviderInstanceKey }).where(eq(environments.id, existing.id)).returning().get()!;
   }, { behavior: "immediate" });
 }

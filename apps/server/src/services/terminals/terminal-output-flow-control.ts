@@ -4,7 +4,7 @@ const DEFAULT_OUTPUT_ACK_STALL_MS = 3_000;
 
 export type TerminalOutputFlowDaemonMessage = Extract<
   HostDaemonServerWsMessage,
-  { type: "terminal.ack" | "terminal.flow-control" }
+  { type: "terminal.ack" | "terminal.stream" }
 >;
 
 export interface TerminalOutputFlowControlOptions {
@@ -16,8 +16,15 @@ export interface TerminalOutputFlowControlOptions {
   stallMs?: number;
 }
 
+export interface TerminalOutputFlowClientState {
+  acknowledgesOutput: boolean;
+  nextSeq: number;
+  visible: boolean;
+}
+
 interface TerminalOutputFlowClient {
   acknowledgedNextSeq: number;
+  acknowledgesOutput: boolean;
   lastProgressAt: number;
   stalled: boolean;
   visible: boolean;
@@ -25,7 +32,7 @@ interface TerminalOutputFlowClient {
 
 interface TerminalOutputFlow {
   clients: Map<object, TerminalOutputFlowClient>;
-  enabledDaemonSessionId: string | null;
+  daemonSessionId: string | null;
   receivedNextSeq: number;
   sentAckNextSeq: number;
   stallTimeout: ReturnType<typeof setTimeout> | null;
@@ -41,27 +48,60 @@ export class TerminalOutputFlowControl {
     this.stallMs = options.stallMs ?? DEFAULT_OUTPUT_ACK_STALL_MS;
   }
 
-  addClient(
+  subscribe(
     terminalId: string,
     client: object,
-    nextSeq: number,
-    visible: boolean,
+    daemonSessionId: string | null,
   ): void {
     const flow = this.flows.get(terminalId) ?? {
       clients: new Map(),
-      enabledDaemonSessionId: null,
-      receivedNextSeq: nextSeq,
+      daemonSessionId: null,
+      receivedNextSeq: 0,
       sentAckNextSeq: 0,
       stallTimeout: null,
     };
-    flow.receivedNextSeq = Math.max(flow.receivedNextSeq, nextSeq);
+    this.flows.set(terminalId, flow);
+    if (!flow.clients.has(client)) {
+      flow.clients.set(client, {
+        acknowledgedNextSeq: 0,
+        acknowledgesOutput: false,
+        lastProgressAt: this.now(),
+        stalled: false,
+        visible: false,
+      });
+    }
+    if (daemonSessionId !== null) {
+      this.streamFrom(terminalId, flow, daemonSessionId);
+    }
+    this.update(terminalId, flow);
+  }
+
+  setClientState(
+    terminalId: string,
+    client: object,
+    state: TerminalOutputFlowClientState,
+  ): void {
+    const flow = this.flows.get(terminalId);
+    if (!flow?.clients.has(client)) {
+      return;
+    }
+    flow.receivedNextSeq = Math.max(flow.receivedNextSeq, state.nextSeq);
     flow.clients.set(client, {
-      acknowledgedNextSeq: nextSeq,
+      acknowledgedNextSeq: state.nextSeq,
+      acknowledgesOutput: state.acknowledgesOutput,
       lastProgressAt: this.now(),
       stalled: false,
-      visible,
+      visible: state.visible,
     });
-    this.flows.set(terminalId, flow);
+    this.update(terminalId, flow);
+  }
+
+  bindDaemonSession(terminalId: string, daemonSessionId: string): void {
+    const flow = this.flows.get(terminalId);
+    if (!flow) {
+      return;
+    }
+    this.streamFrom(terminalId, flow, daemonSessionId);
     this.update(terminalId, flow);
   }
 
@@ -70,20 +110,24 @@ export class TerminalOutputFlowControl {
     if (!flow?.clients.delete(client)) {
       return;
     }
-    this.update(terminalId, flow);
-    if (flow.clients.size === 0) {
-      this.forgetTerminal(terminalId);
+    if (flow.clients.size > 0) {
+      this.update(terminalId, flow);
+      return;
     }
+    if (flow.daemonSessionId !== null) {
+      this.options.sendDaemonMessage(flow.daemonSessionId, {
+        type: "terminal.stream",
+        terminalId,
+        enabled: false,
+      });
+    }
+    this.forgetTerminal(terminalId);
   }
 
   acknowledge(terminalId: string, client: object, nextSeq: number): void {
     const flow = this.flows.get(terminalId);
     const flowClient = flow?.clients.get(client);
-    if (
-      !flow ||
-      !flowClient ||
-      nextSeq <= flowClient.acknowledgedNextSeq
-    ) {
+    if (!flow || !flowClient || nextSeq <= flowClient.acknowledgedNextSeq) {
       return;
     }
     flowClient.acknowledgedNextSeq = nextSeq;
@@ -107,14 +151,8 @@ export class TerminalOutputFlowControl {
 
   recordOutput(terminalId: string, daemonSessionId: string, seq: number): void {
     const flow = this.flows.get(terminalId);
-    if (!flow) {
+    if (!flow || flow.daemonSessionId !== daemonSessionId) {
       return;
-    }
-    if (
-      flow.enabledDaemonSessionId !== null &&
-      flow.enabledDaemonSessionId !== daemonSessionId
-    ) {
-      flow.enabledDaemonSessionId = null;
     }
     const previousNextSeq = flow.receivedNextSeq;
     flow.receivedNextSeq = Math.max(previousNextSeq, seq + 1);
@@ -123,18 +161,6 @@ export class TerminalOutputFlowControl {
       if (flowClient.acknowledgedNextSeq >= previousNextSeq) {
         flowClient.lastProgressAt = now;
       }
-    }
-    if (
-      flow.enabledDaemonSessionId === null &&
-      hasGoverningClient(flow)
-    ) {
-      flow.enabledDaemonSessionId = daemonSessionId;
-      flow.sentAckNextSeq = flow.receivedNextSeq;
-      this.options.sendDaemonMessage(daemonSessionId, {
-        type: "terminal.flow-control",
-        terminalId,
-        enabled: true,
-      });
     }
     this.update(terminalId, flow);
   }
@@ -150,7 +176,29 @@ export class TerminalOutputFlowControl {
     this.flows.delete(terminalId);
   }
 
+  private streamFrom(
+    terminalId: string,
+    flow: TerminalOutputFlow,
+    daemonSessionId: string,
+  ): void {
+    if (flow.daemonSessionId === daemonSessionId) {
+      return;
+    }
+    flow.daemonSessionId = daemonSessionId;
+    flow.sentAckNextSeq = 0;
+    this.options.sendDaemonMessage(daemonSessionId, {
+      type: "terminal.stream",
+      terminalId,
+      enabled: true,
+    });
+  }
+
   private update(terminalId: string, flow: TerminalOutputFlow): void {
+    const daemonSessionId = flow.daemonSessionId;
+    if (daemonSessionId === null) {
+      this.clearStallTimeout(flow);
+      return;
+    }
     let target: number | null = null;
     for (const flowClient of flow.clients.values()) {
       if (isGoverning(flowClient)) {
@@ -160,20 +208,10 @@ export class TerminalOutputFlowControl {
         );
       }
     }
-    const daemonSessionId = flow.enabledDaemonSessionId;
     if (target === null) {
-      if (daemonSessionId !== null) {
-        flow.enabledDaemonSessionId = null;
-        this.options.sendDaemonMessage(daemonSessionId, {
-          type: "terminal.flow-control",
-          terminalId,
-          enabled: false,
-        });
-      }
-      this.clearStallTimeout(flow);
-      return;
+      target = flow.receivedNextSeq;
     }
-    if (daemonSessionId !== null && target > flow.sentAckNextSeq) {
+    if (target > flow.sentAckNextSeq) {
       flow.sentAckNextSeq = target;
       this.options.sendDaemonMessage(daemonSessionId, {
         type: "terminal.ack",
@@ -188,10 +226,6 @@ export class TerminalOutputFlowControl {
     terminalId: string,
     flow: TerminalOutputFlow,
   ): void {
-    if (flow.enabledDaemonSessionId === null) {
-      this.clearStallTimeout(flow);
-      return;
-    }
     let earliestStallAt: number | null = null;
     for (const flowClient of flow.clients.values()) {
       if (
@@ -241,14 +275,7 @@ export class TerminalOutputFlowControl {
 }
 
 function isGoverning(flowClient: TerminalOutputFlowClient): boolean {
-  return flowClient.visible && !flowClient.stalled;
-}
-
-function hasGoverningClient(flow: TerminalOutputFlow): boolean {
-  for (const flowClient of flow.clients.values()) {
-    if (isGoverning(flowClient)) {
-      return true;
-    }
-  }
-  return false;
+  return (
+    flowClient.acknowledgesOutput && flowClient.visible && !flowClient.stalled
+  );
 }

@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { CORE_PLUGIN_DIRECTORIES, PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   buildPluginHost,
   isIgnoredPluginDevPath,
@@ -26,7 +26,14 @@ const hostBuildRecordSchema = z.object({
 
 function hostBuildRecordPath(dataDir: string, pluginId: string): string {
   const pluginKey = createHash("sha256").update(pluginId).digest("hex");
-  return join(dataDir, "plugins", "runtime", "host", pluginKey, "build.json");
+  return join(
+    dataDir,
+    "plugins",
+    CORE_PLUGIN_DIRECTORIES.runtime,
+    "host",
+    pluginKey,
+    "build.json",
+  );
 }
 
 export async function isMutableArtifactStale(

@@ -1,3 +1,4 @@
+import type { ServerAccessOrigin } from "@bb/domain";
 import type { ServerAccessProviderDeclaration } from "@get-bb/plugin-sdk";
 
 export interface ServerAccessProviderRecord {
@@ -14,11 +15,29 @@ export interface ServerAccessBridge {
 }
 
 let bridge: ServerAccessBridge | undefined;
+let admittedOrigins: readonly ServerAccessOrigin[] = [];
+let availableOrigins: ReadonlySet<string> = new Set();
 
 export function setServerAccessBridge(
   value: ServerAccessBridge | undefined,
 ): void {
   bridge = value;
+  setAdmittedServerAccessOrigins([]);
+}
+
+export function availableServerAccessOrigins(): ReadonlySet<string> {
+  return availableOrigins;
+}
+
+export function admittedServerAccessOrigins(): readonly ServerAccessOrigin[] {
+  return admittedOrigins;
+}
+
+export function setAdmittedServerAccessOrigins(
+  origins: readonly ServerAccessOrigin[],
+): void {
+  admittedOrigins = origins;
+  availableOrigins = new Set(origins.map((entry) => entry.origin));
 }
 
 export function listServerAccessProviders(): ServerAccessProviderRecord[] {

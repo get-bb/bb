@@ -22,6 +22,7 @@ import {
   resolve,
   sep,
 } from "node:path";
+import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import { z } from "zod";
 import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import {
@@ -416,7 +417,7 @@ export async function buildCachedPluginServer(
   const pluginCacheDir = join(
     args.dataDir,
     "plugins",
-    "runtime",
+    CORE_PLUGIN_DIRECTORIES.runtime,
     "server",
     sha256(args.pluginId),
   );

@@ -15,7 +15,7 @@ import {
   type RerootServerOwnedPathsResult,
   type SwapServerHostRolesResult,
 } from "@bb/db";
-import { appSettingsSchema } from "@bb/domain";
+import { appSettingsSchema, CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import {
   readLastServerMoveFile,
   readServerImportFile,
@@ -36,7 +36,10 @@ import {
   type ManagedAddressKey,
 } from "./managed-files.js";
 
-const PLUGIN_SNAPSHOTS_RELATIVE_PATH = ["plugins", "snapshots"] as const;
+const PLUGIN_SNAPSHOTS_RELATIVE_PATH = [
+  "plugins",
+  CORE_PLUGIN_DIRECTORIES.stateSnapshots,
+] as const;
 const PREVIOUS_REGISTRATION_FILE_NAME = "previous-registration.json";
 const REGISTRATION_PATH_KEYS = ["rootDir", "sourcePath"] as const;
 const CONNECT_CREDENTIAL_KEY = "credential";

@@ -39,8 +39,10 @@ ships as a `skills/` entry instead.
 ### bb.status
 
 `bb.status.needsConfiguration(message)` — mark the plugin
-`needs-configuration` (shown in `bb plugin list` and the UI) instead of
-failing. Cleared on the next load; saving settings retries the load.
+`needs-configuration` instead of failing. `bb plugin list` shows the message;
+the plugin's page shows it only when the plugin has no settings, and links to
+its settings otherwise. Cleared on the next load; saving a changed setting
+retries the load.
 
 ### bb.onInstall
 

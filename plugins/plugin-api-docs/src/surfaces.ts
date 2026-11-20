@@ -259,7 +259,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           'Add a button to the header of an open thread: a thread action with placement "header". With this, a plugin can:',
         bullets: [
-          "Show a labelled button after the workspace's Open button, only while it applies to the thread",
+          "Show an icon-and-label button after the workspace's Open button while it applies",
           "Fold into the thread menu on phones and in narrow split panes",
           "Load data only for the threads whose header is on screen",
         ],
@@ -319,12 +319,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "thread-context-card",
         title: "Thread context card",
         summary:
-          "Add a row or a section to the context card of every thread pane. With this, a plugin can:",
+          "Add a row or a section to the thread context card. With this, a plugin can:",
         bullets: [
           "Keep a pull request, change counts, or related threads in view while messages scroll",
           "Sit among bb's own rows and sections in the Info tab's groups, drawn with the same row and section",
           "Hide a matching context segment while the pane shows the card",
-          "Leave the card, placement, section folding, and the header button to bb",
+          "Appear only with the Thread context card experiment on (off by default), never on phones",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadContextCardRow",
@@ -751,8 +751,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Read the draft's text, @-mentions, and attachments",
           "Insert or rewrite text, @-mentions, and thread pills in one step",
-          "Lock the prompt box while the plugin works, then release it",
-          "Write into any prompt box on screen from a panel or page",
+          "Lock the prompt box while the plugin works, then release it, from a composer slot",
+          "Write into any prompt box on screen from a panel or page, without locking it",
         ],
         apiSymbols: [
           "useComposer",
@@ -1008,8 +1008,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add a needs-configuration warning to the plugin's page. With this, a plugin can:",
         bullets: [
-          "Tell people what's missing instead of failing silently",
-          "Send them to Settings, then reload after they save",
+          "Tell people what's missing in bb plugin list, and on this page when there are no settings",
+          "Send them to Settings; saving a changed value loads the plugin again",
         ],
         apiSymbols: ["PluginStatusApi"],
         firstParty: [

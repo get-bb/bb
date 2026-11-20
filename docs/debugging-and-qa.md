@@ -1103,6 +1103,22 @@ reconnects. Auto-update-enabled daemons install the server's matching `bb-app`
 artifact; disabled or failed updates leave the machine disconnected until a
 manual update succeeds. The commit that bumps the version records what changed.
 
+## Terminal Output Streaming
+
+A daemon sends a terminal's output to the server only while the server has
+asked for it with `terminal.stream` (`enabled: true`). The server asks just
+before it attaches a terminal client, or before it catches clients up after a
+daemon reconnect, and stops the stream when the last client detaches. While a
+terminal is not streamed, its output stays in the daemon's scrollback ring
+(4 MiB per terminal) and reaches clients through the attach replay. A dropped
+daemon session stops every stream.
+
+A streamed terminal never has more than 1 MiB of output that the server has not
+acknowledged; past that, the daemon pauses the PTY until `terminal.ack` arrives.
+The server acknowledges up to what the fastest visible, acknowledging client
+has parsed. With no such client (hidden, stalled, or not sending acks), it
+acknowledges output as it arrives, so the PTY runs at the link rate.
+
 ## Opt-in server performance diagnostics
 
 Collection needs both startup permission and the **Server performance

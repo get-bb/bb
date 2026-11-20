@@ -36,6 +36,7 @@ import {
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
+import { applyThreadTimelineSignal } from "@/hooks/cache-owners/thread-timeline-push-owner";
 import {
   hasThreadTimelineUnseenEvents,
   markThreadTimelineUnseenEvents,
@@ -1489,5 +1490,65 @@ describe("useThreadTimelineController commits", () => {
       ]);
     });
     expect(hasThreadTimelineUnseenEvents(queryClient, "thread-1")).toBe(false);
+  });
+
+  it("stops catching up when a push without row changes covers the unseen events", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const view = await renderSettledController(wrapper, [newestLoadedRow.id]);
+
+    act(() => {
+      markThreadTimelineUnseenEvents(queryClient, "thread-1", 3);
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({
+          maxSeq: 2,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      );
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
+
+    act(() => {
+      applyThreadTimelineSignal(queryClient, {
+        type: "thread-timeline",
+        target: {
+          kind: "thread-timeline",
+          threadId: "thread-1",
+          segmentLimit: null,
+          deferContent: true,
+        },
+        timeline: makeTimelineResponse({
+          maxSeq: 3,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      });
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+
+  it("starts catching up when unseen events arrive without a timeline change", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const view = await renderSettledController(wrapper, [newestLoadedRow.id]);
+
+    act(() => {
+      markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
+    });
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
   });
 });

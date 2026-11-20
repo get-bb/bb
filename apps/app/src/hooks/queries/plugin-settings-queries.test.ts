@@ -106,7 +106,9 @@ describe("plugin list envelope", () => {
 
     await expect(
       fetchFrontendCandidates(queryClient, "await-refresh"),
-    ).resolves.toEqual([expect.objectContaining({ pluginId: "linear" })]);
+    ).resolves.toMatchObject({
+      candidates: [expect.objectContaining({ pluginId: "linear" })],
+    });
     expect(networkFetch).not.toHaveBeenCalled();
   });
 
@@ -140,19 +142,23 @@ describe("plugin list envelope", () => {
       await fetchReturning({ plugins: [pluginWithBundle("old")] })(""),
     );
 
-    await expect(olderCandidates).resolves.toEqual([
-      expect.objectContaining({
-        bundle: expect.objectContaining({ hash: "old" }),
-      }),
-    ]);
+    await expect(olderCandidates).resolves.toMatchObject({
+      candidates: [
+        expect.objectContaining({
+          bundle: expect.objectContaining({ hash: "old" }),
+        }),
+      ],
+    });
     await refresh;
     await expect(
       fetchFrontendCandidates(queryClient, "await-refresh"),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        bundle: expect.objectContaining({ hash: "new" }),
-      }),
-    ]);
+    ).resolves.toMatchObject({
+      candidates: [
+        expect.objectContaining({
+          bundle: expect.objectContaining({ hash: "new" }),
+        }),
+      ],
+    });
     expect(networkFetch).toHaveBeenCalledTimes(2);
   });
 

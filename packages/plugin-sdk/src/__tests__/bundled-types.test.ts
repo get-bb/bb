@@ -70,6 +70,18 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).not.toContain("threads.terminals");
   });
 
+  it("leaves retired thread list props out of the published contract", async () => {
+    const appDeclarations = await readFile(
+      new URL("../../bundled-types/bb-plugin-sdk-app.d.ts", import.meta.url),
+      "utf8",
+    );
+    const threadListProps = appDeclarations.match(
+      /interface PluginThreadListProps \{[^}]*\}/u,
+    )?.[0];
+    expect(threadListProps).toContain("activeThreadId: string | null;");
+    expect(threadListProps).not.toContain("searchQuery");
+  });
+
   it("ships portable declarations for every exported subpath", async () => {
     const fileNames = [
       "bb-plugin-sdk.d.ts",

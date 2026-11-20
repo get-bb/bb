@@ -170,6 +170,22 @@ export const claudeSystemMessageSchema = z
   })
   .passthrough();
 
+export const claudeBlockingInformationalSystemMessageSchema =
+  claudeSystemMessageSchema
+    .extend({
+      subtype: z.literal("informational"),
+      content: z.string(),
+      prevent_continuation: z.literal(true),
+    })
+    .passthrough();
+
+export const claudePromptBlockedByHookOutcomeSchema = z
+  .object({
+    kind: z.literal("blocked_by_hook"),
+    reason: z.string().trim().min(1),
+  })
+  .passthrough();
+
 export const claudeApiRetryMessageSchema = claudeSystemMessageSchema
   .extend({
     subtype: z.literal("api_retry"),

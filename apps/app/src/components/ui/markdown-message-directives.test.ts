@@ -35,14 +35,14 @@ describe("buildMessageDirectiveRegistry", () => {
         slot({ id: "inline-vis", pluginId: "alpha" }),
         slot({ id: "chart", pluginId: "alpha" }),
       ],
-      { warn },
+      { unclaimed: "literal", warn },
     );
 
-    expect(registry.get("inline-vis")).toEqual({
+    expect(registry.directives.get("inline-vis")).toEqual({
       status: "collision",
       pluginIds: ["alpha", "zeta"],
     });
-    expect(registry.get("chart")?.status).toBe("ok");
+    expect(registry.directives.get("chart")?.status).toBe("ok");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain('message directive "inline-vis"');
     expect(warn.mock.calls[0]?.[0]).toContain("alpha");

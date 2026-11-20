@@ -88,6 +88,20 @@ export const defaultAppSettings: AppSettings = {
 
 export const disabledProviderIdsSchema = z.array(z.string().min(1));
 
+export const serverAccessOriginsSchema = z.array(
+  z
+    .object({
+      providerId: z.string().min(1),
+      pluginId: z.string().min(1),
+      origin: z.string().min(1),
+    })
+    .strict(),
+);
+
+export type ServerAccessOrigin = z.infer<
+  typeof serverAccessOriginsSchema
+>[number];
+
 export const appSettingsUpdateSchema = z.union([
   appSettingsSchema.extend({
     idleProviderSessionTimeoutMinutes:

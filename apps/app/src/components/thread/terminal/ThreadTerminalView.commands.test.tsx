@@ -13,6 +13,7 @@ import { Terminal } from "@xterm/xterm";
 import {
   AppCommandProvider,
   useAppCommandHandler,
+  useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
@@ -54,7 +55,32 @@ vi.mock("@/hooks/usePluginCommandBindings", () => {
     when,
   });
   const main = { all: ["mainSurface"], none: ["modalOpen"] };
+  const exact = (
+    command: string,
+    key: string,
+    modifiers: { control?: boolean; alt?: boolean; shift?: boolean },
+  ) => ({
+    command,
+    desktopOnly: false,
+    shortcut: {
+      key,
+      mod: false,
+      meta: false,
+      control: modifiers.control ?? false,
+      alt: modifiers.alt ?? false,
+      shift: modifiers.shift ?? false,
+    },
+    when: main,
+  });
   const defaults = [
+    exact("sidebar.toggle", "F5", {}),
+    exact("notifications.open", "n", { alt: true, shift: true }),
+    exact("thread.rename", "1", { control: true, alt: true }),
+    exact("thread.archive", "3", { control: true }),
+    exact("panel.fullScreen.toggle", "j", { control: true }),
+    exact("thread.pin", "c", { control: true }),
+    exact("thread.markRead", "[", { control: true }),
+    exact("app.back", "Escape", {}),
     binding("thread.search", "k", {}, main),
     binding("panel.close", "w", {}, main),
     binding(
@@ -103,11 +129,27 @@ vi.mock("@bb/client-core", async (importOriginal) => ({
 const appCommands = vi.hoisted(() => ({
   threadSearch: vi.fn(() => true),
   panelClose: vi.fn(() => true),
+  ran: [] as string[],
 }));
+
+const BOUND_COMMANDS = [
+  "sidebar.toggle",
+  "notifications.open",
+  "thread.rename",
+  "thread.archive",
+  "panel.fullScreen.toggle",
+  "thread.pin",
+  "thread.markRead",
+  "app.back",
+] as const;
 
 function AppCommandSpies() {
   useAppCommandHandler("thread.search", appCommands.threadSearch);
   useAppCommandHandler("panel.close", appCommands.panelClose);
+  useIndexedAppCommandHandlers(BOUND_COMMANDS, (index) => {
+    appCommands.ran.push(BOUND_COMMANDS[index]!);
+    return true;
+  });
   return null;
 }
 
@@ -124,6 +166,7 @@ afterEach(() => {
   vi.mocked(copyToClipboardWithToast).mockClear();
   appCommands.threadSearch.mockClear();
   appCommands.panelClose.mockClear();
+  appCommands.ran.length = 0;
   state.input.mockClear();
   state.acknowledged.mockClear();
   state.onMessage = null;
@@ -222,8 +265,94 @@ it("leaves Ctrl+letter shell keys to the shell on Linux and finds with Ctrl+Shif
     shiftKey: true,
     keyCode: 70,
   });
-  expect(
-    await screen.findByRole("textbox", { name: "Find in terminal" }),
-  ).toBe(document.activeElement);
+  expect(await screen.findByRole("textbox", { name: "Find in terminal" })).toBe(
+    document.activeElement,
+  );
   expect(state.input).toHaveBeenCalledTimes(3);
+});
+
+const APP_COMMAND_KEYS = [
+  {
+    init: { key: "F5", code: "F5", keyCode: 116 },
+    command: "sidebar.toggle",
+  },
+  {
+    init: { key: "N", code: "KeyN", altKey: true, shiftKey: true, keyCode: 78 },
+    command: "notifications.open",
+  },
+  {
+    init: {
+      key: "1",
+      code: "Digit1",
+      ctrlKey: true,
+      altKey: true,
+      keyCode: 49,
+    },
+    command: "thread.rename",
+  },
+  {
+    init: { key: "3", code: "Digit3", ctrlKey: true, keyCode: 51 },
+    command: "thread.archive",
+  },
+] as const;
+
+const SHELL_KEYS = [
+  { init: { key: "j", code: "KeyJ", ctrlKey: true, keyCode: 74 }, data: "\n" },
+  {
+    init: { key: "c", code: "KeyC", ctrlKey: true, keyCode: 67 },
+    data: "\x03",
+  },
+  {
+    init: { key: "[", code: "BracketLeft", ctrlKey: true, keyCode: 219 },
+    data: "\x1b",
+  },
+  { init: { key: "Escape", code: "Escape", keyCode: 27 }, data: "\x1b" },
+] as const;
+
+it.each(["MacIntel", "Linux x86_64"])(
+  "on %s, runs bound commands from a focused terminal but leaves shell keys to the shell",
+  async (platform) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    const { textarea } = await mount();
+    for (const { init, command } of APP_COMMAND_KEYS) {
+      appCommands.ran.length = 0;
+      fireEvent.keyDown(textarea, init);
+      expect({ key: init.key, ran: appCommands.ran }).toEqual({
+        key: init.key,
+        ran: [command],
+      });
+    }
+    expect(state.input).not.toHaveBeenCalled();
+    appCommands.ran.length = 0;
+    for (const { init } of SHELL_KEYS) {
+      fireEvent.keyDown(textarea, init);
+    }
+    expect(appCommands.ran).toEqual([]);
+    expect(state.input.mock.calls.map(([data]) => atob(data))).toEqual(
+      SHELL_KEYS.map(({ data }) => data),
+    );
+  },
+);
+
+it("keeps a held command key's repeats out of the shell", async () => {
+  const { textarea } = await mount();
+  const f5 = { key: "F5", code: "F5", keyCode: 116 };
+  fireEvent.keyDown(textarea, f5);
+  const repeatsReachedPage = [
+    fireEvent.keyDown(textarea, { ...f5, repeat: true }),
+    fireEvent.keyDown(textarea, { ...f5, repeat: true }),
+  ];
+  fireEvent.keyUp(textarea, f5);
+  expect(appCommands.ran).toEqual(["sidebar.toggle"]);
+  expect(repeatsReachedPage).toEqual([false, false]);
+  expect(state.input).not.toHaveBeenCalled();
+
+  const escape = { key: "Escape", code: "Escape", keyCode: 27 };
+  fireEvent.keyDown(textarea, escape);
+  fireEvent.keyDown(textarea, { ...escape, repeat: true });
+  expect(appCommands.ran).toEqual(["sidebar.toggle"]);
+  expect(state.input.mock.calls.map(([data]) => atob(data))).toEqual([
+    "\x1b",
+    "\x1b",
+  ]);
 });
