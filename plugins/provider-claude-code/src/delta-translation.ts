@@ -32,6 +32,7 @@ import {
   claudeModelFallbackSystemMessageSchema,
   claudeModelRefusalNoFallbackSystemMessageSchema,
   claudePermissionDeniedSystemMessageSchema,
+  claudePromptBlockedByHookOutcomeSchema,
   claudeRateLimitEventSchema,
   claudeResultMessageSchema,
   claudeSdkMessageTypeSchema,
@@ -670,10 +671,15 @@ export function createClaudeDeltaTranslator(
       }
       const deltas = withMirror(state, [{ kind: "turn.open" }]);
       state.continuationBlocked = true;
+      const hookBlock = claudePromptBlockedByHookOutcomeSchema.safeParse(
+        blockingInformationalMessage.data.prompt_submit_outcome,
+      );
       deltas.push({
         kind: "provider.error",
-        message: "Claude Code stopped execution",
-        detail: blockingInformationalMessage.data.content,
+        message: "Provider error",
+        detail: hookBlock.success
+          ? `Prompt blocked by a UserPromptSubmit hook: ${hookBlock.data.reason}`
+          : blockingInformationalMessage.data.content,
       });
       return deltas;
     }

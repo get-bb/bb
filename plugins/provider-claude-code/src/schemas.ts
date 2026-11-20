@@ -179,6 +179,13 @@ export const claudeBlockingInformationalSystemMessageSchema =
     })
     .passthrough();
 
+export const claudePromptBlockedByHookOutcomeSchema = z
+  .object({
+    kind: z.literal("blocked_by_hook"),
+    reason: z.string().trim().min(1),
+  })
+  .passthrough();
+
 export const claudeApiRetryMessageSchema = claudeSystemMessageSchema
   .extend({
     subtype: z.literal("api_retry"),
