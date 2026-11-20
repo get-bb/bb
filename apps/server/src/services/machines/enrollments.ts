@@ -2,12 +2,12 @@ import { isHostCleanupAllowed } from "../hosts/cleanup-context.js";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 import { setTimeout as delay } from "node:timers/promises";
-import { and, eq, gt, sql } from "drizzle-orm";
 import {
-  authApiKeys,
+  findRedeemableAuthApiKey,
   getHost,
   getLatestSessionForHost,
   getNonDestroyedHostByLaunchKey,
+  hasEnabledAuthApiKeyForHost,
   type DbConnection,
 } from "@bb/db";
 import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
@@ -71,26 +71,11 @@ export async function findUnusedEnrollmentCredential(
   enrollSource: string | null;
   expiresAt: number;
 } | null> {
-  const row = db
-    .select({
-      hostId: sql<string>`json_extract(${authApiKeys.metadata}, '$.hostId')`,
-      enrollSource: sql<
-        string | null
-      >`json_extract(${authApiKeys.metadata}, '$.enrollSource')`,
-      expiresAt: authApiKeys.expiresAt,
-    })
-    .from(authApiKeys)
-    .where(
-      and(
-        eq(authApiKeys.configId, DAEMON_ENROLL_CONFIG_ID),
-        eq(authApiKeys.key, await defaultKeyHasher(credential)),
-        eq(authApiKeys.enabled, true),
-        gt(authApiKeys.remaining, 0),
-        gt(authApiKeys.expiresAt, new Date()),
-      ),
-    )
-    .limit(1)
-    .get();
+  const row = findRedeemableAuthApiKey(db, {
+    configId: DAEMON_ENROLL_CONFIG_ID,
+    hashedKey: await defaultKeyHasher(credential),
+    now: new Date(),
+  });
   if (!row?.expiresAt) return null;
   return {
     hostId: row.hostId,
@@ -109,20 +94,10 @@ export function createMachineEnrollmentService(
   const locks = new Map<string, Promise<unknown>>();
 
   function hasIssuedDaemonCredential(hostId: string): boolean {
-    return (
-      deps.db
-        .select({ id: authApiKeys.id })
-        .from(authApiKeys)
-        .where(
-          and(
-            eq(authApiKeys.configId, DAEMON_HOST_CONFIG_ID),
-            eq(authApiKeys.enabled, true),
-            sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
-          ),
-        )
-        .limit(1)
-        .get() !== undefined
-    );
+    return hasEnabledAuthApiKeyForHost(deps.db, {
+      configId: DAEMON_HOST_CONFIG_ID,
+      hostId,
+    });
   }
 
   async function hasUnusedEnrollmentCredential(

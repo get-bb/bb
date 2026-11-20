@@ -1,13 +1,14 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
-import { and, desc, eq } from "drizzle-orm";
 import {
   createHostId,
-  hostDaemonSessions,
-  hosts,
-  environments as environmentRows,
+  getFailedTeardownEnvironmentOnHost,
+  getLatestHostAttemptForLaunchKey,
+  insertHost,
+  listActiveSessionIdsForHost,
   persistedRetryExhausted,
+  retryFailedEnvironmentTeardownsOnHost,
 } from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
 import type { WorkSessionDeps } from "../../types.js";
@@ -78,17 +79,8 @@ type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
 
 function expireMachineSessions(deps: Deps, hostId: string): void {
-  for (const session of deps.db
-    .select({ id: hostDaemonSessions.id })
-    .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.hostId, hostId),
-        eq(hostDaemonSessions.status, "active"),
-      ),
-    )
-    .all()) {
-    handleHostRemoved(deps, { hostId, sessionId: session.id });
+  for (const sessionId of listActiveSessionIdsForHost(deps.db, hostId)) {
+    handleHostRemoved(deps, { hostId, sessionId });
   }
 }
 
@@ -542,37 +534,28 @@ export function askMachineLaunch(
   if (row === null) {
     const id = createHostId();
     const attempt =
-      (deps.db
-        .select({ attempt: hosts.attempt })
-        .from(hosts)
-        .where(eq(hosts.launchKey, args.key))
-        .orderBy(desc(hosts.attempt))
-        .limit(1)
-        .get()?.attempt ?? 0) + 1;
+      (getLatestHostAttemptForLaunchKey(deps.db, args.key) ?? 0) + 1;
     const suffix = id.replace(/[^a-z0-9]/giu, "").slice(-6);
     const operationId = `${args.record.pluginId}:${randomUUID()}`;
-    deps.db
-      .insert(hosts)
-      .values({
-        id,
-        name: `${args.record.provider.displayName} ${suffix}`,
-        type:
-          args.lifetime === "thread" && args.record.provider.ephemeral
-            ? "ephemeral"
-            : "persistent",
-        machineProviderId: args.record.provider.id,
-        machineOperationId: operationId,
-        launchKey: args.key,
-        inputs: args.inputs,
-        attempt,
-        phase: "creating",
-        resource: null,
-        statusMessage: `Creating ${args.record.provider.displayName}…`,
-        pendingLog: "",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    insertHost(deps.db, {
+      id,
+      name: `${args.record.provider.displayName} ${suffix}`,
+      type:
+        args.lifetime === "thread" && args.record.provider.ephemeral
+          ? "ephemeral"
+          : "persistent",
+      machineProviderId: args.record.provider.id,
+      machineOperationId: operationId,
+      launchKey: args.key,
+      inputs: args.inputs,
+      attempt,
+      phase: "creating",
+      resource: null,
+      statusMessage: `Creating ${args.record.provider.displayName}…`,
+      pendingLog: "",
+      createdAt: now,
+      updatedAt: now,
+    });
     deps.hub.notifyHost(id, ["host-connected"]);
     row = getHost(deps.db, id)!;
     startCreate(deps, args.record, row);
@@ -1151,18 +1134,12 @@ export async function retryMachineCleanup(
       "Cleanup can only be retried after machine teardown fails",
     );
   }
-  for (const environment of deps.db
-    .update(environmentRows)
-    .set({ retireAt: Date.now() })
-    .where(
-      and(
-        eq(environmentRows.hostId, hostId),
-        eq(environmentRows.teardownStatus, "failed"),
-      ),
-    )
-    .returning({ id: environmentRows.id })
-    .all()) {
-    deps.hub.notifyEnvironment(environment.id, ["metadata-changed"]);
+  for (const environmentId of retryFailedEnvironmentTeardownsOnHost(
+    deps.db,
+    hostId,
+    Date.now(),
+  )) {
+    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
   }
   updateHost(deps.db, deps.hub, hostId, {
     removeRetryAt: Date.now(),
@@ -1494,17 +1471,7 @@ export async function sweepProviderMachine(
       if (current.length > 0) pendingEnvironment = true;
     }
     if (pendingEnvironment) {
-      const failed = deps.db
-        .select()
-        .from(environmentRows)
-        .where(
-          and(
-            eq(environmentRows.hostId, hostId),
-            eq(environmentRows.teardownStatus, "failed"),
-          ),
-        )
-        .limit(1)
-        .get();
+      const failed = getFailedTeardownEnvironmentOnHost(deps.db, hostId);
       if (failed) {
         updateHost(deps.db, deps.hub, hostId, {
           teardownStatus: "failed",

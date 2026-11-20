@@ -1,11 +1,10 @@
 import { cancelPendingEnvironmentHook } from "../environments/environment-hooks.js";
-import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
-  environmentHookOperations,
-  environments,
   getHost,
-  terminalSessions,
-  threads,
+  hostHasRunningTurnThread,
+  listOpenTerminalSessionIdsOnHost,
+  listRunningTurnThreadsOnHost,
+  listUnfinishedEnvironmentHookOperationIdsOnHost,
   updateHost,
 } from "@bb/db";
 import type {
@@ -89,36 +88,14 @@ export async function maintainMachine(
   try {
     const drainDeadline = { db: deps.db, timeoutMs: 5 * 60_000 };
     await boundedDrain(async () => {
-      const hooks = deps.db
-        .select({ id: environmentHookOperations.id })
-        .from(environmentHookOperations)
-        .where(
-          and(
-            eq(environmentHookOperations.hostId, hostId),
-            isNull(environmentHookOperations.finishedAt),
-          ),
-        )
-        .all();
-      await Promise.all(
-        hooks.map((hook) =>
-          cancelPendingEnvironmentHook(deps, { id: hook.id, hostId }),
-        ),
+      const hookIds = listUnfinishedEnvironmentHookOperationIdsOnHost(
+        deps.db,
+        hostId,
       );
-      const active = deps.db
-        .select({
-          id: threads.id,
-          status: threads.status,
-          environmentId: threads.environmentId,
-        })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            eq(environments.hostId, hostId),
-            inArray(threads.status, ["active", "stopping"]),
-          ),
-        )
-        .all();
+      await Promise.all(
+        hookIds.map((id) => cancelPendingEnvironmentHook(deps, { id, hostId })),
+      );
+      const active = listRunningTurnThreadsOnHost(deps.db, hostId);
       for (const thread of active)
         appendSystemErrorEvent(deps, {
           threadId: thread.id,
@@ -140,40 +117,15 @@ export async function maintainMachine(
           ),
         ),
       );
-      const stillActive = deps.db
-        .select({ id: threads.id })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            eq(environments.hostId, hostId),
-            inArray(threads.status, ["active", "stopping"]),
-          ),
-        )
-        .limit(1)
-        .get();
-      if (stillActive !== undefined)
+      if (hostHasRunningTurnThread(deps.db, hostId))
         throw new Error(
           "A turn did not stop; refusing to save or terminate live writers",
         );
-      const terminals = deps.db
-        .select({ id: terminalSessions.id })
-        .from(terminalSessions)
-        .where(
-          and(
-            eq(terminalSessions.hostId, hostId),
-            inArray(terminalSessions.status, [
-              "starting",
-              "running",
-              "disconnected",
-            ]),
-          ),
-        )
-        .all();
+      const terminalIds = listOpenTerminalSessionIdsOnHost(deps.db, hostId);
       await Promise.all(
-        terminals.map((terminal) =>
+        terminalIds.map((terminalId) =>
           deps.terminalSessions.closeTerminal({
-            terminalId: terminal.id,
+            terminalId,
             payload: { mode: "force", reason: "user" },
           }),
         ),

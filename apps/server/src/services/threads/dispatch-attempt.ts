@@ -18,6 +18,7 @@ import {
   listRunningThreads,
   type ClaimedQueuedThreadMessageRow,
   type RunningThreadRow,
+  FORK_HISTORY_COPY_MARK,
 } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
@@ -78,7 +79,6 @@ import {
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
 import {
-  FORK_HISTORY_COPY_MARK,
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-startup-store.js";

@@ -1,5 +1,8 @@
-import { environments, liveThread, threads, type DbConnection } from "@bb/db";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import {
+  listLiveThreadHosts,
+  listReadyEnvironmentWatchTargets,
+  type DbConnection,
+} from "@bb/db";
 import {
   realtimeSubscriptionTargetKey,
   resolveEnvironmentMergeBaseBranch,
@@ -317,29 +320,10 @@ export class WatchInterestCoordinator {
       offset < environmentIds.length;
       offset += WATCH_TARGET_QUERY_BATCH_SIZE
     ) {
-      const rows = this.deps.db
-        .select({
-          id: environments.id,
-          hostId: environments.hostId,
-          path: environments.path,
-          mergeBaseBranch: environments.mergeBaseBranch,
-          baseBranch: environments.baseBranch,
-          defaultBranch: environments.defaultBranch,
-        })
-        .from(environments)
-        .where(
-          and(
-            inArray(
-              environments.id,
-              environmentIds.slice(
-                offset,
-                offset + WATCH_TARGET_QUERY_BATCH_SIZE,
-              ),
-            ),
-            eq(environments.status, "ready"),
-          ),
-        )
-        .all();
+      const rows = listReadyEnvironmentWatchTargets(
+        this.deps.db,
+        environmentIds.slice(offset, offset + WATCH_TARGET_QUERY_BATCH_SIZE),
+      );
       for (const environment of rows) {
         if (!environment.path) continue;
         resolved.set(
@@ -366,24 +350,10 @@ export class WatchInterestCoordinator {
       offset < threadIds.length;
       offset += WATCH_TARGET_QUERY_BATCH_SIZE
     ) {
-      const rows = this.deps.db
-        .select({
-          id: threads.id,
-          hostId: environments.hostId,
-        })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            inArray(
-              threads.id,
-              threadIds.slice(offset, offset + WATCH_TARGET_QUERY_BATCH_SIZE),
-            ),
-            liveThread,
-            ne(environments.status, "destroyed"),
-          ),
-        )
-        .all();
+      const rows = listLiveThreadHosts(
+        this.deps.db,
+        threadIds.slice(offset, offset + WATCH_TARGET_QUERY_BATCH_SIZE),
+      );
       for (const thread of rows) {
         resolved.set(
           realtimeSubscriptionTargetKey({

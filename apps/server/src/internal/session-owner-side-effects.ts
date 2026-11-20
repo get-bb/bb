@@ -1,8 +1,6 @@
-import { eq } from "drizzle-orm";
 import {
   closeSession,
   getSessionById,
-  hostDaemonSessions,
   listActiveHostThreads,
   listHostThreadIdsWithInterruptiblePendingInteractions,
   listRuntimeHostThreadIds,
@@ -221,11 +219,7 @@ function handleDaemonSessionLost(
   deps.hub.unregisterDaemon(args.sessionId);
   deps.sharedPorts.clearHostConnectCapability(args.sessionId);
 
-  const session = deps.db
-    .select()
-    .from(hostDaemonSessions)
-    .where(eq(hostDaemonSessions.id, args.sessionId))
-    .get();
+  const session = getSessionById(deps.db, { sessionId: args.sessionId });
   if (!session || session.status !== "active") {
     return;
   }
@@ -256,11 +250,7 @@ export function handleHostRemoved(
   deps: Omit<DaemonSocketClosedDeps, "sharedPorts">,
   args: HandleHostRemovedArgs,
 ): void {
-  const session = deps.db
-    .select()
-    .from(hostDaemonSessions)
-    .where(eq(hostDaemonSessions.id, args.sessionId))
-    .get();
+  const session = getSessionById(deps.db, { sessionId: args.sessionId });
   if (
     !session ||
     session.status !== "active" ||

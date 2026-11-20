@@ -5648,3 +5648,155 @@ export function hasStoredCancelledThreadProvisioning(
       .get() !== undefined
   );
 }
+
+export function hasStoredThreadCommandFailureSystemErrorForTurn(
+  db: DbQueryConnection,
+  args: { threadId: string; turnId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.scopeKind, "turn"),
+          eq(events.type, "system/error"),
+          sql`json_extract(${events.data}, '$.code') = 'thread_command_failed'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function getStoredTurnStartedSequence(
+  db: DbQueryConnection,
+  args: { threadId: string; turnId: string },
+): number | null {
+  return (
+    db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.type, "turn/started"),
+        ),
+      )
+      .limit(1)
+      .get()?.sequence ?? null
+  );
+}
+
+export function getLatestStoredTurnCompletedSequence(
+  db: DbQueryConnection,
+  args: { threadId: string; turnId: string },
+): number | null {
+  return (
+    db
+      .select({ sequence: sql<number>`${events.sequence}` })
+      .from(
+        sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
+      )
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.type, "turn/completed"),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get()?.sequence ?? null
+  );
+}
+
+export function hasStoredManualStopInterruptionAfterSequence(
+  db: DbQueryConnection,
+  args: { afterSequence: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gt(events.sequence, args.afterSequence),
+          sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function getLatestStoredThreadInterruptedDataBetweenSequences(
+  db: DbQueryConnection,
+  args: { afterSequence: number; beforeSequence: number; threadId: string },
+): string | null {
+  return (
+    db
+      .select({ data: sql<string>`${events.data}` })
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gt(events.sequence, args.afterSequence),
+          lt(events.sequence, args.beforeSequence),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get()?.data ?? null
+  );
+}
+
+export function getLatestStoredTurnSystemOperationData(
+  db: DbQueryConnection,
+  args: { operation: string; threadId: string; turnId: string },
+): string | null {
+  return (
+    db
+      .select({ data: events.data })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.scopeKind, "turn"),
+          eq(events.type, "system/operation"),
+          sql`json_extract(${events.data}, '$.operation') = ${args.operation}`,
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get()?.data ?? null
+  );
+}
+
+export function getLatestStoredThreadProvisioningStatus(
+  db: DbQueryConnection,
+  args: { provisioningId: string; threadId: string },
+): unknown {
+  return db
+    .select({
+      status: sql<unknown>`json_extract(${events.data}, '$.status')`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/thread-provisioning"),
+        sql`json_extract(${events.data}, '$.provisioningId') = ${args.provisioningId}`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get()?.status;
+}

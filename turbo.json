@@ -614,6 +614,15 @@
     "typecheck": {
       "dependsOn": ["topo"]
     },
+    "@bb/db#typecheck": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/account-pool/src/**",
+        "$TURBO_ROOT$/plugins/automations/src/**",
+        "$TURBO_ROOT$/plugins/workflows/src/**"
+      ]
+    },
     "@bb/app#typecheck": {
       "dependsOn": ["topo"],
       "inputs": [

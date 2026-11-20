@@ -5,7 +5,9 @@ import {
   getLatestThreadSequence,
   getThread,
   insertEvents,
+  isThreadCopyingForkHistory,
   listStoredEventRows,
+  listThreadIdsCopyingForkHistory,
   noopNotifier,
   upsertHost,
   type DbConnection,
@@ -18,10 +20,6 @@ import {
 } from "@bb/domain";
 import { copyForkSourceHistory } from "../../../src/services/threads/thread-fork-history.js";
 import { discardInterruptedForkHistoryCopies } from "../../../src/services/threads/thread-create.js";
-import {
-  isThreadCopyingForkHistory,
-  listThreadIdsCopyingForkHistory,
-} from "../../../src/services/threads/thread-startup-store.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
 

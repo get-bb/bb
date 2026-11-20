@@ -112,6 +112,13 @@ import {
   type PruneTokenUsageEventsArgs,
   type ScopedItemRef,
   type StoredEventRowMetadata,
+  getLatestStoredThreadInterruptedDataBetweenSequences,
+  getLatestStoredThreadProvisioningStatus,
+  getLatestStoredTurnCompletedSequence,
+  getLatestStoredTurnSystemOperationData,
+  getStoredTurnStartedSequence,
+  hasStoredManualStopInterruptionAfterSequence,
+  hasStoredThreadCommandFailureSystemErrorForTurn,
 } from "../../src/data/events.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { QueryCostCase } from "./case.js";
@@ -1513,7 +1520,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       history:
         "Returns every outline row since the last context clear, which grows with the thread",
     },
-    ceilingMs: 750,
+    ceilingMs: 400,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
     run: (db, fixture) =>
@@ -1528,7 +1535,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       history:
         "Returns every outline row since the last context clear, which grows with the thread",
     },
-    ceilingMs: 750,
+    ceilingMs: 400,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
     run: (db, fixture) =>
@@ -1645,6 +1652,64 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
     run: (db, fixture) =>
       isThreadAwaitingTurnStartPastDeadline(db, {
         deadline: Date.now() - TURN_START_DEADLINE_MS,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredThreadCommandFailureSystemErrorForTurn`,
+    run: (db, fixture) =>
+      hasStoredThreadCommandFailureSystemErrorForTurn(db, {
+        threadId: fixture.threadId,
+        turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getStoredTurnStartedSequence`,
+    run: (db, fixture) =>
+      getStoredTurnStartedSequence(db, {
+        threadId: fixture.threadId,
+        turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getLatestStoredTurnCompletedSequence`,
+    run: (db, fixture) =>
+      getLatestStoredTurnCompletedSequence(db, {
+        threadId: fixture.threadId,
+        turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredManualStopInterruptionAfterSequence`,
+    run: (db, fixture) =>
+      hasStoredManualStopInterruptionAfterSequence(db, {
+        afterSequence: lastTurn(fixture).requestSequence,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getLatestStoredThreadInterruptedDataBetweenSequences`,
+    run: (db, fixture) =>
+      getLatestStoredThreadInterruptedDataBetweenSequences(db, {
+        afterSequence: lastTurn(fixture).requestSequence,
+        beforeSequence: lastTurn(fixture).completedSequence + 1,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getLatestStoredTurnSystemOperationData`,
+    run: (db, fixture) =>
+      getLatestStoredTurnSystemOperationData(db, {
+        operation: "environment_directory_update",
+        threadId: fixture.threadId,
+        turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#getLatestStoredThreadProvisioningStatus`,
+    run: (db, fixture) =>
+      getLatestStoredThreadProvisioningStatus(db, {
+        provisioningId: "provisioning-in-flight",
         threadId: fixture.threadId,
       }),
   },

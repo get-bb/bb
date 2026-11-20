@@ -1,9 +1,7 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
 import {
-  environments,
+  environmentHasOtherStartingOrActiveThread,
   getEnvironment,
-  liveThread,
-  threads,
+  setEnvironmentColumns,
   type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
@@ -29,20 +27,7 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
   deps: EnvironmentProvisionCancellationReadDeps,
   args: CancelEnvironmentProvisioningForThreadStopArgs,
 ): boolean {
-  const row = deps.db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        ne(threads.id, args.threadId),
-        inArray(threads.status, ["starting", "active"]),
-        liveThread,
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
+  return environmentHasOtherStartingOrActiveThread(deps.db, args);
 }
 
 export function cancelEnvironmentProvisioningForThreadStopInTransaction(
@@ -78,10 +63,9 @@ export function discardPendingCreateForThreadStopInTransaction(
     hasOtherLiveThreadDependingOnEnvironmentProvision(deps, args)
   )
     return false;
-  deps.db
-    .update(environments)
-    .set({ teardownStatus: "running", retireAt: Date.now() })
-    .where(eq(environments.id, environment.id))
-    .run();
+  setEnvironmentColumns(deps.db, environment.id, {
+    teardownStatus: "running",
+    retireAt: Date.now(),
+  });
   return true;
 }
