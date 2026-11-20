@@ -97,10 +97,35 @@ index 80c6803..856c03f 100644
              mWebChromeClient.onHideCustomView();
          }
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
-index 209b855..5c7ac59 100644
+index 209b855..5ecc98e 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
-@@ -80,9 +80,16 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -5,6 +5,7 @@ import android.net.http.SslError;
+ import android.os.Build;
+ import android.os.SystemClock;
+ import android.util.Log;
++import android.webkit.ClientCertRequest;
+ import android.webkit.HttpAuthHandler;
+ import android.webkit.RenderProcessGoneDetail;
+ import android.webkit.SslErrorHandler;
+@@ -42,6 +43,16 @@ public class RNCWebViewClient extends WebViewClient {
+     protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
+     protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
+ 
++    public interface ClientCertRequestHandler {
++        void onReceivedClientCertRequest(WebView view, ClientCertRequest request);
++    }
++
++    private static volatile @Nullable ClientCertRequestHandler clientCertRequestHandler = null;
++
++    public static void setClientCertRequestHandler(@Nullable ClientCertRequestHandler handler) {
++        clientCertRequestHandler = handler;
++    }
++
+     public void setBasicAuthCredential(@Nullable RNCBasicAuthCredential credential) {
+         basicAuthCredential = credential;
+     }
+@@ -80,9 +91,16 @@ public class RNCWebViewClient extends WebViewClient {
        mLastLoadFailed = false;
  
        RNCWebView reactWebView = (RNCWebView) webView;
@@ -117,6 +142,23 @@ index 209b855..5c7ac59 100644
      @Override
      public boolean shouldOverrideUrlLoading(WebView view, String url) {
          final RNCWebView rncWebView = (RNCWebView) view;
+@@ -138,6 +156,16 @@ public class RNCWebViewClient extends WebViewClient {
+         return this.shouldOverrideUrlLoading(view, url);
+     }
+ 
++    @Override
++    public void onReceivedClientCertRequest(WebView view, ClientCertRequest request) {
++        ClientCertRequestHandler handler = clientCertRequestHandler;
++        if (handler == null) {
++            super.onReceivedClientCertRequest(view, request);
++            return;
++        }
++        handler.onReceivedClientCertRequest(view, request);
++    }
++
+     @Override
+     public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
+         if (basicAuthCredential != null) {
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
 new file mode 100644
 index 0000000..ef1e4d8

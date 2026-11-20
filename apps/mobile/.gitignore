@@ -39,6 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+/modules/*/android/build
 # `expo run:ios --output` product (CI installs it with simctl).
 /build-output
 /google-services.json

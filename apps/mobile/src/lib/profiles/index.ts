@@ -8,3 +8,7 @@ export { validateDirectServerUrl } from "./direct-url";
 export { probeServer } from "./probe";
 export { type ProfileStoreStatus } from "./profile-store";
 export { useProfileStoreState } from "./use-profile-store";
+export {
+  shouldForgetClientCertificate,
+  supportsClientCertificate,
+} from "./client-certificate";
