@@ -365,17 +365,7 @@ describe("KT1: a held environment that requests setup", () => {
         };
       });
       const { project, hooks } = seed(harness);
-      const response = await harness.app.request("/api/v1/environments", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          provider: { id: PROVIDER },
-          heldBy: "user",
-        }),
-      });
-      expect(response.status).toBe(201);
-      const { id } = (await response.json()) as { id: string };
+      const id = await createHeldEnvironment(harness, project.id);
       await expect.poll(() => hooks.runs.length).toBe(1);
       await expect
         .poll(() => getEnvironment(harness.db, id)?.createPending)
@@ -391,9 +381,67 @@ describe("KT1: a held environment that requests setup", () => {
         createPending: false,
         heldBy: "user",
       });
+      expect(await fetchEnvironment(harness, id)).toMatchObject({
+        status: "ready",
+        statusMessage: null,
+      });
+    });
+  });
+
+  it("reports why its setup failed", async () => {
+    await withTestHarness(async (harness) => {
+      installStepsProvider(async (context) => {
+        context.report.step("Using workspace");
+        const path = `/tmp/steps/${context.pathKey}`;
+        await context.setup(path);
+        return {
+          status: "created",
+          path,
+          ownsPath: true,
+          resource: { branch: await context.branchName() },
+        };
+      });
+      const { project, hooks } = seed(harness);
+      const id = await createHeldEnvironment(harness, project.id);
+      await expect.poll(() => hooks.runs.length).toBe(1);
+      hooks.fail("setup script exited 3");
+      await expect
+        .poll(() => getEnvironment(harness.db, id)?.status)
+        .toBe("error");
+      expect(await fetchEnvironment(harness, id)).toMatchObject({
+        status: "error",
+        statusMessage: expect.stringContaining("setup script exited 3"),
+      });
     });
   });
 });
+
+async function createHeldEnvironment(
+  harness: TestAppHarness,
+  projectId: string,
+): Promise<string> {
+  const response = await harness.app.request("/api/v1/environments", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      projectId,
+      provider: { id: PROVIDER },
+      heldBy: "user",
+    }),
+  });
+  expect(response.status).toBe(201);
+  const { id } = (await response.json()) as { id: string };
+  return id;
+}
+
+async function fetchEnvironment(harness: TestAppHarness, id: string) {
+  const response = await harness.app.request(`/api/v1/environments/${id}`);
+  expect(response.status).toBe(200);
+  return (await response.json()) as {
+    status: string;
+    statusMessage: string | null;
+  };
+}
 
 describe("KT1: restart after setup finished, before create returned", () => {
   function heldProvisioning(

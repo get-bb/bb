@@ -436,7 +436,7 @@ export function registerEnvironmentCommands(
         console.log(`Environment: ${env.id}`);
         console.log(`  Project: ${env.projectId}`);
         console.log(`  Status: ${env.status}`);
-        if (env.statusMessage !== null && env.status !== "ready")
+        if (env.statusMessage !== null)
           console.log(`  Status message: ${env.statusMessage}`);
         console.log(`  Lifecycle: ${env.lifecycle.phase}`);
         if (env.heldBy !== null) console.log(`  Held by: ${env.heldBy}`);

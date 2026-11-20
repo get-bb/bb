@@ -1776,6 +1776,11 @@ function recordEnvironmentProvisioningFailureInTransaction(
     },
   );
   if (failureOutcome.applied) {
+    deps.db
+      .update(environments)
+      .set({ statusMessage: args.failureReason })
+      .where(eq(environments.id, environment.id))
+      .run();
     deps.hub.notifyEnvironment(environment.id, failureOutcome.changes);
   }
 

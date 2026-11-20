@@ -100,7 +100,10 @@ function toEnvironmentResponseWithHostLifecycle(
     defaultBranch: row.defaultBranch,
     mergeBaseBranch: row.mergeBaseBranch,
     status: row.status,
-    statusMessage: row.statusMessage,
+    statusMessage:
+      row.status === "ready" || row.status === "destroyed"
+        ? null
+        : row.statusMessage,
     environmentProviderId: row.environmentProviderId,
     lifecycle: {
       phase:
