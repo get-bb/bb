@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   type ExperimentalFakeHostRpcCall,
@@ -82,9 +82,10 @@ async function setup(environments: Record<string, Environment>) {
       subscribe: () => () => {},
       files: {
         read: async () => {
-          throw Object.assign(new Error("HTTP 413: too large"), {
+          throw new experimental_BbHttpError({
             status: 413,
             code: "file_too_large",
+            message: "too large",
             body: {
               code: "file_too_large",
               message: "File size 30000000 bytes exceeds the 25 MB limit",
@@ -96,8 +97,11 @@ async function setup(environments: Record<string, Environment>) {
         get: async ({ environmentId }: { environmentId: string }) => {
           const found = environments[environmentId];
           if (found === undefined) {
-            throw Object.assign(new Error("Environment not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
+              code: null,
+              message: "Environment not found",
+              body: null,
             });
           }
           return found;
@@ -463,8 +467,11 @@ describe("Git plugin Viewed marks", () => {
         environments: {
           get: async ({ environmentId }: { environmentId: string }) => {
             if (!existing.includes(environmentId)) {
-              throw Object.assign(new Error("Environment not found"), {
+              throw new experimental_BbHttpError({
                 status: 404,
+                code: null,
+                message: "Environment not found",
+                body: null,
               });
             }
             return environment({ id: environmentId });

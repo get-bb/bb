@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginCliContext,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const hostSchema = z.object({ id: z.string().min(1), name: z.string().min(1) });
@@ -24,15 +28,6 @@ export class ShareHostNotFoundError extends Error {
     super(`host ${hostId} not found`);
     this.name = "ShareHostNotFoundError";
   }
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    error.status === 404
-  );
 }
 
 export class ShareHostResolver {
@@ -66,7 +61,8 @@ export class ShareHostResolver {
         await this.getSdk().hosts.get({ hostId: normalized }),
       );
     } catch (error) {
-      if (isNotFoundError(error)) throw new ShareHostNotFoundError(normalized);
+      if (error instanceof experimental_BbHttpError && error.status === 404)
+        throw new ShareHostNotFoundError(normalized);
       throw error;
     }
     const server = knownServerHost ? null : await this.serverHost();

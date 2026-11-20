@@ -2220,11 +2220,33 @@ export function enforcePluginCliOutputLimit(
   return jsonOutput
     ? {
         exitCode: 1,
-        stdout: JSON.stringify({ error }),
+        stdout: JSON.stringify({ ok: false, error }),
         stderr: "",
         error,
       }
     : { exitCode: 1, stdout: "", stderr: error.message, error };
+}
+
+/**
+ * The result for a plugin CLI invocation the host could not complete: the
+ * plugin is unknown, not running, registers no CLI, or its command threw.
+ * Carries the same `{ ok: false, error: { code, message } }` envelope on
+ * stdout under `--json` as core commands and `defineCli` usage errors.
+ */
+export function pluginCliFailureResult(
+  failure: { code: string; message: string },
+  jsonOutput: boolean,
+): PluginCliExecutionResult {
+  return enforcePluginCliOutputLimit(
+    {
+      exitCode: 1,
+      stdout: jsonOutput
+        ? `${JSON.stringify({ ok: false, error: failure }, null, 2)}\n`
+        : "",
+      stderr: failure.message,
+    },
+    jsonOutput,
+  );
 }
 
 /**

@@ -1,4 +1,5 @@
 import {
+  experimental_BbHttpError,
   experimental_resolveHostPath as resolveHostPath,
   PluginCliError,
   cliCommand,
@@ -167,13 +168,6 @@ function clampToLength(text: string, max: number): string {
   return text.length <= max ? text : `${sliceUtf16Head(text, max - 1)}\u2026`;
 }
 
-function httpStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null || !("status" in error))
-    return null;
-  const status = error.status;
-  return typeof status === "number" ? status : null;
-}
-
 async function readSnapshot(
   bb: BbPluginApi,
   args: { hostId: string; path: string },
@@ -184,7 +178,8 @@ async function readSnapshot(
       throw new Error("Dotenv file is not valid UTF-8 text.");
     return { content: result.content, sha256: result.sha256 };
   } catch (error) {
-    if (httpStatus(error) === 404) return { content: "", sha256: null };
+    if (error instanceof experimental_BbHttpError && error.status === 404)
+      return { content: "", sha256: null };
     throw error;
   }
 }
@@ -368,14 +363,7 @@ export default function plugin(bb: BbPluginApi) {
             describe: input.options.describe,
             writeEnv: input.options["write-env"],
           });
-          try {
-            return await runRequest(bb, parsed, ctx);
-          } catch (error) {
-            if (error instanceof PluginCliError) throw error;
-            throw new PluginCliError(
-              error instanceof Error ? error.message : String(error),
-            );
-          }
+          return runRequest(bb, parsed, ctx);
         },
       }),
     },

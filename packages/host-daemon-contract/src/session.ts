@@ -747,6 +747,17 @@ const pluginHostWorkerExitedMessageSchema = z
     type: z.literal("plugin-host.worker-exited"),
     pluginId: z.string().min(1),
     generation: z.string().min(1),
+    reason: z.string(),
+  })
+  .strict();
+
+const pluginHostWorkerOutputMessageSchema = z
+  .object({
+    type: z.literal("plugin-host.worker-output"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    stream: z.enum(["stdout", "stderr"]),
+    line: z.string(),
   })
   .strict();
 
@@ -841,6 +852,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   pluginHostWorkerExitedMessageSchema,
+  pluginHostWorkerOutputMessageSchema,
   pluginHostSignalMessageSchema,
   environmentHookProgressMessageSchema,
   serverMoveProgressMessageSchema,

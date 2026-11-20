@@ -14,6 +14,7 @@ import {
   pluginHookAlreadyRegisteredMessage,
   coerceStoredPluginSettingValue,
   enforcePluginCliOutputLimit,
+  pluginCliFailureResult,
   isStandardSchema,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
@@ -2015,11 +2016,10 @@ function createFakePluginHostInternal(
           argv.includes("--json"),
         );
       } catch (error) {
-        return enforcePluginCliOutputLimit(
+        return pluginCliFailureResult(
           {
-            exitCode: 1,
-            stdout: "",
-            stderr: `bb ${registration.name} failed: ${errorMessage(error)}`,
+            code: "command_failed",
+            message: `bb ${registration.name} failed: ${errorMessage(error)}`,
           },
           argv.includes("--json"),
         );

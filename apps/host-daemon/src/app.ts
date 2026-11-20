@@ -837,6 +837,12 @@ export async function createHostDaemonApp(
         ...event,
       });
     },
+    onWorkerOutput: (event) => {
+      sendServerMessage({
+        type: "plugin-host.worker-output",
+        ...event,
+      });
+    },
     onSignal: (event) => {
       sendServerMessage({
         type: "plugin-host.signal",

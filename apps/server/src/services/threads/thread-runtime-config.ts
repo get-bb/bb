@@ -231,23 +231,10 @@ export async function resolveThreadRuntimeCommandConfig(
     }
   }
   for (const contribution of listPluginInstructionContributions()) {
-    let text: string | null;
-    try {
-      text = contribution.provider({
-        threadId: args.thread.id,
-        projectId: args.thread.projectId,
-      });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          pluginId: contribution.pluginId,
-          threadId: args.thread.id,
-        },
-        "Plugin instruction contribution threw; skipping",
-      );
-      continue;
-    }
+    let text = contribution.provider({
+      threadId: args.thread.id,
+      projectId: args.thread.projectId,
+    });
     if (text === null || text.trim().length === 0) continue;
     text = sliceUtf16Head(text, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS);
     instructionSections.push(

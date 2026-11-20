@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -32,7 +33,12 @@ it("publishes only its own maintenance providers without a display and only meas
         ],
         get: async ({ hostId }) => {
           if (hostId === "missing")
-            throw Object.assign(new Error("Host not found"), { status: 404 });
+            throw new experimental_BbHttpError({
+              status: 404,
+              code: null,
+              message: "Host not found",
+              body: null,
+            });
           return makeHostResponse({
             id: hostId,
             status: hostId === "offline" ? "disconnected" : "connected",
