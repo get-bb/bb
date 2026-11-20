@@ -1,4 +1,8 @@
+import { homedir } from "node:os";
 import { loadCliConfig, type CliConfig } from "@bb/config/cli";
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
+import { isLoopbackHostname } from "@bb/config/loopback";
+import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import {
   createHostDaemonLocalClient,
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
@@ -45,6 +49,35 @@ function resolveHostDaemonUrl(cliConfig?: CliConfig): string {
   return `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${config.BB_HOST_DAEMON_PORT}`;
 }
 
+function localServerAuthorization(url: string): string | null {
+  if (!URL.canParse(url) || !isLoopbackHostname(new URL(url).hostname)) {
+    return null;
+  }
+  const homeDir = homedir();
+  const configured = process.env.BB_DATA_DIR?.trim();
+  const dataDir =
+    configured === undefined || configured.length === 0
+      ? resolveProdDataDir({ homeDir })
+      : parseDataDirEnvValue({ homeDir, rawDataDir: configured });
+  const token = readLocalAccessTokenSync(dataDir);
+  return token === null ? null : `Bearer ${token}`;
+}
+
+function withLocalServerAuthorization(
+  fetchImpl: FetchImplementation,
+): FetchImplementation {
+  return (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (!headers.has("authorization")) {
+      const authorization = localServerAuthorization(
+        input instanceof Request ? input.url : String(input),
+      );
+      if (authorization !== null) headers.set("authorization", authorization);
+    }
+    return fetchImpl(input, { ...init, headers });
+  };
+}
+
 export function createNodeTransport(
   args: CreateNodeTransportArgs = {},
 ): BbSdkTransport {
@@ -52,12 +85,21 @@ export function createNodeTransport(
     baseUrl: args.baseUrl ?? resolveCliConfig(args.cliConfig).BB_SERVER_URL,
     fetch:
       args.fetch ??
-      createRequestTimeoutFetch({
-        timeoutMs: args.timeoutMs ?? DEFAULT_BB_REQUEST_TIMEOUT_MS,
-      }),
+      withLocalServerAuthorization(
+        createRequestTimeoutFetch({
+          timeoutMs: args.timeoutMs ?? DEFAULT_BB_REQUEST_TIMEOUT_MS,
+        }),
+      ),
     realtimeUrl: args.realtimeUrl,
     runtime: "node",
-    websocket: args.websocket ?? createNodeWebsocketFactory(),
+    websocket:
+      args.websocket ??
+      createNodeWebsocketFactory({
+        headers: (url): Record<string, string> => {
+          const authorization = localServerAuthorization(url);
+          return authorization === null ? {} : { authorization };
+        },
+      }),
   });
 }
 
@@ -95,6 +137,18 @@ export {
 };
 export { BbHttpError } from "./http-error.js";
 export { BbRequestTimeoutError } from "./response.js";
+export {
+  createDpopProof,
+  normalizeDpopHtu,
+  type DpopPublicJwk,
+  type DpopSigner,
+} from "./dpop.js";
+export {
+  createNodeDpopSigner,
+  dpopPrivateJwkSchema,
+  generateDpopPrivateJwk,
+  type DpopPrivateJwk,
+} from "./node-dpop.js";
 export {
   createNodeWebsocketFactory,
   type CreateNodeWebsocketFactoryArgs,

@@ -11,6 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -77,6 +78,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);

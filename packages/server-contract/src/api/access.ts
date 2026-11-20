@@ -11,13 +11,24 @@ export type AppShellAccessState = z.infer<typeof appShellAccessStateSchema>;
 export const ACCESS_UNAUTHENTICATED_ERROR_CODE = "unauthenticated";
 export const ACCESS_CREDENTIAL_REQUIRES_HTTPS_ERROR_CODE =
   "credential_requires_https";
+export const ACCESS_TOKEN_EXPIRED_ERROR_CODE = "access_token_expired";
+export const ACCESS_INVALID_DPOP_PROOF_ERROR_CODE = "invalid_dpop_proof";
+export const ACCESS_PROBLEM_CODES = [
+  ACCESS_CREDENTIAL_REQUIRES_HTTPS_ERROR_CODE,
+  ACCESS_TOKEN_EXPIRED_ERROR_CODE,
+  ACCESS_INVALID_DPOP_PROOF_ERROR_CODE,
+] as const;
+export const accessProblemSchema = z.enum(ACCESS_PROBLEM_CODES);
+export type AccessProblemCode = z.infer<typeof accessProblemSchema>;
 
 export const accessSessionResponseSchema = z
   .object({
     authenticated: z.boolean(),
-    via: z.enum(["local", "connect", "credential", "machine"]).nullable(),
+    via: z
+      .enum(["local", "plugin", "connect", "credential", "machine"])
+      .nullable(),
     credentialId: z.string().nullable(),
-    problem: z.literal(ACCESS_CREDENTIAL_REQUIRES_HTTPS_ERROR_CODE).nullable(),
+    problem: accessProblemSchema.nullable(),
   })
   .strict();
 export type AccessSessionResponse = z.infer<typeof accessSessionResponseSchema>;
@@ -39,6 +50,8 @@ export const accessCredentialSchema = z
     secureOnly: z.boolean(),
     createdAt: z.number().int(),
     lastUsedAt: z.number().int(),
+    expiresAt: z.number().int(),
+    deviceBound: z.boolean(),
     current: z.boolean(),
   })
   .strict();
@@ -60,6 +73,14 @@ export type RedeemAccessPairingRequest = z.infer<
   typeof redeemAccessPairingRequestSchema
 >;
 
+export const deviceAccessTokenSchema = z
+  .object({
+    accessToken: z.string(),
+    accessTokenExpiresAt: z.number().int(),
+  })
+  .strict();
+export type DeviceAccessToken = z.infer<typeof deviceAccessTokenSchema>;
+
 export const redeemAccessPairingResponseSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("browser"), credential: accessCredentialSchema })
@@ -68,13 +89,46 @@ export const redeemAccessPairingResponseSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("device"),
       credential: accessCredentialSchema,
-      token: z.string(),
-      cookieName: z.string(),
+      accessToken: z.string(),
+      accessTokenExpiresAt: z.number().int(),
     })
     .strict(),
 ]);
 export type RedeemAccessPairingResponse = z.infer<
   typeof redeemAccessPairingResponseSchema
+>;
+
+export const renewAccessTokenResponseSchema = deviceAccessTokenSchema
+  .extend({ sessionExpiresAt: z.number().int() })
+  .strict();
+export type RenewAccessTokenResponse = z.infer<
+  typeof renewAccessTokenResponseSchema
+>;
+
+export const sessionCookieResponseSchema = z
+  .object({
+    credential: accessCredentialSchema,
+    token: z.string(),
+    cookieName: z.string(),
+    expiresAt: z.number().int(),
+  })
+  .strict();
+export type SessionCookieResponse = z.infer<typeof sessionCookieResponseSchema>;
+
+export const createLocalSessionRequestSchema = z
+  .object({
+    label: z.string().trim().min(1).max(ACCESS_CREDENTIAL_LABEL_MAX_LENGTH),
+  })
+  .strict();
+export type CreateLocalSessionRequest = z.infer<
+  typeof createLocalSessionRequestSchema
+>;
+
+export const websocketTicketResponseSchema = z
+  .object({ ticket: z.string(), expiresAt: z.number().int() })
+  .strict();
+export type WebsocketTicketResponse = z.infer<
+  typeof websocketTicketResponseSchema
 >;
 
 export const accessCredentialListResponseSchema = z

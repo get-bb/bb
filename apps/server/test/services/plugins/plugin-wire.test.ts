@@ -14,7 +14,7 @@ import WebSocket, { type ClientOptions, type RawData } from "ws";
 import {
   createTestAppHarness,
   startTestServer,
-  testDeviceAuthorization,
+  localAuthorization,
   type RunningTestServer,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
@@ -280,10 +280,12 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   });
 
   it("local auth rejects foreign origins but accepts signed-in LAN and configured proxy serving", async () => {
-    const authorization = testDeviceAuthorization(harness);
-    const anonymousLan = await harness.app.request(
-      "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
-      { headers: { origin: "http://100.64.158.8:3334" } },
+    const authorization = await localAuthorization(harness.config.dataDir);
+    const anonymousLan = await harness.app.fetch(
+      new Request("http://100.64.158.8:3334/api/v1/plugins/wire/http/hello", {
+        headers: { origin: "http://100.64.158.8:3334" },
+      }),
+      { incoming: { socket: { remoteAddress: "100.64.158.8" } } },
     );
     expect(anonymousLan.status).toBe(401);
 
@@ -1024,7 +1026,10 @@ describe("plugin WebSocket routes", () => {
       `${server.baseUrl}/api/v1/plugins/wire/http/socket`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          authorization: server.localAuthorization,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ value: 42 }),
       },
     );
@@ -1032,7 +1037,12 @@ describe("plugin WebSocket routes", () => {
 
     const connection = await openPluginWebSocketWithFirstMessage(
       pluginWebSocketUrl(server.baseUrl, "/socket"),
-      { headers: { "x-test-marker": "connected" } },
+      {
+        headers: {
+          authorization: server.localAuthorization,
+          "x-test-marker": "connected",
+        },
+      },
     );
     const { socket } = connection;
     sockets.add(socket);
@@ -1058,9 +1068,17 @@ describe("plugin WebSocket routes", () => {
     await expect(
       rejectedPluginWebSocketStatus(
         pluginWebSocketUrl(server.baseUrl, "/socket"),
-        { origin: EVIL_ORIGIN },
+        {
+          origin: EVIL_ORIGIN,
+          headers: { authorization: server.localAuthorization },
+        },
       ),
     ).resolves.toBe(403);
+    await expect(
+      rejectedPluginWebSocketStatus(
+        pluginWebSocketUrl(server.baseUrl, "/socket"),
+      ),
+    ).resolves.toBe(401);
 
     const guardedUrl = pluginWebSocketUrl(server.baseUrl, "/guarded-socket");
     await expect(rejectedPluginWebSocketStatus(guardedUrl)).resolves.toBe(401);
@@ -1119,6 +1137,7 @@ describe("plugin WebSocket routes", () => {
   it("closes sockets from the replaced generation with code 1012", async () => {
     const connection = await openPluginWebSocketWithFirstMessage(
       pluginWebSocketUrl(server.baseUrl, "/socket"),
+      { headers: { authorization: server.localAuthorization } },
     );
     const { socket } = connection;
     sockets.add(socket);

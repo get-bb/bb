@@ -1,3 +1,4 @@
+import { ACCESS_CREDENTIALS_COST_GROUP } from "./access-credentials-cases.js";
 import { registerCostGroup, type RegisteredCostGroup } from "./case.js";
 import { CREDENTIALS_ATTACHMENTS_COST_GROUP } from "./credentials-attachments-cases.js";
 import { EVENTS_COST_CASES } from "./events-cases.js";
@@ -33,6 +34,7 @@ const ALL_GROUPS: readonly RegisteredCostGroup[] = [
   SETTINGS_MAINTENANCE_COST_GROUP,
   CREDENTIALS_ATTACHMENTS_COST_GROUP,
   THREAD_FILES_COST_GROUP,
+  ACCESS_CREDENTIALS_COST_GROUP,
 ];
 
 function selectedGroupNames(): ReadonlySet<string> | null {

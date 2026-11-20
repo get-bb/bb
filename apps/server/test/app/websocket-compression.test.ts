@@ -127,6 +127,7 @@ describe("WebSocket compression", () => {
     server = await startTestServer();
     const { response, socket } = await openSocket(
       websocketUrl(server.baseUrl, "/ws"),
+      { headers: { authorization: server.localAuthorization } },
     );
     expect(socket.extensions).toContain("permessage-deflate");
 
@@ -213,6 +214,7 @@ describe("WebSocket compression", () => {
     server = await startTestServer();
     const terminal = await openSocket(
       websocketUrl(server.baseUrl, "/ws/terminals/missing-terminal"),
+      { headers: { authorization: server.localAuthorization } },
     );
     expect(terminal.response.headers["sec-websocket-extensions"]).toBe(
       undefined,

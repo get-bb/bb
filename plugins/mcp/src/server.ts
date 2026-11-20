@@ -79,7 +79,10 @@ function formatGrant(grant: Grant): string {
 export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
   const runCli = createCliRunner({
     env: process.env,
-    serverUrl: () => bb.server.loopbackBaseUrl,
+    server: () => ({
+      url: bb.server.loopbackBaseUrl,
+      dataDir: bb.server.experimental_dataDir,
+    }),
   });
   const handler = createBbMcpHttpHandler(
     { runCli, loadCommandIndex: createCommandIndexLoader(runCli) },
@@ -153,7 +156,7 @@ export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
       name: "mcp",
       summary: "Let ChatGPT, Claude and other MCP clients control this bb",
       description:
-        "While this plugin is enabled, bb serves a Model Context Protocol endpoint. Remote apps sign in through your bb account and reach it at your bb connect address; apps on this machine can use the local address directly.",
+        "While this plugin is enabled, bb serves a Model Context Protocol endpoint. Remote apps sign in through your bb account and reach it at your bb connect address; apps on this machine can use the local address with this machine's local token.",
       commands: {
         status: cliCommand({
           summary: "Show the MCP addresses for this bb",
@@ -182,6 +185,7 @@ export default async function mcpPlugin(bb: BbPluginApi): Promise<void> {
                   : `Remote: ${remoteUrl}`,
                 `Local:  ${localUrl}`,
                 "Add the remote address as a custom connector in ChatGPT or Claude; you approve access on a bb account page.",
+                "An app on this machine using the local address sends the header `Authorization: Bearer bbl_<contents of <bb data dir>/local-access-token>`.",
               ].join("\n"),
             };
           },

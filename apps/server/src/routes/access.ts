@@ -14,6 +14,7 @@ import {
   getRequestAccess,
   isHttpsRequest,
   requestOrigin,
+  requestUrlForDpop,
   type RequestAccess,
   type RequestAccessReader,
 } from "../request-access.js";
@@ -27,8 +28,20 @@ type AccessRouteDeps = Pick<ServerAppDeps, "access" | "config">;
 
 function currentCredentialId(access: RequestAccess): string | null {
   return access.kind === "owner" && access.via === "credential"
-    ? access.credential.id
+    ? (access.credential.parentId ?? access.credential.id)
     : null;
+}
+
+function requestCredential(context: RequestAccessReader): AccessCredential {
+  const access = getRequestAccess(context);
+  if (access.kind === "owner" && access.via === "credential") {
+    return access.credential;
+  }
+  throw new ApiError(
+    401,
+    "device_credential_required",
+    "Only a signed-in device can do this",
+  );
 }
 
 function credentialResponse(
@@ -43,6 +56,8 @@ function credentialResponse(
     secureOnly: credential.secureOnly,
     createdAt: credential.createdAt,
     lastUsedAt: credential.lastUsedAt,
+    expiresAt: credential.expiresAt,
+    deviceBound: credential.dpopJkt !== null,
     current: credential.id === currentId,
   };
 }
@@ -52,7 +67,7 @@ function sessionResponse(access: RequestAccess): AccessSessionResponse {
     case "owner":
       return {
         authenticated: true,
-        via: access.via,
+        via: access.via === "in-process" ? "local" : access.via,
         credentialId: currentCredentialId(access),
         problem: null,
       };
@@ -153,59 +168,198 @@ export function registerAccessRoutes(app: Hono, deps: AccessRouteDeps): void {
     return context.json(deps.access.createPairing());
   });
 
+  const setSessionCookie = (
+    context: Pick<Context, "header">,
+    token: string,
+    secure: boolean,
+  ): void => {
+    context.header(
+      "set-cookie",
+      serialize(cookieName(), token, {
+        httpOnly: true,
+        maxAge: ACCESS_COOKIE_MAX_AGE_SECONDS,
+        path: "/",
+        sameSite: "Lax",
+        secure,
+      }),
+      { append: true },
+    );
+  };
+
   post(routes.redeemPairing, (context, payload) => {
     context.header("cache-control", "no-store");
     const remoteAddress = getTrustedRemoteAddress(context);
     const secureOnly = isHttpsRequest(context, remoteAddress);
-    const result = deps.access.redeemPairing({
+    const common = {
       code: payload.code,
-      kind: payload.kind,
-      label:
-        payload.kind === "device"
-          ? payload.label
-          : browserLabel(context.req.header("user-agent")),
       origin: requestOrigin(context, remoteAddress),
       secureOnly,
-    });
-    if (result.outcome === "rate-limited") {
+    };
+    const result = deps.access.redeemPairing(
+      payload.kind === "device"
+        ? {
+            ...common,
+            kind: "device",
+            label: payload.label,
+            proof: {
+              method: context.req.method,
+              url: requestUrlForDpop(context, remoteAddress),
+              proof: context.req.header("dpop"),
+            },
+          }
+        : {
+            ...common,
+            kind: "browser",
+            label: browserLabel(context.req.header("user-agent")),
+          },
+    );
+    switch (result.outcome) {
+      case "rate-limited":
+        throw new ApiError(
+          429,
+          "pairing_rate_limited",
+          "Too many wrong pairing codes. Wait a few minutes, then try again.",
+          { details: { retryAt: result.retryAt }, retryable: true },
+        );
+      case "invalid":
+        throw new ApiError(
+          401,
+          "invalid_pairing_code",
+          "That pairing code is wrong, expired or already used. Make a new one and try again.",
+        );
+      case "invalid-proof":
+        throw new ApiError(
+          401,
+          "invalid_dpop_proof",
+          `A device sign-in needs a valid DPoP proof (${result.failure}).`,
+        );
+      case "redeemed-device":
+        return context.json({
+          kind: "device",
+          credential: credentialResponse(
+            result.credential,
+            result.credential.id,
+          ),
+          accessToken: result.token.accessToken,
+          accessTokenExpiresAt: result.token.accessTokenExpiresAt,
+        });
+      case "redeemed-browser":
+        setSessionCookie(context, result.token, secureOnly);
+        return context.json({
+          kind: "browser",
+          credential: credentialResponse(
+            result.credential,
+            result.credential.id,
+          ),
+        });
+    }
+  });
+
+  post(routes.renewToken, (context) => {
+    context.header("cache-control", "no-store");
+    const authorization = context.req.header("authorization");
+    const match =
+      authorization === undefined
+        ? null
+        : /^DPoP\s+(\S+)\s*$/iu.exec(authorization);
+    if (match === null) {
       throw new ApiError(
-        429,
-        "pairing_rate_limited",
-        "Too many wrong pairing codes. Wait a few minutes, then try again.",
-        { details: { retryAt: result.retryAt }, retryable: true },
+        401,
+        "invalid_dpop_proof",
+        "Send the device's access token as Authorization: DPoP with a proof from its key.",
+      );
+    }
+    const remoteAddress = getTrustedRemoteAddress(context);
+    const result = deps.access.renewDeviceToken(match[1]!, {
+      method: context.req.method,
+      url: requestUrlForDpop(context, remoteAddress),
+      proof: context.req.header("dpop"),
+    });
+    if (result.outcome === "invalid-proof") {
+      throw new ApiError(
+        401,
+        "invalid_dpop_proof",
+        `The renewal proof was rejected (${result.failure}).`,
       );
     }
     if (result.outcome === "invalid") {
       throw new ApiError(
         401,
-        "invalid_pairing_code",
-        "That pairing code is wrong, expired or already used. Make a new one and try again.",
+        "unauthenticated",
+        "This device's sign-in was revoked or expired. Pair it again.",
       );
     }
-    const credential = credentialResponse(
-      result.credential,
-      result.credential.id,
-    );
-    if (payload.kind === "device") {
-      return context.json({
-        kind: "device",
-        credential,
-        token: result.token,
-        cookieName: cookieName(),
-      });
+    if (
+      result.credential.secureOnly &&
+      !isHttpsRequest(context, remoteAddress)
+    ) {
+      throw new ApiError(
+        401,
+        "credential_requires_https",
+        "This sign-in was made over HTTPS and is not accepted over plain HTTP.",
+      );
     }
-    context.header(
-      "set-cookie",
-      serialize(cookieName(), result.token, {
-        httpOnly: true,
-        maxAge: ACCESS_COOKIE_MAX_AGE_SECONDS,
-        path: "/",
-        sameSite: "Lax",
-        secure: secureOnly,
-      }),
-      { append: true },
+    return context.json({
+      accessToken: result.token.accessToken,
+      accessTokenExpiresAt: result.token.accessTokenExpiresAt,
+      sessionExpiresAt: result.credential.expiresAt,
+    });
+  });
+
+  post(routes.createLocalSession, (context, payload) => {
+    context.header("cache-control", "no-store");
+    const access = getRequestAccess(context);
+    if (
+      access.kind !== "owner" ||
+      (access.via !== "local" && access.via !== "in-process")
+    ) {
+      throw new ApiError(
+        401,
+        "local_token_required",
+        "Only a process holding the server machine's local token can start a local session",
+      );
+    }
+    const issued = deps.access.createLocalBrowserSession({
+      label: payload.label,
+      origin: requestOrigin(context, getTrustedRemoteAddress(context)),
+    });
+    return context.json({
+      credential: credentialResponse(issued.credential, issued.credential.id),
+      token: issued.token,
+      cookieName: cookieName(),
+      expiresAt: issued.credential.expiresAt,
+    });
+  });
+
+  post(routes.createDeviceBrowserSession, (context) => {
+    context.header("cache-control", "no-store");
+    const device = requestCredential(context);
+    if (device.kind !== "device") {
+      throw new ApiError(
+        403,
+        "device_credential_required",
+        "Only a device-bound sign-in can mint a short-lived browser session",
+      );
+    }
+    const remoteAddress = getTrustedRemoteAddress(context);
+    const issued = deps.access.createDeviceBrowserSession({
+      device,
+      origin: requestOrigin(context, remoteAddress),
+      secureOnly: isHttpsRequest(context, remoteAddress),
+    });
+    return context.json({
+      credential: credentialResponse(issued.credential, device.id),
+      token: issued.token,
+      cookieName: cookieName(),
+      expiresAt: issued.credential.expiresAt,
+    });
+  });
+
+  post(routes.createWebsocketTicket, (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(
+      deps.access.createWebSocketTicket(requestCredential(context)),
     );
-    return context.json({ kind: "browser", credential });
   });
 
   get(routes.listCredentials, (context) => {

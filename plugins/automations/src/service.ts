@@ -72,7 +72,10 @@ import {
 } from "./working-directory.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
-  server: Pick<BbPluginApi["server"], "loopbackBaseUrl">;
+  server: Pick<
+    BbPluginApi["server"],
+    "loopbackBaseUrl" | "experimental_dataDir"
+  >;
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;

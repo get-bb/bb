@@ -11,6 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -779,6 +780,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);
@@ -840,6 +842,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);
@@ -933,6 +936,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);
@@ -2748,6 +2752,7 @@ describe("migrate", () => {
       dropServerAccessRouteTables(db);
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
+      dropAccessCredentialsTable(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
       dropProjectFolderSchema(db);
@@ -3595,6 +3600,7 @@ describe("migrate", () => {
       dropServerAccessRouteTables(db);
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
+      dropAccessCredentialsTable(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
       dropProjectFolderSchema(db);
@@ -4023,6 +4029,7 @@ describe("migrate", () => {
       dropServerAccessRouteTables(db);
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
+      dropAccessCredentialsTable(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
       dropProjectFolderSchema(db);

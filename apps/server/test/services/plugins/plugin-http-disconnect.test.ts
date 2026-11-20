@@ -4,7 +4,10 @@ import { createServer, request } from "node:http";
 import { join } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { describe, expect, it } from "vitest";
-import { createTestAppHarness } from "../../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  localAuthorization,
+} from "../../helpers/test-app.js";
 
 describe("plugin HTTP disconnect cleanup", () => {
   it.each(["before", "after"])(
@@ -84,6 +87,11 @@ describe("plugin HTTP disconnect cleanup", () => {
         });
         const client = request(
           `http://127.0.0.1:${address.port}/api/v1/plugins/disconnect/http/stream?access=${access}`,
+          {
+            headers: {
+              authorization: await localAuthorization(harness.config.dataDir),
+            },
+          },
         );
         client.on("error", () => undefined);
         client.end();

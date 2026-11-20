@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createConnection, migrate } from "../src/index.js";
 import {
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -28,6 +29,7 @@ function databaseBeforeHandoff(
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);

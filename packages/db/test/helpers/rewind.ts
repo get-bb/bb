@@ -207,6 +207,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);
   dropServerAccessRouteTables(db);
+  dropAccessCredentialsTable(db);
 }
 
 export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {

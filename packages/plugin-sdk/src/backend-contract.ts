@@ -2096,9 +2096,11 @@ export interface PluginServerApi {
   /**
    * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
    * which serves the SPA + /api + /ws. For plugins that proxy or relay
-   * traffic back to the server itself (e.g. a tunnel). Bind-gated like
-   * `bb.sdk`: reading it before the server is listening throws, so prefer
-   * reading it from handlers, services, and timers.
+   * traffic back to the server itself (e.g. a tunnel). The server trusts no
+   * request for coming from loopback: call its API through `bb.sdk`, which
+   * signs requests as this plugin, or pass the server's credentials along.
+   * Bind-gated like `bb.sdk`: reading it before the server is listening
+   * throws, so prefer reading it from handlers, services, and timers.
    */
   readonly loopbackBaseUrl: string;
 

@@ -895,11 +895,11 @@ export function createPluginApi(options: {
       const access = getRequestAccess(context);
       switch (access.kind) {
         case "owner":
-          return access.via === "local"
-            ? "server-machine"
-            : access.via === "credential"
-              ? "signed-in-device"
-              : "connect-session";
+          return access.via === "credential"
+            ? "signed-in-device"
+            : access.via === "connect"
+              ? "connect-session"
+              : "server-machine";
         case "machine":
         case "oauth":
         case "anonymous":

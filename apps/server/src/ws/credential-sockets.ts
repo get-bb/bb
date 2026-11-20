@@ -21,7 +21,8 @@ export function trackCredentialSocket(
   let untrack: (() => void) | null = null;
   return {
     opened(socket) {
-      untrack = access.trackSocket(requestAccess.credential.id, () =>
+      const credential = requestAccess.credential;
+      untrack = access.trackSocket(credential.parentId ?? credential.id, () =>
         socket.close(CREDENTIAL_REVOKED_CLOSE_CODE, "credential revoked"),
       );
     },

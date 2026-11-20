@@ -337,6 +337,7 @@ export async function executeStoredScript(args: {
   timeoutMs: number;
   env?: Record<string, string>;
   serverUrl: string;
+  serverDataDir: string;
   workingDir: string;
   signal: AbortSignal;
 }): Promise<ScriptRunResult> {
@@ -354,6 +355,7 @@ export async function executeStoredScript(args: {
     ...(args.env ?? {}),
     PATH: scriptPathEnv(bbPath, process.env.PATH),
     BB_SERVER_URL: args.serverUrl,
+    BB_DATA_DIR: args.serverDataDir,
     BB_PROJECT_ID: args.projectId,
     BB_AUTOMATION_ID: args.automationId,
     BB_AUTOMATION_RUN_ID: args.runId,

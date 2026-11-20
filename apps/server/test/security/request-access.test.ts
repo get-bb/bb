@@ -12,6 +12,7 @@ import {
   createTestAppHarness,
   createTestDaemonHostKey,
   createTestDb,
+  localAuthorization,
   startTestServer,
   type RunningTestServer,
   type TestAppHarness,
@@ -84,6 +85,9 @@ async function mintCode(target: Harness): Promise<string> {
     peer: "127.0.0.1",
     host: "127.0.0.1:3334",
     method: "POST",
+    headers: {
+      authorization: await localAuthorization(target.harness.config.dataDir),
+    },
   });
   expect(response.status).toBe(200);
   const body: { code: string } = await response.json();
@@ -158,38 +162,46 @@ describe("who may reach the API", () => {
     }
   });
 
-  it("lets the server machine in with no setup, including the dev proxy's forwarded headers", async () => {
+  it("lets the server machine in only with the local token from its data directory", async () => {
     const target = await createHarness();
-    const local: {
-      peer: string;
-      host: string;
-      headers: Record<string, string>;
-    }[] = [
-      { peer: "127.0.0.1", host: "127.0.0.1:3334", headers: {} },
-      { peer: "::ffff:127.0.0.1", host: "localhost:3334", headers: {} },
-      {
-        peer: "127.0.0.1",
-        host: "127.0.0.1:3334",
-        headers: {
-          "x-forwarded-for": "127.0.0.1",
-          "x-forwarded-host": "localhost:5173",
-          "x-forwarded-proto": "http",
-        },
-      },
-    ];
-    for (const request of local) {
-      const response = await send(target, "/api/v1/projects", request);
-      expect(response.status, JSON.stringify(request)).toBe(200);
-    }
+    const authorization = await localAuthorization(
+      target.harness.config.dataDir,
+    );
+    const loopback = { peer: "127.0.0.1", host: "127.0.0.1:3334" };
+    expect((await send(target, "/api/v1/projects", loopback)).status).toBe(401);
+    expect(
+      (
+        await send(target, "/api/v1/projects", {
+          ...loopback,
+          headers: { authorization },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await send(target, "/api/v1/projects", {
+          ...loopback,
+          headers: { authorization: "Bearer bbl_guessed" },
+        })
+      ).status,
+    ).toBe(401);
+    const session = await send(target, "/api/v1/access/session", {
+      ...loopback,
+      headers: { authorization },
+    });
+    expect(await session.json()).toMatchObject({ via: "local" });
   });
 
-  it("ignores gate headers without the tunnel marker on the server machine", async () => {
+  it("ignores gate headers without the tunnel marker", async () => {
     const target = await createHarness();
+    const authorization = await localAuthorization(
+      target.harness.config.dataDir,
+    );
     const response = await send(target, "/api/v1/access/pairings", {
       peer: "127.0.0.1",
       host: "127.0.0.1:3334",
       method: "POST",
-      headers: { "x-bb-gate-auth": "machine" },
+      headers: { authorization, "x-bb-gate-auth": "machine" },
     });
     expect(response.status).toBe(200);
     const session = await send(target, "/api/v1/access/session", {
@@ -197,7 +209,7 @@ describe("who may reach the API", () => {
       host: "127.0.0.1:3334",
       headers: { "x-bb-gate-auth": "session" },
     });
-    expect(await session.json()).toMatchObject({ via: "local" });
+    expect(await session.json()).toMatchObject({ authenticated: false });
   });
 
   it("honours the gate's verdict only with this start's tunnel marker", async () => {
@@ -315,26 +327,6 @@ describe("pairing", () => {
     expect(await replay.json()).toMatchObject({ code: "invalid_pairing_code" });
   });
 
-  it("returns a token to a device and accepts it as a bearer", async () => {
-    const target = await createHarness();
-    const code = await mintCode(target);
-    const redeemed = await send(target, "/api/v1/access/pairings/redeem", {
-      peer: LAN_PEER,
-      method: "POST",
-      body: { kind: "device", code, label: "bb CLI on laptop" },
-    });
-    const body: { token: string; cookieName: string } = await redeemed.json();
-    expect(redeemed.headers.get("set-cookie")).toBeNull();
-    expect(body.cookieName).toBe("bb_session_3334");
-    const list = await send(target, "/api/v1/access/credentials", {
-      peer: LAN_PEER,
-      headers: { authorization: `Bearer ${body.token}` },
-    });
-    expect(await list.json()).toMatchObject({
-      credentials: [{ label: "bb CLI on laptop", current: true }],
-    });
-  });
-
   it("stops accepting codes after ten wrong guesses", async () => {
     const target = await createHarness();
     const code = await mintCode(target);
@@ -406,6 +398,7 @@ describe("revoking", () => {
     const port = new URL(server.baseUrl).port;
     const mint = await fetch(`${server.baseUrl}/api/v1/access/pairings`, {
       method: "POST",
+      headers: { authorization: server.localAuthorization },
     });
     const { code }: { code: string } = await mint.json();
     const redeemed = await fetch(
@@ -437,7 +430,10 @@ describe("revoking", () => {
 
     const revoked = await fetch(
       `${server.baseUrl}/api/v1/access/credentials/${credential.id}`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        headers: { authorization: server.localAuthorization },
+      },
     );
     expect(revoked.status).toBe(200);
     expect(await closed).toBe(4401);
@@ -464,7 +460,11 @@ describe("revoking", () => {
 
 describe("header sanitising on a real listener", () => {
   it("removes gate headers without the marker and the marker itself before any handler", async () => {
-    const access = createAccessService({ db: createTestDb() });
+    const access = createAccessService({
+      db: createTestDb(),
+      localToken: "bbl_test",
+      signingKey: "test-signing-key",
+    });
     const app = new Hono();
     app.use("*", async (context, next) => {
       await resolveRequestAccess(
@@ -473,6 +473,7 @@ describe("header sanitising on a real listener", () => {
           access,
           config: { serverPort: 1 },
           machineAuth: { verifyDaemonHostKey: async () => null },
+          isPluginCallerToken: () => false,
         },
         "127.0.0.1",
       );

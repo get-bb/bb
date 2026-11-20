@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   createNodeBbSdk,
+  createNodeWebsocketFactory,
   createRequestTimeoutFetch,
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
   type BbSdk,
@@ -65,5 +66,8 @@ export function createPluginRpcCallerSdk(args: {
       headers.set(PLUGIN_RPC_CALLER_HEADER, args.token);
       return timeoutFetch(input, { ...init, headers });
     },
+    websocket: createNodeWebsocketFactory({
+      headers: () => ({ [PLUGIN_RPC_CALLER_HEADER]: args.token }),
+    }),
   });
 }

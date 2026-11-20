@@ -3,7 +3,6 @@ import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import {
-  signInTestDevice,
   startTestServer,
   type RunningTestServer,
 } from "../helpers/test-app.js";
@@ -17,13 +16,20 @@ function websocketUrl(baseUrl: string, path: string): string {
   return url.href;
 }
 
+function signedIn(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  if (server === null) throw new Error("start the test server first");
+  return { authorization: server.localAuthorization, ...headers };
+}
+
 function openWebSocket(
   url: string,
   origin?: string,
   headers?: Record<string, string>,
 ): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, { origin, headers });
+    const socket = new WebSocket(url, { origin, headers: signedIn(headers) });
     sockets.add(socket);
     socket.once("open", () => resolve(socket));
     socket.once("error", reject);
@@ -36,7 +42,7 @@ function rejectedWebSocketStatus(
   headers?: Record<string, string>,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, { origin, headers });
+    const socket = new WebSocket(url, { origin, headers: signedIn(headers) });
     sockets.add(socket);
     socket.once("open", () =>
       reject(new Error(`WebSocket unexpectedly opened for ${origin}`)),
@@ -117,7 +123,7 @@ describe("browser WebSocket origin boundary", () => {
   it("accepts direct IP and configured proxy WebSocket hosts", async () => {
     server = await startTestServer({ appUrl: "https://box.ts.net" });
     const port = new URL(server.baseUrl).port;
-    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
+    const authorization = server.localAuthorization;
     for (const origin of [
       `http://192.168.1.5:${port}`,
       `http://[::1]:${port}`,
@@ -176,9 +182,21 @@ describe("browser WebSocket origin boundary", () => {
     await closeSocket(terminal);
   });
 
-  it("keeps absent-Origin Node SDK realtime and CLI terminal sockets working", async () => {
+  it("keeps signed-in absent-Origin Node SDK realtime and CLI terminal sockets working", async () => {
     server = await startTestServer();
-    const sdk = createNodeBbSdk({ baseUrl: server.baseUrl });
+    const authorization = server.localAuthorization;
+    const signedInSockets = createNodeWebsocketFactory({
+      headers: () => ({ authorization }),
+    });
+    const sdk = createNodeBbSdk({
+      baseUrl: server.baseUrl,
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("authorization", authorization);
+        return fetch(input, { ...init, headers });
+      },
+      websocket: signedInSockets,
+    });
 
     let stopTarget = (): void => {};
     let stopConnection = (): void => {};
@@ -200,7 +218,7 @@ describe("browser WebSocket origin boundary", () => {
     stopTarget();
     stopConnection();
 
-    const terminalSocket = createNodeWebsocketFactory()(
+    const terminalSocket = signedInSockets(
       websocketUrl(server.baseUrl, "/ws/terminals/missing-terminal"),
     );
     await new Promise<void>((resolve, reject) => {

@@ -1062,7 +1062,10 @@ describe("plugin bb.sdk against a running server", () => {
         `${server.baseUrl}/api/v1/plugins/callee/rpc/whoami`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            authorization: server.localAuthorization,
+            "content-type": "application/json",
+          },
           body: "null",
         },
       );
@@ -1077,6 +1080,7 @@ describe("plugin bb.sdk against a running server", () => {
         {
           method: "POST",
           headers: {
+            authorization: server.localAuthorization,
             "content-type": "application/json",
             "x-bb-plugin-caller": "not-a-real-token",
           },
@@ -1087,7 +1091,7 @@ describe("plugin bb.sdk against a running server", () => {
       expect(whoami.mock.calls.length).toBe(callsBeforeSpoof);
 
       await server.pluginService.reload("caller");
-      await expect(callWhoami()).rejects.toMatchObject({ status: 403 });
+      await expect(callWhoami()).rejects.toMatchObject({ status: 401 });
       await expect(
         requireApi(server.pluginService, "caller").sdk.plugins.callRpc({
           pluginId: "callee",

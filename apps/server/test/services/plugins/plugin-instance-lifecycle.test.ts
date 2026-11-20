@@ -272,7 +272,10 @@ describe("plugin instance lifecycle on a running server", () => {
     return fetch(`${server.baseUrl}/api/v1/plugins/lifecycle/rpc/${method}`, {
       method: "POST",
       body: "null",
-      headers: { "content-type": "application/json" },
+      headers: {
+        authorization: server.localAuthorization,
+        "content-type": "application/json",
+      },
       ...(signal ? { signal } : {}),
     });
   }
@@ -283,7 +286,9 @@ describe("plugin instance lifecycle on a running server", () => {
       server.baseUrl,
     );
     url.protocol = "ws:";
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url, {
+      headers: { authorization: server.localAuthorization },
+    });
     sockets.add(socket);
     await new Promise<void>((resolve, reject) => {
       socket.once("open", () => resolve());

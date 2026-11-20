@@ -435,7 +435,12 @@ import type {
   ServerSweepRetryResponse,
 } from "./api/server-sweeps.js";
 import {
+  createLocalSessionRequestSchema,
   redeemAccessPairingRequestSchema,
+  type CreateLocalSessionRequest,
+  type RenewAccessTokenResponse,
+  type SessionCookieResponse,
+  type WebsocketTicketResponse,
   type AccessCredentialListResponse,
   type AccessPairing,
   type AccessSessionResponse,
@@ -505,6 +510,32 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest(),
       response: jsonResponse<AccessSignOutResponse>(),
+    }),
+    renewToken: defineRoute({
+      path: "/access/token",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<RenewAccessTokenResponse>(),
+    }),
+    createLocalSession: defineRoute({
+      path: "/access/local-sessions",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateLocalSessionRequest>(
+        createLocalSessionRequestSchema,
+      ),
+      response: jsonResponse<SessionCookieResponse>(),
+    }),
+    createDeviceBrowserSession: defineRoute({
+      path: "/access/device-browser-sessions",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<SessionCookieResponse>(),
+    }),
+    createWebsocketTicket: defineRoute({
+      path: "/access/websocket-tickets",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<WebsocketTicketResponse>(),
     }),
   },
   promptHistory: {

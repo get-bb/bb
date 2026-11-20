@@ -73,11 +73,11 @@ export function resolveRequestAccessRoute(
     case "oauth":
       return "connect";
     case "owner":
-      return access.via === "local"
-        ? "loopback"
-        : access.via === "connect"
-          ? "connect"
-          : "direct";
+      return access.via === "connect"
+        ? "connect"
+        : access.via === "credential"
+          ? "direct"
+          : "loopback";
     case "anonymous":
       return access.via;
   }

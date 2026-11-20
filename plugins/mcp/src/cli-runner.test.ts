@@ -43,7 +43,7 @@ describe.runIf(posix)("createCliRunner", () => {
         BB_THREAD_ID: "thr_parent",
         BB_SERVER_HEADERS: '{"x":"y"}',
       },
-      serverUrl: () => "http://127.0.0.1:1",
+      server: () => ({ url: "http://127.0.0.1:1", dataDir: "/tmp/bb-data" }),
       resolveBinary: async () => binary,
       ...(maxConcurrent === undefined ? {} : { maxConcurrent }),
     });
@@ -131,7 +131,7 @@ describe.runIf(posix)("createCliRunner", () => {
     let found: string | null = null;
     const run = createCliRunner({
       env: {},
-      serverUrl: () => "http://127.0.0.1:1",
+      server: () => ({ url: "http://127.0.0.1:1", dataDir: "/tmp/bb-data" }),
       resolveBinary: async () => found,
     });
     await expect(run(["status"], options())).rejects.toBeInstanceOf(
@@ -153,11 +153,12 @@ describe("cliEnvironment", () => {
         BB_ENVIRONMENT_ID: "env",
         BB_THREAD_STORAGE: "/tmp/x",
       },
-      "http://127.0.0.1:9",
+      { url: "http://127.0.0.1:9", dataDir: "/tmp/bb-data" },
     );
     expect(env).toMatchObject({
       HOME: "/home/me",
       BB_SERVER_URL: "http://127.0.0.1:9",
+      BB_DATA_DIR: "/tmp/bb-data",
       NO_COLOR: "1",
     });
     expect(env.BB_PROJECT_ID).toBeUndefined();

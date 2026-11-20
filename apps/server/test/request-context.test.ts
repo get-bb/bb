@@ -14,7 +14,13 @@ import {
 describe("request context", () => {
   it.each([
     ["/api/v1/threads", "10.0.0.5", {}, "direct"],
-    ["/api/v1/threads", "127.0.0.1", {}, "loopback"],
+    ["/api/v1/threads", "127.0.0.1", {}, "direct"],
+    [
+      "/api/v1/threads",
+      "127.0.0.1",
+      { authorization: "Bearer bbl_local" },
+      "loopback",
+    ],
     [
       "/api/v1/threads",
       "127.0.0.1",
@@ -31,7 +37,11 @@ describe("request context", () => {
   ])(
     "labels %s from %s with %j as %s",
     async (path, remoteAddress, headers, expected) => {
-      const access = createAccessService({ db: createMigratedConnection() });
+      const access = createAccessService({
+        db: createMigratedConnection(),
+        localToken: "bbl_local",
+        signingKey: "test-signing-key",
+      });
       const app = new Hono();
       app.use("*", async (context, next) => {
         captureTrustedRemoteAddress(context);
@@ -44,6 +54,7 @@ describe("request context", () => {
             },
             config: { serverPort: 3334 },
             machineAuth: { verifyDaemonHostKey: async () => null },
+            isPluginCallerToken: () => false,
           },
           getTrustedRemoteAddress(context),
         );

@@ -40,6 +40,12 @@
       "types": "./src/node-websocket.ts",
       "import": "./dist/node-websocket.js",
       "default": "./dist/node-websocket.js"
+    },
+    "./dpop": {
+      "source": "./src/dpop.ts",
+      "types": "./src/dpop.ts",
+      "import": "./dist/dpop.js",
+      "default": "./dist/dpop.js"
     }
   },
   "types": "./src/node.ts",

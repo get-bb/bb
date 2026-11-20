@@ -2,7 +2,6 @@ import http from "node:http";
 import { createNodeBbSdk } from "@bb/sdk/node";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  signInTestDevice,
   startTestServer,
   type RunningTestServer,
 } from "../helpers/test-app.js";
@@ -13,6 +12,13 @@ afterEach(async () => {
   await server?.close();
   server = null;
 });
+
+function signedIn(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  if (server === null) throw new Error("start the test server first");
+  return { authorization: server.localAuthorization, ...headers };
+}
 
 interface RequestArgs {
   headers?: Record<string, string>;
@@ -28,7 +34,7 @@ async function statusFor(
     new URL(args.path ?? "/api/v1/threads", baseUrl),
     {
       method: args.method ?? "GET",
-      ...(args.headers === undefined ? {} : { headers: args.headers }),
+      headers: signedIn(args.headers),
     },
   );
   return response.status;
@@ -47,7 +53,7 @@ function rawStatus(
         host: url.hostname,
         port: url.port,
         path: url.pathname,
-        headers,
+        headers: signedIn(headers),
         method,
       },
       (response) => {
@@ -61,7 +67,7 @@ function rawStatus(
 }
 
 describe("/api/v1 browser origin guard", () => {
-  it("passes callers that send no Origin: curl, the bb CLI, and the SDK", async () => {
+  it("passes signed-in callers that send no Origin: curl, the bb CLI, and the SDK", async () => {
     server = await startTestServer();
 
     expect(await statusFor(server.baseUrl)).toBe(200);
@@ -81,7 +87,15 @@ describe("/api/v1 browser origin guard", () => {
       }),
     ).not.toBe(415);
 
-    const sdk = createNodeBbSdk({ baseUrl: server.baseUrl });
+    const authorization = server.localAuthorization;
+    const sdk = createNodeBbSdk({
+      baseUrl: server.baseUrl,
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("authorization", authorization);
+        return fetch(input, { ...init, headers });
+      },
+    });
     await expect(sdk.threads.list({ limit: 1 })).resolves.toBeDefined();
   });
 
@@ -124,7 +138,7 @@ describe("/api/v1 browser origin guard", () => {
 
   it("does not trust an attacker origin through forwarded headers", async () => {
     server = await startTestServer();
-    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
+    const authorization = server.localAuthorization;
     expect(
       await rawStatus(server.baseUrl, {
         authorization,
@@ -217,7 +231,7 @@ describe("/api/v1 browser origin guard", () => {
   it("accepts direct IP access and a configured Tailscale proxy", async () => {
     server = await startTestServer({ appUrl: "https://box.ts.net" });
     const port = new URL(server.baseUrl).port;
-    const authorization = `Bearer ${await signInTestDevice(server.baseUrl)}`;
+    const authorization = server.localAuthorization;
 
     for (const host of [
       `192.168.1.5:${port}`,

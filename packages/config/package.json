@@ -53,6 +53,11 @@
       "types": "./src/loopback.ts",
       "default": "./src/loopback.ts"
     },
+    "./local-access-token": {
+      "source": "./src/local-access-token.ts",
+      "types": "./src/local-access-token.ts",
+      "default": "./src/local-access-token.ts"
+    },
     "./runtime": {
       "source": "./src/runtime.ts",
       "types": "./src/runtime.ts",

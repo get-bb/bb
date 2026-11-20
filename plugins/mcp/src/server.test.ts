@@ -72,10 +72,10 @@ function mcpRequest(headers: Record<string, string>): RequestInit {
 }
 
 describe("MCP route", () => {
-  it("answers a local caller and a gate caller holding an OAuth token for bb", async () => {
+  it("answers a caller holding the local token and a gate caller holding an OAuth token for bb", async () => {
     const { host } = await load(SIGNED_OUT);
     const accepted: Record<string, string>[] = [
-      {},
+      { authorization: "Bearer bbl_local-token" },
       { "x-bb-gate-auth": "oauth", "x-bb-gate-oauth-scope": "bb" },
     ];
     for (const headers of accepted) {
@@ -89,7 +89,7 @@ describe("MCP route", () => {
     }
   });
 
-  it("refuses a LAN caller without a sign-in before any MCP handling", async () => {
+  it("refuses a caller without a credential before any MCP handling", async () => {
     const { host } = await load(SIGNED_OUT);
     const response = await host.harness.fetchHttp(
       "POST",
@@ -101,7 +101,7 @@ describe("MCP route", () => {
     const signedIn = await host.harness.fetchHttp(
       "POST",
       "http://192.168.1.20:38886/mcp",
-      mcpRequest({ authorization: "Bearer bbs_device-token" }),
+      mcpRequest({ authorization: "Bearer bbl_local-token" }),
     );
     expect(signedIn.status).toBe(200);
   });
@@ -109,7 +109,10 @@ describe("MCP route", () => {
   it("refuses web pages and gate callers that are not OAuth clients before any MCP handling", async () => {
     const { host } = await load(SIGNED_OUT);
     const refused: Record<string, string>[] = [
-      { origin: "https://evil.example" },
+      {
+        authorization: "Bearer bbl_local-token",
+        origin: "https://evil.example",
+      },
       { "x-bb-gate-auth": "session" },
       { "x-bb-gate-auth": "machine" },
       { "x-bb-gate-auth": "oauth", "x-bb-gate-oauth-scope": "openid" },

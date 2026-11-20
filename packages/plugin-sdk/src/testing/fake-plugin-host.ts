@@ -913,13 +913,9 @@ function createFakePluginHostInternal(
         case "oauth":
           return "oauth";
       }
-      if (context.req.header("authorization")?.startsWith("Bearer bbs_")) {
-        return "signed-in-device";
-      }
-      const hostname = new URL(context.req.url).hostname;
-      return hostname === "localhost" ||
-        hostname === "127.0.0.1" ||
-        hostname === "[::1]"
+      const authorization = context.req.header("authorization") ?? "";
+      if (authorization.startsWith("DPoP ")) return "signed-in-device";
+      return authorization.startsWith("Bearer bbl_")
         ? "server-machine"
         : "anonymous";
     },

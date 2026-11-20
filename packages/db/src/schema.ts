@@ -111,14 +111,25 @@ export const accessCredentials = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").$type<AccessCredentialKind>().notNull(),
     label: text("label").notNull(),
-    tokenHash: text("token_hash").notNull(),
+    tokenHash: text("token_hash"),
+    dpopJkt: text("dpop_jkt"),
+    parentId: text("parent_id").references(
+      (): AnySQLiteColumn => accessCredentials.id,
+      { onDelete: "cascade" },
+    ),
     secureOnly: integer("secure_only", { mode: "boolean" }).notNull(),
     origin: text("origin").notNull(),
     createdAt: integer("created_at").notNull(),
     lastUsedAt: integer("last_used_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
   },
   (table) => [
     uniqueIndex("access_credentials_token_hash_unique").on(table.tokenHash),
+    index("access_credentials_parent_idx").on(table.parentId),
+    check(
+      "access_credentials_kind_shape_check",
+      sql`(${table.kind} = 'device') = (${table.dpopJkt} IS NOT NULL AND ${table.tokenHash} IS NULL) AND (${table.kind} = 'device-browser') = (${table.parentId} IS NOT NULL)`,
+    ),
   ],
 );
 

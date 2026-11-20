@@ -40,7 +40,7 @@ export function mcpAccessProblem(
       return {
         status: 401,
         message:
-          "Sign in first: send a bb sign-in token (`bb access login`) as Authorization: Bearer, or reach the endpoint through bb connect with an OAuth access token.",
+          "Sign in first: on the server machine send `Authorization: Bearer bbl_<contents of <bb data dir>/local-access-token>`, or reach the endpoint through bb connect with an OAuth access token.",
       };
     case "connect-session":
     case "machine":

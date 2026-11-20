@@ -100,7 +100,7 @@ import {
   resolveRequestAppSurface,
 } from "./request-context.js";
 import {
-  CREDENTIAL_REQUIRES_HTTPS_MESSAGE,
+  accessProblemMessage,
   getRequestAccess,
   isAuthenticatedAccess,
   requiresAuthenticatedAccess,
@@ -515,7 +515,17 @@ export function createApp(
   });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    await resolveRequestAccess(context, deps, getTrustedRemoteAddress(context));
+    await resolveRequestAccess(
+      context,
+      {
+        ...deps,
+        isPluginCallerToken: (token) => {
+          const resolution = pluginService.resolveRpcCaller(token);
+          return resolution.ok && resolution.caller.kind === "plugin";
+        },
+      },
+      getTrustedRemoteAddress(context),
+    );
     return runWithTelemetryRequest(
       {
         appSurface: resolveRequestAppSurface(context),
@@ -567,7 +577,7 @@ export function createApp(
       throw new ApiError(
         401,
         access.problem,
-        CREDENTIAL_REQUIRES_HTTPS_MESSAGE,
+        accessProblemMessage(access.problem),
       );
     }
     throw new ApiError(401, "unauthenticated", UNAUTHENTICATED_MESSAGE);

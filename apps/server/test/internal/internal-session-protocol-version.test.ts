@@ -233,9 +233,9 @@ describe("internal session protocol version", () => {
         getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
       ).toBe(staleProtocolVersion);
       await expect(
-        fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`).then((result) =>
-          result.json(),
-        ),
+        fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`, {
+          headers: { authorization: server.localAuthorization },
+        }).then((result) => result.json()),
       ).resolves.toMatchObject({
         lastRejectedProtocolVersion: staleProtocolVersion,
       });
@@ -308,9 +308,9 @@ describe("internal session protocol version", () => {
         getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
       ).toBeNull();
       await expect(
-        fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`).then((result) =>
-          result.json(),
-        ),
+        fetch(`${server.baseUrl}/api/v1/hosts/host-protocol`, {
+          headers: { authorization: server.localAuthorization },
+        }).then((result) => result.json()),
       ).resolves.toMatchObject({ lastRejectedProtocolVersion: null });
     } finally {
       await server.close();
