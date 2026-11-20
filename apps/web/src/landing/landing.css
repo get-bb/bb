@@ -577,7 +577,7 @@ html:has(.nav-sticky) {
 
 /* Hero-sized CTA: a touch larger than the base button. An explicit line-height
    keeps the <a> (inherits the body's 1.6) and the <button> (UA resets it to
-   `normal`) the same height, so their captions sit on one baseline. */
+   `normal`) the same height. */
 .btn-install {
   display: inline-flex;
   align-items: center;

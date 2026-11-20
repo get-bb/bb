@@ -6,14 +6,12 @@ import type {
 } from "@bb/server-contract";
 import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
+import type { HostProviderCheck } from "@/hooks/queries/system-queries";
 import {
   agentRowSetup,
-  agentCheckFailedMessage,
-  agentListFailedMessage,
   agentListFailure,
   failedAgentProviderIds,
   resolveAgentRows,
-  type AgentCheck,
   agentSignInView,
   connectAccessUrl,
   devicesShowMachines,
@@ -713,11 +711,14 @@ describe("resolveAgentRows", () => {
     ["pi", "Pi"],
   ]);
   const timedOut = new BbRequestTimeoutError(75_000);
-  const pending = (providerId: string): AgentCheck => ({
+  const pending = (providerId: string): HostProviderCheck => ({
     providerId,
     kind: "pending",
   });
-  const answered = (state: SystemProviderState, settledAt = 1): AgentCheck => ({
+  const answered = (
+    state: SystemProviderState,
+    settledAt = 1,
+  ): HostProviderCheck => ({
     providerId: state.providerId,
     kind: "answered",
     state,
@@ -727,14 +728,14 @@ describe("resolveAgentRows", () => {
     providerId: string,
     error: unknown = new Error("boom"),
     settledAt = 1,
-  ): AgentCheck => ({ providerId, kind: "failed", error, settledAt });
-  const absent = (providerId: string): AgentCheck => ({
+  ): HostProviderCheck => ({ providerId, kind: "failed", error, settledAt });
+  const absent = (providerId: string): HostProviderCheck => ({
     providerId,
     kind: "absent",
     settledAt: 1,
   });
   const resolve = (
-    checks: AgentCheck[],
+    checks: HostProviderCheck[],
     states?: SystemProviderState[],
     statesSettledAt = 0,
   ) => resolveAgentRows({ states, statesSettledAt, checks, names });
@@ -850,14 +851,7 @@ describe("resolveAgentRows", () => {
   });
 });
 
-describe("agent check failure copy", () => {
-  it.each([
-    ["timed_out", "Didn't respond in time."],
-    ["other", "Couldn't load agent"],
-  ] as const)("says %s for one agent", (failure, message) => {
-    expect(agentCheckFailedMessage(failure)).toBe(message);
-  });
-
+describe("agentListFailure", () => {
   it("says the machine can't be reached when it is offline or the server says so", () => {
     expect(agentListFailure({ hostConnected: false, errors: [] })).toBe(
       "host_unavailable",
@@ -878,17 +872,6 @@ describe("agent check failure copy", () => {
     expect(
       agentListFailure({ hostConnected: true, errors: [null, new Error("x")] }),
     ).toBe("other");
-    expect(
-      agentListFailedMessage({
-        failure: "host_unavailable",
-        machineName: "dev-laptop",
-      }),
-    ).toBe(
-      "Can't reach dev-laptop. Make sure bb is running there, then retry.",
-    );
-    expect(
-      agentListFailedMessage({ failure: "other", machineName: "dev-laptop" }),
-    ).toBe("Couldn't load agents");
   });
 });
 

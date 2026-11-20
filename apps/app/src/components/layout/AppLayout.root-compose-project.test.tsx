@@ -34,6 +34,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
     dispatch: () => false,
     isCommandAvailable: () => false,
   }),
+  useIsAppCommandAvailable: () => false,
   useIsAppCommandModifierHeld: () => false,
 }));
 

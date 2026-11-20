@@ -1511,6 +1511,7 @@ export class TerminalSessionLifecycle {
     }
 
     this.options.hub.claimTerminalResizeOwnership(current.id, args.socket);
+    this.outputFlow.subscribe(current.id, args.socket, current.daemonSessionId);
     const requestId = randomUUID();
     const pendingAttach: PendingTerminalAttachKey = {
       daemonSessionId: current.daemonSessionId,
@@ -1551,7 +1552,8 @@ export class TerminalSessionLifecycle {
     socket: TerminalClientSocket;
   }): void {
     this.options.hub.registerTerminalClient(args.session.id, args.socket);
-    this.addOutputFlowClient(args.session.id, args.socket, args.sinceSeq);
+    this.outputFlow.subscribe(args.session.id, args.socket, null);
+    this.setOutputFlowClientState(args.session.id, args.socket, args.sinceSeq);
     this.forwardedNextSeqByTerminalId.set(
       args.session.id,
       Math.max(
@@ -2095,6 +2097,7 @@ export class TerminalSessionLifecycle {
     ) {
       return;
     }
+    this.outputFlow.bindDaemonSession(args.terminalId, args.daemonSessionId);
     const requestId = randomUUID();
     const pending: PendingTerminalRpcKey = {
       daemonSessionId: args.daemonSessionId,
@@ -2153,6 +2156,7 @@ export class TerminalSessionLifecycle {
   ): void {
     const current = getTerminalById(this.options.db, pending.terminalId);
     if (!current) {
+      this.outputFlow.removeClient(pending.terminalId, pending.socket);
       this.options.hub.unregisterTerminalClient(
         pending.terminalId,
         pending.socket,
@@ -2166,7 +2170,7 @@ export class TerminalSessionLifecycle {
     }
 
     this.options.hub.registerTerminalClient(current.id, pending.socket);
-    this.addOutputFlowClient(current.id, pending.socket, message.nextSeq);
+    this.setOutputFlowClientState(current.id, pending.socket, message.nextSeq);
     this.forwardedNextSeqByTerminalId.set(
       current.id,
       Math.max(
@@ -2188,15 +2192,17 @@ export class TerminalSessionLifecycle {
     }
   }
 
-  private addOutputFlowClient(
+  private setOutputFlowClientState(
     terminalId: string,
     socket: TerminalClientSocket,
     nextSeq: number,
   ): void {
     const visible = this.outputAckSocketVisibility.get(socket);
-    if (visible !== undefined) {
-      this.outputFlow.addClient(terminalId, socket, nextSeq, visible);
-    }
+    this.outputFlow.setClientState(terminalId, socket, {
+      acknowledgesOutput: visible !== undefined,
+      nextSeq,
+      visible: visible ?? false,
+    });
   }
 
   private rejectPendingOpenForTerminal(
@@ -2235,6 +2241,7 @@ export class TerminalSessionLifecycle {
     if (error === TERMINAL_ATTACH_CANCELLED) {
       return;
     }
+    this.outputFlow.removeClient(pending.terminalId, pending.socket);
     this.options.hub.unregisterTerminalClient(
       pending.terminalId,
       pending.socket,

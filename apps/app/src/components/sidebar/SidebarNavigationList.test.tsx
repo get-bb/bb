@@ -51,9 +51,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandRunner: () => ({
     dispatch: mocks.dispatch,
-    isCommandAvailable: () => true,
   }),
   useAppCommandShortcut: () => null,
+  useIsAppCommandAvailable: () => true,
   useIsAppCommandModifierHeld: () => false,
 }));
 
