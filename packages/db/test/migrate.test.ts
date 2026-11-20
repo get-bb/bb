@@ -1919,6 +1919,7 @@ describe("migrate", () => {
         resumeThreadsAfterRestart: false,
         providerOrder: [],
         defaultProviderId: null,
+        fallbackProviderId: null,
         providerCompletedTurnDisplay: {},
         machineServerUrl: null,
         defaultMachineAccess: null,
