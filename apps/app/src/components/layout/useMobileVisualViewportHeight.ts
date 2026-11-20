@@ -6,10 +6,25 @@ export const SHELL_SAFE_AREA_BOTTOM_PROPERTY = "--bb-safe-area-bottom";
 
 export const KEYBOARD_OPEN_MIN_SHRINK_PX = 80;
 
-const IOS_VIEWPORT_SETTLE_MS = 400;
+const IOS_VIEWPORT_STABLE_MS = 300;
+const IOS_VIEWPORT_MAX_SETTLE_MS = 1_500;
 
-function getVisualViewportPageTop(visualViewport: VisualViewport) {
-  return Math.round(window.scrollY + visualViewport.offsetTop);
+type ViewportGeometry = {
+  layoutHeight: number;
+  height: number;
+  offsetTop: number;
+  scrollY: number;
+  scale: number;
+};
+
+function sameGeometry(a: ViewportGeometry, b: ViewportGeometry) {
+  return (
+    a.layoutHeight === b.layoutHeight &&
+    a.height === b.height &&
+    a.offsetTop === b.offsetTop &&
+    a.scrollY === b.scrollY &&
+    a.scale === b.scale
+  );
 }
 
 export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
@@ -24,7 +39,7 @@ export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
 
 function attachMobileVisualViewportHeight(
   shell: AppShellElement,
-  restoreImmediatelyOnKeyboardDismissal: boolean,
+  settleIOSViewport: boolean,
 ): (() => void) | undefined {
   const visualViewport = window.visualViewport;
   if (!visualViewport) return undefined;
@@ -32,13 +47,15 @@ function attachMobileVisualViewportHeight(
 
   let animationFrame: number | null = null;
   let appliedOverride: { top: number; height: number } | null = null;
-  let shellContainingBlockHeight = 0;
-  let shellContainingBlockHeightStale = true;
-  let layoutViewportWidth = 0;
-  let viewportHeightBeforeKeyboard: number | null = null;
-  let dismissedKeyboardBaseline: number | null = null;
-  let viewportRecheck: number | null = null;
   let appliedKeyboardInset = false;
+  let layoutHeight = 0;
+  let layoutHeightStale = true;
+  let settling: {
+    deadline: number;
+    stableSince: number;
+    geometry: ViewportGeometry;
+  } | null = null;
+
   const setKeyboardInset = (open: boolean) => {
     if (open === appliedKeyboardInset) return;
     appliedKeyboardInset = open;
@@ -51,19 +68,6 @@ function attachMobileVisualViewportHeight(
       viewportStyleRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
     }
   };
-  const updateKeyboardInset = (viewportHeight: number) => {
-    if (
-      viewportHeightBeforeKeyboard === null ||
-      !isKeyboardFocusTarget(document.activeElement)
-    ) {
-      setKeyboardInset(false);
-      return;
-    }
-    setKeyboardInset(
-      viewportHeightBeforeKeyboard - viewportHeight >=
-        KEYBOARD_OPEN_MIN_SHRINK_PX,
-    );
-  };
   const clearViewportOverride = () => {
     if (appliedOverride === null) return;
     appliedOverride = null;
@@ -71,189 +75,127 @@ function attachMobileVisualViewportHeight(
     shell.style.removeProperty("height");
     viewportStyleRoot.style.removeProperty("--bb-shell-height");
   };
-  const updateHeight = () => {
-    animationFrame = null;
-    const viewportHeight = visualViewport.height;
-    if (visualViewport.scale !== 1) {
-      updateKeyboardInset(viewportHeight);
-      clearViewportOverride();
-      return;
+  const reconcile = (): ViewportGeometry => {
+    if (settleIOSViewport || layoutHeightStale) {
+      layoutHeight = document.body.clientHeight;
+      layoutHeightStale = false;
     }
+    const height = Math.round(visualViewport.height);
+    const offsetTop = visualViewport.offsetTop;
+    const scrollY = window.scrollY;
+    const scale = visualViewport.scale;
+    const geometry = { layoutHeight, height, offsetTop, scrollY, scale };
 
-    const visualViewportHeight = Math.round(viewportHeight);
-    if (shellContainingBlockHeightStale) {
-      shellContainingBlockHeight = document.body.clientHeight;
-      shellContainingBlockHeightStale = false;
-      if (
-        restoreImmediatelyOnKeyboardDismissal &&
-        layoutViewportWidth !== window.innerWidth
-      ) {
-        layoutViewportWidth = window.innerWidth;
-        if (isKeyboardFocusTarget(document.activeElement)) {
-          viewportHeightBeforeKeyboard = shellContainingBlockHeight;
-        }
-        if (dismissedKeyboardBaseline !== null) {
-          dismissedKeyboardBaseline = shellContainingBlockHeight;
-        }
-      }
-    }
-    updateKeyboardInset(viewportHeight);
-    if (dismissedKeyboardBaseline !== null) {
-      if (
-        dismissedKeyboardBaseline - viewportHeight >=
-        KEYBOARD_OPEN_MIN_SHRINK_PX
-      ) {
-        clearViewportOverride();
-        return;
-      }
-      dismissedKeyboardBaseline = null;
-    }
-    const hasVisualViewportPan =
-      visualViewport.offsetTop > 1 || window.scrollY > 0;
-    if (
-      Math.abs(shellContainingBlockHeight - visualViewportHeight) <= 1 &&
-      !hasVisualViewportPan
-    ) {
-      clearViewportOverride();
-      return;
-    }
-
-    if (hasVisualViewportPan) {
-      window.scrollTo(0, 0);
-    }
-    const shellTop = getVisualViewportPageTop(visualViewport);
-    if (
-      appliedOverride !== null &&
-      appliedOverride.top === shellTop &&
-      appliedOverride.height === visualViewportHeight
-    ) {
-      return;
-    }
-    appliedOverride = { top: shellTop, height: visualViewportHeight };
-    shell.style.top = `${shellTop}px`;
-    shell.style.height = `${visualViewportHeight}px`;
-    viewportStyleRoot.style.setProperty(
-      "--bb-shell-height",
-      `${visualViewportHeight}px`,
+    const editorFocused = isKeyboardFocusTarget(document.activeElement);
+    const heightMismatch = Math.abs(layoutHeight - height) > 1;
+    const compensatePan =
+      (offsetTop > 1 || scrollY > 0) &&
+      (!settleIOSViewport ||
+        editorFocused ||
+        heightMismatch ||
+        appliedOverride !== null);
+    setKeyboardInset(
+      scale === 1 &&
+        editorFocused &&
+        layoutHeight - height >= KEYBOARD_OPEN_MIN_SHRINK_PX,
     );
-  };
-  const scheduleUpdate = () => {
-    if (animationFrame !== null) {
-      window.cancelAnimationFrame(animationFrame);
+    if (scale !== 1 || (!heightMismatch && !compensatePan)) {
+      clearViewportOverride();
+      return geometry;
     }
-    animationFrame = window.requestAnimationFrame(updateHeight);
-  };
-  const scheduleContainingBlockUpdate = () => {
-    shellContainingBlockHeightStale = true;
-    scheduleUpdate();
-  };
-  const cancelViewportRecheck = () => {
-    if (viewportRecheck === null) return;
-    window.clearTimeout(viewportRecheck);
-    viewportRecheck = null;
-  };
-  const scheduleViewportRecheck = () => {
-    cancelViewportRecheck();
-    viewportRecheck = window.setTimeout(() => {
-      viewportRecheck = null;
-      scheduleContainingBlockUpdate();
-    }, IOS_VIEWPORT_SETTLE_MS);
-  };
-  const recheckDuringKeyboardResize = () => {
-    if (
-      restoreImmediatelyOnKeyboardDismissal &&
-      (appliedKeyboardInset || dismissedKeyboardBaseline !== null)
-    ) {
-      scheduleViewportRecheck();
+
+    let top = Math.round(scrollY + offsetTop);
+    if (compensatePan && (scrollY > 0 || appliedOverride?.top !== top)) {
+      window.scrollTo(0, 0);
+      top = Math.round(window.scrollY + visualViewport.offsetTop);
     }
-  };
-  const handleVisualViewportResize = () => {
-    recheckDuringKeyboardResize();
-    scheduleUpdate();
-  };
-  const handleWindowResize = () => {
-    recheckDuringKeyboardResize();
-    scheduleContainingBlockUpdate();
-  };
-  const reconcileViewport = () => {
-    scheduleContainingBlockUpdate();
-    if (restoreImmediatelyOnKeyboardDismissal) scheduleViewportRecheck();
-  };
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === "visible") reconcileViewport();
-  };
-  const handleVisualViewportScroll = () => {
-    if (
-      appliedOverride === null &&
-      !isKeyboardFocusTarget(document.activeElement)
-    ) {
-      return;
+    if (appliedOverride?.top !== top || appliedOverride.height !== height) {
+      appliedOverride = { top, height };
+      shell.style.top = `${top}px`;
+      shell.style.height = `${height}px`;
+      viewportStyleRoot.style.setProperty("--bb-shell-height", `${height}px`);
     }
-    scheduleUpdate();
+    return geometry;
   };
 
-  const handleFocusOut = (event: FocusEvent) => {
-    if (!isKeyboardFocusTarget(event.target)) return;
-    if (isKeyboardFocusTarget(event.relatedTarget)) return;
+  const reconcileFrame = () => {
+    animationFrame = null;
+    const geometry = reconcile();
+    if (!settling) return;
+
+    const now = performance.now();
+    if (!sameGeometry(settling.geometry, geometry)) {
+      settling.geometry = geometry;
+      settling.stableSince = now;
+    }
+    const stillKeyboardSized =
+      geometry.scale === 1 &&
+      geometry.layoutHeight - geometry.height >= KEYBOARD_OPEN_MIN_SHRINK_PX;
     if (
-      restoreImmediatelyOnKeyboardDismissal &&
-      viewportHeightBeforeKeyboard !== null &&
-      (appliedKeyboardInset ||
-        viewportHeightBeforeKeyboard - visualViewport.height >=
-          KEYBOARD_OPEN_MIN_SHRINK_PX)
+      now < settling.deadline &&
+      (stillKeyboardSized ||
+        now - settling.stableSince < IOS_VIEWPORT_STABLE_MS)
     ) {
-      dismissedKeyboardBaseline = viewportHeightBeforeKeyboard;
-      scheduleViewportRecheck();
+      animationFrame = window.requestAnimationFrame(reconcileFrame);
+    } else {
+      settling = null;
     }
-    viewportHeightBeforeKeyboard = null;
-    setKeyboardInset(false);
-    if (!restoreImmediatelyOnKeyboardDismissal) return;
-    if (animationFrame !== null) {
-      window.cancelAnimationFrame(animationFrame);
-      animationFrame = null;
-    }
-    clearViewportOverride();
   };
-  const handleFocusIn = (event: FocusEvent) => {
-    if (!isKeyboardFocusTarget(event.target)) return;
-    if (viewportHeightBeforeKeyboard === null) {
-      cancelViewportRecheck();
-      viewportHeightBeforeKeyboard = Math.max(
-        visualViewport.height,
-        dismissedKeyboardBaseline ?? 0,
-      );
-      if (dismissedKeyboardBaseline !== null) scheduleViewportRecheck();
-      dismissedKeyboardBaseline = null;
+  const handleViewportChange = () => {
+    if (settleIOSViewport) {
+      const geometry = reconcile();
+      const now = performance.now();
+      settling = {
+        deadline: now + IOS_VIEWPORT_MAX_SETTLE_MS,
+        stableSince: now,
+        geometry,
+      };
     }
-    scheduleContainingBlockUpdate();
+    if (animationFrame === null) {
+      animationFrame = window.requestAnimationFrame(reconcileFrame);
+    }
+  };
+  const handleLayoutChange = () => {
+    layoutHeightStale = true;
+    handleViewportChange();
+  };
+  const handleViewportScroll = () => {
+    if (
+      settleIOSViewport ||
+      appliedOverride !== null ||
+      isKeyboardFocusTarget(document.activeElement)
+    ) {
+      handleViewportChange();
+    }
+  };
+  const handleFocusChange = (event: FocusEvent) => {
+    if (isKeyboardFocusTarget(event.target)) handleLayoutChange();
   };
 
-  updateHeight();
-  recheckDuringKeyboardResize();
-  visualViewport.addEventListener("resize", handleVisualViewportResize);
-  visualViewport.addEventListener("scroll", handleVisualViewportScroll);
-  window.addEventListener("resize", handleWindowResize);
-  window.addEventListener("orientationchange", reconcileViewport);
-  if (restoreImmediatelyOnKeyboardDismissal) {
-    window.addEventListener("pageshow", reconcileViewport);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+  if (settleIOSViewport) {
+    handleViewportChange();
+    window.addEventListener("pageshow", handleLayoutChange);
+    document.addEventListener("visibilitychange", handleLayoutChange);
+  } else {
+    reconcile();
   }
-  document.addEventListener("focusout", handleFocusOut);
-  document.addEventListener("focusin", handleFocusIn);
+  visualViewport.addEventListener("resize", handleViewportChange);
+  visualViewport.addEventListener("scroll", handleViewportScroll);
+  window.addEventListener("resize", handleLayoutChange);
+  window.addEventListener("orientationchange", handleLayoutChange);
+  document.addEventListener("focusout", handleFocusChange);
+  document.addEventListener("focusin", handleFocusChange);
 
   return () => {
-    visualViewport.removeEventListener("resize", handleVisualViewportResize);
-    visualViewport.removeEventListener("scroll", handleVisualViewportScroll);
-    window.removeEventListener("resize", handleWindowResize);
-    window.removeEventListener("orientationchange", reconcileViewport);
-    window.removeEventListener("pageshow", reconcileViewport);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-    document.removeEventListener("focusout", handleFocusOut);
-    document.removeEventListener("focusin", handleFocusIn);
-    if (animationFrame !== null) {
-      window.cancelAnimationFrame(animationFrame);
-    }
-    cancelViewportRecheck();
+    visualViewport.removeEventListener("resize", handleViewportChange);
+    visualViewport.removeEventListener("scroll", handleViewportScroll);
+    window.removeEventListener("resize", handleLayoutChange);
+    window.removeEventListener("orientationchange", handleLayoutChange);
+    window.removeEventListener("pageshow", handleLayoutChange);
+    document.removeEventListener("visibilitychange", handleLayoutChange);
+    document.removeEventListener("focusout", handleFocusChange);
+    document.removeEventListener("focusin", handleFocusChange);
+    if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     setKeyboardInset(false);
     clearViewportOverride();
   };
@@ -261,13 +203,10 @@ function attachMobileVisualViewportHeight(
 
 export function useMobileVisualViewportHeight(
   shell: AppShellElement | null,
-  restoreImmediatelyOnKeyboardDismissal: boolean,
+  settleIOSViewport: boolean,
 ) {
   useEffect(() => {
     if (!shell) return;
-    return attachMobileVisualViewportHeight(
-      shell,
-      restoreImmediatelyOnKeyboardDismissal,
-    );
-  }, [shell, restoreImmediatelyOnKeyboardDismissal]);
+    return attachMobileVisualViewportHeight(shell, settleIOSViewport);
+  }, [shell, settleIOSViewport]);
 }
