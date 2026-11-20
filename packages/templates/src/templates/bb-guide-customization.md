@@ -492,5 +492,8 @@ bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the default
 Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
 daemon WebSockets follow it, but other custom socket/agent libraries can still
 bypass it.
+Plugin CLI command requests honor `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+(or lowercase forms) without requiring Node's built-in proxy support, while
+keeping the extended timeout for commands that wait for user input.
 
 Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.
