@@ -577,21 +577,28 @@ describe("useMobileVisualViewportHeight", () => {
     }
   });
 
-  it("recovers when the getter stays keyboard-sized past the first 400ms", async () => {
-    await withKeyboardViewport(async (viewport) => {
-      act(() => {
-        viewport.editor.focus();
-        viewport.resizeVisualViewport(552);
-      });
-      await flushScheduledViewportPass();
-      act(() => viewport.resizeVisualViewport(552));
-      await act(async () => {
-        await new Promise((resolve) => window.setTimeout(resolve, 510));
-      });
-      expect(viewport.shell.style.height).toBe("552px");
+  it("recovers from a late dismissal reading after sustained editor focus", async () => {
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    try {
+      await withKeyboardViewport(async (viewport) => {
+        act(() => {
+          viewport.editor.focus();
+          viewport.resizeVisualViewport(552);
+          vi.advanceTimersByTime(1_700);
+        });
 
-      viewport.visualViewport.height = 852;
-      await waitFor(() => {
+        act(() => {
+          viewport.resizeVisualViewport(552);
+          vi.advanceTimersByTime(510);
+        });
+        expect(viewport.shell.style.height).toBe("552px");
+
+        act(() => {
+          viewport.visualViewport.height = 852;
+          vi.advanceTimersByTime(32);
+        });
         expect(viewport.shell.style.height).toBe("");
         expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
           "",
@@ -599,9 +606,11 @@ describe("useMobileVisualViewportHeight", () => {
         expect(
           viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
         ).toBe("");
+        expect(document.activeElement).toBe(viewport.editor);
       });
-      expect(document.activeElement).toBe(viewport.editor);
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops sampling an unchanged keyboard-sized viewport at the settle cap", async () => {
@@ -660,7 +669,7 @@ describe("useMobileVisualViewportHeight", () => {
     );
   });
 
-  it("collapses the inset when non-iOS resizes both viewports for the keyboard", async () => {
+  it("handles native keyboard resize and post-dismissal viewport pan on non-iOS", async () => {
     await withKeyboardViewport(
       async (viewport) => {
         act(() => viewport.editor.focus());
@@ -679,6 +688,19 @@ describe("useMobileVisualViewportHeight", () => {
         expect(
           viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
         ).toBe("");
+
+        act(() => {
+          viewport.setLayoutHeight(852);
+          viewport.visualViewport.offsetTop = 30;
+          viewport.resizeVisualViewport(852);
+          window.dispatchEvent(new Event("resize"));
+        });
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.top).toBe("30px");
+        expect(viewport.shell.style.height).toBe("852px");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "852px",
+        );
       },
       { settleIOSViewport: false },
     );
