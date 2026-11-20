@@ -1524,6 +1524,97 @@ describe("plugin install flows", () => {
       expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
     });
 
+    test("checks out only the directories the selected plugin needs", async ({
+      fixture,
+    }) => {
+      const { workDir, dataDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-collection-sparse");
+      await mkdir(join(repoDir, "unrelated"), { recursive: true });
+      await writeFile(
+        join(repoDir, "unrelated", "large.bin"),
+        "x".repeat(1024),
+      );
+      await writeFile(join(repoDir, "README.md"), "# collection\n");
+      const commit = await writeCollectionRepo(repoDir);
+      const checkout = gitArtifactCacheDir(
+        dataDir,
+        localGitCachePath(repoDir),
+        commit,
+      );
+      const present = (path: string) =>
+        stat(join(checkout, path)).then(
+          () => true,
+          () => false,
+        );
+
+      const alpha = await service.install(`git:${repoDir}@main`, {
+        kind: "entry",
+        name: "alpha",
+      });
+
+      expect(alpha.status).toBe("running");
+      expect(await present(join("plugins", "alpha", "package.json"))).toBe(
+        true,
+      );
+      expect(await present(join(".bb", "plugins.json"))).toBe(true);
+      expect(await present("README.md")).toBe(true);
+      expect(await present("unrelated")).toBe(false);
+      expect(await present(join("plugins", "beta"))).toBe(false);
+
+      const beta = await service.install(`git:${repoDir}@main`, {
+        kind: "subdirectory",
+        path: "plugins/beta",
+      });
+
+      expect(beta.status).toBe("running");
+      expect(await present(join("plugins", "beta", "package.json"))).toBe(true);
+      expect(await present(join("plugins", "alpha", "dist", "server.js"))).toBe(
+        true,
+      );
+      expect(await present("unrelated")).toBe(false);
+    });
+
+    test("installs a collection entry from a server that serves partial clones", async ({
+      fixture,
+    }) => {
+      const { db, workDir, dataDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-collection-partial");
+      await mkdir(join(repoDir, "unrelated"), { recursive: true });
+      await writeFile(
+        join(repoDir, "unrelated", "large.bin"),
+        "x".repeat(1024),
+      );
+      const commit = await writeCollectionRepo(repoDir);
+      await git(repoDir, ["config", "uploadpack.allowFilter", "true"]);
+
+      const beta = await service.install(`git:${repoDir}@main`, {
+        kind: "entry",
+        name: "beta",
+      });
+
+      expect(beta.status).toBe("running");
+      expect(
+        getInstalledPluginRegistration(db, "collection-beta"),
+      ).toMatchObject({
+        sourceGitSubdirectory: "plugins/beta",
+        gitResolvedCommit: commit,
+      });
+      const checkout = gitArtifactCacheDir(
+        dataDir,
+        localGitCachePath(repoDir),
+        commit,
+      );
+      await stat(join(checkout, "plugins", "beta", "dist", "server.js"));
+      await expect(stat(join(checkout, "unrelated"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        stat(join(checkout, "plugins", "alpha")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
     test.skipIf(process.platform === "win32")(
       "promotes an in-repository symlinked plugin after a sibling",
       async ({ fixture }) => {
