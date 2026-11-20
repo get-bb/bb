@@ -599,13 +599,12 @@ export type PluginDispatchEnvironmentIntent =
  * whose `waitingOn` names this plugin and carries `reason` verbatim; the
  * row stays queued until `sendAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
- * running. `sendAt` (epoch ms) sets the row's own `sendAt`, so core's due sweep
- * re-attempts at that instant without the plugin holding a timer of its own —
- * which is what a rate-limit window wants. A message the sender scheduled keeps
- * its time under a `wait`: the row's `sendAt` is the later of the two, and it
- * never dispatches before the sender's time, even when this hook proceeds on
- * an earlier re-attempt. `reject` refuses the attempt outright: `message` is
- * shown to the user verbatim.
+ * running. `sendAt` (epoch ms) is when core's due sweep re-asks, without the
+ * plugin holding a timer of its own — which is what a rate-limit window wants.
+ * It is not the message's schedule: the row's `sendAt` stays the sender's
+ * time, and a message the sender scheduled never dispatches before that time,
+ * even when this hook proceeds earlier. `reject` refuses the attempt outright:
+ * `message` is shown to the user verbatim.
  *
  * There is deliberately no "handled it myself" answer and no amendment arm —
  * a hook is a decision, never an owner or an author of the work.

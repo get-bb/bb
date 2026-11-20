@@ -29,6 +29,7 @@ import {
   isQueuedMessageFailedState,
   projectAttachmentPaths,
   queuedMessageStateFor,
+  queuedMessageWaitingOnSchema,
 } from "@bb/domain";
 import type {
   QueuedMessageDeliveryMode,
@@ -95,7 +96,7 @@ export interface CreateQueuedThreadMessageInput {
    */
   waitingOn: QueuedMessageWaitingOn | null;
   sendAt: number | null;
-  requestedSendAt?: number | null;
+  recheckAt?: number;
   payload: QueuedMessagePayload;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
@@ -143,7 +144,7 @@ type QueuedMessageStateColumns = Pick<
   | "failureCount"
   | "failureReason"
   | "nextAttemptAt"
-  | "requestedSendAt"
+  | "recheckAt"
   | "sendAt"
   | "waitHolder"
   | "waitingOn"
@@ -153,10 +154,10 @@ type QueuedMessageTransition =
   | {
       event: "wait.recorded";
       sendAt: number | null;
-      requestedSendAt: number | null;
+      recheckAt: number | null;
       waitingOn: QueuedMessageWaitingOn;
     }
-  | { event: "wait.cleared"; requestedSendAt: number | null }
+  | { event: "wait.cleared" }
   | { claimToken: string; event: "dispatch.claimed" }
   | { event: "claim.released" }
   | {
@@ -184,7 +185,7 @@ function queuedMessageTransitionPatch(
         waitingOn: JSON.stringify(transition.waitingOn),
         waitHolder: waitHolderFor(transition.waitingOn),
         sendAt: transition.sendAt,
-        requestedSendAt: transition.requestedSendAt,
+        recheckAt: transition.recheckAt,
         failureReason: null,
         failureCount: 0,
         nextAttemptAt: null,
@@ -194,7 +195,7 @@ function queuedMessageTransitionPatch(
         waitingOn: null,
         waitHolder: null,
         sendAt: null,
-        requestedSendAt: transition.requestedSendAt,
+        recheckAt: null,
       };
     case "dispatch.claimed":
       return { claimedAt: now, claimToken: transition.claimToken };
@@ -847,7 +848,7 @@ export function createQueuedThreadMessageInTransaction(
       failureCount: 0,
       failureReason: null,
       nextAttemptAt: null,
-      requestedSendAt: input.requestedSendAt ?? null,
+      recheckAt: input.recheckAt ?? null,
       sendAt: input.sendAt,
       waitHolder: null,
       waitingOn,
@@ -873,7 +874,7 @@ export function createQueuedThreadMessageInTransaction(
       waitHolder:
         input.waitingOn === null ? null : waitHolderFor(input.waitingOn),
       sendAt: input.sendAt,
-      requestedSendAt: input.requestedSendAt ?? null,
+      recheckAt: input.recheckAt ?? null,
       systemNotice:
         input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
       payloadKind: input.payload.kind,
@@ -1007,17 +1008,33 @@ function rescheduleTransition(
   row: QueuedThreadMessageRow,
   sendAt: number | null,
 ): QueuedMessageTransition | null {
+  const pluginWait = storedPluginWait(row);
+  if (pluginWait !== null) {
+    return {
+      event: "wait.recorded",
+      sendAt,
+      recheckAt: row.recheckAt,
+      waitingOn: pluginWait,
+    };
+  }
   if (sendAt !== null) {
     return {
       event: "wait.recorded",
       sendAt,
-      requestedSendAt: null,
+      recheckAt: null,
       waitingOn: { kind: "time" },
     };
   }
-  return row.sendAt !== null || row.requestedSendAt !== null || hasTimeWait(row)
-    ? { event: "wait.cleared", requestedSendAt: null }
+  return row.sendAt !== null || hasTimeWait(row)
+    ? { event: "wait.cleared" }
     : null;
+}
+
+function storedPluginWait(
+  row: QueuedThreadMessageRow,
+): QueuedMessageWaitingOn | null {
+  if (row.waitHolder === null || row.waitingOn === null) return null;
+  return queuedMessageWaitingOnSchema.parse(JSON.parse(row.waitingOn));
 }
 
 function hasTimeWait(row: QueuedThreadMessageRow): boolean {
@@ -1328,7 +1345,7 @@ export function supersedeQueuedRetriesInTransaction(
       transition: {
         event: "wait.recorded",
         sendAt: null,
-        requestedSendAt: current.requestedSendAt,
+        recheckAt: null,
         waitingOn: { kind: "superseded" },
       },
     });
@@ -1863,7 +1880,7 @@ export interface RequeueClaimedQueuedThreadMessagesArgs {
   threadId: string;
   waitingOn: QueuedMessageWaitingOn;
   sendAt: number | null;
-  requestedSendAt: number | null;
+  recheckAt: number | null;
 }
 
 export function requeueClaimedQueuedThreadMessages(
@@ -1876,7 +1893,7 @@ export function requeueClaimedQueuedThreadMessages(
   const transition: QueuedMessageTransition = {
     event: "wait.recorded",
     sendAt: args.sendAt,
-    requestedSendAt: args.requestedSendAt,
+    recheckAt: args.recheckAt,
     waitingOn: args.waitingOn,
   };
   const queued = db.transaction(
@@ -2187,17 +2204,32 @@ function waitHolderFor(
     : null;
 }
 
-export interface SetQueuedThreadMessageWaitingOnArgs {
+function clearedWaitTransition(
+  row: QueuedThreadMessageRow,
+  now: number,
+): QueuedMessageTransition {
+  return row.sendAt !== null && row.sendAt > now
+    ? {
+        event: "wait.recorded",
+        sendAt: row.sendAt,
+        recheckAt: null,
+        waitingOn: { kind: "time" },
+      }
+    : { event: "wait.cleared" };
+}
+
+/**
+ * A `time` wait names its instant. Any other wait keeps the sender's time the
+ * row already carries while that time is still ahead, so re-queueing a
+ * scheduled row on another wait never sends it early.
+ */
+export type SetQueuedThreadMessageWaitingOnArgs = {
   id: string;
   threadId: string;
-  waitingOn: QueuedMessageWaitingOn;
-  /**
-   * The row's scheduled instant. Passed on every call rather than left alone,
-   * because a re-queue is a fresh statement of when this row may run: a
-   * `time` wait sets it, and every other wait kind clears it by passing null.
-   */
-  sendAt: number | null;
-}
+} & (
+  | { waitingOn: Extract<QueuedMessageWaitingOn, { kind: "time" }>; sendAt: number }
+  | { waitingOn: Exclude<QueuedMessageWaitingOn, { kind: "time" }> }
+);
 
 export interface ClearQueuedThreadMessageWaitingOnArgs {
   id: string;
@@ -2228,13 +2260,19 @@ export function setQueuedThreadMessageWaitingOn(
       ) {
         return null;
       }
+      const now = Date.now();
       return transitionQueuedMessage(tx, {
-        now: Date.now(),
+        now,
         row: existing,
         transition: {
           event: "wait.recorded",
-          sendAt: args.sendAt,
-          requestedSendAt: existing.requestedSendAt,
+          sendAt:
+            "sendAt" in args
+              ? args.sendAt
+              : existing.sendAt !== null && existing.sendAt > now
+                ? existing.sendAt
+                : null,
+          recheckAt: null,
           waitingOn: args.waitingOn,
         },
       });
@@ -2354,8 +2392,9 @@ export function listRetryableFailedQueuedThreadMessages(
 
 /**
  * Drop a live row's wait, leaving it an ordinary queued row eligible at the
- * next drain. `sendAt` is cleared with it: a row with no wait is not waiting
- * for a clock either.
+ * next drain. A sender's time still ahead outlives the wait it rode on: the
+ * row waits on that time instead, so dropping a plugin's hold never sends a
+ * scheduled message early.
  */
 export function clearQueuedThreadMessageWaitingOn(
   db: DbConnection,
@@ -2372,13 +2411,11 @@ export function clearQueuedThreadMessageWaitingOn(
       ) {
         return null;
       }
+      const now = Date.now();
       return transitionQueuedMessage(tx, {
-        now: Date.now(),
+        now,
         row: existing,
-        transition: {
-          event: "wait.cleared",
-          requestedSendAt: existing.requestedSendAt,
-        },
+        transition: clearedWaitTransition(existing, now),
       });
     },
     { behavior: "immediate" },
@@ -2391,8 +2428,9 @@ export function clearQueuedThreadMessageWaitingOn(
 }
 
 /**
- * Rows whose scheduled instant has arrived and that a drain may act on now,
- * oldest-due first. Threads that are archived or deleted are excluded here
+ * Rows a drain may act on now because an instant has arrived, oldest-due
+ * first: a scheduled row's `sendAt`, or the `recheckAt` a plugin holding the
+ * row asked to be re-asked at. Threads that are archived or deleted are excluded here
  * rather than by the caller, so a scheduled send into a thread the user threw
  * away never wakes the sweep every cycle (the #1789 shape).
  *
@@ -2411,8 +2449,16 @@ export function listDueScheduledQueuedThreadMessages(
     .from(queuedThreadMessages)
     .where(
       and(
-        eq(queuedThreadMessages.state, "scheduled"),
-        lte(queuedThreadMessages.sendAt, now),
+        or(
+          and(
+            eq(queuedThreadMessages.state, "scheduled"),
+            lte(queuedThreadMessages.sendAt, now),
+          ),
+          and(
+            inArray(queuedThreadMessages.state, ["scheduled", "waiting"]),
+            lte(queuedThreadMessages.recheckAt, now),
+          ),
+        ),
         exists(
           db
             .select({ live: sql`1` })
@@ -2426,7 +2472,12 @@ export function listDueScheduledQueuedThreadMessages(
         ),
       ),
     )
-    .orderBy(asc(queuedThreadMessages.sendAt), asc(queuedThreadMessages.id))
+    .orderBy(
+      asc(
+        sql`min(ifnull(${queuedThreadMessages.sendAt}, ${queuedThreadMessages.recheckAt}), ifnull(${queuedThreadMessages.recheckAt}, ${queuedThreadMessages.sendAt}))`,
+      ),
+      asc(queuedThreadMessages.id),
+    )
     .all();
 }
 

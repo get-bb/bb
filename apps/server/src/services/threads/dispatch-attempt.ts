@@ -477,18 +477,19 @@ async function runDispatchAttempt(
   const retriesGoFirst = getAppSettings(deps.db).resumeThreadsAfterRestart;
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
-    sendAt: number | null,
+    recheckAt: number | null = null,
   ): DispatchAttemptOutcome => {
-    const requestedSendAt =
-      waitingOn.kind === "time" ? null : futureSendAt(payload.sendAt, sendNow);
     const entry = recordQueuedMessageWait(deps, {
       thread,
       message: queuedMessage,
       placement:
         retriesGoFirst && args.queuePayload.kind === "retry" ? "front" : "back",
       waitingOn,
-      sendAt: laterSendAt(sendAt, requestedSendAt),
-      requestedSendAt,
+      sendAt:
+        waitingOn.kind === "time"
+          ? (payload.sendAt ?? null)
+          : futureSendAt(payload.sendAt, sendNow),
+      recheckAt,
       claimed,
     });
     if (entry === null) {
@@ -516,12 +517,12 @@ async function runDispatchAttempt(
   const continueThroughCoreWaits = async (): Promise<void> => {
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
-      continued.outcome = waitOn({ kind: "time" }, sendAt);
+      continued.outcome = waitOn({ kind: "time" });
       return;
     }
 
     if (isAppUpdateSendHoldSet(deps.db)) {
-      continued.outcome = waitOn({ kind: "app-update" }, null);
+      continued.outcome = waitOn({ kind: "app-update" });
       return;
     }
 
@@ -532,12 +533,12 @@ async function runDispatchAttempt(
       retriesGoFirst &&
       hasLiveQueuedRetry(deps.db, thread.id)
     ) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
 
     if (thread.status === "stopping") {
-      continued.outcome = waitOn({ kind: "stopping" }, null);
+      continued.outcome = waitOn({ kind: "stopping" });
       return;
     }
 
@@ -556,7 +557,7 @@ async function runDispatchAttempt(
     }
 
     if (systemNotice !== null && thread.environmentId === null) {
-      continued.outcome = waitOn({ kind: "provisioning" }, null);
+      continued.outcome = waitOn({ kind: "provisioning" });
       return;
     }
 
@@ -577,7 +578,6 @@ async function runDispatchAttempt(
       cancelPreparingMachinePause(deps, dispatchHost.id);
       continued.outcome = waitOn(
         { kind: "host-offline", hostName: dispatchHost.name },
-        null,
       );
       requestQueuedMachineReadiness(deps, dispatchHost.id);
       return;
@@ -589,7 +589,7 @@ async function runDispatchAttempt(
         (run.deliveryMode === "queue" &&
           !isActiveTurnMainRunIdle(deps, currentThread)))
     ) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
 
@@ -601,13 +601,12 @@ async function runDispatchAttempt(
     ) {
       continued.outcome = waitOn(
         { kind: "host-offline", hostName: dispatchHost.name },
-        null,
       );
       return;
     }
 
     if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
     if (
@@ -630,14 +629,14 @@ async function runDispatchAttempt(
       }
     }
     if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
-      continued.outcome = waitOn({ kind: "provisioning" }, null);
+      continued.outcome = waitOn({ kind: "provisioning" });
       return;
     }
     if (
       payload.mode !== "start" &&
       deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)
     ) {
-      continued.outcome = waitOn({ kind: "interaction" }, null);
+      continued.outcome = waitOn({ kind: "interaction" });
       return;
     }
 
@@ -803,31 +802,19 @@ function futureSendAt(
     : null;
 }
 
-export function laterSendAt(
-  left: number | null,
-  right: number | null,
-): number | null {
-  if (left === null) return right;
-  if (right === null) return left;
-  return Math.max(left, right);
-}
-
 async function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
   thread: Thread | null,
   run: DispatchAttemptRun,
-  waitOn: (
-    waitingOn: QueuedMessageWaitingOn,
-    sendAt: number | null,
-  ) => DispatchAttemptOutcome,
+  waitOn: (waitingOn: QueuedMessageWaitingOn) => DispatchAttemptOutcome,
 ): Promise<DispatchAttemptOutcome> {
   if (thread === null) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
   if (run.reattempted) {
     ensureThreadIsWritable(thread, true);
-    const outcome = waitOn({ kind: "thread-busy" }, null);
+    const outcome = waitOn({ kind: "thread-busy" });
     deps.logger.info(
       {
         queuedMessageId: outcome.kind === "queued" ? outcome.entry.id : null,

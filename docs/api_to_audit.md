@@ -833,8 +833,6 @@ Docs: `backend-events.md`.
   it cannot observe whether its own row went. Confirm resolving on completion,
   with its lock-reentrancy hazard, is genuinely unwanted rather than merely
   unbuilt.
-- **A handler's `sendAt` and a user's `--send-at` are the same column.**
-  Confirm nothing renders a plugin's instant as a user's schedule.
 - **Send-now bypasses every plugin check**, including a content-policy
   `reject`. Confirm it, or split `wait` bypass from `reject` bypass.
 - **"Never started" is a thread status.** Confirm `pending` is maintained

@@ -1012,7 +1012,7 @@ describe("queued thread messages", () => {
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
-      requestedSendAt: null,
+      recheckAt: null,
     });
 
     // The requeue wrote the wait on the lead only; the tail must not be
@@ -1093,7 +1093,7 @@ describe("queued thread messages", () => {
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
-      requestedSendAt: null,
+      recheckAt: null,
     });
     clearQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: lead.id,

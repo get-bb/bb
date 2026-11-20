@@ -619,7 +619,7 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
         threadId: fixture.threadId,
         waitingOn: { kind: "thread-busy" },
         sendAt: null,
-        requestedSendAt: null,
+        recheckAt: null,
       }),
   },
   {
@@ -646,7 +646,6 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
         id: fixture.queuedMessageId,
         threadId: fixture.threadId,
         waitingOn: { kind: "host-offline", hostName: "query-costs" },
-        sendAt: null,
       }),
   },
   {
@@ -675,7 +674,6 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
           pluginId: "github-pr-status",
           reason: "Waiting for CI",
         },
-        sendAt: null,
       });
     },
     run: (db, fixture) =>

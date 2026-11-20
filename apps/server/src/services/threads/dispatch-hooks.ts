@@ -58,7 +58,7 @@ const messageDispatchHookDecisionSchema = z.discriminatedUnion("action", [
 export interface MessageDispatchWaitDecision {
   pluginId: string;
   reason: string;
-  /** Becomes the queued row's `sendAt`, so core's due sweep re-attempts then. */
+  /** Becomes the queued row's `recheckAt`, so core's due sweep re-asks then. */
   sendAt: number | null;
 }
 

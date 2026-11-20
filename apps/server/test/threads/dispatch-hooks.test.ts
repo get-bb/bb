@@ -1444,10 +1444,22 @@ describe("message.dispatch hooks on the queue drain", () => {
 describe("a scheduled send held by a plugin wait", () => {
   const SCHEDULED_IN_MS = 60 * 60_000;
 
-  type Release = "recheck" | "plugin-unregistered";
+  type Release = "recheck" | "plugin-unregistered" | "recheck-due";
 
-  async function release(harness: TestAppHarness, how: Release): Promise<void> {
+  async function release(
+    harness: TestAppHarness,
+    how: Release,
+    recheckAt: number | null,
+  ): Promise<void> {
     switch (how) {
+      case "recheck-due":
+        if (recheckAt === null) throw new Error("recheck-due needs a sendAt");
+        vi.setSystemTime(recheckAt + 1);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: recheckAt + 1,
+        });
+        return;
       case "recheck":
         await runQueuedMessageDispatch(harness.deps, {
           kind: "plugin-recheck",
@@ -1482,6 +1494,11 @@ describe("a scheduled send held by a plugin wait", () => {
       name: "a wait that asks to be re-attempted before the scheduled time",
       pluginSendAt: (scheduledAt) => scheduledAt - SCHEDULED_IN_MS / 2,
       how: "recheck",
+    },
+    {
+      name: "a wait whose own re-ask time comes due before the scheduled time",
+      pluginSendAt: (scheduledAt) => scheduledAt - SCHEDULED_IN_MS / 2,
+      how: "recheck-due",
     },
 
     {
@@ -1528,13 +1545,13 @@ describe("a scheduled send held by a plugin wait", () => {
           thread,
         });
         expect(response.delivery).toBe("queued");
-        expect(onlyQueuedRow(harness, thread.id).sendAt).toBe(
-          Math.max(scheduledAt, pluginSendAt ?? scheduledAt),
-        );
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+          { sendAt: scheduledAt, recheckAt: pluginSendAt },
+        ]);
 
         vi.setSystemTime(Date.now() + 5_000);
         atCapacity = false;
-        await release(harness, testCase.how);
+        await release(harness, testCase.how, pluginSendAt);
 
         expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
         const held = onlyQueuedRow(harness, thread.id);
@@ -1643,6 +1660,10 @@ describe("a scheduled send held by a plugin wait", () => {
         },
       );
       expect(response.status).toBe(200);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        waitingOn: { kind: "plugin", pluginId: "limiter" },
+        sendAt: null,
+      });
       vi.setSystemTime(Date.now() + 5_000);
       atCapacity = false;
       await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
@@ -1652,6 +1673,51 @@ describe("a scheduled send held by a plugin wait", () => {
 
       expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
+  it("keeps the plugin's hold when the sender moves the scheduled time", async () => {
+    await withTestHarness(async (harness) => {
+      const scheduledAt = Date.now() + SCHEDULED_IN_MS;
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "limiter",
+            handler: () => ({ action: "wait", reason: "1 of 1 running" }),
+          },
+        ],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-scheduled-moved",
+        status: "idle",
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("moved"),
+          mode: "auto",
+          sendAt: scheduledAt,
+        },
+        thread,
+      });
+      const row = onlyQueuedRow(harness, thread.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${row.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            expectedUpdatedAt: row.updatedAt,
+            sendAt: scheduledAt + SCHEDULED_IN_MS,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        waitingOn: { kind: "plugin", pluginId: "limiter" },
+        sendAt: scheduledAt + SCHEDULED_IN_MS,
+      });
     });
   });
 
