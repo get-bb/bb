@@ -386,6 +386,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDeletionTree`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole thread tree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDeletionTree(db, seed.orchestratorId),
   },
@@ -658,11 +662,19 @@ const PLUGIN_METADATA_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
 const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
     name: `${OUTLINES}#getThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Reads the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     run: (db, fixture) =>
       getThreadConversationOutlineRecord(db, fixture.threadId),
   },
   {
     name: `${OUTLINES}#upsertThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Writes the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     prepare: (_db, fixture) => {
       nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
     },

@@ -383,6 +383,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${SNAPSHOTS}#listPluginStateSnapshots`,
+    growsWith: {
+      history:
+        "Returns every plugin state snapshot, and the seed grows the snapshot count",
+    },
     run: (db, _fixture, seed) => listPluginStateSnapshots(db, seed.npmPluginId),
   },
   {
@@ -453,6 +457,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${SNAPSHOTS}#listGarbageCollectablePluginArtifacts`,
+    growsWith: {
+      history:
+        "Returns every collectable plugin artifact, and the seed grows the artifacts",
+    },
     run: (db) => {
       const now = Date.now();
       return listGarbageCollectablePluginArtifacts(db, {
@@ -478,6 +486,9 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${STORAGE}#deleteAllPluginKvValues`,
+    growsWith: {
+      history: "Deletes all of a plugin's kv rows, and the seed grows them",
+    },
     run: (db, _fixture, seed) =>
       deleteAllPluginKvValues(db, seed.biggestKvPluginId),
   },
@@ -512,6 +523,9 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${STORAGE}#listPluginKvRows`,
+    growsWith: {
+      history: "Returns all of a plugin's kv rows, and the seed grows them",
+    },
     run: (db, _fixture, seed) => listPluginKvRows(db, seed.biggestKvPluginId),
   },
   {
@@ -569,6 +583,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${MARKETPLACES}#listPluginMarketplaceIcons`,
+    growsWith: {
+      history:
+        "Returns every icon of the marketplace, and the seed grows its icons",
+    },
     run: (db, _fixture, seed) =>
       listPluginMarketplaceIcons(db, seed.marketplaceName),
   },

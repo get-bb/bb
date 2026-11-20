@@ -514,6 +514,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#isStoredTurnProviderCompactionRunning`,
     variant: LIVE_TURN,
+    growsWith: {
+      turnSize:
+        "Reads every item start and completion of the open turn to find its latest compaction item",
+    },
     run: (db, fixture) =>
       isStoredTurnProviderCompactionRunning(db, {
         threadId: fixture.liveTurn.threadId,
@@ -523,6 +527,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#isStoredTurnContextCompactionOnly`,
     variant: LIVE_TURN,
+    growsWith: {
+      turnSize:
+        "Reads the item kind of every completed item in the turn to decide whether all are compactions",
+    },
     run: (db, fixture) =>
       isStoredTurnContextCompactionOnly(db, {
         threadId: fixture.liveTurn.threadId,
@@ -1220,6 +1228,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listLatestTurnFinalAgentMessageEventRows`,
+    growsWith: {
+      turnSize:
+        "Steps back through every agent message of the long turn to reach earlier turns' final messages",
+    },
     run: (db, fixture) =>
       listLatestTurnFinalAgentMessageEventRows(db, {
         limit: 32,
@@ -1268,6 +1280,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#isStoredTurnContextCompactionOnly`,
+    growsWith: {
+      turnSize:
+        "Reads the item kind of every completed item in the turn to decide whether all are compactions",
+    },
     run: (db, fixture) =>
       isStoredTurnContextCompactionOnly(db, {
         threadId: fixture.threadId,
@@ -1335,6 +1351,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listOwnerStoppedBackgroundTaskRowsForHost`,
+    growsWith: {
+      history:
+        "Probes each live thread on the host for settled background tasks, and the seed grows the host's threads",
+    },
     run: (db, fixture) =>
       listOwnerStoppedBackgroundTaskRowsForHost(db, {
         hostId: fixture.hostId,
@@ -1350,6 +1370,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#getUnfinishedCommandItemData`,
+    growsWith: {
+      turnSize:
+        "Checks every command started after afterSequence for a completion, and the long turn's commands all finished",
+    },
     run: (db, fixture) =>
       getUnfinishedCommandItemData(db, {
         afterSequence: lastTurn(fixture).requestSequence,

@@ -28,10 +28,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
   ),
   acceptedEventsIndex(
-    `${EVENTS}#listStoredTurnCompletedRowsByTurnIds`,
-    "turn/completed is one per turn, so the type index reads at most one row per turn",
-  ),
-  acceptedEventsIndex(
     "apps/server/src/services/threads/environment-directory-continuation.ts#findEnvironmentDirectoryContinuation",
     "system/operation events are rare per thread",
   ),
