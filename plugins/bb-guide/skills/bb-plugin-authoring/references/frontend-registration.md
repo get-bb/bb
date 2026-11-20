@@ -399,10 +399,9 @@ await sdk.threads.update({ threadId: thread.id, sectionId });
 // workspaceDisplayKind }, where workspaceDisplayKind is deprecated
 // compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
 // latestAttentionAt, and `indicator` (bb's resolved status kind) +
-// `indicatorLabel` (its a11y string). Draw it with
-// `experimental_ThreadStatusGlyph` (see "bb's status glyph on your row") or
-// your own glyph. Treat an unknown indicator, status, or
-// runtimeStatus value as its documented fallback — bb adds kinds over time.
+// `indicatorLabel` (its a11y string). Draw it with `experimental_ThreadStatusGlyph`
+// or your own glyph. Treat an unknown indicator, status, or runtimeStatus
+// value as its documented fallback — bb adds kinds over time.
 
 // Three more per-row facts are client-local, so they are hooks rather than
 // fields on the thread: an unsent composer draft (bb paints a pencil, or a
@@ -426,9 +425,8 @@ const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, thread
 </span>;
 
 // `environment.providerId` names an entry in bb's environment provider
-// catalog; resolve it for a display name, and draw it with
-// `experimental_ProviderIcon` (`providerKind="environment"`, `provider={entry}`),
-// imported under a capitalized alias:
+// catalog; resolve it for a display name, and draw it with a capitalized
+// `experimental_ProviderIcon` alias (`providerKind="environment"`, `provider={entry}`):
 const { providers: environmentProviders } = useEnvironmentProviders();
 
 // Pull requests: read the GitHub PR Status plugin by thread.environment?.id

@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { SURFACE_GROUPS } from "../src/surfaces";
 
-const pluginDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const sdkManifestPath = path.join(
+const pluginDir = path
+  .dirname(path.dirname(fileURLToPath(import.meta.url)))
+  .replaceAll("\\", "/");
+const sdkManifestPath = path.posix.join(
   pluginDir,
   "node_modules/@get-bb/plugin-sdk/package.json",
 );
@@ -24,7 +26,11 @@ const PUBLIC_SUBPATHS = Object.keys(sdkManifest.exports)
   );
 
 function createSdkResolver() {
-  const probePath = path.join(pluginDir, "test", "__api-symbols-probe__.ts");
+  const probePath = path.posix.join(
+    pluginDir,
+    "test",
+    "__api-symbols-probe__.ts",
+  );
   const probeSource = PUBLIC_SUBPATHS.map(
     (specifier, index) => `import * as m${index} from "${specifier}";`,
   ).join("\n");

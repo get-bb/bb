@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const pluginDir = path.dirname(fileURLToPath(import.meta.url));
-const skillDir = path.join(pluginDir, "skills", "bb-plugin-authoring");
-const virtualDir = path.join(pluginDir, "__skill-examples__");
+const pluginDir = path
+  .dirname(fileURLToPath(import.meta.url))
+  .replaceAll("\\", "/");
+const skillDir = path.posix.join(pluginDir, "skills", "bb-plugin-authoring");
+const virtualDir = path.posix.join(pluginDir, "__skill-examples__");
 
 const UNDECLARED_LOCAL_CODES = new Set([2304, 2552, 18004]);
 const PLACEHOLDER = /(?<![\w\])])(?:\.\.\.|…)(?=\s*[}\])>,;\n])/g;
@@ -20,16 +22,18 @@ interface SkillExample {
 }
 
 function skillMarkdownFiles(): string[] {
-  const references = readdirSync(path.join(skillDir, "references"))
+  const references = readdirSync(path.posix.join(skillDir, "references"))
     .filter((name) => name.endsWith(".md") && !name.endsWith("-api-index.md"))
-    .map((name) => path.join("references", name));
+    .map((name) => path.posix.join("references", name));
   return ["SKILL.md", ...references];
 }
 
 function extractExamples(): SkillExample[] {
   const examples: SkillExample[] = [];
   for (const file of skillMarkdownFiles()) {
-    const lines = readFileSync(path.join(skillDir, file), "utf8").split("\n");
+    const lines = readFileSync(path.posix.join(skillDir, file), "utf8").split(
+      "\n",
+    );
     for (let index = 0; index < lines.length; index += 1) {
       const open = FENCE_OPEN.exec(lines[index] ?? "");
       if (open === null) continue;
@@ -47,7 +51,7 @@ function extractExamples(): SkillExample[] {
       examples.push({
         file,
         line: start,
-        fileName: path.join(
+        fileName: path.posix.join(
           virtualDir,
           `example-${examples.length}.${open[2] === "tsx" ? "tsx" : "ts"}`,
         ),
@@ -100,7 +104,7 @@ const SDK_MODULES = [
 ] as const;
 
 function sdkRuntimeGlobals(): string {
-  const probePath = path.join(virtualDir, "probe.ts");
+  const probePath = path.posix.join(virtualDir, "probe.ts");
   const probe = SDK_MODULES.map(
     ({ alias, specifier }) => `import * as ${alias} from "${specifier}";`,
   ).join("\n");
@@ -158,7 +162,7 @@ describe("bb-plugin-authoring skill examples", () => {
     const examples = extractExamples();
     expect(examples.length).toBeGreaterThan(50);
     const files = new Map<string, string>([
-      [path.join(virtualDir, "sdk-globals.d.ts"), sdkRuntimeGlobals()],
+      [path.posix.join(virtualDir, "sdk-globals.d.ts"), sdkRuntimeGlobals()],
       ...examples.map((example) => [example.fileName, example.source] as const),
     ]);
     const program = createProgram(files);
