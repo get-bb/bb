@@ -333,3 +333,26 @@ it.each(["MacIntel", "Linux x86_64"])(
     );
   },
 );
+
+it("keeps a held command key's repeats out of the shell", async () => {
+  const { textarea } = await mount();
+  const f5 = { key: "F5", code: "F5", keyCode: 116 };
+  fireEvent.keyDown(textarea, f5);
+  const repeatsReachedPage = [
+    fireEvent.keyDown(textarea, { ...f5, repeat: true }),
+    fireEvent.keyDown(textarea, { ...f5, repeat: true }),
+  ];
+  fireEvent.keyUp(textarea, f5);
+  expect(appCommands.ran).toEqual(["sidebar.toggle"]);
+  expect(repeatsReachedPage).toEqual([false, false]);
+  expect(state.input).not.toHaveBeenCalled();
+
+  const escape = { key: "Escape", code: "Escape", keyCode: 27 };
+  fireEvent.keyDown(textarea, escape);
+  fireEvent.keyDown(textarea, { ...escape, repeat: true });
+  expect(appCommands.ran).toEqual(["sidebar.toggle"]);
+  expect(state.input.mock.calls.map(([data]) => atob(data))).toEqual([
+    "\x1b",
+    "\x1b",
+  ]);
+});

@@ -19,8 +19,23 @@ export function isTerminalShellKey(event: KeyboardEvent): boolean {
 export function createTerminalAppCommandKeyHandler(
   dispatchAppCommandKey: (event: KeyboardEvent) => boolean,
 ): (event: KeyboardEvent) => boolean {
-  return (event) =>
-    event.type !== "keydown" ||
-    isTerminalShellKey(event) ||
-    !dispatchAppCommandKey(event);
+  let commandKeyCode: string | null = null;
+  return (event) => {
+    if (event.type !== "keydown") {
+      return true;
+    }
+    if (event.repeat && event.code === commandKeyCode) {
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
+    }
+    if (!event.repeat) {
+      commandKeyCode = null;
+    }
+    if (isTerminalShellKey(event) || !dispatchAppCommandKey(event)) {
+      return true;
+    }
+    commandKeyCode = event.code;
+    return false;
+  };
 }
