@@ -35,18 +35,6 @@ function useResolvedComposerSlot<T>(
 
 const emptyList = () => [];
 
-function resolveComposerEditor(
-  registrations: ComposerRegistrations,
-  kind: PluginComposerScope["kind"],
-) {
-  return {
-    effects: resolveComposerEditorEffects(registrations, kind),
-    observers: resolveComposerDraftObservers(registrations, kind),
-  };
-}
-
-const emptyComposerEditor = () => ({ effects: [], observers: [] });
-
 export function useResolvedComposerActions(scopeKind: ComposerScopeKind) {
   return useResolvedComposerSlot(scopeKind, resolveComposerActions, emptyList);
 }
@@ -55,30 +43,25 @@ export function useResolvedComposerBanners(scopeKind: ComposerScopeKind) {
   return useResolvedComposerSlot(scopeKind, resolveComposerBanners, emptyList);
 }
 
-export function useResolvedComposerPlusMenuItems(scopeKind: ComposerScopeKind) {
-  return useResolvedComposerSlot(
-    scopeKind,
-    resolveComposerPlusMenuItems,
-    emptyList,
+export function useResolvedComposerContributions(
+  scopeKind: PluginComposerScope["kind"],
+  mountsScopedContributions: boolean,
+) {
+  const registrations = usePluginSlotKind("composerCustomizations");
+  return useMemo(
+    () => ({
+      plusMenuItems: resolveComposerPlusMenuItems(registrations, scopeKind),
+      popups: resolveComposerPopups(registrations, scopeKind),
+      sendMenuItems: mountsScopedContributions
+        ? resolveComposerSendMenuItems(registrations, scopeKind)
+        : [],
+      effects: mountsScopedContributions
+        ? resolveComposerEditorEffects(registrations, scopeKind)
+        : [],
+      observers: mountsScopedContributions
+        ? resolveComposerDraftObservers(registrations, scopeKind)
+        : [],
+    }),
+    [mountsScopedContributions, registrations, scopeKind],
   );
-}
-
-export function useResolvedComposerSendMenuItems(scopeKind: ComposerScopeKind) {
-  return useResolvedComposerSlot(
-    scopeKind,
-    resolveComposerSendMenuItems,
-    emptyList,
-  );
-}
-
-export function useResolvedComposerEditor(scopeKind: ComposerScopeKind) {
-  return useResolvedComposerSlot(
-    scopeKind,
-    resolveComposerEditor,
-    emptyComposerEditor,
-  );
-}
-
-export function useResolvedComposerPopups(scopeKind: ComposerScopeKind) {
-  return useResolvedComposerSlot(scopeKind, resolveComposerPopups, emptyList);
 }

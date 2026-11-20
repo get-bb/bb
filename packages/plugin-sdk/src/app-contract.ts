@@ -2511,7 +2511,8 @@ export interface PluginThreadActionRegistration<Data = undefined> {
    * (see {@link PluginThreadActionsContextMenuProps}). Pure and
    * synchronous like `item`, with every selected thread in `useData`'s
    * `threadIds`; `run` acts on all of them. Omit it, or return null, to leave
-   * the action out of selection menus. Experimental: see docs/api_to_audit.md.
+   * the action out of selection menus. Unused with `placement: "header"`,
+   * which selection menus leave out. Experimental: see docs/api_to_audit.md.
    */
   experimental_bulkItem?(
     input: PluginThreadActionBulkItemInput<Data>,
@@ -2522,9 +2523,11 @@ export interface PluginThreadActionRegistration<Data = undefined> {
  * Where a thread action shows.
  *
  * - `"menu"`: every thread actions menu and the quick-action picker.
- * - `"header"`: only the open thread's header, as an outline button labelled
- *   with the action's `label`, after the workspace's Open button. Several
- *   header actions share one split button, the first as its main action. At
+ * - `"header"`: only the open thread's header, as an outline button with the
+ *   action's `icon` and `label`, after the workspace's Open button. `detail`
+ *   is the button's tooltip and `variant: "destructive"` colors it. Several
+ *   header actions share one split button, the first as its main action and
+ *   the rest as menu rows drawn like the thread menu's. At
  *   compact width and in narrow split panes the buttons fold into the
  *   header's thread menu as rows at its top, after Open. `group` and `order`
  *   sort header actions among themselves. Header actions never appear in
@@ -4349,7 +4352,13 @@ export type PluginComposerScope =
 export interface ComposerCustomization {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Composer kinds where this customization is active; omit for all kinds. */
+  /**
+   * Composer kinds where this customization is active; omit for all kinds.
+   * The sent-message editor reports `"thread"` and runs only what the user
+   * invokes there: `plusMenu` rows, the popups they open, and composer
+   * commands. It mounts no `actions`, `banners`, `sendMenu` rows or
+   * `richText` effects.
+   */
   scopes?: readonly PluginComposerScope["kind"][];
   /**
    * Controls rendered in the composer's action row, before the voice, stop

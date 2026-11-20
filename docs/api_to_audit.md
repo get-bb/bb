@@ -228,7 +228,11 @@ on the thread composer, a running thread that steers on Enter, embedded
 thread chat, the queued and sent message editors and the New thread
 composer, mounted through the real surface components. It covers drafts,
 Enter, pane focus, thread drops, voice transcripts, other plugins' insert,
-submit and popups, and which surfaces stay out of `useComposers()`.
+submit and popups, and which surfaces stay out of `useComposers()`. With bb's
+composer it also checks other plugins' `+` rows (each opening its popup in
+that composer), send rows, banners and actions on every surface, filtered by
+`scopes`: the sent-message editor runs `+` rows, popups and composer commands
+but mounts no send rows, banners, actions or rich text.
 `experimental_ComposerRoot` publishes stable functions that call the latest
 editor and republishes only when the editor's state changes, so a composer
 can build its editor inline on every render.
@@ -3653,7 +3657,9 @@ throws when a menu `trigger` drops its props and ref.
 left out of every menu, selection menu, `experimental_useThreadActions`, and
 the quick-action picker. `ThreadDetailHeader` evaluates header actions through
 `useThreadHeaderActionEntries` and draws them after the workspace's Open
-button: one as an outline button, several as a split button. At compact width
+button: one as an outline button, several as a split button, each with its
+`icon`, its `detail` as a tooltip (a second line in the split button's menu),
+and red text for `variant: "destructive"`, as in the menus. At compact width
 and in split panes narrower than 560 px they become rows at the top of the
 header's thread menu, after Open. An action that returns `choices` is left out
 of the header. A header registration's `useData` receives only the threads
@@ -3711,11 +3717,11 @@ Docs: `frontend-registration.md`.
 4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
-5. **Header placement.** Header buttons honor `label` and `disabled` only;
-   `detail`, `variant`, and `choices` show nowhere on the button. Decide
-   whether header actions need choices (a split-button menu) or an icon-only
-   form before more plugins add one, and how many fit before the row needs
-   its own overflow.
+5. **Header placement.** Header buttons honor `label`, `icon`, `detail`,
+   `variant`, and `disabled` as the menu rows do; `choices` shows nowhere on
+   the button. Decide whether header actions need choices (a split-button
+   menu) or an icon-only form before more plugins add one, and how many fit
+   before the row needs its own overflow.
 6. **Bulk shape.** Decide whether `experimental_bulkItem` should
    stay a second function or `item` should take a target that is one thread
    or several, whether selection menus need a dropdown or compact-drawer
