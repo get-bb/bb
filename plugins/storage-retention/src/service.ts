@@ -107,7 +107,7 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
                 (entry) => entry.id === candidate.rootId,
               );
               if (thread === undefined) continue;
-              await coldStorage.store(thread);
+              await coldStorage.store(thread, threads);
               run.coldStoredCount += 1;
             } else {
               await bb.sdk.threads.delete({

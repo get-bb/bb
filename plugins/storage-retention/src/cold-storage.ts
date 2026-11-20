@@ -30,6 +30,14 @@ export type ColdStoreRequest = Pick<
   | "sourceThreadId"
   | "lifecycleOwnerThreadId"
 >;
+type LinkedThread = Pick<
+  SdkThread,
+  | "id"
+  | "deletedAt"
+  | "parentThreadId"
+  | "sourceThreadId"
+  | "lifecycleOwnerThreadId"
+>;
 const linkedThreadIdsSchema = z.array(z.string());
 
 interface ColdThreadRow {
@@ -89,7 +97,24 @@ export function createColdStorage(bb: BbPluginApi) {
     return removed;
   }
 
-  async function store(thread: ColdStoreRequest): Promise<void> {
+  async function store(
+    thread: ColdStoreRequest,
+    threads: readonly LinkedThread[],
+  ): Promise<void> {
+    const dependentIds = threads
+      .filter(
+        (other) =>
+          other.deletedAt === null &&
+          other.id !== thread.id &&
+          (other.parentThreadId === thread.id ||
+            other.sourceThreadId === thread.id ||
+            other.lifecycleOwnerThreadId === thread.id),
+      )
+      .map((other) => other.id);
+    if (dependentIds.length > 0)
+      throw new Error(
+        `Thread ${thread.id} can't move to cold storage while other threads point at it as their parent, source or lifecycle owner: ${dependentIds.join(", ")}. Move or delete those first.`,
+      );
     const linkedThreadIds = [
       ...new Set(
         [
@@ -126,7 +151,7 @@ export function createColdStorage(bb: BbPluginApi) {
     try {
       await bb.sdk.threads.delete({
         threadId: thread.id,
-        childThreadsConfirmed: true,
+        childThreadsConfirmed: false,
       });
     } catch (error) {
       await forget(thread.id);

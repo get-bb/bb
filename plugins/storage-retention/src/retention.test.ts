@@ -268,7 +268,7 @@ describe("retention plugin", () => {
       });
       await host.harness.runSchedule("retention");
       expect(host.harness.sdk.callsTo("threads.delete")).toEqual([
-        [{ threadId: "thr_old", childThreadsConfirmed: true }],
+        [{ threadId: "thr_old", childThreadsConfirmed: false }],
       ]);
       expect(
         await beforeDeleteFinalize({
@@ -417,7 +417,10 @@ describe("retention plugin", () => {
       plugin(host.bb);
       const coldStorage = createColdStorage(host.bb);
       await expect(
-        coldStorage.store(makeThreadResponse({ id: "thr_old", archivedAt: 1 })),
+        coldStorage.store(
+          makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
+          [],
+        ),
       ).rejects.toThrow("thread is busy");
       expect(
         coldStorage.list({
@@ -496,9 +499,10 @@ describe("retention plugin", () => {
         "cold-storage",
       );
       const moveAndWrite = async () => {
-        const [thread] = await host.bb.sdk.threads.list();
+        const threads = await host.bb.sdk.threads.list();
+        const [thread] = threads;
         if (thread === undefined) throw new Error("no thread");
-        await coldStorage.store(thread);
+        await coldStorage.store(thread, threads);
         const context = { threadId: "thr_old", projectId: "proj_test" };
         expect(coldStorage.beforeDeleteFinalize(context)).toEqual({
           action: "wait",
@@ -589,7 +593,7 @@ describe("retention plugin", () => {
       plugin(host.bb);
       const coldStorage = createColdStorage(host.bb);
       for (const thread of threadList().reverse()) {
-        await coldStorage.store(thread);
+        await coldStorage.store(thread, threadList());
         const context = { threadId: thread.id, projectId: "proj_test" };
         coldStorage.beforeDeleteFinalize(context);
         await vi.waitFor(() =>
@@ -608,9 +612,10 @@ describe("retention plugin", () => {
         [{ file: Buffer.from([2]) }],
       ]);
 
+      live.delete("thr_child");
       const [parent] = threadList();
       if (parent === undefined) throw new Error("no parent");
-      await coldStorage.store(parent);
+      await coldStorage.store(parent, threadList());
       const context = { threadId: "thr_parent", projectId: "proj_test" };
       coldStorage.beforeDeleteFinalize(context);
       await vi.waitFor(() =>
@@ -634,6 +639,88 @@ describe("retention plugin", () => {
           after: null,
         }).threads,
       ).toEqual([]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+  it("refuses to cold-store a thread that a live child, fork or lifecycle dependent points at, so its delete can't take them along", async () => {
+    const live = new Set<string>([
+      "thr_parent",
+      "thr_child",
+      "thr_fork",
+      "thr_owned",
+    ]);
+    const threadList = () =>
+      [
+        makeThreadResponse({ id: "thr_parent", archivedAt: 1 }),
+        makeThreadResponse({
+          id: "thr_child",
+          archivedAt: 1,
+          parentThreadId: "thr_parent",
+        }),
+        makeThreadResponse({
+          id: "thr_fork",
+          archivedAt: 1,
+          sourceThreadId: "thr_parent",
+        }),
+        makeThreadResponse({
+          id: "thr_owned",
+          archivedAt: 1,
+          lifecycleOwnerThreadId: "thr_parent",
+        }),
+      ].map((thread) => ({
+        ...thread,
+        deletedAt: live.has(thread.id) ? null : 2,
+      }));
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: async () => threadList(),
+          delete: async ({ threadId }) => {
+            live.delete(threadId);
+            return { ok: true };
+          },
+          experimental_export: async () => new Uint8Array([1]),
+        },
+      },
+    });
+    const coldList = () =>
+      host.harness.callRpc("coldThreads", {
+        projectId: null,
+        search: null,
+        limit: 50,
+        after: null,
+      });
+    try {
+      plugin(host.bb);
+      for (const dependent of ["thr_child", "thr_fork", "thr_owned"]) {
+        const refused = await host.harness.runCli([
+          "cold-store",
+          "--thread",
+          "thr_parent",
+          "--yes",
+        ]);
+        expect(refused.exitCode).toBe(1);
+        expect(refused.stderr).toContain(dependent);
+        expect(host.harness.sdk.callsTo("threads.delete")).toEqual([]);
+        expect(await coldList()).toMatchObject({ threads: [], totalCount: 0 });
+        live.delete(dependent);
+      }
+
+      const moved = await host.harness.runCli([
+        "cold-store",
+        "--thread",
+        "thr_parent",
+        "--yes",
+      ]);
+      expect(moved.exitCode).toBe(0);
+      expect(host.harness.sdk.callsTo("threads.delete")).toEqual([
+        [{ threadId: "thr_parent", childThreadsConfirmed: false }],
+      ]);
+      expect(await coldList()).toMatchObject({
+        threads: [{ threadId: "thr_parent" }],
+      });
     } finally {
       await host.harness.dispose();
     }

@@ -48,7 +48,9 @@ The plugin deletes the thread, holds the end of the delete through the
 `thread.delete_finalize` hook until `threads.experimental_export` has written
 the file, then lets bb remove the rows. It skips pinned and running threads and
 threads another thread still points at as its parent, source or lifecycle owner
-(those follow once their children are moved). Cold storage is listed in the
+(those follow once their children are moved). `bb storage cold-store` refuses
+such a thread and names the threads that point at it, because deleting it would
+take its children with it. Cold storage is listed in the
 plugin panel (a Cold storage row with the total count, size and last move,
 which opens a page with search, Show more, Restore and Delete) and by
 `bb storage cold-list`, newest first, with `totalCount`, `totalBytes`,

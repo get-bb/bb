@@ -8,7 +8,7 @@ import {
 } from "@get-bb/plugin-sdk";
 import type { ColdStorage } from "./cold-storage.js";
 import { policySchema, COLD_THREAD_LIST_MAX } from "./contract.js";
-import { readThreadsById } from "./sdk-data.js";
+import { readThreads } from "./sdk-data.js";
 import type { Service } from "./service.js";
 
 const MACHINE = { type: "string", description: "Machine ID" } as const;
@@ -243,16 +243,15 @@ export function registerCli(
                   "Pass --yes to remove the thread from bb's database once its file is written.",
                 );
               const threadId = required(input.options.thread, "thread");
-              const thread = (await readThreadsById(bb, [threadId])).get(
-                threadId,
-              );
+              const threads = await readThreads(bb);
+              const thread = threads.find((entry) => entry.id === threadId);
               if (thread === undefined || thread.deletedAt !== null)
                 throw new Error(`Thread ${threadId} not found.`);
               if (thread.archivedAt === null || thread.pinnedAt !== null)
                 throw new Error(
                   "Only archived, unpinned threads can be moved to cold storage.",
                 );
-              await coldStorage.store(thread);
+              await coldStorage.store(thread, threads);
               return { threadId, state: "moving" };
             }),
         }),
