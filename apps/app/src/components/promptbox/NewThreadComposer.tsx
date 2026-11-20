@@ -5,6 +5,8 @@ import {
 } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
+import { ProviderFallbackBanner } from "./banner/ProviderFallbackBanner";
+import { useNewThreadProviderFallback } from "@/hooks/queries/provider-fallback-queries";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { operationFailureReason } from "@/components/onboarding/onboarding-model";
@@ -1235,6 +1237,23 @@ export function NewThreadComposer({
     () => providerOptions.map((option) => option.value),
     [providerOptions],
   );
+  const providerFallback = useNewThreadProviderFallback({
+    enabled:
+      !(
+        "providerId" in executionInputSources &&
+        executionInputSources.providerId === "explicit"
+      ) && executionInputSources.model !== "explicit",
+    hostId: executionOptionsRouting.hostId ?? null,
+    providerId: selectedProviderId,
+    model: selectedThreadModel.length > 0 ? selectedThreadModel : null,
+    fallbackSelectable: (providerId) => providerIds.includes(providerId),
+  });
+  const providerLabel = useCallback(
+    (providerId: string) =>
+      providerOptions.find((option) => option.value === providerId)?.label ??
+      providerId,
+    [providerOptions],
+  );
 
   const promptDraft = usePromptDraftController(draftStorage);
   const textEffects = useComposerTextEffects(promptDraft.storageKey);
@@ -2242,6 +2261,16 @@ export function NewThreadComposer({
                     </Button>
                   }
                 />
+              )) ??
+              (providerFallback === null ? null : (
+                <ProviderFallbackBanner
+                  fallback={providerFallback}
+                  fromName={providerLabel(providerFallback.fromProviderId)}
+                  toName={providerLabel(providerFallback.providerId)}
+                  onUseDefault={() => {
+                    setSelectedProviderId(providerFallback.fromProviderId);
+                  }}
+                />
               )),
           }}
           project={{
@@ -2305,6 +2334,9 @@ export function NewThreadComposer({
       activeModel,
       attachmentError,
       commandSource,
+      providerFallback,
+      providerLabel,
+      setSelectedProviderId,
       defaultMentionLinkResolver,
       effectiveEnvironmentValue,
       environmentProviders,

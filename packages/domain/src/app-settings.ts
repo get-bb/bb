@@ -33,6 +33,7 @@ export const appSettingsSchema = z
     resumeThreadsAfterRestart: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
+    fallbackProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
       z.string().min(1),
       completedTurnDisplaySchema,
@@ -73,6 +74,7 @@ export const defaultAppSettings: AppSettings = {
   resumeThreadsAfterRestart: false,
   providerOrder: [],
   defaultProviderId: null,
+  fallbackProviderId: null,
   providerCompletedTurnDisplay: {},
   streamerMode: false,
   allowFastServiceTier: true,
@@ -116,6 +118,7 @@ export const appSettingsUpdateSchema = z.union([
     showUnhandledProviderEvents: z.boolean().optional(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
     earlyAdopter: z.boolean().optional(),
+    fallbackProviderId: z.string().min(1).nullable().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
     idleProviderSessionTimeoutMinutes:
@@ -130,6 +133,7 @@ export const appSettingsUpdateSchema = z.union([
     showUnhandledProviderEvents: z.boolean(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
     earlyAdopter: z.boolean().optional(),
+    fallbackProviderId: z.string().min(1).nullable().optional(),
   }),
 ]);
 export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;

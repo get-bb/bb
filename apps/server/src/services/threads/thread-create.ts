@@ -60,6 +60,7 @@ import {
   resolveThreadEnvironmentPlacement,
 } from "./thread-environment-placement.js";
 import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
+import { resolveProviderFallback } from "./provider-fallback.js";
 import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
@@ -454,6 +455,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
+    rememberProjectDefaults: boolean;
     sendAt: number | undefined;
   },
 ) {
@@ -557,10 +559,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
     discardUnstartedThread(deps, thread);
     throw error;
   }
-  rememberProjectExecutionDefaultsForCreate(deps, {
-    execution,
-    request: args.request,
-  });
+  if (args.rememberProjectDefaults) {
+    rememberProjectExecutionDefaultsForCreate(deps, {
+      execution,
+      request: args.request,
+    });
+  }
   return getThreadSafe(deps, thread.id);
 }
 
@@ -598,6 +602,19 @@ function resolveCreateThreadPluginMetadata(
     pluginId: request.originPluginId,
     metadata: request.pluginMetadata,
   };
+}
+
+function isExplicitCreateExecutionValue(
+  request: {
+    executionInputSources?: Partial<Record<"model" | "providerId", string>>;
+    model?: string;
+    providerId?: string;
+  },
+  field: "model" | "providerId",
+): boolean {
+  if (request[field] === undefined) return false;
+  const sources = request.executionInputSources;
+  return sources === undefined || sources[field] === "explicit";
 }
 
 export async function createThreadFromRequest(
@@ -712,7 +729,7 @@ export async function createThreadFromRequest(
     }
   }
   await deps.providerRegistry.whenRegistrationsSettled();
-  const {
+  let {
     defaultModel: inheritedDefaultModel,
     providerId,
     providerFallbackCandidates,
@@ -802,6 +819,51 @@ export async function createThreadFromRequest(
   if (childHostId !== null) {
     await ensureHostSessionReadyForWork(deps, { hostId: childHostId });
   }
+  const providerFallback =
+    childHostId !== null &&
+    request.originKind === null &&
+    !isExplicitCreateExecutionValue(requestInput, "providerId") &&
+    !isExplicitCreateExecutionValue(requestInput, "model")
+      ? await resolveProviderFallback(deps, {
+          hostId: childHostId,
+          providerId,
+          model: requestedModel ?? inheritedDefaultModel,
+        })
+      : null;
+  if (providerFallback !== null) {
+    deps.logger.info(
+      {
+        projectId: request.projectId,
+        fromProviderId: providerFallback.fromProviderId,
+        providerId: providerFallback.providerId,
+        usageWindow: providerFallback.exhausted.label,
+        resetsAt: providerFallback.exhausted.resetsAt,
+      },
+      "Starting the thread on the fallback provider because the default is out of usage",
+    );
+    ({
+      defaultModel: inheritedDefaultModel,
+      providerId,
+      providerFallbackCandidates,
+      requestedModel,
+    } = resolveProjectExecutionDefaultsForCreate(deps, {
+      executionInputSources: { providerId: "explicit" },
+      parentThread: null,
+      projectId: request.projectId,
+      providerId: providerFallback.providerId,
+    }));
+    request.providerId = providerId;
+    delete request.sessionOptions;
+    if (request.executionInputSources !== undefined) {
+      const {
+        providerId: _providerSource,
+        model: _modelSource,
+        serviceTier: _serviceTierSource,
+        ...otherSources
+      } = request.executionInputSources;
+      request.executionInputSources = otherSources;
+    }
+  }
   const modelCatalogCwd =
     resolvedEnvironment !== null
       ? modelCatalogCwdForResolvedEnvironment(resolvedEnvironment)
@@ -877,6 +939,7 @@ export async function createThreadFromRequest(
   };
   const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
     ...createArgs,
+    rememberProjectDefaults: providerFallback === null,
     sendAt: request.sendAt,
   });
   const { initiator } = resolveDispatchAuthor({

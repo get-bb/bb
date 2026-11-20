@@ -77,8 +77,17 @@ export async function setProviderEnabled(
   if (!enabled) disabledProviderIds.push(id);
   setDisabledProviderIds(deps.db, disabledProviderIds);
   const current = getAppSettings(deps.db);
-  if (!enabled && current.defaultProviderId === id) {
-    setAppSettings(deps.db, { ...current, defaultProviderId: null });
+  if (
+    !enabled &&
+    (current.defaultProviderId === id || current.fallbackProviderId === id)
+  ) {
+    setAppSettings(deps.db, {
+      ...current,
+      defaultProviderId:
+        current.defaultProviderId === id ? null : current.defaultProviderId,
+      fallbackProviderId:
+        current.fallbackProviderId === id ? null : current.fallbackProviderId,
+    });
   }
   deps.hub.notifySystem(["config-changed"]);
   return providerManagementCatalog(deps, plugins);

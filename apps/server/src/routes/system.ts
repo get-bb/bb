@@ -328,6 +328,10 @@ export function registerSystemRoutes(
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
       earlyAdopter: settings.earlyAdopter ?? current.earlyAdopter,
+      fallbackProviderId:
+        settings.fallbackProviderId === undefined
+          ? current.fallbackProviderId
+          : settings.fallbackProviderId,
       onboardingCompletedAt:
         settings.onboardingCompletedAt === undefined
           ? current.onboardingCompletedAt

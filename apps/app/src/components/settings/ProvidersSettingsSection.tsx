@@ -125,16 +125,20 @@ function ProviderActionsMenu({
   provider,
   enabled,
   isDefault,
+  isFallback,
   disabled,
   onToggle,
   onMakeDefault,
+  onSetFallback,
 }: {
   provider: Pick<ProviderInfo, "displayName">;
   enabled: boolean;
   isDefault: boolean;
+  isFallback: boolean;
   disabled: boolean;
   onToggle: () => void;
   onMakeDefault: (() => void) | null;
+  onSetFallback: ((fallback: boolean) => void) | null;
 }) {
   return (
     <DropdownMenu>
@@ -158,6 +162,15 @@ function ProviderActionsMenu({
             }}
           >
             Default
+          </DropdownMenuCheckboxItem>
+        ) : null}
+        {enabled ? (
+          <DropdownMenuCheckboxItem
+            checked={isFallback}
+            disabled={disabled || onSetFallback === null}
+            onCheckedChange={(checked) => onSetFallback?.(checked)}
+          >
+            Fallback when the default is out of usage
           </DropdownMenuCheckboxItem>
         ) : null}
         <DropdownMenuItem
@@ -197,6 +210,7 @@ function SortableProviderRow({
   const isDefault =
     generalSettings.defaultProviderId === provider.id ||
     (generalSettings.defaultProviderId === null && index === 0);
+  const isFallback = generalSettings.fallbackProviderId === provider.id;
 
   return (
     <SettingsRow
@@ -216,11 +230,14 @@ function SortableProviderRow({
         <SettingsBadge>Unavailable</SettingsBadge>
       ) : isDefault ? (
         <SettingsBadge>Default</SettingsBadge>
+      ) : isFallback ? (
+        <SettingsBadge>Fallback</SettingsBadge>
       ) : null}
       <ProviderActionsMenu
         provider={provider}
         enabled
         isDefault={isDefault}
+        isFallback={isFallback}
         disabled={disabled}
         onToggle={onDisable}
         onMakeDefault={
@@ -228,6 +245,15 @@ function SortableProviderRow({
             ? () => {
                 void onGeneralSettingsChange({
                   defaultProviderId: provider.id,
+                });
+              }
+            : null
+        }
+        onSetFallback={
+          provider.available && !isDefault
+            ? (fallback) => {
+                void onGeneralSettingsChange({
+                  fallbackProviderId: fallback ? provider.id : null,
                 });
               }
             : null
@@ -359,6 +385,7 @@ export function ProvidersSettingsSection({
                   provider={provider}
                   enabled={false}
                   isDefault={false}
+                  isFallback={false}
                   disabled={controlsDisabled}
                   onToggle={() =>
                     setEnabled.mutate({
@@ -367,6 +394,7 @@ export function ProvidersSettingsSection({
                     })
                   }
                   onMakeDefault={null}
+                  onSetFallback={null}
                 />
               </SettingsRow>
             ))}

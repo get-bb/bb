@@ -5,7 +5,7 @@ import type {
   HostDaemonOnlineRpcResult,
 } from "@bb/host-daemon-contract";
 import type { SystemUsageLimitsQuery } from "@bb/server-contract";
-import type { AppDeps } from "../../types.js";
+import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
@@ -19,7 +19,7 @@ import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurren
 type UsageResult = HostDaemonOnlineRpcResult<"provider.usage">;
 const usageCaches = new WeakMap<object, AsyncTtlMemo<string, UsageResult>>();
 
-function providerUsageCache(deps: AppDeps) {
+function providerUsageCache(deps: LoggedWorkSessionDeps) {
   let cache = usageCaches.get(deps.db);
   if (!cache) {
     cache = createAsyncTtlMemo<string, UsageResult>({
@@ -45,7 +45,7 @@ function providerUsageCache(deps: AppDeps) {
 }
 
 export async function getProviderUsageLimits(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   query: SystemUsageLimitsQuery,
 ): Promise<ProviderUsageResponse> {
   const hostId = query.hostId ?? requirePrimaryHostId(deps);

@@ -53,6 +53,7 @@ const THREAD_CONVERSATION_OUTLINE_QUERY_KEY = "threadConversationOutline";
 const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
+const SYSTEM_PROVIDER_USAGE_QUERY_KEY = "systemProviderUsage";
 const SYSTEM_MACHINE_PROVIDERS_QUERY_KEY = "systemMachineProviders";
 const MACHINE_ENVIRONMENT_QUERY_KEY = "machine-environment";
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
@@ -109,7 +110,8 @@ export interface ArchivedThreadsListFilters {
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
 
 type HostsQueryKey =
-  readonly [typeof HOSTS_QUERY_KEY] | readonly [typeof HOSTS_QUERY_KEY, true];
+  | readonly [typeof HOSTS_QUERY_KEY]
+  | readonly [typeof HOSTS_QUERY_KEY, true];
 type HostQueryId = string | null | undefined;
 type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
@@ -946,6 +948,17 @@ export function environmentFilePreviewQueryKeyPrefix(
   environmentId: string,
 ): EnvironmentFilePreviewQueryKeyPrefix {
   return [ENVIRONMENT_FILE_PREVIEW_QUERY_KEY, environmentId];
+}
+
+export function systemProviderUsageQueryKey(args: {
+  hostId: string | null;
+  providerId: string;
+}) {
+  return [
+    SYSTEM_PROVIDER_USAGE_QUERY_KEY,
+    args.hostId,
+    args.providerId,
+  ] as const;
 }
 
 interface SystemProvidersQueryKeyArgs {

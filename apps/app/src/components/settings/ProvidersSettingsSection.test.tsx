@@ -202,6 +202,46 @@ describe("ProvidersSettingsSection", () => {
     });
   });
 
+  it("sets and clears the fallback provider, but not on the default", () => {
+    mocks.providers = [provider("alpha", "Alpha"), provider("beta", "Beta")];
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ProvidersSettingsSection
+        disabled={false}
+        generalSettings={{ ...defaultAppSettings, defaultProviderId: "alpha" }}
+        onGeneralSettingsChange={onChange}
+      />,
+    );
+    const fallbackItem = () =>
+      screen.getByRole("menuitemcheckbox", {
+        name: "Fallback when the default is out of usage",
+      });
+    openActions("Alpha");
+    expect(fallbackItem().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    openActions("Beta");
+    fireEvent.click(fallbackItem());
+    expect(onChange).toHaveBeenLastCalledWith({ fallbackProviderId: "beta" });
+
+    rerender(
+      <ProvidersSettingsSection
+        disabled={false}
+        generalSettings={{
+          ...defaultAppSettings,
+          defaultProviderId: "alpha",
+          fallbackProviderId: "beta",
+        }}
+        onGeneralSettingsChange={onChange}
+      />,
+    );
+    expect(screen.getByText("Fallback")).toBeTruthy();
+    openActions("Beta");
+    fireEvent.click(fallbackItem());
+    expect(onChange).toHaveBeenLastCalledWith({ fallbackProviderId: null });
+  });
+
   it("marks an unavailable provider and blocks it as the default", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),

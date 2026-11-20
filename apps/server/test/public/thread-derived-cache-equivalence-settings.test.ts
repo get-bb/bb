@@ -24,6 +24,7 @@ const VALUE_SETTING_CHANGES: {
 } = {
   providerOrder: () => ({ providerOrder: ["codex", PROVIDER_ID] }),
   defaultProviderId: () => ({ defaultProviderId: "codex" }),
+  fallbackProviderId: () => ({ fallbackProviderId: "codex" }),
   providerCompletedTurnDisplay: () => ({
     providerCompletedTurnDisplay: { [PROVIDER_ID]: "flat" },
   }),
