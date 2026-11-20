@@ -3,6 +3,7 @@ import {
   type ActiveProfileConnector,
 } from "@/lib/connection";
 import {
+  getDeviceAuthRegistry,
   nativeAppState,
   nativeCookieStore,
   nativeSessionCache,
@@ -18,6 +19,7 @@ export function getActiveProfileConnector(): ActiveProfileConnector {
       registry: getAppProfileClientRegistry(),
       appState: nativeAppState,
       cookieStore: nativeCookieStore,
+      deviceAuthFor: (profile) => getDeviceAuthRegistry().forProfile(profile),
       createSessionScheduler: () =>
         createSessionScheduler({
           cookieStore: nativeCookieStore,

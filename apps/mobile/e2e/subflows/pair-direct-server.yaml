@@ -1,8 +1,10 @@
 # Subflow: add the harness server when the app asks for one (the E2E build
-# resets profiles on every launch), then wait for the WebView shell. Assumes
-# the caller already cold-started the app with ./launch-app.yaml. Called with
+# resets profiles on every launch), sign in with a one-time pairing code, then
+# wait for the WebView shell. Assumes the caller already cold-started the app
+# with ./launch-app.yaml. Called with
 # `runFlow: ../subflows/pair-direct-server.yaml`; the caller's env supplies
-# SERVER_URL.
+# SERVER_URL, and PAIRING_CODE comes from `maestro test -e PAIRING_CODE=...`
+# (e2e/scripts/mint-pairing-code.sh mints one; each code works once).
 appId: app.getbb.mobile
 ---
 - runFlow:
@@ -19,6 +21,16 @@ appId: app.getbb.mobile
       # keyboardShouldPersistTaps="handled"); Maestro's hideKeyboard swipe is
       # unreliable on this screen since the bb connect row lengthened it.
       - tapOn: "Server URL"
+      - tapOn:
+          id: "add-server-submit"
+      - extendedWaitUntil:
+          visible:
+            id: "server-code-input"
+          timeout: 30000
+      - tapOn:
+          id: "server-code-input"
+      - inputText: "${PAIRING_CODE}"
+      - tapOn: "Sign-in code"
       - tapOn:
           id: "add-server-submit"
 - extendedWaitUntil:

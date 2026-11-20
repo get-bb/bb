@@ -10,10 +10,7 @@ const profileBaseSchema = z.object({
 });
 
 export const directServerAccessSchema = z
-  .object({
-    token: z.string().min(1),
-    cookieName: z.string().min(1),
-  })
+  .object({ credentialId: z.string().min(1) })
   .strict();
 
 const directServerProfileSchema = profileBaseSchema

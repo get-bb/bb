@@ -53,6 +53,12 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("renew-session"),
+      payload: z.object({}).strict(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("clipboard"),
       payload: z
         .object({ text: z.string().max(100000), imageUrl: httpUrlSchema })

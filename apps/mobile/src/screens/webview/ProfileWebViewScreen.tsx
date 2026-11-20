@@ -53,6 +53,7 @@ import { Button, EmptyStatePanel, Spinner, Text, toast } from "@/ui";
 import { describeError } from "@/lib/describe-error";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
+import { getActiveProfileConnector } from "@/app-shell/connector";
 import {
   SHELL_NATIVE_DOWNLOADS_SUPPORTED,
   useShellFileSaver,
@@ -158,6 +159,7 @@ export function ProfileWebViewScreen() {
       if (screen === "device-settings") openDeviceSettings();
       if (screen === "add-server") router.push("/settings/servers/add");
     },
+    onRenewSession: () => getActiveProfileConnector().renewBrowserSession(),
     onSwitchServer: (id) => {
       if (!canSwitchToProfile(profiles, activeProfile?.id ?? null, id)) return;
       router.setParams({ profileId: undefined, path: undefined });
@@ -257,6 +259,9 @@ export function ProfileWebViewScreen() {
         "open-external",
         "safe-area",
         "open-native",
+        ...(profile.mode === "direct" && profile.access !== null
+          ? (["device-sign-in"] as const)
+          : []),
       ],
       ...(SHELL_NATIVE_DOWNLOADS_SUPPORTED
         ? { nativeDownloads: true as const }

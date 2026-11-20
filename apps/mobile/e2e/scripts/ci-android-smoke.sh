@@ -42,5 +42,11 @@ curl -fsS http://127.0.0.1:41999/health
 adb reverse tcp:41999 tcp:41999
 adb install -r apps/mobile/build-output/bb-android-local.apk
 adb logcat -c
-maestro test --format junit --output "$artifacts/junit.xml" \
+pairing_code=$(
+  SERVER_URL=http://127.0.0.1:41999 \
+    SERVER_DATA_DIR="$(apps/mobile/e2e/scripts/backend-data-dir.sh "$artifacts/backend.log")" \
+    apps/mobile/e2e/scripts/mint-pairing-code.sh
+)
+maestro test -e "PAIRING_CODE=$pairing_code" \
+  --format junit --output "$artifacts/junit.xml" \
   --test-output-dir "$artifacts/maestro" apps/mobile/e2e/android/smoke.yaml

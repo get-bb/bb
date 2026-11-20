@@ -83,6 +83,11 @@ vi.mock("@/ui", () => ({
 }));
 
 vi.mock("./AppBadgeSync", () => ({ AppBadgeSync: () => null }));
+vi.mock("@/lib/native/device-auth", () => ({
+  getDeviceAuthRegistry: () => ({
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+  }),
+}));
 vi.mock("./expo-push-module", () => ({
   getPushNotificationsModule: () => ({
     addTokenListener: mocks.addTokenListener,

@@ -13,6 +13,11 @@ import {
 import type { RealtimeSocketFactory } from "../realtime/socket";
 import { createProfileClientRegistry } from "../sdk/client-registry";
 import type { CookieStoreLike } from "../session/cookie-store";
+import {
+  DeviceAccessRevokedError,
+  type DeviceBrowserSession,
+  type DirectDeviceAuth,
+} from "../device-auth";
 import type { StoredSession } from "../session/session-cache";
 import { createSessionScheduler } from "../session/session-scheduler";
 import {
@@ -65,8 +70,54 @@ function fakeAppState(): AppStateLike & {
   };
 }
 
+interface FakeDeviceAuth extends DirectDeviceAuth {
+  mints: number;
+  revoke(): void;
+}
+
+function fakeDeviceAuth(
+  sessions: DeviceBrowserSession[] = [
+    {
+      token: "bbs_child",
+      cookieName: "bb_session_41999",
+      expiresAt: Date.now() + 60 * 60_000,
+    },
+  ],
+): FakeDeviceAuth {
+  const listeners = new Set<() => void>();
+  let revoked = false;
+  const auth: FakeDeviceAuth = {
+    profileId: "d1",
+    serverOrigin: "http://127.0.0.1:41999",
+    credentialId: "acc_phone",
+    mints: 0,
+    fetch: (input, init) => fetch(input, init),
+    async mintBrowserSession() {
+      if (revoked) throw new DeviceAccessRevokedError();
+      auth.mints += 1;
+      const next = sessions[Math.min(auth.mints - 1, sessions.length - 1)];
+      if (next === undefined) throw new Error("no session");
+      return next;
+    },
+    websocketUrl: async (url) => url,
+    onRevoked(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    revoke() {
+      revoked = true;
+      for (const listener of listeners) listener();
+    },
+  };
+  return auth;
+}
+
 interface SetupOptions {
   cookieStore?: CookieStoreLike;
+  deviceAuth?: DirectDeviceAuth | null;
+  now?: () => number;
   fallbackResponse?: () => Response;
   onSocket?: (socket: FakeSocket) => void;
   stored?: StoredSession;
@@ -99,6 +150,9 @@ function setup(options: SetupOptions = {}) {
     registry,
     appState,
     cookieStore: options.cookieStore ?? { set: async () => true },
+    deviceAuthFor: async () =>
+      options.deviceAuth === undefined ? fakeDeviceAuth() : options.deviceAuth,
+    ...(options.now === undefined ? {} : { now: options.now }),
     createSessionScheduler: () => {
       const scheduler = createSessionScheduler({
         cookieStore: { set: async () => true },
@@ -178,7 +232,7 @@ describe("createActiveProfileConnector", () => {
     expect(connector.getSnapshot()?.client).toBe(snap?.client);
   });
 
-  it("installs a signed-in direct profile's cookie before opening the socket", async () => {
+  it("installs the device's short WebView session before opening the socket", async () => {
     let installCookie: () => void = () => {};
     const installed: { name: string; value: string; webKit: boolean }[] = [];
     const { sockets, connector } = setup({
@@ -191,49 +245,71 @@ describe("createActiveProfileConnector", () => {
         },
       },
     });
-    connector.activate({
-      ...direct,
-      access: { token: "bbs_phone", cookieName: "bb_session_41999" },
-    });
+    connector.activate({ ...direct, access: { credentialId: "acc_phone" } });
     expect(connector.getSnapshot()?.session.status).toBe("authenticating");
+    await flush();
     expect(sockets.sockets).toHaveLength(0);
     installCookie();
     await flush();
     installCookie();
     await flush();
     expect(installed).toEqual([
-      { name: "bb_session_41999", value: "bbs_phone", webKit: false },
-      { name: "bb_session_41999", value: "bbs_phone", webKit: true },
+      { name: "bb_session_41999", value: "bbs_child", webKit: false },
+      { name: "bb_session_41999", value: "bbs_child", webKit: true },
     ]);
     expect(sockets.sockets).toHaveLength(1);
     expect(connector.getSnapshot()?.session).toEqual({ status: "idle" });
   });
 
-  it("asks a signed-in direct profile to sign in again once the server stops accepting it", async () => {
-    const { sockets, connector, fetchResponses, registry } = setup();
-    const signedIn = {
-      ...direct,
-      access: { token: "bbs_phone", cookieName: "bb_session_41999" },
-    };
-    connector.activate(signedIn);
+  it("re-mints the WebView session when the app returns with less than 15 minutes left", async () => {
+    let now = 1_000_000;
+    const deviceAuth = fakeDeviceAuth([
+      {
+        token: "bbs_a",
+        cookieName: "bb_session_41999",
+        expiresAt: now + 60 * 60_000,
+      },
+      {
+        token: "bbs_b",
+        cookieName: "bb_session_41999",
+        expiresAt: now + 2 * 60 * 60_000,
+      },
+    ]);
+    const { connector, appState } = setup({ deviceAuth, now: () => now });
+    connector.activate({ ...direct, access: { credentialId: "acc_phone" } });
+    await settle();
+    expect(deviceAuth.mints).toBe(1);
+    appState.emit("active");
+    await settle();
+    expect(deviceAuth.mints).toBe(1);
+    now += 50 * 60_000;
+    appState.emit("active");
+    await settle();
+    expect(deviceAuth.mints).toBe(2);
+  });
+
+  it("asks a signed-in direct profile to sign in again once the device is revoked", async () => {
+    const deviceAuth = fakeDeviceAuth();
+    const { sockets, connector } = setup({ deviceAuth });
+    connector.activate({ ...direct, access: { credentialId: "acc_phone" } });
     await settle();
     const socket = sockets.latest();
     socket.open();
-    fetchResponses.push(
-      new Response(JSON.stringify({ code: "unauthenticated" }), {
-        status: 401,
-      }),
-      new Response(JSON.stringify({ authenticated: false }), { status: 200 }),
-    );
-    await registry
-      .getClientForProfile(signedIn)
-      .fetch(`${signedIn.serverUrl}/api/v1/projects`);
+    deviceAuth.revoke();
     await settle();
     expect(connector.getSnapshot()?.session).toEqual({
       status: "auth-required",
       detail: DIRECT_ACCESS_REVOKED_DETAIL,
     });
     expect(socket.closes).toHaveLength(1);
+  });
+
+  it("asks to sign in again when this phone's stored key is missing", async () => {
+    const { sockets, connector } = setup({ deviceAuth: null });
+    connector.activate({ ...direct, access: { credentialId: "acc_phone" } });
+    await settle();
+    expect(sockets.sockets).toHaveLength(0);
+    expect(connector.getSnapshot()?.session.status).toBe("auth-required");
   });
 
   it("tears the previous socket down when switching profiles and when deactivating", () => {

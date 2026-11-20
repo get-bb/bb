@@ -66,7 +66,7 @@ describe("profile store", () => {
     const { store, storage } = makeStore();
     const a = await store.addProfile(direct);
     const b = await store.addProfile(connect);
-    const access = { token: "bbs_token", cookieName: "bb_session_38886" };
+    const access = { credentialId: "acc_phone" };
     await store.updateProfile(a.id, { access });
     expect(
       JSON.parse(storage.entries.get(profileStorageKey(a.id))!),

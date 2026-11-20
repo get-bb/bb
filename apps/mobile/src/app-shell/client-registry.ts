@@ -1,4 +1,5 @@
-import { getProfileStore } from "@/lib/native";
+import { createTicketSocketFactory } from "@/lib/device-auth";
+import { getDeviceAuthRegistry, getProfileStore } from "@/lib/native";
 import { createServerMovedProfileHandler } from "@/lib/profiles/server-moved";
 import {
   createProfileClientRegistry,
@@ -16,7 +17,16 @@ export function getAppProfileClientRegistry(): ProfileClientRegistry {
         toast.info(message);
       },
     });
+    const deviceAuth = getDeviceAuthRegistry();
     instance = createProfileClientRegistry({
+      sdk: {
+        fetch: (input, init) => deviceAuth.fetch(input, init),
+        realtime: {
+          socketFactory: createTicketSocketFactory({
+            resolveUrl: (url) => deviceAuth.socketUrlResolver(url),
+          }),
+        },
+      },
       onServerMoved: (profileId, moved) => {
         serverMoved.handle(profileId, moved).catch((error: unknown) => {
           toast.error("Could not update the server address", {

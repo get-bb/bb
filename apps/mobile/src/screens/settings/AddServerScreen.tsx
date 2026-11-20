@@ -7,9 +7,10 @@ import {
   checkDirectServer,
   pairDirectServer,
   validateDirectServerUrl,
-  type DirectServerAccess,
   type DirectServerCheck,
 } from "@/lib/profiles";
+import type { DeviceAccessRecord } from "@/lib/device-auth";
+import { getDeviceAccessStore, nativeDeviceCrypto } from "@/lib/native";
 import { describeError } from "@/lib/describe-error";
 import { describeThisDevice } from "@/lib/device-label";
 import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
@@ -83,12 +84,23 @@ export function AddServerScreen() {
 
   const save = async (
     serverUrl: string,
-    access: DirectServerAccess | null,
+    device: DeviceAccessRecord | null,
   ): Promise<void> => {
     setSubmit({ phase: "saving" });
+    const access =
+      device === null ? null : { credentialId: device.credentialId };
     try {
+      if (device !== null) {
+        await getDeviceAccessStore().write(device.credentialId, device);
+      }
       if (repair !== null) {
         await updateProfile(repair.id, { access });
+        if (
+          repair.access !== null &&
+          repair.access.credentialId !== device?.credentialId
+        ) {
+          await getDeviceAccessStore().remove(repair.access.credentialId);
+        }
         await setActiveProfile(repair.id);
         toast.success(`Signed in to ${repair.label} again`);
       } else {
@@ -115,7 +127,7 @@ export function AddServerScreen() {
   const settle = async (check: DirectServerCheck): Promise<void> => {
     switch (check.kind) {
       case "ready":
-        await save(check.serverUrl, check.access);
+        await save(check.serverUrl, check.device);
         return;
       case "needs-code":
         setSubmit({
@@ -149,6 +161,7 @@ export function AddServerScreen() {
         serverUrl,
         code,
         label: `bb mobile on ${describeThisDevice()}`,
+        crypto: nativeDeviceCrypto,
         fetchImpl: pairingFetch,
       }),
     );

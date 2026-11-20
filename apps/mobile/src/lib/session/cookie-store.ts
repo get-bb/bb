@@ -1,7 +1,5 @@
 import type { DesktopSession } from "@bb/connect-client";
-import type { DirectServerAccess } from "../profiles/profile";
-
-const DIRECT_ACCESS_COOKIE_LIFETIME_MS = 400 * 24 * 60 * 60 * 1000;
+import type { DeviceBrowserSession } from "../device-auth";
 
 export interface SessionCookieSpec {
   name: string;
@@ -52,20 +50,19 @@ function cookieExpiry(at: number): string {
   return new Date(at).toISOString().replace(/Z$/u, "+00:00");
 }
 
-export function directAccessCookieSpec(
-  access: DirectServerAccess,
+export function deviceBrowserCookieSpec(
+  session: DeviceBrowserSession,
   serverUrl: string,
-  now: number,
 ): SessionCookieSpec {
   const url = new URL(serverUrl);
   return {
-    name: access.cookieName,
-    value: access.token,
+    name: session.cookieName,
+    value: session.token,
     domain: url.hostname,
     path: "/",
     secure: url.protocol === "https:",
     httpOnly: true,
-    expires: cookieExpiry(now + DIRECT_ACCESS_COOKIE_LIFETIME_MS),
+    expires: cookieExpiry(session.expiresAt),
   };
 }
 
@@ -90,14 +87,14 @@ export async function installSessionCookie(
   );
 }
 
-export async function installDirectAccessCookie(
+export async function installDeviceBrowserCookie(
   cookieStore: CookieStoreLike,
   serverUrl: string,
-  access: DirectServerAccess,
+  session: DeviceBrowserSession,
 ): Promise<void> {
   await installCookieSpec(
     cookieStore,
     serverUrl,
-    directAccessCookieSpec(access, serverUrl, Date.now()),
+    deviceBrowserCookieSpec(session, serverUrl),
   );
 }

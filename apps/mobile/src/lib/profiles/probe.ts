@@ -20,7 +20,12 @@ const probeConfigSchema = z.object({
 const healthSchema = z.object({ ok: z.literal(true) });
 
 const signInRequiredSchema = z.object({
-  code: z.enum(["unauthenticated", "credential_requires_https"]),
+  code: z.enum([
+    "unauthenticated",
+    "credential_requires_https",
+    "invalid_dpop_proof",
+    "access_token_expired",
+  ]),
 });
 
 export type ProbeFetch = (
@@ -52,15 +57,11 @@ async function getJson(
   fetchImpl: ProbeFetch,
   url: string,
   timeoutMs: number,
-  accessToken: string | null,
 ): Promise<GetJsonResult> {
   try {
     const response = await fetchImpl(url, {
       headers: {
         [MOBILE_APP_SURFACE_HEADER.name]: MOBILE_APP_SURFACE_HEADER.value,
-        ...(accessToken === null
-          ? {}
-          : { authorization: `Bearer ${accessToken}` }),
       },
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -94,7 +95,6 @@ async function getJson(
 export async function probeServer(
   serverUrl: string,
   fetchImpl: ProbeFetch,
-  accessToken: string | null,
 ): Promise<ProbeServerResult> {
   const base = serverUrl.replace(/\/+$/u, "");
 
@@ -102,7 +102,6 @@ export async function probeServer(
     fetchImpl,
     `${base}/health`,
     DEFAULT_PROBE_TIMEOUT_MS,
-    null,
   );
   if (!health.ok) {
     return { ok: false, serverUrl: base, stage: "health", error: health.error };
@@ -120,7 +119,6 @@ export async function probeServer(
     fetchImpl,
     `${base}/api/v1/system/config`,
     DEFAULT_PROBE_TIMEOUT_MS,
-    accessToken,
   );
   if (!config.ok) {
     const signIn = signInRequiredSchema.safeParse(config.body);
@@ -132,9 +130,7 @@ export async function probeServer(
         error:
           signIn.data.code === "credential_requires_https"
             ? "This phone's sign-in was made over HTTPS. Use the HTTPS address or sign in again."
-            : accessToken === null
-              ? "This bb needs a sign-in code."
-              : "This phone's sign-in was not accepted.",
+            : "This bb needs a sign-in code.",
       };
     }
     return { ok: false, serverUrl: base, stage: "config", error: config.error };

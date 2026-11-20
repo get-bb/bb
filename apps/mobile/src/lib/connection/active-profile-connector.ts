@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { describeError } from "../describe-error";
-import type {
-  DirectServerAccess,
-  DirectServerProfile,
-  ServerProfile,
-} from "../profiles/profile";
+import {
+  DeviceAccessRevokedError,
+  type DirectDeviceAuth,
+} from "../device-auth";
+import type { DirectServerProfile, ServerProfile } from "../profiles/profile";
 import { refetchQueriesRejectedBeforeSession } from "../query/session-invalidation";
 import type { AppStateLike } from "../realtime/app-state";
 import type {
@@ -14,7 +14,7 @@ import type {
 import { connectProfileClient } from "../sdk/connect-profile-client";
 import { bindSessionToAppState } from "../session/app-state";
 import {
-  installDirectAccessCookie,
+  installDeviceBrowserCookie,
   type CookieStoreLike,
 } from "../session/cookie-store";
 import type {
@@ -31,6 +31,7 @@ export interface ActiveProfileConnection {
 export interface ActiveProfileConnector {
   activate(profile: ServerProfile | null): void;
   getSnapshot(): ActiveProfileConnection | null;
+  renewBrowserSession(): Promise<boolean>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -39,6 +40,8 @@ export interface CreateActiveProfileConnectorDeps {
   appState: AppStateLike;
   cookieStore: CookieStoreLike;
   createSessionScheduler: () => SessionScheduler;
+  deviceAuthFor: (profile: ServerProfile) => Promise<DirectDeviceAuth | null>;
+  now?: () => number;
 }
 
 const IDLE_SESSION: SessionState = { status: "idle" };
@@ -51,6 +54,9 @@ export const AUTH_FAILURE_STREAK_WINDOW_MS = 60_000;
 export const AUTH_FAILURE_BREAKER_COOLDOWN_MS = 60_000;
 export const DIRECT_ACCESS_REVOKED_DETAIL =
   "This bb no longer accepts this phone’s sign-in. Sign in again with a new code.";
+export const DEVICE_BROWSER_SESSION_REFRESH_MS = 45 * 60_000;
+export const DEVICE_BROWSER_SESSION_MIN_REMAINING_MS = 15 * 60_000;
+export const DEVICE_BROWSER_SESSION_RETRY_MS = 30_000;
 const accessSessionSchema = z.object({ authenticated: z.boolean() });
 const AUTH_FAILURE_BREAKER_DETAIL =
   "The session was minted but the server keeps rejecting it; check the device clock or pair again";
@@ -58,7 +64,7 @@ const AUTH_FAILURE_BREAKER_DETAIL =
 function connectionIdentity(profile: ServerProfile): string {
   return profile.mode === "connect"
     ? `${profile.id}\0${profile.serverUrl}\0${profile.credential}`
-    : `${profile.id}\0${profile.serverUrl}\0${profile.access?.token ?? ""}`;
+    : `${profile.id}\0${profile.serverUrl}\0${profile.access?.credentialId ?? ""}`;
 }
 
 async function directAccessAccepted(client: ProfileClient): Promise<boolean> {
@@ -82,6 +88,7 @@ export function createActiveProfileConnector(
   let snapshot: ActiveProfileConnection | null = null;
   let identity: string | null = null;
   let teardown: (() => void) | null = null;
+  let renewCurrent: (() => Promise<boolean>) | null = null;
 
   function setSnapshot(next: ActiveProfileConnection | null): void {
     snapshot = next;
@@ -105,21 +112,100 @@ export function createActiveProfileConnector(
       setSnapshot({ profile, client, session: IDLE_SESSION });
       return;
     }
-    activateSignedInDirect(profile, profile.access, client);
+    activateSignedInDirect(profile, client);
   }
 
   function activateSignedInDirect(
     profile: DirectServerProfile,
-    access: DirectServerAccess,
     client: ProfileClient,
   ): void {
+    const now = deps.now ?? Date.now;
     let disposed = false;
     let checking = false;
     let disconnectRealtime: (() => void) | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let sessionExpiresAt = 0;
+    let unsubscribeRevoked: (() => void) | null = null;
     const publishSession = (session: SessionState): void => {
       if (disposed || snapshot?.client !== client) return;
       setSnapshot({ ...snapshot, session });
     };
+    const clearRefresh = (): void => {
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      refreshTimer = null;
+    };
+    const signedOut = (): void => {
+      clearRefresh();
+      disconnectRealtime?.();
+      disconnectRealtime = null;
+      publishSession({
+        status: "auth-required",
+        detail: DIRECT_ACCESS_REVOKED_DETAIL,
+      });
+    };
+    const scheduleRefresh = (delayMs: number): void => {
+      clearRefresh();
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refreshBrowserSession(auth);
+      }, delayMs);
+    };
+    let auth: DirectDeviceAuth | null = null;
+    const refreshBrowserSession = async (
+      current: DirectDeviceAuth | null,
+    ): Promise<void> => {
+      if (disposed || current === null) return;
+      try {
+        const session = await current.mintBrowserSession();
+        await installDeviceBrowserCookie(
+          deps.cookieStore,
+          profile.serverUrl,
+          session,
+        );
+        if (disposed) return;
+        sessionExpiresAt = session.expiresAt;
+        scheduleRefresh(
+          Math.min(
+            DEVICE_BROWSER_SESSION_REFRESH_MS,
+            Math.max(
+              DEVICE_BROWSER_SESSION_RETRY_MS,
+              session.expiresAt -
+                now() -
+                DEVICE_BROWSER_SESSION_MIN_REMAINING_MS,
+            ),
+          ),
+        );
+        if (disconnectRealtime === null) {
+          disconnectRealtime = connectProfileClient(client, deps.appState);
+          publishSession(IDLE_SESSION);
+        }
+      } catch (error) {
+        if (disposed) return;
+        if (error instanceof DeviceAccessRevokedError) {
+          signedOut();
+          return;
+        }
+        scheduleRefresh(DEVICE_BROWSER_SESSION_RETRY_MS);
+        if (disconnectRealtime === null) {
+          publishSession({
+            status: "error",
+            detail: `Could not start this phone’s session: ${describeError(error)}`,
+            retryAt: now() + DEVICE_BROWSER_SESSION_RETRY_MS,
+          });
+        }
+      }
+    };
+    const appStateSubscription = deps.appState.addEventListener(
+      "change",
+      (state) => {
+        if (
+          state === "active" &&
+          sessionExpiresAt - now() < DEVICE_BROWSER_SESSION_MIN_REMAINING_MS
+        ) {
+          void refreshBrowserSession(auth);
+        }
+      },
+    );
     const unsubscribeAuthFailure = client.onAuthFailure((failure) => {
       if (checking || disposed) return;
       if (failure.source === "fetch" && failure.status !== 401) return;
@@ -127,35 +213,44 @@ export function createActiveProfileConnector(
       void directAccessAccepted(client)
         .then((accepted) => {
           if (accepted || disposed) return;
-          disconnectRealtime?.();
-          disconnectRealtime = null;
-          publishSession({
-            status: "auth-required",
-            detail: DIRECT_ACCESS_REVOKED_DETAIL,
-          });
+          signedOut();
         })
         .finally(() => {
           checking = false;
         });
     });
+    renewCurrent = async () => {
+      const before = sessionExpiresAt;
+      await refreshBrowserSession(auth);
+      return !disposed && sessionExpiresAt > before && sessionExpiresAt > now();
+    };
     teardown = () => {
       disposed = true;
+      renewCurrent = null;
+      clearRefresh();
+      appStateSubscription.remove();
       unsubscribeAuthFailure();
+      unsubscribeRevoked?.();
       disconnectRealtime?.();
       disconnectRealtime = null;
     };
     setSnapshot({ profile, client, session: { status: "authenticating" } });
-    installDirectAccessCookie(deps.cookieStore, profile.serverUrl, access).then(
-      () => {
+    deps.deviceAuthFor(profile).then(
+      (resolved) => {
         if (disposed) return;
-        disconnectRealtime = connectProfileClient(client, deps.appState);
-        publishSession(IDLE_SESSION);
+        if (resolved === null) {
+          signedOut();
+          return;
+        }
+        auth = resolved;
+        unsubscribeRevoked = resolved.onRevoked(signedOut);
+        void refreshBrowserSession(resolved);
       },
       (error: unknown) => {
         publishSession({
           status: "error",
-          detail: `Could not store this phone’s sign-in: ${describeError(error)}`,
-          retryAt: Date.now(),
+          detail: `Could not read this phone’s sign-in: ${describeError(error)}`,
+          retryAt: now(),
         });
       },
     );
@@ -322,6 +417,7 @@ export function createActiveProfileConnector(
       }
     },
     getSnapshot: () => snapshot,
+    renewBrowserSession: () => renewCurrent?.() ?? Promise.resolve(false),
     subscribe(listener) {
       listeners.add(listener);
       return () => {

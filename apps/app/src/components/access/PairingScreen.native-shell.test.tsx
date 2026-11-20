@@ -15,7 +15,7 @@ const posted: string[] = [];
 
 function installDirectShell(): void {
   const handshake: NativeShellHandshake = {
-    bridgeVersion: 5,
+    bridgeVersion: 6,
     appVersion: "0.40.0",
     platform: "ios",
     profileMode: "direct",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directAccessCookieSpec, sessionCookieSpec } from "./cookie-store";
+import { deviceBrowserCookieSpec, sessionCookieSpec } from "./cookie-store";
 
 const session = {
   cookie: {
@@ -68,23 +68,26 @@ describe("sessionCookieSpec", () => {
   });
 });
 
-describe("directAccessCookieSpec", () => {
-  it("scopes the sign-in to the server host and marks it Secure only for https", () => {
-    const access = { token: "bbs_phone", cookieName: "bb_session_38886" };
-    const now = Date.UTC(2026, 10, 19);
+describe("deviceBrowserCookieSpec", () => {
+  it("scopes the WebView's short session to the server host, its own expiry, and Secure only for https", () => {
+    const session = {
+      token: "bbs_child",
+      cookieName: "bb_session_38886",
+      expiresAt: Date.UTC(2026, 10, 19, 13),
+    };
     expect(
-      directAccessCookieSpec(access, "http://192.168.1.20:38886", now),
+      deviceBrowserCookieSpec(session, "http://192.168.1.20:38886"),
     ).toEqual({
       name: "bb_session_38886",
-      value: "bbs_phone",
+      value: "bbs_child",
       domain: "192.168.1.20",
       path: "/",
       secure: false,
       httpOnly: true,
-      expires: "2027-12-24T00:00:00.000+00:00",
+      expires: "2026-11-19T13:00:00.000+00:00",
     });
     expect(
-      directAccessCookieSpec(access, "https://mac.tail.ts.net", now),
+      deviceBrowserCookieSpec(session, "https://mac.tail.ts.net"),
     ).toMatchObject({ domain: "mac.tail.ts.net", secure: true });
   });
 });

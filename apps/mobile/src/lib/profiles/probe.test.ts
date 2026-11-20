@@ -32,11 +32,7 @@ describe("probeServer", () => {
       "/health": { body: { ok: true } },
       "/api/v1/system/config": { body: config },
     });
-    const result = await probeServer(
-      "http://192.168.1.20:20304/",
-      fetchImpl,
-      null,
-    );
+    const result = await probeServer("http://192.168.1.20:20304/", fetchImpl);
     expect(result).toEqual({
       ok: true,
       serverUrl: "http://192.168.1.20:20304",
@@ -55,11 +51,7 @@ describe("probeServer", () => {
         body: { serverUrl: "https://mac.tail.ts.net/", primaryHostId: null },
       },
     });
-    const result = await probeServer(
-      "http://192.168.1.20:20304",
-      fetchImpl,
-      null,
-    );
+    const result = await probeServer("http://192.168.1.20:20304", fetchImpl);
     expect(result).toEqual({
       ok: true,
       serverUrl: "http://192.168.1.20:20304",
@@ -71,7 +63,7 @@ describe("probeServer", () => {
     const fetchImpl = fakeFetch({
       "/health": { throws: new TypeError("Network request failed") },
     });
-    expect(await probeServer("http://10.0.0.5:1", fetchImpl, null)).toEqual({
+    expect(await probeServer("http://10.0.0.5:1", fetchImpl)).toEqual({
       ok: false,
       serverUrl: "http://10.0.0.5:1",
       stage: "health",
@@ -81,9 +73,7 @@ describe("probeServer", () => {
 
   it("rejects a non-bb server that answers /health with something else", async () => {
     const fetchImpl = fakeFetch({ "/health": { body: "<html>" } });
-    expect(
-      await probeServer("https://example.com", fetchImpl, null),
-    ).toMatchObject({
+    expect(await probeServer("https://example.com", fetchImpl)).toMatchObject({
       ok: false,
       stage: "health",
     });
@@ -95,7 +85,7 @@ describe("probeServer", () => {
       "/health": { body: { ok: true } },
       "/api/v1/system/config": { status: 401 },
     });
-    expect(await probeServer("https://me.getbb.app", fetchImpl, null)).toEqual({
+    expect(await probeServer("https://me.getbb.app", fetchImpl)).toEqual({
       ok: false,
       serverUrl: "https://me.getbb.app",
       stage: "config",
