@@ -1,3 +1,4 @@
+import { usageMetadataSchema } from "./src/request-usage.js";
 import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
@@ -84,6 +85,7 @@ export default function plugin(bb: BbPluginApi) {
     },
     ...CLAUDE_NATIVE_ROOTS_DECLARATION,
     maintenance: { health: true, usage: true, installation: true },
+    extensionKinds: { usage: { state: usageMetadataSchema } },
     capabilities: {
       supportsServiceTier: true,
       supportsNativeUserQuestion: true,

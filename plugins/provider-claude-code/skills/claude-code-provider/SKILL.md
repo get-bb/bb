@@ -38,6 +38,19 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   subscription accounts need usage credits. It is billed at premium rates.
   The provider passes the selection as a session-scoped SDK setting, so it
   does not change the user's Claude defaults.
+- Choose **Prompt cache TTL** in the model picker, or pass
+  `--option promptCacheTtl=1h` to `bb thread spawn`; change it later with
+  `bb thread options <thread-id> --set promptCacheTtl=5m`. `auto` (the
+  default) leaves Claude Code's own settings in effect; `5m` and `1h` set the
+  session's `promptCacheTtl` for the main conversation, not subagents. API
+  cache writes cost 1.25× input for 5 minutes and 2× for 1 hour. A change
+  restarts the thread's Claude process before its next turn, preserving
+  context. Requires Claude Code 2.1.242 or later.
+- Each main-agent API request reports its own token usage, and a
+  `provider-claude-code/usage` thread state names its message id, model, and
+  5-minute and 1-hour cache-write counts. Usage the SDK reports only in the
+  turn total (subagents, compaction) follows as one `aggregate-remainder`
+  report. Plugins read both from thread events.
 - `sandboxEnabled` defaults to `true`. In Accept Edits and Approve for me modes
   bb runs Claude Code's Bash commands in its sandbox. Set it to `false` to use
   Claude Code's own command approvals and sandbox settings instead. A change

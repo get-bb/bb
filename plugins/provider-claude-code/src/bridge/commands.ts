@@ -21,6 +21,7 @@ import {
   providerInstallationStatusParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { promptCacheTtlSchema } from "../prompt-cache.js";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
 
 const bridgeInstructionModeSchema = z.enum(instructionModeValues);
@@ -41,6 +42,7 @@ const bridgeClaudePluginsSchema = z
   .optional();
 
 export const claudeThreadStartParamsSchema = z.object({
+  promptCacheTtl: promptCacheTtlSchema.default("auto"),
   threadId: z.string(),
   cwd: z.string(),
   baseInstructions: z.string(),
@@ -81,6 +83,7 @@ export const claudeThreadForkParamsSchema =
   });
 
 export const claudeTurnStartParamsSchema = z.object({
+  promptCacheTtl: promptCacheTtlSchema.optional(),
   threadId: z.string(),
   providerThreadId: z.string().nullable(),
   input: z.array(z.unknown()),

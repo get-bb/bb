@@ -465,6 +465,7 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "item/completed:agentMessage",
   "thread/contextWindowUsage/updated",
+  "thread/extensionState/updated",
   "thread/tokenUsage/updated",
   "turn/completed",
   "turn/started",
@@ -474,6 +475,7 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "item/completed:agentMessage",
   "thread/contextWindowUsage/updated",
+  "thread/extensionState/updated",
   "thread/tokenUsage/updated",
   "turn/completed",
   "turn/started",
@@ -483,6 +485,7 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "thread/contextWindowUsage/updated",
   "item/completed:agentMessage",
   "thread/contextWindowUsage/updated",
+  "thread/extensionState/updated",
   "thread/tokenUsage/updated",
   "turn/completed",
 ];

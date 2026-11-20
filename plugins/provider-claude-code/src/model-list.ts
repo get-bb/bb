@@ -9,6 +9,7 @@ import {
   type ModelReasoningEffort,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import { promptCacheTtlOption } from "./prompt-cache.js";
 
 const CLAUDE_MODEL_ID_PATTERN =
   /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/;
@@ -68,6 +69,7 @@ function buildModel(
     supportedReasoningEfforts,
     defaultReasoningEffort,
     isDefault: false,
+    sessionOptions: [promptCacheTtlOption()],
   };
 }
 
