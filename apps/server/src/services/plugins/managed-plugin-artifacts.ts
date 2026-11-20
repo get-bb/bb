@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { derivePluginId } from "@bb/domain";
+import { CORE_PLUGIN_DIRECTORIES, derivePluginId } from "@bb/domain";
 import {
   createPluginArtifact,
   getInstalledPlugin,
@@ -446,7 +446,12 @@ export function createManagedPluginArtifacts(
     listed: string | undefined,
     packageName: string,
   ): Promise<string> {
-    const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
+    const registryProbe = join(
+      deps.dataDir,
+      "plugins",
+      CORE_PLUGIN_DIRECTORIES.npmPackages,
+      ".registry",
+    );
     await mkdir(registryProbe, { recursive: true });
     return listed ?? (await resolveNpmRegistry(registryProbe, packageName));
   }
