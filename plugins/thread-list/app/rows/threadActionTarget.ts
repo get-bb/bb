@@ -13,6 +13,7 @@ export function toThreadActionTarget(
     pinnedAt: thread.pinnedAt,
     sectionId: thread.sectionId,
     isUnread: thread.isUnread,
+    isHidden: thread.isHidden,
     status: thread.status,
     environment:
       thread.environment?.id == null

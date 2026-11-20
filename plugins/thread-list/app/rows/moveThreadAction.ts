@@ -96,7 +96,8 @@ export const moveThreadAction: PluginThreadActionRegistration<
     if (
       destinations === null ||
       thread.parentThreadId !== null ||
-      thread.archivedAt !== null
+      thread.archivedAt !== null ||
+      thread.isHidden
     ) {
       return null;
     }

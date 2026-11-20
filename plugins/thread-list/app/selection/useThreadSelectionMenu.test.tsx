@@ -44,6 +44,7 @@ function Selection() {
           pinnedAt: null,
           sectionId: null,
           isUnread: false,
+          isHidden: false,
           status: "idle",
           environment: null,
         }}

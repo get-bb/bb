@@ -46,6 +46,7 @@ function makeTarget(
     pinnedAt: null,
     sectionId: "sec_a",
     isUnread: false,
+    isHidden: false,
     status: "idle",
     environment: null,
     ...overrides,
@@ -181,6 +182,7 @@ describe("Move to section", () => {
   it.each([
     ["a child thread", makeTarget({ parentThreadId: "thr_parent" })],
     ["an archived thread", makeTarget({ archivedAt: 5 })],
+    ["a hidden thread", makeTarget({ isHidden: true })],
   ])("is hidden for %s", async (_label, thread) => {
     const { item, hydrated } = renderMove();
     await hydrated();

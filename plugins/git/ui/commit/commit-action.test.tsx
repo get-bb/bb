@@ -74,6 +74,7 @@ function target(
     pinnedAt: null,
     sectionId: null,
     isUnread: false,
+    isHidden: false,
     status: "idle",
     environment: { id: "env-1", path: "/work/env-1" },
     ...overrides,
