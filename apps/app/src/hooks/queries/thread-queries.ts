@@ -23,6 +23,7 @@ import { useDebouncedValue } from "../useDebouncedValue";
 import {
   applyThreadTimelineDelta,
   isThreadTimelineDelta,
+  LIST_PAGE_MAX_LIMIT,
 } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
@@ -108,7 +109,7 @@ type ThreadPendingInteractionsQueryOptions = QueryOptions;
 
 interface UseThreadsFilters extends Omit<
   ThreadListFilters,
-  "archived" | "projectId"
+  "archived" | "limit" | "offset" | "projectId"
 > {
   archived: boolean;
   projectId?: string;
@@ -175,7 +176,7 @@ interface GetThreadMentionCandidatePlaceholderArgs {
 const THREAD_MENTION_CANDIDATE_FILTERS = {
   archived: false,
   limit: THREAD_MENTION_CANDIDATE_LIMIT,
-} satisfies UseThreadsFilters;
+} satisfies ThreadListFilters;
 
 function buildThreadSubsetListFilters({
   filters,
@@ -337,6 +338,28 @@ export function useArchivedThreads(
   return useInfiniteQuery(archivedThreadsQueryOptions(filters, options));
 }
 
+interface ListEveryThreadArgs extends Omit<
+  ThreadListFilters,
+  "limit" | "offset"
+> {
+  signal: AbortSignal;
+}
+
+async function listEveryThread(
+  args: ListEveryThreadArgs,
+): Promise<ThreadListResponse> {
+  const threads: ThreadListResponse = [];
+  for (let offset = 0; ; offset += LIST_PAGE_MAX_LIMIT) {
+    const page = await sdk.threads.list({
+      ...args,
+      limit: LIST_PAGE_MAX_LIMIT,
+      offset,
+    });
+    threads.push(...page);
+    if (page.length < LIST_PAGE_MAX_LIMIT) return threads;
+  }
+}
+
 export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   const { projectId, ...rest } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
@@ -349,7 +372,7 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   return useQuery<ThreadListResponse>({
     queryKey,
     queryFn: ({ signal }) =>
-      sdk.threads.list({
+      listEveryThread({
         ...rest,
         projectId: requireThreadId(projectId ?? "", "useThreads"),
         signal,
@@ -466,7 +489,7 @@ export function childThreadsFallbackQueryOptions({
         ? threadListQueryKey({ archived: false, parentThreadId })
         : disabledThreadListQueryKey({ archived: false }),
     queryFn: ({ signal }) =>
-      sdk.threads.list({
+      listEveryThread({
         archived: false,
         parentThreadId: requireThreadId(
           parentThreadId ?? "",
@@ -520,7 +543,7 @@ export function useProjectThreadSubset({
   const activeProjectThreadsQuery = useQuery<ThreadListResponse>({
     queryKey: activeProjectThreadListQueryKey,
     queryFn: ({ signal }) =>
-      sdk.threads.list({
+      listEveryThread({
         archived: false,
         projectId: requireThreadId(projectId ?? "", "useProjectThreadSubset"),
         signal,

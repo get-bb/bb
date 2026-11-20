@@ -99,7 +99,13 @@ export interface ThreadListArgs {
   sectionId?: string;
   hasParent?: boolean;
   includeHidden?: boolean;
+  /**
+   * Page size: 200 rows when omitted, at most 500; a larger value is rejected.
+   * A caller that needs every row pages with `offset` until a page comes back
+   * shorter than its `limit`.
+   */
   limit?: number;
+  /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   originKind?: ThreadListQuery["originKind"];
   originPluginId?: string;

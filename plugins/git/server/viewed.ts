@@ -11,6 +11,8 @@ import {
 } from "../contract.js";
 import { requireGitEnvironment } from "./reads.js";
 
+const ENVIRONMENT_PAGE_SIZE = 500;
+
 export interface GitViewed {
   list(
     environmentId: string,
@@ -96,6 +98,20 @@ export function createGitViewed(
     await bb.storage.kv.delete(VIEWED_MARKS_FROM_CORE_KEY);
   }
 
+  async function listEveryEnvironment(filter: { status?: "destroyed" }) {
+    const environments: Awaited<ReturnType<typeof bb.sdk.environments.list>> =
+      [];
+    for (let offset = 0; ; offset += ENVIRONMENT_PAGE_SIZE) {
+      const page = await bb.sdk.environments.list({
+        ...filter,
+        limit: ENVIRONMENT_PAGE_SIZE,
+        offset,
+      });
+      environments.push(...page);
+      if (page.length < ENVIRONMENT_PAGE_SIZE) return environments;
+    }
+  }
+
   async function forgetDeletedEnvironments(): Promise<void> {
     const marked = z
       .array(z.string())
@@ -107,8 +123,8 @@ export function createGitViewed(
       );
     if (marked.length === 0) return;
     const [listed, destroyed] = await Promise.all([
-      bb.sdk.environments.list(),
-      bb.sdk.environments.list({ status: "destroyed" }),
+      listEveryEnvironment({}),
+      listEveryEnvironment({ status: "destroyed" }),
     ]);
     const existing = new Set(
       [...listed, ...destroyed].map((environment) => environment.id),
@@ -125,7 +141,9 @@ export function createGitViewed(
   void ready
     .then(forgetDeletedEnvironments)
     .catch((error: unknown) =>
-      bb.log.warn(`Could not forget deleted environments' Viewed marks: ${String(error)}`),
+      bb.log.warn(
+        `Could not forget deleted environments' Viewed marks: ${String(error)}`,
+      ),
     );
 
   async function scopeKey(

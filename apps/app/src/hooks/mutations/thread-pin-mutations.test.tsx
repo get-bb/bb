@@ -283,7 +283,7 @@ it("predicts on a thread list mounted while the pin is pending", async () => {
   act(() => server.view.result.current.pin.mutate({ id: "t1" }));
 
   const late = renderHook(
-    () => useThreads({ projectId: PROJECT_ID, archived: false, limit: 5 }),
+    () => useThreads({ projectId: PROJECT_ID, archived: false, hasParent: false }),
     { wrapper: server.wrapper },
   );
   await waitFor(() =>

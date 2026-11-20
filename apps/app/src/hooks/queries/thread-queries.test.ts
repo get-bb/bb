@@ -13,6 +13,7 @@ import type {
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
+import { LIST_PAGE_MAX_LIMIT } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import * as api from "@/lib/api";
@@ -792,25 +793,36 @@ describe("useChildThreads", () => {
     expect(sdk.threads.list).not.toHaveBeenCalled();
   });
 
-  it("falls back to the parent-keyed list request without a sidebar cache", async () => {
+  it("falls back to the parent-keyed list request without a sidebar cache, paging past a full page", async () => {
     const { queryClient } = createQueryClientTestHarness();
-    const child = makeThreadListEntry({
-      id: "child-1",
-      parentThreadId: "parent-1",
-    });
-    vi.mocked(sdk.threads.list).mockResolvedValue([child]);
+    const children = Array.from(
+      { length: LIST_PAGE_MAX_LIMIT + 1 },
+      (_, index) =>
+        makeThreadListEntry({
+          id: `child-${index}`,
+          parentThreadId: "parent-1",
+        }),
+    );
+    vi.mocked(sdk.threads.list)
+      .mockResolvedValueOnce(children.slice(0, LIST_PAGE_MAX_LIMIT))
+      .mockResolvedValueOnce(children.slice(LIST_PAGE_MAX_LIMIT));
 
     const readChildThreads = observeChildThreads(queryClient, "parent-1");
 
     await vi.waitFor(() => {
-      expect(readChildThreads().data).toEqual([child]);
+      expect(readChildThreads().data).toEqual(children);
     });
-    expect(sdk.threads.list).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
-      archived: false,
-      parentThreadId: "parent-1",
-      signal: expect.any(AbortSignal),
-    });
+    expect(
+      vi.mocked(sdk.threads.list).mock.calls.map(([args]) => args),
+    ).toEqual(
+      [0, LIST_PAGE_MAX_LIMIT].map((offset) => ({
+        archived: false,
+        parentThreadId: "parent-1",
+        limit: LIST_PAGE_MAX_LIMIT,
+        offset,
+        signal: expect.any(AbortSignal),
+      })),
+    );
   });
 });
 

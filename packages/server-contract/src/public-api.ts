@@ -1198,6 +1198,11 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<OperationResponse>(),
     }),
+    /**
+     * One page: `limit` defaults to `LIST_PAGE_DEFAULT_LIMIT` and is rejected
+     * above `LIST_PAGE_MAX_LIMIT`; callers that need every row page with
+     * `offset` until a short page.
+     */
     list: defineRoute({
       path: "/environments",
       method: "get",
@@ -1329,6 +1334,11 @@ export const publicApiRoutes = {
   },
 
   threads: {
+    /**
+     * One page: `limit` defaults to `LIST_PAGE_DEFAULT_LIMIT` and is rejected
+     * above `LIST_PAGE_MAX_LIMIT`; callers that need every row page with
+     * `offset` until a short page.
+     */
     list: defineRoute({
       path: "/threads",
       method: "get",

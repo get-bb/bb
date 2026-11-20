@@ -14,13 +14,21 @@ import {
   type JsonValue,
 } from "@bb/domain";
 import { Command } from "commander";
-import type { CommitActionResponse } from "@bb/server-contract";
+import {
+  LIST_PAGE_DEFAULT_LIMIT,
+  LIST_PAGE_MAX_LIMIT,
+  type CommitActionResponse,
+} from "@bb/server-contract";
 import type { EnvironmentUpdateArgs } from "@bb/sdk";
 import { action } from "../action.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { prependErrorContext } from "./helpers.js";
+import {
+  parseNonNegativeIntegerOption,
+  prependErrorContext,
+  printListPageNotice,
+} from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
@@ -135,21 +143,6 @@ function validateLimit(limit: string | undefined): void {
   if (limit !== undefined && !/^\d+$/u.test(limit)) {
     throw new Error("--limit must contain only digits.");
   }
-}
-
-function parseNonNegativeIntegerOption(
-  value: string | undefined,
-  optionName: "--limit" | "--offset",
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!/^\d+$/u.test(value)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  return parsed;
 }
 
 function booleanQueryValue(value: boolean): "true" | "false" {
@@ -304,7 +297,10 @@ export function registerEnvironmentCommands(
       "--status <status>",
       "Only environments in this status: provisioning, ready, error, destroyed",
     )
-    .option("--limit <n>", "At most this many rows, oldest first")
+    .option(
+      "--limit <n>",
+      `At most this many rows, oldest first (default ${LIST_PAGE_DEFAULT_LIMIT}, max ${LIST_PAGE_MAX_LIMIT})`,
+    )
     .option("--offset <n>", "Skip this many rows")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -339,6 +335,12 @@ export function registerEnvironmentCommands(
             `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.heldBy === null ? "" : `  held by ${env.heldBy}`}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
           );
         }
+        printListPageNotice({
+          count: rows.length,
+          limit,
+          noun: "environments",
+          offset,
+        });
       }),
     );
 

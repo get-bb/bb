@@ -4,6 +4,7 @@ import {
   reasoningLevelValues,
   type ReasoningLevel,
 } from "@bb/domain";
+import { LIST_PAGE_DEFAULT_LIMIT } from "@bb/server-contract";
 import type { ResolvedId } from "../context-env.js";
 
 export {
@@ -99,4 +100,34 @@ export function prependErrorContext(context: string, err: unknown): Error {
 
 export function joinValues(values: readonly string[]): string {
   return values.map((value) => `'${value}'`).join(" or ");
+}
+
+export function parseNonNegativeIntegerOption(
+  value: string | undefined,
+  optionName: "--limit" | "--offset",
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/u.test(value)) {
+    throw new Error(`${optionName} must be a non-negative integer.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${optionName} must be a non-negative integer.`);
+  }
+  return parsed;
+}
+
+interface PrintListPageNoticeArgs {
+  count: number;
+  limit: number | undefined;
+  noun: string;
+  offset: number | undefined;
+}
+
+export function printListPageNotice(args: PrintListPageNoticeArgs): void {
+  if (args.count < (args.limit ?? LIST_PAGE_DEFAULT_LIMIT)) return;
+  const offset = args.offset ?? 0;
+  console.error(
+    `(Showing ${args.count} ${args.noun} from offset ${offset}; more may follow. Use --offset ${offset + args.count} for the next page.)`,
+  );
 }

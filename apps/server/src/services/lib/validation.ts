@@ -1,3 +1,7 @@
+import {
+  LIST_PAGE_DEFAULT_LIMIT,
+  LIST_PAGE_MAX_LIMIT,
+} from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 
 export function parseInteger(value: string, name: string): number {
@@ -18,13 +22,21 @@ export function parseOptionalInteger(
 export function parsePaginationQuery(args: {
   limit: string | undefined;
   offset: string | undefined;
-}): { limit: number | undefined; offset: number | undefined } {
-  const limit = parseOptionalInteger(args.limit, "limit");
-  if (limit !== undefined && limit <= 0) {
+}): { limit: number; offset: number } {
+  const limit =
+    parseOptionalInteger(args.limit, "limit") ?? LIST_PAGE_DEFAULT_LIMIT;
+  if (limit <= 0) {
     throw new ApiError(400, "invalid_request", "limit must be positive");
   }
-  const offset = parseOptionalInteger(args.offset, "offset");
-  if (offset !== undefined && offset < 0) {
+  if (limit > LIST_PAGE_MAX_LIMIT) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `limit cannot exceed ${LIST_PAGE_MAX_LIMIT}; page with offset`,
+    );
+  }
+  const offset = parseOptionalInteger(args.offset, "offset") ?? 0;
+  if (offset < 0) {
     throw new ApiError(400, "invalid_request", "offset must be non-negative");
   }
   return { limit, offset };

@@ -1,5 +1,9 @@
 export const THREAD_EVENT_LIST_PAGE_SIZE = 100;
 
+export const LIST_PAGE_DEFAULT_LIMIT = 200;
+
+export const LIST_PAGE_MAX_LIMIT = 500;
+
 export type PathId = { param: { id: string } };
 export type PathProjectId = { param: { id: string } };
 export type PathThreadAndQueuedMessage = {

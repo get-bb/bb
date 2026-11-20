@@ -128,8 +128,8 @@ export function registerEnvironmentRoutes(
           ...(query?.heldBy ? { heldBy: query.heldBy } : {}),
           ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
           ...(query?.path === undefined ? {} : { path: query.path }),
-          ...(limit === undefined ? {} : { limit }),
-          ...(offset === undefined ? {} : { offset }),
+          limit,
+          offset,
           statuses: query?.status
             ? [query.status]
             : LISTED_ENVIRONMENT_STATUSES,

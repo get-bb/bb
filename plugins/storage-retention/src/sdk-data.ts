@@ -37,9 +37,21 @@ export async function readThreadsInEnvironments(
   signal?: AbortSignal,
 ) {
   const pages = await Promise.all(
-    environmentIds.map((environmentId) =>
-      bb.sdk.threads.list({ environmentId, includeHidden: true, signal }),
-    ),
+    environmentIds.map(async (environmentId) => {
+      const rows: Awaited<ReturnType<typeof bb.sdk.threads.list>> = [];
+      for (let offset = 0; ; offset += 500) {
+        signal?.throwIfAborted();
+        const page = await bb.sdk.threads.list({
+          environmentId,
+          includeHidden: true,
+          limit: 500,
+          offset,
+          signal,
+        });
+        rows.push(...page);
+        if (page.length < 500) return rows;
+      }
+    }),
   );
   return pages.flat();
 }

@@ -131,7 +131,8 @@ Making your repo work with bb:
     --status <status>                     Only environments in this status: provisioning,
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)
-    --limit <n> / --offset <n>            Page through the rows, oldest first
+    --limit <n> / --offset <n>            Page through the rows, oldest first (default 200,
+                                          max 500; a full page notes the next --offset on stderr)
   bb environment delete <id>              Request provider cleanup; refused while threads are
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after

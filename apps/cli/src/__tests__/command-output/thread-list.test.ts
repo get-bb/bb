@@ -105,6 +105,37 @@ describe("bb thread list command output", () => {
     },
   );
 
+  it("bb thread list pages with --limit and --offset and names the next offset when the page is full", async () => {
+    const list = vi.fn(async () =>
+      ["thread-a", "thread-b"].map((id) =>
+        fixtures.makeThread({
+          id,
+          projectId: "proj-1",
+          providerId: "codex",
+          status: "idle",
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      ),
+    );
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.projects.$get": async () => [{ id: "proj-1", name: "Alpha" }],
+    });
+
+    await runCommand(
+      ["thread", "list", "--limit", "2", "--offset", "4"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({
+      query: { archived: "false", limit: "2", offset: "4" },
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "(Showing 2 threads from offset 4; more may follow. Use --offset 6 for the next page.)",
+    );
+  });
+
   it("bb thread list rejects --archived with --include-archived", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });
