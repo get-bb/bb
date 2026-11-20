@@ -5,7 +5,6 @@ import {
   hostDaemonSessions,
   listActiveHostThreads,
   listHostThreadIdsWithInterruptiblePendingInteractions,
-  listRuntimeHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
 import type {
@@ -362,12 +361,8 @@ function notifyHostThreadRuntimeStatusChanged(
     environmentHostId: hostId,
     threads: listActiveHostThreads(deps.db, { hostId }),
   });
-  for (const threadId of listRuntimeHostThreadIds(deps.db, { hostId })) {
-    deps.hub.notifyThread(
-      threadId,
-      ["status-changed"],
-      metadataByThreadId.get(threadId),
-    );
+  for (const [threadId, metadata] of metadataByThreadId) {
+    deps.hub.notifyThread(threadId, ["status-changed"], metadata);
   }
 }
 
