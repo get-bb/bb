@@ -231,6 +231,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#countThreads`,
+    growsWith: {
+      history:
+        "Counts every thread grouped by host, and the seed grows the thread count",
+    },
     run: (db) =>
       countThreads(db, {
         groupBy: "host",
@@ -252,6 +256,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listLiveThreadsInEnvironment`,
+    growsWith: {
+      history:
+        "Lists every live thread in the busiest environment, and the seed grows its thread count",
+    },
     run: (db, _fixture, seed) =>
       listLiveThreadsInEnvironment(db, {
         environmentId: seed.busiestEnvironmentId,
@@ -272,6 +280,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listHostThreadIds`,
+    growsWith: {
+      history:
+        "Returns the id of every thread on the host, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listHostThreadIds(db, { hostId: seed.busiestHostId }),
   },
@@ -379,6 +391,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#markThreadDeleted`,
+    growsWith: {
+      history:
+        "Marks the orchestrator's whole thread tree deleted, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       markThreadDeleted(db, noopNotifier, { threadId: seed.orchestratorId }),
   },
@@ -418,6 +434,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#searchThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Ranks and counts every thread matching the query for group totals, and the seed grows the matches",
+    },
     run: (db) =>
       searchThreadsWithPendingInteractionState(db, {
         query: "tests",
@@ -426,6 +446,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionStateForProjects`,
+    growsWith: {
+      history:
+        "Lists every live visible thread in ten projects, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionStateForProjects(db, {
         projectIds: seed.projectIds,
@@ -434,6 +458,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Lists every live visible thread on the busiest host, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionState(db, {
         hostId: seed.busiestHostId,

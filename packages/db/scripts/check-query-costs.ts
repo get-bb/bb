@@ -11,6 +11,10 @@ import { createMigratedConnection } from "../src/testing.js";
 import {
   BASELINE_LONG_TURN_STEPS,
   DEFAULT_CEILING_MS,
+  GROWTH_BOUNDED_EXPONENT,
+  GROWTH_BOUNDED_LIMIT,
+  GROWTH_DECLARATION_UNUSED_EXPONENT,
+  GROWTH_DECLARATION_UNUSED_LIMIT,
   GROWTH_FAIL_EXPONENT,
   GROWTH_FAIL_LIMIT,
   GROWTH_FLOOR_MS,
@@ -25,6 +29,7 @@ import {
   TURN_AXIS_HISTORY_TURNS,
   TURN_AXIS_SEED_SCALE,
   scaled,
+  type GrowthAxisKey,
 } from "./query-costs/case.js";
 import {
   PARTIAL_RUN,
@@ -48,6 +53,7 @@ interface WorldSize {
 }
 
 interface GrowthAxis {
+  key: GrowthAxisKey;
   name: string;
   growing: string;
   small: WorldSize;
@@ -56,8 +62,9 @@ interface GrowthAxis {
 
 const GROWTH_AXES: readonly GrowthAxis[] = [
   {
+    key: "history",
     name: "thread history",
-    growing: "turns in a thread",
+    growing: "turns in a thread and the rows each case group seeds",
     small: {
       key: "history-small",
       historyTurns: scaled(HISTORY_TURNS_AT_FULL_SCALE, SMALL_SCALE),
@@ -72,6 +79,7 @@ const GROWTH_AXES: readonly GrowthAxis[] = [
     },
   },
   {
+    key: "turnSize",
     name: "turn size",
     growing: "events in the first, last and open turns",
     small: {
@@ -207,6 +215,13 @@ function checkCoverage(): string[] {
     if (costCase.ceilingMs !== undefined && costCase.reason === undefined) {
       problems.push(`  custom ceiling without a reason: ${costCase.label}`);
     }
+    for (const [axis, reason] of Object.entries(costCase.growsWith ?? {})) {
+      if (reason.trim() === "") {
+        problems.push(
+          `  growsWith.${axis} without a reason: ${costCase.label}`,
+        );
+      }
+    }
   }
   return problems;
 }
@@ -283,7 +298,7 @@ const REAL_DATABASE = realDatabasePath();
 interface Comparison {
   name: string;
   growing: string;
-  checksGrowth: boolean;
+  axis: GrowthAxisKey | null;
   largeWorld: string;
   small: HistoryFiles;
   large: HistoryFiles;
@@ -308,16 +323,28 @@ function findingOf(
   }
   const { smallMs, largeMs } = outcome;
   const growth = largeMs / smallMs;
-  if (
-    comparison.checksGrowth &&
-    largeMs >= GROWTH_FLOOR_MS &&
-    growth > GROWTH_WARN_LIMIT
-  ) {
-    const failing = growth > GROWTH_FAIL_LIMIT;
-    return {
-      severity: failing ? "fail" : "warn",
-      message: `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x, over size^${failing ? GROWTH_FAIL_EXPONENT : GROWTH_WARN_EXPONENT}`,
-    };
+  if (comparison.axis !== null && largeMs >= GROWTH_FLOOR_MS) {
+    const measured = `${smallMs.toFixed(1)} ms → ${largeMs.toFixed(1)} ms (${growth.toFixed(1)}x, cost ∝ size^${growthExponent(growth).toFixed(2)}) when the ${comparison.growing} grow ${GROWTH_STEP}x`;
+    const declared = QUERY_COST_CASES[index].growsWith?.[comparison.axis];
+    if (declared === undefined && growth > GROWTH_BOUNDED_LIMIT) {
+      return {
+        severity: "fail",
+        message: `${measured}, over size^${GROWTH_BOUNDED_EXPONENT}. Bound the query, or declare growsWith.${comparison.axis} with the reason its cost must grow`,
+      };
+    }
+    if (declared !== undefined && growth > GROWTH_WARN_LIMIT) {
+      const failing = growth > GROWTH_FAIL_LIMIT;
+      return {
+        severity: failing ? "fail" : "warn",
+        message: `${measured}, over size^${failing ? GROWTH_FAIL_EXPONENT : GROWTH_WARN_EXPONENT}`,
+      };
+    }
+    if (declared !== undefined && growth <= GROWTH_DECLARATION_UNUSED_LIMIT) {
+      return {
+        severity: "warn",
+        message: `${measured}, within size^${GROWTH_DECLARATION_UNUSED_EXPONENT}; remove its growsWith.${comparison.axis} declaration`,
+      };
+    }
   }
   const ceiling = ceilingOf(index);
   if (largeMs > ceiling) {
@@ -344,7 +371,7 @@ function buildComparisons(directory: string): Comparison[] {
       {
         name: REAL_DATABASE,
         growing: "",
-        checksGrowth: false,
+        axis: null,
         largeWorld: REAL_DATABASE,
         small: world,
         large: world,
@@ -354,7 +381,7 @@ function buildComparisons(directory: string): Comparison[] {
   return GROWTH_AXES.map((axis) => ({
     name: `${axis.name} (${describeWorld(axis.small)} → ${describeWorld(axis.large)})`,
     growing: axis.growing,
-    checksGrowth: true,
+    axis: axis.key,
     largeWorld: describeWorld(axis.large),
     small: buildHistory(directory, axis.small),
     large: buildHistory(directory, axis.large),
@@ -378,7 +405,7 @@ async function runComparison(comparison: Comparison): Promise<Finding[]> {
     .sort((left, right) => right.largeMs - left.largeMs)
     .slice(0, 10)) {
     console.log(
-      comparison.checksGrowth
+      comparison.axis !== null
         ? `  ${row.smallMs.toFixed(2)} → ${row.largeMs.toFixed(2)} ms (${(row.largeMs / row.smallMs).toFixed(1)}x) ${row.name}`
         : `  ${row.largeMs.toFixed(2)} ms ${row.name}`,
     );
@@ -410,7 +437,7 @@ try {
     if (failures.length > 0) {
       failed = true;
       console.error(
-        `\nQuery functions whose cost grows quadratically or worse, or that failed to run, ${comparison.name}:\n${failures.map((finding) => `  ${finding.message}`).join("\n")}`,
+        `\nQuery functions whose cost grows without a declared reason, grows quadratically or worse, or that failed to run, ${comparison.name}:\n${failures.map((finding) => `  ${finding.message}`).join("\n")}`,
       );
     }
   }
@@ -424,5 +451,5 @@ if (coverageProblems.length > 0) {
 }
 if (failed) process.exit(1);
 console.log(
-  `No query function grows faster than size^${GROWTH_FAIL_EXPONENT} (${GROWTH_FAIL_LIMIT.toFixed(0)}x) when the thread history or the turn size grows ${GROWTH_STEP}x. Growth past size^${GROWTH_WARN_EXPONENT} (${GROWTH_WARN_LIMIT.toFixed(0)}x) and time over a ceiling are reported as warnings.`,
+  `No query function grows faster than size^${GROWTH_BOUNDED_EXPONENT} (${GROWTH_BOUNDED_LIMIT.toFixed(1)}x) when the thread history or the turn size grows ${GROWTH_STEP}x, unless its case declares that growth, and none grows faster than size^${GROWTH_FAIL_EXPONENT} (${GROWTH_FAIL_LIMIT.toFixed(0)}x). Declared growth past size^${GROWTH_WARN_EXPONENT} (${GROWTH_WARN_LIMIT.toFixed(0)}x), declarations within size^${GROWTH_DECLARATION_UNUSED_EXPONENT} (${GROWTH_DECLARATION_UNUSED_LIMIT.toFixed(0)}x), and time over a ceiling are reported as warnings.`,
 );

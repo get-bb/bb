@@ -1,11 +1,16 @@
 import type { DbConnection } from "../../src/connection.js";
 import type { HistoryFixture } from "../../src/history-fixture.js";
 
+export type GrowthAxisKey = "history" | "turnSize";
+
+export type DeclaredGrowth = Partial<Readonly<Record<GrowthAxisKey, string>>>;
+
 export interface QueryCostCase<TSeed = undefined> {
   name: string;
   variant?: string;
   ceilingMs?: number;
   reason?: string;
+  growsWith?: DeclaredGrowth;
   prepare?: (db: DbConnection, fixture: HistoryFixture, seed: TSeed) => void;
   run: (db: DbConnection, fixture: HistoryFixture, seed: TSeed) => unknown;
 }
@@ -23,6 +28,7 @@ export interface RegisteredCostCase {
   label: string;
   ceilingMs?: number;
   reason?: string;
+  growsWith?: DeclaredGrowth;
   prepare?: (
     db: DbConnection,
     fixture: HistoryFixture,
@@ -60,6 +66,9 @@ export function registerCostGroup<TSeed>(
           ? {}
           : { ceilingMs: costCase.ceilingMs }),
         ...(costCase.reason === undefined ? {} : { reason: costCase.reason }),
+        ...(costCase.growsWith === undefined
+          ? {}
+          : { growsWith: costCase.growsWith }),
         ...(prepare === undefined
           ? {}
           : {
@@ -80,8 +89,13 @@ export const LONG_TURN_STEPS_AT_FULL_SCALE = 1_500;
 export const BASELINE_LONG_TURN_STEPS = 100;
 export const TURN_AXIS_HISTORY_TURNS = 500;
 export const GROWTH_STEP = LARGE_SCALE / SMALL_SCALE;
+export const GROWTH_DECLARATION_UNUSED_EXPONENT = 0.5;
+export const GROWTH_BOUNDED_EXPONENT = 0.75;
 export const GROWTH_WARN_EXPONENT = 1.5;
 export const GROWTH_FAIL_EXPONENT = 2;
+export const GROWTH_DECLARATION_UNUSED_LIMIT =
+  GROWTH_STEP ** GROWTH_DECLARATION_UNUSED_EXPONENT;
+export const GROWTH_BOUNDED_LIMIT = GROWTH_STEP ** GROWTH_BOUNDED_EXPONENT;
 export const GROWTH_WARN_LIMIT = GROWTH_STEP ** GROWTH_WARN_EXPONENT;
 export const GROWTH_FAIL_LIMIT = GROWTH_STEP ** GROWTH_FAIL_EXPONENT;
 export const GROWTH_FLOOR_MS = 2;

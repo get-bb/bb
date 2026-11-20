@@ -594,6 +594,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#getLastStoredTurnRequestEvent`,
     variant: LIVE_TURN,
+    growsWith: {
+      turnSize:
+        "Walks the thread newest-first through the whole open turn before it meets the turn's request row",
+    },
     run: (db, fixture) =>
       getLastStoredTurnRequestEvent(db, fixture.liveTurn.threadId),
   },
@@ -718,6 +722,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
 export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#deleteThreadEventSuffixInTransaction`,
+    growsWith: {
+      turnSize:
+        "Deletes the suffix from the last turn's request, which is the whole long last turn",
+    },
     run: (db, fixture) =>
       db.transaction((tx) =>
         deleteThreadEventSuffixInTransaction(tx, {
@@ -895,6 +903,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTurnInputAcceptedRowsByClientRequestIds`,
+    growsWith: {
+      history:
+        "Reads every turn/input/accepted row after afterSequence to match clientRequestId inside JSON",
+    },
     run: (db, fixture) => {
       const turn = turnAt(fixture, 0);
       return listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
@@ -915,6 +927,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTurnStartedRowsByTurnIdsUpToSequence`,
+    growsWith: {
+      history:
+        "Reads every turn/started row up to the cutoff to filter turn_id instead of seeking the requested turns",
+    },
     run: (db, fixture) =>
       listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
         sequenceCutoff: Number.MAX_SAFE_INTEGER,
@@ -924,6 +940,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTurnCompletedRowsByTurnIds`,
+    growsWith: {
+      history:
+        "Reads every turn/completed row in the thread to filter turn_id instead of seeking the requested turns",
+    },
     run: (db, fixture) =>
       listStoredTurnCompletedRowsByTurnIds(db, {
         threadId: fixture.threadId,
@@ -1041,6 +1061,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#getStoredConversationOutlineProjectionState`,
+    growsWith: {
+      history:
+        "Checks every turn start and acceptance for a nested turn, so a thread without one never reaches its LIMIT 1",
+    },
     run: (db, fixture) =>
       getStoredConversationOutlineProjectionState(db, {
         classificationSequenceStart: 0,
@@ -1063,6 +1087,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#advanceTimelineWindowBudgetFloorSequence`,
+    growsWith: {
+      turnSize:
+        "Steps OFFSET over appendedEventCount rows, and the case passes the whole last turn's span",
+    },
     run: (db, fixture) =>
       advanceTimelineWindowBudgetFloorSequence(db, {
         appendedEventCount:
@@ -1086,6 +1114,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineOrderingContext`,
+    growsWith: {
+      history:
+        "Returns the request, acceptance, start and completion rows of every turn since sequence 0, as a cold timeline load does",
+    },
     run: (db, fixture) =>
       listTimelineOrderingContext(db, {
         maxSeq: fixture.latestSequence,
@@ -1136,6 +1168,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#findStoredTimelineWindowByteBudgetFloor`,
+    growsWith: {
+      turnSize:
+        "Sums each event's size across the first turn until the byte budget, which the turn stays under",
+    },
     run: (db, fixture) =>
       findStoredTimelineWindowByteBudgetFloor(db, {
         ...turnDetailsWindow(fixture),
@@ -1154,16 +1190,28 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineRootWindowTurnIds`,
+    growsWith: {
+      turnSize:
+        "Reads every row in the window, including the whole long last turn, to return its distinct turn ids",
+    },
     run: (db, fixture) =>
       listTimelineRootWindowTurnIds(db, timelineWindowArgs(fixture)),
   },
   {
     name: `${EVENTS}#listStoredTimelineThreadWindowEventRows`,
+    growsWith: {
+      turnSize:
+        "Reads every row in the window, including the whole long last turn, to keep the few thread-scoped rows",
+    },
     run: (db, fixture) =>
       listStoredTimelineThreadWindowEventRows(db, timelineWindowArgs(fixture)),
   },
   {
     name: `${EVENTS}#listStoredTimelineWindowEventRows`,
+    growsWith: {
+      turnSize:
+        "Returns every row of the first turn, which grows with turn size",
+    },
     run: (db, fixture) =>
       listStoredTimelineWindowEventRows(db, {
         ...turnDetailsWindow(fixture),
@@ -1285,6 +1333,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTaskTurnRequestEvents`,
+    growsWith: {
+      turnSize:
+        "Walks the thread newest-first through every event of the long last turn to find the newest requests",
+    },
     run: (db, fixture) =>
       listStoredTaskTurnRequestEvents(db, {
         limit: 8,
@@ -1294,6 +1346,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listOpenBackgroundTaskItemRowsForHost`,
+    growsWith: {
+      history:
+        "Probes the background-task index once per thread on the host, and the seed grows the host's threads",
+    },
     run: (db, fixture) =>
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: fixture.hostId }),
   },
@@ -1322,6 +1378,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listCommandItemDataByItemIds`,
+    growsWith: {
+      turnSize:
+        "Returns the started and completed rows of every command the case passes, all those of the long last turn",
+    },
     run: (db, fixture) =>
       listCommandItemDataByItemIds(db, {
         itemIds: lastTurn(fixture).commandItemIds,
@@ -1429,6 +1489,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredConversationOutlineEventRows`,
+    growsWith: {
+      history:
+        "Returns every outline row since the last context clear, which grows with the thread",
+    },
     ceilingMs: 750,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
@@ -1440,6 +1504,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredRootConversationOutlineEventRows`,
+    growsWith: {
+      history:
+        "Returns every outline row since the last context clear, which grows with the thread",
+    },
     ceilingMs: 750,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
@@ -1527,6 +1595,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#hasStoredProviderTurnCompletedSince`,
+    growsWith: {
+      history:
+        "Reads every turn/completed row in the thread to filter created_at and provider_thread_id, which the index lacks",
+    },
     run: (db, fixture) =>
       hasStoredProviderTurnCompletedSince(db, {
         createdAt: Date.now() - 60_000,
@@ -1545,6 +1617,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${THREADS}#listTurnStartDeadlineCandidates`,
+    growsWith: {
+      history:
+        "Reads every turn/completed row of each active thread to compare created_at, which the index lacks",
+    },
     prepare: markThreadAwaitingTurnStart,
     run: (db) =>
       listTurnStartDeadlineCandidates(db, {
@@ -1553,6 +1629,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${THREADS}#isThreadAwaitingTurnStartPastDeadline`,
+    growsWith: {
+      history:
+        "Reads every turn/completed row of the thread to compare created_at, which the index lacks",
+    },
     prepare: markThreadAwaitingTurnStart,
     run: (db, fixture) =>
       isThreadAwaitingTurnStartPastDeadline(db, {

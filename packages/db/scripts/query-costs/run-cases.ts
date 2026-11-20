@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { createConnection, type DbConnection } from "../../src/connection.js";
 import {
+  GROWTH_BOUNDED_LIMIT,
   GROWTH_FLOOR_MS,
-  GROWTH_WARN_LIMIT,
   type RegisteredCostCase,
   type SeedsByGroup,
 } from "./case.js";
@@ -89,7 +89,7 @@ for (
     let smallMs = timeOnce(index, costCase, small);
     let largeMs = timeOnce(index, costCase, large);
     const exceedsGrowth = () =>
-      largeMs >= GROWTH_FLOOR_MS && largeMs > smallMs * GROWTH_WARN_LIMIT;
+      largeMs >= GROWTH_FLOOR_MS && largeMs > smallMs * GROWTH_BOUNDED_LIMIT;
     for (
       let attempt = 1;
       largeMs >= GROWTH_FLOOR_MS / 2 &&

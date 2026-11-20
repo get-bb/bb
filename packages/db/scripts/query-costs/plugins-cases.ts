@@ -414,6 +414,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${SNAPSHOTS}#listDiscardablePluginStateSnapshots`,
+    growsWith: {
+      history:
+        "Returns every snapshot created before now, and the seed grows the snapshot count",
+    },
     run: (db) => {
       const now = Date.now();
       return listDiscardablePluginStateSnapshots(db, {
@@ -429,6 +433,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${SNAPSHOTS}#replacePluginSnapshotState`,
+    growsWith: {
+      history:
+        "Deletes and reinserts all of a plugin's kv rows, and the seed grows them",
+    },
     prepare: (db, _fixture, seed) => {
       snapshotState = {
         kv: listPluginKvRows(db, seed.biggestKvPluginId),
@@ -571,6 +579,10 @@ const CASES: readonly QueryCostCase<PluginsSeed>[] = [
   },
   {
     name: `${MARKETPLACES}#replacePluginMarketplaceIcons`,
+    growsWith: {
+      history:
+        "Deletes and reinserts every icon of the marketplace, and the seed grows its icons",
+    },
     prepare: (db, _fixture, seed) => {
       marketplaceIcons = listPluginMarketplaceIcons(db, seed.marketplaceName);
     },

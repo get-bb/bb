@@ -311,11 +311,19 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#listEnvironments`,
+    growsWith: {
+      history:
+        "Lists every environment on the busy host, and the seed grows its environments",
+    },
     run: (db, _fixture, seed) =>
       listEnvironments(db, { hostId: seed.busyHostId }),
   },
   {
     name: `${ENVIRONMENTS}#markHostEnvironmentsDestroyed`,
+    growsWith: {
+      history:
+        "Marks every environment on the host destroyed, and the seed grows its environments",
+    },
     run: (db, _fixture, seed) =>
       markHostEnvironmentsDestroyed(db, noopNotifier, seed.machineHostId),
   },

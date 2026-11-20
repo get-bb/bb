@@ -190,6 +190,10 @@ function prepareCoalescedRow(db: DbConnection, fixture: HistoryFixture): void {
 export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${QUEUED}#supersedeQueuedRetriesInTransaction`,
+    growsWith: {
+      history:
+        "Matches requests and acceptances across the whole thread inside JSON to update one queued retry",
+    },
     run: (db, fixture) =>
       db.transaction((tx) =>
         supersedeQueuedRetriesInTransaction(tx, {
@@ -200,6 +204,10 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${QUEUED}#deleteQueuedRetriesForThreadEventSuffixInTransaction`,
+    growsWith: {
+      history:
+        "Matches every request in the deleted suffix inside JSON, and the case deletes the whole history",
+    },
     run: (db, fixture) =>
       db.transaction((tx) =>
         deleteQueuedRetriesForThreadEventSuffixInTransaction(tx, {

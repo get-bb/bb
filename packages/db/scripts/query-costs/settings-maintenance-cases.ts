@@ -811,6 +811,10 @@ const INTERACTION_CASES: readonly Case[] = [
   },
   {
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreads`,
+    growsWith: {
+      history:
+        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+    },
     prepare: (db, fixture) => {
       hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
     },
@@ -823,6 +827,10 @@ const INTERACTION_CASES: readonly Case[] = [
   },
   {
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreadIds`,
+    growsWith: {
+      history:
+        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+    },
     prepare: (db, fixture) => {
       hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
     },
