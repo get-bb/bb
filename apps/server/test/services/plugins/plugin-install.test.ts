@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -167,6 +167,32 @@ async function initScratchRepo(dir: string): Promise<string> {
   await mkdir(dir, { recursive: true });
   await git(dir, ["init", "-q"]);
   return dir;
+}
+
+async function withGitConfig<T>(
+  entries: ReadonlyArray<readonly [key: string, value: string]>,
+  body: () => Promise<T>,
+): Promise<T> {
+  const env: Record<string, string> = {
+    GIT_CONFIG_COUNT: String(entries.length),
+  };
+  entries.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  try {
+    return await body();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 function artifactMeta(args: {
@@ -846,25 +872,29 @@ describe("plugin install flows", () => {
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
 
-    test("installs a pinned commit sha", async ({ fixture }) => {
-      const { workDir, service } = fixture;
+    test.for([40, 7])(
+      "installs a pinned %i-character commit sha",
+      async (shaLength, { fixture }) => {
+        const { workDir, service } = fixture;
 
-      const repoDir = join(workDir, "repo-sha");
-      await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
-      await initGitRepo(repoDir);
-      const sha = await commitAll(repoDir, "init");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-shaman",
-        version: "9.9.9",
-      });
-      await commitAll(repoDir, "later");
+        const repoDir = join(workDir, "repo-sha");
+        await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
+        await initGitRepo(repoDir);
+        const sha = await commitAll(repoDir, "init");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-shaman",
+          version: "9.9.9",
+        });
+        await commitAll(repoDir, "later");
 
-      const entry = await service.install(`git:${repoDir}@${sha}`, {
-        kind: "root",
-      });
-      expect(entry.status).toBe("running");
-      expect(entry.version).toBe("0.1.0");
-    });
+        const entry = await service.install(
+          `git:${repoDir}@${sha.slice(0, shaLength)}`,
+          { kind: "root" },
+        );
+        expect(entry.status).toBe("running");
+        expect(entry.version).toBe("0.1.0");
+      },
+    );
 
     test("fetches only the resolved commit instead of the whole repository", async ({
       fixture,
@@ -874,22 +904,38 @@ describe("plugin install flows", () => {
       const repoDir = join(workDir, "repo-shallow");
       await writePluginFixture(repoDir, { name: "bb-plugin-shallow" });
       await initGitRepo(repoDir);
-      const commit = await commitAll(repoDir, "init");
-      await writeFile(
-        join(repoDir, ".git", "refs", "heads", "dangling"),
-        `${"1".repeat(40)}\n`,
+      await writeFile(join(repoDir, "retired.txt"), "older release");
+      await commitAll(repoDir, "older release");
+      const retiredBlob = await git(repoDir, ["rev-parse", "HEAD:retired.txt"]);
+      await rm(join(repoDir, "retired.txt"));
+      const commit = await commitAll(repoDir, "selected release");
+      await rm(
+        join(
+          repoDir,
+          ".git",
+          "objects",
+          retiredBlob.slice(0, 2),
+          retiredBlob.slice(2),
+        ),
       );
-      await expect(
-        run("git", ["clone", "--quiet", repoDir, join(workDir, "full-clone")]),
-      ).rejects.toThrow(/nonexistent object/);
 
-      const entry = await service.install(`git:${repoDir}@main`, {
-        kind: "root",
-      });
-      expect(entry.status).toBe("running");
-      expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
-        gitResolvedCommit: commit,
-      });
+      await withGitConfig(
+        [[`url.${pathToFileURL(repoDir).href}.insteadOf`, repoDir]],
+        async () => {
+          await expect(
+            run("git", ["clone", "--quiet", repoDir, join(workDir, "full")]),
+          ).rejects.toThrow(/unable to read/);
+
+          const entry = await service.install(`git:${repoDir}@main`, {
+            kind: "root",
+          });
+          expect(entry.status).toBe("running");
+          expect(existsSync(join(entry.rootDir, ".git"))).toBe(false);
+          expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
+            gitResolvedCommit: commit,
+          });
+        },
+      );
     });
 
     test("falls back to a full clone when the server refuses to serve the commit directly", async ({
@@ -907,17 +953,7 @@ describe("plugin install flows", () => {
       });
       await commitAll(repoDir, "later");
 
-      const protocolV0 = {
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "protocol.version",
-        GIT_CONFIG_VALUE_0: "0",
-      };
-      const previous = new Map<string, string | undefined>();
-      for (const [key, value] of Object.entries(protocolV0)) {
-        previous.set(key, process.env[key]);
-        process.env[key] = value;
-      }
-      try {
+      await withGitConfig([["protocol.version", "0"]], async () => {
         await expect(
           run("git", ["fetch", "--depth", "1", repoDir, sha], {
             cwd: await initScratchRepo(join(workDir, "scratch")),
@@ -932,12 +968,7 @@ describe("plugin install flows", () => {
         expect(getInstalledPluginRegistration(db, "fallback")).toMatchObject({
           gitResolvedCommit: sha,
         });
-      } finally {
-        for (const [key, value] of previous) {
-          if (value === undefined) delete process.env[key];
-          else process.env[key] = value;
-        }
-      }
+      });
     });
 
     test("never reuses an exact-resolution artifact owned by another plugin", async ({
