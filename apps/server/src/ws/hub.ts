@@ -564,7 +564,7 @@ export class NotificationHub implements DbNotifier {
       (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
     ) {
       try {
-        socket.send(payload);
+        socket.send(payload, COMPRESSED_SEND);
         return;
       } catch {
         this.dropTerminalSocket(socket, "terminal-send-failed");
@@ -617,7 +617,7 @@ export class NotificationHub implements DbNotifier {
         break;
       }
       try {
-        socket.send(payload);
+        socket.send(payload, COMPRESSED_SEND);
       } catch {
         this.dropTerminalSocket(socket, "terminal-send-failed");
         return;
