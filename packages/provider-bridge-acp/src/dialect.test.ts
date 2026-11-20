@@ -379,6 +379,25 @@ describe("grok session context _meta", () => {
       }),
     ).toEqual({ used: 12 });
     expect(
+      grokContextUsageFromPromptResult({
+        stopReason: "end_turn",
+        _meta: {
+          inputTokens: 80,
+          modelCalls: null,
+          usage: { inputTokens: 80, modelCalls: 1, numTurns: null },
+        },
+      }),
+    ).toEqual({ used: 80 });
+    expect(
+      grokContextUsageFromPromptResult({
+        stopReason: "end_turn",
+        _meta: {
+          numTurns: 22,
+          usage: { inputTokens: 2_975_122, modelCalls: 22, numTurns: 22 },
+        },
+      }),
+    ).toEqual({ used: null });
+    expect(
       grokContextUsageFromPromptResult({ stopReason: "end_turn" }),
     ).toBeUndefined();
   });

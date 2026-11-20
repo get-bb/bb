@@ -4476,7 +4476,7 @@ describe("acp bridge", () => {
     });
 
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([
-      { used: 0, size: 500_000 },
+      { used: null, size: 500_000 },
     ]);
 
     sendTurnRequest("turn/start", providerThreadId, {
@@ -4485,8 +4485,8 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([
-      { used: 0, size: 500_000 },
-      { used: 17_504, size: 500_000 },
+      { used: null, size: 500_000 },
+      { used: null, size: 500_000 },
     ]);
   });
 

@@ -377,19 +377,21 @@ function rememberGrokContextWindow(
   }
 }
 
-function emitGrokContextWindow(session: AcpThreadSession, used: number): void {
-  if (
-    session.dialect.id !== "grok" ||
-    session.grokContextWindowSize === undefined
-  ) {
+function emitGrokContextWindow(
+  session: AcpThreadSession,
+  _used: number | null,
+): void {
+  if (session.dialect.id !== "grok") {
     return;
   }
+  // Grok does not report window occupancy. Keep the bar cleared.
+  const size = session.grokContextWindowSize;
   const cost = session.model.snapshot().usage?.cost ?? undefined;
   sendThreadDeltas(session.bbThreadId, [
     {
       kind: "contextWindow",
-      used,
-      size: session.grokContextWindowSize,
+      used: null,
+      ...(size === undefined ? {} : { size }),
       estimated: false,
       attach: "open",
       ...(cost === undefined ? {} : { cost }),

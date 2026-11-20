@@ -142,14 +142,20 @@ const grokModelMetaSchema = z
   })
   .passthrough();
 
+const grokCallCountSchema = z.number().int().nonnegative().nullish();
+
 const grokPromptMetaSchema = z
   .object({
     inputTokens: z.number().int().nonnegative().optional(),
     totalTokens: z.number().int().nonnegative().optional(),
+    modelCalls: grokCallCountSchema,
+    numTurns: grokCallCountSchema,
     usage: z
       .object({
         inputTokens: z.number().int().nonnegative().optional(),
         totalTokens: z.number().int().nonnegative().optional(),
+        modelCalls: grokCallCountSchema,
+        numTurns: grokCallCountSchema,
       })
       .passthrough()
       .optional(),
@@ -201,12 +207,22 @@ export function grokContextWindowSizeFromSessionModels(
 
 export function grokContextUsageFromPromptResult(
   result: unknown,
-): { used: number } | undefined {
+): { used: number | null } | undefined {
   const parsed = grokPromptResultSchema.safeParse(result);
   if (!parsed.success) {
     return undefined;
   }
   const meta = parsed.data._meta;
+  const callCounts = [
+    meta?.modelCalls,
+    meta?.numTurns,
+    meta?.usage?.modelCalls,
+    meta?.usage?.numTurns,
+  ];
+  // Above 1, inputTokens is a multi-call sum. Null clears the meter.
+  if (callCounts.some((count) => count != null && count > 1)) {
+    return { used: null };
+  }
   const used =
     meta?.usage?.inputTokens ??
     meta?.inputTokens ??
