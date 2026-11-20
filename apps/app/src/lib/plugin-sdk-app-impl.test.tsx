@@ -1,17 +1,9 @@
 // @vitest-environment jsdom
 
-import {
-  createApplicationLinkApprovals,
-  APPLICATION_LINK_APPROVALS_STORAGE_KEY,
-} from "@bb/domain/application-link-approvals";
-import { ApplicationLinkApprovalsSettings } from "@/components/settings/ApplicationLinkApprovalsSettings";
-import { appQueryClient as approvalQueryClient } from "./app-query-client";
-
 import { LazyPluginMarkdown } from "@/components/plugin/lazy-plugin-renderers";
 import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
 
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -488,62 +480,4 @@ describe("plugin SDK detail rows", () => {
     expect(container.querySelector("dt svg")).not.toBeNull();
     expect(utilitiesOverriddenByVariants(container)).toEqual([]);
   });
-});
-
-describe("application approval management", () => {
-  afterEach(() => {
-    localStorage.removeItem(APPLICATION_LINK_APPROVALS_STORAGE_KEY);
-    approvalQueryClient.clear();
-  });
-
-  it.each(["settings", "plugin"] as const)(
-    "revokes through %s and updates the shared settings list",
-    async (surface) => {
-      const store = createApplicationLinkApprovals({
-        read: () =>
-          localStorage.getItem(APPLICATION_LINK_APPROVALS_STORAGE_KEY),
-        write: (value) =>
-          localStorage.setItem(APPLICATION_LINK_APPROVALS_STORAGE_KEY, value),
-      });
-      store.allow("linear", store.revision());
-      store.allow("reflect", store.revision());
-      render(
-        <QueryClientProvider client={approvalQueryClient}>
-          <ApplicationLinkApprovalsSettings />
-        </QueryClientProvider>,
-      );
-      await screen.findByRole("button", { name: "Remove linear approval" });
-      if (surface === "settings") {
-        fireEvent.click(
-          screen.getByRole("button", { name: "Remove linear approval" }),
-        );
-      } else {
-        await act(() =>
-          pluginSdkAppImplementation.experimental_revokeApplicationLinkApproval(
-            "linear",
-          ),
-        );
-      }
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: "Remove linear approval" }),
-        ).toBeNull(),
-      );
-      expect(
-        await pluginSdkAppImplementation.experimental_getApplicationLinkApprovals(),
-      ).toEqual(["reflect"]);
-      if (surface === "settings")
-        fireEvent.click(
-          screen.getByRole("button", { name: "Remove reflect approval" }),
-        );
-      else
-        await act(() =>
-          pluginSdkAppImplementation.experimental_revokeApplicationLinkApproval(
-            null,
-          ),
-        );
-      await screen.findByText(/^No apps are always allowed\./u);
-      expect(store.list()).toEqual([]);
-    },
-  );
 });

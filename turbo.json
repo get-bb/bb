@@ -1205,6 +1205,7 @@
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -1396,6 +1397,7 @@
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ]
     },

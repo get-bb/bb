@@ -22,7 +22,6 @@ import type {
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
-  PluginSourceCodeRendererRegistration,
   ExperimentalThreadContextSegmentRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
@@ -78,7 +77,6 @@ export interface PluginRegistrationSet {
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
-  sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   composers?: readonly ExperimentalComposerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
@@ -166,8 +164,6 @@ export interface PluginBrowserToolbarActionSlot
   extends ExperimentalPluginBrowserToolbarActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
-export interface PluginSourceCodeRendererSlot
-  extends PluginSourceCodeRendererRegistration, PluginSlotBase {}
 export interface PluginDiffRendererSlot
   extends PluginDiffRendererRegistration, PluginSlotBase {}
 export interface PluginComposerSlot
@@ -218,7 +214,6 @@ export interface PluginSlotSnapshot {
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
-  sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
   diffRenderers: readonly PluginDiffRendererSlot[];
   composers: readonly PluginComposerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
@@ -259,7 +254,6 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
-  sourceCodeRenderers: [],
   diffRenderers: [],
   composers: [],
   messageDirectives: [],
@@ -308,7 +302,6 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadActions",
   "browserToolbarActions",
   "fileOpeners",
-  "sourceCodeRenderers",
   "diffRenderers",
   "composers",
   "messageDirectives",
@@ -404,7 +397,6 @@ function flattenRegistrations(
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),
-    sourceCodeRenderers: stamp(set.sourceCodeRenderers),
     diffRenderers: stamp(set.diffRenderers),
     composers: stamp(set.composers),
     messageDirectives: stamp(set.messageDirectives),

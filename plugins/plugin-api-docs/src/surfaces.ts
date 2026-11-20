@@ -215,7 +215,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run an action, or open a small panel above the footer",
           "Show quick status, such as usage limits, without leaving the thread",
           "Follow the user's order and visibility choices in Appearance",
-          "Switch this device to another of its bb servers, in bb Desktop and the mobile app",
         ],
         apiSymbols: [
           "ExperimentalSidebarFooter",
@@ -228,9 +227,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarFooterDisclosureController",
           "PluginSidebarFooterActionRegistration",
           "PluginSidebarFooterActionProps",
-          "experimental_useServers",
-          "ExperimentalServers",
-          "ExperimentalServer",
         ],
         firstParty: ["Provider usage"],
         experimental: true,
@@ -319,12 +315,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "thread-context-card",
         title: "Thread context card",
         summary:
-          "Add a row or a section to the context card of every thread pane. With this, a plugin can:",
+          "Add a row or a section to the thread context card. With this, a plugin can:",
         bullets: [
           "Keep a pull request, change counts, or related threads in view while messages scroll",
           "Sit among bb's own rows and sections in the Info tab's groups, drawn with the same row and section",
           "Hide a matching context segment while the pane shows the card",
-          "Leave the card, placement, section folding, and the header button to bb",
+          "Appear only with the Thread context card experiment on (off by default), never on phones",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadContextCardRow",
@@ -490,17 +486,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "code-renderers",
-        title: "Code & diff renderers",
+        title: "Diff renderers",
         summary:
-          "Replace bb's code or diff viewer everywhere it appears. With this, a plugin can:",
+          "Replace bb's diff viewer everywhere it appears. With this, a plugin can:",
         bullets: [
-          "Restyle file previews, timeline diffs, and plugin pages in one place",
-          "Replace code and diffs independently",
+          "Restyle timeline diffs, the diff panel, and plugin pages in one place",
           "Hand any render back to bb, which also takes over if the plugin crashes",
         ],
         apiSymbols: [
-          "PluginSourceCodeRendererRegistration",
-          "PluginSourceCodeRendererProps",
           "PluginDiffRendererRegistration",
           "PluginDiffRendererProps",
         ],
@@ -540,7 +533,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Register tabs with app.slots.experimental_tab({ id, title, icon, tooltip?, layout?, context, availability, useVisible?, component }). context is { kind: 'thread' } or { kind: 'nav-panel', panelId }. Thread tabs and their useVisible receive threadId and environment ({ id } | null, taken from the thread and null only without one) and read anything else about the environment themselves; navigation-page tabs receive subPath. Core Info and the Git plugin's Diff use thread + fixed registrations. tooltip defaults to title; layout is padded (default) or flush.",
           "availability: 'fixed' creates one pinned, non-closable destination per owner and tab id. availability: 'action' adds a launcher for closable instances; only actions accept run, default params and persisted instance params. Identical params focus the existing instance; different params open siblings. useVisible controls the fixed tab or launcher, never existing action instances. Hooks and components run in plugin scope with crash isolation.",
           "Open, toggle and close through the surface's panel controller: experimental_useAppPanel() in components, or ctx.panel in commands, thread actions, message actions, New-thread panel actions and action tabs' run. openTab({ tab: { id, context, availability }, target?, params?, title? }) takes a session-only target for fixed tabs (validated by the tab's experimental_target and read with experimental_useFixedTabTarget, on thread and navigation-page fixed tabs) and persisted params plus a title for action tabs. toggleTab closes the side panel when that tab is showing, otherwise opens it; close() closes the side panel. Unknown, hidden or wrong-context destinations return false. bb's panel toggle, Info and tab-strip controls and the Git plugin's Mod+D command use the same controller.",
-          "List every open tab, bb's and other plugins', with experimental_usePanelTabs(): { open, selectedKey, tabs } in the tab strip's order, each { key, title, status, closable, detail } where detail is info, file, browser, terminal, new-tab, plugin (with its tab reference and params) or plugin-details. getTabs() on the panel controller reads the same list once for commands and other non-component code; selectTab(key) and closeTab(key) run the strip's own select and close; experimental_PanelTabIcon draws a tab's icon. The strip, the phone pager and these calls share one list on the thread view, plugin pages, the New thread screen and the Plugins browse page.",
+          "List every open tab, bb's and other plugins', with experimental_usePanelTabs(): { open, selectedKey, tabs } in the tab strip's order, each { key, title, status, closable, detail } where detail is info, file, browser, terminal, new-tab, plugin (with its tab reference and params) or plugin-details. getTabs() on the panel controller reads the same list once for commands and other non-component code; selectTab(key) and closeTab(key) run the strip's own select and close. The strip, the phone pager and these calls share one list on the thread view, plugin pages, the New thread screen and the Plugins browse page.",
           "experimental_useTabVisible() is true while the tab is selected and the side panel is open, and false while the panel is closed, suppressed or showing another tab. A closed panel keeps its tab mounted, so pause reads that only feed the tab while it is false.",
           "Identity and order survive hiding, disabling and reload. Thread fixed tabs persist as { id, kind: 'plugin-fixed', pluginId, tabId }; navigation-page fixed tabs and action instances keep their existing storage identities. SDK threads.tabs.get/update and CLI bb thread tabs show/set support thread tab entries with revision checks. Selection stays client-local. See the authoring skill's Tab API migration section for upgrading source registrations.",
         ],
@@ -548,7 +541,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginAppSlots.experimental_tab",
           "experimental_useAppPanel",
           "experimental_usePanelTabs",
-          "experimental_PanelTabIcon",
           "experimental_useTabVisible",
           "ExperimentalTabRegistration",
           "ExperimentalTabRegistration.tooltip",
@@ -558,7 +550,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalPanelTabs",
           "ExperimentalPanelTab",
           "ExperimentalPanelTabDetail",
-          "ExperimentalPanelTabIconProps",
           "ExperimentalOpenTabOptions",
           "ExperimentalTabTargetReference",
           "ExperimentalThreadActionTabProps",
@@ -751,8 +742,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Read the draft's text, @-mentions, and attachments",
           "Insert or rewrite text, @-mentions, and thread pills in one step",
-          "Lock the prompt box while the plugin works, then release it",
-          "Write into any prompt box on screen from a panel or page",
+          "Lock the prompt box while the plugin works, then release it, from a composer slot",
+          "Write into any prompt box on screen from a panel or page, without locking it",
         ],
         apiSymbols: [
           "useComposer",
@@ -1008,8 +999,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add a needs-configuration warning to the plugin's page. With this, a plugin can:",
         bullets: [
-          "Tell people what's missing instead of failing silently",
-          "Send them to Settings, then reload after they save",
+          "Tell people what's missing in bb plugin list, and on this page when there are no settings",
+          "Send them to Settings; saving a changed value loads the plugin again",
         ],
         apiSymbols: ["PluginStatusApi"],
         firstParty: [
@@ -1506,7 +1497,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
         reference: [
-          "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess, forkHostProcess and execHostFile (all experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches. Node launches that carry --use-env-proxy keep it only when the child's HTTP(S)_PROXY values are http(s) URLs, and then bypass the proxy for loopback.",
+          "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess and execHostFile (both experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches. Node launches that carry --use-env-proxy keep it only when the child's HTTP(S)_PROXY values are http(s) URLs, and then bypass the proxy for loopback.",
         ],
         apiSymbols: [
           "experimental_defineProviderBridge",
@@ -1560,7 +1551,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_clampPercent",
           "experimental_hostToolchain",
           "experimental_spawnHostProcess",
-          "experimental_forkHostProcess",
           "experimental_execHostFile",
           "experimental_execHostFileCallback",
           "experimental_recordProviderChildIo",
@@ -1794,8 +1784,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add or override app icons while matching bb's styling",
         ],
         apiSymbols: [
-          "experimental_getApplicationLinkApprovals",
-          "experimental_revokeApplicationLinkApproval",
           "experimental_Icon",
           "experimental_ProviderIcon",
           "ExperimentalProviderIconProps",

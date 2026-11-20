@@ -2,10 +2,7 @@ import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { useEffect } from "react";
 import { BbDiffSplit } from "./BbDiffSplit";
 import { BbSourceCodeSplit } from "./BbSourceCodeSplit";
-import {
-  useDiffRendererReplacement,
-  useSourceCodeRendererReplacement,
-} from "./codeRendererProvider";
+import { useDiffRendererReplacement } from "./codeRendererProvider";
 
 export function useDiffRendererLoad(): void {
   const builtin = useDiffRendererReplacement().kind === "owner";
@@ -16,9 +13,8 @@ export function useDiffRendererLoad(): void {
 }
 
 export function useSourceCodeRendererLoad(): void {
-  const builtin = useSourceCodeRendererReplacement().kind === "owner";
-  useRequirePierreWorkerPool(builtin);
+  useRequirePierreWorkerPool(true);
   useEffect(() => {
-    if (builtin) void BbSourceCodeSplit.preload();
-  }, [builtin]);
+    void BbSourceCodeSplit.preload();
+  }, []);
 }

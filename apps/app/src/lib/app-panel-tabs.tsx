@@ -1,4 +1,4 @@
-import { useLayoutEffect, type ReactNode } from "react";
+import { useLayoutEffect } from "react";
 import type {
   ExperimentalPanelTabDetail,
   ExperimentalPanelTabs,
@@ -16,7 +16,6 @@ export interface AppPanelTabEntry {
   status: string | null;
   closable: boolean;
   detail: ExperimentalPanelTabDetail;
-  icon: ReactNode;
   select(): void;
   close(): void;
 }
@@ -128,7 +127,6 @@ export function buildAppPanelTabsState({
       status: null,
       closable: false,
       detail,
-      icon: fixed.leadingVisual,
       select: fixed.onSelect,
       close: () => undefined,
     });
@@ -142,7 +140,6 @@ export function buildAppPanelTabsState({
       status: tab.statusLabel,
       closable: tab.isPinned !== true,
       detail,
-      icon: tab.leadingVisual,
       select: tab.onSelect,
       close: tab.onClose,
     });

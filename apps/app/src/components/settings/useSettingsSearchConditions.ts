@@ -16,7 +16,6 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     "experimentalSidebarNavigations",
   );
   const fileOpeners = usePluginSlotKind("fileOpeners");
-  const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
   const threadLists = usePluginSlotKind("threadLists");
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
@@ -36,7 +35,6 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   );
   const hasComposers = composers.length > 0;
   const hasDiffRenderers = diffRenderers.length > 0;
-  const hasSourceCodeRenderers = sourceCodeRenderers.length > 0;
   const hasThreadLists = threadLists.length > 0;
   const hasSidebarNavigations = experimentalSidebarNavigations.length > 0;
   const hasFilePreferences = accessState !== "unavailable";
@@ -53,7 +51,6 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
       ["pluginUpdates", pluginUpdatesEnabled],
       ["sidebarNavigations", hasSidebarNavigations],
-      ["sourceCodeRenderers", hasSourceCodeRenderers],
       ["threadLists", hasThreadLists],
     ];
     return new Set(
@@ -67,7 +64,6 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasFileOpeners,
     hasFilePreferences,
     hasSidebarNavigations,
-    hasSourceCodeRenderers,
     hasThreadLists,
     performanceDiagnosticsAvailable,
     pluginUpdatesEnabled,

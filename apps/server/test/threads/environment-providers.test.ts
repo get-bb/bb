@@ -63,7 +63,7 @@ import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js"
 import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import {
-  recheckEnvironmentProviderCreations,
+  recheckEnvironmentProvisioning,
   scheduledEnvironmentProviderAskCount,
 } from "../../src/services/threads/thread-environment-providers.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -1353,7 +1353,7 @@ describe("environment providers are asked inside provisioning", () => {
         });
 
         cloning.resolve();
-        recheckEnvironmentProviderCreations(harness.deps, PLUGIN_ID);
+        recheckEnvironmentProvisioning(harness.deps, created.id);
         await vi.waitFor(() => {
           expect(blockEntries(harness, created.id)).toContainEqual([
             "output",
@@ -1361,7 +1361,7 @@ describe("environment providers are asked inside provisioning", () => {
           ]);
         });
         ready.resolve();
-        recheckEnvironmentProviderCreations(harness.deps, PLUGIN_ID);
+        recheckEnvironmentProvisioning(harness.deps, created.id);
         await vi.waitFor(() => {
           expect(getThread(harness.db, created.id)?.environmentId).toBe(
             environment.id,
@@ -2578,7 +2578,7 @@ describe("environment provider listing", () => {
     });
   });
 
-  it("probes again after a plugin recheck invalidates the cache", async () => {
+  it("probes again after the availability cache is invalidated", async () => {
     await withTestHarness(async (harness) => {
       const availability = vi.fn(() => ({ status: "available" as const }));
       installTarget({
@@ -2957,7 +2957,7 @@ describe("a provider-produced environment over its life", () => {
         },
       );
       expect(response.status).toBe(200);
-      recheckEnvironmentProviderCreations(harness.deps, PLUGIN_ID);
+      recheckEnvironmentProvisioning(harness.deps, created.id);
       await vi.waitFor(() =>
         expect(scheduledEnvironmentProviderAskCount()).toBe(0),
       );

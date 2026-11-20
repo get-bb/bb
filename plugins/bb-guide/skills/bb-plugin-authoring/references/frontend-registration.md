@@ -182,7 +182,7 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
   return (
     <InfoSection label="Automations" count={items.length}>
       <InfoList items={items} getKey={(item) => item.id} limit={3}
-        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={...} />} />
+        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={() => openAutomation(item.id)} />} />
     </InfoSection>
   );
 }
@@ -383,7 +383,7 @@ const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
 // over realtime:
 const sdk = useSdk();
 await sdk.threadSections.create({ name: "Later" });
-await sdk.threads.update({ id: thread.id, sectionId });
+await sdk.threads.update({ threadId: thread.id, sectionId });
 
 // threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
 // anchor; the host routes clicks in place), title, titleFallback,
@@ -399,8 +399,9 @@ await sdk.threads.update({ id: thread.id, sectionId });
 // workspaceDisplayKind }, where workspaceDisplayKind is deprecated
 // compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
 // latestAttentionAt, and `indicator` (bb's resolved status kind) +
-// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
-// the SDK ships no status component. Treat an unknown indicator, status, or
+// `indicatorLabel` (its a11y string). Draw it with
+// `experimental_ThreadStatusGlyph` (see "bb's status glyph on your row") or
+// your own glyph. Treat an unknown indicator, status, or
 // runtimeStatus value as its documented fallback — bb adds kinds over time.
 
 // Three more per-row facts are client-local, so they are hooks rather than
@@ -426,14 +427,13 @@ const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, thread
 
 // `environment.providerId` names an entry in bb's environment provider
 // catalog; resolve it for a display name, and draw it with
-// <experimental_ProviderIcon providerKind="environment" provider={entry} />:
+// `experimental_ProviderIcon` (`providerKind="environment"`, `provider={entry}`),
+// imported under a capitalized alias:
 const { providers: environmentProviders } = useEnvironmentProviders();
 
 // Pull requests: read the GitHub PR Status plugin by thread.environment?.id
 // (references/frontend-pull-requests.md).
 
-const navigate = useBbNavigate();
-const sdk = useSdk();
 navigate.toThread(id, { split: true }); // bb's split placement rules
 navigate.toCompose({ projectId, focusPrompt: true });
 navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
@@ -461,7 +461,7 @@ plugin; see references/frontend-pull-requests.md.
 const { splitProps, isAvailable, layout } =
   experimental_useSidebarThreadSplit(thread.id);
 
-<a {...splitProps} onClick={...}>
+<a {...splitProps} onClick={openThread}>
   {title}
   {/* layout is data: draw a mini-map, a tint, or nothing */}
 </a>;
@@ -492,6 +492,8 @@ silently stop working:
 
 ```tsx
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
+  {thread.displayTitle}
+</a>
 ```
 
 ## Tab API migration

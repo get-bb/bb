@@ -6,7 +6,7 @@ import { LazyPluginDiff } from "@/components/plugin/lazy-plugin-renderers";
 import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import { DiffHost } from "./DiffHost";
 import { settleLazyModules } from "@/test/lazy-modules";
-import { SourceCodeHost } from "./SourceCodeHost";
+import { BbSourceCodeSplit } from "./BbSourceCodeSplit";
 
 vi.mock("./BbDiff", () => ({ default: () => <p>Diff ready</p> }));
 vi.mock("./BbSourceCode", () => ({ default: () => <p>Source ready</p> }));
@@ -28,7 +28,12 @@ it("shows the renderer skeleton until the renderer imports resolve", async () =>
   const hosts = render(
     <>
       <DiffHost file={file} fullFileContents={null} />
-      <SourceCodeHost content="const a = 2;" path="app.ts" />
+      <BbSourceCodeSplit
+        content="const a = 2;"
+        path="app.ts"
+        overflow="scroll"
+        highlightedLines={null}
+      />
     </>,
   );
   const sdk = render(

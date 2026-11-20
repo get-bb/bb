@@ -24,7 +24,7 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useElementWidth } from "@/hooks/useElementWidth";
 import { useCompilerSafeVirtualizer } from "@/hooks/useCompilerSafeVirtualizer";
-import { SourceCodeHost } from "@/components/code/SourceCodeHost";
+import { BbSourceCodeSplit } from "@/components/code/BbSourceCodeSplit";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
@@ -1397,7 +1397,7 @@ function FilePreviewCode({
     [lineRange],
   );
   return (
-    <SourceCodeHost
+    <BbSourceCodeSplit
       content={file.contents}
       path={path}
       cacheKey={file.cacheKey ?? file.name}

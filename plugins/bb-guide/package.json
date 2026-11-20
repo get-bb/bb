@@ -33,6 +33,7 @@
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
     "better-sqlite3": "12.11.1",
     "cron-parser": "^5.10.3",
     "hono": "4.13.16",

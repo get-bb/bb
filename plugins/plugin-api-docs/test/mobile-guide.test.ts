@@ -247,7 +247,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     openAnnotation("thread-info");
     for (const [id, number, title] of [
       ["thread-info", "1", "Thread Info rows and sections"],
-      ["code-renderers", "2", "Code & diff renderers"],
+      ["code-renderers", "2", "Diff renderers"],
       ["browser-toolbar", "3", "Browser toolbar"],
       ["thread-panel", "4", "Thread side-panel tabs"],
       ["file-opener", "5", "File viewers & editors"],

@@ -1,4 +1,3 @@
-import { applicationLinkApprovals } from "./application-url";
 import { matchesAppShortcutKey } from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
 import {
@@ -10,10 +9,8 @@ import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import type {
   ExperimentalInfoListRowProps,
-  ExperimentalPanelTabIconProps,
   PluginSdkApp,
 } from "@get-bb/plugin-sdk";
-import { useSyncExternalStore } from "react";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
 import {
   usePluginBranches,
@@ -81,7 +78,6 @@ import {
   experimental_useFixedTabTarget,
   experimental_usePanelTabs,
 } from "./plugin-sdk-hooks";
-import { useAppNavigationHost } from "./app-navigation-host";
 import {
   useSidebarThreadActions,
   useSidebarThreadDraft,
@@ -129,7 +125,6 @@ import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
 import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection";
 import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
-import { useServerChoices } from "@/hooks/useServerChoices";
 import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
 
 function PluginInfoListRow({
@@ -150,15 +145,7 @@ function useArchiveEnvironmentThreads(): (
   return useThreadActions().archiveEnvironmentThreads;
 }
 
-function PanelTabIcon({ tabKey }: ExperimentalPanelTabIconProps) {
-  const { panel } = useAppNavigationHost();
-  useSyncExternalStore(panel.subscribeTabs, panel.getTabs, panel.getTabs);
-  return <>{panel.renderTabIcon(tabKey)}</>;
-}
-
 export const pluginSdkAppImplementation = {
-  experimental_getApplicationLinkApprovals: applicationLinkApprovals.list,
-  experimental_revokeApplicationLinkApproval: applicationLinkApprovals.revoke,
   definePluginApp,
   experimental_Icon: Icon,
   experimental_ProviderIcon: ProviderIcon,
@@ -168,11 +155,9 @@ export const pluginSdkAppImplementation = {
   useBbNavigate,
   experimental_useCanOpenFileExternally: usePluginCanOpenFileExternally,
   experimental_useTabVisible: useTabVisible,
-  experimental_useServers: useServerChoices,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   experimental_usePanelTabs,
-  experimental_PanelTabIcon: PanelTabIcon,
   useComposer,
   useComposers,
   experimental_useComposerRenderer: useComposerRendererApi,

@@ -132,7 +132,6 @@ import type {
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
 } from "@bb/sdk";
-import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
 import {
   createPluginRpcCallerSdk,
@@ -1300,10 +1299,6 @@ export function createPluginApi(options: {
         );
       }
       environmentProviders.set(provider.id, provider);
-    },
-    async recheck() {
-      assertLive();
-      requestEnvironmentProviderRecheck(options.pluginId);
     },
   };
 

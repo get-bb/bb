@@ -3,10 +3,7 @@ import { PierreWorkerPoolGateContext } from "@/lib/pierre-worker-pool-gate";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { getDefaultStore } from "jotai";
-import {
-  diffRendererProviderAtom,
-  sourceCodeRendererProviderAtom,
-} from "@/components/code/codeRendererProvider";
+import { diffRendererProviderAtom } from "@/components/code/codeRendererProvider";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
@@ -42,22 +39,14 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   const store = getDefaultStore();
   store.set(diffRendererProviderAtom, AUTOMATIC_REPLACEMENT_PROVIDER);
-  store.set(sourceCodeRendererProviderAtom, AUTOMATIC_REPLACEMENT_PROVIDER);
 });
 
-it("starts selected built-ins while SDK adapters are still downloading, without warming replaced renderers", async () => {
+it("starts selected built-ins while SDK adapters are still downloading, without warming a replaced diff renderer", async () => {
   setPluginSlotRegistrations(
     "replacement",
     makePluginRegistrationSet({
       diffRenderers: [
         { id: "diff", title: "Diff", component: () => <p>Replacement diff</p> },
-      ],
-      sourceCodeRenderers: [
-        {
-          id: "source",
-          title: "Source",
-          component: () => <p>Replacement source</p>,
-        },
       ],
     }),
   );
@@ -77,17 +66,12 @@ it("starts selected built-ins while SDK adapters are still downloading, without 
   );
   await vi.waitFor(() =>
     expect(downloads.started).toEqual(
-      new Set(["diff adapter", "source adapter"]),
+      new Set(["diff adapter", "source adapter", "source renderer"]),
     ),
   );
-  expect(requestWorkers).not.toHaveBeenCalled();
   act(() => {
     getDefaultStore().set(
       diffRendererProviderAtom,
-      BUILT_IN_REPLACEMENT_PROVIDER,
-    );
-    getDefaultStore().set(
-      sourceCodeRendererProviderAtom,
       BUILT_IN_REPLACEMENT_PROVIDER,
     );
   });

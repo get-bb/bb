@@ -106,7 +106,6 @@ import {
   type PluginSidebarThreadSplit,
   type PluginProvidersState,
   type PluginSidebarThreadsState,
-  type PluginSourceCodeRendererRegistration,
   type ExperimentalThreadContextSegmentRegistration,
   type ExperimentalCollapsibleStackCardProps,
   type ExperimentalThreadInfoRowRegistration,
@@ -116,7 +115,6 @@ import {
   type ExperimentalThreadContextCardRowRegistration,
   type ExperimentalThreadContextKind,
   type ExperimentalThreadContextCardRowProps,
-  type ExperimentalPanelTabIconProps,
   type ExperimentalPanelTabs,
   type ExperimentalInfoSectionProps,
   type ExperimentalDetailRowProps,
@@ -146,7 +144,6 @@ import {
   type ExperimentalFilePreviewOptions,
   type ExperimentalFilePreviewProps,
   type ExperimentalLiveFileTarget,
-  type ExperimentalServers,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenTabOptions,
   type ExperimentalPanelController,
@@ -399,7 +396,6 @@ interface SlotEnv {
     target: ExperimentalLiveFileTarget,
   ) => ExperimentalFilePreviewFile | null;
   tabVisible: boolean;
-  servers: ExperimentalServers | null;
   branchesState: BranchesState;
   checkoutState: CheckoutState;
 }
@@ -1598,10 +1594,6 @@ const NO_PANEL_TABS: ExperimentalPanelTabs = {
   tabs: [],
 };
 
-function TestPanelTabIcon({ tabKey }: ExperimentalPanelTabIconProps) {
-  return <span data-panel-tab-icon={tabKey} />;
-}
-
 function TestThreadContextCardRow(
   props: ExperimentalThreadContextCardRowProps,
 ) {
@@ -1701,10 +1693,6 @@ function captureClipboardWrites(
 }
 
 const testPluginSdkApp = {
-  experimental_getApplicationLinkApprovals: async (): Promise<string[]> => [],
-  experimental_revokeApplicationLinkApproval: async (
-    _scheme: string | null,
-  ): Promise<string[]> => [],
   definePluginApp,
   ...createRpcQueryHooks(() => useSlotEnv("rpc query").rpcQueryHost),
   useRpc<
@@ -1904,7 +1892,6 @@ const testPluginSdkApp = {
   experimental_CollapsibleStackCard: TestCollapsibleStackCard,
   experimental_DetailRow: TestDetailRow,
   experimental_ThreadContextCardRow: TestThreadContextCardRow,
-  experimental_PanelTabIcon: TestPanelTabIcon,
   experimental_InfoList: TestInfoList,
   experimental_InfoListRow: TestInfoListRow,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -1925,9 +1912,6 @@ const testPluginSdkApp = {
   },
   experimental_useTabVisible(): boolean {
     return useSlotEnv("experimental_useTabVisible").tabVisible;
-  },
-  experimental_useServers(): ExperimentalServers | null {
-    return useSlotEnv("experimental_useServers").servers;
   },
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
@@ -2165,7 +2149,6 @@ export interface CapturedPluginApp {
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
-  sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
   composers: ExperimentalComposerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
@@ -2534,12 +2517,6 @@ export interface RenderSlotOptions<
    * that is selected in an open panel.
    */
   tabVisible?: boolean;
-  /**
-   * Answer for `experimental_useServers()`. Omitted → null, as in a web
-   * browser. Pass `{ status, servers, switchTo }` to act as bb Desktop or the
-   * mobile app.
-   */
-  servers?: ExperimentalServers | null;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
@@ -3483,7 +3460,6 @@ export function renderSlot<
     canOpenFileExternally: options.canOpenFileExternally ?? (() => false),
     filePreview: options.filePreview ?? (() => null),
     tabVisible: options.tabVisible ?? true,
-    servers: options.servers ?? null,
     branchesState: {
       branches: options.branchesState?.branches ?? [],
       remoteBranches: options.branchesState?.remoteBranches ?? [],

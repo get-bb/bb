@@ -42,7 +42,6 @@ interface AppPanelTabsStore {
   publishTabs(state: AppPanelTabsState): void;
   selectTab(key: string): boolean;
   closeTab(key: string): boolean;
-  renderTabIcon(key: string): ReactNode;
 }
 
 function createAppPanelTabsStore(): AppPanelTabsStore {
@@ -78,7 +77,6 @@ function createAppPanelTabsStore(): AppPanelTabsStore {
       entry.close();
       return true;
     },
-    renderTabIcon: (key) => find(key)?.icon ?? null,
   };
 }
 

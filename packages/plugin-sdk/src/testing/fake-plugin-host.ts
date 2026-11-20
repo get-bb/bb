@@ -1595,10 +1595,6 @@ function createFakePluginHostInternal(
         throw new Error(providerIconRefusalMessage(target.id, problem));
       environmentProviders.set(target.id, target);
     },
-    async recheck() {
-      assertLive();
-      requestedDrains += 1;
-    },
   };
 
   const unavailableMachineBootstrap = (): never => {
@@ -1697,7 +1693,7 @@ function createFakePluginHostInternal(
     for (const session of [...websocketSessions]) {
       await session.closeForReload();
     }
-    // Host order (§3): services first, then hooks LIFO (isolated), then
+    // Host order: services first, then hooks LIFO (isolated), then
     // vended database handles, then handle invalidation.
     for (const controller of serviceControllers) controller.abort();
     for (const controller of activeWatches) controller.abort();

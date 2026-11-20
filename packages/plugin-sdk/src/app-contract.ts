@@ -46,7 +46,7 @@ import type { JsonValue } from "./json-value.js";
 import type { PluginMentionTrigger } from "./backend-contract.js";
 
 /**
- * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * The `@get-bb/plugin-sdk/app` contract — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
  * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
  * `@get-bb/plugin-sdk/app`.
@@ -761,24 +761,6 @@ export interface DiffProps {
   experimental_fullFileContents?: ExperimentalDiffFullFileContents;
   /** Applied to the renderer's root element. */
   className?: string;
-}
-
-/**
- * Props passed to an `experimental_sourceCodeRenderer` component. Every value
- * is already resolved — the replacement never re-applies a host default.
- */
-export interface PluginSourceCodeRendererProps {
-  content: string;
-  path: string;
-  overflow: CodeOverflowMode;
-  highlightedLines: SourceCodeLineRange | null;
-  /**
-   * BB's source renderer, bound to this request. Render it to delegate
-   * conditionally without re-entering plugin replacement resolution.
-   *
-   * @experimental Audit before relying on this as a stable contract.
-   */
-  Original: ComponentType;
 }
 
 /**
@@ -1828,8 +1810,8 @@ export interface PluginSidebarThreadDraftState {
  * the content-script context's `experimental_setThreadRowStatus` (see
  * {@link PluginSdkApp.useSidebarThreadRowStatus}). bb's row draws it in
  * place of the draft glyph while it is set; a replaced list should do the
- * same so a status set by, say, the drafts or workflows plugin does not
- * vanish when the list changes hands.
+ * same so a status another plugin set does not vanish when the list changes
+ * hands. No bundled plugin sets one; only content scripts can.
  */
 export type PluginSidebarThreadRowStatus = PluginComposerThreadRowStatus;
 
@@ -2208,8 +2190,12 @@ export type ExperimentalThreadContextKind = "banner" | "card";
  * `experimental_threadInfoRow`. Render one or more
  * `experimental_ThreadContextCardRow` elements, or null to show nothing for
  * this thread. bb draws the card and places it, and mounts rows only in panes
- * whose thread context kind is `card`. A crash removes only this row for that
- * thread.
+ * whose thread context kind is `card`. The card is behind the "Thread context
+ * card" experiment, off by default, and never shows on a phone (a compact
+ * viewport with a coarse pointer); every other pane uses the `banner` kind, so
+ * register an `experimental_threadContextSegment` or
+ * `experimental_threadInfoRow` as well to reach it. A crash removes only this
+ * row for that thread.
  */
 export interface ExperimentalThreadContextCardRowRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2233,7 +2219,9 @@ export interface ExperimentalThreadContextCardRowRegistration {
  * the card, bb draws the section's label as a button that folds it and a
  * divider above it. Sections start open; bb remembers the ones the person folds
  * by `pluginId/id` across threads and restarts. While folded, the component
- * stays mounted and the `experimental_InfoSection` children unmount. A crash
+ * stays mounted and the `experimental_InfoSection` children unmount. Like
+ * card rows, sections mount only where the card shows: behind the "Thread
+ * context card" experiment, off by default, and never on a phone. A crash
  * removes only this section for that thread.
  */
 export interface ExperimentalThreadContextCardSectionRegistration {
@@ -2813,32 +2801,15 @@ export interface PluginFileOpenerRegistration {
 }
 
 /**
- * Replace BB's source-code renderer everywhere it renders supplied source
- * text — the native file preview and every plugin that calls
- * `experimental_SourceCode`. Like `experimental_threadList` this slot is
- * **exclusive**: one renderer at a time. Registering activates it while the
- * plugin is enabled; if several are registered, one from a plugin the user
- * installed wins over one bundled with bb, then the first in deterministic
- * slot order. A missing, disabled, or crashing replacement falls back to BB's
- * renderer, and a replacement can render `Original` to delegate
- * per call (behind its own setting, by language, by size — whatever it needs).
- */
-export interface PluginSourceCodeRendererRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
-  id: string;
-  /** Label shown in capability details. */
-  title: string;
-  /** Optional one-line description shown with the provider choice. */
-  description?: string;
-  component: ComponentType<PluginSourceCodeRendererProps>;
-}
-
-/**
  * Replace BB's diff renderer everywhere it renders supplied diff content — the
  * timeline file diffs, the environment diff panel's text bodies, and every
- * plugin that calls `experimental_Diff`. Exclusive, with the same activation,
- * fallback, and `Original` delegation rules as
- * {@link PluginSourceCodeRendererRegistration}.
+ * plugin that calls `experimental_Diff`. Like `experimental_threadList` this
+ * slot is **exclusive**: one renderer at a time. Registering activates it
+ * while the plugin is enabled; if several are registered, one from a plugin
+ * the user installed wins over one bundled with bb, then the first in
+ * deterministic slot order. A missing, disabled, or crashing replacement falls
+ * back to BB's renderer, and a replacement can render `Original` to delegate
+ * per call (behind its own setting, by language, by size — whatever it needs).
  */
 export interface PluginDiffRendererRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -4053,7 +4024,7 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadHeaderTitleRegistration,
   ): void;
   /**
-   * Add a row to the thread context card of every thread pane (see
+   * Add a row to the thread context card, in panes that show one (see
    * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
@@ -4061,7 +4032,7 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadContextCardRowRegistration,
   ): void;
   /**
-   * Add a section to the thread context card of every thread pane (see
+   * Add a section to the thread context card, in panes that show one (see
    * {@link ExperimentalThreadContextCardSectionRegistration}). Experimental:
    * see docs/api_to_audit.md.
    */
@@ -4081,14 +4052,6 @@ export interface PluginAppSlots {
     registration: ExperimentalPluginBrowserToolbarActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
-  /**
-   * Replace BB's source-code renderer (see
-   * {@link PluginSourceCodeRendererRegistration}). Experimental: see
-   * docs/api_to_audit.md.
-   */
-  experimental_sourceCodeRenderer(
-    registration: PluginSourceCodeRendererRegistration,
-  ): void;
   /**
    * Replace BB's diff renderer (see
    * {@link PluginDiffRendererRegistration}). Experimental: see
@@ -4918,7 +4881,7 @@ export interface ThreadChatMessageAction {
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
- * deliberate exception to the no-host-components rule (§5.5): a stable
+ * deliberate exception to the no-host-components rule: a stable
  * product capability, not a UI kit. Versioned additive like slot props;
  * internal timeline rows, query hooks, and prompt-box configuration are
  * deliberately not exposed.
@@ -5148,7 +5111,7 @@ export interface NewThreadRequest {
  * rendered by the BB app inside a plugin slot.
  *
  * It is the create-side counterpart to `ThreadChat`: same deliberate
- * exception to the no-host-components rule (§5.5), same additive versioning.
+ * exception to the no-host-components rule, same additive versioning.
  */
 export interface NewThreadComposerProps {
   /**
@@ -5440,8 +5403,8 @@ export type ExperimentalPanelTabDetail =
 /** One tab open in a surface's side panel. */
 export interface ExperimentalPanelTab {
   /**
-   * Identifies the tab while it stays open; pass it to `selectTab`,
-   * `closeTab`, or `experimental_PanelTabIcon`. Do not store it: a reopened
+   * Identifies the tab while it stays open; pass it to `selectTab`
+   * or `closeTab`. Do not store it: a reopened
    * tab may get another key.
    */
   key: string;
@@ -5461,12 +5424,6 @@ export interface ExperimentalPanelTabs {
   /** The selected tab's key, or null when none is selected. */
   selectedKey: string | null;
   tabs: readonly ExperimentalPanelTab[];
-}
-
-/** Props of `experimental_PanelTabIcon`. */
-export interface ExperimentalPanelTabIconProps {
-  /** An {@link ExperimentalPanelTab.key}; renders nothing for a closed tab. */
-  tabKey: string;
 }
 
 /** A plugin nav panel page; see {@link BbContext.experimental_pluginPanel}. */
@@ -5511,14 +5468,17 @@ export interface BbNavigate {
   ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
-   * `initialPrompt` to seed the composer draft (serialized thread, project,
-   * and section mention tokens become pills) and `focusPrompt` to focus the
-   * composer on arrival — the pairing behind "Create via chat" style entry
-   * points that drop the user into chat with a prefilled prompt.
-   * `projectId` makes that project the composer's selection; `placement`
-   * files the new thread in a section and pin state (omitted: unpinned,
-   * outside sections); `environmentId` reuses that environment and `hostId`
-   * picks a machine for a new one (`environmentId` wins when both are set).
+   * `initialPrompt` to seed the composer draft when it is empty (serialized
+   * thread, project, and section mention tokens become pills) and
+   * `focusPrompt` to focus the composer on arrival — the pairing behind
+   * "Create via chat" style entry points that drop the user into chat with a
+   * prefilled prompt. `projectId` makes that project the composer's
+   * selection; `placement` files the new thread in a section and pin state.
+   * Without `placement`, the screen keeps the placement it already shows,
+   * unless `environmentId` or `hostId` is set, which resets it to unpinned
+   * and outside sections. `environmentId` reuses that environment and
+   * `hostId` picks a machine for a new one (`environmentId` wins when both
+   * are set).
    */
   toCompose(options?: {
     projectId?: string;
@@ -5562,8 +5522,8 @@ export interface BbNavigate {
 // The whole runtime surface. Declaration-versus-runtime parity is tested
 // against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
-// Components are deliberately NOT part of this surface (removed 2026-07-03,
-// plugin design §5.5): plugins vendor shadcn-style component source from the
+// Generic UI components are deliberately NOT part of this surface: plugins
+// vendor shadcn-style component source from the
 // BB registry (`npx shadcn add @bb/<name>`) and own it. `bb plugin build`
 // shims react, the shared-singleton packages (portal radix families,
 // sonner, vaul, @pierre/diffs) and the host-resident libraries every plugin
@@ -5687,43 +5647,11 @@ export interface ExperimentalRpcMutationState<
 }
 
 /**
- * A bb server this client can switch to (see
- * {@link PluginSdkApp.experimental_useServers}).
- */
-export interface ExperimentalServer {
-  /** Stable while the user keeps the server. Editing a custom server's URL gives it a new id. */
-  id: string;
-  name: string;
-  /** Scheme, host and port only, never login details or a path. */
-  origin: string;
-  /** `local` is bb Desktop's built-in server, `account` comes from the user's bb account, and `custom` is an address the user added. */
-  kind: "local" | "account" | "custom";
-  /** True for the server this page is loaded from. */
-  active: boolean;
-}
-
-/** The viewing client's servers (see {@link PluginSdkApp.experimental_useServers}). */
-export interface ExperimentalServers {
-  /** `loading` until bb Desktop answers, briefly after the page loads. The mobile app's list is ready at once. */
-  status: "loading" | "ready";
-  /** In the client's own order; empty while loading. Changes as the user adds, renames or removes servers. */
-  servers: readonly ExperimentalServer[];
-  /** Switch this client to the server and reload the page on it, unloading every plugin. Ignores the active server and unknown ids. */
-  switchTo(id: string): void;
-}
-
-/**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
-  /** List URL schemes approved for this BB site in the viewing client's localStorage. Core Settings uses the same implementation. */
-  experimental_getApplicationLinkApprovals(): Promise<string[]>;
-  /** Revoke one scheme, or all with null, for this BB site on this client. Does not grant permission. */
-  experimental_revokeApplicationLinkApproval(
-    scheme: string | null,
-  ): Promise<string[]>;
   experimental_PluginRpcCallError: typeof experimental_PluginRpcCallError;
   experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
   /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
@@ -5844,11 +5772,6 @@ export interface PluginSdkApp {
    * tabs. Experimental: see docs/api_to_audit.md.
    */
   experimental_useTabVisible(): boolean;
-  /**
-   * The servers this client can switch between, the list bb's command palette
-   * offers. Null when the client keeps no server list: any web browser.
-   */
-  experimental_useServers(): ExperimentalServers | null;
   /**
    * The side panel of the surface the calling component renders in: the
    * thread view, the plugin page, or the New thread screen.
@@ -6184,9 +6107,9 @@ export interface PluginSdkApp {
     request: ExperimentalSaveFileRequest,
   ): Promise<ExperimentalSaveFileOutcome>;
   /**
-   * The host-owned chat component (see {@link ThreadChatProps}). Together
-   * with `Markdown`, the only components the SDK ships — everything else
-   * stays vendored per §5.5.
+   * The host-owned chat component (see {@link ThreadChatProps}): bb's own
+   * chat, not a generic UI kit. Generic primitives stay vendored from the BB
+   * registry.
    */
   ThreadChat: ComponentType<ThreadChatProps>;
   /**
@@ -6249,8 +6172,7 @@ export interface PluginSdkApp {
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code
-   * theme, and honours an active `experimental_sourceCodeRenderer`
-   * replacement. Experimental: see docs/api_to_audit.md.
+   * theme. Experimental: see docs/api_to_audit.md.
    */
   experimental_SourceCode: ComponentType<SourceCodeProps>;
   /**
@@ -6297,12 +6219,6 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadContextCardRow: ComponentType<ExperimentalThreadContextCardRowProps>;
-  /**
-   * The icon bb's tab strip draws for an open side panel tab (see
-   * {@link ExperimentalPanelTabIconProps}). Experimental: see
-   * docs/api_to_audit.md.
-   */
-  experimental_PanelTabIcon: ComponentType<ExperimentalPanelTabIconProps>;
   /**
    * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
    * one bb's own sections use. Experimental: see docs/api_to_audit.md.
