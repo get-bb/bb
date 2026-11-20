@@ -1,3 +1,4 @@
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import { hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
@@ -146,8 +147,13 @@ export async function startHostDaemon(
       persist: persistServerRoutes(dataDir),
       logger,
     });
+    const sharesServerDataDir = readLocalAccessTokenSync(dataDir) !== null;
     const proxyTarget = () =>
-      signedMachineProxyTarget({ hostKey, target: routes.active() });
+      signedMachineProxyTarget({
+        hostKey,
+        target: routes.active(),
+        sharesServerDataDir,
+      });
     if (
       options.serverHeaders !== undefined ||
       routes.candidates().length > 1 ||
@@ -174,6 +180,7 @@ export async function startHostDaemon(
     const resolveRuntimeShellEnv = async () => {
       await hostToolchain.refresh();
       return prepareRuntimeShellEnv({
+        dataDir,
         bbExecutableDirectory,
         bbExecutablePath,
         hostDaemonPort: localApiConfig.port,

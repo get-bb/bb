@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { BbHttpError } from "@bb/sdk";
+import { createNodeDpopSigner, generateDpopPrivateJwk } from "@bb/sdk/node";
 import { Command } from "commander";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -10,6 +11,7 @@ import {
   serverCredentialsPath,
   serverOrigin,
 } from "../server-credentials.js";
+import { openUrlInBrowser } from "../open-url.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 
 interface JsonOptions {
@@ -18,6 +20,7 @@ interface JsonOptions {
 
 interface PairOptions extends JsonOptions {
   url?: string;
+  open?: boolean;
 }
 
 interface LoginOptions extends JsonOptions {
@@ -52,13 +55,21 @@ export function registerAccessCommands(
       "--url <origin>",
       "Also print a sign-in link for this address (for example https://box.tail1234.ts.net)",
     )
+    .option(
+      "--open",
+      "Open the sign-in link in this computer's browser (signs it in to BB_SERVER_URL, or --url)",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: PairOptions) => {
         const pairing =
           await createCliBbSdk(getUrl()).experimental_access.createPairing();
+        const linkOrigin = opts.url ?? (opts.open ? getUrl() : undefined);
         const link =
-          opts.url === undefined ? null : pairingLink(opts.url, pairing.code);
+          linkOrigin === undefined
+            ? null
+            : pairingLink(linkOrigin, pairing.code);
+        if (opts.open && link !== null) openUrlInBrowser(link);
         if (outputJson(opts, { ...pairing, link })) return;
         console.log(`Pairing code: ${pairing.code}`);
         console.log(`Expires: ${formatTime(pairing.expiresAt)}`);
@@ -80,18 +91,18 @@ export function registerAccessCommands(
     .action(
       action(async (opts: LoginOptions) => {
         const serverUrl = getUrl();
+        const privateJwk = generateDpopPrivateJwk();
         const result = await createCliBbSdk(
           serverUrl,
-        ).experimental_access.redeemPairing({
-          kind: "device",
+        ).experimental_access.pairDevice({
           code: opts.code,
           label: opts.label ?? `bb CLI on ${hostname()}`,
+          signer: createNodeDpopSigner(privateJwk),
         });
-        if (result.kind !== "device") {
-          throw new Error("The server answered a CLI sign-in with a cookie");
-        }
         saveServerCredential(serverUrl, {
-          token: result.token,
+          privateJwk,
+          accessToken: result.accessToken,
+          accessTokenExpiresAt: result.accessTokenExpiresAt,
           credentialId: result.credential.id,
           label: result.credential.label,
         });

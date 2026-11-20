@@ -42,9 +42,11 @@ export interface MachineAuthProxy {
 export function signedMachineProxyTarget(args: {
   hostKey: string;
   target: MachineAuthProxyTarget;
+  sharesServerDataDir: boolean;
 }): MachineAuthProxyTarget {
   if (
     Object.keys(args.target.headers).length === 0 &&
+    args.sharesServerDataDir &&
     isLoopbackHostname(new URL(args.target.url).hostname)
   ) {
     return args.target;

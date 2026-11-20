@@ -567,11 +567,26 @@ describe("startMachineAuthProxy", () => {
 });
 
 describe("signedMachineProxyTarget", () => {
-  it("leaves the server machine's own loopback route unsigned", () => {
-    const target = { url: "http://127.0.0.1:38886", headers: {} };
-    expect(signedMachineProxyTarget({ hostKey: "host-key", target })).toEqual(
-      target,
-    );
+  const loopback = { url: "http://127.0.0.1:38886", headers: {} };
+
+  it("leaves the route unsigned when agents can read the loopback server's local token", () => {
+    expect(
+      signedMachineProxyTarget({
+        hostKey: "host-key",
+        target: loopback,
+        sharesServerDataDir: true,
+      }),
+    ).toEqual(loopback);
+  });
+
+  it("signs agents in with the host key when the daemon keeps its own data directory", () => {
+    expect(
+      signedMachineProxyTarget({
+        hostKey: "host-key",
+        target: loopback,
+        sharesServerDataDir: false,
+      }).headers,
+    ).toEqual({ authorization: "Bearer host-key" });
   });
 
   it("signs agents' requests to a direct LAN or tailnet route with the host key", () => {
@@ -579,6 +594,7 @@ describe("signedMachineProxyTarget", () => {
       signedMachineProxyTarget({
         hostKey: "host-key",
         target: { url: "http://192.168.1.5:38886", headers: {} },
+        sharesServerDataDir: true,
       }),
     ).toEqual({
       url: "http://192.168.1.5:38886",
@@ -594,6 +610,7 @@ describe("signedMachineProxyTarget", () => {
           url: "https://bee.getbb.app",
           headers: { "x-bb-connect-machine": "machine-credential" },
         },
+        sharesServerDataDir: true,
       }).headers,
     ).toEqual({
       authorization: "Bearer host-key",

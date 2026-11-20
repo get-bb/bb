@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { dpopPrivateJwkSchema } from "@bb/sdk/node";
 import { z } from "zod";
 import { resolveCliDataDir } from "./cli-error-log.js";
 
@@ -7,7 +8,9 @@ const SERVER_CREDENTIALS_FILE_NAME = "server-credentials.json";
 
 const storedServerCredentialSchema = z
   .object({
-    token: z.string().min(1),
+    privateJwk: dpopPrivateJwkSchema,
+    accessToken: z.string().min(1),
+    accessTokenExpiresAt: z.number().int(),
     credentialId: z.string().min(1),
     label: z.string(),
   })
@@ -17,7 +20,10 @@ export type StoredServerCredential = z.infer<
 >;
 
 const serverCredentialsFileSchema = z
-  .object({ servers: z.record(z.string(), storedServerCredentialSchema) })
+  .object({
+    version: z.literal(2),
+    servers: z.record(z.string(), storedServerCredentialSchema),
+  })
   .strict();
 type ServerCredentialsFile = z.infer<typeof serverCredentialsFileSchema>;
 
@@ -32,12 +38,12 @@ function readCredentialsFile(path: string): ServerCredentialsFile {
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return { servers: {} };
+    return { version: 2, servers: {} };
   }
   const parsed = serverCredentialsFileSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) {
     throw new Error(
-      `${path} is not a valid bb server credentials file; delete it and sign in again with \`bb access login\``,
+      `${path} is not a bb server credentials file this CLI understands; delete it and sign in again with \`bb access login\``,
     );
   }
   return parsed.data;
@@ -53,22 +59,11 @@ export function serverOrigin(serverUrl: string): string {
   return new URL(serverUrl).origin;
 }
 
-let cachedPath: string | null = null;
-let cachedFile: ServerCredentialsFile | null = null;
-
-function credentialsFile(path: string): ServerCredentialsFile {
-  if (cachedPath !== path || cachedFile === null) {
-    cachedFile = readCredentialsFile(path);
-    cachedPath = path;
-  }
-  return cachedFile;
-}
-
 export function readServerCredential(
   serverUrl: string,
   path: string = serverCredentialsPath(),
 ): StoredServerCredential | null {
-  return credentialsFile(path).servers[serverOrigin(serverUrl)] ?? null;
+  return readCredentialsFile(path).servers[serverOrigin(serverUrl)] ?? null;
 }
 
 export function saveServerCredential(
@@ -77,12 +72,10 @@ export function saveServerCredential(
   path: string = serverCredentialsPath(),
 ): void {
   const file = readCredentialsFile(path);
-  const next = {
+  writeCredentialsFile(path, {
+    version: 2,
     servers: { ...file.servers, [serverOrigin(serverUrl)]: credential },
-  };
-  writeCredentialsFile(path, next);
-  cachedPath = path;
-  cachedFile = next;
+  });
 }
 
 export function forgetServerCredential(
@@ -94,8 +87,6 @@ export function forgetServerCredential(
   if (file.servers[origin] === undefined) return false;
   const servers = { ...file.servers };
   delete servers[origin];
-  writeCredentialsFile(path, { servers });
-  cachedPath = path;
-  cachedFile = { servers };
+  writeCredentialsFile(path, { version: 2, servers });
   return true;
 }

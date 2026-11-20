@@ -1,6 +1,7 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { generateDpopPrivateJwk } from "@bb/sdk/node";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   forgetServerCredential,
@@ -25,15 +26,22 @@ async function credentialsPath(): Promise<string> {
 describe("server credentials", () => {
   it("hands a token only to the exact origin it was signed in at", async () => {
     const path = await credentialsPath();
+    const privateJwk = generateDpopPrivateJwk();
     saveServerCredential(
       "https://box.tail1234.ts.net/some/path",
-      { token: "bbs_secret", credentialId: "acc_1", label: "bb CLI" },
+      {
+        privateJwk,
+        accessToken: "bbt_secret",
+        accessTokenExpiresAt: 1,
+        credentialId: "acc_1",
+        label: "bb CLI",
+      },
       path,
     );
 
     expect(
       readServerCredential("https://box.tail1234.ts.net/api/v1/threads", path),
-    ).toMatchObject({ token: "bbs_secret" });
+    ).toMatchObject({ accessToken: "bbt_secret", privateJwk });
     for (const other of [
       "http://box.tail1234.ts.net/api/v1/threads",
       "https://box.tail1234.ts.net:8443/api/v1/threads",
@@ -41,7 +49,9 @@ describe("server credentials", () => {
     ]) {
       expect(readServerCredential(other, path)).toBeNull();
     }
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    }
 
     expect(forgetServerCredential("https://box.tail1234.ts.net", path)).toBe(
       true,

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import {
   hostToolchain,
   nodeNetworkArgs,
@@ -616,6 +617,7 @@ interface WaitForHostDaemonStatusArgs {
 }
 
 interface RequestHostEnrollKeyArgs {
+  dataDir: string;
   requestedHostId: string | null;
   serverUrl: string;
 }
@@ -755,6 +757,7 @@ interface ResolveClientSshTargetHostIdArgs {
 }
 
 interface RefreshRunningServerConfigArgs {
+  dataDir: string;
   required: boolean;
   serverUrl: string;
 }
@@ -1836,13 +1839,45 @@ function formatClientSshTargets(config: ClientConfig, json: boolean): string {
     : "No client SSH targets set.\n";
 }
 
+function localServerHeaders(dataDir: string): Record<string, string> {
+  const token = readLocalAccessTokenSync(dataDir);
+  return token === null ? {} : { authorization: `Bearer ${token}` };
+}
+
+async function mintLocalSignInLink(args: {
+  dataDir: string;
+  serverUrl: string;
+}): Promise<string | null> {
+  try {
+    const response = await fetch(
+      new URL("/api/v1/access/pairings", args.serverUrl),
+      { method: "POST", headers: localServerHeaders(args.dataDir) },
+    );
+    if (!response.ok) return null;
+    const pairing = z
+      .object({ code: z.string() })
+      .safeParse(await response.json());
+    if (!pairing.success) return null;
+    const link = new URL(`/pair#code=${pairing.data.code}`, args.serverUrl);
+    if (link.hostname === "0.0.0.0" || link.hostname === "[::]") {
+      link.hostname = "127.0.0.1";
+    }
+    return link.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function refreshRunningServerConfig(
   args: RefreshRunningServerConfigArgs,
 ): Promise<boolean> {
   const reloadUrl = new URL("/api/v1/system/config/reload", args.serverUrl);
   let response: Response;
   try {
-    response = await fetch(reloadUrl, { method: "POST" });
+    response = await fetch(reloadUrl, {
+      method: "POST",
+      headers: localServerHeaders(args.dataDir),
+    });
   } catch {
     if (args.required) {
       throw new Error(`Could not reach bb server at ${args.serverUrl}`);
@@ -1907,13 +1942,14 @@ async function readConfiguredStartupOnlyManagedKeys(
 }
 
 async function refreshRunningServerConfigAfterWrite(
-  serverUrl: string,
+  target: { dataDir: string; serverUrl: string },
   source: "config" | "env",
   key: string,
 ): Promise<void> {
   const refreshed = await refreshRunningServerConfig({
+    dataDir: target.dataDir,
     required: false,
-    serverUrl,
+    serverUrl: target.serverUrl,
   });
   if (refreshed) {
     if (isStartupOnlyManagedKey(source, key)) {
@@ -1924,7 +1960,7 @@ async function refreshRunningServerConfigAfterWrite(
     return;
   }
   process.stdout.write(
-    `No running bb server found at ${serverUrl}; config will apply on next start.\n`,
+    `No running bb server found at ${target.serverUrl}; config will apply on next start.\n`,
   );
 }
 
@@ -1945,6 +1981,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
   }
   if (commandArgs.length === 1 && commandArgs[0] === CONFIG_REFRESH_COMMAND) {
     await refreshRunningServerConfig({
+      dataDir: args.dataDir,
       required: true,
       serverUrl: args.serverUrl,
     });
@@ -1970,7 +2007,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
+    await refreshRunningServerConfigAfterWrite(args, "config", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -1989,7 +2026,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
   process.stdout.write(
     `Set ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
   );
-  await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
+  await refreshRunningServerConfigAfterWrite(args, "config", key);
 }
 
 async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
@@ -2018,7 +2055,7 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
+    await refreshRunningServerConfigAfterWrite(args, "env", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -2038,7 +2075,7 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
     mergeManagedEnvFile(current, patch),
   );
   process.stdout.write(`Set ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`);
-  await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
+  await refreshRunningServerConfigAfterWrite(args, "env", key);
 }
 
 async function writeOwnCliLauncher(
@@ -2291,6 +2328,7 @@ async function requestMatchingHostEnrollKey(
       }),
     ),
     headers: {
+      ...localServerHeaders(args.dataDir),
       "content-type": "application/json",
     },
     method: "POST",
@@ -2331,6 +2369,7 @@ async function maybeAddAutoJoinEnv(
     toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir));
   const enrollKeyResponse = await requestMatchingHostEnrollKey({
+    dataDir: args.dataDir,
     requestedHostId,
     serverUrl: args.serverUrl,
   });
@@ -2621,6 +2660,9 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
   if (toOptionalString(cliEnv.BB_SERVER_URL) === undefined) {
     cliEnv.BB_SERVER_URL = args.context.serverUrl;
   }
+  if (toOptionalString(cliEnv.BB_DATA_DIR) === undefined) {
+    cliEnv.BB_DATA_DIR = args.context.dataDir;
+  }
 
   return cliEnv;
 }
@@ -2717,6 +2759,7 @@ export async function createHostDaemonJoinEnv(
     };
   }
   const enrollKeyResponse = await requestMatchingHostEnrollKey({
+    dataDir: args.context.dataDir,
     requestedHostId,
     serverUrl: args.serverUrl,
   });
@@ -3769,6 +3812,17 @@ export async function superviseBbAppStart(
     log(green("●"), bold("bb is ready"));
     process.stdout.write("\n");
     log(" ", formatReadyOutputRow("app", cyan(args.serverListenerUrl)));
+    const signInLink =
+      process.stdout.isTTY &&
+      resolveServerAppSurface(process.env) !== APP_SURFACE_DESKTOP
+        ? await mintLocalSignInLink({
+            dataDir: args.context.dataDir,
+            serverUrl: args.serverListenerUrl,
+          })
+        : null;
+    if (signInLink !== null) {
+      log(" ", formatReadyOutputRow("signin", cyan(signInLink)));
+    }
     log(" ", formatReadyOutputRow("daemon", String(args.context.daemonPort)));
     log(" ", formatReadyOutputRow("data", args.context.dataDir));
     log(" ", formatReadyOutputRow("db", args.context.dbPath));
