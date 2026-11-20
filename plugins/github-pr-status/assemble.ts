@@ -9,6 +9,7 @@ import type {
   PullRequestMergeabilityState,
   PullRequestReview,
   PullRequestReviewState,
+  PullRequestWatchFacts,
 } from "./contract.js";
 
 function isSameOrLaterCheck(
@@ -24,9 +25,9 @@ function isSameOrLaterCheck(
   return Date.parse(candidate.startedAt) >= Date.parse(current.startedAt);
 }
 
-function assembleChecks(
+export function latestChecks(
   rawChecks: readonly GitHubPullRequestCheck[],
-): PullRequestChecks {
+): GitHubPullRequestCheck[] {
   const latestChecksByName = new Map<string, GitHubPullRequestCheck>();
   for (const check of rawChecks) {
     const current = latestChecksByName.get(check.name);
@@ -34,7 +35,33 @@ function assembleChecks(
       latestChecksByName.set(check.name, check);
     }
   }
-  const checks = [...latestChecksByName.values()];
+  return [...latestChecksByName.values()];
+}
+
+function isPending(check: GitHubPullRequestCheck): boolean {
+  return check.status === "queued" || check.status === "in_progress";
+}
+
+function isFailedConclusion(
+  conclusion: GitHubPullRequestCheck["conclusion"],
+): boolean {
+  switch (conclusion) {
+    case "failure":
+    case "cancelled":
+    case "timed_out":
+    case "action_required":
+    case "startup_failure":
+    case "stale":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function assembleChecks(
+  rawChecks: readonly GitHubPullRequestCheck[],
+): PullRequestChecks {
+  const checks = latestChecks(rawChecks);
 
   let passedCount = 0;
   let failedCount = 0;
@@ -42,28 +69,18 @@ function assembleChecks(
   let unknownCount = 0;
 
   for (const check of checks) {
-    if (check.status === "queued" || check.status === "in_progress") {
+    if (isPending(check)) {
       pendingCount += 1;
-      continue;
-    }
-    switch (check.conclusion) {
-      case "success":
-      case "skipped":
-      case "neutral":
-        passedCount += 1;
-        break;
-      case "failure":
-      case "cancelled":
-      case "timed_out":
-      case "action_required":
-      case "startup_failure":
-      case "stale":
-        failedCount += 1;
-        break;
-      case "unknown":
-      case null:
-        unknownCount += 1;
-        break;
+    } else if (isFailedConclusion(check.conclusion)) {
+      failedCount += 1;
+    } else if (
+      check.conclusion === "success" ||
+      check.conclusion === "skipped" ||
+      check.conclusion === "neutral"
+    ) {
+      passedCount += 1;
+    } else {
+      unknownCount += 1;
     }
   }
 
@@ -203,5 +220,18 @@ export function assemblePullRequest(raw: GitHubPullRequestView): PullRequest {
       mergeability,
       raw.inMergeQueue,
     ),
+  };
+}
+
+export function assembleWatchFacts(
+  raw: GitHubPullRequestView,
+): PullRequestWatchFacts {
+  return {
+    failedChecks: latestChecks(raw.checks)
+      .filter(
+        (check) => !isPending(check) && isFailedConclusion(check.conclusion),
+      )
+      .map(({ name, url, startedAt }) => ({ name, url, startedAt })),
+    outsideActivity: raw.outsideActivity,
   };
 }

@@ -64,6 +64,7 @@ function setup(
     publish,
     persistence,
     branch: () => "bb/pr-watch",
+    loaded: () => {},
     onCheckFailed: (id, error) => {
       throw new Error(`${id}: ${error}`);
     },
@@ -85,6 +86,26 @@ afterEach(async () => {
 });
 
 describe("shared pull request refresh", () => {
+  it("retries a failed discovery read while the environment is watched", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([
+      { outcome: "unavailable", message: "gh timed out" },
+      available(pullRequest()),
+    ]);
+    const controller = new AbortController();
+    store.watch("a", controller.signal);
+    await flush();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(load).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenLastCalledWith("a", null, false);
+    await expect(store.read("a", { viewer: true })).resolves.toEqual(
+      available(pullRequest()),
+    );
+    controller.abort();
+  });
+
   it("uses one timer and load per PR, publishes changes to every link and stops when unwatched", async () => {
     vi.useFakeTimers();
     const { store, load, publish } = setup([available(pending)]);

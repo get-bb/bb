@@ -15,7 +15,12 @@ type Lookup =
   | { outcome: "absent" }
   | { outcome: "unavailable"; message: string };
 type Entry = { lookup: Lookup; fetchedAt: number };
-type Check = { environmentId: string; interval: number; dueAt: number };
+type Check = {
+  environmentId: string;
+  url: string | null;
+  interval: number;
+  dueAt: number;
+};
 
 function live(pr: PullRequest): boolean {
   return pr.state === "open" || pr.state === "draft";
@@ -40,6 +45,11 @@ export function createPullRequestStore(options: {
   branch(environmentId: string): string | null;
   persistence: PullRequestPersistence;
   publish(environmentIds: readonly string[]): void;
+  loaded(
+    environmentId: string,
+    url: string | null,
+    result: EnvironmentPullRequest,
+  ): void;
   onCheckFailed(environmentId: string, error: unknown): void;
 }) {
   const snapshots = new Map<string, Snapshot>();
@@ -121,7 +131,19 @@ export function createPullRequestStore(options: {
     const due = new Map<string, Check>();
     for (const environmentId of watches.keys()) {
       const url = currentUrl(environmentId);
-      if (url === null || due.has(url) || inflight.has(url)) continue;
+      if (url === null) {
+        const entry = lookups.get(environmentId);
+        const key = `environment:${environmentId}`;
+        if (entry?.lookup.outcome === "unavailable" && !inflight.has(key))
+          due.set(key, {
+            environmentId,
+            url: null,
+            interval: QUIET_CHECK_MS,
+            dueAt: entry.fetchedAt + QUIET_CHECK_MS,
+          });
+        continue;
+      }
+      if (due.has(url) || inflight.has(url)) continue;
       const snapshot = snapshots.get(url);
       if (snapshot === undefined) continue;
       const interval =
@@ -134,6 +156,7 @@ export function createPullRequestStore(options: {
       if (interval !== null)
         due.set(url, {
           environmentId,
+          url,
           interval,
           dueAt: snapshot.fetchedAt + interval,
         });
@@ -152,9 +175,9 @@ export function createPullRequestStore(options: {
       () => {
         timer = undefined;
         const now = Date.now();
-        for (const [url, check] of checks()) {
+        for (const check of checks().values()) {
           if (check.dueAt - check.interval / 2 <= now)
-            void load(check.environmentId, url);
+            void load(check.environmentId, check.url);
         }
         schedule();
       },
@@ -225,6 +248,7 @@ export function createPullRequestStore(options: {
           dropOrphanSnapshots();
         }
         publishChanges();
+        options.loaded(environmentId, url, result);
       })
       .catch((error) => {
         if (url !== null) {

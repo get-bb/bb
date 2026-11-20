@@ -10,6 +10,7 @@ import {
   runPullRequestAction,
   type PreparedRead,
 } from "./host/git-host.js";
+import { readCheckLogs, rerunChecks } from "./host/checks.js";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -99,6 +100,12 @@ export default experimental_defineHostEntry({
     upstream: ({ path }) => readRefs(path),
     act({ path, url, action }) {
       return runPullRequestAction({ cwd: path, url, action });
+    },
+    checkLogs({ path, url, check, lines }) {
+      return readCheckLogs({ cwd: path, url, check, lines });
+    },
+    rerunChecks({ path, url, check }) {
+      return rerunChecks({ cwd: path, url, check });
     },
   },
 });

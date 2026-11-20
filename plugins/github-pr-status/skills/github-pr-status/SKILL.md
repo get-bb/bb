@@ -1,6 +1,6 @@
 ---
 name: github-pr-status
-description: "Inspect an environment's GitHub pull request, mark it ready or draft, or merge it from the bb CLI; read PR status from another plugin."
+description: "Inspect an environment's GitHub pull request, mark it ready or draft, or merge it from the bb CLI; watch it for check, review and conflict changes, read failing CI logs and re-run checks; read PR status from another plugin."
 ---
 
 # GitHub PR Status
@@ -17,6 +17,11 @@ bb pull-request show <environment-id> [--json]
 bb pull-request ready <environment-id> [--json]
 bb pull-request draft <environment-id> [--json]
 bb pull-request merge <environment-id> [--method merge|squash|rebase] [--json]
+bb pull-request watch [--thread <thread-id>] [--json]
+bb pull-request watching [--thread <thread-id>] [--json]
+bb pull-request unwatch [--thread <thread-id>] [--json]
+bb pull-request logs <environment-id> [--check <name>] [--lines <n>] [--json]
+bb pull-request rerun <environment-id> [--check <name>] [--json]
 ```
 
 - `show` prints the PR number, state, branch, attention, checks, review and
@@ -30,6 +35,44 @@ bb pull-request merge <environment-id> [--method merge|squash|rebase] [--json]
   the environment, or `unavailable` when it has none, and the actions fail
   with a message naming the machine.
 - `gh` must be installed and logged in on that machine.
+
+## Wait for CI and reviews
+
+To wait for checks, reviews or mergeability, run `bb pull-request watch` and
+end your turn. Do not poll with `sleep`, `gh pr checks --watch` or a loop.
+bb sends the thread a message that starts with `[bb pull request watch]` when:
+
+- a check fails (bb reports each failed run once, and a re-run that fails again is a new run),
+- all checks pass,
+- someone other than the machine's `gh` account comments or reviews,
+- the review decision becomes approved or changes requested,
+- the branch starts to conflict with its base,
+- the pull request merges or closes.
+
+`watch` watches the pull request of the thread's environment. It uses the
+thread that runs the command, or `--thread`. Each thread has one watch, and
+running `watch` again starts it again from the current state. The output shows
+the current state. bb does not report again the failures that are already there.
+
+A message only tells you what changed. Read the pull request and decide what to
+do. While the thread is busy, new changes are added to the message that waits
+in its queue, so the thread gets one message per turn. `watching` shows the
+current watch.
+
+The watch ends when the pull request merges or closes, when you run `unwatch`,
+when the thread is archived or deleted, when the environment switches to a
+named branch with a different pull request or none, after 10 messages in a row
+that bring only comments or reviews, or when bb cannot read the pull request
+for 15 minutes while its machine is online. A detached HEAD, for example during
+a rebase, does not end it. While the machine is offline, the watch waits.
+
+`logs` prints the lines up to the last `##[error]` of the latest run of each
+failing GitHub Actions job (80 lines by default, at most 400), or of the job
+named by `--check`. Checks from other CI services, and jobs that run in another
+repository, print only their link. `rerun`
+re-runs the failed jobs of each workflow run with a failing check, or only the
+job of `--check`. Use these instead of `gh run view --log-failed` and
+`gh run rerun`.
 
 The `showPullRequest` setting (default true) shows the pull request segment
 above the composer. Turn it off with
@@ -51,4 +94,5 @@ experimental_useRpcKeyedQuery({
 ```
 
 `bb plugin rpc inspect bb--github-pr-status` prints the input and output schemas
-for `pullRequests`, `markReady`, `markDraft` and `merge`.
+for `pullRequests`, `markReady`, `markDraft`, `merge`, `watch`, `unwatch`,
+`watching`, `checkLogs` and `rerunChecks`.

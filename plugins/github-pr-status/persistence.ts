@@ -1,9 +1,19 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { pullRequestSchema, type PullRequest } from "./contract.js";
+import {
+  pullRequestSchema,
+  type PullRequest,
+  type PullRequestWatch,
+} from "./contract.js";
+import { watchProgressSchema, type WatchProgress } from "./watch.js";
 
 const PERSISTENCE_ENABLED = true;
 const PERSISTENCE_VERSION = 1;
+
+export type StoredWatch = PullRequestWatch & {
+  progress: WatchProgress;
+  unavailableSince: number | null;
+};
 
 const snapshotRow = z.object({
   url: z.string().url(),
@@ -20,6 +30,25 @@ const snapshotRow = z.object({
     .pipe(pullRequestSchema),
   fetched_at: z.number(),
 });
+const watchRow = z.object({
+  thread_id: z.string().min(1),
+  environment_id: z.string().min(1),
+  url: z.string().url(),
+  number: z.number().int().positive(),
+  started_at: z.number(),
+  progress: z
+    .string()
+    .transform((value, ctx): unknown => {
+      try {
+        return JSON.parse(value);
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Invalid watch progress" });
+        return z.NEVER;
+      }
+    })
+    .pipe(watchProgressSchema),
+  unavailable_since: z.number().nullable(),
+});
 const linkRow = z.object({
   environment_id: z.string(),
   url: z.string().url().nullable(),
@@ -35,6 +64,9 @@ export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
       saveSnapshot() {},
       link() {},
       removeEnvironment() {},
+      watches: (): StoredWatch[] => [],
+      saveWatch() {},
+      removeWatch() {},
     };
   const db = storage.database();
   storage.migrate(db, [
@@ -50,6 +82,15 @@ export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
       discovered_at INTEGER NOT NULL
     );
     CREATE INDEX links_url ON links(url);`,
+    `CREATE TABLE watches (
+      thread_id TEXT PRIMARY KEY,
+      environment_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      started_at INTEGER NOT NULL,
+      progress TEXT NOT NULL,
+      unavailable_since INTEGER
+    );`,
   ]);
   if (db.pragma("user_version", { simple: true }) !== PERSISTENCE_VERSION)
     db.transaction(() => {
@@ -62,7 +103,10 @@ export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
         "DELETE FROM snapshots WHERE NOT EXISTS (SELECT 1 FROM links WHERE links.url = snapshots.url)",
       )
       .run();
-  function readRows<T>(table: "snapshots" | "links", schema: z.ZodType<T>) {
+  function readRows<T>(
+    table: "snapshots" | "links" | "watches",
+    schema: z.ZodType<T>,
+  ) {
     const valid: T[] = [];
     for (const raw of db
       .prepare(`SELECT rowid AS row_id, * FROM ${table}`)
@@ -128,6 +172,37 @@ export function createPullRequestPersistence(storage: BbPluginApi["storage"]) {
           .run(environmentId, url, branch, discoveredAt);
         if (changes > 0) prune();
       })();
+    },
+    watches(): StoredWatch[] {
+      return readRows("watches", watchRow).map((row) => ({
+        threadId: row.thread_id,
+        environmentId: row.environment_id,
+        url: row.url,
+        number: row.number,
+        startedAt: row.started_at,
+        progress: row.progress,
+        unavailableSince: row.unavailable_since,
+      }));
+    },
+    saveWatch(watch: StoredWatch) {
+      db.prepare(
+        `INSERT INTO watches (thread_id, environment_id, url, number, started_at, progress, unavailable_since)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(thread_id) DO UPDATE SET environment_id = excluded.environment_id, url = excluded.url,
+        number = excluded.number, started_at = excluded.started_at, progress = excluded.progress,
+        unavailable_since = excluded.unavailable_since`,
+      ).run(
+        watch.threadId,
+        watch.environmentId,
+        watch.url,
+        watch.number,
+        watch.startedAt,
+        JSON.stringify(watch.progress),
+        watch.unavailableSince,
+      );
+    },
+    removeWatch(threadId: string) {
+      db.prepare("DELETE FROM watches WHERE thread_id = ?").run(threadId);
     },
     removeEnvironment(environmentId: string) {
       db.transaction(() => {

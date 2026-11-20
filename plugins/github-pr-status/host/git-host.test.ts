@@ -161,12 +161,42 @@ describe("getPullRequestForCurrentBranch", () => {
     ]);
   });
 
-  it("normalizes checks, review requests, and mergeability", async () => {
+  it("normalizes checks, review requests, mergeability, and the latest outside comment or review", async () => {
     await installFakeGh({
       "pr view": prView,
       "api graphql": graphqlResponse(
         graphqlPr(
           {
+            comments: {
+              nodes: [
+                {
+                  createdAt: "2026-06-16T12:24:00Z",
+                  viewerDidAuthor: false,
+                  author: { login: "octocat" },
+                },
+                {
+                  createdAt: "2026-06-16T12:29:00Z",
+                  viewerDidAuthor: true,
+                  author: { login: "me" },
+                },
+              ],
+            },
+            reviews: {
+              nodes: [
+                {
+                  submittedAt: "2026-06-16T12:26:00Z",
+                  state: "COMMENTED",
+                  viewerDidAuthor: false,
+                  author: { login: "reviewer" },
+                },
+                {
+                  submittedAt: "2026-06-16T12:28:00Z",
+                  state: "PENDING",
+                  viewerDidAuthor: false,
+                  author: { login: "drafter" },
+                },
+              ],
+            },
             autoMergeRequest: { enabledAt: "2026-06-16T12:00:00Z" },
             isInMergeQueue: true,
             reviewDecision: "REVIEW_REQUIRED",
@@ -240,6 +270,11 @@ describe("getPullRequestForCurrentBranch", () => {
         reviewRequestCount: 2,
         mergeStateStatus: "DIRTY",
         mergeable: "CONFLICTING",
+        outsideActivity: {
+          at: "2026-06-16T12:26:00Z",
+          author: "reviewer",
+          kind: "review",
+        },
       },
     });
   });

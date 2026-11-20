@@ -7,6 +7,8 @@ import {
 
 export const SHOW_PULL_REQUEST_SETTING = "showPullRequest";
 export const HOST_VIEWS_MAX_READS = 200;
+export const CHECK_LOG_LINES_DEFAULT = 80;
+export const CHECK_LOG_LINES_MAX = 400;
 
 const checkStatusSchema = z.enum([
   "queued",
@@ -65,6 +67,25 @@ export type GitHubPullRequestMergeStateStatus = z.infer<
 const mergeableSchema = z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]);
 export type GitHubPullRequestMergeable = z.infer<typeof mergeableSchema>;
 
+const outsideActivitySchema = z
+  .object({
+    at: z.string().datetime(),
+    author: z.string().nullable(),
+    kind: z.enum(["comment", "review"]),
+  })
+  .strict();
+export type PullRequestOutsideActivity = z.infer<typeof outsideActivitySchema>;
+
+export type PullRequestFailedCheck = Pick<
+  GitHubPullRequestCheck,
+  "name" | "url" | "startedAt"
+>;
+
+export type PullRequestWatchFacts = {
+  failedChecks: PullRequestFailedCheck[];
+  outsideActivity: PullRequestOutsideActivity | null;
+};
+
 export const gitHubPullRequestViewSchema = z
   .object({
     number: z.number().int().positive(),
@@ -83,6 +104,7 @@ export const gitHubPullRequestViewSchema = z
     reviewRequestCount: z.number().int().nonnegative(),
     mergeStateStatus: mergeStateStatusSchema.nullable(),
     mergeable: mergeableSchema.nullable(),
+    outsideActivity: outsideActivitySchema.nullable(),
   })
   .strict();
 export type GitHubPullRequestView = z.infer<typeof gitHubPullRequestViewSchema>;
@@ -208,6 +230,33 @@ const environmentActionInputSchema = z
   .object({ environmentId: z.string().min(1) })
   .strict();
 const actionOutputSchema = z.object({ message: z.string() }).strict();
+const threadInputSchema = z.object({ threadId: z.string().min(1) }).strict();
+const checkSelectionSchema = z.string().min(1).nullable();
+const checkLogLinesSchema = z.number().int().min(1).max(CHECK_LOG_LINES_MAX);
+
+export const pullRequestWatchSchema = z
+  .object({
+    threadId: z.string().min(1),
+    environmentId: z.string().min(1),
+    url: z.string().url(),
+    number: z.number().int().positive(),
+    startedAt: z.number(),
+  })
+  .strict();
+export type PullRequestWatch = z.infer<typeof pullRequestWatchSchema>;
+
+const checkLogSchema = z
+  .object({
+    name: z.string().min(1),
+    url: z.string().url().nullable(),
+    log: z.string().nullable(),
+    note: z.string().nullable(),
+  })
+  .strict();
+export type CheckLog = z.infer<typeof checkLogSchema>;
+const checkLogsOutputSchema = z
+  .object({ checks: z.array(checkLogSchema) })
+  .strict();
 
 export const githubPrStatusRpcContract = defineRpcContract({
   pullRequests: {
@@ -244,6 +293,42 @@ export const githubPrStatusRpcContract = defineRpcContract({
       "Merge the environment's pull request with the given method.",
     input: environmentActionInputSchema
       .extend({ method: pullRequestMergeMethodSchema })
+      .strict(),
+    output: actionOutputSchema,
+  },
+  watch: {
+    experimental_description:
+      "Watch the pull request of the thread's environment and send the thread a message when a check fails, all checks pass, someone else comments or reviews, the review decision changes, the branch starts to conflict, or the pull request merges or closes.",
+    input: threadInputSchema,
+    output: actionOutputSchema
+      .extend({ watch: pullRequestWatchSchema })
+      .strict(),
+  },
+  unwatch: {
+    experimental_description:
+      "Stop watching the pull request for the thread. Succeeds when nothing is watched.",
+    input: threadInputSchema,
+    output: actionOutputSchema,
+  },
+  watching: {
+    experimental_description:
+      "The pull request watch of the thread, or null when the thread watches nothing.",
+    input: threadInputSchema,
+    output: z.object({ watch: pullRequestWatchSchema.nullable() }).strict(),
+  },
+  checkLogs: {
+    experimental_description:
+      "The last lines of the log of each failing check of the environment's pull request, or of the named check. Checks that are not GitHub Actions jobs return only their link.",
+    input: environmentActionInputSchema
+      .extend({ check: checkSelectionSchema, lines: checkLogLinesSchema })
+      .strict(),
+    output: checkLogsOutputSchema,
+  },
+  rerunChecks: {
+    experimental_description:
+      "Re-run the failing GitHub Actions jobs of the environment's pull request, or the named check's job.",
+    input: environmentActionInputSchema
+      .extend({ check: checkSelectionSchema })
       .strict(),
     output: actionOutputSchema,
   },
@@ -332,5 +417,32 @@ export const githubPrStatusHostContract = defineRpcContract({
       })
       .strict(),
     output: hostPullRequestActionResultSchema,
+  },
+  checkLogs: {
+    input: z
+      .object({
+        path: z.string().min(1),
+        url: z.string().url(),
+        check: checkSelectionSchema,
+        lines: checkLogLinesSchema,
+      })
+      .strict(),
+    output: z.discriminatedUnion("ok", [
+      checkLogsOutputSchema.extend({ ok: z.literal(true) }).strict(),
+      z.object({ ok: z.literal(false), message: z.string().min(1) }).strict(),
+    ]),
+  },
+  rerunChecks: {
+    input: z
+      .object({
+        path: z.string().min(1),
+        url: z.string().url(),
+        check: checkSelectionSchema,
+      })
+      .strict(),
+    output: z.discriminatedUnion("ok", [
+      z.object({ ok: z.literal(true), message: z.string() }).strict(),
+      z.object({ ok: z.literal(false), message: z.string().min(1) }).strict(),
+    ]),
   },
 });

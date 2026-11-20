@@ -1,6 +1,6 @@
 import type { GitHubPullRequestView } from "./contract.js";
 import { describe, expect, it } from "vitest";
-import { assemblePullRequest } from "./assemble.js";
+import { assemblePullRequest, assembleWatchFacts } from "./assemble.js";
 
 function rawPullRequest(
   overrides: Partial<GitHubPullRequestView> = {},
@@ -22,6 +22,7 @@ function rawPullRequest(
     reviewRequestCount: 0,
     mergeStateStatus: "CLEAN",
     mergeable: "MERGEABLE",
+    outsideActivity: null,
     ...overrides,
   };
 }
@@ -346,6 +347,58 @@ describe("assemblePullRequest", () => {
       review: { state: "approved" },
       mergeability: { state: "mergeable" },
       attention: "ready_to_merge",
+    });
+  });
+});
+
+describe("assembleWatchFacts", () => {
+  it("lists the latest run of each failed check and keeps the outside activity", () => {
+    const activity = {
+      at: "2026-06-16T12:40:00Z",
+      author: "octocat",
+      kind: "review" as const,
+    };
+    expect(
+      assembleWatchFacts(
+        rawPullRequest({
+          outsideActivity: activity,
+          checks: [
+            {
+              name: "lint",
+              status: "completed",
+              conclusion: "failure",
+              url: "https://github.com/acme/bb/actions/runs/1/job/1",
+              startedAt: "2026-06-16T12:20:00Z",
+            },
+            {
+              name: "lint",
+              status: "completed",
+              conclusion: "success",
+              url: "https://github.com/acme/bb/actions/runs/2/job/2",
+              startedAt: "2026-06-16T12:30:00Z",
+            },
+            {
+              name: "test",
+              status: "completed",
+              conclusion: "timed_out",
+              url: null,
+              startedAt: "2026-06-16T12:31:00Z",
+            },
+            {
+              name: "build",
+              status: "in_progress",
+              conclusion: null,
+              url: null,
+              startedAt: "2026-06-16T12:32:00Z",
+            },
+          ],
+        }),
+      ),
+    ).toEqual({
+      failedChecks: [
+        { name: "test", url: null, startedAt: "2026-06-16T12:31:00Z" },
+      ],
+      outsideActivity: activity,
     });
   });
 });

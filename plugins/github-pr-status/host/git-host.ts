@@ -21,6 +21,7 @@ import {
   type GitHubPullRequestView,
   type HostPullRequestAction,
   type HostPullRequestLookup,
+  type PullRequestOutsideActivity,
 } from "../contract.js";
 
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
@@ -278,6 +279,37 @@ function normalizeChecks(value: unknown): GitHubPullRequestCheck[] {
   return checks;
 }
 
+function normalizeOutsideActivity(
+  object: JsonObject,
+): PullRequestOutsideActivity | null {
+  let latest: PullRequestOutsideActivity | null = null;
+  const consider = (
+    value: unknown,
+    kind: PullRequestOutsideActivity["kind"],
+    timeKey: string,
+  ) => {
+    const nodes = asObject(value)?.nodes;
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const item = asObject(node);
+      if (item === null || getBoolean(item, "viewerDidAuthor") !== false)
+        continue;
+      if (kind === "review" && item.state === "PENDING") continue;
+      const at = getNullableDateTime(item, timeKey);
+      if (at === null) continue;
+      if (latest !== null && Date.parse(latest.at) >= Date.parse(at)) continue;
+      latest = {
+        at,
+        author: getString(asObject(item.author) ?? {}, "login"),
+        kind,
+      };
+    }
+  };
+  consider(object.comments, "comment", "createdAt");
+  consider(object.reviews, "review", "submittedAt");
+  return latest;
+}
+
 function normalizeGitHubPullRequestView(
   json: unknown,
 ): GitHubPullRequestView | null {
@@ -303,6 +335,7 @@ function normalizeGitHubPullRequestView(
       getNumber(asObject(object.reviewRequests) ?? {}, "totalCount") ?? 0,
     mergeStateStatus: normalizeMergeStateStatus(object.mergeStateStatus),
     mergeable: normalizeMergeable(object.mergeable),
+    outsideActivity: normalizeOutsideActivity(object),
   };
   const parsed = gitHubPullRequestViewSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
@@ -335,7 +368,7 @@ function buildPullRequestActionArgs(
   }
 }
 
-class GhCommandError extends Error {
+export class GhCommandError extends Error {
   constructor(
     readonly reason: "missing" | "timeout" | "failed",
     readonly stdout: string,
@@ -354,7 +387,10 @@ function ghFailureDetail(error: unknown): string {
   return error instanceof Error ? error.message : "";
 }
 
-function describeGhActionFailure(args: string[], error: unknown): string {
+export function describeGhActionFailure(
+  args: string[],
+  error: unknown,
+): string {
   if (error instanceof GhCommandError && error.reason === "missing") {
     return "GitHub CLI is not available";
   }
@@ -446,7 +482,7 @@ function runGhAdmitted(
   });
 }
 
-function runGh(
+export function runGh(
   args: string[],
   options: {
     cwd: string;
@@ -940,12 +976,16 @@ async function credentialKey(
 const REVIEW_REQUESTS_PAGE = 100;
 const CHECK_CONTEXTS_PAGE = 100;
 const BRANCH_PULL_REQUESTS_PAGE = 100;
-const PULL_REQUEST_NODES = REVIEW_REQUESTS_PAGE + 1 + CHECK_CONTEXTS_PAGE;
+const OUTSIDE_ACTIVITY_PAGE = 10;
+const PULL_REQUEST_NODES =
+  REVIEW_REQUESTS_PAGE + 1 + CHECK_CONTEXTS_PAGE + 2 * OUTSIDE_ACTIVITY_PAGE;
 
 function fields(cursor: string | null, mergeQueue: boolean): string {
   return `number title state url isDraft autoMergeRequest { enabledAt }${mergeQueue ? " isInMergeQueue" : ""}
     baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: ${REVIEW_REQUESTS_PAGE}) { totalCount }
     mergeStateStatus mergeable isCrossRepository headRepositoryOwner { login }
+    comments(last: ${OUTSIDE_ACTIVITY_PAGE}) { nodes { createdAt viewerDidAuthor author { login } } }
+    reviews(last: ${OUTSIDE_ACTIVITY_PAGE}) { nodes { submittedAt state viewerDidAuthor author { login } } }
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: ${CHECK_CONTEXTS_PAGE}${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
       nodes { ... on CheckRun { name status conclusion detailsUrl startedAt
           checkSuite { workflowRun { runNumber event workflow { databaseId } } } }
