@@ -445,6 +445,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: "stale-generation",
+      reason: "host plugin worker exited (1)",
     });
     service.handleHostSignal({
       authenticatedHostId: "host-1",
@@ -464,6 +465,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: artifact.generation,
+      reason: "host plugin worker exited (1)",
     });
     await vi.waitFor(() => expect(workerExitHandler).toHaveBeenCalledOnce());
     expect(workerExitHandler).toHaveBeenCalledWith({ hostId: "host-1" });

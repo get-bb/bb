@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs/promises";
@@ -2533,8 +2533,11 @@ it("stops retrying archive storage cleanup once its thread no longer exists", as
       threads: {
         get: async () => {
           if (exists) return thread;
-          throw Object.assign(new Error("HTTP 404: Thread not found"), {
+          throw new experimental_BbHttpError({
             status: 404,
+            code: null,
+            message: "Thread not found",
+            body: null,
           });
         },
       },
@@ -3223,12 +3226,13 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
               "HTTP 409: Recovery refused: process inspection is unavailable on this host",
             );
           if (environmentId === "env_raced")
-            throw Object.assign(
-              new Error(
-                "HTTP 409: Needs recovery. Inspect the workspace, then run bb environment cleanup env_raced --recover.",
-              ),
-              { code: "environment_needs_recovery" },
-            );
+            throw new experimental_BbHttpError({
+              status: 409,
+              code: "environment_needs_recovery",
+              message:
+                "Needs recovery. Inspect the workspace, then run bb environment cleanup env_raced --recover.",
+              body: null,
+            });
           return null;
         },
       },

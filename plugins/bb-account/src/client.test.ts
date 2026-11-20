@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { createAccountClient, watchAccount } from "./client.js";
 import type { AccountStatus } from "./schemas.js";
 
@@ -123,10 +123,12 @@ it.each(cases)("watchAccount $name", async (row) => {
           throw new Error("script finished");
         }
         if ("error" in step) {
-          throw Object.assign(
-            new Error(`HTTP ${step.error.status}`),
-            step.error,
-          );
+          throw new experimental_BbHttpError({
+            status: step.error.status,
+            code: step.error.code ?? null,
+            message: "request failed",
+            body: null,
+          });
         }
         return args.outputSchema.parse(step.status);
       },

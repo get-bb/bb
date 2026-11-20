@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -83,9 +84,11 @@ function setup(
         get: async ({ threadId }) => {
           if (threadId === "origin") {
             if (originDeleted) {
-              throw Object.assign(new Error("Thread not found"), {
+              throw new experimental_BbHttpError({
                 status: 404,
                 code: "thread_not_found",
+                message: "Thread not found",
+                body: null,
               });
             }
             return {
@@ -98,9 +101,11 @@ function setup(
           }
           const worker = workers.get(threadId);
           if (worker?.deleted) {
-            throw Object.assign(new Error("Thread not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
               code: "thread_not_found",
+              message: "Thread not found",
+              body: null,
             });
           }
           return {
@@ -2253,9 +2258,11 @@ describe("workflow service policy integration", () => {
     const test = setup();
     harnesses.push(test.harness);
     test.harness.sdk.stub("threads.send", (async () => {
-      throw Object.assign(new Error("deleted"), {
+      throw new experimental_BbHttpError({
         status: 404,
         code: "thread_not_found",
+        message: "deleted",
+        body: null,
       });
     }) as never);
     const run = await test.start(source(`return "done";`, "missing-origin"));

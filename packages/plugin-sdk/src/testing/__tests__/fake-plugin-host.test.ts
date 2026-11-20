@@ -921,6 +921,15 @@ describe("cli", () => {
       stdout: "",
       stderr: "bb docs failed: bad flag",
     });
+    const machine = await harness.runCli(["crash", "--json"]);
+    expect(machine).toMatchObject({
+      exitCode: 1,
+      stderr: "bb docs failed: bad flag",
+    });
+    expect(JSON.parse(machine.stdout)).toEqual({
+      ok: false,
+      error: { code: "command_failed", message: "bb docs failed: bad flag" },
+    });
   });
 
   it("mirrors production output-limit errors without truncating", async () => {
@@ -948,7 +957,10 @@ describe("cli", () => {
     const machine = await harness.runCli(["--json"]);
     expect(machine.exitCode).toBe(1);
     expect(machine.stderr).toBe("");
-    expect(JSON.parse(machine.stdout)).toEqual({ error: machine.error });
+    expect(JSON.parse(machine.stdout)).toEqual({
+      ok: false,
+      error: machine.error,
+    });
   });
 
   it("uses the production host's reserved CLI names", () => {

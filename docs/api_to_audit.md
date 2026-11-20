@@ -45,6 +45,22 @@ Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
 Before stabilization, audit drive/UNC ambiguity, separator and case rules,
 relative escapes, and whether more callers need resolution rather than joining.
 
+## SDK HTTP errors (`experimental_BbHttpError`, `@get-bb/plugin-sdk`)
+
+`experimental_BbHttpError` re-exports `BbHttpError` from `@bb/sdk/http-error`,
+the error every `bb.sdk` call rejects a non-2xx response with: `status`,
+`code` (the server's error code or null), `body` (the parsed response) and the
+message `HTTP <status>: <message>`. A `Symbol.for("@bb/sdk/http-error")` brand
+and `static [Symbol.hasInstance]` make `instanceof` match errors created by any
+copy of the SDK, so a plugin's bundled copy recognizes errors the host's
+`bb.sdk` throws. Core callers: `@bb/sdk`'s own job waits and status reads use
+the same class and check; bundled plugins (tasks, git, github-pr-status,
+secrets, connect, storage-retention, provider usage sources and others)
+narrow with it instead of duck-typing `status`. Docs: Plugin Guide, The bb SDK
+(`plugins/plugin-api-docs/src/surfaces.ts`). Stabilize after checking
+`code`/`body` across every route family (some plugin routes still return bare
+string errors) and whether plugins need a narrower helper than the class.
+
 ## UTF-16-safe cuts (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`, `@get-bb/plugin-sdk/host`)
 
 `experimental_sliceUtf16Head(value, maxChars)` keeps at most `maxChars` UTF-16

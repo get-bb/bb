@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
+  experimental_BbHttpError,
   experimental_normalizeHostPath as normalizeHostPath,
   experimental_resolveHostPath as resolveHostPath,
   experimental_isHostPathWithin as isHostPathWithin,
@@ -26,10 +27,6 @@ function requireNonEmptyString(value: unknown, field: string): string {
     throw new Error(`"${field}" must be a non-empty string`);
   }
   return value.trim();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function previewKind(file: string): PreviewKind {
@@ -81,14 +78,6 @@ export function resolveContainedPreviewPath(
     throw new Error(`"file" must not escape its source: ${relativeFile}`);
   }
   return absolute;
-}
-
-function httpStatus(error: unknown): number | null {
-  if (!isRecord(error)) {
-    return null;
-  }
-  const status = error.status;
-  return typeof status === "number" ? status : null;
 }
 
 const previewTargetSchema = z.discriminatedUnion("kind", [
@@ -204,7 +193,7 @@ export default async function plugin(bb: BbPluginApi) {
           hostId,
         });
       } catch (error) {
-        if (httpStatus(error) === 404) {
+        if (error instanceof experimental_BbHttpError && error.status === 404) {
           return { kind: "not-found" as const, file };
         }
         throw error;

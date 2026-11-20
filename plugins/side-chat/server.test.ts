@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -118,10 +119,12 @@ describe("createSideChat rpc", () => {
   });
 
   it("falls back to a tip fork when the anchor predates any provider session", async () => {
-    const sessionUnavailable = Object.assign(
-      new Error("HTTP 400: Cannot fork: source has no active session to clone"),
-      { code: "fork_source_session_unavailable" },
-    );
+    const sessionUnavailable = new experimental_BbHttpError({
+      status: 400,
+      code: "fork_source_session_unavailable",
+      message: "Cannot fork: source has no active session to clone",
+      body: null,
+    });
     const fork = vi
       .fn()
       .mockRejectedValueOnce(sessionUnavailable)
@@ -312,8 +315,11 @@ describe("empty-fork sweep", () => {
       const fork = vi.fn(async () => thread);
       if (fallback)
         fork.mockRejectedValueOnce(
-          Object.assign(new Error("unavailable"), {
+          new experimental_BbHttpError({
+            status: 400,
             code: "fork_source_session_unavailable",
+            message: "unavailable",
+            body: null,
           }),
         );
       const list = vi.fn(

@@ -93,7 +93,8 @@ export {
   createRequestTimeoutFetch,
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 };
-export { BbHttpError, BbRequestTimeoutError } from "./response.js";
+export { BbHttpError } from "./http-error.js";
+export { BbRequestTimeoutError } from "./response.js";
 export {
   pluginMutationResponseSchema,
   type PluginMutationResponse,
@@ -120,5 +121,5 @@ export type {
   BbRealtimeSocketFactory,
   BbRealtimeSocketMessageEvent,
 } from "./transport.js";
-export type { BbHttpErrorArgs } from "./response.js";
+export type { BbHttpErrorArgs } from "./http-error.js";
 export type * from "./public-types.js";

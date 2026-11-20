@@ -11,7 +11,10 @@ import {
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
-import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type PluginCliRegistration,
+} from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -506,7 +509,12 @@ describe("startup reconciliation", () => {
       get: async ({ threadId }) => {
         const value = threads.get(threadId);
         if (value === null) {
-          throw Object.assign(new Error("not found"), { status: 404 });
+          throw new experimental_BbHttpError({
+            status: 404,
+            code: null,
+            message: "not found",
+            body: null,
+          });
         }
         if (value === "boom") throw new Error("connection refused");
         return value;

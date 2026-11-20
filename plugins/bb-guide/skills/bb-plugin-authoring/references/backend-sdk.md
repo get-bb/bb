@@ -397,5 +397,11 @@ preview URLs expire and never reveal the host id or absolute root.
 Caller-gated RPC handlers can throw `new experimental_PluginRpcRefusal({
 code: "forbidden", message: "Only the connect plugin can call this method" })`
 from `@get-bb/plugin-sdk`. `bb.sdk.plugins.callRpc` rejects with a `BbHttpError`
-whose `code` is `forbidden` and `status` is 403. See `backend-events.md` for
+whose `code` is `forbidden` and `status` is 403.
+
+Every `bb.sdk` call rejects a non-2xx response with that error. Import it as
+`experimental_BbHttpError` from `@get-bb/plugin-sdk` and narrow with
+`error instanceof experimental_BbHttpError`, which also matches errors thrown
+by the host's copy of the SDK; then read `status`, `code` (the server's error
+code, such as `thread_not_found`, or null) and `body`. See `backend-events.md` for
 the refusal codes, optional validation issues and mutation rollback behavior.

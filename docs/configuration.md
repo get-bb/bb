@@ -1227,8 +1227,9 @@ Plugin state lives under the data dir:
                                    settles, or at the next restart after a
                                    rollback
 <dataDir>/plugins/<id>/secrets/    Secret settings and the plugin HTTP token
-<dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
-                                   at 5MB; read with `bb plugin logs <id>`)
+<dataDir>/plugins/<id>/logs/       bb.log output and the plugin's failures
+                                   (plugin.log, JSONL, rotated at 5MB; read
+                                   with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
 <dataDir>/marketplaces/staging/    Throwaway checkouts for git: marketplace
                                    refreshes

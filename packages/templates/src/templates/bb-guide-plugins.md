@@ -85,7 +85,9 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  Show or change a plugin's declared settings.
                                  Running plugins receive changes live; a
                                  plugin waiting for configuration retries
-  bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's log
+  bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's log: bb.log
+                                 output plus its load, handler, service and
+                                 host-worker failures
   bb plugin run <id> [args...]   Run a plugin command explicitly (also works
                                  when a core command owns its name)
   bb plugin token <id> [--rotate]  Print the token for a plugin's

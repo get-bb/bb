@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { posix as path } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -481,7 +482,12 @@ describe("preparePreview rpc", () => {
       threads: { get: () => threadWithEnv() },
       files: {
         read: () => {
-          throw Object.assign(new Error("not found"), { status: 404 });
+          throw new experimental_BbHttpError({
+            status: 404,
+            code: null,
+            message: "not found",
+            body: null,
+          });
         },
       },
     });

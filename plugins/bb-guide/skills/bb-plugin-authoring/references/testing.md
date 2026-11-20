@@ -251,7 +251,7 @@ arbitration. Use a live loop for those host boundaries.
   `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
-  `bb.log` output. Use `--json` only when live help lists that option.
+  `bb.log` output and the plugin's failures, with stacks. Use `--json` only when live help lists that option.
 - Exercise wire surfaces directly: `curl -X POST -H "content-type:
 application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
   `bb <command> …` for the CLI, `bb plugin run <id> …` as the explicit form.

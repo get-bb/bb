@@ -1,4 +1,5 @@
 import { extractErrorMessage } from "@bb/core-ui";
+import { BbHttpError } from "./http-error.js";
 
 export const DEFAULT_BB_REQUEST_TIMEOUT_MS = 75_000;
 
@@ -69,27 +70,6 @@ export class BbRequestTimeoutError extends Error {
       `BB request timed out after ${formatRequestTimeoutDuration(timeoutMs)}.`,
     );
     this.name = "BbRequestTimeoutError";
-  }
-}
-
-export interface BbHttpErrorArgs {
-  body: unknown;
-  code: string | null;
-  message: string;
-  status: number;
-}
-
-export class BbHttpError extends Error {
-  readonly body: unknown;
-  readonly code: string | null;
-  readonly status: number;
-
-  constructor(args: BbHttpErrorArgs) {
-    super(`HTTP ${args.status}: ${args.message}`);
-    this.name = "BbHttpError";
-    this.body = args.body;
-    this.code = args.code;
-    this.status = args.status;
   }
 }
 
