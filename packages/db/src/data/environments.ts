@@ -5,7 +5,11 @@ import type {
   EnvironmentStatus,
 } from "@bb/domain";
 import { areHostPathsEqual } from "@bb/domain";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import type {
+  DbConnection,
+  DbQueryConnection,
+  DbTransaction,
+} from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments, threads } from "../schema.js";
 import { createEnvironmentId } from "../ids.js";
@@ -355,4 +359,318 @@ export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentR
     tx.update(environments).set(discarded).where(eq(environments.id, current.id)).run();
     return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, status: existing.status, teardownStatus: current.teardownStatus, retireAt: current.retireAt, statusMessage: existing.status === "provisioning" ? existing.statusMessage : current.statusMessage, pendingLog: existing.status === "provisioning" ? existing.pendingLog : current.pendingLog, claimPath: current.claimPath, environmentProviderId: existing.environmentProviderId ?? current.environmentProviderId, environmentProviderPluginId: existing.environmentProviderId === null ? current.environmentProviderPluginId : existing.environmentProviderPluginId, environmentProviderSelection: existing.environmentProviderId === null ? current.environmentProviderSelection : existing.environmentProviderSelection, environmentProviderInstanceKey: existing.environmentProviderId === null ? current.environmentProviderInstanceKey : existing.environmentProviderInstanceKey }).where(eq(environments.id, existing.id)).returning().get()!;
   }, { behavior: "immediate" });
+}
+
+type ThreadRow = typeof threads.$inferSelect;
+
+export interface EnvironmentTeardownFailureInput {
+  teardownMessage: string;
+  retireAt: number | null;
+  updatedAt: number;
+}
+
+export interface HostEnvironmentRemovalState {
+  id: string;
+  path: string | null;
+  providerOwnsPath: boolean;
+  status: EnvironmentRow["status"];
+  teardownStatus: EnvironmentRow["teardownStatus"];
+}
+
+export interface UndeletedEnvironmentThread {
+  environmentId: string | null;
+  id: string;
+  status: ThreadRow["status"];
+}
+
+export interface StoppingEnvironmentThread {
+  id: string;
+  status: ThreadRow["status"];
+}
+
+export interface ReadyEnvironmentWatchTarget {
+  id: string;
+  hostId: string;
+  path: string | null;
+  mergeBaseBranch: string | null;
+  baseBranch: string | null;
+  defaultBranch: string | null;
+}
+
+export interface LiveThreadHost {
+  id: string;
+  hostId: string;
+}
+
+export function setEnvironmentColumns(
+  db: DbQueryConnection,
+  environmentId: string,
+  change: Partial<EnvironmentRow>,
+): number {
+  return db
+    .update(environments)
+    .set(change)
+    .where(eq(environments.id, environmentId))
+    .run().changes;
+}
+
+export function recordEnvironmentTeardownFailure(
+  db: DbQueryConnection,
+  environmentId: string,
+  input: EnvironmentTeardownFailureInput,
+): boolean {
+  return (
+    db
+      .update(environments)
+      .set({
+        teardownStatus: "failed",
+        teardownMessage: input.teardownMessage,
+        retireAt: input.retireAt,
+        updatedAt: input.updatedAt,
+      })
+      .where(
+        and(
+          eq(environments.id, environmentId),
+          or(
+            isNull(environments.teardownStatus),
+            ne(environments.teardownStatus, "removed"),
+          ),
+        ),
+      )
+      .returning({ id: environments.id })
+      .all().length > 0
+  );
+}
+
+export function listProvisioningEnvironmentIdsOnHost(
+  db: DbQueryConnection,
+  hostId: string,
+): string[] {
+  return db
+    .select({ id: environments.id })
+    .from(environments)
+    .where(
+      and(
+        eq(environments.hostId, hostId),
+        eq(environments.status, "provisioning"),
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
+export function listHostEnvironmentRemovalStates(
+  db: DbQueryConnection,
+  hostId: string,
+): HostEnvironmentRemovalState[] {
+  return db
+    .select({
+      id: environments.id,
+      path: environments.path,
+      providerOwnsPath: environments.providerOwnsPath,
+      status: environments.status,
+      teardownStatus: environments.teardownStatus,
+    })
+    .from(environments)
+    .where(eq(environments.hostId, hostId))
+    .all();
+}
+
+export function listUndeletedEnvironmentThreads(
+  db: DbQueryConnection,
+  environmentId: string,
+): UndeletedEnvironmentThread[] {
+  return db
+    .select({
+      environmentId: threads.environmentId,
+      id: threads.id,
+      status: threads.status,
+    })
+    .from(threads)
+    .where(
+      and(eq(threads.environmentId, environmentId), isNull(threads.deletedAt)),
+    )
+    .all();
+}
+
+export function listStoppingLiveEnvironmentThreads(
+  db: DbQueryConnection,
+  environmentId: string,
+): StoppingEnvironmentThread[] {
+  return db
+    .select({
+      id: threads.id,
+      status: threads.status,
+    })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, environmentId),
+        eq(threads.status, "stopping"),
+        liveThread,
+      ),
+    )
+    .all();
+}
+
+export function listEnvironmentThreads(
+  db: DbQueryConnection,
+  environmentId: string,
+): ThreadRow[] {
+  return db
+    .select()
+    .from(threads)
+    .where(eq(threads.environmentId, environmentId))
+    .all();
+}
+
+export function getStartingLiveEnvironmentThread(
+  db: DbQueryConnection,
+  environmentId: string,
+): ThreadRow | null {
+  return (
+    db
+      .select()
+      .from(threads)
+      .where(
+        and(
+          eq(threads.environmentId, environmentId),
+          eq(threads.status, "starting"),
+          liveThread,
+        ),
+      )
+      .get() ?? null
+  );
+}
+
+export function listStartingLiveEnvironmentThreadIds(
+  db: DbQueryConnection,
+  environmentId: string,
+): string[] {
+  return db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, environmentId),
+        eq(threads.status, "starting"),
+        liveThread,
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
+export function environmentHasOtherStartingOrActiveThread(
+  db: DbQueryConnection,
+  args: { environmentId: string; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .where(
+        and(
+          eq(threads.environmentId, args.environmentId),
+          ne(threads.id, args.threadId),
+          inArray(threads.status, ["starting", "active"]),
+          liveThread,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function retryFailedEnvironmentTeardownsOnHost(
+  db: DbQueryConnection,
+  hostId: string,
+  retireAt: number,
+): string[] {
+  return db
+    .update(environments)
+    .set({ retireAt })
+    .where(
+      and(
+        eq(environments.hostId, hostId),
+        eq(environments.teardownStatus, "failed"),
+      ),
+    )
+    .returning({ id: environments.id })
+    .all()
+    .map((row) => row.id);
+}
+
+export function getFailedTeardownEnvironmentOnHost(
+  db: DbQueryConnection,
+  hostId: string,
+): EnvironmentRow | null {
+  return (
+    db
+      .select()
+      .from(environments)
+      .where(
+        and(
+          eq(environments.hostId, hostId),
+          eq(environments.teardownStatus, "failed"),
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function listReadyEnvironmentWatchTargets(
+  db: DbQueryConnection,
+  environmentIds: readonly string[],
+): ReadyEnvironmentWatchTarget[] {
+  return db
+    .select({
+      id: environments.id,
+      hostId: environments.hostId,
+      path: environments.path,
+      mergeBaseBranch: environments.mergeBaseBranch,
+      baseBranch: environments.baseBranch,
+      defaultBranch: environments.defaultBranch,
+    })
+    .from(environments)
+    .where(
+      and(
+        inArray(environments.id, [...environmentIds]),
+        eq(environments.status, "ready"),
+      ),
+    )
+    .all();
+}
+
+export function listLiveThreadHosts(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): LiveThreadHost[] {
+  return db
+    .select({
+      id: threads.id,
+      hostId: environments.hostId,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        inArray(threads.id, [...threadIds]),
+        liveThread,
+        ne(environments.status, "destroyed"),
+      ),
+    )
+    .all();
+}
+
+export function listProvisioningEnvironmentIds(
+  db: DbQueryConnection,
+): string[] {
+  return db
+    .select({ id: environments.id })
+    .from(environments)
+    .where(inArray(environments.status, ["creating", "provisioning"]))
+    .all()
+    .map((environment) => environment.id);
 }

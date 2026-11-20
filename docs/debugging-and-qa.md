@@ -367,9 +367,9 @@ worlds through the real write paths and compares them along two axes:
 - Thread history: a thread with 625 or 10,000 turns (about 250,000 events in
   the full-scale world), plus what each case group in
   `packages/db/scripts/query-costs/` seeds for its tables at about twice the
-  size of the largest real user (for example 10,000 threads, 4,000
-  environments, 50,000 prompt history entries and 15,000 terminal sessions at
-  full scale).
+  size of the largest real user (for example 10,000 threads with title and
+  message search segments, 4,000 environments, 50,000 prompt history entries
+  and 15,000 terminal sessions at full scale).
 - Turn size: a 500-turn thread whose first and last turns, and the open turn
   of a second, running thread, have 94 or 1,500 steps (about 1,100 or 18,000
   events each: reasoning, commands with streamed output, file edits,
@@ -378,7 +378,8 @@ worlds through the real write paths and compares them along two axes:
 `HistoryFixture.liveTurn` names the open turn, and the `open long turn` cases
 in `events-cases.ts` time the reads and appends a running thread makes
 against it. The check calls every exported query function in
-`packages/db/src/data` against the smaller and larger world of each axis,
+`packages/db/src/data` and in the plugin database modules (below) against the
+smaller and larger world of each axis,
 interleaved, each call inside a rolled-back savepoint. Each call is timed by
 CPU time, not by the wall clock, so other work on a busy runner does not count
 against it: the thread's CPU time on macOS, and the process's on Linux, where a
@@ -413,27 +414,61 @@ each axis the five undeclared functions closest to the limit. The check
 fails when:
 
 - an undeclared function grows faster than size^0.5 (4x);
-- a declared function grows faster than size^2 (256x); or
+- a declared function grows faster than size^2 (256x);
+- a function takes longer than its ceiling in the larger world of either axis,
+  whether or not it declares growth: 100 ms on the reference machine, scaled
+  by the calibration like the growth floor, unless its case sets a higher
+  `ceilingMs` with a `reason`. Every query runs synchronously on the server's
+  main thread, request path or sweep alike, so a declaration explains why a
+  cost grows but never lets it grow without bound; or
 - a single call runs for more than 5 seconds of wall time, when it is killed,
   or a case throws.
 
 It reports a GitHub Actions warning, without failing, when a declared function
-grows faster than size^1.5 (64x) or a function takes longer than its ceiling in
-the larger world (250 ms unless its case sets `ceilingMs` with a `reason`). A
-case that crosses size^0.5 is measured up to eight times before it is
-reported. The request-path statement-count test below is exact, so it stays
-blocking.
+grows faster than size^1.5 (64x), or when a case raises `ceilingMs` but
+measures within a third of the default ceiling on every axis, so the raise
+can be removed. A case that crosses size^0.5 or its ceiling is measured up to eight
+times before it is reported. The default sits at about twice the slowest
+bounded case on CI, where heavy reads run up to 4 times slower than on the
+reference machine while the calibration moves about 1.5 times. The
+request-path statement-count test below is exact, so it stays blocking.
 
 The check also fails when an exported query function in `packages/db/src/data`
 has no case. A query function is an exported function that builds a query
 itself or calls a function in the same file that does, so wrappers around a
 private query helper count too (`pnpm --filter @bb/db list:query-functions`
 lists them; the same list drives the "query functions run in tests" checks). `--group <name>[,<name>]` runs only those case groups and skips
-the coverage check. To time the cases against real data shapes, make a copy
+the coverage check.
+
+Server code runs SQL only through those query functions:
+`apps/server/test/sql-in-data-modules.test.ts` fails when a file in
+`apps/server/src` imports `drizzle-orm` at runtime or builds a query on a
+`db`, `tx` or `$client` receiver. The server may still open a transaction
+and pass it to query functions, and pass `$client` to connection-level
+helpers (backup, checkpointing, vacuum).
+
+Plugins that keep their own SQLite file run it on the same main thread, but a
+forkable plugin cannot load `@bb/db`, so its test guard never sees them. The
+check therefore also covers the plugin database modules listed in
+`PLUGIN_QUERY_MODULES` (`packages/db/scripts/query-functions.ts`): the
+account-pool, automations and workflows stores. Their cases live in
+`packages/db/scripts/query-costs/plugin-databases-cases.ts`. Each of these
+groups sets `pluginDatabase`, so every world gets a separate database per
+plugin, opened as the server opens plugin databases (better-sqlite3 enforces foreign keys by default),
+which the group's seed migrates with the plugin's own statements and fills at
+both sizes; exported functions and public methods of exported classes count
+as query functions. The check also explains every statement those cases run
+against the larger history world's plugin databases and fails on the
+query-plan guard's rules for the tables the group lists in
+`pluginDatabase.auditedTables`, unless the group's
+`pluginDatabase.allowedFindings` lists the finding with the case name as its
+caller and a reason; an allowed finding no case reports is a warning. The
+workflow runs on pull requests that change these modules as well as
+`packages/db`. To time the cases against real data shapes, make a copy
 with `sqlite3 ~/.bb/bb.db "VACUUM INTO '/tmp/bb-copy.db'"` and run
 `pnpm --filter @bb/db check:query-costs --db /tmp/bb-copy.db`: it migrates the
-copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling and the
-5-second kill, since there is no second size to compare. The copy is written to;
+copy, seeds a world with 10,000 turns and 1,500-step long turns into it, and fails only on the ceiling, the
+plugin plan audit and the 5-second kill, since there is no second size to compare. The copy is written to;
 never point `--db` at `~/.bb/bb.db` (the check refuses), and never start a bb
 server on the copy.
 

@@ -3,11 +3,10 @@ import {
   getHost,
   getInstalledPlugin,
   getServerAccessOrigins,
-  hosts,
+  setHostColumns,
   setServerAccessOrigins,
 } from "@bb/db";
 import type { ServerAccessOrigin } from "@bb/domain";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
 import type { ServerAccessStatus } from "@bb/server-contract";
@@ -274,11 +273,9 @@ async function resolve(
     if (availability.status !== "available") {
       throw new Error(availability.message);
     }
-    deps.db
-      .update(hosts)
-      .set({ serverAccessProviderId: providerId })
-      .where(eq(hosts.id, args.hostId))
-      .run();
+    setHostColumns(deps.db, args.hostId, {
+      serverAccessProviderId: providerId,
+    });
     let result: unknown;
     try {
       result = await invokeServerAccessProvider(record, () =>
@@ -293,13 +290,9 @@ async function resolve(
       if ("status" in parsed.data) throw new Error(parsed.data.message);
       grant = parsed.data;
     } catch (error) {
-      deps.db
-        .update(hosts)
-        .set({
-          statusMessage: error instanceof Error ? error.message : String(error),
-        })
-        .where(eq(hosts.id, args.hostId))
-        .run();
+      setHostColumns(deps.db, args.hostId, {
+        statusMessage: error instanceof Error ? error.message : String(error),
+      });
       deps.hub.notifyHost(args.hostId, ["host-connected"]);
       throw error;
     }
@@ -310,15 +303,11 @@ async function resolve(
   ) {
     throw new Error("Server access provider changed its grant identity");
   }
-  deps.db
-    .update(hosts)
-    .set({
-      serverAccessProviderId: providerId,
-      serverAccessGrantId: grant.id,
-      statusMessage: null,
-    })
-    .where(eq(hosts.id, args.hostId))
-    .run();
+  setHostColumns(deps.db, args.hostId, {
+    serverAccessProviderId: providerId,
+    serverAccessGrantId: grant.id,
+    statusMessage: null,
+  });
   args.signal.throwIfAborted();
   return grant;
 }
@@ -354,14 +343,10 @@ async function release(
       );
     }
   }
-  deps.db
-    .update(hosts)
-    .set({
-      serverAccessProviderId: purpose === "repair" ? providerId : null,
-      serverAccessGrantId: null,
-    })
-    .where(eq(hosts.id, args.hostId))
-    .run();
+  setHostColumns(deps.db, args.hostId, {
+    serverAccessProviderId: purpose === "repair" ? providerId : null,
+    serverAccessGrantId: null,
+  });
 }
 
 async function repair(

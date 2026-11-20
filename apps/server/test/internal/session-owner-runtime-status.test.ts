@@ -1,5 +1,10 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
-import { archiveThread, getThread, markThreadDeleted } from "@bb/db";
+import {
+  archiveThread,
+  getSessionById,
+  getThread,
+  markThreadDeleted,
+} from "@bb/db";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -299,6 +304,7 @@ describe("host thread runtime status notifications", () => {
       }
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
+      getSessionById(harness.db, { sessionId: large.sessionId });
 
       const largeStatements = countPreparedStatements(harness, () =>
         handleDaemonSocketClosed(harness.deps, { sessionId: large.sessionId }),

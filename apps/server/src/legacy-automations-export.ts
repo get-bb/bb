@@ -1,16 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import type { DbConnection } from "@bb/db";
+import {
+  countLegacyAutomations,
+  legacyAutomationTableExists,
+  listLegacyAutomationRows,
+  listLegacyAutomationRunRows,
+  type DbConnection,
+} from "@bb/db";
 import { resolveContainedPath } from "@bb/process-utils";
 
 interface LegacyAutomationsExportLogger {
   error(fields: { err: unknown }, message: string): void;
   info(fields: Record<string, unknown>, message: string): void;
-}
-
-interface SqliteCountRow {
-  count: number;
 }
 
 const sqliteBooleanSchema = z.union([z.boolean(), z.number().int()]);
@@ -73,24 +75,6 @@ const executionSchema = z.union([
   z.object({ mode: z.literal("agent") }).passthrough(),
   scriptExecutionSchema,
 ]);
-
-function tableExists(db: DbConnection, tableName: string): boolean {
-  const row = db.$client
-    .prepare(
-      `SELECT COUNT(*) AS count
-       FROM sqlite_master
-       WHERE type = 'table' AND name = ?`,
-    )
-    .get(tableName) as SqliteCountRow | undefined;
-  return (row?.count ?? 0) > 0;
-}
-
-function tableRowCount(db: DbConnection, tableName: string): number {
-  const row = db.$client
-    .prepare(`SELECT COUNT(*) AS count FROM ${tableName}`)
-    .get() as SqliteCountRow | undefined;
-  return row?.count ?? 0;
-}
 
 function toBoolean(value: z.infer<typeof sqliteBooleanSchema>): boolean {
   return value === true || value === 1;
@@ -175,36 +159,7 @@ function listLegacyAutomations(
 ): LegacyAutomationExportFile["automations"] {
   return z
     .array(automationRowSchema)
-    .parse(
-      db.$client
-        .prepare(
-          `SELECT
-             id,
-             project_id AS projectId,
-             target_thread_id AS targetThreadId,
-             name,
-             enabled,
-             trigger_type AS triggerType,
-             trigger_config AS triggerConfig,
-             run_mode AS runMode,
-             execution,
-             environment,
-             auto_archive AS autoArchive,
-             origin,
-             created_by_thread_id AS createdByThreadId,
-             next_run_at AS nextRunAt,
-             last_run_at AS lastRunAt,
-             run_count AS runCount,
-             last_run_status AS lastRunStatus,
-             last_run_thread_id AS lastRunThreadId,
-             last_error AS lastError,
-             created_at AS createdAt,
-             updated_at AS updatedAt
-           FROM automations
-           ORDER BY created_at, id`,
-        )
-        .all(),
-    )
+    .parse(listLegacyAutomationRows(db))
     .map((row) => ({
       ...row,
       enabled: toBoolean(row.enabled),
@@ -213,32 +168,10 @@ function listLegacyAutomations(
 }
 
 function listLegacyRuns(db: DbConnection): LegacyAutomationExportFile["runs"] {
-  if (!tableExists(db, "automation_runs")) {
+  if (!legacyAutomationTableExists(db, "automation_runs")) {
     return [];
   }
-  return z.array(runRowSchema).parse(
-    db.$client
-      .prepare(
-        `SELECT
-           id,
-           automation_id AS automationId,
-           run_mode AS runMode,
-           thread_id AS threadId,
-           status,
-           trigger,
-           skip_reason AS skipReason,
-           error,
-           output,
-           exit_code AS exitCode,
-           idempotency_key AS idempotencyKey,
-           scheduled_for AS scheduledFor,
-           started_at AS startedAt,
-           finished_at AS finishedAt
-         FROM automation_runs
-         ORDER BY started_at, id`,
-      )
-      .all(),
-  );
+  return z.array(runRowSchema).parse(listLegacyAutomationRunRows(db));
 }
 
 export function exportLegacyAutomationsForPluginImport(args: {
@@ -247,11 +180,14 @@ export function exportLegacyAutomationsForPluginImport(args: {
   logger: LegacyAutomationsExportLogger;
 }): void {
   const importPath = legacyImportPath(args.dataDir);
-  if (existsSync(importPath) || !tableExists(args.db, "automations")) {
+  if (
+    existsSync(importPath) ||
+    !legacyAutomationTableExists(args.db, "automations")
+  ) {
     return;
   }
 
-  const automationCount = tableRowCount(args.db, "automations");
+  const automationCount = countLegacyAutomations(args.db);
   if (automationCount === 0) {
     return;
   }
@@ -293,5 +229,8 @@ export function exportLegacyAutomationsForPluginImport(args: {
 }
 
 export function hasLegacyAutomationsToExport(db: DbConnection): boolean {
-  return tableExists(db, "automations") && tableRowCount(db, "automations") > 0;
+  return (
+    legacyAutomationTableExists(db, "automations") &&
+    countLegacyAutomations(db) > 0
+  );
 }

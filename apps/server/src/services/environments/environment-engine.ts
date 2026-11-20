@@ -35,14 +35,23 @@ import {
   runEnvironmentTeardownHook,
   type EnvironmentHookProgressSink,
 } from "./environment-hooks.js";
-import { eq, and, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import {
+  acknowledgeInterruptedEnvironmentHookOperation,
   releaseFinishedEnvironmentPreparationOwners,
   environmentHasLiveThreads,
-  environments,
-  environmentHookOperations,
   getEnvironment,
+  getEnvironmentHookOperation,
+  getStartingLiveEnvironmentThread,
+  hasEnvironmentHookOperation,
+  listEnvironmentThreads,
+  listHostEnvironmentRemovalStates,
+  listProvisioningEnvironmentIdsOnHost,
+  listStartingLiveEnvironmentThreadIds,
+  listStoppingLiveEnvironmentThreads,
+  listUndeletedEnvironmentThreads,
+  recordEnvironmentTeardownFailure,
+  setEnvironmentColumns,
   getHost,
   getThread,
   findProjectEnvironmentByHostPath,
@@ -50,7 +59,6 @@ import {
   claimEnvironmentPath,
   bindEnvironmentPath,
   listProviderLifecycleEnvironments,
-  liveThread,
   updatePreparingEnvironment,
   type DbConnection,
   type DbTransaction,
@@ -58,7 +66,6 @@ import {
   hasStoredCancelledThreadProvisioning,
   type DbNotifier,
   type DbQueryConnection,
-  threads,
   markHostEnvironmentsDestroyed,
 } from "@bb/db";
 import {
@@ -219,11 +226,10 @@ function writeEnvironment(
   environmentId: string,
   change: Partial<EnvironmentRow>,
 ): void {
-  deps.db
-    .update(environments)
-    .set({ ...change, updatedAt: Date.now() })
-    .where(eq(environments.id, environmentId))
-    .run();
+  setEnvironmentColumns(deps.db, environmentId, {
+    ...change,
+    updatedAt: Date.now(),
+  });
   deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
 }
 
@@ -314,10 +320,7 @@ function provisioningReporter(
             status: "active",
             entries,
           });
-        tx.update(environments)
-          .set({ pendingLog: "" })
-          .where(eq(environments.id, row.id))
-          .run();
+        setEnvironmentColumns(tx, row.id, { pendingLog: "" });
         deps.hub.notifyThread(owner, ["events-appended"], {
           timelineSequence: getLatestThreadSequence(deps.db, {
             threadId: owner,
@@ -884,15 +887,11 @@ export function markProviderEnvironmentAttached(
   if (row.id !== environmentId)
     throw new Error("Provisioning must attach its reserved environment");
   return (
-    db
-      .update(environments)
-      .set({
-        ownerThreadId: null,
-        claimPath: null,
-        retireAt: null,
-      })
-      .where(eq(environments.id, row.id))
-      .run().changes > 0
+    setEnvironmentColumns(db, row.id, {
+      ownerThreadId: null,
+      claimPath: null,
+      retireAt: null,
+    }) > 0
   );
 }
 
@@ -959,14 +958,10 @@ export function requestEnvironmentRemoval(
     }).applied;
   }
   if (row.teardownStatus === null) {
-    deps.db
-      .update(environments)
-      .set({
-        retireAt: Date.now(),
-        teardownStatus: "running",
-      })
-      .where(eq(environments.id, environmentId))
-      .run();
+    setEnvironmentColumns(deps.db, environmentId, {
+      retireAt: Date.now(),
+      teardownStatus: "running",
+    });
     deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
   }
   return true;
@@ -1081,33 +1076,18 @@ function writeEnvironmentTeardownFailure(
     row.teardownAttempt,
     Date.now(),
   );
-  const written = deps.db
-    .update(environments)
-    .set({
-      teardownStatus: "failed",
-      teardownMessage:
-        retireAt === null
-          ? needsRecoveryMessage(
-              message,
-              `Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
-            )
-          : message,
-      retireAt,
-      updatedAt: Date.now(),
-    })
-    .where(
-      and(
-        eq(environments.id, environmentId),
-        or(
-          isNull(environments.teardownStatus),
-          ne(environments.teardownStatus, "removed"),
-        ),
-      ),
-    )
-    .returning({ id: environments.id })
-    .all();
-  if (written.length > 0)
-    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
+  const written = recordEnvironmentTeardownFailure(deps.db, environmentId, {
+    teardownMessage:
+      retireAt === null
+        ? needsRecoveryMessage(
+            message,
+            `Inspect the workspace, then run bb environment cleanup ${environmentId} --recover.`,
+          )
+        : message,
+    retireAt,
+    updatedAt: Date.now(),
+  });
+  if (written) deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
 }
 
 async function removeEnvironment(
@@ -1254,22 +1234,16 @@ async function sweepProviderEnvironmentInSlot(
   try {
     const setupOperation = readSetupOperation(deps, row);
     const setupUnresolved =
-      (setupOperation !== undefined && setupOperation.finishedAt === null) ||
+      (setupOperation !== null && setupOperation.finishedAt === null) ||
       cancelled ||
       ((row.status === "provisioning" || row.status === "error") &&
-        deps.db
-          .select({ id: environmentHookOperations.id })
-          .from(environmentHookOperations)
-          .where(
-            eq(
-              environmentHookOperations.id,
-              `environment:${row.id}:${row.environmentProviderInstanceKey}:teardown`,
-            ),
-          )
-          .get() === undefined);
+        !hasEnvironmentHookOperation(
+          deps.db,
+          `environment:${row.id}:${row.environmentProviderInstanceKey}:teardown`,
+        ));
     if (
       setupUnresolved &&
-      (row.providerOwnsPath || setupOperation !== undefined) &&
+      (row.providerOwnsPath || setupOperation !== null) &&
       row.path !== null
     ) {
       await cancelPendingEnvironmentHook(deps, {
@@ -1416,36 +1390,18 @@ export async function recoverEnvironmentCleanup(
               const finishedAt = Date.now();
               if (
                 kind === "teardown" &&
-                deps.db
-                  .select({ id: environmentHookOperations.id })
-                  .from(environmentHookOperations)
-                  .where(eq(environmentHookOperations.id, id))
-                  .get() === undefined
+                !hasEnvironmentHookOperation(deps.db, id)
               )
                 continue;
-              deps.db
-                .insert(environmentHookOperations)
-                .values({
-                  id,
-                  operationId: id,
-                  hostId: row.hostId,
-                  path: workspacePath,
-                  kind,
-                  startedAt: finishedAt,
-                  finishedAt,
-                  error:
-                    "Interrupted hook acknowledged by explicit cleanup recovery",
-                })
-                .onConflictDoUpdate({
-                  target: environmentHookOperations.id,
-                  set: {
-                    finishedAt,
-                    error:
-                      "Interrupted hook acknowledged by explicit cleanup recovery",
-                  },
-                  setWhere: isNull(environmentHookOperations.finishedAt),
-                })
-                .run();
+              acknowledgeInterruptedEnvironmentHookOperation(deps.db, {
+                id,
+                hostId: row.hostId,
+                path: workspacePath,
+                kind,
+                finishedAt,
+                error:
+                  "Interrupted hook acknowledged by explicit cleanup recovery",
+              });
             }
           writeEnvironment(deps, environmentId, {
             teardownAttempt: 0,
@@ -1524,11 +1480,7 @@ export function refreshProviderRetirement(
       ? null
       : (row.retireAt ?? Date.now() + grace);
   if (row.retireAt === retireAt) return;
-  deps.db
-    .update(environments)
-    .set({ retireAt })
-    .where(eq(environments.id, environmentId))
-    .run();
+  setEnvironmentColumns(deps.db, environmentId, { retireAt });
   deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
 }
 
@@ -1634,37 +1586,14 @@ function listLiveEnvironmentThreads(
   deps: EnvironmentProvisionReadDeps,
   environmentId: string,
 ): LiveEnvironmentThread[] {
-  return deps.db
-    .select({
-      environmentId: threads.environmentId,
-      id: threads.id,
-      status: threads.status,
-    })
-    .from(threads)
-    .where(
-      and(eq(threads.environmentId, environmentId), isNull(threads.deletedAt)),
-    )
-    .all();
+  return listUndeletedEnvironmentThreads(deps.db, environmentId);
 }
 
 function listStopRequestedEnvironmentProvisionThreads(
   deps: EnvironmentProvisionReadDeps,
   environmentId: string,
 ): StopRequestedEnvironmentProvisionThread[] {
-  return deps.db
-    .select({
-      id: threads.id,
-      status: threads.status,
-    })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, environmentId),
-        eq(threads.status, "stopping"),
-        liveThread,
-      ),
-    )
-    .all();
+  return listStoppingLiveEnvironmentThreads(deps.db, environmentId);
 }
 
 function resolveLiveThreadProvisioningId(
@@ -1763,11 +1692,9 @@ function recordEnvironmentProvisioningFailureInTransaction(
     },
   );
   if (failureOutcome.applied) {
-    deps.db
-      .update(environments)
-      .set({ statusMessage: args.failureReason })
-      .where(eq(environments.id, environment.id))
-      .run();
+    setEnvironmentColumns(deps.db, environment.id, {
+      statusMessage: args.failureReason,
+    });
     deps.hub.notifyEnvironment(environment.id, failureOutcome.changes);
   }
 
@@ -1819,11 +1746,10 @@ function settleEnvironmentProvisionOutcome(
 ): CommandResultSideEffectsResult {
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
-  const boundThreads = args.deps.db
-    .select()
-    .from(threads)
-    .where(eq(threads.environmentId, args.command.environmentId))
-    .all();
+  const boundThreads = listEnvironmentThreads(
+    args.deps.db,
+    args.command.environmentId,
+  );
 
   if (args.report.ok) {
     recordProvisionedEnvironmentWorkspace(
@@ -1952,7 +1878,7 @@ function settleEnvironmentProvisionOutcome(
 
 function advanceJoinedThreads(
   args: SettleEnvironmentProvisionOutcomeArgs,
-  boundThreads: (typeof threads.$inferSelect)[],
+  boundThreads: ReturnType<typeof listEnvironmentThreads>,
 ): CommandResultPostCommitAction[] {
   if (!args.report.ok) return [];
   const entries = buildCwdBranchEntries({
@@ -2099,19 +2025,12 @@ export function interruptEnvironmentProvisioningForHost(
   deps: CommandResultSideEffectsDeps,
   args: InterruptEnvironmentProvisioningForHostArgs,
 ): void {
-  const environmentIds = deps.db
-    .select({ id: environments.id })
-    .from(environments)
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        eq(environments.status, "provisioning"),
-      ),
-    )
-    .all();
-  for (const environment of environmentIds) {
+  for (const environmentId of listProvisioningEnvironmentIdsOnHost(
+    deps.db,
+    args.hostId,
+  )) {
     interruptUnrecoverableEnvironmentProvisioning(deps, {
-      environmentId: environment.id,
+      environmentId,
       reason: args.reason,
     });
   }
@@ -2141,19 +2060,12 @@ async function resumeHostEnvironmentProvisioning(
   deps: CommandResultSideEffectsDeps,
   args: { hostId: string; setupRunsOnConnectedDaemon: boolean },
 ): Promise<void> {
-  const environmentIds = deps.db
-    .select({ id: environments.id })
-    .from(environments)
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        eq(environments.status, "provisioning"),
-      ),
-    )
-    .all();
-  for (const environment of environmentIds) {
+  for (const environmentId of listProvisioningEnvironmentIdsOnHost(
+    deps.db,
+    args.hostId,
+  )) {
     await advanceEnvironmentProvisioning(deps, {
-      environmentId: environment.id,
+      environmentId,
       setupRunsOnConnectedDaemon: args.setupRunsOnConnectedDaemon,
     });
   }
@@ -2188,11 +2100,7 @@ function readSetupOperation(
   deps: Pick<Deps, "db">,
   environment: EnvironmentRow,
 ) {
-  return deps.db
-    .select()
-    .from(environmentHookOperations)
-    .where(eq(environmentHookOperations.id, setupOperationId(environment)))
-    .get();
+  return getEnvironmentHookOperation(deps.db, setupOperationId(environment));
 }
 
 async function createReturned(
@@ -2220,7 +2128,7 @@ function setupSucceededAt(
 ): boolean {
   const operation = readSetupOperation(deps, environment);
   return (
-    operation !== undefined &&
+    operation !== null &&
     operation.finishedAt !== null &&
     operation.error === null &&
     areHostPathsEqual(operation.path, path)
@@ -2286,7 +2194,7 @@ async function runEnvironmentSetup(
   const unknownOutcomeReason = `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`;
   const existing = readSetupOperation(deps, environment);
   if (
-    existing !== undefined &&
+    existing !== null &&
     existing.finishedAt === null &&
     !args.setupRunsOnConnectedDaemon
   ) {
@@ -2440,20 +2348,8 @@ async function runEnvironmentProvisionCommand(
 function startingThreadOf(
   deps: Pick<Deps, "db">,
   environmentId: string,
-): typeof threads.$inferSelect | null {
-  return (
-    deps.db
-      .select()
-      .from(threads)
-      .where(
-        and(
-          eq(threads.environmentId, environmentId),
-          eq(threads.status, "starting"),
-          liveThread,
-        ),
-      )
-      .get() ?? null
-  );
+): ReturnType<typeof getStartingLiveEnvironmentThread> {
+  return getStartingLiveEnvironmentThread(deps.db, environmentId);
 }
 
 function recoverEnvironmentProvisionRequest(
@@ -2470,22 +2366,14 @@ function recoverEnvironmentProvisionRequest(
       path,
     }),
   });
-  const owners = deps.db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, environment.id),
-        eq(threads.status, "starting"),
-        liveThread,
-      ),
-    )
-    .all();
-  for (const owner of owners) {
-    const context = getThreadProvisionContext(deps.db, owner.id);
+  for (const ownerId of listStartingLiveEnvironmentThreadIds(
+    deps.db,
+    environment.id,
+  )) {
+    const context = getThreadProvisionContext(deps.db, ownerId);
     if (context?.state.environmentId !== environment.id) continue;
     return command({
-      threadId: owner.id,
+      threadId: ownerId,
       provisioningId: context.state.provisioningId,
     });
   }
@@ -2748,18 +2636,7 @@ export async function forgetHostEnvironments(
   hostId: string,
 ): Promise<void> {
   const map = perDbRegistry(environmentOperations, deps.db);
-  const listRows = () =>
-    deps.db
-      .select({
-        id: environments.id,
-        path: environments.path,
-        providerOwnsPath: environments.providerOwnsPath,
-        status: environments.status,
-        teardownStatus: environments.teardownStatus,
-      })
-      .from(environments)
-      .where(eq(environments.hostId, hostId))
-      .all();
+  const listRows = () => listHostEnvironmentRemovalStates(deps.db, hostId);
   const createMap = perDbRegistry(createOperations, deps.db);
   await Promise.all(
     listRows().flatMap((row) =>

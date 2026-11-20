@@ -211,3 +211,35 @@ export function heartbeatSession(
     return updated;
   });
 }
+
+export function listActiveSessionIdsForHost(
+  db: SessionReadConnection,
+  hostId: string,
+): string[] {
+  return db
+    .select({ id: hostDaemonSessions.id })
+    .from(hostDaemonSessions)
+    .where(
+      and(
+        eq(hostDaemonSessions.hostId, hostId),
+        eq(hostDaemonSessions.status, "active"),
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}
+
+export interface ActiveSessionHost {
+  hostId: string;
+  id: string;
+}
+
+export function listActiveSessionHosts(
+  db: DbQueryConnection,
+): ActiveSessionHost[] {
+  return db
+    .select({ hostId: hostDaemonSessions.hostId, id: hostDaemonSessions.id })
+    .from(hostDaemonSessions)
+    .where(eq(hostDaemonSessions.status, "active"))
+    .all();
+}

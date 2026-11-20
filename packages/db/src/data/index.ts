@@ -1,5 +1,8 @@
 export * from "./app-settings.js";
 export * from "./app-theme.js";
+export * from "./auth-api-keys.js";
+export * from "./environment-hook-operations.js";
+export * from "./environment-variables.js";
 export * from "./environments.js";
 export {
   bumpThreadEventRewriteGeneration,
@@ -9,6 +12,8 @@ export {
 export * from "./events.js";
 export * from "./experiments.js";
 export * from "./hosts.js";
+export * from "./legacy-automations.js";
+export * from "./legacy-deferred-thread-messages.js";
 export * from "./machines.js";
 export * from "./maintenance.js";
 export * from "./pending-interactions.js";

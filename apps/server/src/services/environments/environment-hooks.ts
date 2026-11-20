@@ -1,6 +1,10 @@
-import { environmentHookOperations } from "@bb/db";
+import {
+  finishEnvironmentHookOperation,
+  getEnvironmentHookOperation,
+  insertEnvironmentHookOperation,
+  restartEnvironmentHookOperation,
+} from "@bb/db";
 import type { ProvisioningTranscriptEntry } from "@bb/domain";
-import { eq } from "drizzle-orm";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import type { WorkSessionDeps } from "../../types.js";
@@ -96,35 +100,23 @@ export async function runEnvironmentHook(
   },
 ): Promise<void> {
   args.signal.throwIfAborted();
-  const existing = deps.db
-    .select()
-    .from(environmentHookOperations)
-    .where(eq(environmentHookOperations.id, args.id))
-    .get();
+  const existing = getEnvironmentHookOperation(deps.db, args.id);
   if (existing?.finishedAt != null && args.kind === "teardown") return;
-  const resuming = existing !== undefined && existing.finishedAt === null;
+  const resuming = existing !== null && existing.finishedAt === null;
   const contributedEnv = await resolveHostEnvironment(deps, {
     hostId: args.hostId,
     projectId: args.projectId,
   });
-  if (existing === undefined)
-    deps.db
-      .insert(environmentHookOperations)
-      .values({
-        id: args.id,
-        operationId: args.id,
-        hostId: args.hostId,
-        path: args.path,
-        kind: args.kind,
-        startedAt: Date.now(),
-      })
-      .run();
+  if (existing === null)
+    insertEnvironmentHookOperation(deps.db, {
+      id: args.id,
+      hostId: args.hostId,
+      path: args.path,
+      kind: args.kind,
+      startedAt: Date.now(),
+    });
   else if (!resuming)
-    deps.db
-      .update(environmentHookOperations)
-      .set({ startedAt: Date.now(), finishedAt: null, error: null })
-      .where(eq(environmentHookOperations.id, args.id))
-      .run();
+    restartEnvironmentHookOperation(deps.db, args.id, Date.now());
   const unregister = registerEnvironmentProgressReport(deps, {
     operationId: args.id,
     hostId: args.hostId,
@@ -157,22 +149,17 @@ export async function runEnvironmentHook(
         timeoutMs: ENVIRONMENT_HOOK_TIMEOUT_MS,
       },
     });
-    deps.db
-      .update(environmentHookOperations)
-      .set({ finishedAt: Date.now(), error: null })
-      .where(eq(environmentHookOperations.id, args.id))
-      .run();
+    finishEnvironmentHookOperation(deps.db, args.id, {
+      finishedAt: Date.now(),
+      error: null,
+    });
     args.signal.throwIfAborted();
   } catch (error) {
     if (isEnvironmentSetupScriptFailure(error))
-      deps.db
-        .update(environmentHookOperations)
-        .set({
-          finishedAt: Date.now(),
-          error: error instanceof Error ? error.message : String(error),
-        })
-        .where(eq(environmentHookOperations.id, args.id))
-        .run();
+      finishEnvironmentHookOperation(deps.db, args.id, {
+        finishedAt: Date.now(),
+        error: error instanceof Error ? error.message : String(error),
+      });
     throw error;
   } finally {
     args.signal.removeEventListener("abort", abort);
@@ -222,11 +209,7 @@ export async function cancelPendingEnvironmentHook(
   args: { id: string; hostId: string },
 ): Promise<void> {
   const id = args.id;
-  const operation = deps.db
-    .select()
-    .from(environmentHookOperations)
-    .where(eq(environmentHookOperations.id, id))
-    .get();
+  const operation = getEnvironmentHookOperation(deps.db, id);
   if (operation?.finishedAt != null) return;
   const result = await callHostOnlineRpc(deps, {
     hostId: args.hostId,
@@ -240,12 +223,8 @@ export async function cancelPendingEnvironmentHook(
     throw new Error(
       "Environment hook outcome is unknown after interruption. Automatic cleanup is blocked; inspect the workspace before recovering it.",
     );
-  deps.db
-    .update(environmentHookOperations)
-    .set({
-      finishedAt: Date.now(),
-      error: "Environment hook cancelled",
-    })
-    .where(eq(environmentHookOperations.id, id))
-    .run();
+  finishEnvironmentHookOperation(deps.db, id, {
+    finishedAt: Date.now(),
+    error: "Environment hook cancelled",
+  });
 }

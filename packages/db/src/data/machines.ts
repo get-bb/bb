@@ -138,3 +138,52 @@ export function machineHasStartingThreadLaunch(
     and(eq(threads.status, "starting"), liveThread),
   );
 }
+
+const RUNNING_TURN_THREAD_STATUSES = ["active", "stopping"] as const;
+
+export interface HostRunningTurnThread {
+  id: string;
+  status: (typeof threads.$inferSelect)["status"];
+  environmentId: string | null;
+}
+
+export function listRunningTurnThreadsOnHost(
+  db: Connection,
+  hostId: string,
+): HostRunningTurnThread[] {
+  return db
+    .select({
+      id: threads.id,
+      status: threads.status,
+      environmentId: threads.environmentId,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, hostId),
+        inArray(threads.status, [...RUNNING_TURN_THREAD_STATUSES]),
+      ),
+    )
+    .all();
+}
+
+export function hostHasRunningTurnThread(
+  db: Connection,
+  hostId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .innerJoin(environments, eq(threads.environmentId, environments.id))
+      .where(
+        and(
+          eq(environments.hostId, hostId),
+          inArray(threads.status, [...RUNNING_TURN_THREAD_STATUSES]),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
