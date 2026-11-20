@@ -9,7 +9,6 @@ describe("event loop delay sampler", () => {
   let wallMs: number;
   let monotonicMs: number;
   let uptimeMs: number;
-  let cpuMs: number;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -17,16 +16,10 @@ describe("event loop delay sampler", () => {
     wallMs = 1_000_000;
     monotonicMs = 0;
     uptimeMs = 0;
-    cpuMs = 0;
     vi.spyOn(Date, "now").mockImplementation(() => wallMs);
     vi.spyOn(process.hrtime, "bigint").mockImplementation(
       () => BigInt(monotonicMs) * 1_000_000n,
     );
-    vi.spyOn(process, "cpuUsage").mockImplementation(() => ({
-      user: cpuMs * 1_000,
-      system: 0,
-    }));
-    vi.spyOn(os, "availableParallelism").mockReturnValue(4);
     vi.spyOn(os, "uptime").mockImplementation(() => uptimeMs / 1_000);
   });
 
@@ -36,55 +29,50 @@ describe("event loop delay sampler", () => {
     vi.unstubAllGlobals();
   });
 
+  function stubPlatform(platform: NodeJS.Platform) {
+    vi.stubGlobal(
+      "process",
+      Object.create(process, { platform: { value: platform } }),
+    );
+  }
+
   function advanceSample(gaps: {
     wallMs: number;
     monotonicMs: number;
     uptimeMs: number;
-    cpuMs: number;
   }) {
     wallMs += gaps.wallMs;
     monotonicMs += gaps.monotonicMs;
     uptimeMs += gaps.uptimeMs;
-    cpuMs += gaps.cpuMs;
     return vi.advanceTimersByTimeAsync(5_000);
   }
 
-  it.each([0, 75_000])(
-    "reports a long awake stall with %d ms of process CPU",
-    async (cpuMs) => {
-      vi.stubGlobal(
-        "process",
-        Object.create(process, { platform: { value: "linux" } }),
-      );
-      const onSample = vi.fn();
-      const sampler = startEventLoopDelaySampler({ onSample });
-      try {
-        await advanceSample({
-          wallMs: 95_000,
-          monotonicMs: 95_000,
-          uptimeMs: 95_000,
-          cpuMs,
-        });
-        expect(onSample).toHaveBeenCalledWith({
-          stall: expect.objectContaining({
-            intervalMs: 5_000,
-            maxDelayMs: 95_000,
-            resolutionMs: 50,
-            thresholdMs: 500,
-          }),
-          suspension: null,
-        });
-      } finally {
-        sampler.stop();
-      }
-    },
-  );
+  it("reports a long awake stall on Linux", async () => {
+    stubPlatform("linux");
+    const onSample = vi.fn();
+    const sampler = startEventLoopDelaySampler({ onSample });
+    try {
+      await advanceSample({
+        wallMs: 95_000,
+        monotonicMs: 95_000,
+        uptimeMs: 95_000,
+      });
+      expect(onSample).toHaveBeenCalledWith({
+        stall: expect.objectContaining({
+          intervalMs: 5_000,
+          maxDelayMs: 95_000,
+          resolutionMs: 50,
+          thresholdMs: 500,
+        }),
+        suspension: null,
+      });
+    } finally {
+      sampler.stop();
+    }
+  });
 
   it("does not let a wall clock jump turn an awake Linux stall into sleep", async () => {
-    vi.stubGlobal(
-      "process",
-      Object.create(process, { platform: { value: "linux" } }),
-    );
+    stubPlatform("linux");
     const onSample = vi.fn();
     const sampler = startEventLoopDelaySampler({ onSample });
     try {
@@ -92,7 +80,6 @@ describe("event loop delay sampler", () => {
         wallMs: 95_000,
         monotonicMs: 1_000,
         uptimeMs: 1_000,
-        cpuMs: 0,
       });
       expect(onSample).toHaveBeenCalledWith({
         stall: expect.objectContaining({ maxDelayMs: 1_000 }),
@@ -104,10 +91,7 @@ describe("event loop delay sampler", () => {
   });
 
   it("keeps a macOS stall when the kernel sleep record precedes the sample", async () => {
-    vi.stubGlobal(
-      "process",
-      Object.create(process, { platform: { value: "darwin" } }),
-    );
+    stubPlatform("darwin");
     vi.mocked(execHostFile).mockResolvedValue({
       stdout: "{ sec = 900, usec = 0 }\n{ sec = 990, usec = 0 }\n",
       stderr: "",
@@ -119,7 +103,6 @@ describe("event loop delay sampler", () => {
         wallMs: 95_000,
         monotonicMs: 95_000,
         uptimeMs: 95_000,
-        cpuMs: 0,
       });
       expect(onSample).toHaveBeenCalledWith({
         stall: expect.objectContaining({ maxDelayMs: 95_000 }),
@@ -130,38 +113,8 @@ describe("event loop delay sampler", () => {
     }
   });
 
-  it("keeps a macOS stall when CPU use exceeds the apparent awake period", async () => {
-    vi.stubGlobal(
-      "process",
-      Object.create(process, { platform: { value: "darwin" } }),
-    );
-    vi.mocked(execHostFile).mockResolvedValue({
-      stdout: "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
-      stderr: "",
-    });
-    const onSample = vi.fn();
-    const sampler = startEventLoopDelaySampler({ onSample });
-    try {
-      await advanceSample({
-        wallMs: 90_050,
-        monotonicMs: 90_050,
-        uptimeMs: 90_050,
-        cpuMs: 75_000,
-      });
-      expect(onSample).toHaveBeenCalledWith({
-        stall: expect.objectContaining({ maxDelayMs: 90_050 }),
-        suspension: null,
-      });
-    } finally {
-      sampler.stop();
-    }
-  });
-
   it("reports both suspension and the remaining awake delay on macOS", async () => {
-    vi.stubGlobal(
-      "process",
-      Object.create(process, { platform: { value: "darwin" } }),
-    );
+    stubPlatform("darwin");
     vi.mocked(execHostFile).mockResolvedValue({
       stdout: "{ sec = 1001, usec = 0 }\n{ sec = 1091, usec = 0 }\n",
       stderr: "",
@@ -173,27 +126,20 @@ describe("event loop delay sampler", () => {
         wallMs: 95_000,
         monotonicMs: 95_000,
         uptimeMs: 95_000,
-        cpuMs: 150,
       });
       expect(onSample).toHaveBeenCalledWith({
         stall: expect.objectContaining({ maxDelayMs: 5_000 }),
-        suspension: expect.objectContaining({
-          durationMs: 90_000,
-          processCpuMs: 150,
-        }),
+        suspension: expect.objectContaining({ durationMs: 90_000 }),
       });
     } finally {
       sampler.stop();
     }
   });
 
-  it.each(["linux", "darwin"])(
+  it.each(["linux", "darwin"] as const)(
     "reports system suspension separately on %s",
     async (platform) => {
-      vi.stubGlobal(
-        "process",
-        Object.create(process, { platform: { value: platform } }),
-      );
+      stubPlatform(platform);
       const sysctl = vi.mocked(execHostFile).mockResolvedValue({
         stdout: "{ sec = 1000, usec = 0 }\n{ sec = 1090, usec = 0 }\n",
         stderr: "",
@@ -205,23 +151,14 @@ describe("event loop delay sampler", () => {
           wallMs: 90_050,
           monotonicMs: platform === "linux" ? 50 : 90_050,
           uptimeMs: 90_050,
-          cpuMs: 2,
         });
         expect(onSample).toHaveBeenCalledWith({
           stall: null,
-          suspension: expect.objectContaining({
-            durationMs: 90_000,
-            processCpuMs: 2,
-          }),
+          suspension: expect.objectContaining({ durationMs: 90_000 }),
         });
         expect(sysctl).toHaveBeenCalledTimes(platform === "darwin" ? 1 : 0);
 
-        await advanceSample({
-          wallMs: 5_000,
-          monotonicMs: 50,
-          uptimeMs: 50,
-          cpuMs: 2,
-        });
+        await advanceSample({ wallMs: 5_000, monotonicMs: 50, uptimeMs: 50 });
         expect(onSample).toHaveBeenLastCalledWith({
           stall: null,
           suspension: null,
@@ -231,4 +168,26 @@ describe("event loop delay sampler", () => {
       }
     },
   );
+
+  it("treats a long gap as probable sleep on Windows", async () => {
+    stubPlatform("win32");
+    const onSample = vi.fn();
+    const sampler = startEventLoopDelaySampler({ onSample });
+    try {
+      await advanceSample({ wallMs: 90_000, monotonicMs: 90_000, uptimeMs: 0 });
+      expect(onSample).toHaveBeenLastCalledWith({
+        stall: null,
+        suspension: null,
+      });
+
+      await advanceSample({ wallMs: 3_000, monotonicMs: 3_000, uptimeMs: 0 });
+      expect(onSample).toHaveBeenLastCalledWith({
+        stall: expect.objectContaining({ maxDelayMs: 3_000 }),
+        suspension: null,
+      });
+      expect(execHostFile).not.toHaveBeenCalled();
+    } finally {
+      sampler.stop();
+    }
+  });
 });

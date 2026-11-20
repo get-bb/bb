@@ -17,7 +17,6 @@ describe("host event-loop stall monitor", () => {
     vi.spyOn(os, "uptime").mockImplementation(
       () => (Date.now() + blockedMs + suspendedMs) / 1_000,
     );
-    vi.spyOn(process, "cpuUsage").mockReturnValue({ user: 0, system: 0 });
     vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
       BigInt(Math.round((Date.now() + blockedMs) * 1_000_000)),
     );
@@ -40,7 +39,7 @@ describe("host event-loop stall monitor", () => {
       vi.advanceTimersByTime(5_000);
 
       expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ durationMs: 300_000, processCpuMs: 0 }),
+        expect.objectContaining({ durationMs: 300_000 }),
         "Host daemon system suspension observed",
       );
     } finally {

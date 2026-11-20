@@ -24,14 +24,12 @@ interface SystemSuspension {
   durationMs: number;
   wallGapMs: number;
   monotonicGapMs: number;
-  processCpuMs: number;
 }
 
 interface SampleClocks {
   wallMs: number;
   monotonicMs: number;
   linuxUptimeMs: number;
-  cpuUsage: NodeJS.CpuUsage;
 }
 
 type ReportSample = (sample: {
@@ -137,7 +135,6 @@ export function startEventLoopDelaySampler(
     wallMs: now(),
     monotonicMs: monotonicNowMs(),
     linuxUptimeMs: platform === "linux" ? os.uptime() * 1_000 : 0,
-    cpuUsage: process.cpuUsage(),
   });
 
   let histogram = createEventLoopDelayHistogram();
@@ -160,15 +157,6 @@ export function startEventLoopDelaySampler(
     const current = readClocks();
     const wallGapMs = current.wallMs - previous.wallMs;
     const monotonicGapMs = current.monotonicMs - previous.monotonicMs;
-    const processCpuMs =
-      (current.cpuUsage.user -
-        previous.cpuUsage.user +
-        current.cpuUsage.system -
-        previous.cpuUsage.system) /
-      1_000;
-    const canAccountForCpu = (awakeMs: number) =>
-      processCpuMs <=
-      (awakeMs + SUSPENSION_CLOCK_TOLERANCE_MS) * os.availableParallelism();
     const windowStart = previous;
     previous = current;
     const report = args.prepareSample ? args.prepareSample() : args.onSample;
@@ -177,7 +165,7 @@ export function startEventLoopDelaySampler(
         ? args.thresholdMs()
         : (args.thresholdMs ?? EVENT_LOOP_STALL_THRESHOLD_MS);
     const windowHistogram = histogram;
-    const finishSample = (durationMs: number) => {
+    const finishSample = (durationMs: number, keepStall: boolean) => {
       if (stopped) return;
       const delay = windowHistogram.take();
       report({
@@ -188,11 +176,10 @@ export function startEventLoopDelaySampler(
                 durationMs: roundDurationMs(durationMs),
                 wallGapMs: roundDurationMs(wallGapMs),
                 monotonicGapMs: roundDurationMs(monotonicGapMs),
-                processCpuMs: roundDurationMs(processCpuMs),
               }
             : null,
         stall:
-          delay.maxDelayMs >= thresholdMs
+          keepStall && delay.maxDelayMs >= thresholdMs
             ? {
                 intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
                 maxDelayMs: roundDurationMs(delay.maxDelayMs),
@@ -216,8 +203,7 @@ export function startEventLoopDelaySampler(
         const durationMs =
           sleep &&
           sleep.sleepAt >= windowStart.wallMs &&
-          sleep.wakeAt <= current.wallMs &&
-          canAccountForCpu(monotonicGapMs - (sleep.wakeAt - sleep.sleepAt))
+          sleep.wakeAt <= current.wallMs
             ? sleep.wakeAt - sleep.sleepAt
             : 0;
         for (const { startedAt, endedAt } of pendingGaps) {
@@ -233,20 +219,31 @@ export function startEventLoopDelaySampler(
               : 0;
           windowHistogram.record(startedAt, endedAt - overlapMs);
         }
-        finishSample(durationMs);
+        finishSample(durationMs, true);
       });
       return;
     }
 
-    const linuxSuspensionMs =
-      current.linuxUptimeMs - windowStart.linuxUptimeMs - monotonicGapMs;
-    finishSample(
-      platform === "linux" &&
+    if (platform === "linux") {
+      const suspensionMs =
+        current.linuxUptimeMs - windowStart.linuxUptimeMs - monotonicGapMs;
+      finishSample(
         monotonicGapMs >= 0 &&
-        linuxSuspensionMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS &&
-        canAccountForCpu(monotonicGapMs)
-        ? linuxSuspensionMs
-        : 0,
+          suspensionMs >= LIKELY_SYSTEM_SUSPENSION_MIN_DELAY_MS
+          ? suspensionMs
+          : 0,
+        true,
+      );
+      return;
+    }
+
+    finishSample(
+      0,
+      platform === "darwin" ||
+        !isLikelySystemSuspensionDelay({
+          gapMs: wallGapMs,
+          intervalMs: EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS,
+        }),
     );
   }, EVENT_LOOP_DELAY_SAMPLE_INTERVAL_MS);
   interval.unref();

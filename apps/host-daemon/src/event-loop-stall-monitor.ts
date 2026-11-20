@@ -15,16 +15,14 @@ export function startEventLoopStallMonitor(
 ): EventLoopStallMonitor {
   return startEventLoopDelaySampler({
     now: options.now,
-    prepareSample:
-      () =>
-      ({ stall, suspension }) => {
-        if (suspension !== null)
-          options.logger.warn(
-            suspension,
-            "Host daemon system suspension observed",
-          );
-        if (stall !== null)
-          options.logger.warn(stall, "Host daemon event loop stalled");
-      },
+    onSample: ({ stall, suspension }) => {
+      if (suspension !== null)
+        options.logger.warn(
+          suspension,
+          "Host daemon system suspension observed",
+        );
+      if (stall !== null)
+        options.logger.warn(stall, "Host daemon event loop stalled");
+    },
   });
 }
