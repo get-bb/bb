@@ -19,12 +19,12 @@ export const MESSAGE_DIRECTIVE_MOUNT_LIMIT = 32;
 const MESSAGE_DIRECTIVE_HAST_NAME = "bb-message-directive";
 const MESSAGE_DIRECTIVE_INDEX_PROPERTY = "dataDirectiveIndex";
 
-type MessageDirectiveRegistryEntry = ResolvedMessageDirective;
+export type UnclaimedMessageDirectivePolicy = "hold" | "literal";
 
-export type MessageDirectiveRegistry = ReadonlyMap<
-  string,
-  MessageDirectiveRegistryEntry
->;
+export interface MessageDirectiveRegistry {
+  directives: ReadonlyMap<string, ResolvedMessageDirective>;
+  unclaimed: UnclaimedMessageDirectivePolicy;
+}
 
 export interface MountedMessageDirective {
   attributes: Readonly<Record<string, string>>;
@@ -75,18 +75,21 @@ declare module "react" {
 
 export function buildMessageDirectiveRegistry(
   slots: readonly PluginMessageDirectiveSlot[],
-  options?: { warn?: (message: string) => void },
+  options: {
+    unclaimed: UnclaimedMessageDirectivePolicy;
+    warn?: (message: string) => void;
+  },
 ): MessageDirectiveRegistry {
-  const warn = options?.warn ?? defaultCollisionWarn;
-  const registry = resolveMessageDirectiveRegistry(slots);
-  for (const [id, directive] of registry) {
+  const warn = options.warn ?? defaultCollisionWarn;
+  const directives = resolveMessageDirectiveRegistry(slots);
+  for (const [id, directive] of directives) {
     if (directive.status === "collision") {
       warn(
         `[plugin] message directive "${id}" claimed by multiple plugins (${directive.pluginIds.join(", ")}); rendering as literal text`,
       );
     }
   }
-  return registry;
+  return { directives, unclaimed: options.unclaimed };
 }
 
 function defaultCollisionWarn(message: string): void {
@@ -142,6 +145,14 @@ function directiveSourceFromNode(
     return markdownSource.slice(start, end);
   }
   return reconstructDirectiveSource(name, attributes, marker);
+}
+
+function heldMessageDirectiveNode(): RootContent {
+  return {
+    type: "paragraph",
+    children: [],
+    data: { hName: MESSAGE_DIRECTIVE_HAST_NAME },
+  };
 }
 
 function messageDirectiveMountNode(index: number): RootContent {
@@ -233,10 +244,12 @@ function gluedDirectiveSyntax(registry: MessageDirectiveRegistry): Extension {
                     token.end.line === startLine;
                 }
               }
-              const entry = registry.get(name);
-              return hasAttributes && entry?.status === "ok"
-                ? ok(code)
-                : nok(code);
+              const entry = registry.directives.get(name);
+              const claimable =
+                entry === undefined
+                  ? registry.unclaimed === "hold"
+                  : entry.status === "ok";
+              return hasAttributes && claimable ? ok(code) : nok(code);
             },
             nok,
           );
@@ -299,9 +312,28 @@ export function remarkMessageDirectives(
         marker,
       );
 
-      const entry = registry.get(name);
+      const entry = registry.directives.get(name);
+      const isBlock = isGlued || directive.type === "leafDirective";
       if (
-        (!isGlued && directive.type !== "leafDirective") ||
+        isBlock &&
+        name.length > 0 &&
+        entry === undefined &&
+        registry.unclaimed === "hold"
+      ) {
+        const remainder: Paragraph | null =
+          isGlued && paragraph !== null && paragraph.children.length > 1
+            ? { ...paragraph, children: paragraph.children.slice(1) }
+            : null;
+        parent.children.splice(
+          index,
+          1,
+          heldMessageDirectiveNode(),
+          ...(remainder === null ? [] : [remainder]),
+        );
+        return [SKIP, index];
+      }
+      if (
+        !isBlock ||
         name.length === 0 ||
         entry === undefined ||
         entry.status === "collision" ||

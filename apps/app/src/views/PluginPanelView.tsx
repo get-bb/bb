@@ -1,8 +1,10 @@
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
-import { usePluginSlotKind } from "@/lib/plugin-slots";
+import {
+  usePluginFrontendSettled,
+  usePluginSlotKind,
+} from "@/lib/plugin-slots";
 
 interface PluginPanelViewProps {
   pluginId: string;
@@ -16,7 +18,7 @@ export function PluginPanelView({
   subPath,
 }: PluginPanelViewProps) {
   const navPanels = usePluginSlotKind("navPanels");
-  const pluginsSettled = usePluginFrontendsSettled();
+  const pluginSettled = usePluginFrontendSettled(pluginId);
   const panel =
     navPanels.find(
       (candidate) =>
@@ -24,7 +26,7 @@ export function PluginPanelView({
     ) ?? null;
 
   if (panel === null) {
-    if (!pluginsSettled) {
+    if (!pluginSettled) {
       return (
         <PageShell contentClassName="pt-[calc(var(--bb-app-chrome-row-height)+1rem)] md:pt-[calc(var(--bb-app-chrome-row-height)+1.25rem)]">
           {null}

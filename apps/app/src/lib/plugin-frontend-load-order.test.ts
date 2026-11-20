@@ -55,7 +55,7 @@ function makeDeps(
   overrides: Partial<PluginFrontendReconcileDeps> = {},
 ): PluginFrontendReconcileDeps {
   return {
-    fetchCandidates: async () => candidates,
+    fetchCandidates: async () => ({ candidates, startingPluginIds: [] }),
     importModule: async () => pluginModule(),
     importRetryDelaysMs: [],
     applyCss: vi.fn(),
@@ -65,6 +65,8 @@ function makeDeps(
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
+    setLoadingPlugins: vi.fn(),
+    settlePluginLoad: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
     whenScreenPainted: () => Promise.resolve(),

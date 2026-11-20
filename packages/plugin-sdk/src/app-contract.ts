@@ -347,7 +347,8 @@ export interface ExperimentalSidebarNavigationItem {
   isVisible: boolean;
   /**
    * A plugin panel remembered from the last session whose bundle has not
-   * registered yet. Activating it does nothing until it loads.
+   * registered yet. Activating it opens the panel's page, which shows the
+   * panel once the bundle loads.
    */
   isLoading: boolean;
   /**

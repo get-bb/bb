@@ -1,4 +1,6 @@
 import { hasThreadId } from "@/lib/thread-id";
+import { useFixedPanelTabsStateSnapshot } from "@/lib/fixed-panel-tabs";
+import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { PluginItemIcon } from "./PluginIcon";
 import { useMemo } from "react";
@@ -78,7 +80,29 @@ export function useThreadFixedTabs({
         : null,
     [threadId, environmentId],
   );
-  const { slots, observers, isReady } = usePluginTabs(context);
+  const localTabs = useFixedPanelTabsStateSnapshot(threadId).secondary.tabs;
+  const serverTabsQuery = useThreadTabs(threadId ?? "", {
+    enabled: hasThreadId(threadId),
+  });
+  const serverTabsPending = serverTabsQuery.isPending;
+  const serverTabs = serverTabsQuery.data?.tabs;
+  const tabOwnerPluginIds = useMemo(
+    () =>
+      serverTabsPending
+        ? null
+        : [
+            ...new Set(
+              [...localTabs, ...(serverTabs ?? [])].flatMap((tab) =>
+                tab.kind === "plugin-fixed" ? [tab.pluginId] : [],
+              ),
+            ),
+          ],
+    [localTabs, serverTabs, serverTabsPending],
+  );
+  const { slots, observers, isReady } = usePluginTabs(
+    context,
+    tabOwnerPluginIds,
+  );
   const entries = useMemo<readonly ThreadFixedTabEntry[]>(
     () =>
       slots
