@@ -1,4 +1,5 @@
 import {
+  encodeClientTurnRequestIdNumber,
   THREAD_SESSION_OPTIONS_STATE_KIND,
   threadScope,
   turnScope,
@@ -148,6 +149,26 @@ const TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
 const TIMELINE_WINDOW_EVENT_BUDGET = 1_500;
 const TIMELINE_WINDOW_TURNS = 90;
 const ACTIVE_TURN_ID = "h-active";
+const MISSING_KEY = "missing key";
+const MISSING_REQUEST_ID = encodeClientTurnRequestIdNumber({ value: 2 ** 40 });
+const MISSING_REQUEST_GROWTH =
+  "A missing request id reads every request row of the thread: request ids live only in JSON, and (thread_id, type, sequence) is the tightest index (3,149 requests in the largest real thread)";
+
+function rewriteThreadEventData(
+  db: DbConnection,
+  args: {
+    threadId: string;
+    type: ThreadEventType;
+    path: string;
+    value: string;
+  },
+): void {
+  db.$client
+    .prepare(
+      "UPDATE events SET data = json_set(data, ?, ?) WHERE thread_id = ? AND type = ?",
+    )
+    .run(args.path, args.value, args.threadId, args.type);
+}
 
 function lastTurn(fixture: HistoryFixture): HistoryTurn {
   const turn = fixture.turns.at(-1);
@@ -804,6 +825,52 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
             threadId: fixture.threadId,
           },
         ],
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredClientTurnRequestRowsByKeys`,
+    variant: MISSING_KEY,
+    growsWith: { history: MISSING_REQUEST_GROWTH },
+    run: (db, fixture) =>
+      listStoredClientTurnRequestRowsByKeys(db, {
+        keys: [
+          {
+            acceptedSequence: lastTurn(fixture).completedSequence,
+            requestId: MISSING_REQUEST_ID,
+            threadId: fixture.threadId,
+          },
+        ],
+      }),
+  },
+  {
+    name: `${EVENTS}#getStoredTurnRequestEventForTurn`,
+    variant: MISSING_KEY,
+    growsWith: { history: MISSING_REQUEST_GROWTH },
+    prepare: (db, fixture) =>
+      db.$client
+        .prepare(
+          "UPDATE events SET data = json_set(data, '$.clientRequestId', ?) WHERE thread_id = ? AND turn_id = ? AND type = 'turn/input/accepted'",
+        )
+        .run(MISSING_REQUEST_ID, fixture.threadId, lastTurn(fixture).turnId),
+    run: (db, fixture) =>
+      getStoredTurnRequestEventForTurn(db, {
+        threadId: fixture.threadId,
+        turnId: lastTurn(fixture).turnId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findLatestUnresolvedClientTurnRequestIdAfterSequence`,
+    variant: MISSING_KEY,
+    prepare: (db, fixture) =>
+      db.$client
+        .prepare(
+          "DELETE FROM events WHERE thread_id = ? AND type = 'client/turn/requested' AND json_extract(data, '$.requestId') = ?",
+        )
+        .run(fixture.threadId, fixture.pendingRequestId),
+    run: (db, fixture) =>
+      findLatestUnresolvedClientTurnRequestIdAfterSequence(db, {
+        threadId: fixture.threadId,
+        afterSequence: lastTurn(fixture).completedSequence,
       }),
   },
   {
@@ -1606,6 +1673,26 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#findLatestEditableUserTurnRequestRow`,
+    run: (db, fixture) =>
+      findLatestEditableUserTurnRequestRow(db, {
+        beforeSequence: null,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findLatestEditableUserTurnRequestRow`,
+    variant: MISSING_KEY,
+    growsWith: {
+      history:
+        "A thread whose requests all came from its parent, such as a worker thread, has no editable request, so the lookup reads every request row: the initiator lives only in JSON, and (thread_id, type, sequence) is the tightest index",
+    },
+    prepare: (db, fixture) =>
+      rewriteThreadEventData(db, {
+        threadId: fixture.threadId,
+        type: "client/turn/requested",
+        path: "$.senderThreadId",
+        value: "thr_parent",
+      }),
     run: (db, fixture) =>
       findLatestEditableUserTurnRequestRow(db, {
         beforeSequence: null,
