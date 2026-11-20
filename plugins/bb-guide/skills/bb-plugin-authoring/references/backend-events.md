@@ -182,7 +182,7 @@ composer submission; a plugin that waits can recognize later attempts through
 `ctx.queuedMessages.some(message => message.waitingOn?.kind === "plugin" &&
 message.waitingOn.pluginId === bb.pluginId)`.
 
-Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, when
+Decisions are `proceed`, `wait` (`reason`, optional `recheckAt` epoch ms, when
 core's due sweep re-asks; the row's own `sendAt` stays the sender's scheduled
 time, and the message never dispatches before it) and `reject`
 (`message` shown to the user; the caller gets a 409 `dispatch_rejected`). A
@@ -199,7 +199,7 @@ itself running. Queueing appends no thread event, so a `wait` never writes
 anything into the transcript the model or the user reads back.
 
 **How a wait clears.** You never release a row — you ask core to re-decide it.
-It clears when your `sendAt` comes due, when any plugin calls
+It clears when your `recheckAt` comes due, when any plugin calls
 `bb.experimental_hooks.recheck("message.dispatch")`, or when the orphan sweep
 clears a wait whose plugin stopped running. Every one of those re-runs the full
 pass, including your own handler, so a still-blocked message re-queues. The
@@ -211,7 +211,7 @@ handler would wait or reject.
 await bb.experimental_hooks.recheck("message.dispatch");
 ```
 
-Core owns the re-draining and the clock — `sendAt` due, the thread's own turn
+Core owns the re-draining and the clock — `recheckAt` due, the thread's own turn
 ending, the workspace becoming ready, an interaction settling — and you own every
 other condition your waits depend on. A recheck re-attempts every plugin-queued
 row in queue order, so an unwarranted call is safe; bursts coalesce and

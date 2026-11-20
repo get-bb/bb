@@ -1524,7 +1524,7 @@ describe("a scheduled send held by a plugin wait", () => {
                   ? {
                       action: "wait",
                       reason: "1 of 1 running",
-                      sendAt: pluginSendAt,
+                      recheckAt: pluginSendAt,
                     }
                   : { action: "proceed" },
             },
@@ -1758,6 +1758,99 @@ describe("a scheduled send held by a plugin wait", () => {
         waitingOn: { kind: "plugin", pluginId: "limiter" },
         sendAt: null,
       });
+    });
+  });
+});
+
+describe("a wait decision's re-ask time", () => {
+  const RECHECK_IN_MS = 10 * 60_000;
+
+  const decisions: {
+    name: string;
+    wait: (recheckAt: number) => {
+      action: "wait";
+      reason: string;
+      recheckAt?: number;
+      sendAt?: number;
+    };
+  }[] = [
+    {
+      name: "recheckAt",
+      wait: (recheckAt) => ({ action: "wait", reason: "Window", recheckAt }),
+    },
+    {
+      name: "sendAt, the name plugins built before recheckAt use",
+      wait: (sendAt) => ({ action: "wait", reason: "Window", sendAt }),
+    },
+  ];
+
+  for (const decision of decisions) {
+    it(`re-asks at the time a wait names with ${decision.name}`, async () => {
+      await withTestHarness(async (harness) => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        const recheckAt = Date.now() + RECHECK_IN_MS;
+        const waitDecision = decision.wait(recheckAt);
+        let windowOpen = false;
+        installHooks({
+          "message.dispatch": [
+            {
+              pluginId: "limiter",
+              handler: () =>
+                windowOpen ? { action: "proceed" } : waitDecision,
+            },
+          ],
+        });
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-recheck-${decisions.indexOf(decision)}`,
+          status: "idle",
+        });
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        await acceptThreadSendRequest(harness.deps, {
+          payload: { input: textInput("after the window"), mode: "auto" },
+          thread,
+        });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+          { recheckAt, sendAt: null },
+        ]);
+
+        windowOpen = true;
+        vi.setSystemTime(recheckAt + 1);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: recheckAt + 1,
+        });
+
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+        expect(queuedRows(harness, thread.id)).toEqual([]);
+      });
+    });
+  }
+
+  it("fails the attempt when a wait sets both recheckAt and sendAt", async () => {
+    await withTestHarness(async (harness) => {
+      const recheckAt = Date.now() + RECHECK_IN_MS;
+      const ambiguous = {
+        action: "wait" as const,
+        reason: "Window",
+        recheckAt,
+        sendAt: recheckAt,
+      };
+      installHooks({
+        "message.dispatch": [{ pluginId: "limiter", handler: () => ambiguous }],
+      });
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-recheck-both",
+        status: "idle",
+      });
+
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          payload: { input: textInput("ambiguous"), mode: "auto" },
+          thread,
+        }),
+      ).rejects.toThrow(/sendAt and recheckAt are both set/);
+      expect(queuedRows(harness, thread.id)).toEqual([]);
     });
   });
 });

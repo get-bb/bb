@@ -849,6 +849,10 @@ Docs: `backend-events.md`.
   it cannot observe whether its own row went. Confirm resolving on completion,
   with its lock-reentrancy hazard, is genuinely unwanted rather than merely
   unbuilt.
+- **`wait`'s old `sendAt` name.** The re-ask instant was named `sendAt`,
+  which read as the message's schedule. It is now `recheckAt`; the server
+  still maps a `sendAt` from previously built plugins and refuses a decision
+  that sets both. Remove the alias before stabilizing.
 - **Send-now bypasses every plugin check**, including a content-policy
   `reject`. Confirm it, or split `wait` bypass from `reject` bypass.
 - **"Never started" is a thread status.** Confirm `pending` is maintained

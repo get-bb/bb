@@ -193,7 +193,9 @@ export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
     .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
     .all();
   if (columns.some((column) => column.name === "recheck_at")) {
-    db.$client.exec("ALTER TABLE queued_thread_messages DROP COLUMN recheck_at");
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
+    );
   }
 }
 

@@ -576,9 +576,10 @@ async function runDispatchAttempt(
       isMachineWaitingForExecution(deps, dispatchHost.id)
     ) {
       cancelPreparingMachinePause(deps, dispatchHost.id);
-      continued.outcome = waitOn(
-        { kind: "host-offline", hostName: dispatchHost.name },
-      );
+      continued.outcome = waitOn({
+        kind: "host-offline",
+        hostName: dispatchHost.name,
+      });
       requestQueuedMachineReadiness(deps, dispatchHost.id);
       return;
     }
@@ -599,9 +600,10 @@ async function runDispatchAttempt(
       dispatchHost !== null &&
       !deps.hub.hasDaemonForHost(dispatchHost.id)
     ) {
-      continued.outcome = waitOn(
-        { kind: "host-offline", hostName: dispatchHost.name },
-      );
+      continued.outcome = waitOn({
+        kind: "host-offline",
+        hostName: dispatchHost.name,
+      });
       return;
     }
 
@@ -710,7 +712,7 @@ async function runDispatchAttempt(
           pluginId: outcome.waiter.pluginId,
           reason: dispatchWaitReasonForPass(outcome),
         },
-        outcome.waiter.sendAt,
+        outcome.waiter.recheckAt,
       );
     }
   } else {
