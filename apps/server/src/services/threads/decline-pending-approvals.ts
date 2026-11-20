@@ -46,6 +46,9 @@ export function declinePendingApprovals(
   threadId: string,
 ): void {
   for (const interaction of blockingInteractions(deps, threadId)) {
+    if (!isApprovalPendingInteractionPayload(interaction.payload)) {
+      continue;
+    }
     try {
       deps.pendingInteractions.resolvePendingInteraction({
         threadId,
@@ -53,9 +56,12 @@ export function declinePendingApprovals(
         resolution: { decision: "deny" },
       });
     } catch (error) {
-      deps.logger.warn(
+      if (!(error instanceof ApiError) || error.status !== 409) {
+        throw error;
+      }
+      deps.logger.info(
         { err: error, threadId, interactionId: interaction.id },
-        "Could not decline a pending approval for a queued redirect",
+        "A pending approval was answered before the redirect could decline it",
       );
     }
   }

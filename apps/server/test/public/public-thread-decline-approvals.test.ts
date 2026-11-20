@@ -1,4 +1,5 @@
 import { listQueuedThreadMessages } from "@bb/db";
+import { ApiError } from "../../src/errors.js";
 import type { PendingInteractionPayload } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -266,6 +267,27 @@ describe("send with declinePendingApprovals", () => {
         resolution: { decision: "deny" },
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
+  it("fails the send when declining fails for a reason other than a lost race", async () => {
+    await withTestHarness(async (harness) => {
+      const { register, send, interactionStatus } = seedWaitingThread(harness);
+      const approval = register("request-1", commandApproval("item-1"));
+      vi.spyOn(
+        harness.deps.pendingInteractions,
+        "resolvePendingInteraction",
+      ).mockImplementation(() => {
+        throw new ApiError(502, "host_unavailable", "Host is not connected");
+      });
+      const response = await send({
+        mode: "steer-if-active",
+        declinePendingApprovals: true,
+      });
+      expect(response.status).toBe(502);
+      await expect(interactionStatus(approval.id)).resolves.toMatchObject({
+        status: "pending",
+      });
     });
   });
 
