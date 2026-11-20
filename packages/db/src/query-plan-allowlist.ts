@@ -28,10 +28,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
   ),
   acceptedEventsIndex(
-    `${EVENTS}#listStoredTurnCompletedRowsByTurnIds`,
-    "turn/completed is one per turn, so the type index reads at most one row per turn",
-  ),
-  acceptedEventsIndex(
     "apps/server/src/services/threads/environment-directory-continuation.ts#findEnvironmentDirectoryContinuation",
     "system/operation events are rare per thread",
   ),
@@ -62,10 +58,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
   boundedCorrelatedEvents(
     `${EVENTS}#findLatestUnresolvedClientTurnRequestIdAfterSequence`,
     "Outer rows are requests after the last completed turn, and each search starts at its request's sequence; check:query-costs measures it",
-  ),
-  boundedCorrelatedEvents(
-    `${EVENTS}#listLatestTurnFinalAgentMessageEventRows`,
-    "LIMIT keeps the outer rows to the newest replies, so each later-reply search covers only the newest turns; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(
     `${EVENTS}#getStoredConversationOutlineProjectionState`,

@@ -7,6 +7,7 @@ import {
   desc,
   eq,
   exists,
+  gte,
   inArray,
   isNotNull,
   isNull,
@@ -40,6 +41,7 @@ import type {
   QueuedMessageSystemNotice,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
+  ThreadEventType,
   QueuedMessageWaitHolder,
   QueuedMessageWaitingOn,
   QueuedMessageWaitingOnKind,
@@ -1215,6 +1217,22 @@ function hasAcceptedQueuedRetryInput(
   db: DbQueryConnection,
   retry: QueuedThreadMessageRow,
 ): boolean {
+  if (retry.retryOfTurnRequestId === null) return false;
+  const requestType = "client/turn/requested" satisfies ThreadEventType;
+  const origin = db
+    .select({ sequence: sql<number>`${events.sequence}` })
+    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, retry.threadId),
+        eq(events.type, requestType),
+        sql`json_extract(${events.data}, '$.requestId') = ${retry.retryOfTurnRequestId}`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const chainStart = origin?.sequence ?? 0;
   const accepted = alias(events, "retry_chain_accepted");
   const chainRequest = alias(events, "retry_chain_request");
   return (
@@ -1225,6 +1243,7 @@ function hasAcceptedQueuedRetryInput(
         and(
           eq(accepted.threadId, retry.threadId),
           eq(accepted.type, "turn/input/accepted"),
+          gte(accepted.sequence, chainStart),
           inArray(
             sql`json_extract(${accepted.data}, '$.clientRequestId')`,
             db
@@ -1235,7 +1254,8 @@ function hasAcceptedQueuedRetryInput(
               .where(
                 and(
                   eq(chainRequest.threadId, retry.threadId),
-                  eq(chainRequest.type, "client/turn/requested"),
+                  eq(chainRequest.type, requestType),
+                  gte(chainRequest.sequence, chainStart),
                   or(
                     sql`json_extract(${chainRequest.data}, '$.requestId') = ${retry.retryOfTurnRequestId}`,
                     sql`json_extract(${chainRequest.data}, '$.retryOfRequestId') = ${retry.retryOfTurnRequestId}`,

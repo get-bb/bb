@@ -231,6 +231,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#countThreads`,
+    growsWith: {
+      history:
+        "Counts every thread grouped by host, and the seed grows the thread count",
+    },
     run: (db) =>
       countThreads(db, {
         groupBy: "host",
@@ -252,6 +256,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listLiveThreadsInEnvironment`,
+    growsWith: {
+      history:
+        "Lists every live thread in the busiest environment, and the seed grows its thread count",
+    },
     run: (db, _fixture, seed) =>
       listLiveThreadsInEnvironment(db, {
         environmentId: seed.busiestEnvironmentId,
@@ -272,6 +280,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listHostThreadIds`,
+    growsWith: {
+      history:
+        "Returns the id of every thread on the host, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listHostThreadIds(db, { hostId: seed.busiestHostId }),
   },
@@ -361,6 +373,10 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDescendants`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole subtree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDescendants(db, seed.descendantRootIds, {
         includeArchived: false,
@@ -374,11 +390,19 @@ const THREAD_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadDeletionTree`,
+    growsWith: {
+      history:
+        "Returns the orchestrator's whole thread tree, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       listThreadDeletionTree(db, seed.orchestratorId),
   },
   {
     name: `${THREADS}#markThreadDeleted`,
+    growsWith: {
+      history:
+        "Marks the orchestrator's whole thread tree deleted, and the seed grows its child threads",
+    },
     run: (db, _fixture, seed) =>
       markThreadDeleted(db, noopNotifier, { threadId: seed.orchestratorId }),
   },
@@ -418,6 +442,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#searchThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Ranks and counts every thread matching the query for group totals, and the seed grows the matches",
+    },
     run: (db) =>
       searchThreadsWithPendingInteractionState(db, {
         query: "tests",
@@ -426,6 +454,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionStateForProjects`,
+    growsWith: {
+      history:
+        "Lists every live visible thread in ten projects, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionStateForProjects(db, {
         projectIds: seed.projectIds,
@@ -434,6 +466,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listThreadsWithPendingInteractionState`,
+    growsWith: {
+      history:
+        "Lists every live visible thread on the busiest host, and the seed grows the thread count",
+    },
     run: (db, _fixture, seed) =>
       listThreadsWithPendingInteractionState(db, {
         hostId: seed.busiestHostId,
@@ -462,6 +498,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listNonDeletedChildThreads`,
+    growsWith: {
+      history:
+        "Returns every child of the orchestrator, and the seed grows its children",
+    },
     run: (db, _fixture, seed) =>
       listNonDeletedChildThreads(db, { parentThreadId: seed.orchestratorId }),
   },
@@ -547,6 +587,10 @@ const SECTION_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${SECTIONS}#deleteThreadSection`,
+    growsWith: {
+      history:
+        "Clears the section from every thread in it, and the seed grows the section's threads",
+    },
     run: (db, _fixture, seed) =>
       deleteThreadSection(db, noopNotifier, { id: seed.biggestSectionId }),
   },
@@ -630,11 +674,19 @@ const PLUGIN_METADATA_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
 const OUTLINE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   {
     name: `${OUTLINES}#getThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Reads the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     run: (db, fixture) =>
       getThreadConversationOutlineRecord(db, fixture.threadId),
   },
   {
     name: `${OUTLINES}#upsertThreadConversationOutlineRecord`,
+    growsWith: {
+      history:
+        "Writes the thread's stored outline JSON, one item per turn, so the row grows with the thread",
+    },
     prepare: (_db, fixture) => {
       nextOutlineItemsJson = outlineItemsJson(fixture.turns.length + 1);
     },

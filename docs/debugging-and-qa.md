@@ -364,14 +364,14 @@ Plans cannot show what a query costs once data grows, so the workflow's cost
 job runs `pnpm exec turbo run check:query-costs --filter=@bb/db`. It builds
 worlds through the real write paths and compares them along two axes:
 
-- Thread history: a thread with 2,500 or 10,000 turns (about 250,000 events in
+- Thread history: a thread with 625 or 10,000 turns (about 250,000 events in
   the full-scale world), plus what each case group in
   `packages/db/scripts/query-costs/` seeds for its tables at about twice the
   size of the largest real user (for example 10,000 threads, 4,000
   environments, 50,000 prompt history entries and 15,000 terminal sessions at
   full scale).
 - Turn size: a 500-turn thread whose first and last turns, and the open turn
-  of a second, running thread, have 375 or 1,500 steps (about 4,500 or 18,000
+  of a second, running thread, have 94 or 1,500 steps (about 1,100 or 18,000
   events each: reasoning, commands with streamed output, file edits,
   commentary, plan and usage updates, and delegations).
 
@@ -383,23 +383,46 @@ interleaved, each call inside a rolled-back savepoint. Each call is timed by
 CPU time, not by the wall clock, so other work on a busy runner does not count
 against it: the thread's CPU time on macOS, and the process's on Linux, where a
 thread's CPU time only advances at scheduler ticks and reads near zero for
-short calls. The check keeps the fastest of up
-to three calls per world. As the data grows 4x on either axis, linear costs
-measure about size^1.0 to size^1.3 locally and up to size^1.5 on shared CI
-runners, where memory-heavy queries scale worse under neighbouring load; a
-quadratic cost measures about size^2. So the check fails only on signals noise
-cannot produce:
+short calls. The check keeps the fastest of at
+least three calls per world. The larger world is 16 times the smaller, so a
+bounded cost measures about 1x, a linear one about 16x (size^1, up to about
+size^1.5 on shared CI runners, where memory-heavy queries scale worse under
+neighbouring load), and a quadratic one about 256x (size^2).
 
-- a function's cost grows faster than size^2 (more than 16 times its
-  smaller-world time, once its larger-world time is at least 2 ms); or
+A query function is expected to stay bounded: its cost must not grow faster
+than size^0.5 (4x) on either axis once its larger-world time reaches the
+growth floor. A full-history read that keeps a few rows, such as filtering
+every request event of a thread by a JSON field, measures about size^1 and
+fails. A case whose cost must grow, because it returns or modifies rows the
+larger world has more of, declares the axis with the reason:
+`growsWith: { history: "Lists every thread on the host, and the seed grows the thread count" }`
+(`history` or `turnSize`). A declaration that measures within size^0.125
+(1.4x) is reported as a warning so it can be removed once the query is
+bounded; the gap between size^0.125 and size^0.5 keeps runner noise from
+either failing an undeclared case or flagging a declared one that only
+partly grows.
+
+The growth floor is 2 ms on the reference machine, scaled by how long a fixed
+SQLite calibration workload takes on the current one, measured after the
+worlds are built (`packages/db/scripts/query-costs/calibration.ts`), so a
+slower CI runner checks roughly the cases a laptop does. The floor only
+screens out calls too small to time reliably; every case that grows with data
+declares it, so a case crossing the floor on one runner and not another does
+not change the result. The check prints the calibration, and for
+each axis the five undeclared functions closest to the limit. The check
+fails when:
+
+- an undeclared function grows faster than size^0.5 (4x);
+- a declared function grows faster than size^2 (256x); or
 - a single call runs for more than 5 seconds of wall time, when it is killed,
   or a case throws.
 
-It reports a GitHub Actions warning, without failing, when a function grows
-faster than size^1.5 (8x) or takes longer than its ceiling in the larger world
-(250 ms unless its case sets `ceilingMs` with a `reason`). A case that crosses
-size^1.5 is measured up to eight times before it is reported. The
-request-path statement-count test below is exact, so it stays blocking.
+It reports a GitHub Actions warning, without failing, when a declared function
+grows faster than size^1.5 (64x) or a function takes longer than its ceiling in
+the larger world (250 ms unless its case sets `ceilingMs` with a `reason`). A
+case that crosses size^0.5 is measured up to eight times before it is
+reported. The request-path statement-count test below is exact, so it stays
+blocking.
 
 The check also fails when an exported query function in `packages/db/src/data`
 has no case. A query function is an exported function that builds a query

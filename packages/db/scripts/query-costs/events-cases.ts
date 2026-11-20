@@ -718,6 +718,10 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
 export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   {
     name: `${EVENTS}#deleteThreadEventSuffixInTransaction`,
+    growsWith: {
+      turnSize:
+        "Deletes the suffix from the last turn's request, which is the whole long last turn",
+    },
     run: (db, fixture) =>
       db.transaction((tx) =>
         deleteThreadEventSuffixInTransaction(tx, {
@@ -757,7 +761,7 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       listStoredEventRows(db, {
         afterSequence: 0,
         beforeSequence: fixture.latestSequence + 1,
-        limit: 2_000,
+        limit: 1_000,
         threadId: fixture.threadId,
         types: ["turn/input/accepted", "client/turn/requested"],
       }),
@@ -824,6 +828,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listItemEventSpansByItems`,
+    growsWith: {
+      turnSize:
+        "Returns a span for every item the case passes, including each command of the long last turn",
+    },
     run: (db, fixture) =>
       listItemEventSpansByItems(db, {
         items: windowTurns(fixture).flatMap(turnItems),
@@ -895,6 +903,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTurnInputAcceptedRowsByClientRequestIds`,
+    growsWith: {
+      history:
+        "No index keys clientRequestId, so a request accepted before afterSequence, or never accepted, reads every later acceptance",
+    },
     run: (db, fixture) => {
       const turn = turnAt(fixture, 0);
       return listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
@@ -1041,6 +1053,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#getStoredConversationOutlineProjectionState`,
+    growsWith: {
+      history:
+        "No index singles out nested turn/started rows, so a thread without one checks every turn start and acceptance",
+    },
     run: (db, fixture) =>
       getStoredConversationOutlineProjectionState(db, {
         classificationSequenceStart: 0,
@@ -1063,6 +1079,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#advanceTimelineWindowBudgetFloorSequence`,
+    growsWith: {
+      turnSize:
+        "Steps OFFSET over appendedEventCount rows, and the case passes the whole last turn's span",
+    },
     run: (db, fixture) =>
       advanceTimelineWindowBudgetFloorSequence(db, {
         appendedEventCount:
@@ -1086,6 +1106,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineOrderingContext`,
+    growsWith: {
+      history:
+        "Returns the request, acceptance, start and completion rows of every turn since sequence 0, as a cold timeline load does",
+    },
     run: (db, fixture) =>
       listTimelineOrderingContext(db, {
         maxSeq: fixture.latestSequence,
@@ -1136,6 +1160,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#findStoredTimelineWindowByteBudgetFloor`,
+    growsWith: {
+      turnSize:
+        "Sums each event's size across the first turn until the byte budget, which the turn stays under",
+    },
     run: (db, fixture) =>
       findStoredTimelineWindowByteBudgetFloor(db, {
         ...turnDetailsWindow(fixture),
@@ -1145,6 +1173,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTimelineTurnEventRows`,
+    growsWith: {
+      turnSize:
+        "Returns every row of the window's turns, including the whole long last turn",
+    },
     run: (db, fixture) =>
       listStoredTimelineTurnEventRows(db, {
         ...timelineWindowArgs(fixture),
@@ -1154,6 +1186,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listTimelineRootWindowTurnIds`,
+    growsWith: {
+      turnSize:
+        "Reads every row in the window to find its turns, since a turn's late rows can land after later turns start",
+    },
     run: (db, fixture) =>
       listTimelineRootWindowTurnIds(db, timelineWindowArgs(fixture)),
   },
@@ -1164,6 +1200,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredTimelineWindowEventRows`,
+    growsWith: {
+      turnSize:
+        "Returns every row of the first turn, which grows with turn size",
+    },
     run: (db, fixture) =>
       listStoredTimelineWindowEventRows(db, {
         ...turnDetailsWindow(fixture),
@@ -1294,11 +1334,19 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listOpenBackgroundTaskItemRowsForHost`,
+    growsWith: {
+      history:
+        "Probes the background-task index once per thread on the host, and the seed grows the host's threads",
+    },
     run: (db, fixture) =>
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: fixture.hostId }),
   },
   {
     name: `${EVENTS}#listOwnerStoppedBackgroundTaskRowsForHost`,
+    growsWith: {
+      history:
+        "Probes each live thread on the host for settled background tasks, and the seed grows the host's threads",
+    },
     run: (db, fixture) =>
       listOwnerStoppedBackgroundTaskRowsForHost(db, {
         hostId: fixture.hostId,
@@ -1314,6 +1362,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#getUnfinishedCommandItemData`,
+    growsWith: {
+      turnSize:
+        "Finding a started command with no completion checks each command started after afterSequence, since nothing records open items",
+    },
     run: (db, fixture) =>
       getUnfinishedCommandItemData(db, {
         afterSequence: lastTurn(fixture).requestSequence,
@@ -1322,6 +1374,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listCommandItemDataByItemIds`,
+    growsWith: {
+      turnSize:
+        "Returns the started and completed rows of every command the case passes, all those of the long last turn",
+    },
     run: (db, fixture) =>
       listCommandItemDataByItemIds(db, {
         itemIds: lastTurn(fixture).commandItemIds,
@@ -1429,6 +1485,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredConversationOutlineEventRows`,
+    growsWith: {
+      history:
+        "Returns every outline row since the last context clear, which grows with the thread",
+    },
     ceilingMs: 750,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
@@ -1440,6 +1500,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listStoredRootConversationOutlineEventRows`,
+    growsWith: {
+      history:
+        "Returns every outline row since the last context clear, which grows with the thread",
+    },
     ceilingMs: 750,
     reason:
       "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",

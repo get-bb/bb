@@ -521,6 +521,10 @@ const MAINTENANCE_CASES: readonly Case[] = [
   },
   {
     name: `${MAINTENANCE}#dropDeferredLegacyTables`,
+    growsWith: {
+      history:
+        "Drops the deferred legacy tables, freeing every page, and the seed grows their rows",
+    },
     run: (db) => dropDeferredLegacyTables(db),
   },
   {
@@ -652,6 +656,10 @@ const MAINTENANCE_CASES: readonly Case[] = [
   },
   {
     name: `${SWEEPS}#pruneClosedSessions`,
+    growsWith: {
+      history:
+        "Deletes up to one batch of 1,000 closed sessions, and the smaller world has fewer than a batch",
+    },
     run: (db) =>
       pruneClosedSessions(db, {
         closedBefore: Date.now() - CLOSED_SESSION_ROW_RETENTION_MS,
@@ -811,6 +819,10 @@ const INTERACTION_CASES: readonly Case[] = [
   },
   {
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreads`,
+    growsWith: {
+      history:
+        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+    },
     prepare: (db, fixture) => {
       hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
     },
@@ -823,6 +835,10 @@ const INTERACTION_CASES: readonly Case[] = [
   },
   {
     name: `${PENDING_INTERACTIONS}#interruptPendingInteractionsForThreadIds`,
+    growsWith: {
+      history:
+        "Probes pending interactions once per passed thread, and the case passes every thread on the host",
+    },
     prepare: (db, fixture) => {
       hostThreadIds = listHostThreadIds(db, { hostId: fixture.hostId });
     },

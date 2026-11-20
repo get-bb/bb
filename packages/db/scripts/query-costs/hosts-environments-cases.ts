@@ -269,6 +269,10 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#findProviderEnvironmentContainingPath`,
+    growsWith: {
+      history:
+        "Checks every environment's path for containment, which no index can seek, and the seed grows the environments",
+    },
     run: (db) =>
       findProviderEnvironmentContainingPath(
         db,
@@ -277,6 +281,10 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#findForeignManagedEnvironmentAtHostPath`,
+    growsWith: {
+      history:
+        "Checks every environment on the host for path containment, which no index can seek, and the seed grows them",
+    },
     run: (db, fixture, seed) =>
       findForeignManagedEnvironmentAtHostPath(db, {
         hostId: seed.busyHostId,
@@ -311,16 +319,28 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#listEnvironments`,
+    growsWith: {
+      history:
+        "Lists every environment on the busy host, and the seed grows its environments",
+    },
     run: (db, _fixture, seed) =>
       listEnvironments(db, { hostId: seed.busyHostId }),
   },
   {
     name: `${ENVIRONMENTS}#markHostEnvironmentsDestroyed`,
+    growsWith: {
+      history:
+        "Marks every environment on the host destroyed, and the seed grows its environments",
+    },
     run: (db, _fixture, seed) =>
       markHostEnvironmentsDestroyed(db, noopNotifier, seed.machineHostId),
   },
   {
     name: `${ENVIRONMENTS}#listRetiredLoadedEnvironmentIdsOnHost`,
+    growsWith: {
+      history:
+        "Looks up every loaded environment id the case passes, and the seed grows the host's loaded environments",
+    },
     run: (db, _fixture, seed) =>
       listRetiredLoadedEnvironmentIdsOnHost(db, {
         hostId: seed.busyHostId,
@@ -362,6 +382,10 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#listProviderLifecycleEnvironments`,
+    growsWith: {
+      history:
+        "Returns every lifecycle environment of the provider, and the seed grows them",
+    },
     run: (db) =>
       listProviderLifecycleEnvironments(db, "git-worktree", {
         pluginId: "environment-git-worktree",
@@ -451,6 +475,10 @@ const HOST_CASES: readonly Case[] = [
   },
   {
     name: `${HOSTS}#updateHost`,
+    growsWith: {
+      history:
+        "Destroying the host notifies every environment on it, and the seed grows the host's environments",
+    },
     run: (db, _fixture, seed) =>
       updateHost(db, noopNotifier, seed.busyHostId, {
         destroyedAt: Date.now(),
@@ -775,6 +803,10 @@ const PROJECT_CASES: readonly Case[] = [
   },
   {
     name: `${PROJECTS}#deleteProject`,
+    growsWith: {
+      history:
+        "Deleting the project cascades to its threads and environments, and the seed grows them",
+    },
     run: (db, _fixture, seed) =>
       deleteProject(db, noopNotifier, seed.deletingProjectId),
   },
@@ -903,6 +935,10 @@ const TERMINAL_CASES: readonly Case[] = [
   },
   {
     name: `${TERMINALS}#updateTerminalSessions`,
+    growsWith: {
+      history:
+        "Exits every disconnected terminal session on the host, and the seed grows the sessions",
+    },
     run: (db, _fixture, seed) =>
       updateTerminalSessions(db, {
         scope: {

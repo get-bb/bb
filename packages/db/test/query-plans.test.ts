@@ -943,7 +943,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("finds a turn's running provider compaction through the turn index", () => {
+  it("finds a turn's running provider compaction through the compaction item index", () => {
     const { db, thread } = setup();
     const compactionEvent = (args: {
       sequence: number;
@@ -1021,11 +1021,13 @@ describe("slow query index plans", () => {
     expect(isRunning("turn-accepted")).toBe(false);
     expect(isRunning("turn-without-compaction")).toBe(false);
 
-    expect(captured).toHaveLength(2);
-    const [compactionQuery] = captured;
-    expect(queryPlanDetails({ db, ...compactionQuery! })).toContain(
-      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
-    );
+    expect(captured).toHaveLength(3);
+    const [startedQuery, completedQuery] = captured;
+    for (const query of [startedQuery!, completedQuery!]) {
+      expect(queryPlanDetails({ db, ...query })).toContain(
+        "events_thread_type_item_kind_sequence_idx (thread_id=? AND type=? AND item_kind=?)",
+      );
+    }
     for (const query of captured) {
       expectNoThreadOnlyEventSeek(queryPlanDetails({ db, ...query }));
     }
@@ -1336,7 +1338,11 @@ describe("slow query index plans", () => {
       run: (db: DbConnection, threadId: string) =>
         isStoredTurnContextCompactionOnly(db, { threadId, turnId: "turn-1" }),
       plan: [
-        "SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+        "SCAN CONSTANT ROW",
+        "SCALAR SUBQUERY 1",
+        "SEARCH compaction USING INDEX events_thread_type_item_kind_sequence_idx (thread_id=? AND type=? AND item_kind=?)",
+        "SCALAR SUBQUERY 2",
+        "SEARCH other USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
       ],
     },
   ])(
