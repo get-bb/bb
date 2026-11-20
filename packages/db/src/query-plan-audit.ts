@@ -11,7 +11,8 @@ export type QueryPlanRule =
   | "weaker-index"
   | "automatic-index"
   | "correlated-subquery"
-  | "nested-loop";
+  | "nested-loop"
+  | "json-filter";
 
 export interface QueryPlanFinding {
   rule: QueryPlanRule;
@@ -34,7 +35,25 @@ export type QueryPlanAudit =
 interface TableReference {
   table: string;
   name: string;
+  start: number;
   end: number;
+}
+
+interface SqlToken {
+  text: string;
+  start: number;
+  depth: number;
+}
+
+interface JsonOperand {
+  qualifier: string | null;
+  expression: string;
+}
+
+interface JsonFilter {
+  name: string | null;
+  expression: string;
+  limited: boolean;
 }
 
 interface IndexListRow {
@@ -92,6 +111,24 @@ const ACCESS_STEP =
   /^(SCAN|SEARCH) (\S+)( EXISTS)?(?: USING (?:(?:COVERING |PRIMARY KEY )?INDEX (\S+)|INTEGER PRIMARY KEY)(?: \((.*)\))?)?/;
 const AUTOMATIC_INDEX = /AUTOMATIC (?:PARTIAL )?COVERING INDEX/;
 const CORRELATED_SUBQUERY = /^CORRELATED (?:SCALAR|LIST) SUBQUERY\b/;
+const SQL_TOKEN = /'(?:''|[^'])*'|"(?:""|[^"])*"|`[^`]*`|[A-Za-z_]\w*|->>?|\S/g;
+const IDENTIFIER = /^(?:[A-Za-z_]\w*|"(?:""|[^"])*")$/;
+const CLAUSE_KEYWORDS = new Set([
+  "select",
+  "from",
+  "join",
+  "where",
+  "on",
+  "group",
+  "order",
+  "having",
+  "limit",
+  "set",
+  "values",
+  "returning",
+  "window",
+]);
+const FILTER_CLAUSES = new Set(["where", "on", "having"]);
 
 export function isExplainableStatement(sql: string): boolean {
   return EXPLAINABLE_STATEMENT.test(sql);
@@ -170,13 +207,15 @@ function tableReferences(
     const tableSpan = match.indices?.[2];
     if (tableSpan === undefined) continue;
     const tableEnd = tableSpan[1] + match[1].length;
+    const start = match.index ?? 0;
     if (alias === undefined || NON_ALIAS_WORDS.has(alias.toLowerCase())) {
-      references.push({ table, name: table, end: tableEnd });
+      references.push({ table, name: table, start, end: tableEnd });
     } else {
       references.push({
         table,
         name: alias,
-        end: (match.index ?? 0) + match[0].length,
+        start,
+        end: start + match[0].length,
       });
     }
   }
@@ -371,6 +410,177 @@ function weakerIndexFindings(
   return findings;
 }
 
+function tokenize(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = [];
+  let depth = 0;
+  for (const match of sql.matchAll(SQL_TOKEN)) {
+    const text = match[0];
+    if (text === ")") depth = Math.max(0, depth - 1);
+    tokens.push({ text, start: match.index ?? 0, depth });
+    if (text === "(") depth += 1;
+  }
+  return tokens;
+}
+
+function isJsonFunction(text: string): boolean {
+  const name = text.toLowerCase();
+  return (
+    /^json(?:_\w+)?$/.test(name) && name !== "json_each" && name !== "json_tree"
+  );
+}
+
+function isIdentifier(token: SqlToken | undefined): token is SqlToken {
+  return token !== undefined && IDENTIFIER.test(token.text);
+}
+
+function jsonOperand(
+  sql: string,
+  tokens: readonly SqlToken[],
+  index: number,
+): JsonOperand | null {
+  const token = tokens[index];
+  let first: number;
+  let last: number;
+  let qualifier: SqlToken | null = null;
+  if (token.text === "->" || token.text === "->>") {
+    if (!isIdentifier(tokens[index - 1])) return null;
+    first = index - 1;
+    if (tokens[index - 2]?.text === "." && isIdentifier(tokens[index - 3])) {
+      first = index - 3;
+      qualifier = tokens[first];
+    }
+    last = Math.min(index + 1, tokens.length - 1);
+  } else {
+    if (!isJsonFunction(token.text) || tokens[index + 1]?.text !== "(") {
+      return null;
+    }
+    if (!isIdentifier(tokens[index + 2])) return null;
+    let next = index + 3;
+    if (tokens[next]?.text === "." && isIdentifier(tokens[next + 1])) {
+      qualifier = tokens[index + 2];
+      next += 2;
+    }
+    if (tokens[next]?.text !== "," && tokens[next]?.text !== ")") return null;
+    first = index;
+    last = tokens.findIndex(
+      (candidate, position) =>
+        position > index &&
+        candidate.depth === token.depth &&
+        candidate.text === ")",
+    );
+    if (last === -1) return null;
+  }
+  return {
+    qualifier:
+      qualifier === null ? null : qualifier.text.replace(/^"(.*)"$/, "$1"),
+    expression: sql.slice(
+      tokens[first].start,
+      tokens[last].start + tokens[last].text.length,
+    ),
+  };
+}
+
+function enclosingClause(
+  tokens: readonly SqlToken[],
+  index: number,
+): number | null {
+  let depth = tokens[index].depth;
+  for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+    const token = tokens[candidate];
+    if (token.depth > depth) continue;
+    depth = token.depth;
+    if (CLAUSE_KEYWORDS.has(token.text.toLowerCase())) return candidate;
+  }
+  return null;
+}
+
+function jsonFilters(
+  sql: string,
+  references: readonly TableReference[],
+): JsonFilter[] {
+  const tokens = tokenize(sql);
+  const depthAt = new Map(tokens.map((token) => [token.start, token.depth]));
+  const filters: JsonFilter[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const operand = jsonOperand(sql, tokens, index);
+    if (operand === null) continue;
+    const clause = enclosingClause(tokens, index);
+    if (clause === null) continue;
+    if (!FILTER_CLAUSES.has(tokens[clause].text.toLowerCase())) continue;
+    const depth = tokens[clause].depth;
+    let first = clause;
+    while (first > 0 && tokens[first - 1].depth >= depth) first -= 1;
+    let last = clause;
+    while (last + 1 < tokens.length && tokens[last + 1].depth >= depth) {
+      last += 1;
+    }
+    const scope = {
+      start: tokens[first].start,
+      end: tokens[last].start + tokens[last].text.length,
+    };
+    const limited = tokens
+      .slice(first, last + 1)
+      .some(
+        (token) =>
+          token.depth === depth && token.text.toLowerCase() === "limit",
+      );
+    const scoped = references.filter(
+      (reference) =>
+        reference.start >= scope.start &&
+        reference.start < scope.end &&
+        depthAt.get(reference.start) === depth,
+    );
+    const qualifier = operand.qualifier;
+    const name =
+      qualifier === null
+        ? scoped.length === 1
+          ? scoped[0].name
+          : null
+        : scoped.some((reference) => reference.name === qualifier)
+          ? qualifier
+          : null;
+    filters.push({ name, expression: operand.expression, limited });
+  }
+  return filters;
+}
+
+function jsonFilterFindings(
+  sqlite: Database.Database,
+  sql: string,
+  plan: readonly QueryPlanStep[],
+  tables: ReadonlySet<string>,
+  aliases: ReadonlyMap<string, string>,
+  options: QueryPlanAuditOptions,
+): QueryPlanFinding[] {
+  const findings: QueryPlanFinding[] = [];
+  const flagged = new Set<string>();
+  for (const filter of jsonFilters(sql, tableReferences(sql, tables))) {
+    if (filter.limited || filter.name === null || flagged.has(filter.name)) {
+      continue;
+    }
+    const table = aliases.get(filter.name) ?? filter.name;
+    if (!options.largeTables.has(table)) continue;
+    const step = plan.find((candidate) => {
+      const access = parseAccessStep(candidate.detail);
+      return (
+        access !== null &&
+        access.kind === "SEARCH" &&
+        access.name === filter.name &&
+        access.rangeTerms === 0 &&
+        !isBoundedLookup(sqlite, table, access, options)
+      );
+    });
+    if (step === undefined) continue;
+    flagged.add(filter.name);
+    findings.push({
+      rule: "json-filter",
+      table,
+      detail: `${step.detail} evaluates ${filter.expression} on every row`,
+    });
+  }
+  return findings;
+}
+
 export function auditQueryPlan(
   sqlite: Database.Database,
   sql: string,
@@ -415,5 +625,8 @@ export function auditQueryPlan(
   findings.push(...weakerIndexFindings(sqlite, sql, plan, tables, options));
   findings.push(...correlatedSubqueryFindings(sqlite, plan, aliases, options));
   findings.push(...nestedLoopFindings(sqlite, plan, tables, aliases, options));
+  findings.push(
+    ...jsonFilterFindings(sqlite, sql, plan, tables, aliases, options),
+  );
   return { status: "audited", plan, findings };
 }

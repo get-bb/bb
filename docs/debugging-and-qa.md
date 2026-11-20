@@ -334,11 +334,15 @@ process for each `rule`, `table`, and `caller`, when the plan:
   `events` column whose rows are bounded per value (`turn_id`, `item_id`,
   `parent_tool_call_id`), is accepted; a search on `thread_id` and `type`
   alone is not, because it rereads the thread's history for every outer row;
-  or
 - loops over a CTE or subquery result, without an index, once for each row of
   a search on one of those tables through a key that grows with history
   (`nested-loop`). `json_each` and other virtual tables over the row's own
-  JSON are not counted.
+  JSON are not counted; or
+- searches one of those tables through a key that grows with history, such as
+  `thread_id` and `type`, with no range bound on the search and no `LIMIT` on
+  its query, while a `WHERE`, `ON`, or `HAVING` term reads that table's JSON
+  (`json_extract`, `->>`, or another `json_*` function), so SQLite parses
+  every row the key matches to discard most of them (`json-filter`).
 
 `caller` is the `src/` file and function that ran the query; in the built
 server, the file comes from the module comments esbuild writes into

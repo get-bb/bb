@@ -18,6 +18,16 @@ function boundedCorrelatedEvents(
   return { rule: "correlated-subquery", table: "events", caller, reason };
 }
 
+function rareOperationJsonFilter(caller: string): QueryPlanAllowlistEntry {
+  return {
+    rule: "json-filter",
+    table: "events",
+    caller,
+    reason:
+      "Parses only the thread's system/operation rows, which come from user actions; Nov 2026 production copy: 1,095 rows over 5,132 threads, at most 6 in one thread",
+  };
+}
+
 export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
   acceptedEventsIndex(
     `${EVENTS}#isStoredTurnMainRunIdle`,
@@ -71,6 +81,10 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     `${THREADS}#isThreadAwaitingTurnStartPastDeadline`,
     "Rechecks one deadline candidate; reads its turn/completed rows once, linear in turns",
   ),
+  rareOperationJsonFilter(
+    `${EVENTS}#getLatestStoredConversationOutlineSequence`,
+  ),
+  rareOperationJsonFilter(`${EVENTS}#readNewestStoredProviderThreadIdentity`),
   {
     rule: "full-scan",
     table: "prompt_history_entries",

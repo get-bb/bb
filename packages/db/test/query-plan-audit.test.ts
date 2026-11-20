@@ -100,7 +100,7 @@ describe("auditQueryPlan", () => {
         limit ?`,
         params,
       ),
-    ).toEqual(["correlated-subquery:events"]);
+    ).toEqual(["correlated-subquery:events", "json-filter:events"]);
     expect(
       audit(
         `select accepted.sequence from events accepted
@@ -110,7 +110,7 @@ describe("auditQueryPlan", () => {
         limit ?`,
         params,
       ),
-    ).toEqual([]);
+    ).toEqual(["json-filter:events"]);
   });
 
   it("accepts correlated lookups whose key does not grow with history", () => {
@@ -136,6 +136,59 @@ describe("auditQueryPlan", () => {
         ["thr_1", "turn/started", "turn/completed"],
       ),
     ).not.toContain("correlated-subquery:events");
+  });
+
+  it("flags a JSON filter over every row of a thread and type seek", () => {
+    const requestLookup = (bound: string, tail: string) => `
+      select "events"."id" from "events"
+      where ("events"."type" = ? and "events"."thread_id" = ?${bound}
+        and json_extract("events"."data", '$.requestId') in (?, ?))
+      ${tail}`;
+    const params = ["client/turn/requested", "thr_1", "req_1", "req_2"];
+
+    expect(
+      audit(requestLookup("", `order by "events"."sequence"`), params),
+    ).toEqual(["json-filter:events"]);
+    expect(
+      audit(
+        `select r.id from events r
+        where r.thread_id = ? and r.type = ? and r.data ->> '$.requestId' = ?`,
+        ["thr_1", "client/turn/requested", "req_1"],
+      ),
+    ).toEqual(["json-filter:events"]);
+    expect(
+      audit(requestLookup(` and "events"."sequence" < ?`, ""), [
+        "client/turn/requested",
+        "thr_1",
+        10,
+        "req_1",
+        "req_2",
+      ]),
+    ).toEqual([]);
+    expect(
+      audit(requestLookup("", `order by "events"."sequence" desc limit ?`), [
+        ...params,
+        1,
+      ]),
+    ).toEqual([]);
+  });
+
+  it("accepts JSON reads outside the filter and filters over bounded keys", () => {
+    expect(
+      audit(
+        `select json_extract(data, '$.requestId') from events
+        where thread_id = ? and type = ?
+        order by case when json_extract(data, '$.kind') = 'a' then 0 else 1 end`,
+        ["thr_1", "client/turn/requested"],
+      ),
+    ).toEqual([]);
+    expect(
+      audit(
+        `select id from events
+        where thread_id = ? and turn_id = ? and json_extract(data, '$.status') = ?`,
+        ["thr_1", "turn_1", "pending"],
+      ),
+    ).toEqual([]);
   });
 
   it("flags a loop over a CTE that runs once per history row", () => {
