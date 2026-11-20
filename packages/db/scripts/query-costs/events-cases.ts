@@ -836,6 +836,10 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
   },
   {
     name: `${EVENTS}#listItemEventSpansByItems`,
+    growsWith: {
+      turnSize:
+        "Returns a span for every item the case passes, including each command of the long last turn",
+    },
     run: (db, fixture) =>
       listItemEventSpansByItems(db, {
         items: windowTurns(fixture).flatMap(turnItems),
