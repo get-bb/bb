@@ -932,10 +932,13 @@ Docs: `backend-events.md`.
    (`apps/app` `thread-screen-hosts.ts`, thread-list
    `project-thread-groups.ts`, storage-retention `storage.ts`); migrate those
    readers before deprecating the fields.
-6. **Context versions (`apiVersion`).** Declarations are a union keyed on
-   `apiVersion`: omitted or 1 gets today's contexts with the driving
-   `thread`; 2 gets `environment: { id, name, projectId }` instead. Core keeps
-   one implementation and adapts at the call boundary
+6. **Context versions (`apiVersion`).** The public types offer only version
+   2: declarations require `apiVersion: 2`, and contexts carry
+   `environment: { id, name, projectId }` instead of a thread. Providers
+   built before it (no `apiVersion`) still run; their types live in
+   `@get-bb/plugin-sdk/internal/host-policy` (`PluginEnvironmentProviderV1*`),
+   and registering one reports a plugin problem asking the author to migrate.
+   Core keeps one implementation and adapts at the call boundary
    (`invokeCreate`/`providerRestoreCall`/`versionOneOperation` in
    `apps/server/src/services/environments/environment-engine.ts`, the
    validate call in `thread-environment-placement.ts`, and registration in
@@ -948,11 +951,10 @@ Docs: `backend-events.md`.
    environment (version 2 must locate it instead); it refuses version-1
    providers for environments created without a thread. Path keys are derived
    the same way for both (thread-based when a thread drives the create,
-   environment-based otherwise). Delete the version-1 adapter, the
-   `per-thread` path-key value and `PluginEnvironmentProviderDefinition`'s
-   version parameter when this API stabilizes; all first-party providers are
-   on version 2. Core's thread creation and thread-less creation both go
-   through the same adapter.
+   environment-based otherwise). Delete the version-1 adapter, its internal
+   types, the `per-thread` path-key value and the migration problem when this
+   API stabilizes; all first-party providers are on version 2. Core's thread
+   creation and thread-less creation both go through the same adapter.
 
 ## `@get-bb/plugin-sdk/environment-provider`
 
@@ -962,10 +964,10 @@ Exports the resource-operation contract for
 project and machine, re-checked at thread creation, and reported to pickers
 as `machineAvailability`. `restore` is the only way core rebuilds a destroyed
 environment.
-Version-1 contexts keep `experimental_claimPath(path)`, which durably reserves
-a host path on the launch row before mutation and resolves false for
-competing claims or stale attempts. Values keep their prefix, and named types
-are unprefixed.
+Version-1 providers keep `experimental_claimPath(path)` at runtime, which
+durably reserves a host path on the launch row before mutation and resolves
+false for competing claims or stale attempts. Values keep their prefix, and
+named types are unprefixed.
 
 Docs: `backend-events.md`.
 
@@ -982,8 +984,7 @@ availability message ownership, create-time error presentation, the
 interaction between the `requires` floor and provider decisions, and whether
 the current decision timeout is appropriate.
 
-Version-2 contexts call core's steps instead of core running them at fixed
-points. These are members of contexts that `bb.experimental_environments`
+Providers call core's steps instead of core running them at fixed points. These are members of contexts that `bb.experimental_environments`
 providers receive, so they carry no nested `experimental_` prefix.
 
 - `branchName()` replaces `suggestedBranchName` and rejects when the
@@ -1016,11 +1017,11 @@ providers receive, so they carry no nested `experimental_` prefix.
   locate fails ("Workspace … already belongs to environment …"). Callers:
   Project checkout (`reuse` unless a branch is requested) and Worktree
   (adopting an existing worktree).
-- `experimental_claimPath` is removed from version 2: core now claims the
-  located path itself, which was the only reason Project checkout called it,
-  and the post-create bind claims any produced path. Version 1 keeps it
-  through the adapter.
-- `projectCheckout.ownsPath` (version 2) replaces `experimental_ownsPath`:
+- `experimental_claimPath` is gone from the public contexts: core now claims
+  the located path itself, which was the only reason Project checkout called
+  it, and the post-create bind claims any produced path. Version-1 providers
+  keep it at runtime through the adapter.
+- `projectCheckout.ownsPath` replaces `experimental_ownsPath`:
   a provider decides `ownsPath` in its result from whether bb cloned the
   checkout, and only core knows that. Caller: Project checkout.
 

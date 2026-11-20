@@ -88,8 +88,7 @@ async function setup() {
   };
   const context: PluginEnvironmentProviderCreateContext<
     PluginEnvironmentProviderRequirements,
-    PluginEnvironmentProviderInputsSchema,
-    2
+    PluginEnvironmentProviderInputsSchema
   > = {
     environment: { id: "env_test", name: null, projectId: PROJECT_ID },
     project: PERSONAL_PROJECT,

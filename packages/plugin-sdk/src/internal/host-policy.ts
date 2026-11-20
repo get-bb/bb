@@ -36,7 +36,6 @@ import type {
   PluginCliOutputLimitError,
   PluginCliRegistration,
   PluginEnvironmentProviderDeclaration,
-  PluginEnvironmentProviderRequirements,
   PluginHookHandler,
   PluginHookName,
   PluginHttpAuthMode,
@@ -2489,29 +2488,97 @@ interface NormalizedPluginEnvironmentProviderCommon {
   remove: PluginEnvironmentProviderDeclaration["remove"];
 }
 
-type EnvironmentProviderVersionDefinition<V extends 1 | 2> =
-  import("../environment-provider.js").PluginEnvironmentProviderDefinition<
-    PluginEnvironmentProviderRequirements,
-    import("../environment-provider.js").PluginEnvironmentProviderInputsSchema,
-    V
-  >;
+type ProviderModule =
+  import("../environment-provider.js").PluginEnvironmentProviderDefinition;
+type V2ValidateContext =
+  import("../environment-provider.js").PluginEnvironmentProviderValidateContext;
+type V2CreateContext =
+  import("../environment-provider.js").PluginEnvironmentProviderCreateContext;
+type V2RestoreContext =
+  import("../environment-provider.js").PluginEnvironmentProviderRestoreContext;
+type CreateResult =
+  import("../environment-provider.js").PluginEnvironmentProviderCreateResult;
 
-interface NormalizedPluginEnvironmentProviderVersion<V extends 1 | 2> {
-  apiVersion: V;
-  validate: NonNullable<EnvironmentProviderVersionDefinition<V>["validate"]> | null;
-  create: EnvironmentProviderVersionDefinition<V>["create"];
-  restore: NonNullable<
-    EnvironmentProviderVersionDefinition<V>["restore"]
+/**
+ * The contexts of a provider declared without `apiVersion` (version 1). The
+ * public types offer only version 2; core still runs version-1 providers
+ * built against earlier SDKs through this adapter.
+ */
+export type PluginEnvironmentProviderV1ValidateContext = Omit<
+  V2ValidateContext,
+  "projectCheckout"
+> & {
+  projectCheckout: { path: string; experimental_ownsPath: boolean } | null;
+};
+
+type V1OperationContext = PluginEnvironmentProviderV1ValidateContext &
+  Pick<V2CreateContext, "attempt" | "pathKey" | "report" | "signal"> & {
+    thread: import("@bb/server-contract").ThreadResponse;
+    experimental_claimPath(path: string): Promise<boolean>;
+  };
+
+export type PluginEnvironmentProviderV1CreateContext = V1OperationContext & {
+  suggestedBranchName: string;
+};
+
+export type PluginEnvironmentProviderV1RestoreContext = V1OperationContext &
+  Pick<V2RestoreContext, "previous">;
+
+export interface PluginEnvironmentProviderV1Policy {
+  retireGraceMs: number | null;
+  pathKeys: "per-thread" | "per-attempt";
+}
+
+export interface PluginEnvironmentProviderV1Declaration extends Omit<
+  ProviderModule,
+  "apiVersion" | "policy" | "validate" | "create" | "restore"
+> {
+  apiVersion?: 1;
+  policy?: Partial<PluginEnvironmentProviderV1Policy>;
+  validate?(
+    context: PluginEnvironmentProviderV1ValidateContext,
+  ):
+    | import("../backend-contract.js").PluginEnvironmentValidateDecision
+    | Promise<
+        import("../backend-contract.js").PluginEnvironmentValidateDecision
+      >;
+  experimental_existingPath?(
+    inputs: V2ValidateContext["inputs"],
+  ): string | null;
+  create(
+    context: PluginEnvironmentProviderV1CreateContext,
+  ): Promise<CreateResult>;
+  restore?(
+    context: PluginEnvironmentProviderV1RestoreContext,
+  ): Promise<CreateResult>;
+}
+
+interface NormalizedPluginEnvironmentProviderV1 {
+  apiVersion: 1;
+  validate: NonNullable<
+    PluginEnvironmentProviderV1Declaration["validate"]
   > | null;
-  policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy<V>;
+  create: PluginEnvironmentProviderV1Declaration["create"];
+  restore: NonNullable<
+    PluginEnvironmentProviderV1Declaration["restore"]
+  > | null;
+  policy: PluginEnvironmentProviderV1Policy;
+}
+
+interface NormalizedPluginEnvironmentProviderV2 {
+  apiVersion: 2;
+  validate: NonNullable<ProviderModule["validate"]> | null;
+  create: ProviderModule["create"];
+  restore: NonNullable<ProviderModule["restore"]> | null;
+  policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
 
 /** Normalized once at registration; `apiVersion` selects the context shape core builds for create and restore. */
 export type NormalizedPluginEnvironmentProvider =
   NormalizedPluginEnvironmentProviderCommon &
     (
-      | NormalizedPluginEnvironmentProviderVersion<1>
-      | NormalizedPluginEnvironmentProviderVersion<2>
+      | NormalizedPluginEnvironmentProviderV1
+      | NormalizedPluginEnvironmentProviderV2
     );
 
 type ProviderNoun = "environment provider" | "machine provider";
@@ -2606,11 +2673,7 @@ function normalizeProviderInputs(
 /** Either context version; `apiVersion` tells them apart at runtime. */
 export type AnyPluginEnvironmentProviderDeclaration =
   | PluginEnvironmentProviderDeclaration
-  | PluginEnvironmentProviderDeclaration<
-      PluginEnvironmentProviderRequirements,
-      import("../environment-provider.js").PluginEnvironmentProviderInputsSchema,
-      2
-    >;
+  | PluginEnvironmentProviderV1Declaration;
 
 export function validatePluginEnvironmentProviderDeclaration(
   declaration: AnyPluginEnvironmentProviderDeclaration,
@@ -2664,7 +2727,9 @@ export function validatePluginEnvironmentProviderDeclaration(
     "availability",
   );
   const existingPath =
-    declaration.apiVersion === 2 ? undefined : declaration.experimental_existingPath;
+    declaration.apiVersion === 2
+      ? undefined
+      : declaration.experimental_existingPath;
   const locate = declaration.locate;
   assertOptionalFunction(
     "environment provider",

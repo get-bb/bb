@@ -36,17 +36,8 @@ export const checkoutInputsSchema = z.object({
 });
 
 type CheckoutOperation = Pick<
-  PluginEnvironmentProviderCreateContext<
-    { projectCheckout: true },
-    undefined,
-    2
-  >,
-  | "attempt"
-  | "host"
-  | "pathKey"
-  | "projectCheckout"
-  | "report"
-  | "signal"
+  PluginEnvironmentProviderCreateContext<{ projectCheckout: true }, undefined>,
+  "attempt" | "host" | "pathKey" | "projectCheckout" | "report" | "signal"
 >;
 
 function errorMessage(error: unknown): string {

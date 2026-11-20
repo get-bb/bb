@@ -285,9 +285,8 @@ registrations to settle, then rejects an unknown provider id; existing threads
 wait if their registered provider disappears. `bb.experimental_environments.recheck()`
 re-asks this plugin's waiting provisioning now instead of at its scheduled time.
 
-`create` receives the resolved facts, the `environment` and its steps (v2) or
-the thread and `suggestedBranchName` (v1), monotonic attempt, `pathKey`, `report`, and an abort
-signal, and always builds a fresh environment. It is one long call with no
+`create` receives the resolved facts, the `environment` and its steps,
+monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds a fresh environment. It is one long call with no
 overall timeout and must be idempotent for `pathKey`: after a process or plugin
 restart, core calls it again with the same attempt and pathKey. Return `created`
 with `path`, explicit `ownsPath` and optional `mergeBaseBranch`, or `failed`
@@ -297,10 +296,9 @@ clears it, and omitting it keeps it; a failed create is terminal, and a retry is
 an explicit new attempt on the same environment row after cleanup. `report.step`
 and `report.log` stream durable progress while the call runs.
 
-Version-1 contexts also have `experimental_claimPath(path)`,
-which reserves a directory for this launch before workspace mutations;
-version 2 relies on `locate` instead. `bb.sdk.environments.list({ hostId,
-path })` compares stored paths without contacting hosts.
+Core claims a provider's directory through `locate` or `setup(path)`.
+`bb.sdk.environments.list({ hostId, path })` compares stored paths without
+contacting hosts.
 
 A thread whose environment was destroyed gets it back only when the user asks
 for a restore and the provider declares the optional `restore`: it receives

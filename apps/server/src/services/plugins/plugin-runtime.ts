@@ -463,7 +463,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   >();
   const hungServices = new Map<string, Set<string>>();
   const needsConfiguration = new Map<string, string>();
-  const agentToolProblems = new Map<string, string>();
+  const registrationProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
@@ -541,11 +541,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     setStatus(id, "needs-configuration", message);
   }
 
-  function reportAgentToolProblem(id: string, message: string): void {
-    agentToolProblems.set(id, message);
+  function reportRegistrationProblem(id: string, message: string): void {
+    const reported = registrationProblems.get(id);
+    if (reported?.split("; ").includes(message)) return;
+    const problems =
+      reported === undefined ? message : `${reported}; ${message}`;
+    registrationProblems.set(id, problems);
     logger.warn(`[plugin:${id}] ${message}`);
     if (statuses.get(id)?.status === "running") {
-      setStatus(id, "running", message);
+      setStatus(id, "running", problems);
     }
   }
 
@@ -1924,8 +1928,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return undefined;
       },
-      reportAgentToolProblem: (message) => {
-        reportAgentToolProblem(row.id, message);
+      reportRegistrationProblem: (message) => {
+        reportRegistrationProblem(row.id, message);
       },
       requestQueueDrain: () => {
         // Unwired in isolated plugin-runtime tests, which have no thread
@@ -2166,7 +2170,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     else hostArtifacts.set(row.id, hostArtifactCandidate);
     brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
+    registrationProblems.delete(row.id);
     handle.activate();
     const now = Date.now();
     prunePluginSchedules(
@@ -2187,7 +2191,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     if (!needsConfiguration.has(row.id)) {
       const details = [
-        agentToolProblems.get(row.id),
+        registrationProblems.get(row.id),
         appBundleCandidate.problem,
       ].filter((detail): detail is string => typeof detail === "string");
       setStatus(
@@ -2317,7 +2321,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   return {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    registrationProblems,
     appBundles,
     hostArtifacts,
     bindSdk,

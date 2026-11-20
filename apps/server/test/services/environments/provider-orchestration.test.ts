@@ -49,8 +49,10 @@ import {
 } from "@bb/db";
 import type { JsonValue } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
-import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
-import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  type PluginEnvironmentProviderV1Declaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   markProviderEnvironmentAttached,
   cancelProviderEnvironmentCreation,
@@ -85,7 +87,7 @@ import { listEvents } from "@bb/db/testing";
 
 function setup(
   harness: TestAppHarness,
-  overrides: Partial<PluginEnvironmentProviderDeclaration> = {},
+  overrides: Partial<PluginEnvironmentProviderV1Declaration> = {},
 ) {
   const { host, session } = seedHostSession(harness.deps, { id: "host_test" });
   const { project, source } = seedProjectWithSource(harness.deps, {
@@ -2241,8 +2243,9 @@ describe("existing-path provider selection", () => {
     "reuses a recorded path without create and preserves ownership %s",
     async (ownsPath) =>
       withTestHarness(async (harness) => {
-        const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>();
-        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        const create =
+          vi.fn<PluginEnvironmentProviderV1Declaration["create"]>();
+        const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
           async () => ({ status: "removed" }),
         );
         const fixture = setup(harness, {
@@ -2365,7 +2368,7 @@ describe("existing-path provider selection", () => {
 
   it("does not cancel an adopted checkout with a previous selection", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {
@@ -2412,7 +2415,7 @@ describe("existing-path provider selection", () => {
     "hands a taken-over environment to retirement policy %s when its thread cancels",
     async (retireGraceMs) =>
       withTestHarness(async (harness) => {
-        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
           async () => ({ status: "removed" }),
         );
         const fixture = setup(harness, {
@@ -2458,14 +2461,14 @@ describe("existing-path provider selection", () => {
 
   it("keeps a taken-over environment when creation finishes during cancellation", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       let finishCreate: () => void = () => undefined;
       const created = new Promise<void>((resolve) => {
         finishCreate = resolve;
       });
-      const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>(
+      const create = vi.fn<PluginEnvironmentProviderV1Declaration["create"]>(
         async () => {
           await created;
           return {
@@ -2508,7 +2511,7 @@ describe("existing-path provider selection", () => {
 
   it("retires a cancelled thread's own ready environment after the grace period", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {
@@ -2544,7 +2547,7 @@ describe("existing-path provider selection", () => {
 
   it("keeps the existing cleanup metadata when creation races with another attachment", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {

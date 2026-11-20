@@ -529,7 +529,7 @@ export function createPluginApi(options: {
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
   isMachineProviderIdTaken: (id: string) => string | undefined;
-  reportAgentToolProblem: (message: string) => void;
+  reportRegistrationProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
    * (`bb.experimental_hooks.recheck`). Coalescing, pacing and the walk
@@ -594,7 +594,7 @@ export function createPluginApi(options: {
     settingsChanged,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
-    reportAgentToolProblem,
+    reportRegistrationProblem,
     requestQueueDrain,
     declaredIconNames,
     brandingIcon,
@@ -613,7 +613,7 @@ export function createPluginApi(options: {
   let activated = false;
   let wrappedSdk: PluginBbSdk | undefined;
   let pendingNeedsConfiguration: string | null = null;
-  const pendingAgentToolProblems: string[] = [];
+  const pendingRegistrationProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const installHandlers: Array<() => void | Promise<void>> = [];
@@ -1022,8 +1022,8 @@ export function createPluginApi(options: {
       const owner = isAgentToolNameTaken(record.name);
       if (owner !== undefined) {
         const problem = `tool "${record.name}" is already registered by plugin "${owner}" — not registered`;
-        if (activated) reportAgentToolProblem(problem);
-        else pendingAgentToolProblems.push(problem);
+        if (activated) reportRegistrationProblem(problem);
+        else pendingRegistrationProblems.push(problem);
         return;
       }
       if (agentTools.some((existing) => existing.name === record.name)) {
@@ -1288,6 +1288,11 @@ export function createPluginApi(options: {
         );
       const provider =
         validatePluginEnvironmentProviderDeclaration(declaration);
+      if (provider.apiVersion === 1) {
+        const problem = `environment provider "${provider.id}" uses the version-1 provider API, which bb still runs but will remove. Declare apiVersion: 2 and use locate(), branchName() and setup()`;
+        if (activated) reportRegistrationProblem(problem);
+        else pendingRegistrationProblems.push(problem);
+      }
       const problem =
         provider.icon === null
           ? null
@@ -1491,10 +1496,10 @@ export function createPluginApi(options: {
         : null;
       if (cliWarning) emitLog("warn", cliWarning);
       pendingSharedPorts.clear();
-      for (const problem of pendingAgentToolProblems) {
-        reportAgentToolProblem(problem);
+      for (const problem of pendingRegistrationProblems) {
+        reportRegistrationProblem(problem);
       }
-      pendingAgentToolProblems.length = 0;
+      pendingRegistrationProblems.length = 0;
       if (pendingNeedsConfiguration !== null) {
         reportNeedsConfiguration(pendingNeedsConfiguration);
         pendingNeedsConfiguration = null;

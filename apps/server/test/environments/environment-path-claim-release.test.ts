@@ -6,10 +6,12 @@ import {
   getThread,
   listEnvironments,
 } from "@bb/db";
-import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
-import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  type PluginEnvironmentProviderV1CreateContext,
+  type PluginEnvironmentProviderV1Declaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
-  PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderCreateResult,
   PluginEnvironmentProviderRemoveResult,
 } from "@get-bb/plugin-sdk/environment-provider";
@@ -56,12 +58,12 @@ const SHARED_PATH = "/tmp/environment-path-claim-release";
 
 function installClaimingProvider(
   create: (
-    context: PluginEnvironmentProviderCreateContext,
+    context: PluginEnvironmentProviderV1CreateContext,
   ) => Promise<PluginEnvironmentProviderCreateResult>,
   remove: () => Promise<PluginEnvironmentProviderRemoveResult> = async () => ({
     status: "removed",
   }),
-  locate?: PluginEnvironmentProviderDeclaration["locate"],
+  locate?: PluginEnvironmentProviderV1Declaration["locate"],
 ): void {
   const records: PluginEnvironmentProviderRecord[] = [
     {

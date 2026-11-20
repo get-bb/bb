@@ -251,32 +251,32 @@ the provider is available core's Host and Origin guards admit its origin, so
 browsers and machines can use it without `BB_APP_URL`. Reading configuration
 never acquires access; the grant's URL is the one machines use.
 
-## Context versions and holds
+## Create steps and holds
 
-`apiVersion` picks the shape of the create and restore contexts. Version 2
-(`apiVersion: 2`) contexts carry `environment: { id, name, projectId }`, the
-environment being created, and no thread, so core can also create the
-environment before any thread exists (`bb environment create`,
-`bb.sdk.environments.experimental_create`). Omitting `apiVersion` means
-version 1: contexts carry the driving `thread` instead, and core refuses to
-create a version-1 provider's environment without a thread ("<provider> can't
-create an environment before a thread exists"). Version-1 source keeps
-type-checking and running; core adapts at the call boundary. The version only
-bumps for breaking context changes.
+Declare `apiVersion: 2`. Create and restore contexts carry
+`environment: { id, name, projectId }`, the environment being created, and no
+thread, so core can also create the environment before any thread exists
+(`bb environment create`, `bb.sdk.environments.experimental_create`).
 
-Version 1 gets `suggestedBranchName`, `<prefix><slug>-<id>` from the thread's
-settled title and id. Version 2 calls core's steps in the order it needs:
-`branchName()` resolves to that name once the title settles (at once from the
-environment's name and id without a thread), so await it late;
-`setup(path)` claims `path` as a provider-owned workspace and starts core's
-setup there while create continues. The thread starts only after create
-returns `created` with the same path; without a call, core runs setup after
-create. Version 2 reads `projectCheckout.ownsPath` (bb cloned the checkout);
-version 1 reads `experimental_ownsPath` and has `experimental_claimPath`.
+A provider calls core's steps in the order it needs: `branchName()` resolves
+to `<prefix><slug>-<id>` once the thread's title settles (at once from the
+environment's name and id without a thread), so await it late; `setup(path)`
+claims `path` as a provider-owned workspace and starts core's setup there
+while create continues. The thread starts only after create returns `created`
+with the same path; without a call, core runs setup after create.
+`projectCheckout.ownsPath` says bb cloned the checkout.
 
-Path keys are derived the same way for both versions: from the driving thread
-when there is one, so thread workspaces keep their names, and from the
-environment id otherwise.
+Path keys come from the driving thread when there is one, so thread
+workspaces keep their names, and from the environment id otherwise.
+
+Providers built before `apiVersion: 2` still run, but the types no longer
+offer their contexts, and the plugin shows a problem asking to migrate:
+replace `suggestedBranchName` with `await branchName()`,
+`experimental_existingPath(inputs)` with `locate()` returning
+`{ path, reuse: true }`, and `experimental_claimPath` with `locate()` or
+`setup()`; read `projectCheckout.ownsPath` and `environment` instead of
+`experimental_ownsPath` and `thread`. Core refuses to create their
+environments without a thread.
 
 ### Environments created before threads, and holds
 

@@ -18,13 +18,11 @@ import plugin, { worktreeInputsSchema } from "./server.js";
 
 type CreateContext = PluginEnvironmentProviderCreateContext<
   PluginEnvironmentProviderRequirements,
-  PluginEnvironmentProviderInputsSchema,
-  2
+  PluginEnvironmentProviderInputsSchema
 >;
 type RestoreContext = PluginEnvironmentProviderRestoreContext<
   PluginEnvironmentProviderRequirements,
-  PluginEnvironmentProviderInputsSchema,
-  2
+  PluginEnvironmentProviderInputsSchema
 >;
 type Project = CreateContext["project"];
 type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];

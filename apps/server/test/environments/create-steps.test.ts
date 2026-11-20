@@ -9,10 +9,8 @@ import {
 import type {
   PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderCreateResult,
-  PluginEnvironmentProviderInputsSchema,
   PluginEnvironmentProviderRemoveContext,
 } from "@get-bb/plugin-sdk/environment-provider";
-import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { listEvents } from "@bb/db/testing";
 import { eq } from "drizzle-orm";
@@ -45,14 +43,12 @@ const PLUGIN = "steps-plugin";
 const PROVIDER = "steps-worktree";
 const CHECKOUT = "/tmp/steps-project";
 
-type StepsContext = PluginEnvironmentProviderCreateContext<
-  PluginEnvironmentProviderRequirements,
-  PluginEnvironmentProviderInputsSchema,
-  2
->;
+type StepsContext = PluginEnvironmentProviderCreateContext;
 
 function installStepsProvider(
-  create: (context: StepsContext) => Promise<PluginEnvironmentProviderCreateResult>,
+  create: (
+    context: StepsContext,
+  ) => Promise<PluginEnvironmentProviderCreateResult>,
   options: {
     locate?: NonNullable<
       ReturnType<typeof validatePluginEnvironmentProviderDeclaration>["locate"]
@@ -192,7 +188,8 @@ function pendingAttaches(harness: TestAppHarness) {
 
 function threadStarts(harness: TestAppHarness, threadId: string) {
   return listQueuedCommands(harness, "thread.start").filter(
-    (command) => command.type === "thread.start" && command.threadId === threadId,
+    (command) =>
+      command.type === "thread.start" && command.threadId === threadId,
   );
 }
 
@@ -275,7 +272,9 @@ describe("KT1: setup is a durable request inside create", () => {
       title.resolve("Create steps primitives");
       const branch = `bb/create-steps-primitives-${thread.id}`;
       const inspect = await attachCommand(harness, environmentId);
-      expect(attachOf(inspect).initiator).toMatchObject({ threadId: thread.id });
+      expect(attachOf(inspect).initiator).toMatchObject({
+        threadId: thread.id,
+      });
       expect(hooks.runs).toHaveLength(1);
       expect(log).toEqual([
         "create:start",
@@ -580,7 +579,12 @@ describe("review fixes", () => {
     });
     harness.db
       .update(environments)
-      .set({ claimPath: `/tmp/steps/${row.id}`, ...(args.status === "provisioning" ? { path: `/tmp/steps/${row.id}` } : {}) })
+      .set({
+        claimPath: `/tmp/steps/${row.id}`,
+        ...(args.status === "provisioning"
+          ? { path: `/tmp/steps/${row.id}` }
+          : {}),
+      })
       .where(eq(environments.id, row.id))
       .run();
     return row;
@@ -588,7 +592,10 @@ describe("review fixes", () => {
 
   it("fails a resumed create whose context can no longer be built, instead of looping", async () => {
     await withTestHarness(async (harness) => {
-      installStepsProvider(async () => ({ status: "failed", message: "unused" }));
+      installStepsProvider(async () => ({
+        status: "failed",
+        message: "unused",
+      }));
       const { host, project } = seed(harness);
       const row = heldRow(harness, {
         hostId: host.id,
@@ -742,10 +749,9 @@ describe("review fixes", () => {
       );
       await expect.poll(() => aborted).toEqual([`/tmp/steps/${thread.id}`]);
       hooks.fail("Environment hook cancelled");
-      await expect.poll(() => hooks.runs.map((run) => run.kind)).toEqual([
-        "setup",
-        "teardown",
-      ]);
+      await expect
+        .poll(() => hooks.runs.map((run) => run.kind))
+        .toEqual(["setup", "teardown"]);
       hooks.finish();
       await expect
         .poll(() => getEnvironment(harness.db, environmentId)?.teardownStatus)
@@ -759,7 +765,10 @@ describe("review fixes", () => {
   it("names a resumed thread-less create after its thread's settled title, and keeps that name", async () => {
     await withTestHarness(async (harness) => {
       const title = pendingTitle(harness);
-      installStepsProvider(async () => ({ status: "failed", message: "unused" }));
+      installStepsProvider(async () => ({
+        status: "failed",
+        message: "unused",
+      }));
       const { host, project } = seed(harness);
       const row = heldRow(harness, {
         hostId: host.id,
@@ -807,4 +816,3 @@ describe("review fixes", () => {
     });
   });
 });
-

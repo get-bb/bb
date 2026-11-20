@@ -4,14 +4,12 @@ import {
   type TestProviderDecision,
 } from "./provider-decisions.js";
 import type { PluginEnvironmentValidateDecision } from "@get-bb/plugin-sdk";
-import type {
-  PluginEnvironmentProviderAvailability,
-  PluginEnvironmentProviderValidateContext,
-} from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderAvailability } from "@get-bb/plugin-sdk/environment-provider";
 import { expect, onTestFinished, vi } from "vitest";
 import {
   validatePluginEnvironmentProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
+  type PluginEnvironmentProviderV1ValidateContext,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { z } from "zod";
 import {
@@ -35,7 +33,7 @@ export interface InstallFakeEnvironmentProviderArgs {
   requires: NormalizedPluginEnvironmentProvider["requires"];
   inputs?: z.ZodType;
   validate?: (
-    context: PluginEnvironmentProviderValidateContext,
+    context: PluginEnvironmentProviderV1ValidateContext,
   ) => PluginEnvironmentValidateDecision;
   availability?: () => PluginEnvironmentProviderAvailability;
   locate?: TestLocate;

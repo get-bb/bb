@@ -1,9 +1,9 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
-import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
 import type {
-  PluginEnvironmentProviderCreateContext,
-  PluginEnvironmentProviderRestoreContext,
-} from "@get-bb/plugin-sdk/environment-provider";
+  PluginEnvironmentProviderV1CreateContext,
+  PluginEnvironmentProviderV1Declaration,
+  PluginEnvironmentProviderV1RestoreContext,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type { ProviderReadyEnvironmentInput } from "@bb/server-contract";
 
 type TestReadyEnvironment =
@@ -23,13 +23,13 @@ export type TestProviderDecision =
   | { action: "reject"; message: string };
 
 export type TestEnvironmentProviderContext = Pick<
-  PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderV1CreateContext,
   "thread" | "project" | "host" | "projectCheckout" | "gitRemote"
 > & {
   machine: import("@bb/domain").EnvironmentMachineSelection;
   inputs: JsonValue | null;
   environment:
-    | PluginEnvironmentProviderRestoreContext["previous"]["environment"]
+    | PluginEnvironmentProviderV1RestoreContext["previous"]["environment"]
     | null;
 };
 
@@ -38,17 +38,15 @@ export function providerOperations(
     context: TestEnvironmentProviderContext,
   ) => TestProviderDecision | Promise<TestProviderDecision>,
 ): Pick<
-  PluginEnvironmentProviderDeclaration,
+  PluginEnvironmentProviderV1Declaration,
   "create" | "restore" | "remove"
 > {
   async function run(
     context: TestEnvironmentProviderContext,
-    report: Parameters<
-      PluginEnvironmentProviderDeclaration["create"]
-    >[0]["report"],
+    report: PluginEnvironmentProviderV1CreateContext["report"],
     signal: AbortSignal,
   ): Promise<
-    Awaited<ReturnType<PluginEnvironmentProviderDeclaration["create"]>>
+    Awaited<ReturnType<PluginEnvironmentProviderV1Declaration["create"]>>
   > {
     while (!signal.aborted) {
       const decision = await decide(context);

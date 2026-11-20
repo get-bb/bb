@@ -41,17 +41,11 @@ export const worktreeInputsSchema = z
 export type WorktreeInputs = z.infer<typeof worktreeInputsSchema>;
 type WorktreeCreateContext = PluginEnvironmentProviderCreateContext<
   { gitCheckout: true },
-  typeof worktreeInputsSchema,
-  2
+  typeof worktreeInputsSchema
 >;
 type WorktreeOperation = Pick<
   WorktreeCreateContext,
-  | "attempt"
-  | "host"
-  | "pathKey"
-  | "projectCheckout"
-  | "report"
-  | "signal"
+  "attempt" | "host" | "pathKey" | "projectCheckout" | "report" | "signal"
 >;
 
 export const worktreeRpcContract = defineRpcContract({
@@ -187,7 +181,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
 
   async function nameManagedWorktree(
     context: WorktreeCreateContext,
-    created: Extract<PluginEnvironmentProviderCreateResult, { status: "created" }>,
+    created: Extract<
+      PluginEnvironmentProviderCreateResult,
+      { status: "created" }
+    >,
   ): Promise<PluginEnvironmentProviderCreateResult> {
     const branchName = await context.branchName();
     const ownedBranch = {

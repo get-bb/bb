@@ -80,11 +80,7 @@ import {
   type OperationResponse,
   type ThreadResponse,
 } from "@bb/server-contract";
-import type {
-  PluginEnvironmentProviderRequirements,
-} from "@get-bb/plugin-sdk";
 import {
-  type PluginEnvironmentProviderInputsSchema,
   type PluginEnvironmentProviderCreateContext,
   type PluginEnvironmentProviderCreateResult,
   type PluginEnvironmentProviderEnvironment,
@@ -92,6 +88,7 @@ import {
   type PluginEnvironmentProviderProgress,
   type PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderV1CreateContext } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   type ThreadProvisioningDeps,
   ensureWorkspaceReadyEventInTransaction,
@@ -404,15 +401,12 @@ type ProviderSteps = PluginEnvironmentProviderSteps & {
 };
 
 type ProviderOperationBase = Omit<
-  PluginEnvironmentProviderCreateContext<
-    PluginEnvironmentProviderRequirements,
-    PluginEnvironmentProviderInputsSchema,
-    2
-  >,
+  PluginEnvironmentProviderCreateContext,
   keyof ProviderSteps
 >;
 
-type ClaimPath = PluginEnvironmentProviderCreateContext["experimental_claimPath"];
+type ClaimPath =
+  PluginEnvironmentProviderV1CreateContext["experimental_claimPath"];
 
 function versionOneOperation(
   operation: ProviderOperationBase,
@@ -434,9 +428,9 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(signal.reason);
     signal.addEventListener("abort", abort, { once: true });
-    work.then(resolve, reject).finally(() =>
-      signal.removeEventListener("abort", abort),
-    );
+    work
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
   });
 }
 
@@ -560,8 +554,7 @@ async function runCreate(
   let adoptedExistingEnvironment = false;
   let existingProviderOwnsLifecycle = false;
   const requested: { path: string | null } = {
-    path:
-      provisioning.status === "creating" ? null : provisioning.path,
+    path: provisioning.status === "creating" ? null : provisioning.path,
   };
   const target: { row: EnvironmentRow | null } = { row: null };
   const bindPath = async (producedPath: string) => {
@@ -589,7 +582,8 @@ async function runCreate(
           declared.path !== null &&
           areHostPathsEqual(declared.path, producedPath)
         ) {
-          existingProviderOwnsLifecycle = declared.environmentProviderId !== null;
+          existingProviderOwnsLifecycle =
+            declared.environmentProviderId !== null;
         }
         const reservedId = provisioning.id;
         provisioning = bindEnvironmentPath(
@@ -668,18 +662,18 @@ async function runCreate(
     )
       target.row = located.environment;
     const claimPath: ClaimPath = async (value) => {
-        const path = providerPathSchema.parse(value);
-        if (signal.aborted) return false;
-        const normalizedPath = canonicalizeHostPath(path);
-        if (
-          findBlockingEnvironmentPathClaim(deps, {
-            hostId: context.host.id,
-            path: normalizedPath,
-            owner: provisioning,
-          }) !== null
-        )
-          return false;
-        return claimEnvironmentPath(deps.db, provisioning, normalizedPath);
+      const path = providerPathSchema.parse(value);
+      if (signal.aborted) return false;
+      const normalizedPath = canonicalizeHostPath(path);
+      if (
+        findBlockingEnvironmentPathClaim(deps, {
+          hostId: context.host.id,
+          path: normalizedPath,
+          owner: provisioning,
+        }) !== null
+      )
+        return false;
+      return claimEnvironmentPath(deps.db, provisioning, normalizedPath);
     };
     let result =
       !provisioning.createPending &&
@@ -787,7 +781,8 @@ async function runCreate(
           if (row.ownerThreadId === null) row.claimPath = null;
         },
       );
-      if (setupPath !== null) await finishSetupAfterCreate(deps, provisioning.id);
+      if (setupPath !== null)
+        await finishSetupAfterCreate(deps, provisioning.id);
     } else {
       failure = result.message;
     }

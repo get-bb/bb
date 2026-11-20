@@ -32,15 +32,15 @@ import {
 import { PERSONAL_PROJECT_ID, type JsonValue } from "@bb/domain";
 import type {
   PluginDispatchEnvironmentIntent,
-  PluginEnvironmentProviderDeclaration,
   PluginEnvironmentValidateDecision,
   PluginHookName,
 } from "@get-bb/plugin-sdk";
-import type { PluginEnvironmentProviderValidateContext } from "@get-bb/plugin-sdk/environment-provider";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
 import {
   validatePluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
+  type PluginEnvironmentProviderV1Declaration,
+  type PluginEnvironmentProviderV1ValidateContext,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -99,7 +99,7 @@ const PROVIDER_ID = "container";
 
 interface FakeTarget {
   id?: string;
-  remove?: PluginEnvironmentProviderDeclaration["remove"];
+  remove?: PluginEnvironmentProviderV1Declaration["remove"];
   provision: (
     context: TestEnvironmentProviderContext,
   ) => TestProviderDecision | Promise<TestProviderDecision>;
@@ -109,12 +109,12 @@ interface FakeTarget {
   requiresProjectless?: boolean;
   inputs?: z.ZodType;
   validate?: (
-    context: PluginEnvironmentProviderValidateContext,
+    context: PluginEnvironmentProviderV1ValidateContext,
   ) =>
     | PluginEnvironmentValidateDecision
     | Promise<PluginEnvironmentValidateDecision>;
-  availability?: PluginEnvironmentProviderDeclaration["availability"];
-  locate?: PluginEnvironmentProviderDeclaration["locate"];
+  availability?: PluginEnvironmentProviderV1Declaration["availability"];
+  locate?: PluginEnvironmentProviderV1Declaration["locate"];
 }
 
 const CONTAINER_INPUTS = z.object({
@@ -2059,7 +2059,7 @@ describe("provider validate at create time", () => {
 
   it("hands validate the parsed inputs and the machine's checkout, then proceeds on accept", async () => {
     await withTestHarness(async (harness) => {
-      const seen: PluginEnvironmentProviderValidateContext[] = [];
+      const seen: PluginEnvironmentProviderV1ValidateContext[] = [];
       installTarget({
         requiresProjectCheckout: true,
         inputs: CONTAINER_INPUTS,
@@ -3069,7 +3069,7 @@ it("resumes a provider launch and its original request after the in-memory conte
     });
     let ready = false;
     installTarget({
-        locate: locateWorkspace,
+      locate: locateWorkspace,
       provision: () =>
         ready ? readyAt(host) : { action: "wait", reason: "Creating" },
     });
@@ -3107,7 +3107,9 @@ it("keeps an existing request waiting when its provider is not registered", asyn
     const provision = () =>
       ready ? readyAt(host) : ({ action: "wait", reason: "Creating" } as const);
     installTarget({
-        locate: locateWorkspace, provision });
+      locate: locateWorkspace,
+      provision,
+    });
     const thread = await createTargetThread(harness, {
       projectId: project.id,
     });
