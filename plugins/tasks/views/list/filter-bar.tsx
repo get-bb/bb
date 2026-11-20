@@ -170,6 +170,7 @@ export function ListFilterBar({
   onSortChange,
   labelOptions,
   taskCount,
+  subTaskCount = 0,
 }: {
   filters: ListFilterState;
   onChange: (filters: ListFilterState) => void;
@@ -179,6 +180,7 @@ export function ListFilterBar({
   onSortChange: (sort: TaskSort) => void;
   labelOptions: readonly LabelFilterOption[];
   taskCount: number | undefined;
+  subTaskCount?: number;
 }) {
   const keepOpen = (event: Event) => event.preventDefault();
   const showLabelChip =
@@ -186,7 +188,7 @@ export function ListFilterBar({
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border-hairline px-3.5 py-1.5">
       <SearchInput value={search} onChange={onSearchChange} />
-      <div className="flex min-w-32 flex-1 items-center gap-1.5 overflow-x-auto">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         <FilterChip
           icon="Circle"
           label="Status"
@@ -325,7 +327,10 @@ export function ListFilterBar({
       <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-subtle-foreground">
         {taskCount === undefined
           ? ""
-          : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`}
+          : `${taskCount} ${taskCount === 1 ? "task" : "tasks"}` +
+            (subTaskCount > 0
+              ? ` · ${subTaskCount} ${subTaskCount === 1 ? "sub-task" : "sub-tasks"}`
+              : "")}
       </span>
     </div>
   );

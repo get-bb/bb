@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { experimental_useSidebarThreads } from "@get-bb/plugin-sdk/app";
 import type { Label, Task } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
 import {
@@ -16,14 +24,13 @@ import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  matchesFilters,
-  matchesSearch,
   useLabels,
   useListTaskEdit,
   useListTasks,
   widestKeysByPrefix,
   useTaskListMeta,
   useTaskListTiming,
+  type PendingThread,
   type TaskEdit,
 } from "./data.js";
 import {
@@ -46,12 +53,20 @@ import {
   useListScrollRestoration,
 } from "./scroll-restoration.js";
 import {
+  activeTopRows,
+  childrenByParent,
+  childrenForList,
+  displayRows,
   groupTasksByStatus,
   labelFilterOptions,
+  listCounts,
+  parentIsOpen,
   selectedLabelIds,
   STATUS_LABELS,
+  taskMatches,
+  type TaskMatchCriteria,
 } from "./lib.js";
-import { KeyColumnScope, TaskRow } from "./row.js";
+import { KeyColumnScope, SubTaskRow, TaskRow } from "./row.js";
 import { rowWindows, useRowWindowViewport } from "./row-window.js";
 
 const NO_LABELS: readonly Label[] = [];
@@ -135,11 +150,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     return selectedLabelIds(labelOptions, filters.labelNames);
   }, [filters.labelNames, labelOptions, labels.data]);
 
-  const tasksQuery = useListTasks(projectId, activeOnly, {
-    statuses: filters.statuses,
-    priorities: filters.priorities,
-    labelIds,
-  });
+  const tasksQuery = useListTasks(projectId, activeOnly);
   const childInput = useMemo(
     () => (projectId === null ? {} : { projectId }),
     [projectId],
@@ -157,16 +168,10 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       return [];
     }
   });
-  const childrenByParent = useMemo(() => {
-    const result = new Map<string, Task[]>();
-    for (const task of childrenQuery.data ?? []) {
-      if (task.parentTaskId === null) continue;
-      const children = result.get(task.parentTaskId) ?? [];
-      children.push(task);
-      result.set(task.parentTaskId, children);
-    }
-    return result;
-  }, [childrenQuery.data]);
+  const allChildrenByParent = useMemo(
+    () => childrenByParent(childrenQuery.data ?? []),
+    [childrenQuery.data],
+  );
   const toggleChildren = (id: string) => {
     setCollapsed((current) => {
       const next = current.includes(id)
@@ -183,6 +188,45 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   };
   const meta = useTaskListMeta(projectId);
   const timing = useTaskListTiming(projectId);
+  const sidebarThreads = experimental_useSidebarThreads();
+  const pendingThreadById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const thread of sidebarThreads.threads) {
+      if (thread.hasPendingInteraction) {
+        map.set(thread.id, thread.latestAttentionAt);
+      }
+    }
+    return map;
+  }, [sidebarThreads.threads]);
+  const [pendingThreadsByTask, setPendingThreadsByTask] = useState<
+    ReadonlyMap<string, readonly PendingThread[]>
+  >(() => new Map());
+  const handlePendingThreads = useCallback(
+    (taskId: string, pending: readonly PendingThread[] | undefined) => {
+      const value =
+        pending !== undefined && pending.length > 0 ? pending : undefined;
+      setPendingThreadsByTask((current) => {
+        if (current.get(taskId) === value) return current;
+        const next = new Map(current);
+        if (value === undefined) next.delete(taskId);
+        else next.set(taskId, value);
+        return next;
+      });
+    },
+    [],
+  );
+  const rolledUpPendingThreads = (task: Task) => {
+    if (parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren)) return undefined;
+    const children = visibleChildren.get(task.id);
+    if (children === undefined) return undefined;
+    const pending: PendingThread[] = [];
+    for (const child of children) {
+      pending.push(...(pendingThreadsByTask.get(child.id) ?? []));
+    }
+    if (pending.length === 0) return undefined;
+    pending.sort((a, b) => a.attentionAt - b.attentionAt);
+    return pending;
+  };
   const taskEdit = useListTaskEdit([...tasksQuery.reads, childInput]);
   const { mutate: mutateTask } = taskEdit;
   const refreshTasks = tasksQuery.refresh;
@@ -239,39 +283,66 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     [projects.data],
   );
 
+  const activeIds = useMemo(
+    (): ReadonlySet<string> | null =>
+      activeOnly
+        ? new Set((tasksQuery.data ?? []).map((task) => task.id))
+        : null,
+    [activeOnly, tasksQuery.data],
+  );
+  const matchCriteria = useMemo(
+    (): TaskMatchCriteria => ({
+      statuses: filters.statuses,
+      priorities: filters.priorities,
+      labelIds,
+      search,
+      activeIds,
+    }),
+    [filters.statuses, filters.priorities, labelIds, search, activeIds],
+  );
+  const { visible: visibleChildren, totals: childTotals } = useMemo(
+    () => childrenForList(allChildrenByParent, matchCriteria, sort),
+    [allChildrenByParent, matchCriteria, sort],
+  );
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return tasksQuery.data.filter(
-      (task) =>
-        matchesFilters(
-          task,
-          filters.statuses,
-          filters.priorities,
-          labelIds ?? [],
-        ) && matchesSearch(task, search),
-    );
-  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds, search]);
+    if (activeOnly && childrenQuery.data === undefined) return undefined;
+    const rows = activeOnly
+      ? activeTopRows(tasksQuery.data, childrenQuery.data ?? [])
+      : tasksQuery.data;
+    return displayRows(rows, matchCriteria, allChildrenByParent);
+  }, [tasksQuery.data, childrenQuery.data, activeOnly, matchCriteria, allChildrenByParent]);
+  const counts = useMemo(
+    () =>
+      displayTasks === undefined
+        ? undefined
+        : listCounts(displayTasks, matchCriteria, visibleChildren, activeOnly),
+    [displayTasks, matchCriteria, visibleChildren, activeOnly],
+  );
+  const taskCount = counts?.tasks;
+  const subTaskCount = counts?.subTasks;
   const widestKeys = useMemo(
     () => widestKeysByPrefix(tasksQuery.data ?? []),
     [tasksQuery.data],
   );
   const groups = useMemo(
     () =>
-      groupTasksByStatus(sortTasks(displayTasks ?? [], sort)).map((group) => ({
-        ...group,
-        count: group.tasks.length,
-        tasks: group.tasks.flatMap((task) => [
-          task,
-          ...(collapsed.includes(task.id)
-            ? []
-            : (childrenByParent.get(task.id) ?? [])),
-        ]),
-      })),
-    [displayTasks, sort, collapsed, childrenByParent],
+      groupTasksByStatus(sortTasks(displayTasks ?? [], sort)).map((group) => {
+        let windowCount = group.tasks.length;
+        for (const task of group.tasks) {
+          if (!parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren)) continue;
+          windowCount += visibleChildren.get(task.id)?.length ?? 0;
+        }
+        return { ...group, count: group.tasks.length, windowCount };
+      }),
+    [displayTasks, sort, collapsed, matchCriteria, visibleChildren],
   );
 
   const showProject = projectId === null;
   const filtered = hasActiveFilters(filters) || search.trim() !== "";
+  const loadError = activeOnly
+    ? (tasksQuery.error ?? childrenQuery.error)
+    : tasksQuery.error;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scopeKey = listScrollScopeKey({
@@ -294,21 +365,21 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const viewport = useRowWindowViewport(scrollRef, groups);
   const ranges = rowWindows({
-    counts: groups.map((group) => group.tasks.length),
+    counts: groups.map((group) => group.windowCount),
     headerHeight: viewport.headerHeight,
     rowHeight: viewport.rowHeight,
     scrollTop: viewport.scrollTop,
     viewportHeight: viewport.height,
   });
 
-  let body: React.ReactNode;
+  let body: ReactNode;
   if (tasksQuery.data === undefined || displayTasks === undefined) {
     body =
-      tasksQuery.error !== null ? (
+      loadError !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"
-          description={tasksQuery.error}
+          description={loadError}
         />
       ) : (
         <LoadingRows />
@@ -357,10 +428,69 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       );
     }
   } else {
+    const rowProps = (task: Task) => ({
+      task,
+      meta: meta.data?.get(task.id),
+      timing: timing.get(task.id),
+      project: projectsById.get(task.projectId),
+      showProject,
+      labelsById,
+      projectLabels: labelsByProject.get(task.projectId) ?? NO_LABELS,
+      projects: projects.data ?? [],
+      onMoveToProject: moveToProject,
+      onEdit: editTask,
+      onOpen: openTask,
+      pending: pendingTaskIds.has(task.id),
+      muted: !taskMatches(task, matchCriteria),
+      pendingThreadById,
+      rolledUpPendingThreads: rolledUpPendingThreads(task),
+      onPendingThreads: handlePendingThreads,
+    });
     body = groups.map((group, groupIndex) => {
-      const [start, end] = ranges[groupIndex] ?? [0, group.tasks.length];
+      const [start, end] = ranges[groupIndex] ?? [0, group.windowCount];
       const hiddenAbove = start * viewport.rowHeight;
-      const hiddenBelow = (group.tasks.length - end) * viewport.rowHeight;
+      const hiddenBelow = (group.windowCount - end) * viewport.rowHeight;
+      const rows: ReactNode[] = [];
+      let index = 0;
+      for (const task of group.tasks) {
+        const parentVisible = index >= start && index < end;
+        const children = visibleChildren.get(task.id);
+        const totals = childTotals.get(task.id);
+        const open = parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren);
+        index += 1;
+        if (parentVisible) {
+          rows.push(
+            <TaskRow
+              key={task.id}
+              {...rowProps(task)}
+              subTasks={
+                totals !== undefined
+                  ? {
+                      ...totals,
+                      open,
+                      disabled: open && collapsed.includes(task.id),
+                      toggle: () => toggleChildren(task.id),
+                    }
+                  : undefined
+              }
+            />,
+          );
+        }
+        for (const child of children ?? []) {
+          if (open) {
+            const childVisible = index >= start && index < end;
+            index += 1;
+            if (!childVisible) continue;
+            rows.push(
+              <SubTaskRow key={child.id} open {...rowProps(child)} />,
+            );
+          } else if (parentVisible) {
+            rows.push(
+              <SubTaskRow key={child.id} open={false} {...rowProps(child)} />,
+            );
+          }
+        }
+      }
       return (
         <section key={group.status}>
           <div
@@ -376,36 +506,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
           {hiddenAbove > 0 ? (
             <div aria-hidden style={{ height: hiddenAbove }} />
           ) : null}
-          {group.tasks.slice(start, end).map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              child={task.parentTaskId !== null}
-              subTasks={
-                task.parentTaskId === null && childrenByParent.has(task.id)
-                  ? {
-                      total: childrenByParent.get(task.id)!.length,
-                      done: childrenByParent
-                        .get(task.id)!
-                        .filter((child) => child.status === "done").length,
-                      open: !collapsed.includes(task.id),
-                      toggle: () => toggleChildren(task.id),
-                    }
-                  : undefined
-              }
-              meta={meta.data?.get(task.id)}
-              timing={timing.get(task.id)}
-              project={projectsById.get(task.projectId)}
-              showProject={showProject}
-              labelsById={labelsById}
-              projectLabels={labelsByProject.get(task.projectId) ?? NO_LABELS}
-              projects={projects.data ?? []}
-              onMoveToProject={moveToProject}
-              onEdit={editTask}
-              onOpen={openTask}
-              pending={pendingTaskIds.has(task.id)}
-            />
-          ))}
+          {rows}
           {hiddenBelow > 0 ? (
             <div aria-hidden style={{ height: hiddenBelow }} />
           ) : null}
@@ -424,7 +525,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         sort={sort}
         onSortChange={setSort}
         labelOptions={labelOptions}
-        taskCount={displayTasks?.length}
+        taskCount={taskCount}
+        subTaskCount={activeOnly ? 0 : subTaskCount}
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <KeyColumnScope
