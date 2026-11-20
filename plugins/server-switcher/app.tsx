@@ -1,11 +1,16 @@
 import type { ReactNode } from "react";
-import { Icon } from "@bb/shared-ui/icon";
-import { ListLoadingPlaceholder } from "@bb/shared-ui/list-loading-placeholder";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { useServerChoices } from "@/hooks/useServerChoices";
-import type { ServerChoice } from "@/lib/server-choices";
+import {
+  definePluginApp,
+  experimental_hasServers,
+  experimental_useServers,
+  type ExperimentalServer,
+  type ExperimentalSidebarFooterDisclosureProps,
+} from "@get-bb/plugin-sdk/app";
+import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
-const SERVER_KIND_ICON: Record<ServerChoice["kind"], string> = {
+const SERVER_KIND_ICON: Record<ExperimentalServer["kind"], string> = {
   local: "Laptop",
   account: "Cloud",
   custom: "Globe",
@@ -24,8 +29,8 @@ function focusOnMount(row: HTMLButtonElement | null): void {
   row?.focus({ preventScroll: true });
 }
 
-export function SidebarServerSwitcher({ dismiss }: { dismiss(): void }) {
-  const choices = useServerChoices();
+function ServerSwitcher({ dismiss }: ExperimentalSidebarFooterDisclosureProps) {
+  const choices = experimental_useServers();
   if (choices === null) return null;
   const focusedServer =
     choices.servers.find((server) => server.active) ?? choices.servers[0];
@@ -59,7 +64,14 @@ export function SidebarServerSwitcher({ dismiss }: { dismiss(): void }) {
   return (
     <div className="flex flex-col p-1">
       {choices.status === "loading" ? (
-        <ListLoadingPlaceholder label="Loading servers" />
+        <div
+          role="status"
+          aria-label="Loading servers"
+          className="space-y-3 px-3 py-4"
+        >
+          <Skeleton aria-hidden className="h-3 w-3/4" />
+          <Skeleton aria-hidden className="h-3 w-1/2" />
+        </div>
       ) : (
         <ul aria-label="Servers" className="flex flex-col gap-px">
           {choices.servers.map((server) => {
@@ -132,3 +144,14 @@ function ServerAction({
     </button>
   );
 }
+
+export default definePluginApp((app) => {
+  if (!experimental_hasServers()) return;
+  app.experimental_sidebarFooter.register({
+    kind: "disclosure",
+    id: "servers",
+    label: "Servers",
+    icon: "ComputerCloud",
+    component: ServerSwitcher,
+  });
+});

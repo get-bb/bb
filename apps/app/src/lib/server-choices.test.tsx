@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import {
   act,
   cleanup,
@@ -25,7 +24,6 @@ import { createBbDesktopApi } from "../test/bb-desktop-test-utils";
 import { getNativeShell, resetNativeShellForTests } from "./native-shell";
 import { getServerChoices, resetServerChoicesForTests } from "./server-choices";
 import { useServerChoices } from "../hooks/useServerChoices";
-import { SidebarServerSwitcher } from "../components/sidebar/SidebarServerSwitcher";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 
 const local: BbDesktopServerChoice = {
@@ -286,18 +284,20 @@ function PluginServers() {
   );
 }
 
-const SURFACES: readonly { name: string; render: () => ReactNode }[] = [
-  {
-    name: "sidebar footer switcher",
-    render: () => <SidebarServerSwitcher dismiss={() => {}} />,
-  },
-  { name: "plugin experimental_useServers", render: () => <PluginServers /> },
-];
+describe("experimental_useServers", () => {
+  it("reports experimental_hasServers exactly where the hook has a value", () => {
+    const hasServers = pluginSdkAppImplementation.experimental_hasServers;
+    expect(hasServers()).toBe(false);
+    expect(renderHook(() => usePluginServers()).result.current).toBeNull();
+    resetServerChoicesForTests();
+    installDesktopWithServerList(null);
+    expect(hasServers()).toBe(true);
+    expect(renderHook(() => usePluginServers()).result.current).not.toBeNull();
+  });
 
-describe.each(SURFACES)("server choices surface contract: $name", (surface) => {
   it("switches desktop and opens its Add Server dialog", async () => {
     const desktop = installDesktopWithServerList(null);
-    render(surface.render());
+    render(<PluginServers />);
     fireEvent.click(await screen.findByRole("button", { name: /^Studio/ }));
     expect(desktop.selectServer).toHaveBeenCalledWith("connect:studio");
     fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
@@ -313,7 +313,7 @@ describe.each(SURFACES)("server choices surface contract: $name", (surface) => {
     "offers bb Connect sign-in when desktop skips %s only as its Server menu does",
     async (reason, label) => {
       const desktop = installDesktopWithServerList(reason);
-      render(surface.render());
+      render(<PluginServers />);
       await screen.findByRole("button", { name: /^Studio/ });
       const signIn = screen.queryByRole("button", { name: /^Sign in/ });
       expect(signIn?.textContent ?? null).toBe(label);
@@ -334,7 +334,7 @@ describe.each(SURFACES)("server choices surface contract: $name", (surface) => {
         capabilities: [...handshake.capabilities, "open-native"],
       },
     );
-    render(surface.render());
+    render(<PluginServers />);
     fireEvent.click(screen.getByRole("button", { name: /^This Mac/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
     expect(mobile.posted.map((raw) => parsePageToShellMessage(raw))).toEqual([

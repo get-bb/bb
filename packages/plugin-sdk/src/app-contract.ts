@@ -5880,6 +5880,13 @@ export interface PluginSdkApp {
    */
   experimental_useServers(): ExperimentalServers | null;
   /**
+   * True on clients that keep a server list (bb Desktop and the mobile app),
+   * where `experimental_useServers()` returns a value; false in a web browser.
+   * Fixed for the life of the page, so a plugin can read it inside
+   * `definePluginApp` to register server controls only where they work.
+   */
+  experimental_hasServers(): boolean;
+  /**
    * The side panel of the surface the calling component renders in: the
    * thread view, the plugin page, or the New thread screen.
    */

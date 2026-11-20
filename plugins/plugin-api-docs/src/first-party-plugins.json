@@ -85,6 +85,11 @@
     "icon": "Star"
   },
   {
+    "id": "bb--server-switcher",
+    "name": "Server switcher",
+    "icon": "ComputerCloud"
+  },
+  {
     "id": "memory",
     "name": "Memory",
     "icon": "Brain"

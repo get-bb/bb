@@ -7,7 +7,6 @@ import {
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
-import { getServerChoices } from "@/lib/server-choices";
 import { useSidebarNavigationPlacement } from "./sidebarNavigationProvider";
 
 export const sidebarFooterOrderAtom = createSyncedPreferenceAtom(
@@ -43,7 +42,7 @@ export function useMeasureSidebarFooterCapacity(
   }, [rowRef, moreRef, setCapacity]);
 }
 
-export type BuiltinFooterId = "settings" | "mobile" | "servers" | "report-bug";
+export type BuiltinFooterId = "settings" | "mobile" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
   | { kind: "builtin"; id: BuiltinFooterId }
   | { kind: "plugin"; slot: PluginSidebarFooterItemSlot }
@@ -54,13 +53,6 @@ const SETTINGS_FOOTER_ITEM: FooterItem = {
   key: "builtin:settings",
   label: "Settings",
   icon: "Settings",
-};
-const SERVERS_FOOTER_ITEM: FooterItem = {
-  kind: "builtin",
-  id: "servers",
-  key: "builtin:servers",
-  label: "Servers",
-  icon: "ComputerCloud",
 };
 
 export function footerPreferenceKey(item: {
@@ -85,7 +77,6 @@ export function useSidebarFooterPreferences() {
       label: "Mobile apps",
       icon: "Smartphone",
     },
-    ...(getServerChoices() === null ? [] : [SERVERS_FOOTER_ITEM]),
     ...sidebarFooterItems.map((slot): FooterItem => ({
       kind: "plugin",
       key: footerPreferenceKey(slot),

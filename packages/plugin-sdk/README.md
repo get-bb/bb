@@ -199,7 +199,9 @@ await scripts.lifecycle.dispose();
 ```
 
 `loadPluginApp` installs the runtime and validates all registrations; pass the
-imported module or a thunk. `@get-bb/plugin-sdk/app` exports look the runtime
+imported module or a thunk, and `{ hasServers: true }` to define the app as bb
+Desktop or the mobile app would (`experimental_hasServers()` is false
+otherwise). `@get-bb/plugin-sdk/app` exports look the runtime
 up when they are called or rendered, so a static import of `app.tsx` or of
 components works too. `mountPluginContentScripts` mirrors the host's ordered mount,
 rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies

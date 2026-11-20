@@ -235,6 +235,11 @@ export const BUILTIN_PLUGINS = [
     pluginId: "bb--github-star",
     defaultEnabled: true,
   },
+  {
+    name: "server-switcher",
+    pluginId: "bb--server-switcher",
+    defaultEnabled: true,
+  },
 ].map((plugin): BundledPluginDefinition => ({
   ...plugin,
   autoInstall: true,
