@@ -274,7 +274,7 @@ export interface DispatchAttemptArgs {
   startedOnBehalfOf: StartedOnBehalfOf | null;
   /** Execution defaults resolved by creation, which the thread row lacks. */
   executionDefaults?: Parameters<typeof buildExecutionOptions>[2];
-  trigger: "auto-dispatch" | "user";
+  trigger: "auto-dispatch" | "idle-compaction" | "user";
 }
 
 export type DispatchAttemptOutcome =
@@ -439,6 +439,7 @@ async function runDispatchAttempt(
           titleProvided: interruptedStartupRequest.titleProvided,
         };
   const author = resolveDispatchAuthor({
+    automatic: args.trigger === "idle-compaction",
     retrying: args.retryOf !== undefined,
     systemNotice: systemNotice !== null,
     senderThreadId,
@@ -457,7 +458,7 @@ async function runDispatchAttempt(
   );
   if (payload.compactFirst) {
     const { compactFirst, ...request } = payload;
-    await compactThreadContext(deps, thread);
+    await compactThreadContext(deps, thread, "user");
     payload = request;
     args = { ...args, payload };
   }
@@ -1026,6 +1027,7 @@ function resolveExecutionIntoPayload(
 export async function compactThreadContext(
   deps: LoggedPendingInteractionWorkSessionDeps,
   thread: Thread,
+  trigger: "idle-compaction" | "user",
 ): Promise<void> {
   ensureThreadIsWritable(thread);
   if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
@@ -1057,6 +1059,6 @@ export async function compactThreadContext(
     origin: null,
     originPluginId: null,
     startedOnBehalfOf: null,
-    trigger: "user",
+    trigger,
   });
 }

@@ -12,6 +12,7 @@ const surfaceOptions: ThreadTimelineSurfaceOptions = {
   maxInlineOutputChars: 4_000,
   planCommand: null,
   compactionOfferEnabled: false,
+  idleCompactionEligible: false,
   summarizeShellCommands: true,
 };
 

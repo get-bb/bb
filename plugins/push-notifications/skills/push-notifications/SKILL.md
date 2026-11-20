@@ -6,7 +6,8 @@ description: "Register mobile devices, toggle mobile, web, and desktop notificat
 # Push notifications
 
 The plugin notifies when a thread asks a question, finishes a turn, or stops on
-an error, and anyone can send their own through the same channels. Mobile devices receive Expo push messages even when the app is
+an error, and anyone can send their own through the same channels. A turn that
+only compacted the context, such as an idle compaction, sends no notification. Mobile devices receive Expo push messages even when the app is
 closed. Web and desktop clients receive system notifications only while a bb
 tab or app window stays open, and each browser grants permission separately in
 the plugin settings. When a notified

@@ -184,6 +184,7 @@ export function toThreadQueuedMessage(
   row: StoredQueuedThreadMessageRow,
 ): ThreadQueuedMessage {
   const author = resolveDispatchAuthor({
+    automatic: false,
     retrying: row.payloadKind === "retry",
     systemNotice: row.systemNotice !== null,
     senderThreadId: row.senderThreadId,

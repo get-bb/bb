@@ -1092,14 +1092,26 @@ either way.
   including the restart an update performs: running provider processes serve
   new threads too, and a lowered process cannot be raised again. See
   [slow database operations](debugging-and-qa.md#slow-database-operations).
-- `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
-  usage (timeline `contextWindowUsage` and `bb thread context`) once the
+- `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` and `idleCompactionAt` on a thread's
+  context usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
-  compaction, and the context holds at least 100k tokens. After that time the
-  composer shows a Compact chip beside the context meter; while it is on, the
-  next send passes `compactFirst` so the server runs `/compact` and queues the
-  message behind it. Clicking the chip keeps the full history for that one
-  send.
+  compaction, and the context holds at least 100k tokens. `compactionOfferAt`
+  is the cache expiry, counted from the start of the last turn's last request
+  (its last root tool result, or the turn start). `idleCompactionAt`, 2 minutes
+  earlier, is reported only for a visible root thread with a cache lifetime of
+  at least 1 hour. The `idle-compaction` periodic sweep runs `/compact` on such
+  a thread between those two times, once it has been idle for 30 minutes and
+  if it is not archived, unless it has a
+  pending interaction, a queued message or running background work, its last
+  turn was already a compaction, or its machine is offline. The sweep sends
+  `/compact` with the `system` initiator, so it does not move `lastReadAt` or
+  enter prompt history. A compaction-only turn does not move
+  `latestAttentionAt`, so it does not mark the thread unread, and the push
+  notifications plugin sends no "turn finished" notice for it. After
+  `compactionOfferAt` the composer shows a Compact chip beside the context
+  meter; while it is on, the next send passes `compactFirst` so the server runs
+  `/compact` and queues the message behind it. Clicking the chip keeps the full
+  history for that one send.
 
 - `keyedPluginCss` (on for early adopters) makes the app request each plugin's
   stylesheet with `css-scope=plugin-attribute-v1`. bb then keys the plugin's

@@ -878,6 +878,7 @@ export async function createThreadFromRequest(
     sendAt: request.sendAt,
   });
   const { initiator } = resolveDispatchAuthor({
+    automatic: false,
     retrying: false,
     systemNotice: false,
     senderThreadId: null,

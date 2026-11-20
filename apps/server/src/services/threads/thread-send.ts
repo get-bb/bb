@@ -89,7 +89,7 @@ import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
-type SendThreadMessageTrigger = "auto-dispatch" | "user";
+type SendThreadMessageTrigger = "auto-dispatch" | "idle-compaction" | "user";
 
 type SendThreadMessagePayload = SendMessageRequest & {
   inputGroups?: PromptInput[][];
@@ -619,6 +619,7 @@ async function sendThreadMessageWithoutContextClear(
   // counting it as a user message would inflate every "messages sent" figure by
   // however many times the provider happened to be rate limited.
   const { initiator } = resolveDispatchAuthor({
+    automatic: args.trigger === "idle-compaction",
     retrying: args.retryOf !== undefined,
     systemNotice: args.systemNotice !== undefined,
     senderThreadId,

@@ -202,9 +202,18 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 lower CPU priority (and, on macOS, the bb server and daemon with application
 scheduling) so bb stays responsive under heavy agent load; it takes full effect
 after restarting bb, and terminals keep normal priority. It defaults on for early adopters.
-`compactExpiredCache` offers a Compact chip in the composer when an idle
-thread's prompt cache has expired and its context holds at least 100k tokens;
-see `bb guide thread-messaging` for `--compact-first`.
+`compactExpiredCache` compacts a root thread whose context holds at least 100k
+tokens 2 minutes before its 1-hour prompt cache expires, once it has been idle
+for 30 minutes, so the compaction reads the context from the cache. Child
+threads and providers with a shorter cache are left alone. It also skips threads
+that are archived, hidden, busy,
+waiting on an interaction, holding queued messages or running background work,
+threads whose last turn was already a compaction, and threads whose machine is
+offline. bb never wakes a machine to compact. bb sends the `/compact` itself, so
+it does not change whether the thread is read or unread, and it sends no push
+notification. When it does not happen and the
+cache expires, the composer offers a Compact chip instead. See
+`bb guide thread-messaging` for `--compact-first`.
 `resumeDaemonSessions` keeps a machine connected through a network drop of
 under 30 seconds: its daemon resumes the same server session, so terminals and
 running requests carry on, instead of opening a new one. It defaults on for

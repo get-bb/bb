@@ -1154,9 +1154,9 @@ const EXPERIMENT_DEFINITIONS: Record<
       "Keep bb responsive when agents saturate the CPU. Agent processes, setup and teardown scripts, and the builds and tests they launch run at a lower CPU priority; on macOS the bb server and machine daemon also get app-level scheduling. Terminals keep normal priority. Turning it on or off takes effect after restarting bb, including restarts for updates.",
   },
   compactExpiredCache: {
-    label: "Compact before resuming expired sessions",
+    label: "Compact idle threads before the prompt cache expires",
     description:
-      "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
+      "When a thread you started holds at least 100k tokens and has been idle for 30 minutes, bb compacts it 2 minutes before its 1-hour prompt cache expires, while the context can still be read from the cache. If that does not happen, for example because the thread had pending work or its machine was offline, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
   keyedPluginCss: {
     label: "Faster styles inside plugins",

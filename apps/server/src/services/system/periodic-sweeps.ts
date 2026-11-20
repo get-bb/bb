@@ -97,6 +97,7 @@ import {
   defineSingleItemSweep,
   type ItemSweep,
 } from "./item-sweep.js";
+import { idleCompactionSweep } from "../threads/idle-compaction.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<
   AppDeps,
@@ -737,6 +738,13 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     name: "environment-provisioning-orphan-cleanup",
     background: false,
     sweep: environmentProvisioningSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "scheduler",
+    name: "idle-compaction",
+    background: true,
+    sweep: idleCompactionSweep,
   },
   {
     cadenceMs: 0,

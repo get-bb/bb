@@ -472,7 +472,7 @@ export function registerThreadActionRoutes(
 
   post(routes.compact, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    await compactThreadContext(deps, thread);
+    await compactThreadContext(deps, thread, "user");
     return context.json(operationInProgress());
   });
 

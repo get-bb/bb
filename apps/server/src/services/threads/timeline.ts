@@ -194,6 +194,7 @@ export function resolveThreadTimelineSurface(
       cursorKey,
       options.planCommand ?? null,
       options.compactionOfferEnabled,
+      options.idleCompactionEligible,
       options.extensionStateKinds ?? [],
     ]),
     threadName,
@@ -219,6 +220,7 @@ interface FilterExactEventRowsForRequestedTurnArgs {
 
 export interface ThreadTimelineSurfaceOptions {
   compactionOfferEnabled: boolean;
+  idleCompactionEligible: boolean;
   completedTurnDisplay: CompletedTurnDisplay;
   deferContent?: boolean;
   includeClearedContextHistory: boolean;
@@ -1580,6 +1582,7 @@ function buildThreadTimelineInternal(
             { ...thread, status: snapshot.status },
             {
               compactionOfferEnabled: options.compactionOfferEnabled,
+              idleCompactionEligible: options.idleCompactionEligible,
               extensionStateKinds: options.extensionStateKinds ?? [],
               planCommand: options.planCommand ?? null,
             },

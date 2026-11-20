@@ -175,6 +175,7 @@ describe.skipIf(!corpusAvailable())(
             includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
             compactionOfferEnabled: false,
+            idleCompactionEligible: false,
             summarizeShellCommands: true,
             maxInlineOutputChars: 32_000,
             maxSeq: getLatestThreadSequence(db, { threadId }),

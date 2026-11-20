@@ -29,7 +29,10 @@ import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import { requireThreadStorageTarget } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
-import { isCompactionOfferEnabled } from "../../services/threads/compaction-offer.js";
+import {
+  isCompactionOfferEnabled,
+  isIdleCompactionThread,
+} from "../../services/threads/compaction-offer.js";
 import {
   readThreadContextWindowUsage,
   readThreadHeadState,
@@ -218,6 +221,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           deps,
           thread.providerId,
         ),
+        idleCompactionEligible: isIdleCompactionThread(thread),
         threadId: thread.id,
       }),
     });
@@ -229,7 +233,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       readThreadHeadState(
         deps.db,
         thread,
-        resolveThreadHeadStateOptions(deps, thread.providerId),
+        resolveThreadHeadStateOptions(deps, thread),
       ),
     );
   });

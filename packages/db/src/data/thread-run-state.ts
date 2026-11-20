@@ -8,6 +8,10 @@ import type {
 } from "@bb/domain";
 import type { DbQueryConnection, DbTransaction } from "../connection.js";
 import {
+  findLastRootStoredTurnStarted,
+  isStoredTurnContextCompactionOnly,
+} from "./events.js";
+import {
   environments,
   threadRunStates,
   threadTurnRequests,
@@ -95,13 +99,31 @@ export type WriteThreadLifecycleStateResult =
   | { kind: "conflict" }
   | { kind: "written"; statusChanged: boolean; thread: ThreadRow };
 
-function statusChangeNeedsAttention(args: {
-  from: ThreadStatus;
-  parentThreadId: string | null;
-  to: ThreadStatus;
-}): boolean {
+function latestTurnOnlyCompacted(
+  tx: DbQueryConnection,
+  threadId: string,
+): boolean {
+  const turn = findLastRootStoredTurnStarted(tx, { threadId });
+  return (
+    turn !== null &&
+    isStoredTurnContextCompactionOnly(tx, { threadId, turnId: turn.turnId })
+  );
+}
+
+function statusChangeNeedsAttention(
+  tx: DbQueryConnection,
+  args: {
+    from: ThreadStatus;
+    parentThreadId: string | null;
+    threadId: string;
+    to: ThreadStatus;
+  },
+): boolean {
   if (args.from === "active" && args.to === "idle") {
-    return args.parentThreadId === null;
+    return (
+      args.parentThreadId === null &&
+      !latestTurnOnlyCompacted(tx, args.threadId)
+    );
   }
   if (args.to !== "error") {
     return false;
@@ -163,9 +185,10 @@ export function writeThreadLifecycleStateInTransaction(
       set.startupContext = null;
     }
     if (
-      statusChangeNeedsAttention({
+      statusChangeNeedsAttention(tx, {
         from: current.status,
         parentThreadId: current.parentThreadId,
+        threadId: args.threadId,
         to: args.next.status,
       })
     ) {

@@ -293,6 +293,7 @@ function buildPage(
     includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
     compactionOfferEnabled: false,
+    idleCompactionEligible: false,
     summarizeShellCommands: true,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,

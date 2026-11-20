@@ -379,6 +379,33 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
   }
 
+  async function turnOnlyCompacted(threadId: string): Promise<boolean> {
+    let events: Awaited<
+      ReturnType<BbPluginApi["sdk"]["threads"]["events"]["list"]>
+    >;
+    try {
+      events = await bb.sdk.threads.events.list({
+        threadId,
+        order: "desc",
+        limit: "50",
+        types: ["turn/started", "item/completed"],
+      });
+    } catch (error) {
+      bb.log.debug(
+        `Could not read the last turn of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+    const kinds: string[] = [];
+    for (const event of events) {
+      if (event.type === "turn/started") break;
+      if (event.type === "item/completed") kinds.push(event.data.item.type);
+    }
+    return (
+      kinds.length > 0 && kinds.every((kind) => kind === "contextCompaction")
+    );
+  }
+
   async function flushThread(
     threadId: string,
     entry: PendingThreadPush,
@@ -407,6 +434,11 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       NOTIFICATION_KINDS_BY_LEVEL[level],
     );
     if (resolved === null) return;
+    if (
+      resolved.kind === "turn-finished" &&
+      (await turnOnlyCompacted(threadId))
+    )
+      return;
     const preview = await notificationPreviewText(
       resolved.body,
       referencedThreadTitle,

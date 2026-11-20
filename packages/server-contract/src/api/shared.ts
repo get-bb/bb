@@ -45,6 +45,7 @@ export const threadContextWindowUsageSchema = z.object({
    * manual compaction, and the context holds at least 100k tokens.
    */
   compactionOfferAt: z.iso.datetime().optional(),
+  idleCompactionAt: z.iso.datetime().optional(),
 });
 export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema

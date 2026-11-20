@@ -178,6 +178,7 @@ export function buildRouteTimelinePage(
       includeClearedContextHistory: false,
       includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,
       compactionOfferEnabled: false,
+      idleCompactionEligible: false,
       summarizeShellCommands: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,

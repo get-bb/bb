@@ -4403,6 +4403,57 @@ export function isStoredTurnProviderCompactionRunning(
   return !acceptedInput;
 }
 
+const PROMPT_CACHE_REQUEST_ITEM_KINDS = [
+  "commandExecution",
+  "delegation",
+  "fileChange",
+  "fileRead",
+  "imageGeneration",
+  "imageView",
+  "search",
+  "toolCall",
+  "webFetch",
+  "webSearch",
+] as const satisfies readonly ThreadEventItemType[];
+
+export interface GetPromptCacheRequestStartArgs extends ThreadTurnKey {
+  beforeSequence: number;
+}
+
+export function getPromptCacheRequestStartAt(
+  db: DbQueryConnection,
+  args: GetPromptCacheRequestStartArgs,
+): number | null {
+  const inTurn = and(
+    eq(events.threadId, args.threadId),
+    eq(events.turnId, args.turnId),
+    lt(events.sequence, args.beforeSequence),
+  );
+  const lastToolResult = db
+    .select({ createdAt: sql<number>`${events.createdAt}` })
+    .from(sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`)
+    .where(
+      and(
+        inTurn,
+        eq(events.type, "item/completed"),
+        inArray(events.itemKind, [...PROMPT_CACHE_REQUEST_ITEM_KINDS]),
+        isNull(events.parentToolCallId),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (lastToolResult !== undefined) return lastToolResult.createdAt;
+  const turnStarted = db
+    .select({ createdAt: events.createdAt })
+    .from(events)
+    .where(and(inTurn, eq(events.type, "turn/started")))
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  return turnStarted?.createdAt ?? null;
+}
+
 export function isStoredTurnContextCompactionOnly(
   db: DbQueryConnection,
   args: ThreadTurnKey,

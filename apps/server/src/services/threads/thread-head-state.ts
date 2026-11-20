@@ -35,12 +35,14 @@ import type { AppDeps } from "../../types.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import {
   isCompactionOfferEnabled,
+  isIdleCompactionThread,
   withCompactionOffer,
 } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
 
 export interface ThreadHeadStateOptions {
   compactionOfferEnabled: boolean;
+  idleCompactionEligible: boolean;
   extensionStateKinds: readonly string[];
   planCommand: ProviderComposerCommand | null;
 }
@@ -49,14 +51,18 @@ type ThreadHeadStateThread = Pick<Thread, "id" | "providerId" | "status">;
 
 export function resolveThreadHeadStateOptions(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
-  providerId: string,
+  thread: Pick<Thread, "parentThreadId" | "providerId" | "visibility">,
 ): ThreadHeadStateOptions {
   return {
-    compactionOfferEnabled: isCompactionOfferEnabled(deps, providerId),
+    compactionOfferEnabled: isCompactionOfferEnabled(deps, thread.providerId),
+    idleCompactionEligible: isIdleCompactionThread(thread),
     extensionStateKinds: Object.entries(
-      deps.providerRegistry.get(providerId)?.info.extensionKinds ?? {},
+      deps.providerRegistry.get(thread.providerId)?.info.extensionKinds ?? {},
     ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),
-    planCommand: resolveProviderPlanCommand(deps.providerRegistry, providerId),
+    planCommand: resolveProviderPlanCommand(
+      deps.providerRegistry,
+      thread.providerId,
+    ),
   };
 }
 
@@ -122,6 +128,7 @@ export function readThreadContextWindowUsage(
   args: {
     atOrBeforeSequence?: number;
     compactionOfferEnabled: boolean;
+    idleCompactionEligible: boolean;
     threadId: string;
   },
 ): ThreadContextWindowUsage | null {
@@ -143,6 +150,7 @@ export function readThreadContextWindowUsage(
     ? null
     : withCompactionOffer(db, {
         enabled: args.compactionOfferEnabled,
+        idleCompactionEligible: args.idleCompactionEligible,
         sequenceStart,
         threadId: args.threadId,
         usage,
@@ -189,6 +197,7 @@ export function readThreadHeadState(
     contextWindowUsage: readThreadContextWindowUsage(db, {
       atOrBeforeSequence,
       compactionOfferEnabled: options.compactionOfferEnabled,
+      idleCompactionEligible: options.idleCompactionEligible,
       threadId: thread.id,
     }),
     extensionStates: extractThreadExtensionStates(

@@ -228,6 +228,7 @@ const baseOptions = {
   includeClearedContextHistory: false,
   includeDiagnosticOperations: false,
   compactionOfferEnabled: false,
+  idleCompactionEligible: false,
   summarizeShellCommands: true,
   includeNestedRows: true,
   maxInlineOutputChars: null,
@@ -423,6 +424,7 @@ function insertAgentMessages(
 
 const headStateOptions = {
   compactionOfferEnabled: false,
+  idleCompactionEligible: false,
   extensionStateKinds: [CODEX_GOAL_KIND],
   planCommand: null,
 } as const;

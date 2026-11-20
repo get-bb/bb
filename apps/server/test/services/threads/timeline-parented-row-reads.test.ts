@@ -209,6 +209,7 @@ describe("timeline parented row reads", () => {
         includeClearedContextHistory: false,
         includeDiagnosticOperations: false,
         compactionOfferEnabled: false,
+        idleCompactionEligible: false,
         summarizeShellCommands: true,
         includeNestedRows: true,
         maxInlineOutputChars: null,

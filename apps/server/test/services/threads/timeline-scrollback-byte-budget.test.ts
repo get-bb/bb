@@ -101,6 +101,7 @@ function buildPage(
         : { kind: "older", beforeCursor: cursor, segmentLimit: 20 },
     responseByteBudget: RESPONSE_BYTE_BUDGET,
     compactionOfferEnabled: false,
+    idleCompactionEligible: false,
     summarizeShellCommands: true,
   }).response;
   return { ...window, tag: timelineWindowTag(window) };

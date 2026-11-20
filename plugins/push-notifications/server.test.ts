@@ -116,6 +116,7 @@ async function setup(options: SetupOptions = {}) {
   const threads = new Map<string, ThreadResponse>();
   const interactions = new Map<string, PendingInteraction[]>();
   const metadata = new Map<string, Record<string, unknown>>();
+  const lastTurnItems = new Map<string, string[]>();
   let nextId = 1;
   const listAncestors = vi.fn(
     async ({ threadIds }: { threadIds: readonly string[] }) => ({
@@ -187,6 +188,15 @@ async function setup(options: SetupOptions = {}) {
         }),
         interactions: {
           list: async ({ threadId }) => interactions.get(threadId) ?? [],
+        },
+        events: {
+          list: (async ({ threadId }: { threadId: string }) => [
+            ...(lastTurnItems.get(threadId) ?? []).map((type) => ({
+              type: "item/completed",
+              data: { item: { type } },
+            })),
+            { type: "turn/started", data: {} },
+          ]) as never,
         },
       },
     },
@@ -283,6 +293,7 @@ async function setup(options: SetupOptions = {}) {
     expo,
     getLevel,
     interactions,
+    lastTurnItems,
     listAncestors,
     listLevels,
     setLevel,
@@ -463,6 +474,36 @@ describe("push subscription RPC and CLI", () => {
 });
 
 describe("push sender", () => {
+  it("sends no turn-finished push for a turn that only compacted the context", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const compacted = host.setThread();
+      host.lastTurnItems.set(compacted.id, ["contextCompaction"]);
+      const worked = host.setThread({ title: "Ship it" });
+      host.lastTurnItems.set(worked.id, ["contextCompaction", "agentMessage"]);
+
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: compacted,
+        lastAssistantText: null,
+      });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: worked,
+        lastAssistantText: "Shipped.",
+      });
+
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      await waitForCoalesce();
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.expo.requests[0]?.[0]).toMatchObject({
+        title: "Ship it",
+        data: { kind: "turn-finished", threadId: worked.id },
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("sends a root idle preview to each device and reads the relay setting at flush", async () => {
     const host = await setup();
     try {

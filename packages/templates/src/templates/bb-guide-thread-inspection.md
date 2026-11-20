@@ -82,8 +82,12 @@ Inspecting:
   report totals. When the provider reports the session's cumulative cost,
   `usage.cost` is `{ amount, currency }`. With the `compactExpiredCache`
   experiment on, `usage.compactionOfferAt` is when the provider's prompt cache
-  for this context expires (Claude Code and Pi report cache lifetimes); after
-  it, `bb thread tell --compact-first` avoids re-reading the context uncached.
+  for this context expires, counted from the start of the last turn's last
+  request (Claude Code and Pi report cache lifetimes). For a root thread with a
+  1-hour cache, `usage.idleCompactionAt`, 2 minutes earlier, is when bb
+  compacts the thread if it has been idle for 30 minutes. After the cache expires, `bb thread tell
+  --compact-first` re-reads the context once to compact it, so later turns
+  start from a smaller context.
 
   `thread commands` lists the slash commands advertised for the current
   session; ACP agents and Claude Code report these live, so the list is empty

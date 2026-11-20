@@ -453,6 +453,7 @@ export async function editThreadMessage(
     targetThread: initialThread,
   });
   const { initiator } = resolveDispatchAuthor({
+    automatic: false,
     retrying: false,
     systemNotice: false,
     senderThreadId,

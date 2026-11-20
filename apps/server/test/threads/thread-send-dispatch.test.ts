@@ -2365,7 +2365,7 @@ describe("competing turn refusals", () => {
       name: "manual compaction",
       joins: false,
       start: (harness, fixture) =>
-        compactThreadContext(harness.deps, fixture.thread),
+        compactThreadContext(harness.deps, fixture.thread, "user"),
     },
     {
       name: "a retry of a failed turn",
