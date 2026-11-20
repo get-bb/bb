@@ -1,12 +1,12 @@
 import path from "path";
-import type { ClientRequest } from "node:http";
-import { defineConfig, type HttpProxy } from "vite";
+import { defineConfig } from "vite";
 import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import tailwindcss from "@tailwindcss/vite";
 import { resolveCurrentDevInstanceConfig } from "@bb/config/runtime";
 import { forkablePluginPaths } from "../vite-forkable-plugin-paths.js";
 import { corePluginSdkApp } from "../vite-core-plugin-sdk-app.js";
 import { pluginZodRuntime } from "../vite-plugin-zod-runtime.js";
+import { signInLocalLadleRequests } from "./dev-server-auth.js";
 import { sharedUiEnvSeam } from "../vite-shared-ui-seam.js";
 
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -15,14 +15,9 @@ const trustedDevAppHeaders = {
   origin: devInstance.serverUrl,
 };
 
-function signInDevServerProxy(proxy: HttpProxy.Server): void {
-  const authorize = (request: ClientRequest): void => {
-    const token = readLocalAccessTokenSync(devInstance.dataDir);
-    if (token !== null) request.setHeader("authorization", `Bearer ${token}`);
-  };
-  proxy.on("proxyReq", authorize);
-  proxy.on("proxyReqWs", authorize);
-}
+const signInDevServerProxy = signInLocalLadleRequests(() =>
+  readLocalAccessTokenSync(devInstance.dataDir),
+);
 
 export default defineConfig({
   plugins: [
