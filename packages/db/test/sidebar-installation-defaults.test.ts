@@ -18,6 +18,7 @@ import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
+  rewindThreadPurgeStartedColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -104,6 +105,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropPluginFailureLabelColumns(db);
           rewindMachineTeardownRecoveryColumns(db);
           dropPluginMarketplaceEnabledColumn(db);
+          rewindThreadPurgeStartedColumn(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
             .run(SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP);

@@ -1,11 +1,11 @@
 ---
 name: storage-retention
-description: Inspect machine storage, clean up files, and configure automatic thread archive or deletion.
+description: Inspect machine storage, clean up files, and configure automatic thread archive, cold storage, or deletion.
 ---
 
 # Storage & retention
 
-Enable `bb plugin enable bb--storage-retention`. Both policies default to Never.
+Enable `bb plugin enable bb--storage-retention`. All three policies default to Never.
 Open the plugin's sidebar panel for machine reports and retention settings.
 All settings in the panel save immediately when changed.
 All commands return JSON. Use the owning server's normal SDK/plugin RPC transport.
@@ -15,6 +15,12 @@ bb storage retention
 bb storage retention --archive-after 30 --delete-after 90
 bb storage retention --archive-after 30 --delete-after 90 --save --yes
 bb storage retention --archive-after never --delete-after never --save --yes
+bb storage retention --cold-store-after 14 --save --yes
+bb storage cold-store --thread THREAD_ID --yes
+bb storage cold-list --search "flaky test" --limit 20
+bb storage cold-list --limit 50 --after LAST_THREAD_ID
+bb storage restore --thread THREAD_ID
+bb storage cold-delete --thread THREAD_ID --yes
 bb storage retention --delete-storage-on-archive true --save --yes
 bb storage retention --delete-storage-on-archive false --save --yes
 bb storage retention --delete-dev-data-on-checkout-removal true --save --yes
@@ -36,6 +42,27 @@ bb storage remove-external-worktrees --machine HOST_ID --path WORKTREE_PATH --fo
 ```
 
 Without `--save`, retention thresholds only preview affected thread counts.
+`--cold-store-after` moves threads archived that many days to cold storage: one
+`.jsonl.zst` thread file each in `<dataDir>/plugins/bb--storage-retention/cold-storage/`.
+The plugin deletes the thread, holds the end of the delete through the
+`thread.delete_finalize` hook until `threads.experimental_export` has written
+the file, then lets bb remove the rows. It skips pinned and running threads and
+threads another thread still points at as its parent, source or lifecycle owner
+(those follow once their children are moved). `bb storage cold-store` refuses
+such a thread and names the threads that point at it, because deleting it would
+take its children with it. Cold storage is listed in the
+plugin panel (a Cold storage row with the total count, size and last move,
+which opens a page with search, Show more, Restore and Delete) and by
+`bb storage cold-list`, newest first, with `totalCount`, `totalBytes`,
+`movingCount` and `lastStoredAt` for the matching threads and `hasMore`; pass the last thread ID as `--after` for
+the next page. Restore (or
+`bb storage restore --thread ID`) imports the file back, and a restored
+archived thread counts as archived from that moment. It first restores the
+cold-stored threads it points at as parent, source or lifecycle owner, so those
+links survive, and returns `restoredThreadIds`. Each file is an ordinary
+thread file, so `bb thread import FILE` also brings it back; the hourly run
+then drops it from cold storage, and moving it again writes a fresh file. If the plugin is disabled
+while a thread is still being written, bb removes that thread without a copy.
 Days must be whole numbers from 1 to 3650, or `never`. Unspecified settings
 preserve their saved values. Saved policies apply across all projects. The
 hourly run processes up to 50 trees per action and skips groups with pinned
@@ -95,8 +122,8 @@ Clear-thread, clear-archived-files and remove-orphans first stop processes whose
 Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Thread clears and bulk cleanup run sequentially through the same per-machine FIFO queue. Other machines run independently. Every cleanup action stays available during a scan, and a finished scan leaves out entries cleared while it ran. Reports are cached
 snapshots; rescan to see external filesystem changes.
 
-Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`,
-and `configure({archiveAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`; use null for Never and booleans for storage cleanup (both default to false for older policies). Storage
+Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, coldStoreAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`,
+and `configure({archiveAfterDays, coldStoreAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`; use null for Never and booleans for storage cleanup (`coldStoreAfterDays` defaults to null and both booleans to false for older policies). Cold storage: `coldThreads({projectId, search, limit, after})`, where `after` is null or the last row's `{storedAt, threadId}`, `restoreColdThread({threadId})` and `deleteColdThread({threadId})`. Storage
 RPC methods are `hosts(null)`, `host({hostId})`, `scanHost({hostId})`,
 `removeOrphans({hostId})`, `retryWorktreeCleanup({hostId})`, and
 `clearThread({threadId})`, `clearArchivedFiles({hostId})` and `removeDevInstances({hostId, names: null})` for every missing instance or `removeDevInstances({hostId, names, stopRunning})` for chosen ones, `removeExternalWorktrees({hostId, paths: null})` or `removeExternalWorktrees({hostId, paths, force})`, and `startRemoveExternalWorktree({hostId, path, force})`. The plugin owns its host worker and scan database.

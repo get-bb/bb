@@ -305,6 +305,7 @@ async function arrangeQueuedMessage(
   const registry: {
     [K in PluginHookName]: PluginHookRegistration<K>[];
   } = {
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "retry-guard",
@@ -322,6 +323,7 @@ async function arrangeQueuedMessage(
       value: await run(),
     }),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
   const row = () => {
     const current = getQueuedThreadMessage(harness.db, queued.id);

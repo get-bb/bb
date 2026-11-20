@@ -45,7 +45,10 @@ source, and every workflow worker attempt by its origin.
   `bb.db` in small batches: 10 ms slices, resting nine times as long while a
   client is connected or a thread is running, and as long otherwise. Each run
   stops after 30 seconds and the next pass carries on. The thread stays hidden
-  throughout, and a restart resumes the queue.
+  throughout, and a restart resumes the queue. Before a thread's purge
+  starts, plugins answering the `thread.delete_finalize` hook can hold it, for
+  example to export the thread first; core asks again on every pass until they
+  all proceed, and purges nothing while plugins are still loading.
 - Dependents can be archived or deleted independently of their owner. Deleting
   an owning project also deletes cross-project dependents; deleting only a
   dependent's project leaves its external owner intact.

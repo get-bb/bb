@@ -57,7 +57,7 @@ type HookRegistry = {
 };
 
 function emptyRegistry(): HookRegistry {
-  return { "message.dispatch": [] };
+  return { "message.dispatch": [], "thread.delete_finalize": [] };
 }
 
 function installHooks(
@@ -68,6 +68,7 @@ function installHooks(
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: options.decisionTimeoutMs ?? 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 
@@ -181,6 +182,7 @@ describe("message.dispatch hook context", () => {
     await withTestHarness(async (harness) => {
       const seen: unknown[] = [];
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "drafts",
@@ -221,6 +223,7 @@ describe("message.dispatch hook context", () => {
   it("applies plugin policy before a future schedule", async () => {
     await withTestHarness(async (harness) => {
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "drafts",
@@ -258,6 +261,7 @@ describe("message.dispatch hook context", () => {
       const { host, project } = seedDispatchFixture(harness, "host-intent");
       const seen: { environment: unknown; hostId: string | null }[] = [];
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limits",

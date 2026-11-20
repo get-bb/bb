@@ -18,13 +18,73 @@ export function requestThreadPurge(
     .run();
 }
 
-export function nextThreadPurge(
+export function isThreadPurgeRequested(
   db: DbQueryConnection,
-  args: { excludedThreadIds: ReadonlySet<string> },
-): string | null {
+  threadId: string,
+): boolean {
   return (
     db
       .select({ threadId: threadPurges.threadId })
+      .from(threadPurges)
+      .where(eq(threadPurges.threadId, threadId))
+      .get() !== undefined
+  );
+}
+
+export function getThreadPurge(
+  db: DbQueryConnection,
+  threadId: string,
+): PendingThreadPurge | null {
+  return (
+    db
+      .select({
+        threadId: threadPurges.threadId,
+        startedAt: threadPurges.startedAt,
+      })
+      .from(threadPurges)
+      .where(eq(threadPurges.threadId, threadId))
+      .get() ?? null
+  );
+}
+
+export function cancelThreadPurge(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db.delete(threadPurges).where(eq(threadPurges.threadId, threadId)).run()
+      .changes > 0
+  );
+}
+
+export function markThreadPurgeStarted(
+  db: DbQueryConnection,
+  args: { now: number; threadId: string },
+): boolean {
+  return (
+    db
+      .update(threadPurges)
+      .set({ startedAt: args.now })
+      .where(eq(threadPurges.threadId, args.threadId))
+      .run().changes > 0
+  );
+}
+
+export interface PendingThreadPurge {
+  threadId: string;
+  startedAt: number | null;
+}
+
+export function nextThreadPurge(
+  db: DbQueryConnection,
+  args: { excludedThreadIds: ReadonlySet<string> },
+): PendingThreadPurge | null {
+  return (
+    db
+      .select({
+        threadId: threadPurges.threadId,
+        startedAt: threadPurges.startedAt,
+      })
       .from(threadPurges)
       .where(
         and(
@@ -41,7 +101,7 @@ export function nextThreadPurge(
       )
       .orderBy(asc(threadPurges.requestedAt), asc(threadPurges.threadId))
       .limit(1)
-      .get()?.threadId ?? null
+      .get() ?? null
   );
 }
 

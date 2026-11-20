@@ -178,6 +178,15 @@ export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
   }
 }
 
+export function rewindThreadPurgeStartedColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(thread_purges)")
+    .all();
+  if (columns.some((existing) => existing.name === "started_at")) {
+    db.$client.exec("ALTER TABLE thread_purges DROP COLUMN started_at");
+  }
+}
+
 export function restoreDiffViewedFilesTable(db: DbConnection): void {
   db.$client.exec(`
     CREATE TABLE IF NOT EXISTS diff_viewed_files (

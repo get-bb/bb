@@ -43,7 +43,8 @@ the same change.
   covers each `bb.*` member), logging, settings, storage, server information,
   and host entries.
 - Read references/backend-sdk.md for the `bb.sdk` area map, threads, plugin
-  metadata, files, terminals, attachments, and calls to another plugin's RPC.
+  metadata, files, terminals, attachments, calls to another plugin's RPC, and
+  thread files with the `thread.delete_finalize` hook.
 - Read references/backend-api-index.md to check every public backend, host,
   AI-service, and test export.
 - Read references/backend-events.md for lifecycle events, the dispatch hook,

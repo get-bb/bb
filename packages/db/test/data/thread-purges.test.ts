@@ -135,24 +135,24 @@ describe("thread purges", () => {
     requestThreadPurge(context.db, { now: 2, threadId: owned.id });
     requestThreadPurge(context.db, { now: 3, threadId: later.id });
 
-    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })).toBe(
+    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })?.threadId).toBe(
       owned.id,
     );
     expect(
-      nextThreadPurge(context.db, { excludedThreadIds: new Set([owned.id]) }),
+      nextThreadPurge(context.db, { excludedThreadIds: new Set([owned.id]) })?.threadId,
     ).toBe(later.id);
     context.db
       .delete(threads)
       .where(sql`${threads.id} = ${owned.id}`)
       .run();
-    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })).toBe(
+    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })?.threadId).toBe(
       owner.id,
     );
     context.db
       .delete(threads)
       .where(sql`${threads.id} = ${owner.id}`)
       .run();
-    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })).toBe(
+    expect(nextThreadPurge(context.db, { excludedThreadIds: new Set() })?.threadId).toBe(
       later.id,
     );
     context.db

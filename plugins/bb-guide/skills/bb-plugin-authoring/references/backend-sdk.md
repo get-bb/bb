@@ -399,3 +399,32 @@ code: "forbidden", message: "Only the connect plugin can call this method" })`
 from `@get-bb/plugin-sdk`. `bb.sdk.plugins.callRpc` rejects with a `BbHttpError`
 whose `code` is `forbidden` and `status` is 403. See `backend-events.md` for
 the refusal codes, optional validation issues and mutation rollback behavior.
+
+### Thread files and the delete_finalize hook
+
+`threads.experimental_export({ threadId })` returns the thread as a
+self-contained `.jsonl.zst` file: its rows, every event and its attachments.
+`threads.experimental_import({ file })` recreates a deleted thread in its
+project, and refuses a thread that still exists.
+
+A deleted thread stays in bb's database, hidden and unchanging, until core
+finishes the delete by removing its rows.
+`bb.experimental_hooks.on("thread.delete_finalize", handler)` runs before that
+starts, so a plugin can keep a copy first:
+
+```ts
+bb.experimental_hooks.on("thread.delete_finalize", ({ threadId }) => {
+  if (!wantsCopy(threadId) || hasCopy(threadId)) return { action: "proceed" };
+  void bb.sdk.threads
+    .experimental_export({ threadId })
+    .then((file) => storeCopy(threadId, file));
+  return { action: "wait" };
+});
+```
+
+`wait` keeps the rows; core asks again about every 10 seconds and after every
+restart, until every plugin answers `proceed`. Decide in milliseconds and
+export in the background, as above. A throw, a timeout or any other answer
+counts as `wait`. A disabled or uninstalled plugin is not asked, so its threads
+are removed without a copy. Core removes nothing while plugins are still
+loading and never asks again once the removal has started.

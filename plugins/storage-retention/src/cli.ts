@@ -6,7 +6,9 @@ import {
   type BbPluginApi,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
-import { policySchema } from "./contract.js";
+import type { ColdStorage } from "./cold-storage.js";
+import { policySchema, COLD_THREAD_LIST_MAX } from "./contract.js";
+import { readThreads } from "./sdk-data.js";
 import type { Service } from "./service.js";
 
 const MACHINE = { type: "string", description: "Machine ID" } as const;
@@ -52,6 +54,7 @@ export function registerCli(
   bb: BbPluginApi,
   service: Service,
   storage: Storage,
+  coldStorage: ColdStorage,
 ) {
   bb.cli.register(
     defineCli({
@@ -154,6 +157,11 @@ export function registerCli(
               type: "string",
               description: "Idle days before archiving, or never",
             },
+            "cold-store-after": {
+              type: "string",
+              description:
+                "Archived days before moving to cold storage, or never",
+            },
             "delete-after": {
               type: "string",
               description: "Archived days before deleting, or never",
@@ -194,6 +202,10 @@ export function registerCli(
                   input.options["archive-after"],
                   state.policy.archiveAfterDays,
                 ),
+                coldStoreAfterDays: days(
+                  input.options["cold-store-after"],
+                  state.policy.coldStoreAfterDays,
+                ),
                 deleteAfterDays: days(
                   input.options["delete-after"],
                   state.policy.deleteAfterDays,
@@ -208,12 +220,107 @@ export function registerCli(
               }
               if (
                 input.options["archive-after"] !== undefined ||
+                input.options["cold-store-after"] !== undefined ||
                 input.options["delete-after"] !== undefined ||
                 cleanup !== undefined ||
                 devCleanup !== undefined
               )
                 return { policy, preview: await service.preview(policy) };
               return state;
+            }),
+        }),
+        "cold-store": cliCommand({
+          summary:
+            "Move an archived thread to cold storage: write it to a file and remove it from bb's database",
+          options: {
+            thread: { type: "string", description: "Thread ID" },
+            yes: YES,
+          },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to remove the thread from bb's database once its file is written.",
+                );
+              const threadId = required(input.options.thread, "thread");
+              const threads = await readThreads(bb);
+              const thread = threads.find((entry) => entry.id === threadId);
+              if (thread === undefined || thread.deletedAt !== null)
+                throw new Error(`Thread ${threadId} not found.`);
+              if (thread.archivedAt === null || thread.pinnedAt !== null)
+                throw new Error(
+                  "Only archived, unpinned threads can be moved to cold storage.",
+                );
+              await coldStorage.store(thread, threads);
+              return { threadId, state: "moving" };
+            }),
+        }),
+        "cold-list": cliCommand({
+          summary: "List threads in cold storage, newest first",
+          options: {
+            project: { type: "string", description: "Only this project ID" },
+            search: {
+              type: "string",
+              description: "Only threads whose title contains this text",
+            },
+            limit: {
+              type: "string",
+              description: `How many to list (default 50, at most ${COLD_THREAD_LIST_MAX})`,
+            },
+            after: {
+              type: "string",
+              description:
+                "List the threads after this thread ID, the last one of the previous page",
+            },
+          },
+          run: (input) =>
+            output(async () => {
+              const limit =
+                input.options.limit === undefined
+                  ? 50
+                  : Number(input.options.limit);
+              if (
+                !Number.isInteger(limit) ||
+                limit < 1 ||
+                limit > COLD_THREAD_LIST_MAX
+              )
+                throw new Error(
+                  `Use --limit between 1 and ${COLD_THREAD_LIST_MAX}.`,
+                );
+              return coldStorage.list({
+                projectId: input.options.project ?? null,
+                search: input.options.search ?? null,
+                limit,
+                after:
+                  input.options.after === undefined
+                    ? null
+                    : coldStorage.cursorOf(input.options.after),
+              });
+            }),
+        }),
+        restore: cliCommand({
+          summary: "Bring a thread in cold storage back into bb",
+          options: { thread: { type: "string", description: "Thread ID" } },
+          run: (input) =>
+            output(() =>
+              coldStorage.restore(required(input.options.thread, "thread")),
+            ),
+        }),
+        "cold-delete": cliCommand({
+          summary: "Permanently delete a thread in cold storage",
+          options: {
+            thread: { type: "string", description: "Thread ID" },
+            yes: YES,
+          },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to permanently delete the thread from cold storage.",
+                );
+              return coldStorage.remove(
+                required(input.options.thread, "thread"),
+              );
             }),
         }),
         usage: cliCommand({

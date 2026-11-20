@@ -763,19 +763,50 @@ export interface MessageDispatchHookContext {
  * derive from this map — and so does the server's hook registry — so a
  * half-added hook does not compile.
  *
- * One hook today: `message.dispatch`, THE admission checkpoint, run identically
- * for a thread's first message, a follow-up, a steer, a retry, and every
- * re-attempt a drain makes. It replaced the earlier `thread.create` +
- * `turn.submit` pair, whose split was an accident of where the code happened to
- * branch rather than a difference a plugin needed to see — the attempt's own
- * `attempt` kind carries what actually differs.
+ * `message.dispatch` is THE admission checkpoint, run identically for a
+ * thread's first message, a follow-up, a steer, a retry, and every re-attempt a
+ * drain makes. It replaced the earlier `thread.create` + `turn.submit` pair,
+ * whose split was an accident of where the code happened to branch rather than
+ * a difference a plugin needed to see — the attempt's own `attempt` kind
+ * carries what actually differs.
+ *
+ * `thread.delete_finalize` runs before core finishes deleting a thread by
+ * removing its rows from the database, so a plugin can copy the thread first.
  */
 export interface PluginHookSignatures {
   "message.dispatch": {
     context: MessageDispatchHookContext;
     decision: MessageDispatchHookDecision;
   };
+  "thread.delete_finalize": {
+    context: ThreadDeleteFinalizeHookContext;
+    decision: ThreadDeleteFinalizeHookDecision;
+  };
 }
+
+/**
+ * A deleted thread core is about to remove from the database. The thread is
+ * already hidden and can no longer change, and every read that works on a
+ * thread id, such as `bb.sdk.threads.experimental_export`, still works until
+ * the removal starts.
+ */
+export interface ThreadDeleteFinalizeHookContext {
+  threadId: string;
+  projectId: string;
+}
+
+/**
+ * `proceed` lets core remove the rows. `wait` keeps them: core asks again
+ * about every 10 seconds and on every restart, until every plugin answers
+ * `proceed`. Once the removal starts core never asks about that thread again.
+ *
+ * A handler that throws, times out or returns something else counts as
+ * `wait`. A plugin that is disabled or uninstalled is not asked, so its
+ * threads are removed without it.
+ */
+export type ThreadDeleteFinalizeHookDecision =
+  | { action: "proceed" }
+  | { action: "wait" };
 
 export type PluginHookName = keyof PluginHookSignatures;
 
@@ -795,6 +826,9 @@ export interface PluginHooks {
    * return value is ignored. It is the same split git draws between its
    * pre-commit and post-commit hooks, and the reason the two live in separate
    * namespaces rather than behind one `on`.
+   *
+   * The rules below describe `message.dispatch`; `thread.delete_finalize`
+   * has its own, on {@link ThreadDeleteFinalizeHookDecision}.
    *
    * Handlers for a hook run as a deterministic chain in plugin install order,
    * a `reject` short-circuits the pass, and `wait` decisions are COLLECTED
@@ -847,6 +881,9 @@ export interface PluginHooks {
    * rows, exactly as the due sweep's do. Awaiting completion would also mean
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
+   *
+   * `thread.delete_finalize` needs no recheck: core asks it again about every
+   * 10 seconds.
    */
   recheck(hook: PluginHookName): Promise<void>;
 }

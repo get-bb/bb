@@ -19,6 +19,7 @@ import {
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
+  rewindThreadPurgeStartedColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -130,6 +131,7 @@ it.each([false, true])(
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
+      rewindThreadPurgeStartedColumn(db);
       migrate(db);
       migrate(db);
 
