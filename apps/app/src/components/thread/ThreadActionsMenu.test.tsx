@@ -23,6 +23,7 @@ import {
 import type { ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { appToast } from "@/components/ui/app-toast";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
@@ -66,10 +67,10 @@ const sdkThreads = vi.hoisted(() => ({
   get: vi.fn(),
   experimental_regenerateTitle: vi.fn(),
 }));
-const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
+const copyToClipboard = vi.hoisted(() => vi.fn(async () => true));
 
 vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
-vi.mock("@/lib/clipboard", () => ({ copyToClipboardWithToast }));
+vi.mock("@/lib/clipboard", () => ({ copyToClipboard }));
 vi.mock("./ThreadActionsProvider", () => ({
   useThreadActions: () => hostActions,
 }));
@@ -350,6 +351,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
   vi.resetAllMocks();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -709,14 +711,14 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       expect.objectContaining({ value: "sec_building" }),
     );
 
+    const copiedToast = vi.spyOn(appToast, "success");
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
-    expect(copyToClipboardWithToast).toHaveBeenCalledWith(
-      `${window.location.origin}/projects/proj_a/threads/thr_target`,
-      {
-        successMessage: "Thread link copied",
-        errorMessage: "Failed to copy thread link",
-      },
+    expect(copyToClipboard).toHaveBeenCalledWith({
+      text: `${window.location.origin}/projects/proj_a/threads/thr_target`,
+    });
+    await waitFor(() =>
+      expect(copiedToast).toHaveBeenCalledWith("Thread link copied"),
     );
   });
 
