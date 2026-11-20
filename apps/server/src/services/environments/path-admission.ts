@@ -2,6 +2,7 @@ import {
   environmentHasLiveThreads,
   environments,
   findEnvironmentPathClaim,
+  findOtherLiveThreadAtEnvironmentPath,
   getHost,
   getPreparingEnvironment,
   getThread,
@@ -129,6 +130,14 @@ export function assertEnvironmentPathAvailable(
       ? CHECKOUT_BUSY_MESSAGE
       : "Workspace cleanup is pending. Try again shortly.",
   );
+}
+
+export function assertNoOtherLiveThreadUsesPath(
+  deps: PathAdmissionDeps,
+  args: { hostId: string; path: string; threadId: string | null },
+): void {
+  if (findOtherLiveThreadAtEnvironmentPath(deps.db, args) !== null)
+    throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
 }
 
 export function settlingPathClaim(error: unknown): EnvironmentRow | null {

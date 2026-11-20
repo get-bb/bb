@@ -45,6 +45,7 @@ export function makeEnvironment(
     defaultBranch: "main",
     mergeBaseBranch: null,
     status: "ready",
+    statusMessage: null,
     environmentProviderId: "git-worktree",
     environmentProviderSelection: {
       machine: { type: "existing", hostId: "host_test" },
@@ -54,6 +55,7 @@ export function makeEnvironment(
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: true,
+    heldBy: null,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
     updatedAt: 0,

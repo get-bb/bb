@@ -229,6 +229,37 @@ function makeDataTransfer(path: string) {
   };
 }
 
+let linkedDocumentSequence = 0;
+
+function renderLinkedDocument(
+  surface: "workspace" | "panel" | "directive",
+  content: string,
+) {
+  const path = `articles/link-${++linkedDocumentSequence}.md`;
+  const options = {
+    openUrl: () => true,
+    rpc: {
+      listNotes: () =>
+        listNotesResult([
+          { path, title: "Start", preview: "", modifiedAtMs: 1 },
+        ]),
+      readDocument: () => documentResult(path, content),
+    },
+  } satisfies RenderSlotOptions;
+  if (surface === "directive") return renderDocument(path, "Start", options);
+  if (surface === "panel")
+    return renderSlot(
+      app.threadPanelActions[0]!,
+      {
+        threadId: "thr_1",
+        environment: null,
+        params: { vaultId: "personal", path, title: "Start" },
+      },
+      options,
+    );
+  return renderSlot(docsRegistration, { subPath: `personal/${path}` }, options);
+}
+
 describe("Docs nav panel", () => {
   it("keeps one shared request across page and navigation Strict Mode replay", async () => {
     let requests = 0;
@@ -1007,6 +1038,98 @@ describe("Docs nav panel", () => {
       );
     });
   });
+
+  describe.each(["workspace", "panel", "directive"] as const)(
+    "%s document links",
+    (surface) => {
+      it.each([
+        { href: "reference.md", path: "articles/reference.md", modifiers: {} },
+        {
+          href: "reference.md",
+          path: "articles/reference.md",
+          modifiers: { ctrlKey: true },
+        },
+        {
+          href: "reference.md",
+          path: "articles/reference.md",
+          modifiers: { metaKey: true },
+        },
+        { href: "../appendix.md", path: "appendix.md", modifiers: {} },
+        {
+          href: "./nested/deep.md",
+          path: "articles/nested/deep.md",
+          modifiers: {},
+        },
+        {
+          href: "nested/deep.md",
+          path: "articles/nested/deep.md",
+          modifiers: {},
+        },
+        {
+          href: "note%20title.markdown",
+          path: "articles/note title.markdown",
+          modifiers: {},
+        },
+      ])(
+        "opens $href in the same vault ($modifiers)",
+        async ({ href, path, modifiers }) => {
+          const slot = renderLinkedDocument(surface, `[Reference](${href})`);
+          const link = await slot.findByRole("link", { name: "Reference" });
+          fireEvent.click(link, modifiers);
+          expect(slot.navigateCalls).toContainEqual({
+            method: "toPluginPanel",
+            path: "docs",
+            options: {
+              subPath: `personal/${path}`,
+              ...(surface === "workspace" ? { replace: false } : {}),
+            },
+          });
+        },
+      );
+
+      it.each([{}, { ctrlKey: true }, { metaKey: true }])(
+        "opens external links through the normal URL handler (%s)",
+        async (modifiers) => {
+          const url = "https://www.iana.org/domains/reserved";
+          const slot = renderLinkedDocument(surface, `[Website](${url})`);
+          const link = await slot.findByRole("link", { name: "Website" });
+          fireEvent.click(link, modifiers);
+          expect(slot.navigateCalls).toContainEqual({ method: "openUrl", url });
+        },
+      );
+
+      it.each([
+        "#section",
+        "reference.md?revision=1",
+        "reference.md#section",
+        "/reference.md",
+      ])(
+        "does not reinterpret unsupported links as vault documents: %s",
+        async (href) => {
+          const slot = renderLinkedDocument(surface, `[Reference](${href})`);
+          const link = await slot.findByRole("link", { name: "Reference" });
+          fireEvent.click(link);
+          expect(slot.navigateCalls).toEqual([]);
+        },
+      );
+
+      it("never renders a script link", async () => {
+        const slot = renderLinkedDocument(
+          surface,
+          "[Run](javascript:alert(1)) [Reference](reference.md)",
+        );
+        await slot.findByRole("link", { name: "Reference" });
+        expect(slot.queryByRole("link", { name: /Run/ })).toBeNull();
+      });
+
+      it("does not navigate when opening the link context menu", async () => {
+        const slot = renderLinkedDocument(surface, "[Reference](reference.md)");
+        const link = await slot.findByRole("link", { name: "Reference" });
+        fireEvent.click(link, { button: 2 });
+        expect(slot.navigateCalls).toEqual([]);
+      });
+    },
+  );
 
   it("creates a note inside the currently selected folder", async () => {
     const slot = renderSlot(

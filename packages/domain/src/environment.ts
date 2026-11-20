@@ -1,6 +1,9 @@
 import { jsonValueSchema } from "./json-value.js";
 import { z } from "zod";
 
+export const environmentHolderSchema = z.literal("user");
+export type EnvironmentHolder = z.infer<typeof environmentHolderSchema>;
+
 export const environmentMachineSelectionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
   z.object({
@@ -120,12 +123,14 @@ export const environmentSchema = z.object({
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
   status: environmentStatusSchema,
+  statusMessage: z.string().nullable(),
   environmentProviderId: z.string().nullable(),
   lifecycle: environmentLifecycleSchema,
   hostLifecycle: environmentHostLifecycleSchema,
   environmentProviderSelection: environmentProviderSelectionSchema.nullable(),
   environmentProviderInstanceKey: z.string().nullable(),
   managed: z.boolean(),
+  heldBy: environmentHolderSchema.nullable(),
   workspaceProvisionType: workspaceProvisionTypeSchema.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),

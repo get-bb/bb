@@ -235,8 +235,9 @@ credential-bearing grants in private plugin storage. Never put credentials in
 machine inputs, resources, or progress output.
 
 Machines settings select the default provider. Without a saved selection,
-core uses the first registered provider, or direct when none are registered,
-and it keeps the selected provider for later enrollment of the same machine.
+core uses the provider of the earliest-installed plugin, or direct when none
+are registered, and it keeps the selected provider for later enrollment of the
+same machine.
 The direct provider reads `machineServerUrl`, falling back to
 `BB_EXTERNAL_URL`. Declaring a URL does not prove reachability from a sandbox.
 
@@ -245,5 +246,48 @@ configuration, which checks provider availability in parallel with a
 five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
-public `serverUrl` is validated and displayed in Machines settings. Reading
-configuration never acquires access; the grant's URL is the one machines use.
+public `serverUrl` is validated and displayed in Machines settings, and while
+the provider is available core's Host and Origin guards admit its origin, so
+browsers and machines can use it without `BB_APP_URL`. Reading configuration
+never acquires access; the grant's URL is the one machines use.
+
+## Create steps and holds
+
+Declare `apiVersion: 2`. Create and restore contexts carry
+`environment: { id, name, projectId }`, the environment being created, and no
+thread, so core can also create the environment before any thread exists
+(`bb environment create`, `bb.sdk.environments.experimental_create`).
+
+A provider calls core's steps in the order it needs: `branchName()` resolves
+to `<prefix><slug>-<id>` once the thread's title settles (at once from the
+environment's name and id without a thread), so await it late; `setup(path)`
+claims `path` as a provider-owned workspace and starts core's setup there
+while create continues. The thread starts only after create returns `created`
+with the same path; without a call, core runs setup after create.
+`projectCheckout.ownsPath` says bb cloned the checkout.
+
+Path keys come from the driving thread when there is one, so thread
+workspaces keep their names, and from the environment id otherwise.
+
+Providers built before `apiVersion: 2` still run, but the types no longer
+offer their contexts, and the plugin shows a problem asking to migrate:
+replace `suggestedBranchName` with `await branchName()`,
+`experimental_existingPath(inputs)` with `locate()` returning
+`{ path, reuse: true }`, and `experimental_claimPath` with `locate()` or
+`setup()`; read `projectCheckout.ownsPath` and `environment` instead of
+`experimental_ownsPath` and `thread`. Core refuses to create their
+environments without a thread.
+
+### Environments created before threads, and holds
+
+`bb.sdk.environments.experimental_create({ projectId, hostId?, provider?:
+{ id, inputs? }, name?, hold: "user" })` creates an environment no thread
+asked for. Its project, machine, provider selection, name and holder are
+stored on the environment, and core runs it, setup included, on the same
+create path threads use; restart resumes it on the same setup operation. A
+user hold keeps the environment until the user deletes it and lets threads
+join it; it is never retired for having no threads. Environment responses
+carry `heldBy` (`"user"` or null) and `statusMessage`, and
+`sdk.environments.list({ heldBy })` filters by holder. Environment responses
+expose only the read-only lifecycle projection: phase, retireAt, and
+teardown status/attempt/message.

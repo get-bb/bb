@@ -1,0 +1,48 @@
+{
+  "name": "bb-plugin-bb--tailscale",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reach this bb privately at https://<machine>.<tailnet>.ts.net through Tailscale Serve, set up in one click.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.131"
+  },
+  "bb": {
+    "name": "Tailscale",
+    "description": "Reach this bb privately at https://<machine>.<tailnet>.ts.net through Tailscale Serve, set up in one click.",
+    "branding": {
+      "icon": "./icons/tailscale.svg"
+    },
+    "server": "./src/server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsrs --noEmit",
+    "lint:type-aware": "oxlint -c ../../.oxlintrc.type-aware.json",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist .",
+    "test": "vitest run --config vitest.config.ts",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sonner": "^1.7.4",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.12"
+  }
+}

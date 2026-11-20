@@ -278,8 +278,9 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
 Set Default machine access with
-`bb settings general defaultMachineAccess direct` or `connect`; `null` uses
-the first registered access provider, or direct when none is registered. An
+`bb settings general defaultMachineAccess direct`, `connect`, or `tailscale`
+(with the Tailscale plugin installed); `null` uses the provider of the
+earliest-installed plugin, or direct when none is registered. An
 unpaired provider reports setup required. `bb settings show --json` includes
 fresh provider availability and the effective selection; failed or timed-out
 checks report unavailable. Machines use this access for ongoing runtime

@@ -433,6 +433,7 @@ describe("environment path claims", () => {
         fixture.db,
         { ...preparing, claimPath: "/tmp/shared-checkout" },
         "/tmp/shared-checkout",
+        existing.id,
       );
 
       expect(bound).toMatchObject({
@@ -445,6 +446,89 @@ describe("environment path claims", () => {
       });
     },
   );
+
+  it.each(["provisioning", "ready"] as const)(
+    "leaves a %s environment untouched when a cancelled preparation binds to its path",
+    (status) => {
+      const fixture = setup();
+      const existing = seedClaim(fixture, {
+        environmentProviderId: "project-checkout",
+        path: "/tmp/shared-checkout",
+        providerOwnsPath: false,
+      });
+      fixture.db
+        .update(environments)
+        .set({ status, attempt: 3 })
+        .where(eq(environments.id, existing.id))
+        .run();
+      const before = fixture.db
+        .select()
+        .from(environments)
+        .where(eq(environments.id, existing.id))
+        .get();
+      const preparing = reserveEnvironment(fixture.db, {
+        projectId: fixture.project.id,
+        hostId: fixture.host.id,
+        ownerThreadId: "thread-cancelled",
+        providerOwnsPath: false,
+        status: "creating",
+        statusMessage: "Creating environment",
+      });
+      expect(
+        claimEnvironmentPath(fixture.db, preparing, "/tmp/shared-checkout"),
+      ).toBe(true);
+      fixture.db
+        .update(environments)
+        .set({ teardownStatus: "running", retireAt: Date.now() })
+        .where(eq(environments.id, preparing.id))
+        .run();
+
+      const bound = bindEnvironmentPath(
+        fixture.db,
+        preparing,
+        "/tmp/shared-checkout",
+        existing.id,
+      );
+
+      expect(bound).toMatchObject({
+        id: preparing.id,
+        ownerThreadId: null,
+        status: "destroyed",
+        teardownStatus: "removed",
+        claimPath: null,
+        path: null,
+      });
+      expect(
+        fixture.db
+          .select()
+          .from(environments)
+          .where(eq(environments.id, existing.id))
+          .get(),
+      ).toEqual(before);
+    },
+  );
+
+  it("refuses to fold a preparing environment into an environment it did not declare", () => {
+    const fixture = setup();
+    const existing = seedClaim(fixture, {
+      environmentProviderId: "project-checkout",
+      path: "/tmp/undeclared",
+      providerOwnsPath: false,
+    });
+    const preparing = reserveEnvironment(fixture.db, {
+      projectId: fixture.project.id,
+      hostId: fixture.host.id,
+      ownerThreadId: "thread-undeclared",
+      providerOwnsPath: false,
+      status: "creating",
+      statusMessage: "Creating environment",
+    });
+    expect(() =>
+      bindEnvironmentPath(fixture.db, preparing, "/tmp/undeclared", null),
+    ).toThrow(
+      `Workspace /tmp/undeclared already belongs to environment ${existing.id}`,
+    );
+  });
 
   it("claims a path only for a provider that owns the directory", () => {
     const fixture = setup();

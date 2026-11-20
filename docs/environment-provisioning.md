@@ -4,7 +4,8 @@ An environment row exists before its provider creates the workspace. Its
 `status` moves from `creating` through `provisioning` (daemon attachment and
 setup) to `ready`, or to `error`. Environment routes, the SDK, and the CLI
 show reservations with `status: creating`; `statusMessage` holds current
-progress or the terminal creation error. A server restart resumes the same walk.
+progress or the reason create or setup failed, and is null once the
+environment is `ready` or `destroyed`. A server restart resumes the same walk.
 
 - Creation failures are terminal; there is no automatic create retry. An
   explicit retry cleans the previous attempt and reuses the row. A failed setup

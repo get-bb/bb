@@ -8,16 +8,16 @@ import {
   createGitStatusHook,
   type GitStatusKeyedQuery,
 } from "bb-plugin-bb--git/status-state";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
-import { usePluginFrontendRegistered } from "@/lib/plugin-slots";
 import {
-  experimental_useRpcKeyedQuery as useRpcKeyedQuery,
-} from "@/lib/plugin-sdk-hooks";
+  usePluginFrontendRegistered,
+  usePluginFrontendSettled,
+} from "@/lib/plugin-slots";
+import { experimental_useRpcKeyedQuery as useRpcKeyedQuery } from "@/lib/plugin-sdk-hooks";
 
 const useGitStatusQuery: GitStatusKeyedQuery = (args) => {
-  const frontendsSettled = usePluginFrontendsSettled();
+  const gitPluginSettled = usePluginFrontendSettled(GIT_PLUGIN_ID);
   const gitPluginRegistered = usePluginFrontendRegistered(GIT_PLUGIN_ID);
-  const gitPluginOff = frontendsSettled && !gitPluginRegistered;
+  const gitPluginOff = gitPluginSettled && !gitPluginRegistered;
   return useRpcKeyedQuery({
     pluginId: GIT_PLUGIN_ID,
     contract: gitRpcContract,

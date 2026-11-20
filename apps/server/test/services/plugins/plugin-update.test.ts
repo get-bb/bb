@@ -53,6 +53,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { expectCorePluginFoldersUnclaimable } from "../../helpers/core-plugin-folders.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -1148,6 +1149,9 @@ describe("plugin update service and routes", () => {
     await expect(
       readdir(join(workDir, "data", "plugins", "snapshots", "updater")),
     ).resolves.toEqual([]);
+    await expectCorePluginFoldersUnclaimable(join(workDir, "data"), [
+      "updater",
+    ]);
     const remaining = listPluginArtifacts(db, "updater");
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).toBe(

@@ -32,9 +32,17 @@ interface RenderedMarkdownDocument {
   mounts: readonly string[];
 }
 
-const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "demo", generation: 1, component: () => null },
-]);
+const registry = buildMessageDirectiveRegistry(
+  [
+    {
+      id: "inline-vis",
+      pluginId: "demo",
+      generation: 1,
+      component: () => null,
+    },
+  ],
+  { unclaimed: "literal" },
+);
 
 export const config: MarkdownPieceRenderConfig = {
   codeFenceRendererRegistry: null,

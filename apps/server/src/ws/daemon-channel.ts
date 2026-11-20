@@ -2,11 +2,12 @@ import {
   HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
   HostDaemonWsSequencer,
 } from "@bb/host-daemon-contract";
+import { COMPRESSED_SEND } from "./compression.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 export interface RawDaemonSocket {
   close(code?: number, reason?: string): void;
-  send(data: string): void;
+  send(data: string, options?: { compress: boolean }): void;
 }
 
 export type DaemonChannelDetachResult = "detached" | "ended" | "stale";
@@ -25,7 +26,7 @@ export class DaemonChannel {
       return;
     }
     const frame = this.sequencer.encode(data);
-    this.socket?.send(frame);
+    this.socket?.send(frame, COMPRESSED_SEND);
   }
 
   close(code?: number, reason?: string): void {
@@ -78,7 +79,7 @@ export class DaemonChannel {
     previous?.close(1000, "resumed");
     socket.send(this.sequencer.encodeAck());
     for (const frame of this.sequencer.replayFrom(peerReceivedSeq)) {
-      socket.send(frame);
+      socket.send(frame, COMPRESSED_SEND);
     }
   }
 }

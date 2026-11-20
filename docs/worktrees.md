@@ -115,6 +115,10 @@ Contract:
 - It gets the daemon's sanitized environment overlaid with your login shell's
   environment (including its `PATH`), plus the variables you configured for the
   machine and project. Teardown gets the same environment.
+- In a new worktree, setup starts while the thread's title, and so its branch
+  name, is still being generated: HEAD is detached at the base, and bb creates
+  the branch alongside setup. The branch exists before the agent starts. Don't
+  read the branch name in setup.
 - stdin is closed. stdout and stderr stream into the thread's provisioning
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and

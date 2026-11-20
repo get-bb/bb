@@ -1113,7 +1113,7 @@ export function seedThreads(
     .filter(
       (thread) => thread.spec.slot === CHAIN_END_SLOT && !thread.spec.deleted,
     )
-    .slice(-200)
+    .slice(-20)
     .map((thread) => thread.id);
   const descendantRootIds = [
     orchestrator.id,
@@ -1122,7 +1122,7 @@ export function seedThreads(
         (thread) =>
           thread.spec.slot === ROOT_SLOT && thread.id !== orchestrator.id,
       )
-      .slice(-199)
+      .slice(-19)
       .map((thread) => thread.id),
   ];
   const mentionThreadIds = threads

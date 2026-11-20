@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { pluginCliCall } from "@bb/domain/plugin-cli";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
-import type { PluginCapability, SkillListResponse } from "@bb/server-contract";
+import type { PluginCapability } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -44,6 +44,7 @@ import {
 } from "@/lib/route-paths";
 import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
 
 function pluginActivityIcon(state: "running" | "ok" | "error" | null): {
   name: IconName;
@@ -471,10 +472,16 @@ export function PluginIncludes({
   configurationPath?: string;
 }) {
   const slots = usePluginSlots();
-  const queryClient = useQueryClient();
-  const cachedSkills = queryClient.getQueryData<SkillListResponse>(
-    projectSkillsQueryKey(PERSONAL_PROJECT_ID),
-  );
+  const cachedSkills = useQuery({
+    queryKey: projectSkillsQueryKey(PERSONAL_PROJECT_ID),
+    queryFn: ({ signal }) =>
+      sdk.skills.list({
+        projectId: PERSONAL_PROJECT_ID,
+        environmentId: null,
+        signal,
+      }),
+    enabled: false,
+  }).data;
   const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
 
   const skillDestination = (capabilityId: string): string => {

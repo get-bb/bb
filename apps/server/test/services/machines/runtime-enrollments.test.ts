@@ -326,6 +326,7 @@ it("serves a composition's explicit icon instead of the machine provider's icon"
       svg,
     );
     api.experimental_environments.register({
+      apiVersion: 2,
       id: "icon-workspace",
       displayName: "Icon workspace",
       description: "Prepare a workspace for this thread.",

@@ -243,6 +243,7 @@ function createOpeningWebSocket(
       onclose: null,
       onerror: null,
       send: vi.fn(),
+      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),

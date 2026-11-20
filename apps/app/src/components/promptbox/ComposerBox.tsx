@@ -56,12 +56,7 @@ import {
   type PluginComposerHost,
   type PluginComposerStaticView,
 } from "@/components/plugin/plugin-composer-host";
-import {
-  useResolvedComposerEditor,
-  useResolvedComposerPlusMenuItems,
-  useResolvedComposerPopups,
-  useResolvedComposerSendMenuItems,
-} from "@/components/plugin/composer-slot-hooks";
+import { useResolvedComposerContributions } from "@/components/plugin/composer-slot-hooks";
 import {
   useAppCommandKeyDispatch,
   useAppCommandShortcut,
@@ -430,11 +425,11 @@ function useComposerRendererHostApi({
     isSubmitting: submission?.isSubmitting ?? false,
   });
   const view = useOptionalPluginComposerStaticView() ?? localView;
-  const pluginScopeKind = suppress ? null : view.scope.kind;
-  const resolvedEditor = useResolvedComposerEditor(pluginScopeKind);
-  const popups = useResolvedComposerPopups(pluginScopeKind);
-  const plusMenuItems = useResolvedComposerPlusMenuItems(view.scope.kind);
-  const sendMenuItems = useResolvedComposerSendMenuItems(pluginScopeKind);
+  const mountsScopedContributions = !suppress;
+  const resolved = useResolvedComposerContributions(
+    view.scope.kind,
+    mountsScopedContributions,
+  );
   const draft = useSyncExternalStore(
     draftStore.subscribeDraft,
     draftStore.getCurrent,
@@ -513,7 +508,7 @@ function useComposerRendererHostApi({
   const maxHeight = useContext(ComposerMaxHeightContext);
 
   const decorationSources = composerDecorationSources(
-    resolvedEditor.effects,
+    resolved.effects,
     textEffects ?? [],
   );
   const [draftObserverRunner] = useState(createDraftObserverRunner);
@@ -522,7 +517,7 @@ function useComposerRendererHostApi({
       text: draft.text,
       mentions: draft.mentions,
       view: liveView,
-      observers: resolvedEditor.observers,
+      observers: resolved.observers,
     });
   });
   useEffect(() => () => draftObserverRunner.dispose(), [draftObserverRunner]);
@@ -638,14 +633,16 @@ function useComposerRendererHostApi({
     attachEditor,
     onFocusCommand,
     reportMenuLayout: reportTypeaheadLayout,
-    runsPluginCommands: pluginCustomizable,
+    runsPluginCommands: host !== null,
     isFocusedPane,
   };
   const contributions: ExperimentalComposerContributions = {
-    popups,
-    plusMenuItems,
-    sendMenuItems,
-    Actions: suppress ? NoComposerPluginActions : ComposerPluginActions,
+    popups: resolved.popups,
+    plusMenuItems: resolved.plusMenuItems,
+    sendMenuItems: resolved.sendMenuItems,
+    Actions: mountsScopedContributions
+      ? ComposerPluginActions
+      : NoComposerPluginActions,
     Popup: PluginComposerPopup,
     MenuEntry: ComposerMenuEntry,
   };

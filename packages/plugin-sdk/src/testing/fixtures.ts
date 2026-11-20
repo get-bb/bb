@@ -250,8 +250,10 @@ export function makeMessageDispatchHookContext(
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
     workspaceProvisionType: null,
     status: "ready",
+    statusMessage: null,
     createdAt: 0,
     updatedAt: 0,
   };

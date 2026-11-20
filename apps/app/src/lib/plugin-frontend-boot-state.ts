@@ -7,9 +7,11 @@ let settleFloorReached = false;
 let serverPluginsStarting = false;
 let reconcilePending = false;
 let loadFailed = false;
+let settledOnce = false;
 const listeners = new Set<() => void>();
 
 function notify(): void {
+  if (!settledOnce && getSettledSnapshot()) settledOnce = true;
   for (const listener of listeners) listener();
 }
 
@@ -76,6 +78,18 @@ export function usePluginFrontendsSettled(): boolean {
   );
 }
 
+function getSettledOnceSnapshot(): boolean {
+  return settledOnce;
+}
+
+export function usePluginFrontendsSettledOnce(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    getSettledOnceSnapshot,
+    getSettledOnceSnapshot,
+  );
+}
+
 function getLoadFailedSnapshot(): boolean {
   return loadFailed;
 }
@@ -102,4 +116,5 @@ export function resetPluginFrontendBootStateForTest(): void {
   serverPluginsStarting = false;
   reconcilePending = false;
   loadFailed = false;
+  settledOnce = false;
 }

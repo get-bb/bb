@@ -145,14 +145,14 @@ export const uiPreferenceDefinitions = {
         : value,
     ),
     "__automatic__",
-    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
+    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__, and so does a plugin key whose plugin is disabled or uninstalled.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>
       value === "__builtin__" ? "thread-list/thread-list" : value,
     ),
     "__automatic__",
-    "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
+    "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list. A plugin key whose plugin is disabled or uninstalled behaves as __automatic__.",
   ),
   "sidebar.updates.providerCli": defineUiPreference(
     z.boolean(),
@@ -167,7 +167,7 @@ export const uiPreferenceDefinitions = {
   "composer.provider": defineUiPreference(
     uiPreferenceStringSchema,
     "__automatic__",
-    "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. With no composer plugin enabled, no composer is shown.",
+    "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. A plugin key whose plugin is disabled or uninstalled behaves as __automatic__. With no composer plugin enabled, no composer is shown.",
   ),
   "threadContextCard.pinned": defineUiPreference(
     z.boolean(),

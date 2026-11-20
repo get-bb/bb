@@ -66,6 +66,7 @@ interface RootComposeSecondaryContentProps {
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
+  projectId: string | null;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -76,6 +77,7 @@ export function RootComposeSecondaryContent({
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
+  projectId,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
@@ -123,7 +125,7 @@ export function RootComposeSecondaryContent({
         isCompact={isCompactHomeLayout}
         composer={children}
         compactScrollContent={compactScrollContent}
-        homepageSections={<PluginHomepageSections />}
+        homepageSections={<PluginHomepageSections projectId={projectId} />}
         wideContentClassName={contentClassName}
       />
     </div>

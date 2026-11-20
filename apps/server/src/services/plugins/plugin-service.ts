@@ -691,7 +691,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   const {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    registrationProblems,
     appBundles,
     bindSdk: bindRuntimeSdk,
     resolveRpcCaller,
@@ -1850,7 +1850,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
-        agentToolProblems.delete(id);
+        registrationProblems.delete(id);
         appBundles.delete(id);
         brandingAssets.delete(id);
         identities.delete(id);

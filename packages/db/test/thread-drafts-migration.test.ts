@@ -18,8 +18,8 @@ import {
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
   dropPluginMarketplaceEnabledColumn,
-  dropQueuedMessageRequestedSendAtColumn,
   rewindMachineTeardownRecoveryColumns,
+  dropEnvironmentHoldColumns,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -131,7 +131,7 @@ it.each([false, true])(
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
-      dropQueuedMessageRequestedSendAtColumn(db);
+      dropEnvironmentHoldColumns(db);
       migrate(db);
       migrate(db);
 

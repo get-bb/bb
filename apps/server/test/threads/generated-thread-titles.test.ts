@@ -381,14 +381,13 @@ describe("generated thread titles", () => {
         path: "/tmp/generated-title-rename-workspace",
         status: "ready",
       });
-      installFakeGitWorktreeProvider(() => ({
-        action: "ready",
-        environment: {
-          type: "host",
-          hostId: host.id,
-          path: "/tmp/generated-title-rename-workspace",
-        },
-      }));
+      installFakeGitWorktreeProvider(
+        () => ({
+          action: "ready",
+          environment: { type: "host", hostId: host.id, path: "/tmp/generated-title-rename-workspace" },
+        }),
+        { locate: () => ({ path: "/tmp/generated-title-rename-workspace", reuse: true }) },
+      );
 
       const thread = await createManagedWorktreeThread(harness, {
         hostId: host.id,
@@ -512,14 +511,13 @@ describe("generated thread titles", () => {
         path: "/tmp/user-title-no-rename-workspace",
         status: "ready",
       });
-      installFakeGitWorktreeProvider(() => ({
-        action: "ready",
-        environment: {
-          type: "host",
-          hostId: host.id,
-          path: "/tmp/user-title-no-rename-workspace",
-        },
-      }));
+      installFakeGitWorktreeProvider(
+        () => ({
+          action: "ready",
+          environment: { type: "host", hostId: host.id, path: "/tmp/user-title-no-rename-workspace" },
+        }),
+        { locate: () => ({ path: "/tmp/user-title-no-rename-workspace", reuse: true }) },
+      );
 
       const thread = await createManagedWorktreeThread(harness, {
         hostId: host.id,

@@ -14,6 +14,7 @@ import {
 import type { HostDaemonLogger } from "./logger.js";
 import type { ServerClient } from "./server-client.js";
 import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
+import type { WebSocket as NodeWebSocket } from "ws";
 import { createNodeWebSocketConstructor } from "./websocket-constructor.js";
 
 export interface ReconnectingWebSocketLike {
@@ -24,6 +25,7 @@ export interface ReconnectingWebSocketLike {
   onclose: ((event: any) => void) | null;
   onerror: ((event: any) => void) | null;
   send(data: string): void;
+  sendUncompressed(data: string): void;
   close(code?: number, reason?: string): void;
   reconnect(code?: number, reason?: string): void;
 }
@@ -138,9 +140,21 @@ export function createDefaultReconnectingWebSocket(
   options: ReconnectingWebSocketOptions,
 ): ReconnectingWebSocketLike {
   const { headers, protocols, ...reconnectionOptions } = options;
-  return new ReconnectingWebSocket(urlProvider, protocols ?? [], {
+  let current: NodeWebSocket | null = null;
+  const socket = new ReconnectingWebSocket(urlProvider, protocols ?? [], {
     ...reconnectionOptions,
-    WebSocket: createNodeWebSocketConstructor(headers),
+    WebSocket: createNodeWebSocketConstructor(headers, (created) => {
+      current = created;
+    }),
+  });
+  return Object.assign(socket, {
+    sendUncompressed(data: string): void {
+      if (current !== null && current.readyState === OPEN_READY_STATE) {
+        current.send(data, { compress: false });
+        return;
+      }
+      socket.send(data);
+    },
   });
 }
 

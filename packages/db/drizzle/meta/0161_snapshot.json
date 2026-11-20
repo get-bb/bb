@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c223a295-9500-4053-9f74-f1a4ac2b0c57",
+  "id": "fb9fa2fe-f52d-4aef-9cd2-521258fb3ee8",
   "prevId": "56917eca-468e-4bb4-b586-82f19a5a6f84",
   "tables": {
     "app_settings": {
@@ -769,6 +769,21 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "held_by": {
+          "name": "held_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "create_pending": {
+          "name": "create_pending",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "attempt": {
           "name": "attempt",
@@ -3653,13 +3668,6 @@
         },
         "send_at": {
           "name": "send_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "requested_send_at": {
-          "name": "requested_send_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

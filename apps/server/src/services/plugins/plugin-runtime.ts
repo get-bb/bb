@@ -463,7 +463,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   >();
   const hungServices = new Map<string, Set<string>>();
   const needsConfiguration = new Map<string, string>();
-  const agentToolProblems = new Map<string, string>();
+  const registrationProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
@@ -541,11 +541,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     setStatus(id, "needs-configuration", message);
   }
 
-  function reportAgentToolProblem(id: string, message: string): void {
-    agentToolProblems.set(id, message);
+  function reportRegistrationProblem(id: string, message: string): void {
+    const reported = registrationProblems.get(id);
+    if (reported?.split("; ").includes(message)) return;
+    const problems =
+      reported === undefined ? message : `${reported}; ${message}`;
+    registrationProblems.set(id, problems);
     logger.warn(`[plugin:${id}] ${message}`);
     if (statuses.get(id)?.status === "running") {
-      setStatus(id, "running", message);
+      setStatus(id, "running", problems);
     }
   }
 
@@ -599,6 +603,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   const reportedStaleErrors = new WeakSet<PluginContextStaleError>();
   const pluginCodeLocations = new Map<string, string>();
+  const pluginCodeContext = new AsyncLocalStorage<string>();
 
   function listPluginCodeOwners(): { location: string; owner: string }[] {
     return [...pluginCodeLocations].map(([location, pluginId]) => ({
@@ -629,14 +634,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return true;
   }
 
+  function hasCodeFrames(error: unknown): boolean {
+    if (!(error instanceof Error) || typeof error.stack !== "string")
+      return false;
+    return error.stack.split("\n").some((line) => {
+      const location = /^\s+at (?:async )?(?:.*\()?(.+):\d+:\d+\)?$/.exec(
+        line,
+      )?.[1];
+      return location !== undefined && !location.startsWith("node:");
+    });
+  }
+
   function containPluginError(error: unknown): boolean {
     if (reportStaleError(error)) return true;
-    const pluginId = pluginOwningStack(error);
+    const stackOwner = pluginOwningStack(error);
+    const pluginId =
+      stackOwner ??
+      (hasCodeFrames(error) ? undefined : pluginCodeContext.getStore());
     if (pluginId === undefined) return false;
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
       { err: error },
-      `[plugin:${pluginId}] uncaught error: ${message}`,
+      stackOwner === undefined
+        ? `[plugin:${pluginId}] uncaught error from work this plugin started (its stack names no code): ${message}`
+        : `[plugin:${pluginId}] uncaught error: ${message}`,
     );
     if (statuses.get(pluginId)?.status === "running") {
       setStatus(pluginId, "running", `uncaught error: ${message}`);
@@ -887,11 +908,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function listPluginServerAccessProviders() {
-    return [...loaded].flatMap(([pluginId, plugin]) =>
-      [...plugin.handle.serverAccessProviders.values()].map((provider) =>
-        ownedRecord({ pluginId, provider }, plugin),
-      ),
-    );
+    return [...loaded]
+      .filter(([, plugin]) => plugin.handle.serverAccessProviders.size > 0)
+      .map(([pluginId, plugin]) => ({
+        pluginId,
+        plugin,
+        installedAt:
+          getInstalledPlugin(deps.db, pluginId)?.installedAt ??
+          Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.installedAt - b.installedAt)
+      .flatMap(({ pluginId, plugin }) =>
+        [...plugin.handle.serverAccessProviders.values()].map((provider) =>
+          ownedRecord({ pluginId, provider }, plugin),
+        ),
+      );
   }
 
   function listPluginMachineProviders(): PluginMachineProviderRecord[] {
@@ -945,8 +976,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const signal = call.signal;
     const stats = statsFor(id);
     const startedAt = performance.now();
-    const execution = runEventLoopWork(`plugin:${id} ${label}`, () =>
-      run(signal),
+    const execution = pluginCodeContext.run(id, () =>
+      runEventLoopWork(`plugin:${id} ${label}`, () => run(signal)),
     );
     const settled = execution.then(
       () => undefined,
@@ -1897,8 +1928,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return undefined;
       },
-      reportAgentToolProblem: (message) => {
-        reportAgentToolProblem(row.id, message);
+      reportRegistrationProblem: (message) => {
+        reportRegistrationProblem(row.id, message);
       },
       requestQueueDrain: () => {
         // Unwired in isolated plugin-runtime tests, which have no thread
@@ -2026,7 +2057,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         const filename = runtimeRequire.resolve(serverEntry.path);
         pluginCodeLocations.set(filename, row.id);
         try {
-          const exported: unknown = runtimeRequire(filename);
+          const exported: unknown = pluginCodeContext.run(row.id, () =>
+            runtimeRequire(filename),
+          );
           mod =
             typeof exported === "function"
               ? { default: exported }
@@ -2044,7 +2077,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         rollbackGenerations.push(mutation.rollback);
         candidateModuleRootUrls.add(mutation.rootUrl);
         pluginCodeLocations.set(mutation.rootUrl, row.id);
-        mod = (await import(pathToFileURL(serverEntry.path).href)) as {
+        mod = (await pluginCodeContext.run(
+          row.id,
+          () => import(pathToFileURL(serverEntry.path).href),
+        )) as {
           default?: unknown;
         };
       }
@@ -2054,10 +2090,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
         );
       }
-      await runEventLoopWork(`plugin:${row.id} load`, () =>
-        runFactoryTimeBoxed(
-          factory as (api: BbPluginApi) => unknown,
-          handle.api,
+      await pluginCodeContext.run(row.id, () =>
+        runEventLoopWork(`plugin:${row.id} load`, () =>
+          runFactoryTimeBoxed(
+            factory as (api: BbPluginApi) => unknown,
+            handle.api,
+          ),
         ),
       );
     } catch (error) {
@@ -2132,7 +2170,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     else hostArtifacts.set(row.id, hostArtifactCandidate);
     brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
+    registrationProblems.delete(row.id);
     handle.activate();
     const now = Date.now();
     prunePluginSchedules(
@@ -2153,7 +2191,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     if (!needsConfiguration.has(row.id)) {
       const details = [
-        agentToolProblems.get(row.id),
+        registrationProblems.get(row.id),
         appBundleCandidate.problem,
       ].filter((detail): detail is string => typeof detail === "string");
       setStatus(
@@ -2283,7 +2321,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   return {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    registrationProblems,
     appBundles,
     hostArtifacts,
     bindSdk,

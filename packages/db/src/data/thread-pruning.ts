@@ -658,6 +658,6 @@ export function deleteThreadScopedPruningCursors(
   threadId: string,
 ): void {
   db.delete(threadPruningCursors)
-    .where(eq(threadPruningCursors.scope, threadId))
+    .where(eq(threadPruningCursors.threadId, threadId))
     .run();
 }

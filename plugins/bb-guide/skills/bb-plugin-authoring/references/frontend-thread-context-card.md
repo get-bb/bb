@@ -3,7 +3,7 @@
 A thread pane shows its thread context one of two ways: `banner`, the context
 row above the composer, or `card`, the thread context card at the pane's
 upper-right, below the header. bb picks one per pane: `card` while the
-`threadContextCard` experiment is on, for a thread opened as a page whose pane
+`threadContextCard` experiment (off by default) is on, for a thread opened as a page whose pane
 is wide enough to fit the card beside the transcript, except on phones (a
 narrow touch screen); `banner` everywhere else, including narrow panes and
 threads shown inside a panel.

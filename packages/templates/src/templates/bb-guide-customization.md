@@ -244,7 +244,9 @@ not close a previous `0.0.0.0` listener.
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
 port. BB accepts request hosts that are `localhost`, IP addresses (including
-LAN and Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name
+LAN and Tailscale IPs), the address of an available machine access provider
+(such as the Tailscale plugin's Serve address), or the hostname in
+`BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`
 before connecting, including from the CLI or SDK; forwarded host headers cannot
 authorize an unconfigured name. BB Connect needs no additional configuration.
@@ -265,9 +267,11 @@ bb settings keyboard reset [command] [--platform mac|windows|linux]
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `terminal.find` applies while a terminal has
-focus: `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere, so Ctrl+letter keys keep
-reaching the shell. `hints` (default true) shows or hides the delayed shortcut
+unbound `panel.fullScreen.toggle`. A focused terminal keeps the keys a shell
+reads: keys without Ctrl, Alt or Cmd (Escape, Enter, arrows, typing) and plain
+Ctrl+letter, Ctrl+Space, Ctrl+[, Ctrl+], Ctrl+\ and Ctrl+/. Every other bound
+shortcut, including function keys, runs its command from the terminal. That is
+why `terminal.find` is `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere. `hints` (default true) shows or hides the delayed shortcut
 badges shown while holding the modifier key; shortcuts work either way.
 
 `history.back` / `history.forward` (`Mod+[` / `Mod+]`) follow the pages opened
@@ -330,16 +334,19 @@ The thread list is drawn by `sidebar.threadListProvider`, which defaults to
 Thread list plugin (`thread-list/thread-list`), or the bundled plugin when
 there is none, so installing a thread list plugin switches to it. Select one
 with `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>`, or
-reset to restore Automatic. The bundled Thread list plugin keeps its own
-layout (organization mode, sort, grouping, hidden and collapsed groups) and
-copies the legacy `sidebar.*` layout keys from here only once; change its
-layout with `bb thread-list prefs` (see `bb guide plugins`).
+reset to restore Automatic. A selected list whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. The bundled Thread list
+plugin keeps its own layout (organization mode, sort, grouping, hidden and
+collapsed groups) and copies the legacy `sidebar.*` layout keys from here only
+once; change its layout with `bb thread-list prefs` (see `bb guide plugins`).
 
 The composer's input box is drawn by `composer.provider`, which defaults to
 `__automatic__`: the first composer plugin you installed, or the bundled
 Composer plugin (`bb--composer/composer`) when there is none. Pick one with
 `bb settings ui set composer.provider <plugin-id>/<slot-id>`, or reset to
-restore Automatic. With no composer plugin enabled, no composer is shown.
+restore Automatic. A selected composer whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. With no composer plugin
+enabled, no composer is shown.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
