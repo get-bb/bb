@@ -78,6 +78,11 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
   listStoredConversationOutlineEventRows,
+  listStoredConversationOutlineEventRowWindow,
+  listStoredClientTurnRequestSequencesAfter,
+  findStoredEventsOutsideSequenceWindow,
+  hasStoredThreadErrorBeforeNextTurnStarted,
+  hasStoredAgentMessageDeltaCountAtLeast,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRowMetadata,
   listStoredEventRows,
@@ -1491,9 +1496,57 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
     },
     ceilingMs: 750,
     reason:
-      "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads and message lookups read it",
+      "Known linear cost: returns every outline row since the last context clear (60,000 at 10,000 turns); only cold outline loads read it",
     run: (db, fixture) =>
       listStoredConversationOutlineEventRows(db, {
+        sequenceStart: 0,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredConversationOutlineEventRowWindow`,
+    run: (db, fixture) =>
+      listStoredConversationOutlineEventRowWindow(db, {
+        beforeSequence: turnAt(fixture, 1).requestSequence,
+        sequenceStart: turnAt(fixture, 0).requestSequence,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listStoredClientTurnRequestSequencesAfter`,
+    run: (db, fixture) =>
+      listStoredClientTurnRequestSequencesAfter(db, {
+        afterSequence: turnAt(fixture, 0).requestSequence,
+        limit: 3,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#findStoredEventsOutsideSequenceWindow`,
+    run: (db, fixture) => {
+      const turn = turnAt(fixture, 0);
+      return findStoredEventsOutsideSequenceWindow(db, {
+        itemIds: [turn.agentMessageItemId, ...turn.commandItemIds],
+        outsideBeforeSequence: turn.requestSequence,
+        outsideFromSequence: turnAt(fixture, 1).requestSequence,
+        threadId: fixture.threadId,
+        turnIds: [turn.turnId],
+      });
+    },
+  },
+  {
+    name: `${EVENTS}#hasStoredThreadErrorBeforeNextTurnStarted`,
+    run: (db, fixture) =>
+      hasStoredThreadErrorBeforeNextTurnStarted(db, {
+        sequenceStart: turnAt(fixture, 1).requestSequence,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#hasStoredAgentMessageDeltaCountAtLeast`,
+    run: (db, fixture) =>
+      hasStoredAgentMessageDeltaCountAtLeast(db, {
+        count: 1_000,
         sequenceStart: 0,
         threadId: fixture.threadId,
       }),

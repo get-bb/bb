@@ -1522,6 +1522,37 @@ export interface ListStoredConversationOutlineEventRowsArgs {
   threadId: string;
 }
 
+export interface ListStoredConversationOutlineEventRowWindowArgs {
+  beforeSequence: number | null;
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface ListStoredClientTurnRequestSequencesAfterArgs {
+  afterSequence: number;
+  limit: number;
+  threadId: string;
+}
+
+export interface FindStoredEventsOutsideSequenceWindowArgs {
+  itemIds: readonly string[];
+  outsideBeforeSequence: number | null;
+  outsideFromSequence: number | null;
+  threadId: string;
+  turnIds: readonly string[];
+}
+
+export interface HasStoredThreadErrorBeforeNextTurnStartedArgs {
+  sequenceStart: number;
+  threadId: string;
+}
+
+export interface HasStoredAgentMessageDeltaCountAtLeastArgs {
+  count: number;
+  sequenceStart: number;
+  threadId: string;
+}
+
 export interface GetLatestStoredConversationOutlineSequenceArgs {
   threadId: string;
 }
@@ -3156,13 +3187,23 @@ const conversationOutlineStructuralLifecycleTypes = [
   "item/backgroundTask/completed",
 ] satisfies ThreadEventType[];
 
+const conversationOutlineEventTypes = [
+  ...new Set([
+    ...conversationOutlineLifecycleTypes,
+    "item/completed",
+    ...conversationOutlineStructuralLifecycleTypes,
+  ]),
+];
+
 function storedConversationOutlineLifecycleWhere(
   threadId: string,
   sequenceStart: number,
+  beforeSequence: number | null,
 ): SQL {
   return and(
     eq(events.threadId, threadId),
     gte(events.sequence, sequenceStart),
+    beforeSequence === null ? undefined : lt(events.sequence, beforeSequence),
     inArray(events.type, conversationOutlineLifecycleTypes),
   )!;
 }
@@ -3170,10 +3211,12 @@ function storedConversationOutlineLifecycleWhere(
 function storedConversationOutlineCompletedWhere(
   threadId: string,
   sequenceStart: number,
+  beforeSequence: number | null,
 ): SQL {
   return and(
     eq(events.threadId, threadId),
     gte(events.sequence, sequenceStart),
+    beforeSequence === null ? undefined : lt(events.sequence, beforeSequence),
     eq(events.type, "item/completed"),
     inArray(events.itemKind, conversationOutlineItemKinds),
   )!;
@@ -3182,10 +3225,12 @@ function storedConversationOutlineCompletedWhere(
 function storedConversationOutlineStructuralWhere(
   threadId: string,
   sequenceStart: number,
+  beforeSequence: number | null,
 ): SQL {
   return and(
     eq(events.threadId, threadId),
     gte(events.sequence, sequenceStart),
+    beforeSequence === null ? undefined : lt(events.sequence, beforeSequence),
     inArray(events.type, conversationOutlineStructuralLifecycleTypes),
     inArray(events.itemKind, conversationOutlineStructuralItemKinds),
   )!;
@@ -3223,15 +3268,15 @@ export function getLatestStoredConversationOutlineSequence(
   const lifecycle = db
     .select({ sequence: max(events.sequence) })
     .from(events)
-    .where(storedConversationOutlineLifecycleWhere(args.threadId, 0));
+    .where(storedConversationOutlineLifecycleWhere(args.threadId, 0, null));
   const completedConversation = db
     .select({ sequence: max(events.sequence) })
     .from(events)
-    .where(storedConversationOutlineCompletedWhere(args.threadId, 0));
+    .where(storedConversationOutlineCompletedWhere(args.threadId, 0, null));
   const structural = db
     .select({ sequence: max(events.sequence) })
     .from(events)
-    .where(storedConversationOutlineStructuralWhere(args.threadId, 0));
+    .where(storedConversationOutlineStructuralWhere(args.threadId, 0, null));
   const contextClear = db
     .select({ sequence: max(events.sequence) })
     .from(events)
@@ -3253,6 +3298,17 @@ export function listStoredConversationOutlineEventRows(
   db: DbConnection,
   args: ListStoredConversationOutlineEventRowsArgs,
 ): StoredEventRow[] {
+  return selectStoredConversationOutlineEventRows(
+    db,
+    { ...args, beforeSequence: null },
+    false,
+  );
+}
+
+export function listStoredConversationOutlineEventRowWindow(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowWindowArgs,
+): StoredEventRow[] {
   return selectStoredConversationOutlineEventRows(db, args, false);
 }
 
@@ -3260,7 +3316,11 @@ export function listStoredRootConversationOutlineEventRows(
   db: DbConnection,
   args: ListStoredConversationOutlineEventRowsArgs,
 ): StoredEventRow[] {
-  return selectStoredConversationOutlineEventRows(db, args, true);
+  return selectStoredConversationOutlineEventRows(
+    db,
+    { ...args, beforeSequence: null },
+    true,
+  );
 }
 
 export function getStoredConversationOutlineProjectionState(
@@ -3326,29 +3386,20 @@ export function getStoredConversationOutlineProjectionState(
     )
     .limit(1)
     .get();
-  const compactionDelta = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.sequenceStart),
-        eq(events.type, "item/agentMessage/delta"),
-      ),
-    )
-    .offset(args.summaryCompactionDeltaThreshold - 1)
-    .limit(1)
-    .get();
   return {
     includeNestedEvents:
       crossTurnState !== undefined || acceptedNestedRoot !== undefined,
-    summaryCompactionEnabled: compactionDelta !== undefined,
+    summaryCompactionEnabled: hasStoredAgentMessageDeltaCountAtLeast(db, {
+      count: args.summaryCompactionDeltaThreshold,
+      sequenceStart: args.sequenceStart,
+      threadId: args.threadId,
+    }),
   };
 }
 
 function selectStoredConversationOutlineEventRows(
   db: DbConnection,
-  args: ListStoredConversationOutlineEventRowsArgs,
+  args: ListStoredConversationOutlineEventRowWindowArgs,
   rootOnly: boolean,
 ): StoredEventRow[] {
   const rootWhere = rootOnly
@@ -3373,6 +3424,7 @@ function selectStoredConversationOutlineEventRows(
         storedConversationOutlineLifecycleWhere(
           args.threadId,
           args.sequenceStart,
+          args.beforeSequence,
         ),
       ),
     );
@@ -3385,6 +3437,7 @@ function selectStoredConversationOutlineEventRows(
         storedConversationOutlineCompletedWhere(
           args.threadId,
           args.sequenceStart,
+          args.beforeSequence,
         ),
       ),
     );
@@ -3397,6 +3450,7 @@ function selectStoredConversationOutlineEventRows(
         storedConversationOutlineStructuralWhere(
           args.threadId,
           args.sequenceStart,
+          args.beforeSequence,
         ),
         or(
           eq(events.type, "item/started"),
@@ -3733,6 +3787,148 @@ export function listTimelineWindowHintsDescending(
     ORDER BY sequence DESC
     LIMIT ${args.limit}
   `);
+}
+
+export function listStoredClientTurnRequestSequencesAfter(
+  db: DbConnection,
+  args: ListStoredClientTurnRequestSequencesAfterArgs,
+): number[] {
+  return db
+    .all<{ sequence: number }>(
+      sql`
+        SELECT sequence
+        FROM events INDEXED BY events_thread_type_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND type = 'client/turn/requested'
+          AND sequence > ${args.afterSequence}
+        ORDER BY sequence
+        LIMIT ${args.limit}
+      `,
+    )
+    .map((row) => row.sequence);
+}
+
+export interface StoredEventsOutsideSequenceWindow {
+  earliestBefore: number | null;
+  latestFrom: number | null;
+}
+
+export function findStoredEventsOutsideSequenceWindow(
+  db: DbConnection,
+  args: FindStoredEventsOutsideSequenceWindowArgs,
+): StoredEventsOutsideSequenceWindow {
+  const { outsideBeforeSequence, outsideFromSequence } = args;
+  if (
+    (outsideBeforeSequence === null && outsideFromSequence === null) ||
+    (args.turnIds.length === 0 && args.itemIds.length === 0)
+  ) {
+    return { earliestBefore: null, latestFrom: null };
+  }
+  const outside = (sequence: SQL): SQL =>
+    sql`(${sql.join(
+      [
+        outsideBeforeSequence === null
+          ? null
+          : sql`${sequence} < ${outsideBeforeSequence}`,
+        outsideFromSequence === null
+          ? null
+          : sql`${sequence} >= ${outsideFromSequence}`,
+      ].filter((bound) => bound !== null),
+      sql` OR `,
+    )})`;
+  const turnIds = JSON.stringify(args.turnIds);
+  const itemIds = JSON.stringify(args.itemIds);
+  const row = db.get<StoredEventsOutsideSequenceWindow>(sql`
+    SELECT
+      min(CASE WHEN outside_event.sequence < ${outsideBeforeSequence} THEN outside_event.sequence END) AS earliestBefore,
+      max(CASE WHEN outside_event.sequence >= ${outsideFromSequence} THEN outside_event.sequence END) AS latestFrom
+    FROM (
+      SELECT turn_event.sequence FROM events AS turn_event
+        INDEXED BY events_thread_turn_type_item_sequence_idx
+      WHERE turn_event.thread_id = ${args.threadId}
+        AND turn_event.turn_id IN (SELECT value FROM json_each(${turnIds}))
+        AND turn_event.type IN (${sql.join(
+          conversationOutlineEventTypes.map((type) => sql`${type}`),
+          sql`, `,
+        )})
+        AND ${outside(sql`turn_event.sequence`)}
+      UNION ALL
+      SELECT item_event.sequence FROM events AS item_event
+        INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+      WHERE item_event.thread_id = ${args.threadId}
+        AND item_event.item_id IN (SELECT value FROM json_each(${itemIds}))
+        AND item_event.type IN (
+          'item/started',
+          'item/completed',
+          'item/backgroundTask/completed'
+        )
+        AND ${outside(sql`item_event.sequence`)}
+      UNION ALL
+      SELECT task_progress.sequence FROM events AS task_progress
+        INDEXED BY events_background_task_thread_type_item_sequence_idx
+      WHERE task_progress.thread_id = ${args.threadId}
+        AND task_progress.type = 'item/backgroundTask/progress'
+        AND task_progress.item_kind = 'backgroundTask'
+        AND task_progress.item_id IN (SELECT value FROM json_each(${itemIds}))
+        AND ${outside(sql`task_progress.sequence`)}
+      UNION ALL
+      SELECT child_event.sequence FROM events AS child_event
+        INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+      WHERE child_event.thread_id = ${args.threadId}
+        AND child_event.parent_tool_call_id IN (SELECT value FROM json_each(${itemIds}))
+        AND ${outside(sql`child_event.sequence`)}
+    ) AS outside_event
+  `);
+  return {
+    earliestBefore: row?.earliestBefore ?? null,
+    latestFrom: row?.latestFrom ?? null,
+  };
+}
+
+export function hasStoredThreadErrorBeforeNextTurnStarted(
+  db: DbConnection,
+  args: HasStoredThreadErrorBeforeNextTurnStartedArgs,
+): boolean {
+  const row = db.get<{ found: number }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM events INDEXED BY events_thread_type_sequence_idx
+      WHERE thread_id = ${args.threadId}
+        AND type IN ('system/error', 'provider/error', 'system/thread/interrupted')
+        AND scope_kind = 'thread'
+        AND sequence >= ${args.sequenceStart}
+        AND sequence < coalesce((
+          SELECT sequence FROM events AS next_turn
+            INDEXED BY events_thread_type_sequence_idx
+          WHERE next_turn.thread_id = ${args.threadId}
+            AND next_turn.type = 'turn/started'
+            AND next_turn.sequence >= ${args.sequenceStart}
+          ORDER BY next_turn.sequence
+          LIMIT 1
+        ), 9223372036854775807)
+    ) AS found
+  `);
+  return row?.found === 1;
+}
+
+export function hasStoredAgentMessageDeltaCountAtLeast(
+  db: DbConnection,
+  args: HasStoredAgentMessageDeltaCountAtLeastArgs,
+): boolean {
+  return (
+    db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          gte(events.sequence, args.sequenceStart),
+          eq(events.type, "item/agentMessage/delta"),
+        ),
+      )
+      .offset(args.count - 1)
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export interface TimelineCursorSequenceLookupArgs {

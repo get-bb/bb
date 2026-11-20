@@ -85,6 +85,7 @@ export {
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
 } from "./summary-event-compaction.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
+export { shouldPreservePendingMessages } from "./user-message-parsing.js";
 export {
   resumeEventProjectionFold,
   type EventProjectionFold,

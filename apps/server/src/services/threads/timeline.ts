@@ -33,6 +33,7 @@ import {
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
   MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
+  shouldPreservePendingMessages,
   type AcceptedClientRequestContext,
   type EventProjection,
   type ThreadEventWithMeta,
@@ -74,6 +75,11 @@ import {
   getThreadEventRewriteGeneration,
   isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
+  listStoredConversationOutlineEventRowWindow,
+  listStoredClientTurnRequestSequencesAfter,
+  hasStoredAgentMessageDeltaCountAtLeast,
+  findStoredEventsOutsideSequenceWindow,
+  hasStoredThreadErrorBeforeNextTurnStarted,
   listStoredRootConversationOutlineEventRows,
   getStoredConversationOutlineProjectionState,
   listStoredClientTurnRequestIdsInRange,
@@ -106,6 +112,7 @@ import type {
   InlineOutputCharLimit,
   ScopedItemRef,
   StoredEventRow,
+  StoredEventsOutsideSequenceWindow,
 } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "@bb/process-utils";
@@ -1903,10 +1910,6 @@ function toConversationOutlineAttachmentSummary(
   return { imageCount, fileCount };
 }
 
-interface BuildThreadConversationRowsOptions extends BuildThreadConversationOutlineOptions {
-  includeNestedRows: boolean;
-}
-
 function collectConversationRows(
   rows: readonly TimelineRow[],
   conversationRows: TimelineConversationRow[],
@@ -1934,61 +1937,435 @@ function resolveConversationHistorySequenceStart(
   );
 }
 
-function buildThreadConversationRows(
+interface ConversationRowWindow {
+  beforeSequence: number | null;
+  sequenceStart: number;
+}
+
+interface ConversationRowWindowEvents {
+  eventRows: StoredEventRow[];
+  events: ThreadEventWithMeta[];
+}
+
+interface ConversationRowProjection {
+  pendingSteerStart: number;
+  rows: TimelineConversationRow[];
+}
+
+function readConversationRowWindow(
+  db: DbConnection,
+  threadId: string,
+  window: ConversationRowWindow,
+): ConversationRowWindowEvents {
+  const eventRows = listStoredConversationOutlineEventRowWindow(db, {
+    beforeSequence: window.beforeSequence,
+    sequenceStart: window.sequenceStart,
+    threadId,
+  });
+  return {
+    eventRows,
+    events: eventRows.map((row) => toThreadEventWithMeta(row)),
+  };
+}
+
+function readConversationRowWindowGrowth(
+  db: DbConnection,
+  threadId: string,
+  loaded: ConversationRowWindow,
+  window: ConversationRowWindow,
+): { after: ConversationRowWindowEvents; before: ConversationRowWindowEvents } {
+  const empty: ConversationRowWindowEvents = { eventRows: [], events: [] };
+  return {
+    before:
+      window.sequenceStart < loaded.sequenceStart
+        ? readConversationRowWindow(db, threadId, {
+            beforeSequence: loaded.sequenceStart,
+            sequenceStart: window.sequenceStart,
+          })
+        : empty,
+    after:
+      loaded.beforeSequence !== null &&
+      window.beforeSequence !== loaded.beforeSequence
+        ? readConversationRowWindow(db, threadId, {
+            beforeSequence: window.beforeSequence,
+            sequenceStart: loaded.beforeSequence,
+          })
+        : empty,
+  };
+}
+
+function concatConversationRowWindowEvents(
+  parts: readonly ConversationRowWindowEvents[],
+): ConversationRowWindowEvents {
+  return {
+    eventRows: parts.flatMap((part) => part.eventRows),
+    events: parts.flatMap((part) => part.events),
+  };
+}
+
+function projectConversationRows(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadConversationRowsOptions,
-): TimelineConversationRow[] {
-  return runEventLoopWorkSync(`conversation-rows ${thread.id}`, () => {
-    const rawEventRows = listStoredConversationOutlineEventRows(db, {
-      sequenceStart: resolveConversationHistorySequenceStart(
+  options: BuildThreadConversationOutlineOptions,
+  window: ConversationRowWindowEvents,
+  summaryCompactionEnabled: boolean,
+): ConversationRowProjection {
+  const decodedEvents = compactThreadTimelineSummaryEvents(
+    window.events,
+    summaryCompactionEnabled
+      ? MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION
+      : 0,
+  );
+  const clientRequestContextRows = selectClientRequestContextRows(db, {
+    rows: window.eventRows,
+    threadId: thread.id,
+  });
+  const acceptedClientRequestContext: AcceptedClientRequestContext = {
+    acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
+      (row) => toThreadEventWithMeta(row),
+    ),
+    rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
+      (row) => toThreadEventWithMeta(row),
+    ),
+  };
+  const timeline = buildThreadTimelineFromEvents({
+    acceptedClientRequestContext,
+    contextWindowEvents: [],
+    events: decodedEvents,
+    options: {
+      completedTurnDisplay: options.completedTurnDisplay,
+      includeNestedRows: true,
+      omitSettledDelegationChildRows: false,
+      includeDiagnosticOperations: false,
+      isLatestPage: true,
+      providerDisplayName: options.providerDisplayName,
+      providerId: thread.providerId,
+      summarizeShellCommands: true,
+      threadName: thread.title ?? thread.titleFallback ?? "",
+      threadStatus: thread.status,
+      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+    },
+  });
+  const rows: TimelineConversationRow[] = [];
+  collectConversationRows(timeline.rows, rows);
+  const pendingSteerStart = rows.length;
+  collectConversationRows(timeline.pendingSteers, rows);
+  return { pendingSteerStart, rows };
+}
+
+function isThreadScopedErrorEvent(
+  event: ThreadEventWithMeta["event"],
+): boolean {
+  return (
+    event.scope.kind === "thread" &&
+    (event.type === "system/error" ||
+      event.type === "provider/error" ||
+      event.type === "system/thread/interrupted")
+  );
+}
+
+interface ConversationRowWindowReferences {
+  acceptedRequestIds: Set<string>;
+  hasThreadErrorBeforeFirstTurn: boolean;
+  itemIds: string[];
+  requestIds: Set<string>;
+  steerRequestIds: Set<string>;
+  turnIds: string[];
+}
+
+function collectConversationRowWindowReferences(
+  window: ConversationRowWindowEvents,
+): ConversationRowWindowReferences {
+  const turnIds = new Set<string>();
+  const itemIds = new Set<string>();
+  const requestIds = new Set<string>();
+  const steerRequestIds = new Set<string>();
+  const acceptedRequestIds = new Set<string>();
+  let turnStarted = false;
+  let hasThreadErrorBeforeFirstTurn = false;
+  window.eventRows.forEach((row, index) => {
+    const { event } = window.events[index]!;
+    if (event.type === "turn/started") turnStarted = true;
+    if (!turnStarted && isThreadScopedErrorEvent(event)) {
+      hasThreadErrorBeforeFirstTurn = true;
+    }
+    if (row.turnId !== null) turnIds.add(row.turnId);
+    if (row.itemId !== null) itemIds.add(row.itemId);
+    if (row.parentToolCallId !== null) itemIds.add(row.parentToolCallId);
+    if (event.type === "turn/input/accepted") {
+      acceptedRequestIds.add(event.clientRequestId);
+    }
+    if (event.type !== "client/turn/requested") return;
+    requestIds.add(event.requestId);
+    if (
+      (event.target.kind === "auto" || event.target.kind === "steer") &&
+      event.target.expectedTurnId !== null
+    ) {
+      steerRequestIds.add(event.requestId);
+      turnIds.add(event.target.expectedTurnId);
+    }
+  });
+  return {
+    acceptedRequestIds,
+    hasThreadErrorBeforeFirstTurn,
+    itemIds: [...itemIds],
+    requestIds,
+    steerRequestIds,
+    turnIds: [...turnIds],
+  };
+}
+
+function windowStartCovering(
+  db: DbConnection,
+  threadId: string,
+  historySequenceStart: number,
+  sequence: number,
+  requests: number,
+): number {
+  const hints = listTimelineWindowHintsDescending(db, {
+    beforeSequence: sequence + 1,
+    limit: requests * 2,
+    sequenceStart: historySequenceStart,
+    threadId,
+  });
+  return hints.length === requests * 2
+    ? hints[requests - 1]!.sequence
+    : historySequenceStart;
+}
+
+function windowEndAfter(
+  db: DbConnection,
+  threadId: string,
+  sequence: number,
+  requests: number,
+): number | null {
+  const sequences = listStoredClientTurnRequestSequencesAfter(db, {
+    afterSequence: sequence,
+    limit: requests * 2,
+    threadId,
+  });
+  return sequences.length === requests * 2 ? sequences[requests - 1]! : null;
+}
+
+function requiredWindowStart(
+  db: DbConnection,
+  threadId: string,
+  historySequenceStart: number,
+  window: ConversationRowWindow,
+  references: ConversationRowWindowReferences,
+  outside: StoredEventsOutsideSequenceWindow,
+  growth: number,
+): number {
+  if (outside.earliestBefore !== null) {
+    return windowStartCovering(
+      db,
+      threadId,
+      historySequenceStart,
+      outside.earliestBefore,
+      growth,
+    );
+  }
+  const referencesEarlierRequest = [...references.acceptedRequestIds].some(
+    (requestId) => !references.requestIds.has(requestId),
+  );
+  return references.hasThreadErrorBeforeFirstTurn || referencesEarlierRequest
+    ? windowStartCovering(
+        db,
+        threadId,
+        historySequenceStart,
+        window.sequenceStart - 1,
+        growth,
+      )
+    : window.sequenceStart;
+}
+
+function requiredWindowEnd(
+  db: DbConnection,
+  threadId: string,
+  beforeSequence: number,
+  uncheckedRequestIds: readonly string[],
+  outside: StoredEventsOutsideSequenceWindow,
+  growth: number,
+): number | null {
+  const laterAcceptance = listStoredTurnInputAcceptedRowsByClientRequestIds(
+    db,
+    {
+      afterSequence: beforeSequence - 1,
+      clientRequestIds: uncheckedRequestIds,
+      threadId,
+    },
+  ).at(-1)?.sequence;
+  const latest = Math.max(
+    outside.latestFrom ?? Number.NEGATIVE_INFINITY,
+    laterAcceptance ?? Number.NEGATIVE_INFINITY,
+  );
+  if (latest !== Number.NEGATIVE_INFINITY) {
+    return windowEndAfter(db, threadId, latest, growth);
+  }
+  return hasStoredThreadErrorBeforeNextTurnStarted(db, {
+    sequenceStart: beforeSequence,
+    threadId,
+  })
+    ? windowEndAfter(db, threadId, beforeSequence, growth)
+    : beforeSequence;
+}
+
+interface ThreadMessageWindowLookup {
+  index: number;
+  rows: TimelineConversationRow[];
+}
+
+function findThreadMessageInWindow(
+  db: DbConnection,
+  thread: Thread,
+  options: GetThreadMessageOptions,
+  historySequenceStart: number,
+): ThreadMessageWindowLookup | null {
+  const preservesPendingSteers = shouldPreservePendingMessages(thread.status);
+  let growBefore = options.before + 1;
+  let growAfter = options.after + 1;
+  let window: ConversationRowWindow = {
+    sequenceStart: windowStartCovering(
+      db,
+      thread.id,
+      historySequenceStart,
+      options.seq,
+      growBefore,
+    ),
+    beforeSequence: windowEndAfter(db, thread.id, options.seq, growAfter),
+  };
+  const uncheckedTurnIds = new Set<string>();
+  const uncheckedItemIds = new Set<string>();
+  const checkedRequestIds = new Set<string>();
+  const markUnchecked = (events: ConversationRowWindowEvents) => {
+    const fresh = collectConversationRowWindowReferences(events);
+    for (const turnId of fresh.turnIds) uncheckedTurnIds.add(turnId);
+    for (const itemId of fresh.itemIds) uncheckedItemIds.add(itemId);
+  };
+  let loadedWindow = window;
+  let windowEvents = readConversationRowWindow(db, thread.id, window);
+  markUnchecked(windowEvents);
+  for (;;) {
+    const opensBefore = window.sequenceStart > historySequenceStart;
+    const growth = readConversationRowWindowGrowth(
+      db,
+      thread.id,
+      loadedWindow,
+      window,
+    );
+    markUnchecked(growth.before);
+    markUnchecked(growth.after);
+    windowEvents = concatConversationRowWindowEvents([
+      growth.before,
+      windowEvents,
+      growth.after,
+    ]);
+    loadedWindow = window;
+    const references = collectConversationRowWindowReferences(windowEvents);
+    const hasUnacceptedSteerRequests = [...references.steerRequestIds].some(
+      (requestId) => !references.acceptedRequestIds.has(requestId),
+    );
+    if (window.beforeSequence !== null && hasUnacceptedSteerRequests) {
+      window = { ...window, beforeSequence: null };
+      continue;
+    }
+    const outside = findStoredEventsOutsideSequenceWindow(db, {
+      itemIds: [...uncheckedItemIds],
+      outsideBeforeSequence: opensBefore ? window.sequenceStart : null,
+      outsideFromSequence: window.beforeSequence,
+      threadId: thread.id,
+      turnIds: [...uncheckedTurnIds],
+    });
+    uncheckedTurnIds.clear();
+    uncheckedItemIds.clear();
+    let next: ConversationRowWindow = {
+      sequenceStart: opensBefore
+        ? requiredWindowStart(
+            db,
+            thread.id,
+            historySequenceStart,
+            window,
+            references,
+            outside,
+            growBefore,
+          )
+        : window.sequenceStart,
+      beforeSequence:
+        window.beforeSequence === null
+          ? null
+          : requiredWindowEnd(
+              db,
+              thread.id,
+              window.beforeSequence,
+              [...references.requestIds].filter(
+                (requestId) =>
+                  !references.acceptedRequestIds.has(requestId) &&
+                  !checkedRequestIds.has(requestId),
+              ),
+              outside,
+              growAfter,
+            ),
+    };
+    if (window.beforeSequence !== null) {
+      for (const requestId of references.requestIds) {
+        checkedRequestIds.add(requestId);
+      }
+    }
+    if (
+      next.sequenceStart === window.sequenceStart &&
+      next.beforeSequence === window.beforeSequence
+    ) {
+      const projection = projectConversationRows(
         db,
         thread,
         options,
-      ),
-      threadId: thread.id,
-    });
-    const decodedRawEvents = rawEventRows.map((row) =>
-      toThreadEventWithMeta(row),
-    );
-    const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
-    const clientRequestContextRows = selectClientRequestContextRows(db, {
-      rows: rawEventRows,
-      threadId: thread.id,
-    });
-    const acceptedClientRequestContext: AcceptedClientRequestContext = {
-      acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
-        (row) => toThreadEventWithMeta(row),
-      ),
-      rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
-        (row) => toThreadEventWithMeta(row),
-      ),
-    };
-    const timeline = buildThreadTimelineFromEvents({
-      acceptedClientRequestContext,
-      contextWindowEvents: [],
-      events: decodedEvents,
-      options: {
-        completedTurnDisplay: options.completedTurnDisplay,
-        includeNestedRows: options.includeNestedRows,
-        omitSettledDelegationChildRows: false,
-        includeDiagnosticOperations: false,
-        isLatestPage: true,
-        providerDisplayName: options.providerDisplayName,
-        providerId: thread.providerId,
-        summarizeShellCommands: true,
-        threadName: thread.title ?? thread.titleFallback ?? "",
-        threadStatus: thread.status,
-        workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
-      },
-    });
-    const conversationRows: TimelineConversationRow[] = [];
-    collectConversationRows(
-      [...timeline.rows, ...timeline.pendingSteers],
-      conversationRows,
-    );
-    return conversationRows;
-  });
+        windowEvents,
+        (opensBefore || window.beforeSequence !== null) &&
+          hasStoredAgentMessageDeltaCountAtLeast(db, {
+            count: MIN_AGENT_MESSAGE_DELTAS_FOR_SUMMARY_COMPACTION,
+            sequenceStart: historySequenceStart,
+            threadId: thread.id,
+          }),
+      );
+      const index = projection.rows.findIndex(
+        (row) => row.messageSeq === options.seq,
+      );
+      if (index === -1) return null;
+      const reachesPendingSteers =
+        window.beforeSequence === null &&
+        preservesPendingSteers &&
+        index + options.after >= projection.pendingSteerStart;
+      next = {
+        sequenceStart: !opensBefore
+          ? window.sequenceStart
+          : reachesPendingSteers
+            ? historySequenceStart
+            : index < options.before
+              ? windowStartCovering(
+                  db,
+                  thread.id,
+                  historySequenceStart,
+                  window.sequenceStart - 1,
+                  growBefore,
+                )
+              : window.sequenceStart,
+        beforeSequence:
+          window.beforeSequence !== null &&
+          projection.rows.length - index - 1 < options.after
+            ? windowEndAfter(db, thread.id, window.beforeSequence, growAfter)
+            : window.beforeSequence,
+      };
+      if (
+        next.sequenceStart === window.sequenceStart &&
+        next.beforeSequence === window.beforeSequence
+      ) {
+        return { index, rows: projection.rows };
+      }
+    }
+    if (next.sequenceStart !== window.sequenceStart) growBefore *= 2;
+    if (next.beforeSequence !== window.beforeSequence) growAfter *= 2;
+    window = next;
+  }
 }
 
 function selectThreadConversationOutline(
@@ -2111,21 +2488,26 @@ export function getThreadMessage(
   thread: Thread,
   options: GetThreadMessageOptions,
 ): ThreadMessageResponse {
-  const rows = buildThreadConversationRows(db, thread, {
-    ...options,
-    includeNestedRows: true,
+  const lookup = runEventLoopWorkSync(`thread-message ${thread.id}`, () => {
+    const historySequenceStart = resolveConversationHistorySequenceStart(
+      db,
+      thread,
+      options,
+    );
+    return options.seq < historySequenceStart
+      ? null
+      : findThreadMessageInWindow(db, thread, options, historySequenceStart);
   });
-  const index = rows.findIndex((row) => row.messageSeq === options.seq);
-  const message = rows[index];
-  if (message === undefined) {
+  if (lookup === null) {
     throw new ApiError(
       404,
       "message_not_found",
       `Thread ${thread.id} has no message ${options.seq}; an edit may have removed it or a context clear hidden it`,
     );
   }
+  const { index, rows } = lookup;
   return {
-    message,
+    message: rows[index]!,
     before: rows.slice(Math.max(0, index - options.before), index),
     after: rows.slice(index + 1, index + 1 + options.after),
   };

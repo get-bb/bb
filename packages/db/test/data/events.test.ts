@@ -38,6 +38,8 @@ import {
   listContextWindowUsageRows,
   listLatestThreadStateEventRowsByThreadIds,
   deleteThreadEventSuffixInTransaction,
+  findStoredEventsOutsideSequenceWindow,
+  hasStoredThreadErrorBeforeNextTurnStarted,
   listStoredConversationOutlineEventRows,
   listTimelineWindowHintsDescending,
   listOpenTurnInputAcceptedRowsByThreadIds,
@@ -331,6 +333,105 @@ function createContextWindowUsageData(
     },
   });
 }
+
+describe("conversation window edges", () => {
+  function seedWindowEdges(db: DbConnection, threadId: string) {
+    const turnRow = (
+      sequence: number,
+      turnId: string,
+      type: "turn/started" | "turn/completed",
+    ) => ({
+      threadId,
+      sequence,
+      type,
+      scope: turnScope(turnId),
+      ...emptyItemFields,
+      data: JSON.stringify(type === "turn/completed" ? { status: "completed" } : {}),
+    });
+    const taskRow = (
+      sequence: number,
+      type: "item/started" | "item/backgroundTask/completed",
+    ) => ({
+      threadId,
+      sequence,
+      type,
+      scope: type === "item/started" ? turnScope("turn-1") : threadScope(),
+      itemId: "task-1",
+      itemKind: "backgroundTask" as const,
+      parentToolCallId: null,
+      data: JSON.stringify({ item: { id: "task-1", type: "backgroundTask" } }),
+    });
+    insertEvents(db, noopNotifier, [
+      turnRow(1, "turn-1", "turn/started"),
+      taskRow(2, "item/started"),
+      turnRow(3, "turn-1", "turn/completed"),
+      turnRow(4, "turn-2", "turn/started"),
+      turnRow(5, "turn-2", "turn/completed"),
+      {
+        threadId,
+        sequence: 6,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "provider exited" }),
+      },
+      taskRow(7, "item/backgroundTask/completed"),
+      turnRow(8, "turn-3", "turn/started"),
+      turnRow(9, "turn-3", "turn/completed"),
+    ]);
+  }
+
+  it("finds the furthest turn and item events on either side of a window", () => {
+    const { db, thread } = setup();
+    seedWindowEdges(db, thread.id);
+    const outside = (
+      outsideBeforeSequence: number | null,
+      outsideFromSequence: number | null,
+      ids: { turnIds?: string[]; itemIds?: string[] },
+    ) =>
+      findStoredEventsOutsideSequenceWindow(db, {
+        itemIds: ids.itemIds ?? [],
+        outsideBeforeSequence,
+        outsideFromSequence,
+        threadId: thread.id,
+        turnIds: ids.turnIds ?? [],
+      });
+
+    expect(outside(4, 6, { turnIds: ["turn-2"] })).toEqual({
+      earliestBefore: null,
+      latestFrom: null,
+    });
+    expect(outside(2, 3, { turnIds: ["turn-1"] })).toEqual({
+      earliestBefore: 1,
+      latestFrom: 3,
+    });
+    expect(outside(null, 3, { itemIds: ["task-1"] })).toEqual({
+      earliestBefore: null,
+      latestFrom: 7,
+    });
+    expect(outside(4, null, { itemIds: ["task-1"] })).toEqual({
+      earliestBefore: 2,
+      latestFrom: null,
+    });
+    expect(outside(1, null, { itemIds: ["task-1"] })).toEqual({
+      earliestBefore: null,
+      latestFrom: null,
+    });
+  });
+
+  it("finds a thread error between a window end and the next turn start", () => {
+    const { db, thread } = setup();
+    seedWindowEdges(db, thread.id);
+    const errorBeforeTurn = (sequenceStart: number) =>
+      hasStoredThreadErrorBeforeNextTurnStarted(db, {
+        sequenceStart,
+        threadId: thread.id,
+      });
+
+    expect(errorBeforeTurn(4)).toBe(false);
+    expect(errorBeforeTurn(6)).toBe(true);
+    expect(errorBeforeTurn(7)).toBe(false);
+  });
+});
 
 describe("events", () => {
   it("preserves reported cache counts through daemon append and stored event decoding", () => {
