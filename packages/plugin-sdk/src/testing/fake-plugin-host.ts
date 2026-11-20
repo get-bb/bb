@@ -52,10 +52,7 @@ import {
   type NormalizedPluginProviderDeclaration,
 } from "../internal/host-policy.js";
 import type { MachineBootstrapApi } from "../machine-bootstrap.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import type {
@@ -128,6 +125,10 @@ import {
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
 import {
+  createFakeStorageDir,
+  type FakeStorageDir,
+} from "./fake-storage-dir.js";
+import {
   createThreadEventGate,
   threadOfEvent,
 } from "../internal/thread-event-gate.js";
@@ -151,6 +152,14 @@ import {
  * - storage is process-local: kv in a Map, `storage.database()` one shared
  *   better-sqlite3 handle in a temp directory (same data across calls, like
  *   the host's shared file), secret settings alongside plain values (no files).
+ *   The directory is created on the first `database()` call and removed by
+ *   `dispose()`. Every host directory in a process sits under one root,
+ *   `bb-fake-plugin-host-<pid>-*` in `os.tmpdir()`, which is removed when its
+ *   last host is disposed or when the process exits normally or calls
+ *   `process.exit()`. A process killed by a signal, such as a Vitest worker
+ *   stopped with SIGTERM, can leave that root behind; add
+ *   `@get-bb/plugin-sdk/testing/vitest-global-setup` to Vitest's
+ *   `globalSetup`, which removes the whole temp dir sandbox at teardown.
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
  * - http auth modes are recorded but not enforced — signature checks and
@@ -670,7 +679,7 @@ function throwRpcError(error: PluginRpcError): never {
 
 interface FakePluginPersistentState {
   kvRows: Map<string, string>;
-  storageRoot: string;
+  storageDir: FakeStorageDir;
   storedSettings: Map<string, PluginSettingValue>;
 }
 
@@ -693,7 +702,7 @@ function createFakePluginHostInternal(
     sharedState ??
     ({
       kvRows: new Map<string, string>(),
-      storageRoot: mkdtempSync(join(tmpdir(), "bb-fake-plugin-host-")),
+      storageDir: createFakeStorageDir(),
       storedSettings: new Map<string, PluginSettingValue>(
         Object.entries(options.settings ?? {}),
       ),
@@ -761,7 +770,7 @@ function createFakePluginHostInternal(
     },
   };
 
-  const storageRoot = persistentState.storageRoot;
+  const storageDir = persistentState.storageDir;
 
   // One shared temp-file handle: every database() call sees the same data,
   // like the host's handles over one on-disk file. Like the host, a handle
@@ -772,7 +781,7 @@ function createFakePluginHostInternal(
     database() {
       assertLive();
       if (!databaseHandle?.open) {
-        databaseHandle = new Database(join(storageRoot, "data.db"));
+        databaseHandle = storageDir.openDatabase();
         databaseHandle.pragma("auto_vacuum = INCREMENTAL");
         databaseHandle.pragma("journal_mode = WAL");
         databaseHandle.pragma("busy_timeout = 5000");
@@ -1717,7 +1726,7 @@ function createFakePluginHostInternal(
       }
     }
     if (cleanupStorage) {
-      rmSync(storageRoot, { recursive: true, force: true });
+      storageDir.remove();
     }
     hostWorkerExitSubscriptions.splice(0);
     hostSignalSubscriptions.splice(0);
