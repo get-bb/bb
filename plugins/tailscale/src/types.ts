@@ -30,7 +30,7 @@ export type TailscaleServe = z.infer<typeof tailscaleServeSchema>;
 
 export const tailscaleProbeSchema = z
   .object({
-    ok: z.boolean(),
+    result: z.enum(["ok", "no-answer", "other-server"]),
     error: z.string().nullable(),
     checkedAt: z.number(),
   })

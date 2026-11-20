@@ -523,14 +523,14 @@ export class Tailscale {
       probe =
         remote !== null && local !== null && remote !== local
           ? {
-              ok: false,
+              result: "other-server",
               error: `${url} answers, but it is a different bb server`,
               checkedAt,
             }
-          : { ok: true, error: null, checkedAt };
+          : { result: "ok", error: null, checkedAt };
     } catch (error) {
       probe = {
-        ok: false,
+        result: "no-answer",
         error: `${url}/health didn't answer: ${errorMessage(error)}`,
         checkedAt,
       };
@@ -540,7 +540,7 @@ export class Tailscale {
 
   private notify(previous: TailscaleStatus | null, next: TailscaleStatus) {
     const key = (status: TailscaleStatus) =>
-      JSON.stringify({ ...status, checkedAt: 0, https: status.https?.ok });
+      JSON.stringify({ ...status, checkedAt: 0, https: status.https?.result });
     if (previous !== null && key(previous) === key(next)) return;
     const availability = (status: TailscaleStatus | null) =>
       status === null ? null : JSON.stringify(availabilityOf(status));

@@ -40,9 +40,15 @@ const STATE_TEXT: Record<TailscaleStatus["state"], string> = {
 
 export function formatStatus(status: TailscaleStatus): string {
   const state =
-    status.state === "served" && status.https?.ok === false
-      ? "set up, but not answering"
-      : STATE_TEXT[status.state];
+    status.state !== "served"
+      ? STATE_TEXT[status.state]
+      : status.https?.result === "other-server"
+        ? "set up, but reaches a different bb server"
+        : status.https?.result === "no-answer"
+          ? "set up, but not answering"
+          : status.serve?.funnel === true
+            ? "public on the internet (Funnel is on)"
+            : STATE_TEXT.served;
   const lines = [`Tailscale: ${state}`];
   if (status.serve !== null) {
     lines.push(
@@ -51,7 +57,7 @@ export function formatStatus(status: TailscaleStatus): string {
   }
   if (status.https !== null) {
     lines.push(
-      `  https: ${status.https.ok ? "ok" : `failing (${status.https.error ?? "unknown error"})`}`,
+      `  https: ${status.https.result === "ok" ? "ok" : `failing (${status.https.error ?? "unknown error"})`}`,
     );
   }
   if (status.message !== null) {

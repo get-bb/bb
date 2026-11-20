@@ -38,7 +38,7 @@ const served = (owner: "bb" | "adopted") =>
       owner,
       funnel: false,
     },
-    https: { ok: true, error: null, checkedAt: 1_700_000_000_000 },
+    https: { result: "ok", error: null, checkedAt: 1_700_000_000_000 },
   });
 
 describe("tailscale settings section", () => {
@@ -71,7 +71,7 @@ describe("tailscale settings section", () => {
           status: () => ({
             ...served("bb"),
             https: {
-              ok: false,
+              result: "no-answer",
               error:
                 "https://mini.tail1234.ts.net/health didn't answer: fetch failed",
               checkedAt: 1_700_000_000_000,
@@ -92,7 +92,7 @@ describe("tailscale settings section", () => {
       {},
       { openUrl: () => true, rpc: { status: () => served("adopted") } },
     );
-    await slot.findByText(/set up outside bb/u);
+    await slot.findByText(/Set up outside bb/u);
     expect(slot.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
@@ -114,12 +114,56 @@ describe("tailscale settings section", () => {
         },
       },
     );
-    await slot.findByText("HTTPS certificates are off");
+    await slot.findByText("Turn on HTTPS certificates");
     expect(
       slot
         .getByRole("link", { name: "Open DNS settings" })
         .getAttribute("href"),
     ).toBe("https://login.tailscale.com/admin/dns");
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
+  });
+
+  it("warns instead of showing reachable when the address is public or reaches another bb", async () => {
+    const funnel = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          status: () => {
+            const value = served("adopted");
+            return {
+              ...value,
+              message: "Tailscale Funnel is on for this address",
+              serve: value.serve && { ...value.serve, funnel: true },
+            };
+          },
+        },
+      },
+    );
+    await funnel.findByText("Public on the internet (Funnel is on)");
+    expect(funnel.queryByText("Reachable on your tailnet")).toBeNull();
+    cleanup();
+
+    const other = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        openUrl: () => true,
+        rpc: {
+          status: () => ({
+            ...served("bb"),
+            https: {
+              result: "other-server",
+              error:
+                "https://mini.tail1234.ts.net answers, but it is a different bb server",
+              checkedAt: 1_700_000_000_000,
+            },
+          }),
+        },
+      },
+    );
+    await other.findByText("Reaches a different bb server");
+    expect(other.queryByText("Reachable on your tailnet")).toBeNull();
   });
 });

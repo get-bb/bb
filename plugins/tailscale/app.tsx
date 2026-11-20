@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
 import type { tailscaleRpcContract } from "./src/rpc.js";
 import {
   TAILSCALE_REALTIME_CHANNEL,
@@ -27,38 +28,155 @@ function asStatus(value: unknown): TailscaleStatus | null {
 
 type Tone = "ok" | "warn" | "bad" | "muted";
 
-const STATE_COPY: Record<
-  TailscaleStatus["state"],
-  { label: string; tone: Tone }
-> = {
-  "not-installed": { label: "Tailscale isn't installed", tone: "muted" },
-  "not-running": { label: "Tailscale isn't connected", tone: "muted" },
-  "logged-out": { label: "Signed out of Tailscale", tone: "muted" },
-  "needs-approval": { label: "Waiting for tailnet approval", tone: "warn" },
-  "needs-magicdns": { label: "MagicDNS is off", tone: "warn" },
-  "needs-https": { label: "HTTPS certificates are off", tone: "warn" },
-  "not-served": { label: "Not set up", tone: "muted" },
-  conflict: { label: "Serve ports are in use", tone: "bad" },
-  served: { label: "Reachable on your tailnet", tone: "ok" },
-  error: { label: "Couldn't read Tailscale", tone: "bad" },
-};
+type PrimaryAction =
+  | { kind: "setup" }
+  | { kind: "remove" }
+  | { kind: "link"; label: string; href: string }
+  | null;
 
-function headline(status: TailscaleStatus): { label: string; tone: Tone } {
-  if (status.state === "served" && status.https === null) {
-    return { label: "Checking the address…", tone: "muted" };
-  }
-  if (status.state === "served" && status.https?.ok === false) {
-    return { label: "Set up, but not answering yet", tone: "warn" };
-  }
-  return STATE_COPY[status.state];
+interface View {
+  tone: Tone;
+  title: string;
+  body: string | null;
+  primary: PrimaryAction;
+  checkAgain: boolean;
 }
 
-const ADMIN_LINK_TEXT: Partial<Record<TailscaleStatus["state"], string>> = {
-  "not-installed": "Download Tailscale",
-  "needs-approval": "Open machines in the admin console",
-  "needs-magicdns": "Open DNS settings",
-  "needs-https": "Open DNS settings",
-};
+function adminLink(status: TailscaleStatus, label: string): PrimaryAction {
+  return status.adminUrl === null
+    ? null
+    : { kind: "link", label, href: status.adminUrl };
+}
+
+function servedView(status: TailscaleStatus): View {
+  const remove: PrimaryAction =
+    status.serve?.owner === "bb" ? { kind: "remove" } : null;
+  if (status.https === null) {
+    return {
+      tone: "muted",
+      title: "Checking the address…",
+      body: null,
+      primary: remove,
+      checkAgain: false,
+    };
+  }
+  if (status.https.result === "other-server") {
+    return {
+      tone: "bad",
+      title: "Reaches a different bb server",
+      body: status.https.error,
+      primary: remove,
+      checkAgain: true,
+    };
+  }
+  if (status.https.result === "no-answer") {
+    return {
+      tone: "warn",
+      title: "Set up, but not answering yet",
+      body: status.https.error,
+      primary: remove,
+      checkAgain: true,
+    };
+  }
+  if (status.serve?.funnel === true) {
+    return {
+      tone: "warn",
+      title: "Public on the internet (Funnel is on)",
+      body: status.message,
+      primary: remove,
+      checkAgain: true,
+    };
+  }
+  return {
+    tone: "ok",
+    title: "Reachable on your tailnet",
+    body: null,
+    primary: remove,
+    checkAgain: false,
+  };
+}
+
+function viewOf(status: TailscaleStatus): View {
+  switch (status.state) {
+    case "not-installed":
+      return {
+        tone: "muted",
+        title: "Install Tailscale",
+        body: "Install Tailscale on the machine running this bb server, then sign in.",
+        primary: adminLink(status, "Download Tailscale"),
+        checkAgain: true,
+      };
+    case "not-running":
+      return {
+        tone: "muted",
+        title: "Connect Tailscale",
+        body: status.message,
+        primary: null,
+        checkAgain: true,
+      };
+    case "logged-out":
+      return {
+        tone: "muted",
+        title: "Sign in to Tailscale",
+        body: "Sign in to Tailscale on the machine running this bb server.",
+        primary: null,
+        checkAgain: true,
+      };
+    case "needs-approval":
+      return {
+        tone: "warn",
+        title: "Approve this machine",
+        body: "This machine is waiting for approval in your tailnet.",
+        primary: adminLink(status, "Open machines"),
+        checkAgain: true,
+      };
+    case "needs-magicdns":
+      return {
+        tone: "warn",
+        title: "Turn on MagicDNS",
+        body: "Tailscale needs MagicDNS to give this machine a ts.net name.",
+        primary: adminLink(status, "Open DNS settings"),
+        checkAgain: true,
+      };
+    case "needs-https":
+      return {
+        tone: "warn",
+        title: "Turn on HTTPS certificates",
+        body: "Tailscale needs HTTPS certificates to serve bb at an https:// address. They're in the same DNS settings.",
+        primary: adminLink(status, "Open DNS settings"),
+        checkAgain: true,
+      };
+    case "not-served":
+      return {
+        tone: "muted",
+        title: "Not set up",
+        body:
+          status.dnsName === null
+            ? "Gives bb a private HTTPS address on your tailnet."
+            : `Gives bb a private HTTPS address at ${status.dnsName}. Only devices on your tailnet can open it.`,
+        primary: { kind: "setup" },
+        checkAgain: false,
+      };
+    case "conflict":
+      return {
+        tone: "bad",
+        title: "Serve ports are in use",
+        body: status.message,
+        primary: null,
+        checkAgain: true,
+      };
+    case "served":
+      return servedView(status);
+    case "error":
+      return {
+        tone: "bad",
+        title: "Couldn't read Tailscale",
+        body: status.message,
+        primary: null,
+        checkAgain: true,
+      };
+  }
+}
 
 function StatusDot({ tone }: { tone: Tone }) {
   return (
@@ -130,13 +248,13 @@ function useTailscaleStatus() {
         (result) => {
           accept(result);
           const next = asStatus(result);
-          if (method === "setup" && next?.https?.ok === false) {
+          const probe = method === "setup" ? (next?.https ?? null) : null;
+          if (probe !== null && probe.result !== "ok") {
             toast.warning(
-              "Tailscale Serve is set up, but the address isn't answering yet",
-              {
-                id,
-                description: next.https.error ?? undefined,
-              },
+              probe.result === "other-server"
+                ? "Tailscale Serve is set up, but the address reaches a different bb server"
+                : "Tailscale Serve is set up, but the address isn't answering yet",
+              { id, description: probe.error ?? undefined },
             );
             return;
           }
@@ -169,6 +287,40 @@ function useTailscaleStatus() {
   return { status, loadError, refetch, run };
 }
 
+function PrimaryButton({
+  action,
+  run,
+}: {
+  action: PrimaryAction;
+  run: (method: "setup" | "teardown") => void;
+}) {
+  if (action === null) return null;
+  switch (action.kind) {
+    case "setup":
+      return (
+        <Button size="sm" onClick={() => run("setup")}>
+          Set up
+        </Button>
+      );
+    case "remove":
+      return (
+        <Button size="sm" variant="outline" onClick={() => run("teardown")}>
+          Remove
+        </Button>
+      );
+    case "link":
+      return (
+        <Button size="sm" asChild>
+          <UrlLink href={action.href} target="_blank" rel="noreferrer">
+            {action.label}
+          </UrlLink>
+        </Button>
+      );
+  }
+}
+
+const TEXT_ACTION_CLASS = "h-auto px-0 text-xs text-muted-foreground";
+
 function TailscaleSettingsSection() {
   const { status, loadError, refetch, run } = useTailscaleStatus();
 
@@ -183,75 +335,79 @@ function TailscaleSettingsSection() {
     return <p className="text-sm text-muted-foreground">Loading...</p>;
   }
 
-  const copy = headline(status);
-  const adminLink = ADMIN_LINK_TEXT[status.state];
+  const view = viewOf(status);
+  const serve = status.serve;
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2" role="status">
-        <StatusDot tone={copy.tone} />
-        <span className="text-sm font-medium">{copy.label}</span>
-      </div>
-      {status.serve !== null ? (
-        <div className="space-y-1">
-          <UrlLink
-            href={status.serve.url}
-            target="_blank"
-            rel="noreferrer"
-            className="block truncate font-mono text-sm text-foreground hover:underline"
-          >
-            {status.serve.url}
-          </UrlLink>
-          <p className="text-xs text-muted-foreground">
-            Forwards to {status.target} ·{" "}
-            {status.serve.owner === "adopted"
-              ? "set up outside bb, so bb won't remove it"
-              : `set up by bb on port ${status.serve.port}`}
-          </p>
-          {status.https !== null && !status.https.ok ? (
-            <p className="text-xs text-warning-text">{status.https.error}</p>
+      <div className="space-y-1.5 rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex min-h-8 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2" role="status">
+            <StatusDot tone={view.tone} />
+            <span className="truncate text-sm font-medium">{view.title}</span>
+          </div>
+          {view.checkAgain ? (
+            <Button
+              size="sm"
+              variant="link"
+              className={TEXT_ACTION_CLASS}
+              onClick={refetch}
+            >
+              Check again
+            </Button>
           ) : null}
+          <PrimaryButton action={view.primary} run={run} />
         </div>
-      ) : status.dnsName !== null ? (
-        <p className="truncate font-mono text-sm text-muted-foreground">
-          {status.dnsName}
+        {serve !== null ? (
+          <div className="flex min-w-0 items-center gap-3">
+            <UrlLink
+              href={serve.url}
+              target="_blank"
+              rel="noreferrer"
+              className="truncate font-mono text-sm text-foreground hover:underline"
+            >
+              {serve.url}
+            </UrlLink>
+            <Button
+              size="sm"
+              variant="link"
+              className={TEXT_ACTION_CLASS}
+              onClick={() =>
+                void copyTextWithSdkToast(serve.url, {
+                  successMessage: "Address copied",
+                })
+              }
+            >
+              Copy
+            </Button>
+          </div>
+        ) : null}
+        {view.body !== null ? (
+          <p
+            className={cn(
+              "text-xs",
+              serve !== null && view.tone !== "ok"
+                ? "text-warning-text"
+                : "text-muted-foreground",
+            )}
+          >
+            {view.body}
+          </p>
+        ) : null}
+        {serve !== null ? (
+          <p className="text-xs text-subtle-foreground">
+            {serve.owner === "adopted"
+              ? "Set up outside bb, so bb won't remove it"
+              : "Set up by bb"}{" "}
+            · forwards to {status.target}
+          </p>
+        ) : null}
+      </div>
+      {serve?.owner === "bb" ? (
+        <p className="text-xs text-subtle-foreground">
+          Stays on if bb stops or this plugin is turned off. Remove turns it
+          off.
         </p>
       ) : null}
-      {status.message !== null ? (
-        <p className="text-xs text-muted-foreground">{status.message}</p>
-      ) : null}
-      {adminLink !== undefined && status.adminUrl !== null ? (
-        <UrlLink
-          href={status.adminUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-xs text-foreground underline-offset-4 hover:underline"
-        >
-          {adminLink}
-        </UrlLink>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        {status.state === "not-served" ? (
-          <Button size="sm" onClick={() => run("setup")}>
-            Set up
-          </Button>
-        ) : null}
-        {status.serve?.owner === "bb" ? (
-          <Button size="sm" variant="outline" onClick={() => run("teardown")}>
-            Remove
-          </Button>
-        ) : null}
-        <Button size="sm" variant="ghost" onClick={refetch}>
-          Check again
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Only devices on your tailnet that its access rules allow can reach this
-        address.
-        {status.serve?.owner === "bb"
-          ? " Stopping bb or disabling this plugin leaves Serve in place; Remove turns it off."
-          : ""}{" "}
-        Also <code>bb tailscale status|setup|teardown</code>.
-      </p>
     </div>
   );
 }
@@ -259,8 +415,6 @@ function TailscaleSettingsSection() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "tailscale",
-    description:
-      "Reach this bb privately at its Tailscale address through Tailscale Serve.",
     component: TailscaleSettingsSection,
   });
 });

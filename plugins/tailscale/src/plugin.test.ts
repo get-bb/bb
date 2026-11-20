@@ -194,7 +194,7 @@ describe("tailscale serve setup and teardown", () => {
     expect(await status(host)).toMatchObject({
       state: "served",
       serve: { port: 443, url: URL_443, owner: "adopted", funnel: false },
-      https: { ok: true, error: null },
+      https: { result: "ok", error: null },
     });
     expect(await host.harness.callRpc("setup", null)).toMatchObject({
       serve: { owner: "adopted" },
@@ -291,7 +291,7 @@ describe("tailscale serve setup and teardown", () => {
 
     expect(await host.harness.callRpc("setup", null)).toMatchObject({
       state: "served",
-      https: { ok: true, error: null },
+      https: { result: "ok", error: null },
     });
     expect(refusals).toBe(0);
   });
@@ -416,7 +416,7 @@ describe("tailscale serve setup and teardown", () => {
       message: expect.stringContaining("Funnel is on"),
       serve: { funnel: true },
       https: {
-        ok: false,
+        result: "other-server",
         error: `${URL_443} answers, but it is a different bb server`,
       },
     });
