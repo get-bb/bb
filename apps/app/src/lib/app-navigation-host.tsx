@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type {
   ExperimentalFileOpenOptions,
@@ -48,7 +49,7 @@ interface AppNavigationHostCapabilities {
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
-interface ResolvedAppNavigationHostCapabilities {
+export interface ResolvedAppNavigationHostCapabilities {
   panel: AppPanelController;
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
@@ -150,7 +151,23 @@ export function AppNavigationSurfaceProvider({
   );
 }
 
-function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
+export function useAppNavigationHostRef(): RefObject<ResolvedAppNavigationHostCapabilities> {
+  return useRef(DEFAULT_APP_NAVIGATION_HOST);
+}
+
+export function AppNavigationHostCapture({
+  hostRef,
+}: {
+  hostRef: RefObject<ResolvedAppNavigationHostCapabilities>;
+}) {
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    hostRef.current = host;
+  });
+  return null;
+}
+
+export function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
   let focused: ResolvedAppNavigationHostCapabilities | null = null;
   for (const surface of focusedSurfaces.values()) focused = surface.current;
   return focused;

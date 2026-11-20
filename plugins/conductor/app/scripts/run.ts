@@ -1,5 +1,8 @@
 import { toast } from "sonner";
-import { getAppBridge, getThreadNavigate } from "../bridge.js";
+import type {
+  ExperimentalPluginActionContext,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk/app";
 import {
   parseSettingsFile,
   SETTINGS_FILES,
@@ -23,10 +26,10 @@ function encodeBase64(text: string): string {
 }
 
 async function readWorkspaceScripts(
+  sdk: PluginBrowserBbSdk,
   hostId: string,
   workspacePath: string,
 ): Promise<WorkspaceScripts | null> {
-  const { sdk } = getAppBridge();
   for (const file of SETTINGS_FILES) {
     try {
       const result = await sdk.files.read({
@@ -47,10 +50,10 @@ async function readWorkspaceScripts(
 }
 
 export async function runWorkspaceScript(
+  { sdk, navigate }: Pick<ExperimentalPluginActionContext, "sdk" | "navigate">,
   threadId: string,
   workspaceThreadIds: readonly string[] = [threadId],
 ): Promise<void> {
-  const { sdk } = getAppBridge();
   const thread = await sdk.threads.get({ threadId });
   if (thread.environmentId === null) {
     toast.error("This thread has no workspace to run in.");
@@ -64,6 +67,7 @@ export async function runWorkspaceScript(
     return;
   }
   const scripts = await readWorkspaceScripts(
+    sdk,
     environment.hostId,
     environment.path,
   );
@@ -104,7 +108,7 @@ export async function runWorkspaceScript(
     title: RUN_TERMINAL_TITLE,
     start: { mode: "shell" },
   });
-  await getThreadNavigate(threadId).experimental_openTerminal({
+  await navigate.experimental_openTerminal({
     terminalId: terminal.id,
   });
   await sdk.terminals.input({

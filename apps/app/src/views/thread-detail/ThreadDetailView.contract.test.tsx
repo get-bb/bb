@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Provider } from "jotai";
-import type { ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalThreadHeaderRowProps } from "@get-bb/plugin-sdk";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
@@ -35,7 +35,12 @@ import {
 import {
   getFocusedAppPanelController,
   resetFocusedAppNavigationSurfacesForTest,
+  useAppNavigationHost,
 } from "@/lib/app-navigation-host";
+import {
+  PluginActionContextProvider,
+  useBindPluginActionContext,
+} from "@/lib/plugin-action-context-provider";
 import { buildFocusedSurfacePaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { markPluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
@@ -84,6 +89,10 @@ const fixtures = vi.hoisted(() => ({
   router: null as ReturnType<
     typeof import("react-router-dom").createMemoryRouter
   > | null,
+  binder: null as {
+    bind: import("@/lib/plugin-navigation-hooks").BindPluginActionContext;
+    host: import("@/lib/app-navigation-host").ResolvedAppNavigationHostCapabilities;
+  } | null,
 }));
 
 const THREAD = makeThreadResponse({
@@ -201,6 +210,7 @@ async function mountThreadView(
   fixtures.probeHost = probeHost;
   const probe = fixtures.probe;
   probe.current = null;
+  probe.navigate = undefined;
   const sink: ContractStateSink = { current: null };
   fixtures.sink = sink;
   const router = createMemoryRouter(
@@ -208,7 +218,8 @@ async function mountThreadView(
       {
         path: "/",
         element: (
-          <>
+          <PluginActionContextProvider>
+            <PluginActionContextBinderProbe />
             <ThreadActionCollectors
               coreRegistrations={[]}
               requestRename={() => undefined}
@@ -230,7 +241,7 @@ async function mountThreadView(
                 timelineEnabled={false}
               />
             </DefaultPaneContextProvider>
-          </>
+          </PluginActionContextProvider>
         ),
       },
     ],
@@ -266,7 +277,11 @@ async function mountThreadView(
   }
   if (probeHost === "paletteCommand") {
     await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
+    const binder = fixtures.binder;
+    if (binder === null) throw new Error("binder probe has not rendered");
     const [command] = buildFocusedSurfacePaletteActions({
+      bind: binder.bind,
+      host: binder.host,
       slots: getPluginSlotSnapshot().commandPaletteActions.flatMap((slot) =>
         slot.pluginId === CONTRACT_PLUGIN_ID && slot.target === "app"
           ? [slot]
@@ -292,34 +307,28 @@ async function mountThreadView(
     );
     await waitFor(() => expect(probe.current).not.toBeNull());
   }
-  const exposesNavigation =
-    probeHost === "prompt" ||
-    probeHost === "headerRow" ||
-    probeHost === "threadAction";
   return {
     panel: () => readContractPanel(probe),
-    navigation: exposesNavigation
-      ? {
-          navigate: () => readContractNavigate(probe),
-          open: {
-            terminal: makeTerminalSession({
-              id: "term_contract",
-              threadId: THREAD.id,
-              environmentId: ENVIRONMENT.id,
-              hostId: ENVIRONMENT.hostId,
-            }),
-            file: {
-              target: {
-                kind: "thread-storage",
-                threadId: THREAD.id,
-                path: "a.md",
-              },
-              location: null,
-            },
-            url: "https://example.com/contract",
+    navigation: {
+      navigate: () => readContractNavigate(probe),
+      open: {
+        terminal: makeTerminalSession({
+          id: "term_contract",
+          threadId: THREAD.id,
+          environmentId: ENVIRONMENT.id,
+          hostId: ENVIRONMENT.hostId,
+        }),
+        file: {
+          target: {
+            kind: "thread-storage",
+            threadId: THREAD.id,
+            path: "a.md",
           },
-        }
-      : null,
+          location: null,
+        },
+        url: "https://example.com/contract",
+      },
+    },
     snapshot: () => snapshotFromState(sink),
     tabs: () =>
       probeHost === "prompt" || probeHost === "headerRow"
@@ -352,7 +361,6 @@ const FULL_SUPPORT = {
   actionTabs: true,
   navigation: true,
 } as const;
-const PANEL_ONLY_SUPPORT = { ...FULL_SUPPORT, navigation: false } as const;
 
 describePanelControllerContract("thread view", FULL_SUPPORT, () =>
   mountThreadView("prompt"),
@@ -366,23 +374,30 @@ describePanelControllerContract("thread header action", FULL_SUPPORT, () =>
   mountThreadView("threadAction"),
 );
 
-describePanelControllerContract(
-  "thread message action",
-  PANEL_ONLY_SUPPORT,
-  () => mountThreadView("messageAction"),
+describePanelControllerContract("thread message action", FULL_SUPPORT, () =>
+  mountThreadView("messageAction"),
 );
 
 describePanelControllerContract(
   "command palette command on a thread",
-  PANEL_ONLY_SUPPORT,
+  FULL_SUPPORT,
   () => mountThreadView("paletteCommand"),
 );
 
 describePanelControllerContract(
   "thread new-tab plugin action",
-  PANEL_ONLY_SUPPORT,
+  FULL_SUPPORT,
   () => mountThreadView("newTabAction"),
 );
+
+function PluginActionContextBinderProbe() {
+  const bind = useBindPluginActionContext();
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    fixtures.binder = { bind, host };
+  });
+  return null;
+}
 
 function HeaderRowProbe() {
   return fixtures.probeHost === "headerRow" ? (
@@ -450,17 +465,21 @@ beforeEach(() => {
           id: "probe-message",
           title: "Probe message",
           icon: "Zap",
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "messageAction")
-              fixtures.probe.current = experimental_panel;
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "messageAction") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
           },
         });
         app.commands.register({
           id: "probe-command",
           title: "Probe command",
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "paletteCommand")
-              fixtures.probe.current = experimental_panel;
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "paletteCommand") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
           },
         });
         app.slots.experimental_tab({
@@ -470,9 +489,11 @@ beforeEach(() => {
           title: "Launcher",
           icon: "Zap",
           component: ContractActionTab,
-          run: ({ experimental_panel }) => {
-            if (fixtures.probeHost === "newTabAction")
-              fixtures.probe.current = experimental_panel;
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "newTabAction") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
           },
         });
         app.slots.experimental_threadAction({
@@ -481,9 +502,9 @@ beforeEach(() => {
           icon: "Info",
           group: "probe",
           placement: "header",
-          item: ({ navigate, experimental_panel }) => {
+          item: ({ navigate, panel }) => {
             if (fixtures.probeHost === "threadAction") {
-              fixtures.probe.current = experimental_panel;
+              fixtures.probe.current = panel;
               fixtures.probe.tabs = undefined;
               fixtures.probe.navigate = navigate;
             }

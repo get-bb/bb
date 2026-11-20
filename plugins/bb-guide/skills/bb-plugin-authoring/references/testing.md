@@ -79,7 +79,7 @@ members. Use them in behavioral tests so a new required contract field changes
 one shared default. Keep schema, serialization, and command-output fixtures
 explicit when their exact complete shape is the assertion.
 `experimental_makePanelController(overrides?)` builds the
-`experimental_panel` for a command, thread action or message action called
+`panel` for a command, thread action or message action called
 directly: every method declines and `getTabs()` reports a closed, empty panel
 except the ones you pass, such as `{ toggleTab: vi.fn(() => true) }`.
 
@@ -201,7 +201,7 @@ const slot = renderSlot(
       listNotes: () => ({ root: "/notes", notes: [], error: null }),
     }, // method → handler, calls logged
     settings: { greeting: "hi" }, // useSettings() values
-    context: { projectId: "p1", threadId: null }, // useBbContext()
+    context: { projectId: "p1", threadId: null }, // useBbContext(); experimental_pluginPanel defaults to null
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
     openUrl: (url) => url.startsWith("https://"),
   },

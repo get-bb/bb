@@ -110,9 +110,21 @@ describe("retiredSdkMemberWarnings", () => {
   it("leaves the panel controller and unrelated openPanel keys alone", () => {
     expect(
       retiredSdkMemberWarnings(
-        "panel.openTab({ tab }); ctx.experimental_panel.toggleTab({ tab }); const deps = { openPanel: () => true };",
+        "panel.openTab({ tab }); ctx.panel.toggleTab({ tab }); const deps = { openPanel: () => true }; renderSlot(Tab, { experimental_panel: { openTab } });",
       ),
     ).toEqual([]);
+  });
+
+  it.each([
+    ["member access", "ctx.experimental_panel.toggleTab({ tab });"],
+    [
+      "a destructured callback parameter",
+      "run({ threadId, experimental_panel }) { experimental_panel.close(); }",
+    ],
+  ])("flags the renamed context panel through %s", (_label, source) => {
+    expect(retiredSdkMemberWarnings(source)).toEqual([
+      expect.stringContaining("ctx.experimental_panel is renamed to ctx.panel"),
+    ]);
   });
 });
 

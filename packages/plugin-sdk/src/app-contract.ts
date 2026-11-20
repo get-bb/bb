@@ -1112,11 +1112,9 @@ export interface PluginNavPanelRegistration {
  * The action is thread-only and is never offered on the root New thread
  * screen, so `threadId` is always present.
  */
-export interface ExperimentalThreadTabActionContext {
+export interface ExperimentalThreadTabActionContext extends ExperimentalPluginActionContext {
   /** The thread whose panel launcher invoked the action. */
   threadId: string;
-  /** The side panel of the thread view that invoked the action. */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** Where a plugin tab belongs. Navigation panels are owned by the registering plugin. */
@@ -1150,7 +1148,7 @@ type ExperimentalTabLifecycle<Props, Context> =
       /** Default persisted params when opened without explicit params. */
       params?: JsonValue;
       run?(
-        context: Context & { experimental_panel: ExperimentalPanelController },
+        context: Context & ExperimentalPluginActionContext,
       ): void | Promise<void>;
     };
 
@@ -1185,9 +1183,8 @@ type ExperimentalTabInput<
       >;
       params?: JsonValue;
       run?(
-        context: ExperimentalTabContextProps<C> & {
-          experimental_panel: ExperimentalPanelController;
-        },
+        context: ExperimentalTabContextProps<C> &
+          ExperimentalPluginActionContext,
       ): void | Promise<void>;
       experimental_target?: never;
     });
@@ -1236,14 +1233,13 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
   );
 
 /** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
-export interface PluginNewThreadPanelActionContext {
+/**
+ * `panel` is the New thread screen's side panel. Address this
+ * action's tab as `{ id, context: { kind: "thread" }, availability: "action" }`.
+ */
+export interface PluginNewThreadPanelActionContext extends ExperimentalPluginActionContext {
   /** Project selected in the root composer; null in projectless compose. */
   projectId: string | null;
-  /**
-   * The New thread screen's side panel. Address this action's tab as
-   * `{ id, context: { kind: "thread" }, availability: "action" }`.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** Registration for the root New thread screen's panel Actions list. */
@@ -1281,8 +1277,11 @@ export interface PluginPendingInteractionRegistration {
   component: ComponentType<PluginPendingInteractionProps>;
 }
 
-/** Context handed to a `sidebarFooterAction`'s `run`. */
-export interface PluginSidebarFooterActionContext {
+/**
+ * Context handed to a `sidebarFooterAction`'s `run`. `navigate` and
+ * `panel` act on the focused surface, as for commands.
+ */
+export interface PluginSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /**
    * Navigate to this plugin's detail page in Tools, where declarative settings
    * and `settingsSection` slots render.
@@ -1310,8 +1309,11 @@ export interface PluginSidebarFooterActionRegistration {
   run(context: PluginSidebarFooterActionContext): void | Promise<void>;
 }
 
-/** Context handed to an experimental sidebar-footer action. */
-export interface ExperimentalSidebarFooterActionContext {
+/**
+ * Context handed to an experimental sidebar-footer action. `navigate` and
+ * `panel` act on the focused surface, as for commands.
+ */
+export interface ExperimentalSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /** Navigate to this plugin's detail page in Tools. */
   openPluginDetails(): void;
 }
@@ -2454,37 +2456,30 @@ export interface PluginThreadActionDataInput {
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
-export interface PluginThreadActionItemInput<Data> {
+/**
+ * `panel` is the focused surface's side panel, as for plugin
+ * commands. Thread menus are not inside a side panel, so calls return false
+ * when the focused surface has no such tab.
+ */
+export interface PluginThreadActionItemInput<
+  Data,
+> extends ExperimentalPluginActionContext {
   thread: PluginThreadActionTarget;
   /** What `useData` last returned; undefined when the registration has none. */
   data: Data;
-  /** The registering plugin's `useSdk()` client. */
-  sdk: PluginBrowserBbSdk;
-  /** The registering plugin's `useBbNavigate()`. */
-  navigate: BbNavigate;
-  /**
-   * The focused surface's side panel, as for plugin commands. Thread menus
-   * are not inside a side panel, so calls return false when the focused
-   * surface has no such tab.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /**
  * What a registration's `experimental_bulkItem` receives for a selection
  * of several threads.
  */
-export interface PluginThreadActionBulkItemInput<Data> {
+export interface PluginThreadActionBulkItemInput<
+  Data,
+> extends ExperimentalPluginActionContext {
   /** The selected threads in the surface's list order; always two or more. */
   threads: readonly PluginThreadActionTarget[];
   /** What `useData` last returned; undefined when the registration has none. */
   data: Data;
-  /** The registering plugin's `useSdk()` client. */
-  sdk: PluginBrowserBbSdk;
-  /** The registering plugin's `useBbNavigate()`, as for `item`. */
-  navigate: BbNavigate;
-  /** The focused surface's side panel, as for `item`. */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /**
@@ -3625,8 +3620,36 @@ export interface ExperimentalMessageMetadataRegistration {
 /** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
 export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
 
+/**
+ * What every plugin callback's context carries besides its own fields:
+ * commands, message actions, thread actions, panel and New thread panel
+ * actions, sidebar footer actions, and composer commands and menu items.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalPluginActionContext {
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /**
+   * The registering plugin's `useBbNavigate()`, bound to the surface that
+   * invoked the callback, so terminals, files and links open there.
+   */
+  navigate: BbNavigate;
+  /** The side panel of the surface that invoked the callback. */
+  panel: ExperimentalPanelController;
+}
+
+/**
+ * Context handed to a composer command's or composer menu item's `run`.
+ * `navigate` and `panel` act on the surface showing the
+ * composer.
+ */
+export interface ExperimentalComposerActionContext extends ExperimentalPluginActionContext {
+  /** The handling composer, bound to this plugin like `useComposer()`. */
+  composer: PluginComposerApi;
+}
+
 /** Context handed to a `messageAction`'s `run`. */
-export interface PluginMessageActionContext {
+export interface PluginMessageActionContext extends ExperimentalPluginActionContext {
   /** The thread whose timeline surfaced the action. */
   threadId: string;
   message: ThreadChatMessageReference;
@@ -3635,8 +3658,6 @@ export interface PluginMessageActionContext {
    * the exact text the user highlighted inside `message`.
    */
   selectedText?: string;
-  /** The side panel of the thread view whose timeline surfaced the action. */
-  experimental_panel: ExperimentalPanelController;
   /**
    * The composer of the thread the message is in, or null when that thread's
    * composer is not available on this surface. The same handle
@@ -3673,21 +3694,20 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
-/** Current context for palette and keyboard command invocations. */
-export interface PluginCommandContext {
+/**
+ * Current context for palette and keyboard command invocations. `navigate`
+ * and `panel` act on the focused surface: the thread view or
+ * New thread screen in focus, or the focused plugin page. On the New thread
+ * screen, a `{ context: { kind: "thread" }, availability: "action" }` tab
+ * resolves against `experimental_newThreadPanelAction` with the same id, so
+ * register both slots with the same id to support commands on both screens.
+ * Panel calls return false when the focused surface has no such tab or no
+ * side panel; guard with `isAvailable` rather than assuming.
+ */
+export interface PluginCommandContext extends ExperimentalPluginActionContext {
   /** The thread in view, or null on a surface without one. */
   threadId: string | null;
   projectId: string | null;
-  /**
-   * The focused surface's side panel: the thread view or New thread screen
-   * in focus, or the focused plugin page. On the New thread screen, a
-   * `{ context: { kind: "thread" }, availability: "action" }` tab resolves
-   * against `experimental_newThreadPanelAction` with the same id, so register
-   * both slots with the same id to support commands on both screens. Calls
-   * return false when the focused surface has no such tab or no side panel;
-   * guard with `isAvailable` rather than assuming.
-   */
-  experimental_panel: ExperimentalPanelController;
 }
 
 /** A default keyboard shortcut. Omitted modifiers are false. */
@@ -3754,7 +3774,7 @@ export interface ExperimentalComposerCommandRegistration {
    * Runs with the handling composer, bound to this plugin like `useComposer()`.
    * Errors (sync or async) are contained and logged.
    */
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /** Registers commands for bb's command palette. */
@@ -4387,7 +4407,7 @@ export interface ComposerPlusMenuItem {
   /** Accessible description for the host-rendered row. */
   description?: string;
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /**
@@ -4403,7 +4423,7 @@ export interface ComposerSendMenuItem {
   /** Accessible description for the host-rendered row. */
   description?: string;
   disabled?: boolean | ((composer: PluginComposerApi) => boolean);
-  run(context: { composer: PluginComposerApi }): void | Promise<void>;
+  run(context: ExperimentalComposerActionContext): void | Promise<void>;
 }
 
 /**
@@ -5464,10 +5484,24 @@ export interface ExperimentalPanelTabIconProps {
   tabKey: string;
 }
 
+/** A plugin nav panel page; see {@link BbContext.experimental_pluginPanel}. */
+export interface ExperimentalPluginPanelPage {
+  pluginId: string;
+  /** The panel's registered `path`. */
+  path: string;
+  /** The location inside the panel, percent-encoded like the component's `subPath` prop; empty at the panel's root. */
+  subPath: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
   threadId: string | null;
+  /**
+   * The plugin nav panel the route shows (any plugin's), or null on other
+   * pages. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_pluginPanel: ExperimentalPluginPanelPage | null;
 }
 
 export interface BbNavigate {

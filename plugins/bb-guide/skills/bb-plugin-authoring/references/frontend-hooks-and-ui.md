@@ -33,7 +33,11 @@ Hooks:
 - `experimental_useThreadExtensionState(threadId, kind)` → the latest state your provider bridge emitted for one of your declared `extensionKinds` (the local name, without your plugin id) on that thread, or null when there is none. It follows live updates while bb shows the thread; parse the value with your kind's schema before use. Only your own plugin's kinds are readable.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
-- `useBbContext()` → `{ projectId, threadId }` from the current route.
+- `useBbContext()` → `{ projectId, threadId, experimental_pluginPanel }` from
+  the current route. `experimental_pluginPanel` is `{ pluginId, path, subPath }`
+  when the route shows a plugin nav panel (any plugin's; compare `pluginId`
+  with `experimental_usePluginId()`), with `subPath` percent-encoded like the
+  panel component's prop, and null elsewhere.
 - `experimental_usePluginId()` → this plugin's id, the same value as the
   server's `bb.pluginId`. Key anything kept outside bb's plugin storage with
   it (localStorage entries, log prefixes) so a copy published under another
@@ -205,7 +209,7 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer })`. `plusMenu` rows also appear in the sent-message
+  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows also appear in the sent-message
   editor (scope `thread`), where the other customizations do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
@@ -217,7 +221,7 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   `plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
   `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
   A composer command is listed and rebindable like any plugin command and shares
-  the `app.commands` ID namespace, but `run` receives `{ composer }` for the
+  the `app.commands` ID namespace, but `run` receives `composer` (beside the [callback context](#callback-context)) for the
   composer that handles it, through the same path as bb's own "Focus composer"
   command: the composer holding the caret, or with the caret outside every
   composer, the focused pane's primary composer. Its shortcut is inactive while
@@ -322,14 +326,26 @@ literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
 
+## Callback context
+
+Callbacks run outside your components and cannot call hooks, so every callback's
+context extends `ExperimentalPluginActionContext` `{ sdk, navigate, panel }`: your
+`useSdk()`, your `useBbNavigate()`, and the [panel controller](#panel-controller)
+of the surface that invoked it. That covers `app.commands`, `messageAction`,
+`experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
+sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
+`navigate` and `panel` act on the focused surface for commands, thread actions
+and footer actions; on the message's thread view for message actions; on the
+launching surface for panel actions; and on the composer's surface for composer
+callbacks. Experimental: see `docs/api_to_audit.md`.
+
 ## Panel controller
 
 `experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
 surface the component renders in: the thread view, the plugin page, or the New
-thread screen. Every launcher context carries the same controller as
-`experimental_panel`: plugin commands, thread actions, message actions,
-New-thread panel actions, and action tabs' `run`. Commands and thread actions
-use the focused surface's controller.
+thread screen. Every [callback context](#callback-context) carries the same
+controller as `panel`. Plugins built against `experimental_panel` keep
+working; the plugin build warns with the new name.
 
 ```tsx
 const panel = experimental_useAppPanel();
@@ -384,7 +400,7 @@ with the replacement:
 
 | Retired                                                                               | Replacement                                                                                                                         |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`                            |
 | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                      | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
 | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`            | `experimental_useAppPanel().openTab(options)`                                                                                       |
 | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })`       |

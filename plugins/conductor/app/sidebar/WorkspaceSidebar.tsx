@@ -4,8 +4,10 @@ import {
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_useArchiveEnvironmentThreads as useArchiveEnvironmentThreads,
+  experimental_usePluginId as usePluginId,
   experimental_useSidebarThreads as useSidebarThreads,
   ThreadTitle,
+  useBbContext,
   useBbNavigate,
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatuses,
@@ -32,7 +34,7 @@ import {
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
 } from "@/components/ui/sidebar-row-classes";
 import { cn } from "@/lib/utils";
-import { useNewChatEnvironment } from "../new-chat/active.js";
+import { openNewChatEnvironmentId } from "../new-chat/route.js";
 import { ProjectAvatar } from "../project-avatar.js";
 import { toActionTarget } from "../thread-target.js";
 import {
@@ -414,7 +416,10 @@ export function WorkspaceSidebar({
     () => buildWorkspaceSidebarModel(state.threads, state.projects),
     [state.threads, state.projects],
   );
-  const newChatEnvironmentId = useNewChatEnvironment();
+  const newChatEnvironmentId = openNewChatEnvironmentId(
+    useBbContext().experimental_pluginPanel,
+    usePluginId(),
+  );
   const activeWorkspaceKey =
     activeThreadId === null && newChatEnvironmentId !== null
       ? `env:${newChatEnvironmentId}`

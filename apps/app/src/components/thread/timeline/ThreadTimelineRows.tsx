@@ -137,9 +137,10 @@ import {
   type MessageMetadataProps,
 } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import type { ExperimentalPluginActionContext } from "@get-bb/plugin-sdk";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { useSurfaceMessageActionSlots } from "@/lib/message-action-surface";
-import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
 import {
   usePluginComposerHost,
   type PluginComposerHost,
@@ -196,7 +197,7 @@ interface TimelineRendererStaticContextValue {
         message: ThreadChatMessageReference,
       ) => void)
     | undefined;
-  panel: AppPanelController;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -718,7 +719,7 @@ function buildRowPluginMessageActions(args: {
   timelineThreadId: string | undefined;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  panel: AppPanelController;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
   const {
@@ -726,7 +727,7 @@ function buildRowPluginMessageActions(args: {
     timelineThreadId,
     message,
     selectedText,
-    panel,
+    messageActionContext,
     composerHost,
   } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
@@ -743,8 +744,8 @@ function buildRowPluginMessageActions(args: {
         threadId: timelineThreadId,
         message,
         selectedText,
-        panel,
         composerHost,
+        actionContext: messageActionContext(slot.pluginId),
       }),
   }));
 }
@@ -875,7 +876,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     messageMetadata,
     consumerMessageActions,
     reportProseSelection,
-    panel,
+    messageActionContext,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -904,7 +905,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: pluginMessageActions,
     timelineThreadId: threadId,
     message: messageReference,
-    panel,
+    messageActionContext,
     composerHost,
   });
   const rowConsumerActions =
@@ -2390,7 +2391,16 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
-  const { panel } = useAppNavigationHost();
+  const navigationHost = useAppNavigationHost();
+  const latestNavigationHost = useRef(navigationHost);
+  useLayoutEffect(() => {
+    latestNavigationHost.current = navigationHost;
+  });
+  const bindPluginActionContext = useBindPluginActionContext();
+  const [messageActionContext] = useState(
+    () => (pluginId: string) =>
+      bindPluginActionContext(pluginId, () => latestNavigationHost.current),
+  );
   const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
@@ -2404,15 +2414,15 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         timelineThreadId,
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
-        panel,
+        messageActionContext,
         composerHost,
       }) ?? []
     );
   }, [
     activeSelection,
     composerHost,
+    messageActionContext,
     messageActionSlots,
-    panel,
     timelineThreadId,
   ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
@@ -2432,7 +2442,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
-      panel,
+      messageActionContext,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2453,7 +2463,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.consumerMessageActions,
       reportProseSelection,
       timelineThreadId,
-      panel,
+      messageActionContext,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,

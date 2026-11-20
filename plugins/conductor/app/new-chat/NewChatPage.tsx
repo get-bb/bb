@@ -15,7 +15,6 @@ import { Icon } from "@/components/ui/icon";
 import { useLastActiveThreads } from "../sidebar/prefs.js";
 import { TabStrip } from "../tabs/WorkspaceTabs.js";
 import { findWorkspace } from "../workspace.js";
-import { useMarkNewChatEnvironment } from "./active.js";
 import { draftKeyFor, environmentIdFromSubPath } from "./route.js";
 
 function findComposer(
@@ -88,7 +87,6 @@ function TranscriptChips({
 
 export function NewChatPage({ subPath }: PluginNavPanelProps) {
   const environmentId = environmentIdFromSubPath(subPath);
-  useMarkNewChatEnvironment(environmentId);
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const lastActive = useLastActiveThreads();
