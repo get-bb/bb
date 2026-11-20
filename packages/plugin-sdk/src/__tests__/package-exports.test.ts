@@ -46,6 +46,7 @@ describe("packed plugin SDK exports", () => {
       "./testing",
       "./testing/app",
       "./testing/host",
+      "./testing/vitest-global-setup",
       "./internal/rpc-tags",
       "./internal/rpc-query-host",
       "./process",

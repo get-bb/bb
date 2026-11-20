@@ -31,6 +31,7 @@ export const API_INDEX_FILES = [
       { subpath: "./process" },
       { subpath: "./testing" },
       { subpath: "./testing/host" },
+      { subpath: "./testing/vitest-global-setup" },
     ],
   },
   {

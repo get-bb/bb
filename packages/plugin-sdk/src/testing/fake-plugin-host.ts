@@ -157,9 +157,9 @@ import {
  *   `bb-fake-plugin-host-<pid>-*` in `os.tmpdir()`, which is removed when its
  *   last host is disposed or when the process exits normally or calls
  *   `process.exit()`. A process killed by a signal, such as a Vitest worker
- *   stopped with SIGTERM, can leave that root behind; point `TMPDIR` (and
- *   `TEMP`/`TMP` on Windows) at a directory the test runner removes, such as
- *   one a Vitest `globalSetup` creates and deletes, or call `dispose()`.
+ *   stopped with SIGTERM, can leave that root behind; add
+ *   `@get-bb/plugin-sdk/testing/vitest-global-setup` to Vitest's
+ *   `globalSetup`, which removes the whole temp dir sandbox at teardown.
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
  * - http auth modes are recorded but not enforced — signature checks and

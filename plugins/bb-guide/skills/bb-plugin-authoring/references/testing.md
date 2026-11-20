@@ -15,6 +15,26 @@ Either way, install its optional peers too: `better-sqlite3` for backend tests,
 and React, React DOM, and Testing Library for frontend tests. Add jsdom as a
 test-runner development dependency.
 
+Point Vitest's `globalSetup` at `@get-bb/plugin-sdk/testing/vitest-global-setup`
+so test temp files are removed when the run ends:
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+  test: { globalSetup: ["@get-bb/plugin-sdk/testing/vitest-global-setup"] },
+});
+```
+
+It points `TMPDIR`, `TEMP` and `TMP` at a `bb-vt-*` sandbox for the run and
+deletes the sandbox at teardown, in Vitest's main process. Vitest stops its
+workers with SIGTERM, so a worker's `exit` handlers never run. Without the
+sandbox, each worker that opened `bb.storage.database()` leaves its
+`bb-fake-plugin-host-<pid>-*` directory behind. `harness.lifecycle.dispose()`
+removes a host's storage right away, and the per-process root goes with its
+last host. Code that runs outside Vitest can call the named
+`experimental_sandboxTempDir({ beforeRemove })` export, which returns the async
+teardown.
+
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv
 256KB cap, schema-RPC validation/error/strict-JSON behavior, additive events,

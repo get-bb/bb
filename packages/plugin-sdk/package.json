@@ -141,6 +141,12 @@
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
     },
+    "./testing/vitest-global-setup": {
+      "source": "./src/testing/vitest-global-setup.ts",
+      "types": "./bundled-types/bb-plugin-sdk-testing-vitest-global-setup.d.ts",
+      "import": "./dist/testing/vitest-global-setup.js",
+      "default": "./dist/testing/vitest-global-setup.js"
+    },
     "./internal/rpc-tags": {
       "source": "./src/internal/rpc-tags.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-rpc-tags.d.ts",
