@@ -29,6 +29,7 @@ import {
   MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
 import { installGitDependencies } from "./git-plugin-dependencies.js";
+import { PluginInstallCancelledError } from "./install-cancellation.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type {
@@ -145,23 +146,68 @@ async function installNpmCandidate(args: {
   ]);
 }
 
+async function fetchGitCommitShallow(
+  url: string,
+  stagingDir: string,
+  commit: string,
+  notFoundHint: string | undefined,
+): Promise<boolean> {
+  await runInstallCommand("git", ["init", "--quiet", stagingDir], {
+    notFoundHint,
+  });
+  try {
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "fetch",
+      "--quiet",
+      "--depth",
+      "1",
+      "--no-tags",
+      url,
+      commit,
+    ]);
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "checkout",
+      "--quiet",
+      "--detach",
+      "FETCH_HEAD",
+    ]);
+    return true;
+  } catch (error) {
+    if (error instanceof PluginInstallCancelledError) throw error;
+    await rm(stagingDir, { recursive: true, force: true });
+    return false;
+  }
+}
+
 async function cloneGitCommit(
   url: string,
   stagingDir: string,
   commit: string,
   notFoundHint?: string,
 ): Promise<void> {
-  await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
-    notFoundHint,
-  });
-  await runInstallCommand("git", [
-    "-C",
+  const shallow = await fetchGitCommitShallow(
+    url,
     stagingDir,
-    "checkout",
-    "--quiet",
-    "--detach",
     commit,
-  ]);
+    notFoundHint,
+  );
+  if (!shallow) {
+    await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+      notFoundHint,
+    });
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "checkout",
+      "--quiet",
+      "--detach",
+      commit,
+    ]);
+  }
   const checkedOutCommit = await runInstallCommand("git", [
     "-C",
     stagingDir,

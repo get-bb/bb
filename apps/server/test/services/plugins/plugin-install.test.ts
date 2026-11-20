@@ -163,6 +163,12 @@ async function commitAll(repoDir: string, message: string): Promise<string> {
   return git(repoDir, ["rev-parse", "HEAD"]);
 }
 
+async function initScratchRepo(dir: string): Promise<string> {
+  await mkdir(dir, { recursive: true });
+  await git(dir, ["init", "-q"]);
+  return dir;
+}
+
 function artifactMeta(args: {
   artifactFormatVersion?: number;
   pluginId: string;
@@ -840,9 +846,7 @@ describe("plugin install flows", () => {
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
 
-    test("installs a pinned commit sha via clone + checkout", async ({
-      fixture,
-    }) => {
+    test("installs a pinned commit sha", async ({ fixture }) => {
       const { workDir, service } = fixture;
 
       const repoDir = join(workDir, "repo-sha");
@@ -860,6 +864,80 @@ describe("plugin install flows", () => {
       });
       expect(entry.status).toBe("running");
       expect(entry.version).toBe("0.1.0");
+    });
+
+    test("fetches only the resolved commit instead of the whole repository", async ({
+      fixture,
+    }) => {
+      const { db, workDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-shallow");
+      await writePluginFixture(repoDir, { name: "bb-plugin-shallow" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      await writeFile(
+        join(repoDir, ".git", "refs", "heads", "dangling"),
+        `${"1".repeat(40)}\n`,
+      );
+      await expect(
+        run("git", ["clone", "--quiet", repoDir, join(workDir, "full-clone")]),
+      ).rejects.toThrow(/nonexistent object/);
+
+      const entry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
+      expect(entry.status).toBe("running");
+      expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
+        gitResolvedCommit: commit,
+      });
+    });
+
+    test("falls back to a full clone when the server refuses to serve the commit directly", async ({
+      fixture,
+    }) => {
+      const { db, workDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-fallback");
+      await writePluginFixture(repoDir, { name: "bb-plugin-fallback" });
+      await initGitRepo(repoDir);
+      const sha = await commitAll(repoDir, "init");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-fallback",
+        version: "9.9.9",
+      });
+      await commitAll(repoDir, "later");
+
+      const protocolV0 = {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "protocol.version",
+        GIT_CONFIG_VALUE_0: "0",
+      };
+      const previous = new Map<string, string | undefined>();
+      for (const [key, value] of Object.entries(protocolV0)) {
+        previous.set(key, process.env[key]);
+        process.env[key] = value;
+      }
+      try {
+        await expect(
+          run("git", ["fetch", "--depth", "1", repoDir, sha], {
+            cwd: await initScratchRepo(join(workDir, "scratch")),
+          }),
+        ).rejects.toThrow(/unadvertised object/);
+
+        const entry = await service.install(`git:${repoDir}@${sha}`, {
+          kind: "root",
+        });
+        expect(entry.status).toBe("running");
+        expect(entry.version).toBe("0.1.0");
+        expect(getInstalledPluginRegistration(db, "fallback")).toMatchObject({
+          gitResolvedCommit: sha,
+        });
+      } finally {
+        for (const [key, value] of previous) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
     });
 
     test("never reuses an exact-resolution artifact owned by another plugin", async ({
