@@ -214,7 +214,10 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       });
       if (jsonOutput) {
         expect(result.stderr).toBe("");
-        expect(JSON.parse(result.stdout)).toEqual({ error: result.error });
+        expect(JSON.parse(result.stdout)).toEqual({
+          ok: false,
+          error: result.error,
+        });
       } else {
         expect(result.stdout).toBe("");
         expect(result.stderr).toContain("request a smaller page");
@@ -252,6 +255,76 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
   it("rejects malformed request bodies", async () => {
     const response = await runCli(harness, "acme", { argv: "not-an-array" });
     expect(response.status).toBe(400);
+  });
+
+  it("gives every host-side failure the core --json error envelope", async () => {
+    const bare = await writePlugin(join(harness.config.dataDir, "fixtures"), {
+      name: "bb-plugin-bare",
+      serverSource: "export default function plugin() {}",
+    });
+    expect((await harness.pluginService.installPath(bare)).status).toBe(
+      "running",
+    );
+    const cases: Array<{
+      id: string;
+      argv: string[];
+      prepare?: () => Promise<unknown>;
+      code: string;
+      message: string;
+    }> = [
+      {
+        id: "acme",
+        argv: ["throw"],
+        code: "command_failed",
+        message: "bb acme failed: kaboom",
+      },
+      {
+        id: "acme",
+        argv: ["malformed"],
+        code: "command_failed",
+        message:
+          "bb acme failed: cli run() must return { exitCode: number, stdout?, stderr? }",
+      },
+      {
+        id: "bare",
+        argv: [],
+        code: "plugin_cli_not_registered",
+        message: 'plugin "bare" registers no CLI command',
+      },
+      {
+        id: "nope",
+        argv: [],
+        code: "plugin_not_found",
+        message: 'unknown plugin "nope"',
+      },
+      {
+        id: "acme",
+        argv: [],
+        prepare: () => harness.pluginService.setEnabled("acme", false),
+        code: "plugin_not_running",
+        message: 'plugin "acme" is not running (status: disabled)',
+      },
+    ];
+    for (const failure of cases) {
+      await failure.prepare?.();
+      for (const json of [false, true]) {
+        const result = (await (
+          await runCli(harness, failure.id, {
+            argv: [...failure.argv, ...(json ? ["--json"] : [])],
+          })
+        ).json()) as { exitCode: number; stdout: string; stderr: string };
+        expect(result.exitCode, failure.code).toBe(1);
+        expect(result.stderr, failure.code).toBe(failure.message);
+        if (json) {
+          expect(JSON.parse(result.stdout), failure.code).toEqual({
+            ok: false,
+            error: { code: failure.code, message: failure.message },
+          });
+        } else {
+          expect(result.stdout, failure.code).toBe("");
+        }
+      }
+    }
   });
 
   it("not-running and unknown plugins fail with helpful stderr", async () => {
@@ -391,25 +464,27 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const raw = await readFile(logFile, "utf8");
     const lines = raw.split("\n").filter((line) => line.length > 0);
-    const parsed = JSON.parse(lines.at(-1) ?? "") as {
-      ts: number;
-      level: string;
-      message: string;
-    };
+    const parsed = lines
+      .map(
+        (line) =>
+          JSON.parse(line) as { ts: number; level: string; message: string },
+      )
+      .find((line) => line.message === "cli plugin loaded");
+    if (parsed === undefined) throw new Error("bb.log line missing");
     expect(parsed.level).toBe("info");
     expect(parsed.message).toBe("cli plugin loaded");
     expect(typeof parsed.ts).toBe("number");
 
     const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/acme/logs?tail=1`,
+      `${BASE}/api/v1/plugins/acme/logs?tail=2`,
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as { ok: boolean; lines: string[] };
     expect(body.ok).toBe(true);
-    expect(body.lines).toHaveLength(1);
-    expect(JSON.parse(body.lines[0] ?? "")).toMatchObject({
-      message: "cli plugin loaded",
-    });
+    expect(body.lines.map((line) => JSON.parse(line))).toMatchObject([
+      { level: "info", message: "cli plugin loaded" },
+      { level: "info", message: "loaded version 0.1.0" },
+    ]);
 
     const missing = await harness.app.request(
       `${BASE}/api/v1/plugins/nope/logs`,

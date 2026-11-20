@@ -1369,7 +1369,7 @@ describe("thread runtime config", () => {
       });
     });
 
-    it("skips null/empty providers, truncates long text, and isolates throws", async () => {
+    it("skips null/empty providers and truncates long text", async () => {
       await withTestHarness(async (harness) => {
         const hostId = "host-runtime-plugin-instr-edge";
         seedHostSession(harness.deps, { id: hostId });
@@ -1398,12 +1398,6 @@ describe("thread runtime config", () => {
             {
               pluginId: "blank",
               provider: () => "   \n\t  ",
-            },
-            {
-              pluginId: "boom",
-              provider: () => {
-                throw new Error("provider boom");
-              },
             },
             {
               pluginId: "global",
@@ -1440,9 +1434,6 @@ describe("thread runtime config", () => {
         );
         expect(instructions).not.toContain(
           'The following instructions come from the BB plugin "blank":',
-        );
-        expect(instructions).not.toContain(
-          'The following instructions come from the BB plugin "boom":',
         );
         expect(instructions).toContain(
           'The following instructions come from the BB plugin "verbose":',

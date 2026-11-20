@@ -2263,7 +2263,9 @@ export function registerPluginCommands(
 
   plugin
     .command("logs <id>")
-    .description("Print a plugin's log (bb.log output)")
+    .description(
+      "Print a plugin's log: bb.log output plus its load, handler, service and host-worker failures",
+    )
     .option("-n, --lines <count>", "Number of lines to show", "100")
     .option("-f, --follow", "Poll for new lines every second (Ctrl+C to stop)")
     .action(

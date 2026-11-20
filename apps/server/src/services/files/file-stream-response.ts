@@ -8,6 +8,7 @@ export interface FileResponseSource {
   lastModified: string;
   open(signal: AbortSignal): Promise<{
     maxChunkBytes: number;
+    maxChunksInFlight: number;
     read(offset: number, length: number): Promise<Uint8Array>;
     close(): Promise<void>;
   }>;
@@ -66,9 +67,8 @@ export async function createFileStreamResponse({
   const reader = await source.open(signal);
   let closePromise: Promise<void> | undefined;
   const close = () => (closePromise ??= reader.close());
-  const read = async (offset: number) => {
+  const read = async (offset: number, length: number) => {
     signal.throwIfAborted();
-    const length = Math.min(reader.maxChunkBytes, end - offset + 1);
     const bytes = await reader.read(offset, length);
     signal.throwIfAborted();
     if (bytes.byteLength !== length) {
@@ -81,14 +81,31 @@ export async function createFileStreamResponse({
     }
     return bytes;
   };
-  let next = start;
+  const inFlight: Promise<Uint8Array>[] = [];
+  let scheduled = start;
+  const readNext = (): Promise<Uint8Array> => {
+    while (scheduled <= end && inFlight.length < reader.maxChunksInFlight) {
+      const length = Math.min(reader.maxChunkBytes, end - scheduled + 1);
+      const chunk = read(scheduled, length);
+      chunk.catch(() => {});
+      inFlight.push(chunk);
+      scheduled += length;
+    }
+    const next = inFlight.shift();
+    if (next === undefined) {
+      throw new Error("File stream read past its end");
+    }
+    return next;
+  };
   let first: Uint8Array | null;
   try {
-    first = await read(next);
+    first = await readNext();
   } catch (error) {
+    cancellation.abort(error);
     await close();
     throw error;
   }
+  let delivered = start;
   let cancelled = false;
   let detachAbort = () => {};
   const release = () => {
@@ -110,17 +127,18 @@ export async function createFileStreamResponse({
       },
       async pull(controller) {
         try {
-          const bytes = first ?? (await read(next));
+          const bytes = first ?? (await readNext());
           first = null;
           if (cancelled) return;
-          next += bytes.byteLength;
+          delivered += bytes.byteLength;
           controller.enqueue(bytes);
-          if (next > end) {
+          if (delivered > end) {
             await release();
             if (!cancelled) controller.close();
           }
         } catch (error) {
           if (!cancelled) controller.error(error);
+          cancellation.abort(error);
           await release();
         }
       },

@@ -30,6 +30,11 @@ declare module "ws" {
     send(
       data: string | Buffer | Uint8Array,
       options?: { compress?: boolean },
+      callback?: (error?: Error) => void,
+    ): void;
+    send(
+      data: string | Buffer | Uint8Array,
+      callback?: (error?: Error) => void,
     ): void;
     close(code?: number, reason?: string): void;
     terminate(): void;

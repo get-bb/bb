@@ -718,7 +718,7 @@ export interface ListThreadEnvironmentAssignmentsOnHostArgs {
   threadIds: readonly string[];
 }
 
-export interface ListHostThreadIdsArgs {
+export interface ListRuntimeHostThreadIdsArgs {
   hostId: string;
 }
 
@@ -1626,17 +1626,26 @@ export function listExistingThreadIds(
     .map((row) => row.id);
 }
 
-export function listHostThreadIds(
-  db: DbConnection,
-  args: ListHostThreadIdsArgs,
+export function listRuntimeHostThreadIds(
+  db: DbQueryConnection,
+  args: ListRuntimeHostThreadIdsArgs,
 ): string[] {
-  return db
-    .select({ id: threads.id })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(eq(environments.hostId, args.hostId))
-    .all()
-    .map((row) => row.id);
+  const hostThreadIdsWhere = (where: ThreadWhere) =>
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .innerJoin(environments, eq(threads.environmentId, environments.id))
+      .where(and(eq(environments.hostId, args.hostId), where))
+      .all()
+      .map((row) => row.id);
+  return [
+    ...new Set([
+      ...hostThreadIdsWhere(liveThread),
+      ...hostThreadIdsWhere(
+        nonDeletedThreads(inArray(threads.status, ["active", "stopping"])),
+      ),
+    ]),
+  ].sort();
 }
 
 export function listActiveHostThreads(

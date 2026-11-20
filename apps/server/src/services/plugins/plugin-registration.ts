@@ -67,6 +67,7 @@ import {
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
+import type { PluginEventLog } from "./plugin-log.js";
 
 const PRESERVED_SOURCE_DIRECTORY_NAME = "preserved-source";
 
@@ -127,6 +128,7 @@ interface PluginRegistrationContext {
   notifyPluginsChanged: () => void;
   list: () => InstalledPlugin[];
   runInstallHandlers: (id: string) => Promise<void>;
+  pluginLog: PluginEventLog;
   safeModeActivationRefusal: (
     args: SafeModeActivationRefusalArgs,
   ) => string | null;
@@ -148,6 +150,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     notifyPluginsChanged,
     list,
     runInstallHandlers,
+    pluginLog,
   } = context;
   const logger = deps.logger;
 
@@ -486,7 +489,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       validated: false,
     });
     if (installed.sourceNotice !== null) {
-      logger.warn(`plugin ${installed.id}: ${installed.sourceNotice}`);
+      pluginLog.warn(installed.id, installed.sourceNotice);
     }
     return installed;
   }

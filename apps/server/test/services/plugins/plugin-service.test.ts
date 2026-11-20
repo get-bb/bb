@@ -743,7 +743,7 @@ describe("plugin service", () => {
       "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
     expect(lines).toContain(
-      "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      "warn [plugin:notify] not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
     await after.stop();
   });

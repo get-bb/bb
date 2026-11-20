@@ -4,7 +4,8 @@ import {
   getSessionById,
   hostDaemonSessions,
   listActiveHostThreads,
-  listHostThreadIds,
+  listHostThreadIdsWithInterruptiblePendingInteractions,
+  listRuntimeHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
 import type {
@@ -361,7 +362,7 @@ function notifyHostThreadRuntimeStatusChanged(
     environmentHostId: hostId,
     threads: listActiveHostThreads(deps.db, { hostId }),
   });
-  for (const threadId of listHostThreadIds(deps.db, { hostId })) {
+  for (const threadId of listRuntimeHostThreadIds(deps.db, { hostId })) {
     deps.hub.notifyThread(
       threadId,
       ["status-changed"],
@@ -375,7 +376,9 @@ function interruptPendingInteractionsForHostThreads(
   args: { hostId: string; reason: string },
 ): void {
   deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-    threadIds: listHostThreadIds(deps.db, { hostId: args.hostId }),
+    threadIds: listHostThreadIdsWithInterruptiblePendingInteractions(deps.db, {
+      hostId: args.hostId,
+    }),
     reason: args.reason,
   });
 }

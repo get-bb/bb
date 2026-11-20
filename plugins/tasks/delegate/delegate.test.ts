@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeThreadResponse,
@@ -318,9 +319,11 @@ describe("task delegation", () => {
   });
 
   it("maps a rejected worktree target to a friendly typed delegation error", async () => {
-    const spawnError = Object.assign(new Error("HTTP 404: Host not found"), {
-      code: "host_not_found",
+    const spawnError = new experimental_BbHttpError({
       status: 404,
+      code: "host_not_found",
+      message: "Host not found",
+      body: null,
     });
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

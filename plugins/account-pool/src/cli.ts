@@ -229,20 +229,6 @@ function json(value: object): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-async function attempt(
-  work: () => Promise<PluginCliResult>,
-): Promise<PluginCliResult> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof PluginCliError) throw error;
-    throw new PluginCliError(
-      error instanceof Error ? error.message : String(error),
-      { code: "pool_command_failed" },
-    );
-  }
-}
-
 export function registerPoolCli(
   bb: Pick<BbPluginApi, "cli">,
   operations: PoolOperations,
@@ -339,40 +325,39 @@ export function registerPoolCli(
             json: JSON_OPTION,
           },
           constraints: [{ kind: "exactly-one", options: ["login", "api-key"] }],
-          run: (input) =>
-            attempt(async () => {
-              const provider = input.options.provider;
-              if (input.options.login) {
-                return startLogin(
-                  provider,
-                  {
-                    kind: "add",
-                    label: input.options.label ?? null,
-                    priority: input.options.priority,
-                  },
-                  input.options.json === true,
-                );
-              }
-              if (provider !== "claude") {
-                throw new PluginCliError(
-                  "Anthropic API keys require --provider claude.",
-                  { code: "invalid_value" },
-                );
-              }
-              const parsed = accountAddInputSchema.parse({
+          run: async (input) => {
+            const provider = input.options.provider;
+            if (input.options.login) {
+              return startLogin(
                 provider,
-                apiKey: input.options["api-key"],
-                label: input.options.label ?? null,
-                priority: input.options.priority,
-              });
-              const account = await operations.add(parsed);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : `Added ${account.label} (${account.id}).\n`,
-              };
-            }),
+                {
+                  kind: "add",
+                  label: input.options.label ?? null,
+                  priority: input.options.priority,
+                },
+                input.options.json === true,
+              );
+            }
+            if (provider !== "claude") {
+              throw new PluginCliError(
+                "Anthropic API keys require --provider claude.",
+                { code: "invalid_value" },
+              );
+            }
+            const parsed = accountAddInputSchema.parse({
+              provider,
+              apiKey: input.options["api-key"],
+              label: input.options.label ?? null,
+              priority: input.options.priority,
+            });
+            const account = await operations.add(parsed);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : `Added ${account.label} (${account.id}).\n`,
+            };
+          },
         }),
         "account login": cliCommand({
           summary:
@@ -382,79 +367,75 @@ export function registerPoolCli(
           aliases: ["account relogin", "account reauth"],
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const { id } = accountIdInputSchema.parse({
-                id: input.positionals.id,
+          run: async (input) => {
+            const { id } = accountIdInputSchema.parse({
+              id: input.positionals.id,
+            });
+            const account = (await operations.list()).find(
+              (candidate) => candidate.id === id,
+            );
+            if (account === undefined) {
+              throw new PluginCliError(`Account ${id} does not exist.`, {
+                code: "account_not_found",
               });
-              const account = (await operations.list()).find(
-                (candidate) => candidate.id === id,
-              );
-              if (account === undefined) {
-                throw new PluginCliError(`Account ${id} does not exist.`, {
-                  code: "account_not_found",
-                });
-              }
-              return startLogin(
-                account.provider,
-                { kind: "relogin", accountId: id },
-                input.options.json === true,
-              );
-            }),
+            }
+            return startLogin(
+              account.provider,
+              { kind: "relogin", accountId: id },
+              input.options.json === true,
+            );
+          },
         }),
         "account login-poll": cliCommand({
           summary: "Wait for a Codex device-code login to complete",
           description:
             "Blocks until the Codex authorization finishes, fails, or the invocation is cancelled.",
           options: { session: SESSION_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const parsed = codexLoginPollInputSchema.parse({
-                sessionId: input.options.session,
-              });
-              const signal = ctx.signal;
-              const cancel = () => codexLogin.cancel(parsed);
-              signal?.addEventListener("abort", cancel, { once: true });
-              try {
+          run: async (input, ctx) => {
+            const parsed = codexLoginPollInputSchema.parse({
+              sessionId: input.options.session,
+            });
+            const signal = ctx.signal;
+            const cancel = () => codexLogin.cancel(parsed);
+            signal?.addEventListener("abort", cancel, { once: true });
+            try {
+              if (signal?.aborted) {
+                cancel();
+                throw signal.reason ?? new Error("Codex login was cancelled.");
+              }
+              while (true) {
+                await wait(
+                  codexLogin.nextPollDelayMs(parsed.sessionId),
+                  undefined,
+                  { signal },
+                );
+                const result = await codexLogin.poll(parsed);
                 if (signal?.aborted) {
-                  cancel();
                   throw (
                     signal.reason ?? new Error("Codex login was cancelled.")
                   );
                 }
-                while (true) {
-                  await wait(
-                    codexLogin.nextPollDelayMs(parsed.sessionId),
-                    undefined,
-                    { signal },
-                  );
-                  const result = await codexLogin.poll(parsed);
-                  if (signal?.aborted) {
-                    throw (
-                      signal.reason ?? new Error("Codex login was cancelled.")
-                    );
-                  }
-                  if (result.status === "complete") {
-                    return {
-                      exitCode: 0,
-                      stdout: input.options.json
-                        ? json({ ok: true, account: result.account })
-                        : `Signed in ${result.account.label} (${result.account.id}).\n`,
-                    };
-                  }
-                  if (result.status === "error") {
-                    throw new PluginCliError(result.message, {
-                      code: "codex_login_failed",
-                    });
-                  }
+                if (result.status === "complete") {
+                  return {
+                    exitCode: 0,
+                    stdout: input.options.json
+                      ? json({ ok: true, account: result.account })
+                      : `Signed in ${result.account.label} (${result.account.id}).\n`,
+                  };
                 }
-              } catch (error) {
-                if (signal?.aborted) codexLogin.cancel(parsed);
-                throw error;
-              } finally {
-                signal?.removeEventListener("abort", cancel);
+                if (result.status === "error") {
+                  throw new PluginCliError(result.message, {
+                    code: "codex_login_failed",
+                  });
+                }
               }
-            }),
+            } catch (error) {
+              if (signal?.aborted) codexLogin.cancel(parsed);
+              throw error;
+            } finally {
+              signal?.removeEventListener("abort", cancel);
+            }
+          },
         }),
         "account login-complete": cliCommand({
           summary: "Complete a Claude browser login with its manual code",
@@ -473,105 +454,100 @@ export function registerPoolCli(
             },
             json: JSON_OPTION,
           },
-          run: (input) =>
-            attempt(async () => {
-              const parsed = loginCompleteInputSchema.parse({
-                sessionId: input.options.session,
-                pasted: input.options.code,
-              });
-              const account = await login.complete(parsed);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : `Signed in ${account.label} (${account.id}).\n`,
-              };
-            }),
+          run: async (input) => {
+            const parsed = loginCompleteInputSchema.parse({
+              sessionId: input.options.session,
+              pasted: input.options.code,
+            });
+            const account = await login.complete(parsed);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : `Signed in ${account.label} (${account.id}).\n`,
+            };
+          },
         }),
         "account list": cliCommand({
           summary: "List pool accounts and observed quota",
           aliases: ["account ls"],
           suggestFor: ["accounts", "list", "ls"],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const accounts = await operations.list();
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ accounts })
-                  : `${formatAccounts(accounts)}\n`,
-              };
-            }),
+          run: async (input) => {
+            const accounts = await operations.list();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ accounts })
+                : `${formatAccounts(accounts)}\n`,
+            };
+          },
         }),
         "account remove": cliCommand({
           summary: "Remove an account and its secret token file",
           aliases: ["account rm", "account delete"],
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const { id } = accountIdInputSchema.parse({
-                id: input.positionals.id,
+          run: async (input) => {
+            const { id } = accountIdInputSchema.parse({
+              id: input.positionals.id,
+            });
+            if (!(await operations.remove(id))) {
+              throw new PluginCliError(`Account ${id} does not exist.`, {
+                code: "account_not_found",
               });
-              if (!(await operations.remove(id))) {
-                throw new PluginCliError(`Account ${id} does not exist.`, {
-                  code: "account_not_found",
-                });
-              }
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, removed: id })
-                  : `Removed ${id}.\n`,
-              };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, removed: id })
+                : `Removed ${id}.\n`,
+            };
+          },
         }),
         "account enable": cliCommand({
           summary: "Enable an account",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const { id } = accountIdInputSchema.parse({
-                id: input.positionals.id,
+          run: async (input) => {
+            const { id } = accountIdInputSchema.parse({
+              id: input.positionals.id,
+            });
+            const account = await operations.enable(id);
+            if (account === null) {
+              throw new PluginCliError(`Account ${id} does not exist.`, {
+                code: "account_not_found",
               });
-              const account = await operations.enable(id);
-              if (account === null) {
-                throw new PluginCliError(`Account ${id} does not exist.`, {
-                  code: "account_not_found",
-                });
-              }
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : `Enabled ${id}.\n`,
-              };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : `Enabled ${id}.\n`,
+            };
+          },
         }),
         "account disable": cliCommand({
           summary: "Disable an account",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const { id } = accountIdInputSchema.parse({
-                id: input.positionals.id,
+          run: async (input) => {
+            const { id } = accountIdInputSchema.parse({
+              id: input.positionals.id,
+            });
+            const account = await operations.disable(id);
+            if (account === null) {
+              throw new PluginCliError(`Account ${id} does not exist.`, {
+                code: "account_not_found",
               });
-              const account = await operations.disable(id);
-              if (account === null) {
-                throw new PluginCliError(`Account ${id} does not exist.`, {
-                  code: "account_not_found",
-                });
-              }
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : `Disabled ${id}.\n`,
-              };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : `Disabled ${id}.\n`,
+            };
+          },
         }),
         "account priority": cliCommand({
           summary: "Set an account's position in the failover priority order",
@@ -584,35 +560,34 @@ export function registerPoolCli(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const raw = input.positionals.priority;
-              if (!/^-?\d+$/.test(raw.trim())) {
-                throw new PluginCliError(
-                  `invalid value '${raw}' for <priority>. Expected a whole number`,
-                  { code: "invalid_value" },
-                );
-              }
-              const parsed = accountPriorityInputSchema.parse({
-                accountId: input.positionals.id,
-                priority: Number(raw),
-              });
-              const account = await operations.setPriority(
-                parsed.accountId,
-                parsed.priority,
+          run: async (input) => {
+            const raw = input.positionals.priority;
+            if (!/^-?\d+$/.test(raw.trim())) {
+              throw new PluginCliError(
+                `invalid value '${raw}' for <priority>. Expected a whole number`,
+                { code: "invalid_value" },
               );
-              if (account === null) {
-                throw new PluginCliError("Account not found.", {
-                  code: "account_not_found",
-                });
-              }
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : `Set ${account.label} priority to ${account.priority}.\n`,
-              };
-            }),
+            }
+            const parsed = accountPriorityInputSchema.parse({
+              accountId: input.positionals.id,
+              priority: Number(raw),
+            });
+            const account = await operations.setPriority(
+              parsed.accountId,
+              parsed.priority,
+            );
+            if (account === null) {
+              throw new PluginCliError("Account not found.", {
+                code: "account_not_found",
+              });
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : `Set ${account.label} priority to ${account.priority}.\n`,
+            };
+          },
         }),
         "account reorder": cliCommand({
           summary: "Set the complete failover order for one provider",
@@ -632,73 +607,70 @@ export function registerPoolCli(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const parsed = accountReorderInputSchema.parse({
-                provider: input.positionals.provider,
-                accountIds: input.positionals["account-id"],
-              });
-              await operations.reorder(parsed.provider, parsed.accountIds);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({
-                      ok: true,
-                      provider: parsed.provider,
-                      accountIds: parsed.accountIds,
-                    })
-                  : `Updated ${parsed.provider} account order.\n`,
-              };
-            }),
+          run: async (input) => {
+            const parsed = accountReorderInputSchema.parse({
+              provider: input.positionals.provider,
+              accountIds: input.positionals["account-id"],
+            });
+            await operations.reorder(parsed.provider, parsed.accountIds);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({
+                    ok: true,
+                    provider: parsed.provider,
+                    accountIds: parsed.accountIds,
+                  })
+                : `Updated ${parsed.provider} account order.\n`,
+            };
+          },
         }),
         "account refresh": cliCommand({
           summary:
             "Refresh one account's observed usage; retries an errored OAuth login and clears the error on success",
           positionals: [ACCOUNT_ID_POSITIONAL],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const { id } = accountIdInputSchema.parse({
-                id: input.positionals.id,
+          run: async (input) => {
+            const { id } = accountIdInputSchema.parse({
+              id: input.positionals.id,
+            });
+            const account = await operations.refreshUsage(id);
+            if (account === null) {
+              throw new PluginCliError("Account not found.", {
+                code: "account_not_found",
               });
-              const account = await operations.refreshUsage(id);
-              if (account === null) {
-                throw new PluginCliError("Account not found.", {
-                  code: "account_not_found",
-                });
-              }
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, account })
-                  : account.error === null
-                    ? `Refreshed usage for ${id}.\n`
-                    : `Account ${id} is still in error: ${account.error}\n`,
-              };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, account })
+                : account.error === null
+                  ? `Refreshed usage for ${id}.\n`
+                  : `Account ${id} is still in error: ${account.error}\n`,
+            };
+          },
         }),
         status: cliCommand({
           summary: "Show hub, machine token, routing, and account status",
           suggestFor: ["info", "hub"],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const [poolStatus, routedThreadsWithoutLocalLogin] =
-                await Promise.all([
-                  operations.status(),
-                  operations.routedThreadsWithoutLocalLogin(),
-                ]);
-              const status: PoolStatusReport = {
-                ...poolStatus,
-                routedThreadsWithoutLocalLogin,
-              };
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json(status)
-                  : `${formatStatus(status)}\n`,
-              };
-            }),
+          run: async (input) => {
+            const [poolStatus, routedThreadsWithoutLocalLogin] =
+              await Promise.all([
+                operations.status(),
+                operations.routedThreadsWithoutLocalLogin(),
+              ]);
+            const status: PoolStatusReport = {
+              ...poolStatus,
+              routedThreadsWithoutLocalLogin,
+            };
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json(status)
+                : `${formatStatus(status)}\n`,
+            };
+          },
         }),
         routing: cliCommand({
           summary: "Enable or disable pooled routing for one provider",
@@ -717,38 +689,36 @@ export function registerPoolCli(
             },
             json: JSON_OPTION,
           },
-          run: (input) =>
-            attempt(async () => {
-              const parsed = routingSetInputSchema.parse({
-                provider: input.positionals.provider,
-                enabled: !input.options.off,
-              });
-              await operations.setRouting(parsed.provider, parsed.enabled);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({
-                      ok: true,
-                      provider: parsed.provider,
-                      enabled: parsed.enabled,
-                    })
-                  : `${parsed.enabled ? "Enabled" : "Disabled"} ${parsed.provider} Account Pooler routing.\n`,
-              };
-            }),
+          run: async (input) => {
+            const parsed = routingSetInputSchema.parse({
+              provider: input.positionals.provider,
+              enabled: !input.options.off,
+            });
+            await operations.setRouting(parsed.provider, parsed.enabled);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({
+                    ok: true,
+                    provider: parsed.provider,
+                    enabled: parsed.enabled,
+                  })
+                : `${parsed.enabled ? "Enabled" : "Disabled"} ${parsed.provider} Account Pooler routing.\n`,
+            };
+          },
         }),
         config: cliCommand({
           summary: "Show Account Pooler routing configuration",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const current = config.get();
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, config: current })
-                  : `${formatConfig(current)}\n`,
-              };
-            }),
+          run: async (input) => {
+            const current = config.get();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, config: current })
+                : `${formatConfig(current)}\n`,
+            };
+          },
         }),
         "config set": cliCommand({
           summary: "Update one Account Pooler routing configuration value",
@@ -767,21 +737,17 @@ export function registerPoolCli(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const next = await config.set(
-                parseConfigUpdate(
-                  input.positionals.key,
-                  input.positionals.value,
-                ),
-              );
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, config: next })
-                  : `${formatConfig(next)}\n`,
-              };
-            }),
+          run: async (input) => {
+            const next = await config.set(
+              parseConfigUpdate(input.positionals.key, input.positionals.value),
+            );
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, config: next })
+                : `${formatConfig(next)}\n`,
+            };
+          },
         }),
         parent: cliCommand({
           summary:
@@ -794,27 +760,26 @@ export function registerPoolCli(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const mode = input.positionals.mode;
-              if (mode === undefined) {
-                const status = await operations.status();
-                return {
-                  exitCode: 0,
-                  stdout: input.options.json
-                    ? json({ ok: true, parent: status.parent })
-                    : `${formatParent(status.parent)}\n`,
-                };
-              }
-              const parentMode = parentModeSchema.parse(mode);
-              const next = await config.set({ parentMode });
+          run: async (input) => {
+            const mode = input.positionals.mode;
+            if (mode === undefined) {
+              const status = await operations.status();
               return {
                 exitCode: 0,
                 stdout: input.options.json
-                  ? json({ ok: true, parentMode: next.parentMode })
-                  : `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
+                  ? json({ ok: true, parent: status.parent })
+                  : `${formatParent(status.parent)}\n`,
               };
-            }),
+            }
+            const parentMode = parentModeSchema.parse(mode);
+            const next = await config.set({ parentMode });
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, parentMode: next.parentMode })
+                : `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
+            };
+          },
         }),
         "token rotate": cliCommand({
           summary: "Rotate one machine's Account Pooler bearer token",
@@ -832,19 +797,18 @@ export function registerPoolCli(
             },
             json: JSON_OPTION,
           },
-          run: (input) =>
-            attempt(async () => {
-              const { machine } = tokenRotateInputSchema.parse({
-                machine: input.options.machine,
-              });
-              const token = await operations.rotateToken(machine);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({ ok: true, token })
-                  : `Rotated the Account Pooler token for ${token.hostName ?? token.hostId}.\n`,
-              };
-            }),
+          run: async (input) => {
+            const { machine } = tokenRotateInputSchema.parse({
+              machine: input.options.machine,
+            });
+            const token = await operations.rotateToken(machine);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({ ok: true, token })
+                : `Rotated the Account Pooler token for ${token.hostName ?? token.hostId}.\n`,
+            };
+          },
         }),
         bypass: cliCommand({
           summary: "Bypass Account Pooler routing for one thread",
@@ -863,41 +827,40 @@ export function registerPoolCli(
             },
             json: JSON_OPTION,
           },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const threadId = input.positionals["thread-id"];
-              if (threadId === undefined) {
-                throw new PluginCliError(
-                  "missing required arguments: <thread-id>",
-                  {
-                    code: "missing_required",
-                    ...(ctx.threadId === undefined
-                      ? {}
-                      : {
-                          hint: `This thread is ${ctx.threadId}; re-run with bb pool bypass ${ctx.threadId}`,
-                        }),
-                  },
-                );
-              }
-              const parsed = bypassInputSchema.parse({
-                threadId,
-                bypassed: !input.options.off,
-              });
-              const result = await operations.setBypass(
-                parsed.threadId,
-                parsed.bypassed,
+          run: async (input, ctx) => {
+            const threadId = input.positionals["thread-id"];
+            if (threadId === undefined) {
+              throw new PluginCliError(
+                "missing required arguments: <thread-id>",
+                {
+                  code: "missing_required",
+                  ...(ctx.threadId === undefined
+                    ? {}
+                    : {
+                        hint: `This thread is ${ctx.threadId}; re-run with bb pool bypass ${ctx.threadId}`,
+                      }),
+                },
               );
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? json({
-                      ok: true,
-                      threadId: result.threadId,
-                      bypassed: result.bypassed,
-                    })
-                  : `${result.bypassed ? "Enabled" : "Disabled"} Account Pooler bypass for ${result.threadId}.\n`,
-              };
-            }),
+            }
+            const parsed = bypassInputSchema.parse({
+              threadId,
+              bypassed: !input.options.off,
+            });
+            const result = await operations.setBypass(
+              parsed.threadId,
+              parsed.bypassed,
+            );
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? json({
+                    ok: true,
+                    threadId: result.threadId,
+                    bypassed: result.bypassed,
+                  })
+                : `${result.bypassed ? "Enabled" : "Disabled"} Account Pooler bypass for ${result.threadId}.\n`,
+            };
+          },
         }),
       },
     }),

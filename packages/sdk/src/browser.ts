@@ -45,8 +45,9 @@ export function createBrowserBbSdk(
   });
 }
 
-export { BbHttpError, BbRequestTimeoutError } from "./response.js";
-export type { BbHttpErrorArgs } from "./response.js";
+export { BbHttpError } from "./http-error.js";
+export { BbRequestTimeoutError } from "./response.js";
+export type { BbHttpErrorArgs } from "./http-error.js";
 export { createBbSdk, createBuiltinPlanCommandTextInput, createHttpTransport };
 export type { BbSdk, BbSdkAreas, BbSdkContext, BbSdkTransport };
 export type * from "./areas/skills.js";

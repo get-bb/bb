@@ -1137,7 +1137,7 @@ it("does not allocate debug compute when the image fails to build", async () => 
   test.backend.image.mockRejectedValueOnce(new Error("RUN command failed"));
   expect(await test.harness.behavior.runCli(["sandbox", "run"])).toMatchObject({
     exitCode: 1,
-    stderr: "RUN command failed\n",
+    stderr: "bb modal failed: RUN command failed",
   });
   expect(test.backend.creates).toHaveLength(0);
 });

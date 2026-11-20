@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import {
   HOST_FILE_CHUNK_MAX_BYTES,
   type HostDaemonOnlineRpcResultByType,
@@ -14,6 +13,8 @@ import {
 } from "../files/file-stream-response.js";
 
 type FileChunk = HostDaemonOnlineRpcResultByType["host.read_file_chunk"];
+
+const DAEMON_FILE_CHUNKS_IN_FLIGHT = 16;
 type ReadChunk = (
   offset: number,
   length: number,
@@ -93,9 +94,9 @@ export function createDaemonFileSource(
     async open(signal) {
       return {
         maxChunkBytes: HOST_FILE_CHUNK_MAX_BYTES,
+        maxChunksInFlight: DAEMON_FILE_CHUNKS_IN_FLIGHT,
         async read(offset, length) {
           const chunk = await read(offset, length, metadata.revision, signal);
-          const bytes = Buffer.from(chunk.content, "base64");
           if (
             chunk.revision !== metadata.revision ||
             chunk.sizeBytes !== metadata.sizeBytes ||
@@ -108,7 +109,7 @@ export function createDaemonFileSource(
               true,
             );
           }
-          return bytes;
+          return chunk.content;
         },
         async close() {},
       };

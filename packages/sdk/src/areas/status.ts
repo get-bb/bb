@@ -10,7 +10,7 @@ import type {
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import { BbHttpError } from "../response.js";
+import { BbHttpError } from "../http-error.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {

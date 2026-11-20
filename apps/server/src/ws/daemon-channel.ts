@@ -1,13 +1,25 @@
 import {
   HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
   HostDaemonWsSequencer,
+  decodeHostDaemonDaemonWsMessage,
+  type HostDaemonWsFrame,
 } from "@bb/host-daemon-contract";
 import { COMPRESSED_SEND } from "./compression.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 export interface RawDaemonSocket {
   close(code?: number, reason?: string): void;
-  send(data: string, options?: { compress: boolean }): void;
+  send(data: HostDaemonWsFrame, options?: { compress: boolean }): void;
+}
+
+function decodeDaemonFrame(raw: unknown): string | Uint8Array {
+  if (raw instanceof ArrayBuffer) {
+    return new Uint8Array(raw);
+  }
+  if (ArrayBuffer.isView(raw)) {
+    return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  }
+  return decodeSocketPayload(raw);
 }
 
 export type DaemonChannelDetachResult = "detached" | "ended" | "stale";
@@ -40,7 +52,7 @@ export class DaemonChannel {
     if (socket !== this.socket) {
       return null;
     }
-    const result = this.sequencer.receive(decodeSocketPayload(raw));
+    const result = this.sequencer.receive(decodeDaemonFrame(raw));
     switch (result.kind) {
       case "invalid":
         this.close(1008, "invalid-message");
@@ -50,11 +62,20 @@ export class DaemonChannel {
         return null;
       case "ignored":
         return null;
-      case "message":
+      case "message": {
         if (this.sequencer.ackDue) {
           socket.send(this.sequencer.encodeAck());
         }
-        return { message: result.message };
+        const decoded = decodeHostDaemonDaemonWsMessage(
+          result.message,
+          result.attachment,
+        );
+        if (!decoded.ok) {
+          this.close(1008, "invalid-message");
+          return null;
+        }
+        return { message: decoded.message };
+      }
     }
   }
 

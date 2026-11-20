@@ -1661,6 +1661,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Join relative paths, obtain dirname/basename, derive a slash-separated relative path within a root, and create case-insensitive Windows comparison keys with the experimental host-path helpers; invalid absolute inputs return null",
           "Check lexical containment separately with experimental_isHostPathWithin({ rootPath, candidatePath }): resolution allows .. escapes, and neither helper resolves symlinks",
           "Cap text with experimental_sliceUtf16Head(value, maxChars) from @get-bb/plugin-sdk, @get-bb/plugin-sdk/app or @get-bb/plugin-sdk/host (and experimental_sliceUtf16Tail from @get-bb/plugin-sdk/host) so a cut never leaves half an emoji, which strict agent providers such as Codex reject",
+          "Narrow a rejected bb.sdk call with error instanceof experimental_BbHttpError from @get-bb/plugin-sdk, then read status, code (the server's error code or null) and body; it matches errors thrown by the host's copy of the SDK",
         ],
         apiSymbols: [
           "BbPluginApi",
@@ -1675,6 +1676,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_getHostPathComparisonKey",
           "experimental_sliceUtf16Head",
           "experimental_sliceUtf16Tail",
+          "experimental_BbHttpError",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",

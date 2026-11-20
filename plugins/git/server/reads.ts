@@ -1,4 +1,5 @@
 import {
+  experimental_BbHttpError,
   experimental_PluginRpcRefusal,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
@@ -79,31 +80,18 @@ function fileReadFailure(error: unknown): {
   code: (typeof FILE_READ_FAILURE_CODES)[number];
   message: string;
 } | null {
-  if (typeof error !== "object" || error === null) return null;
-  const code = FILE_READ_FAILURE_CODES.find(
-    (known) => "code" in error && known === error.code,
-  );
+  if (!(error instanceof experimental_BbHttpError)) return null;
+  const code = FILE_READ_FAILURE_CODES.find((known) => known === error.code);
   if (code === undefined) return null;
-  const body = "body" in error ? error.body : null;
+  const body = error.body;
   const message =
     typeof body === "object" &&
     body !== null &&
     "message" in body &&
     typeof body.message === "string"
       ? body.message
-      : error instanceof Error
-        ? error.message
-        : code;
+      : error.message;
   return { code, message };
-}
-
-function httpStatusOf(error: unknown): number | null {
-  return typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-    ? error.status
-    : null;
 }
 
 export async function requireGitEnvironment(
@@ -113,7 +101,7 @@ export async function requireGitEnvironment(
   try {
     return await bb.sdk.environments.get({ environmentId });
   } catch (error) {
-    if (httpStatusOf(error) === 404) {
+    if (error instanceof experimental_BbHttpError && error.status === 404) {
       throw new experimental_PluginRpcRefusal({
         code: "not_found",
         message: `Environment not found: ${environmentId}`,

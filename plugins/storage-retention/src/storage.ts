@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
 import {
   experimental_getHostPathComparisonKey as getHostPathComparisonKey,
+  experimental_BbHttpError,
   experimental_getRelativeHostPath as getRelativeHostPath,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
@@ -260,9 +261,7 @@ function leftoverFailure(error: unknown): LeftoverCleanup {
   )
     return { state: "processesRunning" };
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
+    error instanceof experimental_BbHttpError &&
     error.code === "environment_needs_recovery"
   )
     return { state: "interrupted" };
@@ -1724,11 +1723,7 @@ export function createStorage(
           "DELETE FROM archive_cleanup WHERE thread_id = ? AND archived_at = ?",
         ).run(entry.thread_id, entry.archived_at);
       } catch (error) {
-        if (
-          error instanceof Error &&
-          "status" in error &&
-          error.status === 404
-        ) {
+        if (error instanceof experimental_BbHttpError && error.status === 404) {
           cancelArchivedStorage(entry.thread_id);
           continue;
         }

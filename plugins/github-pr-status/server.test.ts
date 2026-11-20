@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeHostResponse,
@@ -102,8 +102,11 @@ async function setup(options: {
           sdkCalls.push(`environments.get ${environmentId}`);
           const found = environments[environmentId];
           if (found === undefined) {
-            throw Object.assign(new Error("Environment not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
+              code: null,
+              message: "Environment not found",
+              body: null,
             });
           }
           return found;
