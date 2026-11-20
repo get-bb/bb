@@ -1697,7 +1697,7 @@ function createFakePluginHostInternal(
     for (const session of [...websocketSessions]) {
       await session.closeForReload();
     }
-    // Host order (§3): services first, then hooks LIFO (isolated), then
+    // Host order: services first, then hooks LIFO (isolated), then
     // vended database handles, then handle invalidation.
     for (const controller of serviceControllers) controller.abort();
     for (const controller of activeWatches) controller.abort();

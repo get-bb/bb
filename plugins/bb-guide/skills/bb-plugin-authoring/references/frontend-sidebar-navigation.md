@@ -46,6 +46,12 @@ overflow menu so they stay reachable, and icons with
 `isShortcutModifierHeld` is true.
 
 ```tsx
+import {
+  experimental_SidebarNavigationIcon as SidebarNavigationIcon,
+  experimental_useSidebarNavigation,
+  type ExperimentalSidebarNavigationItem,
+} from "@get-bb/plugin-sdk/app";
+
 function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
   const { activeItemId, actions } = experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(item.id);
@@ -64,7 +70,7 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
         })
       }
     >
-      <experimental_SidebarNavigationIcon icon={item.icon} />
+      <SidebarNavigationIcon icon={item.icon} />
     </button>
   );
 }
