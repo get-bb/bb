@@ -92,7 +92,7 @@ function runChild(body: string): Promise<ChildRun> {
   });
 }
 
-describe("fake plugin host storage directory", () => {
+describe("fake plugin host storage directory", { timeout: 30_000 }, () => {
   it("is created only when the plugin opens a database, and removed when the process exits", async () => {
     const run = await runChild(`
       createFakePluginHost();

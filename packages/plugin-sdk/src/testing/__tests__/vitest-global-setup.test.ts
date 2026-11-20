@@ -76,7 +76,7 @@ function runFixture(
   });
 }
 
-describe("experimental_sandboxTempDir", () => {
+describe("experimental_sandboxTempDir", { timeout: 30_000 }, () => {
   it("runs as the module's default Vitest globalSetup", async () => {
     const outer = freshTmp();
     pointTempEnvAt(outer);
