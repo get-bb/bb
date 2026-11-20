@@ -498,6 +498,10 @@ const THREAD_LISTING_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${THREADS}#listNonDeletedChildThreads`,
+    growsWith: {
+      history:
+        "Returns every child of the orchestrator, and the seed grows its children",
+    },
     run: (db, _fixture, seed) =>
       listNonDeletedChildThreads(db, { parentThreadId: seed.orchestratorId }),
   },
@@ -583,6 +587,10 @@ const SECTION_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
   },
   {
     name: `${SECTIONS}#deleteThreadSection`,
+    growsWith: {
+      history:
+        "Clears the section from every thread in it, and the seed grows the section's threads",
+    },
     run: (db, _fixture, seed) =>
       deleteThreadSection(db, noopNotifier, { id: seed.biggestSectionId }),
   },

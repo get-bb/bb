@@ -383,8 +383,8 @@ interleaved, each call inside a rolled-back savepoint. Each call is timed by
 CPU time, not by the wall clock, so other work on a busy runner does not count
 against it: the thread's CPU time on macOS, and the process's on Linux, where a
 thread's CPU time only advances at scheduler ticks and reads near zero for
-short calls. The check keeps the fastest of up
-to three calls per world. The larger world is 16 times the smaller, so a
+short calls. The check keeps the fastest of at
+least three calls per world. The larger world is 16 times the smaller, so a
 bounded cost measures about 1x, a linear one about 16x (size^1, up to about
 size^1.5 on shared CI runners, where memory-heavy queries scale worse under
 neighbouring load), and a quadratic one about 256x (size^2).
@@ -396,15 +396,19 @@ every request event of a thread by a JSON field, measures about size^1 and
 fails. A case whose cost must grow, because it returns or modifies rows the
 larger world has more of, declares the axis with the reason:
 `growsWith: { history: "Lists every thread on the host, and the seed grows the thread count" }`
-(`history` or `turnSize`). A declaration that measures within size^0.25 (2x)
-is reported as a warning so it can be removed once the query is bounded; the
-gap between size^0.25 and size^0.5 keeps runner noise from either failing an
-undeclared case or flagging a declared one.
+(`history` or `turnSize`). A declaration that measures within size^0.125
+(1.4x) is reported as a warning so it can be removed once the query is
+bounded; the gap between size^0.125 and size^0.5 keeps runner noise from
+either failing an undeclared case or flagging a declared one that only
+partly grows.
 
 The growth floor is 2 ms on the reference machine, scaled by how long a fixed
-SQLite calibration workload takes on the current one
-(`packages/db/scripts/query-costs/calibration.ts`), so a slower CI runner
-checks the same cases as a laptop. The check prints the calibration, and for
+SQLite calibration workload takes on the current one, measured after the
+worlds are built (`packages/db/scripts/query-costs/calibration.ts`), so a
+slower CI runner checks roughly the cases a laptop does. The floor only
+screens out calls too small to time reliably; every case that grows with data
+declares it, so a case crossing the floor on one runner and not another does
+not change the result. The check prints the calibration, and for
 each axis the five undeclared functions closest to the limit. The check
 fails when:
 

@@ -99,9 +99,7 @@ for (
       largeMs >= floorMs && largeMs > smallMs * GROWTH_BOUNDED_LIMIT;
     for (
       let attempt = 1;
-      largeMs >= floorMs / 2 &&
-      (attempt < ATTEMPTS ||
-        (attempt < CONFIRMING_ATTEMPTS && exceedsGrowth()));
+      attempt < ATTEMPTS || (attempt < CONFIRMING_ATTEMPTS && exceedsGrowth());
       attempt += 1
     ) {
       smallMs = Math.min(smallMs, timeOnce(index, costCase, small));

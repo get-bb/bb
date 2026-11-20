@@ -42,6 +42,8 @@ import {
   measureCalibrationMs,
   REFERENCE_CALIBRATION_MS,
 } from "./query-costs/calibration.js";
+
+const CALIBRATION_REPEATS = 3;
 import { listQueryFunctions } from "./query-functions.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -450,18 +452,23 @@ async function runComparison(comparison: Comparison): Promise<Finding[]> {
 }
 
 const cpuClock = selectCpuClock();
-const calibrationMs = measureCalibrationMs(cpuClock);
-const growthFloorMs =
-  GROWTH_FLOOR_MS * (calibrationMs / REFERENCE_CALIBRATION_MS);
+let growthFloorMs = GROWTH_FLOOR_MS;
 console.log(`Timing each call by ${cpuClock.name}`);
-console.log(
-  `Calibration workload took ${calibrationMs.toFixed(2)} ms against ${REFERENCE_CALIBRATION_MS} ms on the reference machine, so growth is checked from ${growthFloorMs.toFixed(2)} ms`,
-);
 const coverageProblems = PARTIAL_RUN ? [] : checkCoverage();
 const directory = mkdtempSync(join(tmpdir(), "bb-query-costs-"));
 let failed = coverageProblems.length > 0;
 try {
-  for (const comparison of buildComparisons(directory)) {
+  const comparisons = buildComparisons(directory);
+  const calibrationMs = Math.min(
+    ...Array.from({ length: CALIBRATION_REPEATS }, () =>
+      measureCalibrationMs(cpuClock),
+    ),
+  );
+  growthFloorMs = GROWTH_FLOOR_MS * (calibrationMs / REFERENCE_CALIBRATION_MS);
+  console.log(
+    `Calibration workload took ${calibrationMs.toFixed(2)} ms against ${REFERENCE_CALIBRATION_MS} ms on the reference machine, so growth is checked from ${growthFloorMs.toFixed(2)} ms`,
+  );
+  for (const comparison of comparisons) {
     const findings = await runComparison(comparison);
     for (const finding of findings) {
       if (finding.severity === "warn") reportWarning(finding.message);
