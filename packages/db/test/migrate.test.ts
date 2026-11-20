@@ -14,6 +14,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -767,6 +768,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -822,6 +824,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -909,6 +912,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
@@ -2716,6 +2720,7 @@ describe("migrate", () => {
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
+      dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
       restoreDiffViewedFilesTable(db);
       db.$client
@@ -3557,6 +3562,7 @@ describe("migrate", () => {
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
+      dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
@@ -3979,6 +3985,7 @@ describe("migrate", () => {
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
+      dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
 
       expect(() => migrate(db)).not.toThrow();

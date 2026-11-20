@@ -14,6 +14,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -72,6 +73,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   return { db, threadId: thread.id };
 }

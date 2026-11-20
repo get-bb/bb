@@ -20,6 +20,7 @@ import {
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
+  dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -133,6 +134,7 @@ it.each([false, true])(
       rewindMachineTeardownRecoveryColumns(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
+      dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
       migrate(db);
       migrate(db);
