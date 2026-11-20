@@ -13,6 +13,7 @@ import {
   restartEnvironmentHookOperation,
 } from "../../src/data/environment-hook-operations.js";
 import {
+  adoptHeldEnvironment,
   bindEnvironmentPath,
   claimEnvironmentPath,
   createEnvironment,
@@ -42,6 +43,7 @@ import {
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
   recordEnvironmentTeardownFailure,
+  releaseEnvironmentHolds,
   releaseFinishedEnvironmentPreparationOwners,
   reserveEnvironment,
   retryFailedEnvironmentTeardownsOnHost,
@@ -173,6 +175,7 @@ const TERMINAL_PRUNE_BATCH = 1_000;
 type Case = QueryCostCase<HostsEnvironmentsSeed>;
 
 let preparedEnvironment: EnvironmentRow | null = null;
+let preparedHeldEnvironment: EnvironmentRow | null = null;
 let preparedBackfill: AttachmentBackfill | null = null;
 let reorderTarget: { projectId: string; nextProjectId: string } | null = null;
 
@@ -199,6 +202,25 @@ function reserveFixtureEnvironment(
     environmentProviderInstanceKey: () => `${fixture.threadId}-1`,
     providerOwnsPath: false,
     statusMessage: "Preparing project checkout…",
+  });
+}
+
+function insertPluginHeldEnvironment(
+  db: DbConnection,
+  fixture: HistoryFixture,
+  seed: HostsEnvironmentsSeed,
+): EnvironmentRow {
+  return insertHeldEnvironment(db, {
+    projectId: fixture.projectId,
+    hostId: seed.busyHostId,
+    heldBy: "plugin:environment-git-worktree",
+    attempt: 1,
+    status: "ready",
+    environmentProviderId: "git-worktree",
+    environmentProviderPluginId: "environment-git-worktree",
+    environmentProviderInstanceKey: (id) => `${id}-1`,
+    providerOwnsPath: true,
+    statusMessage: null,
   });
 }
 
@@ -330,6 +352,32 @@ const ENVIRONMENT_CASES: readonly Case[] = [
         providerOwnsPath: false,
         statusMessage: "Preparing Worktree…",
       }),
+  },
+  {
+    name: `${ENVIRONMENTS}#adoptHeldEnvironment`,
+    prepare: (db, fixture, seed) => {
+      preparedEnvironment = reserveFixtureEnvironment(db, fixture, seed);
+      preparedHeldEnvironment = insertPluginHeldEnvironment(db, fixture, seed);
+    },
+    run: (db) => {
+      if (preparedHeldEnvironment === null)
+        throw new Error("Expected a held environment");
+      return adoptHeldEnvironment(
+        db,
+        requirePreparedEnvironment(),
+        preparedHeldEnvironment.id,
+        "plugin:environment-git-worktree",
+        { ownedBranch: { name: "bb/adopted" } },
+      );
+    },
+  },
+  {
+    name: `${ENVIRONMENTS}#releaseEnvironmentHolds`,
+    prepare: (db, fixture, seed) => {
+      insertPluginHeldEnvironment(db, fixture, seed);
+    },
+    run: (db) =>
+      releaseEnvironmentHolds(db, "plugin:environment-git-worktree"),
   },
   {
     name: `${ENVIRONMENTS}#findOtherLiveThreadAtEnvironmentPath`,
