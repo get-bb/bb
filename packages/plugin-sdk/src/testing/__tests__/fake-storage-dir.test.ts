@@ -199,6 +199,30 @@ describe("fake plugin host storage directory", () => {
   });
 
   it.skipIf(!canLockDirs)(
+    "retries a host dir at exit when dispose() could not remove it",
+    async () => {
+      const run = await runChild(`
+        const host = createFakePluginHost();
+        host.bb.storage.database();
+        const [locked] = hostDirs();
+        chmodSync(locked, 0o500);
+        try {
+          await host.harness.dispose();
+          console.log("disposed");
+        } catch (error) {
+          console.log("dispose-failed:" + error.code);
+        }
+        chmodSync(locked, 0o700);
+        console.log("hosts:" + hostDirs().length);
+      `);
+      expect(run.stderr).toBe("");
+      expect(run.lines).toEqual(["dispose-failed:EACCES", "hosts:1"]);
+      expect(run.code).toBe(0);
+      expect(leftoverHostDirs(run.tmp)).toEqual([]);
+    },
+  );
+
+  it.skipIf(!canLockDirs)(
     "still removes the other hosts when one host dir cannot be removed",
     async () => {
       const run = await runChild(`

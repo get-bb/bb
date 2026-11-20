@@ -2394,8 +2394,10 @@ removes it.
 Core uses the same path. The root `vitest.global-tmpdir.ts`, which
 `defineWorkspaceTestConfig` installs for workspace suites, calls
 `experimental_sandboxTempDir({ beforeRemove: killProcessesReferencingPath })`.
-Every forkable first-party plugin suite names the subpath in
-`test.globalSetup`.
+34 of the 40 forkable first-party plugins in `scripts/forkable-plugins.json`
+name the subpath in `test.globalSetup`. Composer, Conductor, Navigation, PDF
+preview, Plugin API tester and Scheduled send have test suites that do not
+yet.
 
 Docs: `testing.md`.
 

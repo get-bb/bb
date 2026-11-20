@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const TEMP_DIR_ENV_KEYS = ["TMPDIR", "TEMP", "TMP"] as const;
 
@@ -45,7 +45,10 @@ type SandboxHolder = { [SANDBOX_KEY]?: TempDirSandbox };
  * because teardown runs in Vitest's main process.
  *
  * Nested setups in one process share a single sandbox, which is removed when
- * the last of them tears down. Calling a teardown twice has no effect.
+ * the last of them tears down. That teardown runs every `beforeRemove`
+ * callback and attempts the removal even when a callback throws, then
+ * rethrows: the error itself when there is one, an `AggregateError` when
+ * there are several. Calling a teardown twice has no effect.
  *
  * @experimental
  */
@@ -55,7 +58,7 @@ export function experimental_sandboxTempDir(
   const holder = globalThis as SandboxHolder;
   let sandbox = holder[SANDBOX_KEY];
   if (sandbox === undefined) {
-    const root = mkdtempSync(join(tmpdir(), "bb-vt-"));
+    const root = mkdtempSync(join(resolve(tmpdir()), "bb-vt-"));
     sandbox = {
       root,
       previous: {
@@ -86,15 +89,31 @@ export function experimental_sandboxTempDir(
       if (previous === undefined) delete process.env[key];
       else process.env[key] = previous;
     }
+    const errors: unknown[] = [];
     for (const beforeRemove of owned.beforeRemove) {
-      await beforeRemove(owned.root);
+      try {
+        await beforeRemove(owned.root);
+      } catch (error) {
+        errors.push(error);
+      }
     }
-    rmSync(owned.root, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    try {
+      rmSync(owned.root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        `temp dir sandbox teardown failed for ${owned.root}`,
+      );
+    }
   };
 }
 

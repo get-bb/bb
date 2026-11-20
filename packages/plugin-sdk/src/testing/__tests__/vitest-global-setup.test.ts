@@ -123,6 +123,109 @@ describe("experimental_sandboxTempDir", () => {
     expect(readdirSync(outer)).toEqual([]);
   });
 
+  it("runs every beforeRemove and removes the sandbox when a callback throws", async () => {
+    const outer = freshTmp();
+    pointTempEnvAt(outer);
+    const ran: string[] = [];
+    const failure = new Error("sweep failed");
+    const first = experimental_sandboxTempDir({
+      beforeRemove: () => {
+        ran.push("first");
+        throw failure;
+      },
+    });
+    const second = experimental_sandboxTempDir({
+      beforeRemove: () => {
+        ran.push("second");
+      },
+    });
+    await first();
+    await expect(second()).rejects.toBe(failure);
+    expect(ran).toEqual(["first", "second"]);
+    expect(readdirSync(outer)).toEqual([]);
+    expect(process.env.TMPDIR).toBe(outer);
+  });
+
+  it("reports every teardown failure together", async () => {
+    const outer = freshTmp();
+    pointTempEnvAt(outer);
+    const first = experimental_sandboxTempDir({
+      beforeRemove: () => {
+        throw new Error("first sweep failed");
+      },
+    });
+    const second = experimental_sandboxTempDir({
+      beforeRemove: () => {
+        throw new Error("second sweep failed");
+      },
+    });
+    await first();
+    const error = await second().then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(
+      (error as AggregateError).errors.map(
+        (inner: unknown) => (inner as Error).message,
+      ),
+    ).toEqual(["first sweep failed", "second sweep failed"]);
+    expect(readdirSync(outer)).toEqual([]);
+  });
+
+  it("allocates and exports an absolute sandbox when TMPDIR is relative", async () => {
+    const cwd = freshTmp();
+    const sibling = freshTmp();
+    const script = `
+      import { existsSync, mkdirSync } from "node:fs";
+      import { isAbsolute } from "node:path";
+      process.chdir(${JSON.stringify(cwd)});
+      mkdirSync("temp");
+      const { default: setup } = await import(${JSON.stringify(
+        new URL("../vitest-global-setup.ts", import.meta.url).href,
+      )});
+      const teardown = setup();
+      const sandbox = process.env.TMPDIR;
+      console.log("absolute:" + isAbsolute(sandbox));
+      process.chdir(${JSON.stringify(sibling)});
+      await teardown();
+      console.log("removed:" + !existsSync(sandbox));
+    `;
+    const result = await new Promise<{ code: number | null; output: string }>(
+      (resolvePromise, reject) => {
+        const child = spawn(
+          process.execPath,
+          ["--import", "tsx", "--input-type=module", "-e", script],
+          {
+            env: { ...process.env, TMPDIR: "temp", TEMP: "temp", TMP: "temp" },
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+        let output = "";
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          output += chunk;
+        });
+        child.stderr.on("data", (chunk: string) => {
+          output += chunk;
+        });
+        child.once("error", reject);
+        child.once("close", (code) => resolvePromise({ code, output }));
+      },
+    );
+    expect(result.output.trim().split("\n")).toEqual([
+      "absolute:true",
+      "removed:true",
+    ]);
+    expect(result.code).toBe(0);
+    expect(
+      readdirSync(join(cwd, "temp")).filter((name) =>
+        name.startsWith("bb-vt-"),
+      ),
+    ).toEqual([]);
+  });
+
   it("keeps a shared sandbox until the last nested setup tears down", async () => {
     const outer = freshTmp();
     pointTempEnvAt(outer);

@@ -77,15 +77,11 @@ export function createFakeStorageDir(): FakeStorageDir {
       } catch {}
     }
     databases.clear();
-    const dirPath = path;
+    if (path !== null) rmSync(path, { recursive: true, force: true });
     const owner = root;
     path = null;
     root = null;
-    try {
-      if (dirPath !== null) rmSync(dirPath, { recursive: true, force: true });
-    } finally {
-      if (owner !== null) releaseRoot(owner, remove);
-    }
+    if (owner !== null) releaseRoot(owner, remove);
   };
   return {
     openDatabase() {
@@ -93,6 +89,9 @@ export function createFakeStorageDir(): FakeStorageDir {
         root = acquireRoot();
         path = mkdtempSync(join(root.path, "host-"));
         root.removers.add(remove);
+      }
+      for (const database of databases) {
+        if (!database.open) databases.delete(database);
       }
       const database = new Database(join(path, "data.db"));
       databases.add(database);
