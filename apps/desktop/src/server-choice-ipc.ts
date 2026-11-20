@@ -1,4 +1,5 @@
 import {
+  bbDesktopConnectSignInLabel,
   bbDesktopServerChoiceSchema,
   type BbDesktopServerList,
 } from "@bb/desktop-contract";
@@ -54,6 +55,10 @@ export function registerServerChoiceIpc({
     if (fromApplicationWindow(event)) addServer();
   });
   ipcMain.on(BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL, (event) => {
-    if (fromApplicationWindow(event)) signInToConnect();
+    if (
+      fromApplicationWindow(event) &&
+      bbDesktopConnectSignInLabel(list().connectServersSkipReason) !== null
+    )
+      signInToConnect();
   });
 }

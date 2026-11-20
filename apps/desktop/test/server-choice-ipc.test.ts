@@ -5,7 +5,11 @@ import {
   createServerTargetStore,
   type ConnectServerRef,
 } from "../src/server-target.js";
-import { createConnectServerSync } from "../src/connect-server-sync.js";
+import {
+  createConnectServerSync,
+  type ConnectServerSyncSkipReason,
+} from "../src/connect-server-sync.js";
+import { createServerMenuItems } from "../src/menu.js";
 import {
   BB_DESKTOP_ADD_SERVER_CHANNEL,
   BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
@@ -191,32 +195,75 @@ describe("server choice IPC", () => {
     );
   });
 
-  it("opens Add Server and bb Connect sign-in only for the application main frame", () => {
+  it("opens Add Server only for the application main frame", () => {
     const addServer = vi.fn();
-    const signInToConnect = vi.fn();
     registerServerChoiceIpc({
       applicationWindowWebContentsIds: new Set([7]),
       onListRequested: () => undefined,
-      list: () => ({ servers: [], connectServersSkipReason: "no-credential" }),
+      list: () => ({ servers: [], connectServersSkipReason: null }),
       select: async () => undefined,
       addServer,
+      signInToConnect: () => undefined,
+      onError: () => undefined,
+    });
+    const request = ipc.on.mock.calls.find(
+      ([channel]) => channel === BB_DESKTOP_ADD_SERVER_CHANNEL,
+    )?.[1];
+    if (!request) throw new Error("Missing add-server handler");
+    request({ ...event, senderFrame: {} });
+    request({ ...event, sender: { id: 99, mainFrame: frame } });
+    expect(addServer).not.toHaveBeenCalled();
+    request(event);
+    expect(addServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens bb Connect sign-in only while the Server menu offers it", () => {
+    const signInToConnect = vi.fn();
+    let skipReason: ConnectServerSyncSkipReason | null = null;
+    registerServerChoiceIpc({
+      applicationWindowWebContentsIds: new Set([7]),
+      onListRequested: () => undefined,
+      list: () => ({ servers: [], connectServersSkipReason: skipReason }),
+      select: async () => undefined,
+      addServer: () => undefined,
       signInToConnect,
       onError: () => undefined,
     });
-    const handler = (channel: string) => {
-      const found = ipc.on.mock.calls.find(([name]) => name === channel)?.[1];
-      if (!found) throw new Error(`Missing ${channel} handler`);
-      return found;
-    };
-    for (const [channel, action] of [
-      [BB_DESKTOP_ADD_SERVER_CHANNEL, addServer],
-      [BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL, signInToConnect],
+    const request = ipc.on.mock.calls.find(
+      ([channel]) => channel === BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
+    )?.[1];
+    if (!request) throw new Error("Missing sign-in handler");
+    const offered = (reason: ConnectServerSyncSkipReason | null) =>
+      createServerMenuItems({
+        isMac: false,
+        showBuiltinServer: true,
+        toggleBuiltinServer: () => undefined,
+        addServer: () => undefined,
+        connectServersSkipReason: reason,
+        selectServer: () => undefined,
+        servers: [],
+        setServerUrl: () => undefined,
+        signInToConnect: () => undefined,
+      }).some((item) => item.label?.startsWith("Sign in to bb Connect"));
+    for (const reason of [
+      null,
+      "no-credential",
+      "plugin-disabled",
+      "not-paired",
+      "unauthorized",
+      "unavailable",
     ] as const) {
-      handler(channel)({ ...event, senderFrame: {} });
-      handler(channel)({ ...event, sender: { id: 99, mainFrame: frame } });
-      expect(action).not.toHaveBeenCalled();
-      handler(channel)(event);
-      expect(action).toHaveBeenCalledTimes(1);
+      skipReason = reason;
+      signInToConnect.mockClear();
+      request(event);
+      expect(signInToConnect.mock.calls.length > 0, String(reason)).toBe(
+        offered(reason),
+      );
     }
+    skipReason = "no-credential";
+    signInToConnect.mockClear();
+    request({ ...event, senderFrame: {} });
+    request({ ...event, sender: { id: 99, mainFrame: frame } });
+    expect(signInToConnect).not.toHaveBeenCalled();
   });
 });

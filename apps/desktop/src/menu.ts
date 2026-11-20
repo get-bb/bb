@@ -6,7 +6,7 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import {
-  BB_DESKTOP_CONNECT_SIGN_IN_LABELS,
+  bbDesktopConnectSignInLabel,
   type BbDesktopZoomCommand,
 } from "@bb/desktop-contract";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
@@ -111,14 +111,13 @@ export function createServerMenuItems(
       type: "radio" as const,
     }),
   );
-  const signInLabel =
-    args.connectServersSkipReason === null
-      ? undefined
-      : BB_DESKTOP_CONNECT_SIGN_IN_LABELS[args.connectServersSkipReason];
+  const signInLabel = bbDesktopConnectSignInLabel(
+    args.connectServersSkipReason,
+  );
   return [
     ...serverItems,
     { type: "separator" },
-    ...(signInLabel === undefined
+    ...(signInLabel === null
       ? []
       : [
           {

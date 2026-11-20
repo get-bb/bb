@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { ListLoadingPlaceholder } from "@bb/shared-ui/list-loading-placeholder";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -12,7 +12,7 @@ const SERVER_KIND_ICON: Record<ServerChoice["kind"], string> = {
 };
 
 const ROW_CLASS =
-  "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-sidebar-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50 max-md:pointer-coarse:py-2.5 max-md:pointer-coarse:text-sm";
+  "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-sidebar-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:py-2.5 max-md:pointer-coarse:text-sm";
 
 const ROW_ICON_CLASS = "size-3.5 shrink-0 max-md:pointer-coarse:size-4";
 
@@ -20,13 +20,15 @@ function serverHost(origin: string): string {
   return new URL(origin).host;
 }
 
+function focusOnMount(row: HTMLButtonElement | null): void {
+  row?.focus({ preventScroll: true });
+}
+
 export function SidebarServerSwitcher({ dismiss }: { dismiss(): void }) {
   const choices = useServerChoices();
-  const [switchingId, setSwitchingId] = useState<string | null>(null);
   if (choices === null) return null;
-  const switching = choices.servers.some((server) => server.id === switchingId)
-    ? switchingId
-    : null;
+  const focusedServer =
+    choices.servers.find((server) => server.active) ?? choices.servers[0];
   const actions = [
     choices.accountSignIn === null ? null : (
       <ServerAction
@@ -65,19 +67,14 @@ export function SidebarServerSwitcher({ dismiss }: { dismiss(): void }) {
             return (
               <li key={server.id}>
                 <button
+                  ref={server === focusedServer ? focusOnMount : undefined}
                   type="button"
                   className={ROW_CLASS}
                   title={server.origin}
                   aria-current={server.active ? "true" : undefined}
-                  aria-busy={switching === server.id || undefined}
-                  disabled={switching !== null}
                   onClick={() => {
-                    if (server.active) {
-                      dismiss();
-                      return;
-                    }
-                    setSwitchingId(server.id);
-                    choices.switchTo(server.id);
+                    dismiss();
+                    if (!server.active) choices.switchTo(server.id);
                   }}
                 >
                   <Icon
@@ -93,13 +90,7 @@ export function SidebarServerSwitcher({ dismiss }: { dismiss(): void }) {
                       </span>
                     )}
                   </span>
-                  {switching === server.id ? (
-                    <Icon
-                      name="Loading"
-                      aria-label="Switching"
-                      className={cn(ROW_ICON_CLASS, "animate-spin")}
-                    />
-                  ) : server.active ? (
+                  {server.active ? (
                     <Icon
                       name="Check"
                       aria-label="Current server"

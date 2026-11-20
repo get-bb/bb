@@ -1,5 +1,5 @@
 import {
-  BB_DESKTOP_CONNECT_SIGN_IN_LABELS,
+  bbDesktopConnectSignInLabel,
   type BbDesktopServerChoice,
   type BbDesktopServerList,
 } from "@bb/desktop-contract";
@@ -48,15 +48,12 @@ function createServerChoices(source: ServerChoiceSource): ServerChoices {
   const toSnapshot = (list: ServerList | null): ServerChoicesSnapshot => {
     if (list === null)
       return { status: "loading", servers: [], accountSignIn: null };
-    const label =
-      list.connectServersSkipReason === null
-        ? undefined
-        : BB_DESKTOP_CONNECT_SIGN_IN_LABELS[list.connectServersSkipReason];
+    const label = bbDesktopConnectSignInLabel(list.connectServersSkipReason);
     return {
       status: "ready",
       servers: list.servers,
       accountSignIn:
-        label === undefined || source.signInToConnect === null
+        label === null || source.signInToConnect === null
           ? null
           : { label, start: source.signInToConnect },
     };

@@ -25,12 +25,18 @@ export type BbDesktopConnectServersSkipReason = z.infer<
   typeof bbDesktopConnectServersSkipReasonSchema
 >;
 
-export const BB_DESKTOP_CONNECT_SIGN_IN_LABELS: Partial<
+const CONNECT_SIGN_IN_LABELS: Partial<
   Record<BbDesktopConnectServersSkipReason, string>
 > = {
   "no-credential": "Sign in to bb Connect…",
   unauthorized: "Sign in to bb Connect again…",
 };
+
+export function bbDesktopConnectSignInLabel(
+  reason: BbDesktopConnectServersSkipReason | null,
+): string | null {
+  return reason === null ? null : (CONNECT_SIGN_IN_LABELS[reason] ?? null);
+}
 
 export const bbDesktopServerListSchema = z
   .object({

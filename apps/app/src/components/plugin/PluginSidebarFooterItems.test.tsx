@@ -734,7 +734,7 @@ describe("PluginSidebarFooterItems", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the built-in server switcher like a plugin disclosure, from the footer and from More", async () => {
+  it("opens the built-in server switcher like a plugin disclosure, focuses it, closes on a choice, and opens from More", async () => {
     const selectServer = vi.fn();
     const addServer = vi.fn();
     window.bbDesktop = {
@@ -803,24 +803,26 @@ describe("PluginSidebarFooterItems", () => {
     expect(screen.getByRole("region", { name: "Servers" }).id).toBe(
       trigger.getAttribute("aria-controls"),
     );
-    const studio = await screen.findByRole("button", { name: /Studio/ });
-    expect(
-      screen
-        .getByRole("button", { name: /This Mac/ })
-        .getAttribute("aria-current"),
-    ).toBe("true");
-    fireEvent.click(studio);
-    expect(selectServer).toHaveBeenCalledWith("connect:studio");
-    expect(studio.getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByRole("button", { name: "Add server…" })).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
-    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: /Studio/ });
+    const current = screen.getByRole("button", { name: /This Mac/ });
+    expect(current.getAttribute("aria-current")).toBe("true");
+    expect(document.activeElement).toBe(current);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
     expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("button", { name: /Studio/ }));
+    expect(selectServer).toHaveBeenCalledWith("connect:studio");
+    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("button", { name: /Studio/ }));
+    expect(selectServer).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
+    expect(screen.queryByRole("region", { name: "Servers" })).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
     act(() => store.set(sidebarFooterHiddenAtom, ["builtin:servers"]));
     expect(screen.queryByRole("button", { name: "Servers" })).toBeNull();

@@ -103,7 +103,10 @@ one. `accountSignIn` is set while bb Desktop skips listing the user's account
 servers because bb Connect needs a sign-in, with the label its Server menu
 uses and a `start()` that opens the same sign-in window; it is always null on
 the mobile app. Core's command palette and sidebar footer server switchers use
-the same `useServerChoices` implementation. Desktop pages served by an older
+the same `useServerChoices` implementation; one contract table in
+`apps/app/src/lib/server-choices.test.tsx` runs the footer switcher and this
+hook against bb Desktop and the mobile app. Desktop's main process opens the
+sign-in only while its Server menu offers it (`bbDesktopConnectSignInLabel`). Desktop pages served by an older
 desktop release get null until it updates, and a desktop release from before
 `addServer` lists servers without it. Plugins can't edit, rename or remove
 servers, and can't call another server. The list lives in the client, so the

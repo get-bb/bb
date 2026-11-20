@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import type {
   BbDesktopServerChoice,
   BbDesktopServerList,
@@ -17,6 +25,8 @@ import { createBbDesktopApi } from "../test/bb-desktop-test-utils";
 import { getNativeShell, resetNativeShellForTests } from "./native-shell";
 import { getServerChoices, resetServerChoicesForTests } from "./server-choices";
 import { useServerChoices } from "../hooks/useServerChoices";
+import { SidebarServerSwitcher } from "../components/sidebar/SidebarServerSwitcher";
+import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 
 const local: BbDesktopServerChoice = {
   id: "builtin",
@@ -76,40 +86,26 @@ function installDesktop() {
   };
 }
 
-function installDesktopWithServerList() {
-  const listeners = new Set<(list: BbDesktopServerList) => void>();
-  const responses: ((list: BbDesktopServerList) => void)[] = [];
+function installDesktopWithServerList(
+  connectServersSkipReason: BbDesktopServerList["connectServersSkipReason"],
+) {
+  const selectServer = vi.fn();
   const addServer = vi.fn();
   const signInToConnect = vi.fn();
   window.bbDesktop = {
     ...createDesktopApi(),
     listServerChoices: async () => [],
     onServerChoicesChange: () => () => {},
-    getServerList: () =>
-      new Promise((resolve) => {
-        responses.push(resolve);
-      }),
-    onServerListChange: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    selectServer: () => {},
+    getServerList: async () => ({
+      servers: [local, studio],
+      connectServersSkipReason,
+    }),
+    onServerListChange: () => () => {},
+    selectServer,
     addServer,
     signInToConnect,
   };
-  return {
-    addServer,
-    signInToConnect,
-    async respond(index: number, list: BbDesktopServerList) {
-      responses[index]?.(list);
-      await Promise.resolve();
-    },
-    change(next: BbDesktopServerList) {
-      for (const listener of listeners) listener(next);
-    },
-  };
+  return { selectServer, addServer, signInToConnect };
 }
 
 const handshake: NativeShellHandshake = {
@@ -194,45 +190,6 @@ describe("server choices", () => {
     });
   });
 
-  it("offers desktop's Add Server and bb Connect sign-in where its Server menu does", async () => {
-    const desktop = installDesktopWithServerList();
-    const { result } = renderHook(useServerChoices);
-    await act(() =>
-      desktop.respond(0, {
-        servers: [local],
-        connectServersSkipReason: "no-credential",
-      }),
-    );
-    expect(result.current).toMatchObject({
-      status: "ready",
-      servers: [local],
-      accountSignIn: { label: "Sign in to bb Connect…" },
-    });
-    result.current?.accountSignIn?.start();
-    expect(desktop.signInToConnect).toHaveBeenCalledTimes(1);
-    result.current?.addServer?.();
-    expect(desktop.addServer).toHaveBeenCalledTimes(1);
-    act(() =>
-      desktop.change({
-        servers: [local],
-        connectServersSkipReason: "unauthorized",
-      }),
-    );
-    expect(result.current?.accountSignIn?.label).toBe(
-      "Sign in to bb Connect again…",
-    );
-    act(() =>
-      desktop.change({
-        servers: [local, studio],
-        connectServersSkipReason: "unavailable",
-      }),
-    );
-    expect(result.current).toMatchObject({
-      servers: [local, studio],
-      accountSignIn: null,
-    });
-  });
-
   it("keeps a change desktop pushed while an older read was still in flight", async () => {
     const desktop = installDesktop();
     const { result } = renderHook(useServerChoices);
@@ -289,20 +246,6 @@ describe("server choices", () => {
     });
   });
 
-  it("asks a bridge 5 mobile app to open its Add server screen", () => {
-    const mobile = installMobile([{ ...studio, active: true }], {
-      ...handshake,
-      bridgeVersion: 5,
-      capabilities: [...handshake.capabilities, "open-native"],
-    });
-    const { result } = renderHook(useServerChoices);
-    result.current?.addServer?.();
-    expect(parsePageToShellMessage(mobile.posted.at(-1))).toEqual({
-      ok: true,
-      message: { type: "open-native", screen: "add-server" },
-    });
-  });
-
   it("keeps the mobile bridge usable when the app's list is one this page cannot read", () => {
     installMobile([]);
     Reflect.set(Reflect.get(Reflect.get(window, "bb"), "native"), "servers", [
@@ -310,5 +253,93 @@ describe("server choices", () => {
     ]);
     expect(getServerChoices()).toBeNull();
     expect(getNativeShell()?.handshake.platform).toBe("ios");
+  });
+});
+
+const usePluginServers = pluginSdkAppImplementation.experimental_useServers;
+
+function PluginServers() {
+  const choices = usePluginServers();
+  if (choices === null) return null;
+  return (
+    <>
+      {choices.servers.map((server) => (
+        <button
+          key={server.id}
+          type="button"
+          onClick={() => choices.switchTo(server.id)}
+        >
+          {server.name}
+        </button>
+      ))}
+      {choices.accountSignIn === null ? null : (
+        <button type="button" onClick={choices.accountSignIn.start}>
+          {choices.accountSignIn.label}
+        </button>
+      )}
+      {choices.addServer === null ? null : (
+        <button type="button" onClick={choices.addServer}>
+          Add server…
+        </button>
+      )}
+    </>
+  );
+}
+
+const SURFACES: readonly { name: string; render: () => ReactNode }[] = [
+  {
+    name: "sidebar footer switcher",
+    render: () => <SidebarServerSwitcher dismiss={() => {}} />,
+  },
+  { name: "plugin experimental_useServers", render: () => <PluginServers /> },
+];
+
+describe.each(SURFACES)("server choices surface contract: $name", (surface) => {
+  it("switches desktop and opens its Add Server dialog", async () => {
+    const desktop = installDesktopWithServerList(null);
+    render(surface.render());
+    fireEvent.click(await screen.findByRole("button", { name: /^Studio/ }));
+    expect(desktop.selectServer).toHaveBeenCalledWith("connect:studio");
+    fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
+    expect(desktop.addServer).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["no-credential", "Sign in to bb Connect…"],
+    ["unauthorized", "Sign in to bb Connect again…"],
+    ["unavailable", null],
+    [null, null],
+  ] as const)(
+    "offers bb Connect sign-in when desktop skips %s only as its Server menu does",
+    async (reason, label) => {
+      const desktop = installDesktopWithServerList(reason);
+      render(surface.render());
+      await screen.findByRole("button", { name: /^Studio/ });
+      const signIn = screen.queryByRole("button", { name: /^Sign in/ });
+      expect(signIn?.textContent ?? null).toBe(label);
+      if (signIn !== null) fireEvent.click(signIn);
+      expect(desktop.signInToConnect).toHaveBeenCalledTimes(label ? 1 : 0);
+    },
+  );
+
+  it("asks the mobile app to switch and to open its Add server screen", () => {
+    const mobile = installMobile(
+      [
+        { ...studio, active: true },
+        { ...local, active: false },
+      ],
+      {
+        ...handshake,
+        bridgeVersion: 5,
+        capabilities: [...handshake.capabilities, "open-native"],
+      },
+    );
+    render(surface.render());
+    fireEvent.click(screen.getByRole("button", { name: /^This Mac/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
+    expect(mobile.posted.map((raw) => parsePageToShellMessage(raw))).toEqual([
+      { ok: true, message: { type: "switch-server", id: "builtin" } },
+      { ok: true, message: { type: "open-native", screen: "add-server" } },
+    ]);
   });
 });
