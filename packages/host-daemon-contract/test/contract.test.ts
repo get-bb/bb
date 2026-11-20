@@ -1,3 +1,4 @@
+import { threadCpuUsage } from "node:process";
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
 import {
   TERMINAL_COLS_MAX,
@@ -3726,5 +3727,48 @@ describe("bounded file read contract", () => {
       hostDaemonOnlineRpcCommandSchema.safeParse({ ...command, ...override })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("daemon websocket message dispatch", () => {
+  function cpuUsPerParse(parse: () => unknown): number {
+    parse();
+    let fastest = Number.POSITIVE_INFINITY;
+    for (let sample = 0; sample < 3; sample += 1) {
+      const started = threadCpuUsage();
+      let parses = 0;
+      let elapsedCpuUs = 0;
+      do {
+        for (let repeat = 0; repeat < 256; repeat += 1) {
+          parse();
+        }
+        parses += 256;
+        const cpu = threadCpuUsage(started);
+        elapsedCpuUs = cpu.user + cpu.system;
+      } while (elapsedCpuUs < 50_000);
+      fastest = Math.min(fastest, elapsedCpuUs / parses);
+    }
+    return fastest;
+  }
+
+  it("parses the last message type about as fast as its own schema", () => {
+    const message = {
+      type: "host-rpc.response",
+      requestId: "request-1",
+      commandType: "host.list_files",
+      ok: false,
+      errorCode: "not_found",
+      errorMessage: "Missing directory",
+    };
+    expect(hostDaemonDaemonWsMessageSchema.parse(message)).toEqual(message);
+
+    const viaMessageSchemaCpuUs = cpuUsPerParse(() =>
+      hostDaemonDaemonWsMessageSchema.parse(message),
+    );
+    const viaMemberSchemaCpuUs = cpuUsPerParse(() =>
+      hostDaemonOnlineRpcResponseMessageSchema.parse(message),
+    );
+
+    expect(viaMessageSchemaCpuUs).toBeLessThan(viaMemberSchemaCpuUs * 4);
   });
 });
