@@ -89,6 +89,9 @@ export function useMobileVisualViewportHeight(
 
     let animationFrame: number | null = null;
     let appliedOverride: { top: number; height: number } | null = null;
+    // Only the safe-area inset needs the height at focus time. The shell
+    // follows the current geometry even when both viewports resize together.
+    let viewportHeightBeforeKeyboard: number | null = null;
     let appliedKeyboardInset = false;
     let layoutHeight = 0;
     let layoutHeightStale = true;
@@ -125,7 +128,8 @@ export function useMobileVisualViewportHeight(
         layoutHeight = document.body.clientHeight;
         layoutHeightStale = false;
       }
-      const height = Math.round(visualViewport.height);
+      const viewportHeight = visualViewport.height;
+      const height = Math.round(viewportHeight);
       const offsetTop = visualViewport.offsetTop;
       const scrollY = window.scrollY;
       const scale = visualViewport.scale;
@@ -134,15 +138,12 @@ export function useMobileVisualViewportHeight(
       const editorFocused = isKeyboardFocusTarget(document.activeElement);
       const heightMismatch = Math.abs(layoutHeight - height) > 1;
       const compensatePan =
-        (offsetTop > 1 || scrollY > 0) &&
-        (!settleIOSViewport ||
-          editorFocused ||
-          heightMismatch ||
-          appliedOverride !== null);
+        (offsetTop > 1 || scrollY > 0) && (editorFocused || heightMismatch);
       setKeyboardInset(
-        scale === 1 &&
+        viewportHeightBeforeKeyboard !== null &&
           editorFocused &&
-          layoutHeight - height >= KEYBOARD_OPEN_MIN_SHRINK_PX,
+          viewportHeightBeforeKeyboard - viewportHeight >=
+            KEYBOARD_OPEN_MIN_SHRINK_PX,
       );
       if (scale !== 1 || (!heightMismatch && !compensatePan)) {
         clearViewportOverride();
@@ -150,7 +151,7 @@ export function useMobileVisualViewportHeight(
       }
 
       let top = Math.round(scrollY + offsetTop);
-      if (compensatePan && (scrollY > 0 || appliedOverride?.top !== top)) {
+      if (compensatePan && scrollY > 0) {
         // Undo layout scrolling first. The remaining visual pan is accounted
         // for by the shell's position.
         window.scrollTo(0, 0);
@@ -211,17 +212,17 @@ export function useMobileVisualViewportHeight(
       layoutHeightStale = true;
       handleViewportChange();
     };
-    const handleViewportScroll = () => {
-      if (
-        settleIOSViewport ||
-        appliedOverride !== null ||
-        isKeyboardFocusTarget(document.activeElement)
-      ) {
-        handleViewportChange();
-      }
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!isKeyboardFocusTarget(event.target)) return;
+      if (isKeyboardFocusTarget(event.relatedTarget)) return;
+      viewportHeightBeforeKeyboard = null;
+      setKeyboardInset(false);
+      if (settleIOSViewport) handleLayoutChange();
     };
-    const handleFocusChange = (event: FocusEvent) => {
-      if (isKeyboardFocusTarget(event.target)) handleLayoutChange();
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!isKeyboardFocusTarget(event.target)) return;
+      viewportHeightBeforeKeyboard ??= visualViewport.height;
+      handleLayoutChange();
     };
 
     if (settleIOSViewport) {
@@ -232,21 +233,21 @@ export function useMobileVisualViewportHeight(
       reconcile();
     }
     visualViewport.addEventListener("resize", handleViewportChange);
-    visualViewport.addEventListener("scroll", handleViewportScroll);
+    visualViewport.addEventListener("scroll", handleViewportChange);
     window.addEventListener("resize", handleLayoutChange);
     window.addEventListener("orientationchange", handleLayoutChange);
-    document.addEventListener("focusout", handleFocusChange);
-    document.addEventListener("focusin", handleFocusChange);
+    document.addEventListener("focusout", handleFocusOut);
+    document.addEventListener("focusin", handleFocusIn);
 
     return () => {
       visualViewport.removeEventListener("resize", handleViewportChange);
-      visualViewport.removeEventListener("scroll", handleViewportScroll);
+      visualViewport.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("resize", handleLayoutChange);
       window.removeEventListener("orientationchange", handleLayoutChange);
       window.removeEventListener("pageshow", handleLayoutChange);
       document.removeEventListener("visibilitychange", handleLayoutChange);
-      document.removeEventListener("focusout", handleFocusChange);
-      document.removeEventListener("focusin", handleFocusChange);
+      document.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("focusin", handleFocusIn);
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
       setKeyboardInset(false);
       clearViewportOverride();
