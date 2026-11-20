@@ -20,6 +20,7 @@ export const BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL = "bb-desktop:write-clipboard";
 export const BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL =
   "bb-desktop:open-window-find";
 export const BB_DESKTOP_RELOAD_WINDOW_CHANNEL = "bb-desktop:reload-window";
+export const BB_DESKTOP_PAIR_SERVER_CHANNEL = "bb-desktop:pair-server";
 
 export const BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL =
   "bb-desktop:get-server-choices";

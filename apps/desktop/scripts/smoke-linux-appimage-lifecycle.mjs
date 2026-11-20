@@ -376,11 +376,17 @@ async function hostDaemonIsReady({ daemonPort, serverUrl }) {
   }
 }
 
-async function pluginStartupIsSettled(serverUrl) {
+async function pluginStartupIsSettled({ dataDir, serverUrl }) {
   try {
+    const secret = (
+      await readFile(join(dataDir, "local-access-token"), "utf8")
+    ).trim();
     const response = await fetch(
       new URL("/api/v1/system/providers", serverUrl),
-      { signal: AbortSignal.timeout(2_000) },
+      {
+        headers: { authorization: `Bearer bbl_${secret}` },
+        signal: AbortSignal.timeout(2_000),
+      },
     );
     return response.ok;
   } catch {
@@ -547,7 +553,11 @@ async function smokeLinuxAppImageLifecycle() {
           (await hostDaemonIsReady({
             daemonPort,
             serverUrl: runtime.serverUrl,
-          })) && (await pluginStartupIsSettled(runtime.serverUrl))
+          })) &&
+          (await pluginStartupIsSettled({
+            dataDir,
+            serverUrl: runtime.serverUrl,
+          }))
         );
       },
       retryErrors: false,

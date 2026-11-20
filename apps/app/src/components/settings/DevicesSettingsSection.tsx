@@ -261,7 +261,12 @@ export function DevicesSettingsSection() {
           ) : undefined
         }
       >
-        {pairing !== null && (
+        {pairing === null ? (
+          <p className="text-sm text-subtle-foreground">
+            Open bb on the other browser, phone or computer. It shows a sign-in
+            screen; enter the code there, or scan its QR code.
+          </p>
+        ) : (
           <PairingPanel
             pairing={pairing}
             minting={mint.isPending}

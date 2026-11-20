@@ -47,6 +47,29 @@ export type BbDesktopClipboardContent = z.infer<
   typeof bbDesktopClipboardContentSchema
 >;
 
+export const bbDesktopPairServerRequestSchema = z
+  .object({ code: z.string().min(1).max(64) })
+  .strict();
+export type BbDesktopPairServerRequest = z.infer<
+  typeof bbDesktopPairServerRequestSchema
+>;
+
+export const BB_DESKTOP_PAIR_SERVER_NOT_DEVICE_TARGET = "not_device_target";
+
+export const bbDesktopPairServerResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true) }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      code: z.string(),
+      message: z.string(),
+    })
+    .strict(),
+]);
+export type BbDesktopPairServerResult = z.infer<
+  typeof bbDesktopPairServerResultSchema
+>;
+
 export const bbDesktopZoomCommandSchema = z.enum(["in", "out", "reset"]);
 export type BbDesktopZoomCommand = z.infer<typeof bbDesktopZoomCommandSchema>;
 export const BB_DESKTOP_MIN_ZOOM_PERCENT = 50;
@@ -105,6 +128,9 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openExternalUrl(url: string): void;
   openApplicationUrl?(url: string): Promise<void>;
   openServerDaemonLogs?(): Promise<void>;
+  pairServer?(
+    request: BbDesktopPairServerRequest,
+  ): Promise<BbDesktopPairServerResult>;
   reloadWindow?(): void;
   setSplitNavigationEnabled?(
     enabled: boolean,

@@ -1,4 +1,5 @@
 import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
+import { DesktopPairingError } from "./redeem-pairing";
 
 const PAIRING_CODE_LENGTH = 10;
 
@@ -25,10 +26,8 @@ export function pairingLink(origin: string, code: string): string {
   return `${origin}/pair#code=${encodeURIComponent(code)}`;
 }
 
-export function pairingErrorMessage(error: unknown): string {
-  const httpError = asHttpError(error);
-  if (httpError === null) return "Could not reach this bb. Try again.";
-  switch (httpError.code) {
+function pairingCodeMessage(code: string | null | undefined): string | null {
+  switch (code) {
     case "invalid_pairing_code":
       return "That code is wrong, expired or already used. Make a new code and try again.";
     case "pairing_rate_limited":
@@ -36,6 +35,19 @@ export function pairingErrorMessage(error: unknown): string {
     case "credential_requires_https":
       return "This sign-in was made over HTTPS. Open the HTTPS address, or sign in again here.";
     default:
-      return getHttpErrorMessage(httpError) ?? "Sign-in failed. Try again.";
+      return null;
   }
+}
+
+export function pairingErrorMessage(error: unknown): string {
+  if (error instanceof DesktopPairingError) {
+    return pairingCodeMessage(error.code) ?? error.message;
+  }
+  const httpError = asHttpError(error);
+  if (httpError === null) return "Could not reach this bb. Try again.";
+  return (
+    pairingCodeMessage(httpError.code) ??
+    getHttpErrorMessage(httpError) ??
+    "Sign-in failed. Try again."
+  );
 }

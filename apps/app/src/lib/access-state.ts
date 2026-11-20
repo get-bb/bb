@@ -76,7 +76,10 @@ export function watchSessionOnSocketLoss(args: {
           if (session.authenticated || !state.signedIn) return;
           setAccessState({
             signedIn: false,
-            reason: session.problem ?? ACCESS_UNAUTHENTICATED_ERROR_CODE,
+            reason:
+              session.problem === ACCESS_CREDENTIAL_REQUIRES_HTTPS_ERROR_CODE
+                ? session.problem
+                : ACCESS_UNAUTHENTICATED_ERROR_CODE,
           });
         },
         () => {},

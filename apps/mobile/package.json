@@ -31,6 +31,7 @@
     "@gorhom/bottom-sheet": "^5.2.14",
     "@hugeicons/core-free-icons": "~4.3.4",
     "@hugeicons/react-native": "^1.0.16",
+    "@noble/curves": "2.4.0",
     "@react-native-cookies/cookies": "^6.2.1",
     "@tanstack/react-query": "^5.106.1",
     "class-variance-authority": "^0.7.1",

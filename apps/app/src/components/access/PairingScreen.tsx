@@ -3,13 +3,16 @@ import { Input } from "@bb/shared-ui/input";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PAIR_ROUTE_PATH, type AccessSignOutReason } from "@/lib/access-state";
-import { sdk } from "@/lib/sdk";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
+import { getNativeShell, type NativeShell } from "@/lib/native-shell";
+import { z } from "zod";
 import {
   formatPairingCodeInput,
   isCompletePairingCode,
   pairingCodeFromHash,
   pairingErrorMessage,
 } from "./pairing-code";
+import { redeemPairingCode } from "./redeem-pairing";
 
 interface PairingScreenProps {
   reason: AccessSignOutReason;
@@ -20,7 +23,59 @@ function returnPath(): string {
   return pathname === PAIR_ROUTE_PATH ? "/" : `${pathname}${search}`;
 }
 
-export function PairingScreen({ reason }: PairingScreenProps) {
+const renewedSessionSchema = z.object({ renewed: z.boolean() });
+
+function renewNativeShellSession(shell: NativeShell): Promise<boolean> {
+  return shell
+    .request("renew-session", {})
+    .then((result) => renewedSessionSchema.parse(result).renewed);
+}
+
+function NativeShellSignIn({ shell }: { shell: NativeShell }) {
+  const [renewFailed, setRenewFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void renewNativeShellSession(shell).then(
+      (renewed) => {
+        if (cancelled) return;
+        if (renewed) window.location.replace(returnPath());
+        else setRenewFailed(true);
+      },
+      () => {
+        if (!cancelled) setRenewFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [shell]);
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm space-y-1 rounded-lg border border-border bg-card p-5">
+        <h1 className="text-base font-semibold">
+          {renewFailed ? "Sign in again from the app" : "Reconnecting to bb…"}
+        </h1>
+        {renewFailed && (
+          <p className="text-sm text-subtle-foreground">
+            This phone isn't signed in to this bb anymore. Open the app's
+            Settings → Servers and choose Sign in again.
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export function PairingScreen(props: PairingScreenProps) {
+  const shell = getNativeShell();
+  return shell?.has("device-sign-in") ? (
+    <NativeShellSignIn shell={shell} />
+  ) : (
+    <CodePairingScreen {...props} />
+  );
+}
+
+function CodePairingScreen({ reason }: PairingScreenProps) {
   const [code, setCode] = useState(() =>
     window.location.pathname === PAIR_ROUTE_PATH
       ? (pairingCodeFromHash(window.location.hash) ?? "")
@@ -28,10 +83,7 @@ export function PairingScreen({ reason }: PairingScreenProps) {
   );
   const redeem = useMutation({
     mutationFn: (pairingCode: string) =>
-      sdk.experimental_access.redeemPairing({
-        kind: "browser",
-        code: pairingCode,
-      }),
+      redeemPairingCode(pairingCode, getBbDesktopInfo()),
     meta: { showErrorToast: false },
     onSuccess: () => window.location.replace(returnPath()),
   });

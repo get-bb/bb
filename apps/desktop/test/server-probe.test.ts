@@ -94,6 +94,30 @@ describe("probeBbServer", () => {
     });
   });
 
+  it("attaches to a bb that will not let this computer in without its data directory, so the window can sign in", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { code: "unauthenticated", message: "Sign in" },
+          { status: 401 },
+        ),
+      );
+
+    await expect(
+      probeBbServer({
+        fetchImpl,
+        serverUrl: "http://127.0.0.1:38886",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: "http://127.0.0.1:38886",
+    });
+  });
+
   it("probes under the server URL's path prefix", async () => {
     const fetchImpl = vi
       .fn<ServerProbeFetch>()
