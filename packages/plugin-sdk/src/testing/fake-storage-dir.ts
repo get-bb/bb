@@ -13,31 +13,57 @@ interface HostDirRoot {
   removers: Set<() => void>;
 }
 
+interface HostDirRootState {
+  root: HostDirRoot | null;
+}
+
 const ROOT_KEY = Symbol.for("bb.plugin-sdk.fake-plugin-host-root");
 
-type RootHolder = { [ROOT_KEY]?: HostDirRoot };
+type RootHolder = { [ROOT_KEY]?: HostDirRootState };
 
-function hostDirRoot(): HostDirRoot {
+function removeDir(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {}
+}
+
+function rootState(): HostDirRootState {
   const holder = globalThis as RootHolder;
   const existing = holder[ROOT_KEY];
   if (existing !== undefined) return existing;
-  const root: HostDirRoot = {
-    path: mkdtempSync(join(tmpdir(), `bb-fake-plugin-host-${process.pid}-`)),
-    removers: new Set(),
-  };
-  holder[ROOT_KEY] = root;
+  const state: HostDirRootState = { root: null };
+  holder[ROOT_KEY] = state;
   process.once("exit", () => {
-    if (holder[ROOT_KEY] === root) delete holder[ROOT_KEY];
+    const root = state.root;
+    if (root === null) return;
+    state.root = null;
     for (const remove of [...root.removers]) {
       try {
         remove();
       } catch {}
     }
-    try {
-      rmSync(root.path, { recursive: true, force: true });
-    } catch {}
+    removeDir(root.path);
   });
+  return state;
+}
+
+function acquireRoot(): HostDirRoot {
+  const state = rootState();
+  if (state.root !== null) return state.root;
+  const root: HostDirRoot = {
+    path: mkdtempSync(join(tmpdir(), `bb-fake-plugin-host-${process.pid}-`)),
+    removers: new Set(),
+  };
+  state.root = root;
   return root;
+}
+
+function releaseRoot(root: HostDirRoot, remove: () => void): void {
+  root.removers.delete(remove);
+  if (root.removers.size > 0) return;
+  const state = rootState();
+  if (state.root === root) state.root = null;
+  removeDir(root.path);
 }
 
 export function createFakeStorageDir(): FakeStorageDir {
@@ -51,17 +77,20 @@ export function createFakeStorageDir(): FakeStorageDir {
       } catch {}
     }
     databases.clear();
-    root?.removers.delete(remove);
-    root = null;
-    if (path === null) return;
     const dirPath = path;
+    const owner = root;
     path = null;
-    rmSync(dirPath, { recursive: true, force: true });
+    root = null;
+    try {
+      if (dirPath !== null) rmSync(dirPath, { recursive: true, force: true });
+    } finally {
+      if (owner !== null) releaseRoot(owner, remove);
+    }
   };
   return {
     openDatabase() {
       if (path === null) {
-        root = hostDirRoot();
+        root = acquireRoot();
         path = mkdtempSync(join(root.path, "host-"));
         root.removers.add(remove);
       }

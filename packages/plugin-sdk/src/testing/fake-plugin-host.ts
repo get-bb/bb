@@ -154,10 +154,12 @@ import {
  *   the host's shared file), secret settings alongside plain values (no files).
  *   The directory is created on the first `database()` call and removed by
  *   `dispose()`. Every host directory in a process sits under one root,
- *   `bb-fake-plugin-host-<pid>-*` in `os.tmpdir()`, which is removed when the
- *   process exits normally or calls `process.exit()`. A process killed by a
- *   signal, such as a Vitest worker stopped with SIGTERM, can leave that root
- *   behind; call `dispose()` when a test needs its host's directory removed.
+ *   `bb-fake-plugin-host-<pid>-*` in `os.tmpdir()`, which is removed when its
+ *   last host is disposed or when the process exits normally or calls
+ *   `process.exit()`. A process killed by a signal, such as a Vitest worker
+ *   stopped with SIGTERM, can leave that root behind; point `TMPDIR` (and
+ *   `TEMP`/`TMP` on Windows) at a directory the test runner removes, such as
+ *   one a Vitest `globalSetup` creates and deletes, or call `dispose()`.
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
  * - http auth modes are recorded but not enforced — signature checks and

@@ -127,6 +127,35 @@ describe("fake plugin host storage directory", () => {
     expect(leftoverHostDirs(run.tmp)).toEqual([]);
   });
 
+  it("removes the root when its last host is disposed, and adds one exit listener per process", async () => {
+    const run = await runChild(`
+      const exitListeners = process.listenerCount("exit");
+      for (let cycle = 0; cycle < 3; cycle += 1) {
+        const first = createFakePluginHost();
+        const second = createFakePluginHost();
+        first.bb.storage.database();
+        second.bb.storage.database();
+        await first.harness.dispose();
+        console.log("roots:" + roots().length + " hosts:" + hostDirs().length);
+        await second.harness.dispose();
+        console.log("roots:" + roots().length);
+      }
+      console.log("exit-listeners:" + (process.listenerCount("exit") - exitListeners));
+    `);
+    expect(run.stderr).toBe("");
+    expect(run.lines).toEqual([
+      "roots:1 hosts:1",
+      "roots:0",
+      "roots:1 hosts:1",
+      "roots:0",
+      "roots:1 hosts:1",
+      "roots:0",
+      "exit-listeners:1",
+    ]);
+    expect(run.code).toBe(0);
+    expect(leftoverHostDirs(run.tmp)).toEqual([]);
+  });
+
   it("is removed when the process calls process.exit() with hosts never disposed", async () => {
     const run = await runChild(`
       createFakePluginHost().bb.storage.database();
