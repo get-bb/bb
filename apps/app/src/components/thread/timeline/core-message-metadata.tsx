@@ -1,10 +1,8 @@
 import { useState } from "react";
 import type { ExperimentalMessageMetadataProps } from "@get-bb/plugin-sdk";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import {
-  collectPluginAppRegistrations,
-  definePluginApp,
-} from "@/lib/plugin-app-definition";
+import { definePluginApp } from "@/lib/plugin-app-definition";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { formatShortMessageTime, MessageTime } from "./message-time.js";
 
 function InlineMessageTime({ message }: ExperimentalMessageMetadataProps) {
@@ -19,7 +17,7 @@ function InlineMessageTime({ message }: ExperimentalMessageMetadataProps) {
   );
 }
 
-export const coreMessageMetadata = collectPluginAppRegistrations(
+export const coreMessageMetadata = collectCoreContributionSlots(
   definePluginApp((app) => {
     app.slots.experimental_messageMetadata({
       id: "time",
@@ -27,4 +25,5 @@ export const coreMessageMetadata = collectPluginAppRegistrations(
       component: InlineMessageTime,
     });
   }),
-).messageMetadata.map((slot) => ({ ...slot, pluginId: "core", generation: 0 }));
+  "messageMetadata",
+);

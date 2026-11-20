@@ -175,13 +175,38 @@ describe("thread tab synchronization", () => {
           tabId: "diff",
         },
         {
+          id: "plugin-fixed:bb--core:info",
+          kind: "plugin-fixed",
+          pluginId: "bb--core",
+          tabId: "info",
+        },
+      ],
+    });
+  });
+
+  it("converts a server-saved Info tab under the old core owner id in place", () => {
+    const terminal = createTerminalFixedPanelTab({ terminalId: "saved" });
+    const restored = reconcileFixedPanelTabsState(
+      createEmptyFixedPanelTabsState(),
+      [
+        {
           id: "plugin-fixed:core:info",
           kind: "plugin-fixed",
           pluginId: "core",
           tabId: "info",
         },
+        terminal,
       ],
-    });
+    );
+    expect(restored.secondary.tabs).toEqual([
+      {
+        id: "plugin-fixed:bb--core:info",
+        kind: "plugin-fixed",
+        pluginId: "bb--core",
+        tabId: "info",
+      },
+      terminal,
+    ]);
   });
 
   it("keeps one Diff tab when the server saved both the core and the Git plugin ids", () => {

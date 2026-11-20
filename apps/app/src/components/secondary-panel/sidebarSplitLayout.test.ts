@@ -107,7 +107,7 @@ describe("sidebar split layout", () => {
       [
         "terminal:keep:none",
         "plugin-fixed:bb--git:diff",
-        "plugin-fixed:core:info",
+        "plugin-fixed:bb--core:info",
       ],
       "plugin-fixed:bb--git:diff",
     );
@@ -115,7 +115,7 @@ describe("sidebar split layout", () => {
     expect(group?.tabIds).toEqual([
       "terminal:keep:none",
       "plugin-fixed:bb--git:diff",
-      "plugin-fixed:core:info",
+      "plugin-fixed:bb--core:info",
     ]);
     expect(group?.activeTabId).toBe("plugin-fixed:bb--git:diff");
     expect(restored.layout).toEqual(saved.layout);

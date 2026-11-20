@@ -10,6 +10,7 @@ import { Panel } from "react-resizable-panels";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { preloadTerminalModules } from "@/components/thread/terminal/terminal-modules";
 import { CHROME_ROW_HEIGHT_CLASS } from "@/lib/bb-desktop";
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import { FilePreviewLoading } from "./FilePreviewChrome";
 import { SecondaryPanelContentSkeleton } from "./SecondaryPanelContentSkeleton";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
@@ -77,7 +78,7 @@ function ThreadSecondaryPanelPlaceholderContent({
   const showsThreadInfo =
     activeTab?.kind === "thread-info" ||
     (activeTab?.kind === "plugin-fixed" &&
-      activeTab.pluginId === "core" &&
+      activeTab.pluginId === CORE_PLUGIN_ID &&
       activeTab.tabId === "info");
   if (showsThreadInfo) {
     return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toPluginSidebarSplitLayout } from "./plugin-sidebar-split";
+import { toPluginSidebarSplitLayout } from "./plugin-split-layout";
 import type { SplitLayout } from "./split-layout";
 
 const twoPanes: SplitLayout = {
