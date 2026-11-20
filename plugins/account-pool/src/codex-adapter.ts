@@ -15,6 +15,8 @@ import {
   mountedUpstreamUrl,
   oauthSecretDueForRefresh,
   parseOAuthRefreshResponse,
+  UNREADABLE_USAGE_MESSAGE,
+  usageStatusMessage,
 } from "./provider-adapter.js";
 import { epochMilliseconds } from "./quota.js";
 
@@ -459,12 +461,12 @@ export function createCodexAdapter(options: {
       });
       if (!response.ok) {
         await response.body?.cancel();
-        return;
+        throw new Error(usageStatusMessage(response.status));
       }
       const parsed = usageResponseSchema.safeParse(
         await response.json().catch(() => null),
       );
-      if (!parsed.success) return;
+      if (!parsed.success) throw new Error(UNREADABLE_USAGE_MESSAGE);
       if (parsed.data.plan_type != null) {
         await context.accounts.setSubscriptionType(
           context.account.id,

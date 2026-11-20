@@ -140,10 +140,14 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
             accountEmail: account.email,
             planLabel: plan?.label ?? null,
           };
+          const refreshFailure = hub.usageRefreshFailure(account.id);
           const error =
             (account.error === null
               ? null
               : "Usage could not be collected for this account. Try refreshing usage.") ??
+            (refreshFailure === null
+              ? null
+              : `Usage could not be refreshed: ${refreshFailure}.`) ??
             (account.observedAt === null
               ? "Usage has not been observed for this account."
               : null);

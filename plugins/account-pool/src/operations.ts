@@ -286,6 +286,10 @@ export class PoolOperations {
     );
   }
 
+  usageRefreshFailure(id: string): string | null {
+    return this.hub.usageRefreshFailure(id);
+  }
+
   async setRouting(provider: PoolProvider, enabled: boolean): Promise<void> {
     await this.routing.setProviderEnabled(provider, enabled);
     this.onAccountsChanged();
