@@ -148,6 +148,7 @@ import {
 const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
 const HEALTH_CHECK_TIMEOUT_MS = 60_000;
+const SERVER_SLOW_START_NOTICE_MS = 15_000;
 const HEALTH_CHECK_INTERVAL_MS = 100;
 const HEALTH_CHECK_REQUEST_TIMEOUT_MS = 1_000;
 const MANAGED_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
@@ -602,9 +603,8 @@ export interface DelayMillisecondsArgs {
 }
 
 interface WaitForServerHealthArgs {
-  childProcess: ChildProcess | null;
+  childProcess: ChildProcess;
   expectedLaunchId: string;
-  timeoutMs?: number;
   url: string;
 }
 
@@ -2373,19 +2373,8 @@ async function isHealthyServerAnswering(url: string): Promise<boolean> {
 export async function waitForServerHealth(
   args: WaitForServerHealthArgs,
 ): Promise<void> {
-  const timeoutMs = args.timeoutMs ?? HEALTH_CHECK_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
   let foreignServerAnswered = false;
-  const describeFailure = (reason: string): string =>
-    foreignServerAnswered
-      ? `${reason}: another server is already answering at ${args.url}`
-      : reason;
-  while (Date.now() <= deadline) {
-    if (args.childProcess && hasProcessExited(args.childProcess)) {
-      throw new Error(
-        describeFailure("Process exited before becoming healthy"),
-      );
-    }
+  while (!hasProcessExited(args.childProcess)) {
     try {
       const response = await fetch(args.url, {
         signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
@@ -2401,7 +2390,9 @@ export async function waitForServerHealth(
     await delayMilliseconds({ ms: HEALTH_CHECK_INTERVAL_MS });
   }
   throw new Error(
-    describeFailure(`Timed out waiting for health at ${args.url}`),
+    foreignServerAnswered
+      ? `Process exited before becoming healthy: another server is already answering at ${args.url}`
+      : "Process exited before becoming healthy",
   );
 }
 
@@ -3177,6 +3168,14 @@ export async function startFullStackServerProcess(
   args.processes.serverRun = serverRun;
   args.onSpawned?.(serverRun.childProcess);
 
+  const slowStartNotice = setTimeout(() => {
+    log(
+      " ",
+      dim(
+        "The server is still starting. After an update it may be upgrading a large database; bb waits for it.",
+      ),
+    );
+  }, SERVER_SLOW_START_NOTICE_MS);
   try {
     await waitForServerHealth({
       childProcess: serverRun.childProcess,
@@ -3196,6 +3195,8 @@ export async function startFullStackServerProcess(
     throw new Error(
       `Server failed to become healthy: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    clearTimeout(slowStartNotice);
   }
 }
 

@@ -463,6 +463,13 @@ npx bb-app@latest
 pnpm exec turbo run dev --filter=@bb/desktop
 ```
 
+When the app starts its own `bb-app`, it waits for the server with no deadline
+for as long as that process runs: the server upgrades its database before it
+listens, and that can take minutes on a large `bb.db` or a busy computer. After
+10 seconds the window shows "Still starting bb". The `bb-app` launcher likewise
+waits for its server child without a deadline. Startup fails only when the
+process exits, and that screen offers **Try again** and **Choose server…**.
+
 The desktop supervisor handles normal quits plus `SIGINT` and `SIGTERM`, and it
 writes a PID file so the next launch can reap a stale Electron-owned `bb-app`
 launcher. Hard crashes such as process aborts, segfaults, or kernel-level kills
