@@ -63,7 +63,8 @@ export interface AcpSessionModel {
   actionRequested(key: string): AcpSessionEvent[];
   actionResolved(key: string): AcpSessionEvent[];
   agentWorkSettled(stopReason: string): AcpSessionEvent[];
-  hasUnfinishedToolCalls(): boolean;
+  currentAgentText(maxChars: number): string | undefined;
+  hasUnfinishedToolCalls(kind?: string): boolean;
   closeUnfinishedToolCalls(status: string): AcpSessionEvent[];
 }
 
@@ -739,9 +740,27 @@ export function createAcpSessionModel(
       return deriveWork({ stopReason, error: null });
     },
 
-    hasUnfinishedToolCalls() {
+    currentAgentText(maxChars) {
+      if (currentMessage?.role !== "agent") return undefined;
+      let text = "";
+      for (const block of currentMessage.content) {
+        if (
+          block.type !== "text" ||
+          typeof block.text !== "string" ||
+          block.text.length > maxChars - text.length
+        )
+          return undefined;
+        text += block.text;
+      }
+      return text;
+    },
+
+    hasUnfinishedToolCalls(kind) {
       for (const toolCall of toolCalls.values()) {
-        if (!isTerminalToolCallStatus(toolCall.status)) {
+        if (
+          (kind === undefined || toolCall.kind === kind) &&
+          !isTerminalToolCallStatus(toolCall.status)
+        ) {
           return true;
         }
       }

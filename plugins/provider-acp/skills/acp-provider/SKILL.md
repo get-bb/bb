@@ -186,7 +186,17 @@ restart is needed.
   launch-time reasoning flags, `nativeReasoning` for ACP
   `session/set_config_option` reasoning, and `permissionCli` for
   permission-mode launch flags.
-- `dialect` (`cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
+- For Google Antigravity, keep `"args": ["acp"]` and add
+  `"permissionCli": {"full": ["--dangerously-skip-permissions"], "insertAfterArgs": 1}`
+  to its custom agent entry to let nested swarm tools run under BB's full
+  permission mode. This launches `agy acp --dangerously-skip-permissions` in
+  full mode and `agy acp` in workspace-write mode.
+- BB recognizes the `agy` executable by basename. A wrapper can set
+  `"dialect": "antigravity"`. The bridge keeps a prompted turn open while
+  Antigravity reports an unfinished ACP command. Jobs whose launcher has
+  already reported a terminal status need a separate completion signal from
+  the agent.
+- `dialect` (`antigravity`, `cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
   channels bb reads.
 - `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
   from the target host's home directory and a `project` list resolved from the

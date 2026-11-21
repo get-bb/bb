@@ -84,6 +84,7 @@ import {
   grokContextUsageFromPromptResult,
   grokContextWindowSizeFromSessionModels,
   resolveAcpDialect,
+  isAntigravityCapacityBanner,
   type AcpDialect,
 } from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
@@ -2926,6 +2927,15 @@ function openAgentTurn(session: AcpThreadSession): void {
   armAgentTurnQuietTimer(session);
 }
 
+function failAntigravityCapacityTurn(session: AcpThreadSession): boolean {
+  const text = session.model.currentAgentText(2048);
+  if (text === undefined || !isAntigravityCapacityBanner(text)) return false;
+  session.turnStartedAtMs = undefined;
+  emitSessionError(session, text.trim());
+  setActivePromptKind(session, null);
+  return true;
+}
+
 function finishAgentTurn(
   session: AcpThreadSession,
   stopReason: "end_turn" | "cancelled",
@@ -2933,6 +2943,13 @@ function finishAgentTurn(
   if (session.activePromptKind !== "agent") {
     return;
   }
+  if (
+    stopReason === "end_turn" &&
+    session.dialect.id === "antigravity" &&
+    failAntigravityCapacityTurn(session)
+  )
+    return;
+  session.turnStartedAtMs = undefined;
   for (const controller of session.pendingToolCalls) controller.abort();
   setActivePromptKind(session, null);
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
@@ -3406,6 +3423,21 @@ function runTurn(
           details:
             "The agent reported no error and sent nothing back. If this keeps happening, check that the agent runs and is signed in on the machine that hosts the thread.",
         });
+      }
+      if (
+        stopReason === "end_turn" &&
+        !session.stopping &&
+        !session.cancelRequested &&
+        session.dialect.id === "antigravity"
+      ) {
+        if (failAntigravityCapacityTurn(session)) return;
+        if (session.model.hasUnfinishedToolCalls("execute")) {
+          session.promptWorkOpen = false;
+          session.model.promptSettled({ stopReason });
+          setActivePromptKind(session, "agent");
+          armAgentTurnQuietTimer(session);
+          return;
+        }
       }
       finishTurn(session, stopReason);
       return;

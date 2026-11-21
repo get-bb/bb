@@ -804,6 +804,38 @@ async function handlePrompt(message) {
     } catch {
       notifyUpdate(messageChunk("write:denied"));
     }
+  } else if (text.includes("antigravity-capacity")) {
+    notifyUpdate(
+      messageChunk(
+        "⚠ Our servers are experiencing high traffic right now, please try again in a minute. (UNAVAIL",
+      ),
+    );
+    notifyUpdate(
+      messageChunk(
+        "ABLE (code 503): No capacity available for model gemini-test on the server)",
+      ),
+    );
+    if (text.includes("with-explanation"))
+      notifyUpdate(messageChunk(" is the warning to look for."));
+  } else if (text.includes("antigravity-background")) {
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "bg",
+      kind: "execute",
+      title: "Build",
+      status: "in_progress",
+    });
+    notifyUpdate(messageChunk("Waiting for the build."));
+    if (!text.includes("until-stopped"))
+      setTimeout(() => {
+        notifyUpdate({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "bg",
+          status: "completed",
+          rawOutput: { exitCode: 0 },
+        });
+        notifyUpdate(messageChunk("Build finished."));
+      }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-stream")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {

@@ -71,6 +71,7 @@ interface WorkerState {
 function setup(
   settings: WorkflowSettings = DEFAULT_WORKFLOW_SETTINGS,
   files: Record<string, string> = {},
+  providerId = "codex",
 ) {
   let childCount = 0;
   let originDeleted = false;
@@ -95,7 +96,7 @@ function setup(
             return {
               id: threadId,
               environmentId: "environment-1",
-              providerId: "codex",
+              providerId,
               status: "idle",
               archivedAt: originArchived ? Date.now() : null,
             } as never;
@@ -112,7 +113,7 @@ function setup(
           return {
             id: threadId,
             environmentId: "environment-1",
-            providerId: "codex",
+            providerId,
             status: worker?.status ?? "active",
             archivedAt: null,
             deletedAt: null,
@@ -152,7 +153,7 @@ function setup(
       providers: {
         list: async () => [
           {
-            id: "codex",
+            id: providerId,
             displayName: "Codex",
             logoUrl: null,
             available: true,
@@ -912,6 +913,51 @@ describe("workflow service policy integration", () => {
       await worker;
     }
   });
+
+  it.each([false, true])(
+    "retries an idle Antigravity capacity banner (structured: %s)",
+    async (structured) => {
+      const test = setup(DEFAULT_WORKFLOW_SETTINGS, {}, "acp-antigravity-acp");
+      harnesses.push(test.harness);
+      const run = await test.start(
+        source(
+          structured
+            ? 'return await agent("job", {schema: {type: "string"}});'
+            : 'return await agent("job");',
+        ),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() =>
+          expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+        );
+        test.service.onThreadIdle(
+          "child-1",
+          "⚠ Our servers are experiencing high traffic right now, please try again in a minute. (UNAVAILABLE (code 503): No capacity available for model gemini-test on the server)",
+        );
+        await eventually(() =>
+          expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-2"),
+        );
+        test.service.onThreadIdle(
+          "child-2",
+          structured
+            ? '"done"'
+            : "The server returned UNAVAILABLE (code 503) yesterday.",
+        );
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          providerRetryAttempts: 1,
+          repairAttempts: 0,
+        });
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
 
   it("still cancels a genuinely detached call when its parent succeeds", async () => {
     const test = setup();

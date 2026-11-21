@@ -40,6 +40,7 @@ import {
 } from "./bridge-protocol.js";
 import {
   GENERIC_ACP_DIALECT,
+  isAntigravityCapacityBanner,
   type AcpDelegationReport,
   type AcpDialect,
 } from "./dialect.js";
@@ -1058,6 +1059,7 @@ export function createAcpDeltaTranslator(
   ): ThreadDelta[] {
     const errorEnvelope = errorEnvelopeSchema.safeParse(event);
     if (errorEnvelope.success) {
+      const detail = errorEnvelope.data.params?.message ?? "unknown error";
       const closed = flushOpenTurnWork(context, "failed");
       clearThreadCalls(context);
       return [
@@ -1065,7 +1067,17 @@ export function createAcpDeltaTranslator(
         {
           kind: "provider.error",
           message: "Provider error",
-          detail: errorEnvelope.data.params?.message ?? "unknown error",
+          detail,
+          ...(dialect.id === "antigravity" &&
+          isAntigravityCapacityBanner(detail)
+            ? {
+                errorInfo: {
+                  category: "overloaded",
+                  httpStatusCode: 503,
+                  providerCode: "UNAVAILABLE",
+                } as const,
+              }
+            : {}),
           settlesTurn: true,
         },
       ];

@@ -478,8 +478,15 @@ export const OPENCODE_ACP_DIALECT: AcpDialect = {
   presentModel: presentProviderPrefixedModel,
 };
 
+export function isAntigravityCapacityBanner(text: string): boolean {
+  return /^(?:⚠\uFE0F?\s+Our servers are experiencing high traffic right now, please try again in a minute\. \(UNAVAILABLE \(code 503\): No capacity available for model [\w./:-]+ on the server\)|UNAVAILABLE \(code 503\): No capacity available for model [\w./:-]+ on the server)$/u.test(
+    text.trim(),
+  );
+}
+
 const BUILT_IN_DIALECTS: readonly AcpDialect[] = [
   GENERIC_ACP_DIALECT,
+  { id: "antigravity" },
   CURSOR_ACP_DIALECT,
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
@@ -503,6 +510,7 @@ export function registerAcpDialect(dialect: AcpDialect): void {
 }
 
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
+  agy: "antigravity",
   "cursor-agent": CURSOR_ACP_DIALECT.id,
   grok: GROK_ACP_DIALECT.id,
   omp: OMP_ACP_DIALECT.id,

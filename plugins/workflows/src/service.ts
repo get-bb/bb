@@ -112,6 +112,12 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isAntigravityCapacityBanner(text: string): boolean {
+  return /^(?:⚠\uFE0F?\s+Our servers are experiencing high traffic right now, please try again in a minute\. \(UNAVAILABLE \(code 503\): No capacity available for model [\w./:-]+ on the server\)|UNAVAILABLE \(code 503\): No capacity available for model [\w./:-]+ on the server)$/u.test(
+    text.trim(),
+  );
+}
+
 export function isRetryableProviderFailure(error: unknown): boolean {
   if (typeof error === "object" && error !== null) {
     const candidate = error as Record<string, unknown>;
@@ -132,6 +138,7 @@ export function isRetryableProviderFailure(error: unknown): boolean {
       return true;
     }
   }
+  if (isAntigravityCapacityBanner(message(error))) return true;
   const detail = message(error).toLowerCase();
   return [
     /provider[^\n]*(?:overload|capacity|busy|temporar|unavailable|rate.?limit)/,
@@ -1149,6 +1156,15 @@ export function createWorkflowService(
   ): Promise<void> {
     const call = getCallByChildThread(db, threadId);
     if (call === null || call.status !== "running") return;
+    if (
+      call.resolvedProvider === "acp-antigravity-acp" &&
+      call.resultJson === null &&
+      output !== null &&
+      isAntigravityCapacityBanner(output)
+    ) {
+      failThreadCall(threadId, output.trim());
+      return;
+    }
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     if (options.outputSchema !== null) {
       if (call.resultJson !== null) {

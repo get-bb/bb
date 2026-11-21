@@ -5422,6 +5422,81 @@ describe("acp bridge: work the agent starts on its own", () => {
     expect(turnStatuses()).toEqual(["completed", "completed"]);
   });
 
+  it.each([
+    ["antigravity", "antigravity-capacity", "failed"],
+    ["antigravity", "antigravity-capacity-with-explanation", "completed"],
+    [
+      "antigravity",
+      "antigravity-capacity stop-reason:cancelled",
+      "interrupted",
+    ],
+    ["acp", "antigravity-capacity", "completed"],
+  ])("settles %s output %s as %s", async (dialectId, prompt, expected) => {
+    const { providerThreadId } = await startThread({ dialectId });
+    await runPromptedTurn(providerThreadId, prompt);
+    expect(turnStatuses()).toEqual([expected]);
+    const errors = threadEventsOfType("provider/error");
+    if (expected === "failed") {
+      expect(errors).toMatchObject([
+        {
+          errorInfo: {
+            category: "overloaded",
+            httpStatusCode: 503,
+            providerCode: "UNAVAILABLE",
+          },
+        },
+      ]);
+      await runPromptedTurn(providerThreadId, "hello");
+      expect(turnStatuses()).toEqual(["failed", "completed"]);
+    } else {
+      expect(errors).toEqual([]);
+    }
+  });
+
+  it("keeps the prompted Antigravity turn until its command closes", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "antigravity",
+    });
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "antigravity-background", mentions: [] }],
+      });
+      await waitFor(
+        () =>
+          agentMessageTexts().join("").includes("Build finished.") || undefined,
+        "late command result",
+      );
+      expect(turnStatuses()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(turnStatuses()).toEqual(["completed"]);
+      expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("interrupts an Antigravity turn whose command never closes", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "antigravity",
+    });
+    sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        {
+          type: "text",
+          text: "antigravity-background-until-stopped",
+          mentions: [],
+        },
+      ],
+    });
+    await waitFor(
+      () => agentMessageTexts().includes("Waiting for the build.") || undefined,
+      "open command",
+    );
+    await stopThread(providerThreadId);
+    expect(turnStatuses()).toEqual(["interrupted"]);
+  });
+
   it("opens a turn for unprompted output and closes it after a quiet window", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
