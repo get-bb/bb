@@ -505,6 +505,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   renderRecorder.reset();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();

@@ -8,6 +8,11 @@ import { directive as directiveSyntax } from "micromark-extension-directive";
 import type { Extension } from "micromark-util-types";
 import type { Processor } from "unified";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
+import { Link } from "react-router-dom";
+import { PLUGIN_CHOICES_TITLE } from "@/lib/plugin-choice-picks";
+import { SETTINGS_SEARCH_ANCHOR_STATE_KEY } from "@/components/settings/settings-search";
+import { getSettingsSectionRoutePath } from "@/components/settings/settings-sections";
+import type { ExclusiveBootState } from "@/lib/plugin-replacement-preference";
 import {
   resolveMessageDirectiveRegistry,
   type ResolvedMessageDirective,
@@ -26,12 +31,21 @@ export interface MessageDirectiveRegistry {
   unclaimed: UnclaimedMessageDirectivePolicy;
 }
 
-export interface MountedMessageDirective {
-  attributes: Readonly<Record<string, string>>;
-  index: number;
-  slot: PluginMessageDirectiveSlot;
-  source: string;
-}
+export type MountedMessageDirective =
+  | {
+      kind: "plugin";
+      attributes: Readonly<Record<string, string>>;
+      index: number;
+      slot: PluginMessageDirectiveSlot;
+      source: string;
+    }
+  | {
+      kind: "contested";
+      index: number;
+      name: string;
+      pluginIds: readonly string[];
+      source: string;
+    };
 
 export interface MarkdownMessageDirectives {
   registry: MessageDirectiveRegistry;
@@ -77,23 +91,18 @@ export function buildMessageDirectiveRegistry(
   slots: readonly PluginMessageDirectiveSlot[],
   options: {
     unclaimed: UnclaimedMessageDirectivePolicy;
-    warn?: (message: string) => void;
+    picks: Readonly<Record<string, string>>;
+    boot: ExclusiveBootState;
   },
 ): MessageDirectiveRegistry {
-  const warn = options.warn ?? defaultCollisionWarn;
-  const directives = resolveMessageDirectiveRegistry(slots);
-  for (const [id, directive] of directives) {
-    if (directive.status === "collision") {
-      warn(
-        `[plugin] message directive "${id}" claimed by multiple plugins (${directive.pluginIds.join(", ")}); rendering as literal text`,
-      );
-    }
-  }
-  return { directives, unclaimed: options.unclaimed };
-}
-
-function defaultCollisionWarn(message: string): void {
-  console.warn(message);
+  return {
+    directives: resolveMessageDirectiveRegistry(
+      slots,
+      options.picks,
+      options.boot,
+    ),
+    unclaimed: options.unclaimed,
+  };
 }
 
 export function normalizeDirectiveAttributes(
@@ -248,7 +257,7 @@ function gluedDirectiveSyntax(registry: MessageDirectiveRegistry): Extension {
               const claimable =
                 entry === undefined
                   ? registry.unclaimed === "hold"
-                  : entry.status === "ok";
+                  : entry.status !== "literal";
               return hasAttributes && claimable ? ok(code) : nok(code);
             },
             nok,
@@ -317,8 +326,8 @@ export function remarkMessageDirectives(
       if (
         isBlock &&
         name.length > 0 &&
-        entry === undefined &&
-        registry.unclaimed === "hold"
+        ((entry === undefined && registry.unclaimed === "hold") ||
+          entry?.status === "loading")
       ) {
         const remainder: Paragraph | null =
           isGlued && paragraph !== null && paragraph.children.length > 1
@@ -336,7 +345,7 @@ export function remarkMessageDirectives(
         !isBlock ||
         name.length === 0 ||
         entry === undefined ||
-        entry.status === "collision" ||
+        (entry.status !== "ok" && entry.status !== "collision") ||
         mounts.length >= limit
       ) {
         if (isGlued) return;
@@ -344,12 +353,23 @@ export function remarkMessageDirectives(
       }
 
       const mountIndex = indexBase + mounts.length;
-      mounts.push({
-        attributes,
-        index: mountIndex,
-        slot: entry.slot,
-        source,
-      });
+      mounts.push(
+        entry.status === "ok"
+          ? {
+              kind: "plugin",
+              attributes,
+              index: mountIndex,
+              slot: entry.slot,
+              source,
+            }
+          : {
+              kind: "contested",
+              index: mountIndex,
+              name,
+              pluginIds: entry.pluginIds,
+              source,
+            },
+      );
       const remainder: Paragraph | null =
         isGlued && paragraph !== null && paragraph.children.length > 1
           ? { ...paragraph, children: paragraph.children.slice(1) }
@@ -388,14 +408,40 @@ export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
   if (mount === undefined) {
     return null;
   }
+  if (mount.kind === "contested") {
+    return <ContestedMessageDirective mount={mount} />;
+  }
   return <MountedMessageDirectiveView mount={mount} render={render} />;
+}
+
+function ContestedMessageDirective({
+  mount,
+}: {
+  mount: Extract<MountedMessageDirective, { kind: "contested" }>;
+}) {
+  return (
+    <div data-contested-message-directive={mount.name}>
+      <p>{mount.source}</p>
+      <p className="text-sm text-muted-foreground">
+        {mount.pluginIds.length} plugins claim <code>::{mount.name}</code>
+        {" · "}
+        <Link
+          to={getSettingsSectionRoutePath("plugins")}
+          state={{ [SETTINGS_SEARCH_ANCHOR_STATE_KEY]: PLUGIN_CHOICES_TITLE }}
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          Choose
+        </Link>
+      </p>
+    </div>
+  );
 }
 
 const MountedMessageDirectiveView = memo(function MountedMessageDirectiveView({
   mount,
   render,
 }: {
-  mount: MountedMessageDirective;
+  mount: Extract<MountedMessageDirective, { kind: "plugin" }>;
   render: MessageDirectiveRenderContext;
 }) {
   const { message, openWorkspaceFile } = render;

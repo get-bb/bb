@@ -41,7 +41,11 @@ const registry = buildMessageDirectiveRegistry(
       component: () => null,
     },
   ],
-  { unclaimed: "literal" },
+  {
+    unclaimed: "literal",
+    picks: {},
+    boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
+  },
 );
 
 export const config: MarkdownPieceRenderConfig = {
@@ -69,7 +73,8 @@ export function describeMarkdownChildren(
       isValidElement(child) ? `key:${String(child.key)}` : "text",
     ),
     mounts: mounts.map(
-      (mount) => `${mount.index}:${mount.slot.id}:${mount.source}`,
+      (mount) =>
+        `${mount.index}:${mount.kind === "plugin" ? mount.slot.id : mount.name}:${mount.source}`,
     ),
   };
 }

@@ -245,7 +245,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show a project › workspace breadcrumb when a [header row](thread-header-row) shows the title",
           "Put links and buttons in the title while bb keeps the thread menu, header buttons and pane controls",
           "Step aside for bb's rename field while the user renames the thread",
-          "Fall back to bb's title on a crash; the first plugin in plugin order wins",
+          "Fall back to bb's title on a crash; users pick one title ([exclusive slots](exclusive-slots))",
         ],
         apiSymbols: [
           "PluginAppSlots.experimental_threadHeaderTitle",
@@ -368,6 +368,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Let an agent write `::name` to place your component in its message",
           "Show charts, task lists, or previews inline in the conversation",
           "Open workspace files when someone clicks the embed",
+          "Share a name only by the [user's pick](exclusive-slots); it shows as text until then",
         ],
         apiSymbols: [
           "PluginMessageDirectiveRegistration",
@@ -391,7 +392,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Let an agent write a fenced ```ui block that your component renders live as the reply streams",
           "Keep one component, with its state, per block for the whole reply",
           "Tell a block that is still streaming from one that closed or was cut off",
-          "Fall back to BB's code block when the plugin is off or a block's component throws",
+          "Fall back to BB's code block if off or throwing; [one pick](exclusive-slots) per language",
         ],
         apiSymbols: [
           "ExperimentalCodeFenceRendererRegistration",
@@ -1055,6 +1056,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         title: "Data & platform",
         surfaceIds: [
           "storage",
+          "exclusive-slots",
           "bb-sdk",
           "thread-plugin-metadata",
           "desktop-browsers",
@@ -1649,6 +1651,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Thread list",
           "Workflows",
         ],
+      },
+      {
+        id: "exclusive-slots",
+        tagline: "Which plugin draws a one-plugin surface",
+        title: "Exclusive slots",
+        summary:
+          "Use the user's pick for the surfaces that show one plugin at a time. With this, a plugin can:",
+        bullets: [
+          "Read and write picks through the synced UI preferences that Settings and the CLI use",
+          "Pin itself on install, and leave a pick the user made alone",
+          "Count on the same rule that bb's own bundled views follow",
+        ],
+        reference: [
+          "Exclusive slots. The composer, thread list, sidebar navigation, diff renderer, source code renderer and thread header title each show one plugin. File openers (per extension), code fence renderers (per language) and message directives (per name) show one plugin per key. Which one wins is a user setting, stored as a synced UI preference whose value is <pluginId>/<registrationId>, __automatic__ or __builtin__: composer.provider, sidebar.threadListProvider, sidebar.navigationProvider, diff.provider, sourceCode.provider, threadHeader.titleProvider, and the maps fileOpener.byExtension, codeFence.byLanguage and messageDirective.byName, where a missing key means Automatic",
+          "The user's pick wins while that plugin is installed and enabled. Otherwise Automatic picks the first plugin the user installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in view. bb's own plugins go through the same rule. While plugins are still loading, a surface whose picked plugin has not arrived yet waits for it instead of drawing another one",
+          "A message directive claimed by more than one plugin has no automatic winner. It shows as text with a Choose link until the user picks",
+          "Users change picks in Settings → Installed plugins → Plugin choices or with bb settings ui set <key> <value>. Your plugin may write a pick through sdk.system.uiPreferences.set, for example on install or when the user turns your view on. The user can change it back at any time. Do not overwrite a pick the user made",
+          "Write only when the current value is __automatic__ (or the key is missing from a map) or the user asked for it. Pass expectedRevision. Treat a key missing from list() as unavailable rather than reading .revision off it",
+        ],
+        apiSymbols: ["PluginBbSdk.system.uiPreferences"],
+        experimental: true,
       },
       {
         id: "bb-sdk",

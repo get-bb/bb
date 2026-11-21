@@ -26,37 +26,44 @@ const sectionsWithSettings = SETTINGS_NAV_SECTIONS.filter(
 );
 
 function registerReplacementPlugin() {
-  setPluginSlotRegistrations(
-    "inkwell",
-    makePluginRegistrationSet({
-      threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
-      experimentalSidebarNavigations: [
-        {
-          id: "nav",
-          title: "Inkwell nav",
-          placement: "list",
-          component: () => null,
-        },
-      ],
-      sourceCodeRenderers: [
-        { id: "source", title: "Inkwell source", component: () => null },
-      ],
-      diffRenderers: [
-        { id: "diffs", title: "Inkwell diffs", component: () => null },
-      ],
-      composers: [
-        { id: "composer", title: "Inkwell composer", component: () => null },
-      ],
-      fileOpeners: [
-        {
-          id: "editor",
-          title: "Inkwell editor",
-          extensions: ["md"],
-          component: () => null,
-        },
-      ],
-    }),
-  );
+  for (const pluginId of ["inkwell", "quill"]) {
+    setPluginSlotRegistrations(
+      pluginId,
+      makePluginRegistrationSet({
+        threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
+        experimentalSidebarNavigations: [
+          {
+            id: "nav",
+            title: `${pluginId} nav`,
+            placement: "list",
+            component: () => null,
+          },
+        ],
+        sourceCodeRenderers: [
+          { id: "source", title: `${pluginId} source`, component: () => null },
+        ],
+        diffRenderers: [
+          { id: "diffs", title: `${pluginId} diffs`, component: () => null },
+        ],
+        composers: [
+          {
+            id: "composer",
+            title: `${pluginId} composer`,
+            component: () => null,
+          },
+        ],
+        threadHeaderTitles: [{ id: "title", component: () => null }],
+        fileOpeners: [
+          {
+            id: "editor",
+            title: `${pluginId} editor`,
+            extensions: ["md"],
+            component: () => null,
+          },
+        ],
+      }),
+    );
+  }
 }
 
 function renderSection(section: SettingsNavSection) {

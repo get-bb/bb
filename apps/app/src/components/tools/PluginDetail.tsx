@@ -84,6 +84,10 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
+import {
+  isOfficialPlugin,
+  OFFICIAL_PLUGIN_MARKETPLACE,
+} from "@/lib/official-plugins";
 
 function pluginMarketplaceUrl({
   marketplace,
@@ -267,7 +271,7 @@ function selectedListingEntry(
 
 const OFFICIAL_BYLINE_ENTRY = {
   author: null,
-  marketplace: "bb-official",
+  marketplace: OFFICIAL_PLUGIN_MARKETPLACE,
   publisherLabel: "BB Official",
 } as const;
 
@@ -590,10 +594,7 @@ export function PluginDetail({
   ];
   const bylineEntry =
     catalogEntry ??
-    (plugin.provenance === "builtin" ||
-    plugin.catalogMarketplaceName === "bb-official"
-      ? OFFICIAL_BYLINE_ENTRY
-      : undefined);
+    (isOfficialPlugin(plugin) ? OFFICIAL_BYLINE_ENTRY : undefined);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"

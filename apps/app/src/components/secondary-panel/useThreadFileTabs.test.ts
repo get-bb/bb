@@ -3,7 +3,16 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { getDefaultStore } from "jotai";
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import { fileOpenerPreferenceAtom } from "@/lib/file-opener-preference";
 import { getActiveSecondaryPanelTab } from "@bb/client-core";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import {
@@ -1495,10 +1504,8 @@ describe("useThreadFileTabs file opener diversion", () => {
   });
 
   it("keeps the built-in preview when Settings pins it", () => {
-    window.localStorage.setItem(
-      "bb.fileOpenerByExtension",
-      JSON.stringify({ md: "__builtin__" }),
-    );
+    getDefaultStore().set(fileOpenerPreferenceAtom, { md: "__builtin__" });
+    onTestFinished(() => getDefaultStore().set(fileOpenerPreferenceAtom, {}));
     registerNotesOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabsWithActiveTab({

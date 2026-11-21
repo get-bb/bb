@@ -12,7 +12,7 @@ bb's composer: the prompt box you type into in every thread, on the New thread s
 
 bb renders its composer through `app.slots.experimental_composer`, and this plugin is the composer it ships. bb keeps the draft, uploads, history, pickers and sending; the plugin draws the box with `experimental_useComposerRenderer()` and bb's host components.
 
-Switch composers under Settings → Appearance → Composer. With no composer plugin enabled, threads show no composer.
+Switch composers under Settings → Installed plugins → Plugin choices. With no composer plugin enabled, threads show no composer.
 
 ## Make your own
 

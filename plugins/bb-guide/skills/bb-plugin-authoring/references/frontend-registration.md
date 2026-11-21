@@ -335,12 +335,8 @@ frontend-sidebar-navigation.md.
 
 ### Replacing the sidebar thread list
 
-`app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering activates the replacement
-while the plugin is enabled. If multiple plugins register one, the first in
-deterministic slot order is active by default; removing it reveals the next.
-The user can pin a specific provider under **Settings → Appearance →
-Sidebar**. The choice is per client. bb ships its own list as the bundled
+`app.slots.experimental_threadList` is exclusive (see exclusive-slots.md): only
+one list fills the sidebar's scroll area. bb ships its own list as the bundled
 `thread-list` plugin; there is no separate built-in list.
 
 Your component gets the scrolling list and nothing else. The New-thread button,

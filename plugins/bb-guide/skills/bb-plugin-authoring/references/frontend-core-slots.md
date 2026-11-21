@@ -252,9 +252,9 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   frontend-thread-header-row.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Matching files use the first applicable opener in deterministic slot order
-  by default. Users can pin BB's preview or a specific opener per extension
-  under Settings → "File openers", and
+  Exclusive per extension (see exclusive-slots.md):
+  users pick BB's preview or a specific opener per extension in
+  `fileOpener.byExtension` (Settings → Installed plugins → Plugin choices), and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —

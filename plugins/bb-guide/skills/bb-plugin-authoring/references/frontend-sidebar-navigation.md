@@ -7,8 +7,10 @@ It is exclusive. bb's own Rail (`navigation/rail`, the default) and Top list
 (`navigation/top-list`) come from the bundled Navigation plugin
 (`plugins/navigation` in the bb repository), which uses only this slot and the
 hooks below, so it is a working example and a forkable starting point. Users
-pick a provider under Settings → Appearance → Navigation; Automatic uses the
-first provider from another plugin, or Rail when there is none.
+pick a provider under Settings → Installed plugins → Plugin choices
+(`sidebar.navigationProvider`); Automatic uses the first provider from another
+plugin, or Rail when there is none (see frontend-registration.md, Exclusive
+slots).
 
 Declare where you draw with `placement`, because bb lays out the sidebar
 before your bundle loads:
@@ -158,7 +160,7 @@ app.slots.experimental_sidebarNavigation({
 
 To turn your navigation on when your plugin is installed, set
 `sidebar.navigationProvider` to `<plugin-id>/<slot-id>` from `bb.onInstall`
-(see backend-ui-lifecycle.md); later choices in Settings → Appearance stick.
+(see backend-ui-lifecycle.md); later choices in Settings stick.
 Users do the same with `bb settings ui set`.
 
 Existing plugin bundles using `activate(id, { openInSplit })` map `true`

@@ -20,8 +20,8 @@ import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInp
 import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
-import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { PluginChoicesSection } from "@/components/settings/PluginChoicesSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
@@ -297,19 +297,16 @@ function FilePreferencesStory() {
   }
 
   return (
-    <>
-      <LocalOpenTargetSettingsSection
-        accessState="available"
-        directoryTargetId={state.directoryTargetId}
-        fileTargetId={state.fileTargetId}
-        hasDaemon={true}
-        onDirectoryTargetChange={handleDirectoryTargetChange}
-        onFileTargetChange={handleFileTargetChange}
-        onRequestAccess={async () => true}
-        targets={connectedTargets}
-      />
-      <FileOpenersSettingsSection />
-    </>
+    <LocalOpenTargetSettingsSection
+      accessState="available"
+      directoryTargetId={state.directoryTargetId}
+      fileTargetId={state.fileTargetId}
+      hasDaemon={true}
+      onDirectoryTargetChange={handleDirectoryTargetChange}
+      onFileTargetChange={handleFileTargetChange}
+      onRequestAccess={async () => true}
+      targets={connectedTargets}
+    />
   );
 }
 
@@ -393,6 +390,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return <MobileAppSection />;
     case "experiments":
       return <ExperimentsStory />;
+    case "plugins":
+      return <PluginChoicesSection />;
     case "marketplaces":
       return <MarketplacesSettingsSection />;
     case "community":

@@ -27,6 +27,7 @@ import {
   pluginAuthorGithub,
 } from "./plugin-marketplace-author";
 import { formatUrlLabel } from "./plugin-ui";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
 
 function authorForEntries(
   entries: readonly PluginCatalogSearchEntry[],
@@ -92,7 +93,7 @@ export function PluginAuthorPage({
   const author = useMemo(() => authorForEntries(entries), [entries]);
   const official =
     entries.length > 0 &&
-    entries.every((entry) => entry.marketplace === "bb-official");
+    entries.every((entry) => isOfficialMarketplace(entry.marketplace));
   const authorName = official ? "BB Official" : author?.name;
   const installsKnown = entries.some((entry) => entry.installs !== null);
   const sort =

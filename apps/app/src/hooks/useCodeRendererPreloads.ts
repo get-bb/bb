@@ -10,8 +10,8 @@ import { queueSplitPreload } from "@/lib/split-prefetch";
 
 export function useCodeRendererPreloads(): void {
   const bootComplete = usePluginFrontendBootComplete();
-  const warmDiff = useDiffRendererReplacement().kind === "owner";
-  const warmSource = useSourceCodeRendererReplacement().kind === "owner";
+  const warmDiff = useDiffRendererReplacement().kind === "builtin";
+  const warmSource = useSourceCodeRendererReplacement().kind === "builtin";
 
   useEffect(() => {
     if (!bootComplete || (!warmDiff && !warmSource)) return;
