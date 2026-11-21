@@ -102,11 +102,13 @@ interface EnvironmentCreateBaseArgs {
 }
 /**
  * `hold: "user"` keeps the environment until the user deletes it and lets
- * threads join it.
+ * threads join it. `hold: "plugin"` keeps it for plugin `pluginId`: threads
+ * cannot join it, and it loses the hold when that plugin's provider hands it
+ * to a new thread from `create`, or when that plugin is disabled or
+ * uninstalled.
  */
-export type EnvironmentCreateArgs = EnvironmentCreateBaseArgs & {
-  hold: "user";
-};
+export type EnvironmentCreateArgs = EnvironmentCreateBaseArgs &
+  ({ hold: "user" } | { hold: "plugin"; pluginId: string });
 export type EnvironmentCreateResult = Environment;
 export interface EnvironmentDeleteArgs {
   environmentId: string;
@@ -244,7 +246,7 @@ export function createEnvironmentsArea(
               ? {}
               : { provider: input.provider }),
             ...(input.name === undefined ? {} : { name: input.name }),
-            heldBy: input.hold,
+            heldBy: input.hold === "user" ? "user" : `plugin:${input.pluginId}`,
           },
         }),
       );

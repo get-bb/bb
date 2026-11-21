@@ -1,0 +1,37 @@
+---
+name: worktree
+description: "Inspect or change a project's warm worktree pool, which keeps set-up worktrees ready so new worktree threads on the default base start without waiting."
+---
+
+# Warm worktrees
+
+Use `bb worktree pool status --json` to see which projects keep warm
+worktrees, how many are ready or preparing on each checkout, the default base
+they sit on, and how many threads took one or missed since the server started.
+
+```sh
+bb worktree pool status [--json]
+bb worktree pool set <project-id> <size> [--json]
+```
+
+`size` is 0 to 4 per checkout; `0` turns the pool off and deletes its idle
+worktrees. Resolve the project id with `bb project list`. Only turn a pool on
+when the user asks for it: each warm worktree runs the project's
+`.bb-env-setup.sh` in the background, and it is replaced every eight hours or
+when the default branch is rewritten.
+
+Only new worktree threads on the default base take a warm worktree. bb reads
+the remote's current default base with `git ls-remote` while the title is
+generated (falling back to the last fetched base when the remote can't be
+reached). A warm worktree at that commit starts the thread without setup; one
+behind it is fast-forwarded to that commit and `.bb-env-setup.sh` runs again
+before the thread starts, so the thread always starts on the current base with
+setup run against it. Named bases, existing worktrees and restores build a
+fresh worktree, and so does a thread that finds no usable warm worktree.
+
+Warm worktrees are ordinary environments held by the Worktree plugin:
+`bb environment list --held-by plugin:environment-git-worktree` lists them, and
+`bb thread spawn --environment <id>` refuses them. A failed one is deleted and
+its error shows in `status`; refills then wait ten minutes. Deleting the project
+or removing the machine removes them like any other environment, and
+disabling or uninstalling the Worktree plugin releases them.
