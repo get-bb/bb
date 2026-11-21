@@ -39,9 +39,22 @@ interface SearchMessageLocation {
   readLocationKey: () => string;
 }
 
+export interface MessageRevealRequest {
+  messageSeq: number;
+  key: number;
+}
+
 interface SearchMessageLocationProviderProps {
   threadId: string | undefined;
+  revealRequest?: MessageRevealRequest | null;
   children: ReactNode;
+}
+
+interface TargetOrder {
+  locationKey: string;
+  locationOrder: number;
+  requestKey: number | null;
+  requestOrder: number;
 }
 
 interface SearchMessagePaginationOptions {
@@ -278,28 +291,63 @@ function createLocationKeyReader(initialLocationKey: string): {
 
 export function SearchMessageLocationProvider({
   threadId,
+  revealRequest = null,
   children,
 }: SearchMessageLocationProviderProps) {
   const location = useLocation();
   const locationKey = `${location.key}:${location.pathname}${location.search}${location.hash}`;
-  const [locationKeyReader] = useState(() =>
-    createLocationKeyReader(locationKey),
+  const requestKey = revealRequest?.key ?? null;
+  const [order, setOrder] = useState<TargetOrder>(() => ({
+    locationKey,
+    locationOrder: 1,
+    requestKey,
+    requestOrder: 0,
+  }));
+  let currentOrder = order;
+  if (currentOrder.locationKey !== locationKey) {
+    currentOrder = {
+      ...currentOrder,
+      locationKey,
+      locationOrder:
+        Math.max(currentOrder.locationOrder, currentOrder.requestOrder) + 1,
+    };
+  }
+  if (currentOrder.requestKey !== requestKey) {
+    currentOrder = {
+      ...currentOrder,
+      requestKey,
+      requestOrder:
+        requestKey === null
+          ? 0
+          : Math.max(currentOrder.locationOrder, currentOrder.requestOrder) + 1,
+    };
+  }
+  if (currentOrder !== order) setOrder(currentOrder);
+  const requestIsActive =
+    revealRequest !== null &&
+    currentOrder.requestOrder > currentOrder.locationOrder;
+  const activeTargetKey = requestIsActive
+    ? `reveal:${revealRequest.key}`
+    : locationKey;
+  const [targetKeyReader] = useState(() =>
+    createLocationKeyReader(activeTargetKey),
   );
   useLayoutEffect(() => {
-    locationKeyReader.write(locationKey);
-  }, [locationKey, locationKeyReader]);
-  const readLocationKey = locationKeyReader.read;
+    targetKeyReader.write(activeTargetKey);
+  }, [activeTargetKey, targetKeyReader]);
+  const readLocationKey = targetKeyReader.read;
   const searchTarget = readSearchMessageTarget(location.state);
   const messageLinkTarget = parseMessageLink(
     `${location.pathname}${location.search}${location.hash}`,
   );
-  const target =
-    messageLinkTarget === null
+  const target: SearchMessageTarget | null = requestIsActive
+    ? { match: "message", seq: revealRequest.messageSeq, threadId: null }
+    : messageLinkTarget === null
       ? searchTarget
       : { ...messageLinkTarget, match: "message" as const };
   const applies =
     target !== null && searchTargetAppliesToThread(target, threadId);
-  const targetLocationKey = applies ? locationKey : null;
+  const targetLocationKey = applies ? activeTargetKey : null;
   const targetMatch = applies ? target.match : null;
   const targetSeq = applies ? target.seq : null;
   const targetThreadId = applies ? target.threadId : null;

@@ -8,6 +8,7 @@ import type {
   PluginAgentConfigurationContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
+import { testSettingsHref, testThreadHref } from "./navigation-hrefs.js";
 
 type HostResponse = Awaited<
   ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
@@ -406,9 +407,10 @@ export interface ExperimentalActionContextFixture extends ExperimentalPluginActi
  * A complete callback context for tests that call a command, thread action,
  * message action or composer callback directly, so a test lists only the
  * members it uses and keeps compiling when bb adds one. Defaults record each
- * call in `calls`: `threadRequests` methods resolve, `composer` is null, `navigate`
- * methods return false, `panel` is {@link makePanelController}'s, and `sdk`
- * methods reject because a test that reads data should stub it. Spread the
+ * call in `calls`: `threadRequests` methods resolve, `composer` is null,
+ * `navigate` methods return false except the href builders, which return
+ * `/threads/<id>` and settings paths, `panel` is
+ * {@link makePanelController}'s, and `sdk` methods reject because a test that reads data should stub it. Spread the
  * result and add a context's own fields, such as a command's `threadId` or a
  * thread action's `thread`.
  */
@@ -419,13 +421,26 @@ export function makeActionContext(
   const record = (member: string, args: unknown[]) => {
     calls.push({ member, args });
   };
-  const navigate = new Proxy({} as BbNavigate, {
-    get:
-      (_target, method) =>
-      (...args: unknown[]) => {
+  const hrefs: Pick<
+    BbNavigate,
+    "experimental_threadHref" | "experimental_settingsHref"
+  > = {
+    experimental_threadHref: (threadId, options) => {
+      record("navigate.experimental_threadHref", [threadId, options]);
+      return testThreadHref(threadId, options);
+    },
+    experimental_settingsHref: (target) => {
+      record("navigate.experimental_settingsHref", [target]);
+      return testSettingsHref(target, "test-plugin");
+    },
+  };
+  const navigate = new Proxy(hrefs as BbNavigate, {
+    get: (target, method) =>
+      Reflect.get(target, method) ??
+      ((...args: unknown[]) => {
         record(`navigate.${String(method)}`, args);
         return false;
-      },
+      }),
   });
   const sdk = new Proxy({} as PluginBrowserBbSdk, {
     get: (_target, area) =>

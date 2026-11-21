@@ -52,10 +52,10 @@ registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
   fire from text fields inside an element marked `data-question-form`. The
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
-{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openUrl(url), experimental_openFilePreview(options),
-experimental_openFileExternally(options), experimental_openTerminal({ terminalId }) }`.
+- `useBbNavigate()` → `{ toThread(id, options?), toProject(id), toPluginPanel(path, { subPath?, replace? }?),
+toCompose({ initialPrompt?, focusPrompt? }?), openUrl(url), experimental_openFilePreview(options),
+experimental_openFileExternally(options), experimental_openTerminal({ terminalId }), experimental_toSettings(target?),
+experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; see [frontend-navigation.md](frontend-navigation.md).
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
   with the [panel controller](#panel-controller).

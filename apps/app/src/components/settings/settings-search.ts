@@ -1,10 +1,10 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import {} from "@/lib/route-paths";
 import type { PluginSettingsEntry } from "./plugin-settings-entries";
 import {
-  getSettingsSectionRoutePath,
   type SettingsNavSection,
   type SettingsSectionId,
+  getSettingsTargetPath,
 } from "./settings-sections";
 
 export type SettingsSearchCondition =
@@ -318,7 +318,7 @@ export function buildSettingsSearchItems(
     ...args.sections.flatMap((section) => {
       const indexed = SETTINGS_SEARCH_INDEX[section.id];
       const icon = { kind: "section" as const, name: section.icon };
-      const to = getSettingsSectionRoutePath(section.id);
+      const to = getSettingsTargetPath({ section: section.id });
       return [
         {
           anchor: null,
@@ -351,7 +351,7 @@ export function buildSettingsSearchItems(
         icon: plugin.icon,
         pluginId: plugin.id,
       };
-      const to = getPluginConfigurationRoutePath({ pluginId: plugin.id });
+      const to = getSettingsTargetPath({ pluginId: plugin.id });
       return [
         {
           anchor: null,

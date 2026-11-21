@@ -82,20 +82,6 @@ export function getProjectComposeRoutePath(projectId: string): string {
     : getLegacyProjectComposeRoutePath(projectId);
 }
 
-export function getSettingsRoutePath(section?: string): string {
-  return section === undefined
-    ? SETTINGS_ROUTE_PATH
-    : `/settings/${encodeURIComponent(section)}`;
-}
-
-export function getSettingsMachineRoutePath(hostId: string): string {
-  return `/settings/machines/${encodeURIComponent(hostId)}`;
-}
-
-export function getSettingsProjectRoutePath(projectId: string): string {
-  return `/settings/projects/${encodeURIComponent(projectId)}`;
-}
-
 export function getSkillsRoutePath(): string {
   return SKILLS_ROUTE_PATH;
 }
@@ -141,12 +127,6 @@ export function getPluginDetailRoutePath({
   return view === "installed"
     ? `${SETTINGS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}?view=installed`
     : path;
-}
-
-export function getPluginConfigurationRoutePath(
-  args: PluginDetailRoutePathArgs,
-): string {
-  return `/settings/plugins/${encodeURIComponent(args.pluginId)}`;
 }
 
 export function getAutomationsRoutePath(): string {
@@ -196,16 +176,12 @@ export function getPluginPanelRoutePath({
   return encoded.length > 0 ? `${root}/${encoded}` : root;
 }
 
-export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
-  return isProjectlessProjectId(args.projectId)
-    ? `/threads/${args.threadId}`
-    : `/projects/${args.projectId}/threads/${args.threadId}`;
-}
-
 const MESSAGE_LINK_PARAM = "msg";
 
-export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
-  seq: number;
+export interface ThreadLocationPathArgs {
+  threadId: string;
+  projectId?: string;
+  messageSeq?: number;
 }
 
 export interface MessageLinkTarget {
@@ -217,8 +193,18 @@ const THREAD_ROUTE_PATHNAME_PATTERN =
   /^\/(?:projects\/[^/]+\/)?threads\/([^/]+)\/?$/;
 const MESSAGE_LINK_SEQ_PATTERN = /^(0|[1-9]\d*)$/;
 
-export function getMessageLinkPath(args: MessageLinkPathArgs): string {
-  return `${getThreadRoutePath(args)}#${MESSAGE_LINK_PARAM}=${args.seq}`;
+export function getThreadLocationPath({
+  threadId,
+  projectId,
+  messageSeq,
+}: ThreadLocationPathArgs): string {
+  const path =
+    projectId === undefined || isProjectlessProjectId(projectId)
+      ? `/threads/${threadId}`
+      : `/projects/${projectId}/threads/${threadId}`;
+  return messageSeq === undefined
+    ? path
+    : `${path}#${MESSAGE_LINK_PARAM}=${messageSeq}`;
 }
 
 export function parseMessageLink(href: string): MessageLinkTarget | null {

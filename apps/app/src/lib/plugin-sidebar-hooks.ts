@@ -33,7 +33,6 @@ import {
   usePluginThreadRowStatus,
   usePluginThreadRowStatuses,
 } from "./plugin-thread-row-status";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRetiredSidebarEnvironmentPullRequest } from "./retired-sidebar-pull-request";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -52,14 +51,13 @@ import {
   useSidebarThreadEntry,
 } from "./sidebar-thread-entries";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
-import { openThreadInSplit } from "./split-layout/openThreadInSplit";
+import { openThreadForPlugin } from "./plugin-navigation-hooks";
 import {
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
-  getSettingsProjectRoutePath,
-  getThreadRoutePath,
 } from "./route-paths";
 import { useThreadRequests } from "@/lib/thread-requests";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 export { lookupCachedThread, resolveThread } from "./cached-thread.js";
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
@@ -199,7 +197,7 @@ export function useSidebarThreads(
         name: project.name,
         isPersonal: project.id === PERSONAL_PROJECT_ID,
         href: getProjectComposeRoutePath(project.id),
-        settingsHref: getSettingsProjectRoutePath(project.id),
+        settingsHref: getSettingsTargetPath({ projectId: project.id }),
       })),
       sections: data.sections,
     };
@@ -244,20 +242,14 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       open(threadId, options) {
         const entry = entries.get(threadId);
         if (entry === null) return;
-        const { projectId } = entry;
-        if (options?.split) {
-          store.set(getThreadConversationCollapsedAtom(threadId), false);
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId,
-            threadId,
-            isCompact,
-          });
-          return;
-        }
-        store.set(getThreadConversationCollapsedAtom(threadId), false);
-        navigate(getThreadRoutePath({ projectId, threadId }));
+        openThreadForPlugin({
+          store,
+          navigate,
+          projectId: entry.projectId,
+          threadId,
+          isCompact,
+          split: options?.split ?? false,
+        });
       },
       openNewThread(options) {
         const projectId = options?.projectId;

@@ -230,7 +230,7 @@ onChange }` — the control the New Thread environment picker renders beside
   Experimental: see `docs/api_to_audit.md`.
 - `sidebarFooterAction` → compatibility API for a host-rendered footer action.
   Registration remains `{ id, title, icon, run }`, and `run` still receives
-  `{ openSettings }` plus the
+  `{ openSettings }` (the same as `navigate.experimental_toSettings()`) plus the
   [callback context](frontend-hooks-and-ui.md#callback-context). New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.

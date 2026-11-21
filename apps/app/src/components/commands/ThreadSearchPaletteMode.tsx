@@ -42,8 +42,7 @@ import {
   NO_THREADS_MESSAGE,
   ThreadListEmptyState,
 } from "@bb/shared-ui/thread-list-empty-state";
-import { getThreadRoutePath } from "@/lib/route-paths";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
+import { openThread } from "@/lib/split-layout/openThread";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
 import {
@@ -314,24 +313,13 @@ export function ThreadSearchPaletteMode({
                 searchMessageSeq: row.messageSeq,
                 searchThreadId: row.threadId,
               };
-        if (split) {
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId: row.projectId,
-            threadId: row.threadId,
-            isCompact,
-            state,
-          });
-          return;
-        }
-        navigate(
-          getThreadRoutePath({
-            projectId: row.projectId,
-            threadId: row.threadId,
-          }),
-          { state },
-        );
+        openThread({
+          navigate,
+          projectId: row.projectId,
+          threadId: row.threadId,
+          ...(split ? { split: { zone: "right", store, isCompact } } : {}),
+          ...(state === undefined ? {} : { state }),
+        });
       });
     },
     [isCompact, navigate, runAfterClose, store],

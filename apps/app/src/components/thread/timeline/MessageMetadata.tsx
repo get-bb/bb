@@ -17,6 +17,7 @@ export type MessageMetadataProps = {
   slots: readonly PluginMessageMetadataSlot[];
   id: string;
   threadId: string;
+  messageSeq: number;
   createdAt: number;
   turnId: string | null;
 } & (
@@ -29,6 +30,7 @@ export const MessageMetadata = memo(function MessageMetadata({
   placement,
   id,
   threadId,
+  messageSeq,
   role,
   createdAt,
   turnId,
@@ -40,11 +42,12 @@ export const MessageMetadata = memo(function MessageMetadata({
     () => ({
       id,
       threadId,
+      messageSeq,
       createdAt,
       turnId,
       ...(role === "user" ? { role, initiator } : { role }),
     }),
-    [id, threadId, role, createdAt, turnId, initiator],
+    [id, threadId, messageSeq, role, createdAt, turnId, initiator],
   );
   const contributions = slots.filter(
     (slot) => (slot.placement ?? "above") === placement,
