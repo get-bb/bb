@@ -32,7 +32,32 @@ const keybindings: AppKeybindings = [
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
+  it("forwards Command+W to close the panel without browserFocus scope", () => {
+    expect(
+      resolveDesktopBrowserAppCommand({
+        input: {
+          key: "w",
+          code: "KeyW",
+          altKey: false,
+          ctrlKey: false,
+          metaKey: true,
+          shiftKey: false,
+        },
+        platform: "darwin",
+        keybindings: [
+          {
+            ...keybindings[0]!,
+            command: "panel.close",
+            shortcut: { ...keybindings[0]!.shortcut, key: "w" },
+            when: { all: ["mainSurface"], none: ["modalOpen"] },
+          },
+        ],
+      }),
+    ).toBe("panel.close");
+  });
+
   it.each([
+    "panel.close",
     "panel.previousTab",
     "panel.nextTab",
     "pane.focus.previous",

@@ -34,6 +34,7 @@ export function resolveDesktopBrowserAppCommand({
         platform,
       }) ||
       (!binding.when.all.includes("browserFocus") &&
+        binding.command !== "panel.close" &&
         binding.command !== "panel.previousTab" &&
         binding.command !== "panel.nextTab" &&
         binding.command !== "pane.focus.previous" &&
