@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createApplicationUrlOpener,
   type ApplicationUrlDecision,
+  hasUrlCredentials,
+  PLUGIN_SETTING_LINK_LABEL_MAX_LENGTH,
+  PLUGIN_SETTING_LINK_URL_MAX_LENGTH,
+  pluginSettingLinkLabelSchema,
+  pluginSettingLinkSchema,
+  pluginSettingLinkUrlSchema,
 } from "../src/application-url.js";
 
 describe("application links", () => {
@@ -210,5 +216,74 @@ describe("remembered application approvals", () => {
     );
     expect(confirm).toHaveBeenCalledOnce();
     expect(open).not.toHaveBeenCalled();
+  });
+
+  describe("plugin setting links", () => {
+    it.each([
+      "javascript:alert(1)",
+      "data:text/html,test",
+      "file:///etc/passwd",
+      "vbscript:msgbox(1)",
+      "mailto:a@b.co",
+      "//evil.com",
+      "not a url",
+      "https://e.com/a b",
+      "https://e.com/x\u0000y",
+      "https://e.com/x\ny",
+    ])("rejects unsafe setting link url %s", (url) => {
+      expect(pluginSettingLinkUrlSchema.safeParse(url).success).toBe(false);
+    });
+
+    it("rejects setting link urls carrying credentials", () => {
+      expect(
+        hasUrlCredentials(`https://${["user", "pw"].join(":")}@evil.com/`),
+      ).toBe(true);
+      expect(
+        pluginSettingLinkUrlSchema.safeParse(
+          `https://${["user", "pw"].join(":")}@evil.com/`,
+        ).error?.issues,
+      ).toMatchObject([
+        { code: "custom", message: "a link must not carry credentials" },
+      ]);
+    });
+
+    it("caps the setting link url length", () => {
+      expect(
+        pluginSettingLinkUrlSchema.safeParse(
+          `https://e.com/${"a".repeat(PLUGIN_SETTING_LINK_URL_MAX_LENGTH)}`,
+        ).error?.issues,
+      ).toMatchObject([{ code: "too_big" }]);
+    });
+
+    it.each(["http://e.com", "https://e.com/x", "HTTPS://E.COM"])(
+      "accepts setting link url %s",
+      (url) => {
+        expect(pluginSettingLinkUrlSchema.parse(url)).toBe(url);
+      },
+    );
+
+    it("caps and de-spoofs setting link labels", () => {
+      expect(
+        pluginSettingLinkLabelSchema.safeParse(
+          "x".repeat(PLUGIN_SETTING_LINK_LABEL_MAX_LENGTH + 1),
+        ).success,
+      ).toBe(false);
+      expect(
+        pluginSettingLinkLabelSchema.safeParse("Open \u202eelpmas").success,
+      ).toBe(false);
+      expect(pluginSettingLinkLabelSchema.parse("Open dashboard")).toBe(
+        "Open dashboard",
+      );
+      expect(pluginSettingLinkLabelSchema.parse("Docs \ud83d\udcda")).toBe(
+        "Docs \ud83d\udcda",
+      );
+    });
+
+    it("keeps the setting link object strict", () => {
+      expect(
+        pluginSettingLinkSchema.safeParse({ url: "https://e.com", target: 1 })
+          .error?.issues,
+      ).toMatchObject([{ code: "unrecognized_keys" }]);
+    });
   });
 });
