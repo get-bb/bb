@@ -18,7 +18,10 @@ function entry(
   name: string,
   threadId: string | null,
 ): [number, ProcessEntry] {
-  return [pid, { pid, ppid, name, threadId, launcher: false }];
+  return [
+    pid,
+    { pid, ppid, name, threadId, toolCallId: null, launcher: false },
+  ];
 }
 
 function createDeps(
@@ -50,7 +53,7 @@ function createDeps(
       pid === 140
         ? { command: "npm run dev", startedAt: STARTED_AT }
         : {
-            command: null,
+            command: pid === 141 ? "node node_modules/.bin/vite" : null,
             startedAt:
               signals.some(([signalled]) => signalled === pid) &&
               options.reusedAfterTerm?.includes(pid)
@@ -84,7 +87,7 @@ describe("dev servers host entry", () => {
           threadId: THREAD,
           rootPid: 140,
           startedAt: STARTED_AT,
-          command: "npm run dev",
+          command: "node node_modules/.bin/vite",
           cwd: "/work/app",
           ports: [{ port: 5173, address: "127.0.0.1" }],
         },

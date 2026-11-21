@@ -148,6 +148,51 @@ describe("dev servers server entry", () => {
     ).toEqual(["list"]);
   });
 
+  it("stops a thread's servers when it is archived or deleted", async () => {
+    for (const event of ["thread.archived", "thread.deleted"] as const) {
+      const host = await start();
+      await host.harness.behavior.emitThreadEvent(event, {
+        thread: makeThreadResponse({ id: THREAD_ID, environmentId: "env_1" }),
+      });
+      expect(
+        host.harness.experimental_hostRpcCalls.map((call) => [
+          call.method,
+          call.input,
+        ]),
+      ).toEqual([
+        ["list", { threadId: THREAD_ID }],
+        [
+          "stop",
+          {
+            threadId: THREAD_ID,
+            rootPid: 140,
+            startedAt: SERVER.startedAt,
+          },
+        ],
+      ]);
+    }
+  });
+
+  it("logs instead of stopping when the thread's machine is offline", async () => {
+    const host = await start({ hostStatus: "disconnected" });
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: makeThreadResponse({ id: THREAD_ID, environmentId: "env_1" }),
+    });
+    expect(host.harness.experimental_hostRpcCalls).toEqual([]);
+    expect(
+      host.harness.inspection.logEntries.map((entry) => entry.message),
+    ).toContainEqual(expect.stringContaining("is offline"));
+  });
+
+  it("leaves servers running after an archive when the setting is off", async () => {
+    const host = await start();
+    await host.harness.setSettings({ stopOnArchive: false });
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: makeThreadResponse({ id: THREAD_ID, environmentId: "env_1" }),
+    });
+    expect(host.harness.experimental_hostRpcCalls).toEqual([]);
+  });
+
   it("lists and stops from the CLI", async () => {
     const host = await start();
     const listed = await host.harness.runCli(["list", THREAD_ID]);

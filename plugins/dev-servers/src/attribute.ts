@@ -3,6 +3,7 @@ export interface ProcessEntry {
   ppid: number;
   name: string;
   threadId: string | null;
+  toolCallId: string | null;
   launcher: boolean;
 }
 
@@ -57,6 +58,41 @@ export function isLauncher(name: string, argv: readonly string[]): boolean {
     );
 }
 
+export function inheritHiddenEnvironment(
+  table: Map<number, ProcessEntry>,
+  hidden: ReadonlySet<number>,
+): void {
+  const resolved = new Map<
+    number,
+    Pick<ProcessEntry, "threadId" | "toolCallId">
+  >();
+  for (const pid of hidden) {
+    const path: number[] = [];
+    let current = table.get(pid);
+    while (
+      current !== undefined &&
+      hidden.has(current.pid) &&
+      !resolved.has(current.pid) &&
+      !path.includes(current.pid)
+    ) {
+      path.push(current.pid);
+      current = table.get(current.ppid);
+    }
+    const inherited =
+      current === undefined
+        ? { threadId: null, toolCallId: null }
+        : (resolved.get(current.pid) ??
+          (hidden.has(current.pid)
+            ? { threadId: null, toolCallId: null }
+            : { threadId: current.threadId, toolCallId: current.toolCallId }));
+    for (const member of path) resolved.set(member, inherited);
+  }
+  for (const [pid, inherited] of resolved) {
+    const entry = table.get(pid);
+    if (entry !== undefined) table.set(pid, { ...entry, ...inherited });
+  }
+}
+
 export function isShell(name: string): boolean {
   return SHELL_NAMES.has(name.replace(/^-/, "").replace(/\.exe$/i, ""));
 }
@@ -74,6 +110,29 @@ function isDescendantOf(
     current = table.get(current.ppid);
   }
   return false;
+}
+
+function launchedByBridge(
+  table: ReadonlyMap<number, ProcessEntry>,
+  entry: ProcessEntry,
+  daemonPid: number,
+): boolean {
+  const seen = new Set<number>();
+  let parent = table.get(entry.ppid);
+  while (
+    parent !== undefined &&
+    !seen.has(parent.pid) &&
+    parent.pid !== daemonPid &&
+    (parent.launcher ||
+      (isShell(parent.name) &&
+        (table.get(parent.ppid)?.launcher === true ||
+          table.get(parent.ppid)?.ppid === daemonPid)))
+  ) {
+    seen.add(parent.pid);
+    parent = table.get(parent.ppid);
+  }
+  if (parent === undefined) return entry.ppid === daemonPid;
+  return parent.pid === daemonPid || parent.ppid === daemonPid;
 }
 
 export function commandRoot(
@@ -99,13 +158,19 @@ export function commandRoot(
       isShell(entry.name) &&
       table.get(entry.ppid)?.launcher !== true,
   );
+  const top = chain.at(-1)!;
+  const toolCallId = listener.toolCallId;
   const root =
     shellIndex > 0
       ? chain[shellIndex - 1]!
-      : isDescendantOf(table, chain.at(-1)!.ppid, daemonPid)
-        ? null
-        : chain.at(-1)!;
-  if (root === null || isDescendantOf(table, daemonPid, root.pid)) return null;
+      : toolCallId !== null
+        ? [...chain].reverse().find((entry) => entry.toolCallId === toolCallId)!
+        : top;
+  if (
+    launchedByBridge(table, root, daemonPid) ||
+    isDescendantOf(table, daemonPid, root.pid)
+  )
+    return null;
   return root;
 }
 

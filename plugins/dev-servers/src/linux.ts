@@ -1,6 +1,7 @@
 import { readFile, readdir, readlink, stat } from "node:fs/promises";
 import path from "node:path";
 import {
+  inheritHiddenEnvironment,
   isLauncher,
   type ListeningSocket,
   type ProcessEntry,
@@ -8,6 +9,7 @@ import {
 
 const LISTEN_STATE = "0A";
 const THREAD_ID_PREFIX = "BB_THREAD_ID=";
+const TOOL_CALL_ID_PREFIX = "CODEX_TOOL_CALL_ID=";
 
 export interface ProcessSnapshot {
   table: Map<number, ProcessEntry>;
@@ -68,12 +70,25 @@ export function parseProcStat(content: string): { ppid: number } | null {
   return Number.isInteger(ppid) ? { ppid } : null;
 }
 
+export function environHidden(content: string | null): boolean {
+  return (
+    content === null ||
+    !content.split("\0").some((value) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(value))
+  );
+}
+
+function environValue(content: string, prefix: string): string | null {
+  const entry = content.split("\0").find((value) => value.startsWith(prefix));
+  const value = entry?.slice(prefix.length) ?? "";
+  return value === "" ? null : value;
+}
+
 export function threadIdFromEnviron(content: string): string | null {
-  const entry = content
-    .split("\0")
-    .find((value) => value.startsWith(THREAD_ID_PREFIX));
-  const threadId = entry?.slice(THREAD_ID_PREFIX.length) ?? "";
-  return threadId === "" ? null : threadId;
+  return environValue(content, THREAD_ID_PREFIX);
+}
+
+export function toolCallIdFromEnviron(content: string): string | null {
+  return environValue(content, TOOL_CALL_ID_PREFIX);
 }
 
 const READ_BATCH = 64;
@@ -102,7 +117,7 @@ async function readProcess(
   procRoot: string,
   pid: number,
   uid: number,
-): Promise<ProcessEntry | null> {
+): Promise<{ entry: ProcessEntry; hidden: boolean } | null> {
   const directory = path.join(procRoot, String(pid));
   try {
     if ((await stat(directory)).uid !== uid) return null;
@@ -116,18 +131,25 @@ async function readProcess(
   ]);
   const parsed = statContent === null ? null : parseProcStat(statContent);
   if (parsed === null || comm === null) return null;
-  const threadId = environ === null ? null : threadIdFromEnviron(environ);
+  const hidden = environHidden(environ);
+  const threadId =
+    environ === null || hidden ? null : threadIdFromEnviron(environ);
   const name = comm.trim();
   const cmdline =
-    threadId === null
+    threadId === null && !hidden
       ? null
       : await readOptional(path.join(directory, "cmdline"));
   return {
-    pid,
-    ppid: parsed.ppid,
-    name,
-    threadId,
-    launcher: isLauncher(name, cmdline?.split("\0") ?? []),
+    entry: {
+      pid,
+      ppid: parsed.ppid,
+      name,
+      threadId,
+      toolCallId:
+        environ === null || hidden ? null : toolCallIdFromEnviron(environ),
+      launcher: isLauncher(name, cmdline?.split("\0") ?? []),
+    },
+    hidden,
   };
 }
 
@@ -166,7 +188,13 @@ export async function readLinuxSnapshot(
     readProcess(procRoot, pid, uid),
   );
   const table = new Map<number, ProcessEntry>();
-  for (const entry of entries) if (entry !== null) table.set(entry.pid, entry);
+  const hidden = new Set<number>();
+  for (const read of entries) {
+    if (read === null) continue;
+    table.set(read.entry.pid, read.entry);
+    if (read.hidden) hidden.add(read.entry.pid);
+  }
+  inheritHiddenEnvironment(table, hidden);
   const sockets: ListeningSocket[] = [];
   if (listening.size === 0) return { table, sockets };
   for (const entry of table.values()) {

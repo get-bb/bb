@@ -116,15 +116,17 @@ export async function listDevServers(
   });
   return Promise.all(
     attributed.map(async (server) => {
-      const [identity, cwd] = await Promise.all([
+      const listenerPid = server.pids[0]!;
+      const [identity, listener, cwd] = await Promise.all([
         deps.readIdentity(server.rootPid),
+        listenerPid === server.rootPid ? null : deps.readIdentity(listenerPid),
         deps.readCwd(server.rootPid),
       ]);
       return {
         threadId: server.threadId,
         rootPid: server.rootPid,
         startedAt: identity?.startedAt ?? null,
-        command: identity?.command ?? null,
+        command: (listener ?? identity)?.command ?? null,
         cwd,
         ports: server.ports,
       };

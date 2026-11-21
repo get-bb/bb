@@ -38,6 +38,19 @@ function textServer(server: HostDevServer): string {
 }
 
 export default async function plugin(bb: BbPluginApi) {
+  const settings = bb.settings.define({
+    stopOnArchive: {
+      type: "boolean",
+      label: "Stop servers when a thread is archived",
+      description:
+        "Stop the servers a thread started when the thread is archived or deleted.",
+      default: true,
+    },
+  });
+  let stopOnArchive = (await settings.get()).stopOnArchive;
+  settings.onChange((next) => {
+    stopOnArchive = next.stopOnArchive;
+  });
   const host = bb.hosts.experimental_client({
     contract: devServersHostContract,
   });
@@ -46,10 +59,14 @@ export default async function plugin(bb: BbPluginApi) {
     threadId: string,
   ): Promise<{ id: string; name: string; connected: boolean } | null> {
     const thread = await bb.sdk.threads.get({ threadId });
-    if (thread.environmentId === null) return null;
-    const environment = await bb.sdk.environments.get({
-      environmentId: thread.environmentId,
-    });
+    return environmentHost(thread.environmentId);
+  }
+
+  async function environmentHost(
+    environmentId: string | null,
+  ): Promise<{ id: string; name: string; connected: boolean } | null> {
+    if (environmentId === null) return null;
+    const environment = await bb.sdk.environments.get({ environmentId });
     const hosts = await bb.sdk.hosts.list();
     const match = hosts.find(
       (candidate) => candidate.id === environment.hostId,
@@ -162,6 +179,48 @@ export default async function plugin(bb: BbPluginApi) {
     refresh(thread.id),
   );
   bb.events.on("thread.active", ({ thread }) => refresh(thread.id));
+
+  async function stopAll(thread: {
+    id: string;
+    environmentId: string | null;
+  }): Promise<void> {
+    if (!stopOnArchive) return;
+    try {
+      const target = await environmentHost(thread.environmentId);
+      if (target === null) return;
+      if (!target.connected) {
+        bb.log.warn(
+          `Did not stop the servers of ${thread.id}: its machine ${target.name} is offline.`,
+        );
+        return;
+      }
+      const result = await host.call(
+        "list",
+        { threadId: thread.id },
+        { hostId: target.id, timeoutMs: 10_000 },
+      );
+      for (const server of result.servers)
+        await host.call(
+          "stop",
+          {
+            threadId: thread.id,
+            rootPid: server.rootPid,
+            startedAt: server.startedAt,
+          },
+          { hostId: target.id, timeoutMs: 15_000 },
+        );
+      if (result.servers.length > 0)
+        bb.log.info(
+          `Stopped ${result.servers.length} server(s) of ${thread.id} after it was archived or deleted.`,
+        );
+    } catch (error) {
+      bb.log.warn(
+        `Could not stop the servers of ${thread.id}: ${String(error)}`,
+      );
+    }
+  }
+  bb.events.on("thread.archived", ({ thread }) => stopAll(thread));
+  bb.events.on("thread.deleted", ({ thread }) => stopAll(thread));
 
   bb.cli.register(
     defineCli({

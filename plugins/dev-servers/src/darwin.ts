@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  inheritHiddenEnvironment,
   isLauncher,
   type ListeningSocket,
   type ProcessEntry,
@@ -14,8 +15,11 @@ export type RunTool = (
 export function parsePsTable(
   output: string,
   uid: number,
-): Map<number, Omit<ProcessEntry, "threadId" | "launcher">> {
-  const table = new Map<number, Omit<ProcessEntry, "threadId" | "launcher">>();
+): Map<number, Omit<ProcessEntry, "threadId" | "toolCallId" | "launcher">> {
+  const table = new Map<
+    number,
+    Omit<ProcessEntry, "threadId" | "toolCallId" | "launcher">
+  >();
   for (const line of output.split("\n")) {
     const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/.exec(line);
     if (match === null || Number(match[3]) !== uid) continue;
@@ -30,20 +34,40 @@ export function parsePsTable(
 
 export interface PsEnvironmentEntry {
   threadId: string | null;
+  toolCallId: string | null;
   argv: string[];
+  hidden: boolean;
+}
+
+function parsePsCommands(output: string): Map<number, string> {
+  const commands = new Map<number, string>();
+  for (const line of output.split("\n")) {
+    const match = /^\s*(\d+)\s(.*)$/.exec(line);
+    if (match !== null) commands.set(Number(match[1]), match[2]!.trimEnd());
+  }
+  return commands;
 }
 
 export function parsePsEnvironment(
-  output: string,
+  plain: string,
+  withEnvironment: string,
 ): Map<number, PsEnvironmentEntry> {
+  const commands = parsePsCommands(plain);
   const entries = new Map<number, PsEnvironmentEntry>();
-  for (const line of output.split("\n")) {
-    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (match === null) continue;
-    const matches = [...match[2]!.matchAll(/(?:^|\s)BB_THREAD_ID=(\S+)/g)];
-    entries.set(Number(match[1]), {
+  for (const [pid, line] of parsePsCommands(withEnvironment)) {
+    const command = commands.get(pid) ?? line;
+    const environment = line.startsWith(command)
+      ? line.slice(command.length)
+      : "";
+    const matches = [...environment.matchAll(/(?:^|\s)BB_THREAD_ID=(\S+)/g)];
+    const toolCalls = [
+      ...environment.matchAll(/(?:^|\s)CODEX_TOOL_CALL_ID=(\S+)/g),
+    ];
+    entries.set(pid, {
       threadId: matches.at(-1)?.[1] ?? null,
-      argv: match[2]!.split(/\s+/).slice(0, 2),
+      toolCallId: toolCalls.at(-1)?.[1] ?? null,
+      argv: command.trim().split(/\s+/).slice(0, 2),
+      hidden: !/(?:^|\s)[A-Za-z_][A-Za-z0-9_]*=/.test(environment),
     });
   }
   return entries;
@@ -69,8 +93,9 @@ export async function readDarwinSnapshot(
   uid: number,
   run: RunTool,
 ): Promise<ProcessSnapshot | null> {
-  const [ps, environment, lsof] = await Promise.all([
+  const [ps, commands, environment, lsof] = await Promise.all([
     run("/bin/ps", ["-axo", "pid=,ppid=,uid=,comm="]),
+    run("/bin/ps", ["-axww", "-o", "pid=,command="]),
     run("/bin/ps", ["-axwwE", "-o", "pid=,command="]),
     run("/usr/sbin/lsof", [
       "-nP",
@@ -82,17 +107,22 @@ export async function readDarwinSnapshot(
       "-Fpn",
     ]),
   ]);
-  if (ps === null || environment === null || lsof === null) return null;
-  const environments = parsePsEnvironment(environment);
+  if (ps === null || commands === null || environment === null || lsof === null)
+    return null;
+  const environments = parsePsEnvironment(commands, environment);
   const table = new Map<number, ProcessEntry>();
+  const hidden = new Set<number>();
   for (const entry of parsePsTable(ps, uid).values()) {
     const details = environments.get(entry.pid);
     table.set(entry.pid, {
       ...entry,
       threadId: details?.threadId ?? null,
+      toolCallId: details?.toolCallId ?? null,
       launcher: isLauncher(entry.name, details?.argv ?? []),
     });
+    if (details === undefined || details.hidden) hidden.add(entry.pid);
   }
+  inheritHiddenEnvironment(table, hidden);
   return { table, sockets: parseLsofListeners(lsof) };
 }
 

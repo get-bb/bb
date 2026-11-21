@@ -1388,6 +1388,19 @@ all-or-selected host list, set on its autosaving plugin page or with
 `bb keep-awake status|enable|disable` and `bb keep-awake hosts all|<host-id>...`
 (each accepts `--json`).
 
+### Dev servers
+
+The builtin Dev servers plugin (`bb--dev-servers`) lists the servers a
+thread's agent started and stops them on request. `stopOnArchive` (default
+`true`) also stops a thread's servers when the thread is archived or deleted,
+if the thread's machine is online:
+
+```bash
+bb plugin config bb--dev-servers set stopOnArchive false
+```
+
+See the `dev-servers` skill.
+
 ### Push notifications
 
 The builtin Push notifications plugin's `mobileEnabled`, `webEnabled`, and

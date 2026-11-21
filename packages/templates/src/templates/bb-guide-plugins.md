@@ -168,8 +168,10 @@ Each bundled plugin documents its commands and behavior in its own skill.
 - Dev servers (builtin): lists the servers a thread's agent started from its
   shell, with their ports, above the composer with Open and Stop.
   `bb dev-servers list [thread-id] [--json]` and
-  `bb dev-servers stop <pid> [--thread <thread-id>]`; see the `dev-servers`
-  skill.
+  `bb dev-servers stop <pid> [--thread <thread-id>]`. Archiving or deleting a
+  thread stops its servers while its machine is online, unless
+  `stopOnArchive` is off; see the
+  `dev-servers` skill.
 - GitHub Star (builtin): asks once for a GitHub star after more than five
   prompts. `bb plugin disable bb--github-star` stops it from asking.
 - Server switcher (builtin, off by default): a Servers item in the sidebar

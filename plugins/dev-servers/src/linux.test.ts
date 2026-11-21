@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   decodeProcAddress,
+  environHidden,
   parseProcNetTcp,
   parseProcStat,
   readLinuxSnapshot,
@@ -101,6 +102,12 @@ describe("Linux /proc parsing", () => {
     expect(parseProcStat("garbage")).toBeNull();
   });
 
+  it("treats an environment without variables as hidden", () => {
+    expect(environHidden("npm run dev\0\0")).toBe(true);
+    expect(environHidden(null)).toBe(true);
+    expect(environHidden("A=1\0")).toBe(false);
+  });
+
   it("reads the thread id from the environment", () => {
     expect(threadIdFromEnviron("A=1\0BB_THREAD_ID=thr_x\0B=2\0")).toBe("thr_x");
     expect(threadIdFromEnviron("BB_THREAD_ID=\0")).toBeNull();
@@ -139,6 +146,7 @@ describe("Linux /proc parsing", () => {
         ppid: 10,
         name: "node",
         threadId: "thr_a",
+        toolCallId: null,
         launcher: false,
       });
       expect(snapshot.table.get(13)?.launcher).toBe(true);

@@ -6,6 +6,7 @@ See the servers that an agent started for a thread, and open or stop them withou
 - For each server: its ports, its command, an Open button, and a Stop button.
 - Stop ends the server's command and every process under it. It never stops the agent, its shell, or bb.
 - The list updates when a turn ends and every 15 seconds while the thread is open.
+- When you archive or delete a thread, its servers stop if the thread's machine is online. The `Stop servers when a thread is archived` setting turns this off.
 
 ## How it works
 

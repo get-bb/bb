@@ -14,7 +14,13 @@ counts. The agent process does not count, and neither do the processes the
 agent starts without its own shell, such as MCP servers. A shell that a
 package runner (npm, npx, pnpm, yarn, bun, uvx, pipx) starts does not count as
 the agent's shell, so an agent or MCP server launched with `npx` is not
-listed. Linux and macOS machines are supported.
+listed. Codex starts some commands without a shell; it marks each one with
+`CODEX_TOOL_CALL_ID`, and that command is the server's root. Codex ends these
+commands when its turn ends, so a Codex server shows only during the turn.
+Linux and macOS machines are supported. On macOS, a process that rewrites its
+command line (such as `npm`) hides its environment from `ps`; it takes the
+thread of its nearest ancestor that shows one. On Linux, a process with an
+empty environment does the same.
 
 ```sh
 bb dev-servers list [thread-id] [--json]
@@ -23,9 +29,10 @@ bb dev-servers stop <pid> [--thread <thread-id>] [--json]
 
 `list` defaults to the current thread. Outside a thread it lists the servers
 of every thread on every connected machine. Each line gives the thread, the
-process id of the server's command, its addresses and ports, and its command
-line. When the list is empty, the text says why: the thread has no
-environment, its machine is offline, or the platform is not supported.
+process id of the server's command, its addresses and ports, and the command
+line of the process that listens. When the list is empty, the text says why:
+the thread has no environment, its machine is offline, or the platform is not
+supported.
 `--json` returns `{ status, servers }`, where `status` is `ok`,
 `no-environment`, `offline`, or `unsupported`, and each server has `threadId`,
 `rootPid`, `startedAt`, `command`, `cwd`, `ports`, `hostId`, `hostName`, and
@@ -45,3 +52,8 @@ The thread's context row above the composer shows the same list as
 `http://localhost:<port>`. It shows only when the server runs on the machine
 of the bb server and the app was opened on that machine through a localhost
 address; otherwise the row names the machine.
+
+When a thread is archived or deleted, the plugin stops its servers if the
+thread's machine is online; it does not retry later. Deleting a whole project
+can remove an environment first, and then its servers are not stopped. Turn
+this off with `bb plugin config bb--dev-servers set stopOnArchive false`.

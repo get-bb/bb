@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attributeServers,
   descendants,
+  inheritHiddenEnvironment,
   isLauncher,
   type ListeningSocket,
   type ProcessEntry,
@@ -10,11 +11,20 @@ import {
 const DAEMON = 100;
 const THREAD = "thr_one";
 
-function table(entries: Array<[number, number, string, string | null]>) {
+function table(
+  entries: Array<[number, number, string, string | null, string?]>,
+) {
   return new Map<number, ProcessEntry>(
-    entries.map(([pid, ppid, name, threadId]) => [
+    entries.map(([pid, ppid, name, threadId, toolCallId]) => [
       pid,
-      { pid, ppid, name, threadId, launcher: isLauncher(name, []) },
+      {
+        pid,
+        ppid,
+        name,
+        threadId,
+        toolCallId: toolCallId ?? null,
+        launcher: isLauncher(name, []),
+      },
     ]),
   );
 }
@@ -128,6 +138,134 @@ describe("attributeServers", () => {
   });
 });
 
+describe("agents without the thread variable", () => {
+  const codex = table([
+    [1, 0, "systemd", null],
+    [DAEMON, 1, "node", null],
+    [110, DAEMON, "node", null],
+    [120, 110, "codex", null],
+    [130, 120, "npm", THREAD],
+    [131, 130, "sh", THREAD],
+    [132, 131, "vite", THREAD],
+    [140, 120, "python3", THREAD],
+  ]);
+
+  it("roots a command whose shell replaced itself with the command", () => {
+    expect(
+      attributeServers({
+        table: codex,
+        sockets: sockets([132, 5173], [140, 8000]),
+        daemonPid: DAEMON,
+        threadId: THREAD,
+      }).map((server) => server.rootPid),
+    ).toEqual([130, 140]);
+  });
+});
+
+describe("tool calls", () => {
+  const codex = table([
+    [1, 0, "systemd", null],
+    [DAEMON, 1, "node", null],
+    [110, DAEMON, "node", null],
+    [120, 110, "codex", THREAD],
+    [130, 120, "python3", THREAD, "exec-1"],
+    [140, 120, "node", THREAD],
+    [150, 120, "bash", THREAD, "exec-2"],
+    [151, 150, "npm", THREAD, "exec-2"],
+    [152, 151, "sh", THREAD, "exec-2"],
+    [153, 152, "vite", THREAD, "exec-2"],
+  ]);
+
+  it("roots a command the agent started without a shell at that command", () => {
+    expect(
+      attributeServers({
+        table: codex,
+        sockets: sockets([130, 8000], [140, 3845], [153, 5173]),
+        daemonPid: DAEMON,
+        threadId: THREAD,
+      }).map((server) => server.rootPid),
+    ).toEqual([151, 130]);
+  });
+});
+
+describe("agents the bridge started through a launcher or with a tool-call id", () => {
+  it("never lists an agent under a hidden npm exec that inherited no thread", () => {
+    const npxAgent = table([
+      [1, 0, "launchd", null],
+      [DAEMON, 1, "node", null],
+      [110, DAEMON, "node", null],
+      [200, 110, "npm exec @zed/agent", null],
+      [201, 200, "sh", THREAD],
+      [202, 201, "node", THREAD],
+      [203, 202, "chrome", THREAD],
+    ]);
+    expect(
+      attributeServers({
+        table: npxAgent,
+        sockets: sockets([202, 4096], [203, 9222]),
+        daemonPid: DAEMON,
+        threadId: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("never lists an agent that inherited the tool-call id of its server", () => {
+    const nested = table([
+      [1, 0, "systemd", null],
+      [DAEMON, 1, "node", null],
+      [110, DAEMON, "node", null],
+      [120, 110, "codex", THREAD, "exec-outer"],
+      [130, 120, "node", THREAD, "exec-outer"],
+    ]);
+    expect(
+      attributeServers({
+        table: nested,
+        sockets: sockets([130, 3845]),
+        daemonPid: DAEMON,
+        threadId: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("never lists an agent that the bridge started through a shell", () => {
+    const shelled = table([
+      [1, 0, "systemd", null],
+      [DAEMON, 1, "node", null],
+      [110, DAEMON, "node", null],
+      [115, 110, "sh", THREAD],
+      [120, 115, "agent", THREAD],
+    ]);
+    expect(
+      attributeServers({
+        table: shelled,
+        sockets: sockets([120, 4096]),
+        daemonPid: DAEMON,
+        threadId: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("prefers the shell rule over the tool-call id", () => {
+    const codexShell = table([
+      [1, 0, "systemd", null],
+      [DAEMON, 1, "node", null],
+      [110, DAEMON, "node", null],
+      [120, 110, "codex", null],
+      [150, 120, "bash", THREAD, "exec-2"],
+      [151, 150, "npm", THREAD, "exec-2"],
+      [152, 151, "sh", THREAD, "exec-2"],
+      [153, 152, "vite", THREAD, "exec-2"],
+    ]);
+    const [server] = attributeServers({
+      table: codexShell,
+      sockets: sockets([153, 5173]),
+      daemonPid: DAEMON,
+      threadId: THREAD,
+    });
+    expect(server?.rootPid).toBe(151);
+  });
+});
+
 describe("launchers", () => {
   const npx = table([
     [1, 0, "systemd", null],
@@ -176,6 +314,23 @@ describe("launchers", () => {
     expect(isLauncher("pnpm", [])).toBe(true);
     expect(isLauncher("node", ["node", "server.js"])).toBe(false);
     expect(isLauncher("npmish", [])).toBe(false);
+  });
+});
+
+describe("inheritHiddenEnvironment", () => {
+  it("fills hidden environments from the nearest visible ancestor", () => {
+    const hiddenTable = table([
+      [1, 0, "launchd", null],
+      [10, 1, "zsh", THREAD],
+      [11, 10, "npm run dev", null],
+      [12, 11, "node", null],
+      [20, 1, "postgres", null],
+      [21, 20, "postgres", null],
+    ]);
+    inheritHiddenEnvironment(hiddenTable, new Set([11, 12, 21]));
+    expect(hiddenTable.get(11)?.threadId).toBe(THREAD);
+    expect(hiddenTable.get(12)?.threadId).toBe(THREAD);
+    expect(hiddenTable.get(21)?.threadId).toBeNull();
   });
 });
 
