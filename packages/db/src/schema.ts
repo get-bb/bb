@@ -594,6 +594,7 @@ export const environments = sqliteTable(
       table.path,
     ),
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
+    index("environments_path_idx").on(table.path),
     uniqueIndex("environments_owner_thread_idx")
       .on(table.ownerThreadId)
       .where(sql`${table.ownerThreadId} IS NOT NULL`),

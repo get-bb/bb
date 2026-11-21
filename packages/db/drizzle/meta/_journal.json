@@ -1156,6 +1156,13 @@
       "when": 1795217414987,
       "tag": "0164_thread_search_order_index",
       "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "6",
+      "when": 1795218889901,
+      "tag": "0165_environment_path_index",
+      "breakpoints": true
     }
   ]
 }

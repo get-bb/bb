@@ -300,10 +300,6 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#findProviderEnvironmentContainingPath`,
-    growsWith: {
-      history:
-        "Checks every environment's path for containment, which no index can seek, and the seed grows the environments",
-    },
     run: (db) =>
       findProviderEnvironmentContainingPath(
         db,
@@ -312,10 +308,6 @@ const ENVIRONMENT_CASES: readonly Case[] = [
   },
   {
     name: `${ENVIRONMENTS}#findForeignManagedEnvironmentAtHostPath`,
-    growsWith: {
-      history:
-        "Checks every environment on the host for path containment, which no index can seek, and the seed grows them",
-    },
     run: (db, fixture, seed) =>
       findForeignManagedEnvironmentAtHostPath(db, {
         hostId: seed.busyHostId,
