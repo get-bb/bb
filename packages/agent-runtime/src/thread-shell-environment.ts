@@ -66,6 +66,15 @@ export interface DroppedThreadEnvironmentContribution {
   plugin: string;
 }
 
+const CREDENTIAL_NAME_PATTERN = /TOKEN|KEY|SECRET|PASSWORD|AUTH/i;
+
+function diagnosticValue(
+  name: string,
+  value: string,
+): ResolvedThreadEnvironmentEntry["value"] {
+  return CREDENTIAL_NAME_PATTERN.test(name) ? { masked: true } : value;
+}
+
 interface ResolveThreadEnvironmentArgs extends ThreadShellEnvironmentArgs {
   baseShellEnv: AgentRuntimeShellEnvironment | undefined;
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
@@ -79,7 +88,11 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
   const envVars = buildThreadShellEnvironment(args);
   const droppedContributions: DroppedThreadEnvironmentContribution[] = [];
   const entries: ResolvedThreadEnvironmentEntry[] = Object.entries(envVars).map(
-    ([name, value]) => ({ name, source: "shell", value }),
+    ([name, value]) => ({
+      name,
+      source: "shell",
+      value: diagnosticValue(name, value),
+    }),
   );
   for (const contribution of args.contributedEnv) {
     const value = resolveContributedEnvValue(contribution, args.baseShellEnv);
@@ -107,7 +120,10 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
     entries.push({
       name: contribution.name,
       source: contribution.source,
-      value: "core" in contribution.source ? { masked: true } : value,
+      value:
+        "core" in contribution.source
+          ? { masked: true }
+          : diagnosticValue(contribution.name, value),
       reason: contribution.reason,
     });
   }

@@ -326,12 +326,12 @@ describe("createAgentRuntime lifecycle", () => {
           {
             name: "AUTH_PROXY_URL",
             source: { plugin: "env-test" },
-            value: "http://127.0.0.1:3334/plugins/env-test/auth",
+            value: { masked: true },
             reason: "Use the authenticated server proxy",
           },
         ]),
       });
-      expect(JSON.stringify(events)).toContain("/plugins/env-test/auth");
+      expect(JSON.stringify(events)).not.toContain("/plugins/env-test/auth");
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224c",
