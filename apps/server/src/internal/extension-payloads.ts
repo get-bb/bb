@@ -1,6 +1,10 @@
 import { getThread } from "@bb/db";
 import type { ExtensionKind, JsonValue, ThreadEvent } from "@bb/domain";
-import { coreThreadStateSchema, parseExtensionKind } from "@bb/domain";
+import {
+  coreThreadStateSchema,
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  parseExtensionKind,
+} from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import type {
   StandardSchemaV1,
@@ -10,7 +14,6 @@ import type {
 import { sliceUtf16Head } from "@bb/text-utils";
 import type { AppDeps } from "../types.js";
 
-export const EXTENSION_PAYLOAD_MAX_BYTES = 64 * 1024;
 export const EXTENSION_REJECTION_REASON_MAX_CHARS = 4 * 1024;
 const REASON_TRUNCATION_MARKER = " ... [truncated]";
 

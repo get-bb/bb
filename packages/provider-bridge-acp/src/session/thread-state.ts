@@ -1,8 +1,10 @@
-import type {
-  ThreadProviderCommandsState,
-  ThreadSessionOption,
-  ThreadSessionOptionValue,
-  ThreadSessionOptionsState,
+import {
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  type ThreadProviderCommand,
+  type ThreadProviderCommandsState,
+  type ThreadSessionOption,
+  type ThreadSessionOptionValue,
+  type ThreadSessionOptionsState,
 } from "@bb/domain";
 import type {
   AcpAvailableCommand,
@@ -15,19 +17,108 @@ const MAX_COMMANDS = 500;
 const MAX_OPTIONS = 64;
 const MAX_OPTION_VALUES = 1000;
 
+function payloadBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value));
+}
+
+function cutText(text: string, maxChars: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) {
+    return text;
+  }
+  return maxChars === 0 ? "" : `${chars.slice(0, maxChars - 1).join("")}…`;
+}
+
+function longestLength(texts: readonly (string | undefined)[]): number {
+  return texts.reduce(
+    (longest, text) => Math.max(longest, Array.from(text ?? "").length),
+    0,
+  );
+}
+
+function withDescriptionsFitted<T>(
+  state: T,
+  longestDescription: number,
+  cutDescriptions: (maxChars: number) => T,
+): T {
+  if (payloadBytes(state) <= EXTENSION_PAYLOAD_MAX_BYTES) {
+    return state;
+  }
+  let fitting = 0;
+  let tooLong = longestDescription;
+  while (tooLong - fitting > 1) {
+    const middle = Math.floor((fitting + tooLong) / 2);
+    if (payloadBytes(cutDescriptions(middle)) <= EXTENSION_PAYLOAD_MAX_BYTES) {
+      fitting = middle;
+    } else {
+      tooLong = middle;
+    }
+  }
+  return cutDescriptions(fitting);
+}
+
+function withoutTrailingItems<T>(state: T, items: unknown[]): T {
+  while (
+    items.length > 0 &&
+    payloadBytes(state) > EXTENSION_PAYLOAD_MAX_BYTES
+  ) {
+    items.pop();
+  }
+  return state;
+}
+
+function cutDescription(
+  description: string | undefined,
+  maxChars: number,
+): { description?: string } {
+  if (description === undefined) {
+    return {};
+  }
+  const cut = cutText(description, maxChars);
+  return cut === "" ? {} : { description: cut };
+}
+
+function withDescriptionCut(
+  option: ThreadSessionOption,
+  maxChars: number,
+): ThreadSessionOption {
+  if (option.type === "boolean") {
+    const { description, ...rest } = option;
+    return { ...rest, ...cutDescription(description, maxChars) };
+  }
+  const { description, values, ...rest } = option;
+  return {
+    ...rest,
+    ...cutDescription(description, maxChars),
+    values: values.map(({ description: valueDescription, ...value }) => ({
+      ...value,
+      ...cutDescription(valueDescription, maxChars),
+    })),
+  };
+}
+
 export function toThreadProviderCommandsState(
   commands: readonly AcpAvailableCommand[],
 ): ThreadProviderCommandsState {
-  return {
-    commands: commands
-      .filter((command) => command.name.trim() !== "")
-      .slice(0, MAX_COMMANDS)
-      .map((command) => ({
-        name: command.name,
-        description: command.description,
-        ...(command.inputHint ? { inputHint: command.inputHint } : {}),
+  const full: ThreadProviderCommand[] = commands
+    .filter((command) => command.name.trim() !== "")
+    .slice(0, MAX_COMMANDS)
+    .map((command) => ({
+      name: command.name,
+      description: command.description,
+      ...(command.inputHint ? { inputHint: command.inputHint } : {}),
+    }));
+  const fitted = withDescriptionsFitted<ThreadProviderCommandsState>(
+    { commands: full },
+    longestLength(full.map((command) => command.description)),
+    (maxChars) => ({
+      commands: full.map((command) => ({
+        ...command,
+        description: cutText(command.description, maxChars),
       })),
-  };
+    }),
+  );
+  return withoutTrailingItems(fitted, fitted.commands);
 }
 
 function selectValues(
@@ -97,5 +188,20 @@ export function toThreadSessionOptionsState(
           },
     );
   }
-  return { options: sessionOptions.slice(0, MAX_OPTIONS) };
+  const full = sessionOptions.slice(0, MAX_OPTIONS);
+  const fitted = withDescriptionsFitted<ThreadSessionOptionsState>(
+    { options: full },
+    longestLength(
+      full.flatMap((option) => [
+        option.description,
+        ...(option.type === "select"
+          ? option.values.map((value) => value.description)
+          : []),
+      ]),
+    ),
+    (maxChars) => ({
+      options: full.map((option) => withDescriptionCut(option, maxChars)),
+    }),
+  );
+  return withoutTrailingItems(fitted, fitted.options);
 }
