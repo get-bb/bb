@@ -992,7 +992,7 @@ describe("RuntimeManager", () => {
       extraWorktreePath,
       plainFolderPath,
       ...(await gitRoots(extraWorktreePath)),
-      "/tmp/bb-thread-storage/thr_one",
+      path.join("/tmp/bb-thread-storage", "thr_one"),
     ]);
     await expect(
       manager.resolveThreadWorkspaceWriteRoots({
@@ -1002,7 +1002,7 @@ describe("RuntimeManager", () => {
       }),
     ).resolves.toEqual([
       ...(await gitRoots(worktreePath)),
-      "/tmp/bb-thread-storage/thr_two",
+      path.join("/tmp/bb-thread-storage", "thr_two"),
     ]);
   });
 
