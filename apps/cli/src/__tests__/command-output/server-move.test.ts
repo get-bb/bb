@@ -35,6 +35,7 @@ const desktop: Host = {
   },
   maxPermissionMode: "full",
   lastSeenAt: 1_700_000_000_000,
+  route: null,
   lastRejectedProtocolVersion: null,
   createdAt: 1,
   updatedAt: 2,

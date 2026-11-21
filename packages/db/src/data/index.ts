@@ -12,6 +12,7 @@ export {
 export * from "./events.js";
 export * from "./experiments.js";
 export * from "./hosts.js";
+export * from "./host-server-access-grants.js";
 export * from "./legacy-automations.js";
 export * from "./legacy-deferred-thread-messages.js";
 export * from "./machines.js";

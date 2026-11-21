@@ -78,6 +78,16 @@ import {
   refuseInterruptedServerImport,
   repairLastServerMoveHostName,
 } from "./services/server-move/pending-boot.js";
+import { Server as HttpServer } from "node:http";
+import { LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID } from "@bb/domain";
+import {
+  LocalNetworkAccess,
+  setLocalNetworkAccess,
+} from "./services/server-routes/local-network.js";
+import {
+  isServerAccessProviderEnabled,
+  refreshServerAccessOrigins,
+} from "./services/machines/server-access.js";
 import { createConnectHold } from "./services/server-move/connect-hold.js";
 import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
 import { reconcileServerMoveRunAtBoot } from "./services/server-move/reconcile.js";
@@ -89,6 +99,8 @@ import {
   PluginToolCallRegistry,
   setPluginToolCallRegistry,
 } from "./services/plugins/plugin-tool-calls.js";
+
+const ADVERTISED_ROUTES_REFRESH_INTERVAL_MS = 60_000;
 
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
@@ -507,7 +519,38 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     fetch: app.fetch,
     serverConfig,
   });
+  if (!(server instanceof HttpServer)) {
+    throw new Error("The bb server listener must be an HTTP/1.1 server");
+  }
   injectWebSocket(server);
+  const localNetwork = new LocalNetworkAccess({
+    bindHost: serverConfig.BB_SERVER_BIND_HOST,
+    port: serverConfig.BB_SERVER_PORT,
+    logger,
+    isEnabled: () =>
+      isServerAccessProviderEnabled(
+        { db },
+        LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID,
+      ),
+  });
+  setLocalNetworkAccess(localNetwork);
+  if (pendingServerMove === null) localNetwork.attach(server);
+  const refreshAdvertisedRoutes = () =>
+    refreshServerAccessOrigins({ db, hub, logger });
+  const stopRouteRefresh = hub.onChangedMessage((message) => {
+    if (
+      message.entity === "system" &&
+      message.changes.includes("config-changed")
+    ) {
+      localNetwork.reconcile();
+      refreshAdvertisedRoutes();
+    }
+  });
+  const routeRefreshInterval = setInterval(
+    refreshAdvertisedRoutes,
+    ADVERTISED_ROUTES_REFRESH_INTERVAL_MS,
+  );
+  routeRefreshInterval.unref();
 
   logger.info(
     {
@@ -536,6 +579,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         pluginService,
         providerRegistry,
       }).finally(() => {
+        refreshAdvertisedRoutes();
         void serverMove.handlePluginsStarted();
       });
     }
@@ -568,6 +612,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       eventLoopStallMonitor.stop();
       await performanceDiagnostics.stop();
       stopDaemonLivenessChecks();
+      stopRouteRefresh();
+      clearInterval(routeRefreshInterval);
+      localNetwork.stop();
+      setLocalNetworkAccess(null);
       if (sweepInterval !== null) {
         clearInterval(sweepInterval);
       }

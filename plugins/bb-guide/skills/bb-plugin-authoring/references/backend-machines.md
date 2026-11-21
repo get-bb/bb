@@ -218,10 +218,27 @@ provides no retention or keep controls.
 
 ## Server access
 
-`bb.experimental_serverAccess.register` declares how a new machine reaches
-this server: `id`, `displayName`, `description`, `availability()`,
-`acquire({ key, hostId, signal })` returning a `ServerAccessGrant` or
-`{ status: "failed", message }`, and `release({ key, hostId, grantId })`.
+`bb.experimental_serverAccess.register` declares a route by which machines
+and apps reach this server: `id`, `displayName`, `description`, `routeKind`
+(`"local-network" | "private-overlay" | "relay" | "custom"`; core treats a
+plugin built before SDK 0.6.177 that omits it as `"custom"`), `availability()`, `acquire({ key, hostId, signal })`
+returning a `ServerAccessGrant` or `{ status: "failed", message }`, and
+`release({ key, hostId, grantId })`. The ids `direct` and `local-network`
+are reserved for core.
+
+Every provider the user leaves turned on is a route. Core ranks routes by
+`routeKind` (local network, private overlay such as a tailnet, relay, custom)
+until the user orders them in Settings → Machine access or with
+`bb server access order`. A new machine is installed with the first working
+`relay` or `custom` route, falling back to `local-network` and
+`private-overlay` only when nothing else is turned on; each connected machine then acquires a grant from every turned-on,
+available provider when its session opens, and core sends the daemon all of
+them with their own headers. Only routes that are turned on and available are
+advertised, and their hostnames pass the server's host and origin checks.
+Core stores the admitted addresses so they work from the first request after a
+restart; an address survives a failed or timed-out `availability()` and is
+dropped on a definite `unavailable`/`setup-required` answer or when the plugin
+is disabled or removed.
 
 Acquire is idempotent by key and returns
 `{ id, serverUrl, headers?: Record<string, string> }`; the grant serves
@@ -234,10 +251,8 @@ interrupted; core retries release by key and hostId. Keep intent and
 credential-bearing grants in private plugin storage. Never put credentials in
 machine inputs, resources, or progress output.
 
-Machines settings select the default provider. Without a saved selection,
-core uses the provider of the earliest-installed plugin, or direct when none
-are registered, and it keeps the selected provider for later enrollment of the
-same machine.
+Providers of one `routeKind` rank by the earliest-installed plugin, not load
+order. Core keeps a machine's install route for its later enrollment.
 The direct provider reads `machineServerUrl`, falling back to
 `BB_EXTERNAL_URL`. Declaring a URL does not prove reachability from a sandbox.
 
@@ -246,9 +261,10 @@ configuration, which checks provider availability in parallel with a
 five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
-public `serverUrl` is validated and displayed in Machines settings, and while
-the provider is available core's Host and Origin guards admit its origin, so
-browsers and machines can use it without `BB_APP_URL`. Reading configuration
+public `serverUrl` is validated and displayed in Machine access settings, and
+while the provider is turned on and available core's Host and Origin guards
+admit its origin (also with the `serverRoutes` experiment off), so browsers and
+machines can use it without `BB_APP_URL`. Reading configuration
 never acquires access; the grant's URL is the one machines use.
 
 ## Create steps and holds

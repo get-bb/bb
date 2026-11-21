@@ -136,6 +136,7 @@ export async function registerServerAccess(
     id: "connect",
     displayName: "bb connect",
     description: "Use a private getbb.app address.",
+    routeKind: "relay",
     availability: () => {
       const status = deps.status();
       if (!status.paired) {

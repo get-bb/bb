@@ -64,6 +64,7 @@ import type {
   RuntimeOpenBackgroundWork,
 } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
+import type { ServerRouteResolver } from "./server-routes.js";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
@@ -142,7 +143,7 @@ interface StartIdleProviderSessionReaperArgs {
 
 interface CreateHostDaemonAppOptions {
   dataDir: string;
-  serverUrl: string;
+  routes: ServerRouteResolver;
   hostKey: string;
   bridgeBundleDir?: string;
   hostId: string;
@@ -151,7 +152,6 @@ interface CreateHostDaemonAppOptions {
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
-  serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
   supervised?: boolean;
   releaseLock: () => Promise<void>;
@@ -337,11 +337,14 @@ export async function createHostDaemonApp(
     await eventSink.flush();
   }
 
+  const routes = options.routes;
+  const serverUrl = routes.anchorUrl;
   const serverClient = createServerClient({
-    serverUrl: options.serverUrl,
+    target: () => routes.active(),
+    guardedDownloadTarget: () => routes.guardedDownloadTarget(),
+    hasMachineCredential: () => routes.connectGate() !== null,
     hostKey: options.hostKey,
     logger: options.logger,
-    serverHeaders: options.serverHeaders,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -581,9 +584,8 @@ export async function createHostDaemonApp(
     },
   });
   const connectTunnel = new ConnectTunnelClient({
-    serverUrl: options.serverUrl,
+    gate: () => routes.connectGate(),
     hostName: options.hostName,
-    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
     fetchFn: options.fetchFn,
     logger: options.logger,
     onIdentity: (identity) => {
@@ -854,7 +856,7 @@ export async function createHostDaemonApp(
   const desktopBrowserBroker = await startDesktopBrowserBroker({
     dataDir: options.dataDir,
     hostId: options.hostId,
-    serverUrl: options.serverUrl,
+    serverUrl,
     onChanged: (event) => sendServerMessage(event),
   });
 
@@ -866,9 +868,9 @@ export async function createHostDaemonApp(
     ...defaultServerMoveServiceOptions(),
     dataDir: options.dataDir,
     hostId: options.hostId,
-    serverUrl: options.serverUrl,
+    serverUrl,
     hostKey: options.hostKey,
-    serverHeaders: options.serverHeaders ?? {},
+    serverHeaders: routes.anchorHeaders,
     hostDaemonPort: options.localApiConfig?.port ?? null,
     autoUpdate: options.autoUpdate ?? false,
     supervised: options.supervised ?? false,
@@ -940,7 +942,7 @@ export async function createHostDaemonApp(
   let requestDaemonRestart = (): void => undefined;
   let requestMachineShutdown = async (): Promise<void> => undefined;
   const connection = new ServerConnection({
-    serverUrl: options.serverUrl,
+    routes,
     hostKey: options.hostKey,
     hostId: options.hostId,
     hostName: options.hostName,
@@ -948,15 +950,13 @@ export async function createHostDaemonApp(
     instanceId: options.instanceId,
     localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
-    serverHeaders: options.serverHeaders,
     serverClient,
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
       logger: options.logger,
-      serverHeaders: options.serverHeaders ?? {},
-      serverUrl: options.serverUrl,
+      downloadTarget: () => routes.guardedDownloadTarget(),
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),
@@ -1067,8 +1067,8 @@ export async function createHostDaemonApp(
         dataDir: options.dataDir,
         hostId: options.hostId,
         localApiConfig: options.localApiConfig,
-        serverUrl: options.serverUrl,
-        serverPort: Number(new URL(options.serverUrl).port) || 0,
+        serverUrl,
+        serverPort: Number(new URL(serverUrl).port) || 0,
         devAppPort: options.devAppPort,
         appUrl: options.appUrl,
         getConnected: () => connection.sessionId != null,
@@ -1120,7 +1120,7 @@ export async function createHostDaemonApp(
     },
     onStart: async () => {
       options.logger.info(
-        { dataDir: options.dataDir, serverUrl: options.serverUrl },
+        { dataDir: options.dataDir, serverUrl },
         "Host daemon connecting",
       );
       await connection.start();

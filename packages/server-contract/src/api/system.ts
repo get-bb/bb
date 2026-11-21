@@ -19,6 +19,7 @@ import {
   permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
+  serverRouteKindSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
@@ -499,6 +500,29 @@ export type SystemSetupGuideResponse = z.infer<
   typeof systemSetupGuideResponseSchema
 >;
 
+export const serverAccessAvailabilitySchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("available"),
+    serverUrl: z.string().url().optional(),
+  }),
+  z.object({
+    status: z.literal("setup-required"),
+    message: z.string(),
+  }),
+  z.object({ status: z.literal("unavailable"), message: z.string() }),
+]);
+export type ServerAccessAvailability = z.infer<
+  typeof serverAccessAvailabilitySchema
+>;
+
+export const serverRouteSchema = z.object({
+  providerId: z.string().min(1),
+  kind: serverRouteKindSchema,
+  displayName: z.string().min(1),
+  url: z.string().url(),
+});
+export type ServerRoute = z.infer<typeof serverRouteSchema>;
+
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
     z.object({
@@ -506,28 +530,25 @@ export const serverAccessStatusSchema = z.object({
       displayName: z.string(),
       description: z.string(),
       pluginId: z.string().min(1).nullable(),
-      availability: z
-        .discriminatedUnion("status", [
-          z.object({
-            status: z.literal("available"),
-            serverUrl: z.string().url().optional(),
-          }),
-          z.object({
-            status: z.literal("setup-required"),
-            message: z.string(),
-          }),
-          z.object({ status: z.literal("unavailable"), message: z.string() }),
-        ])
-        .nullable(),
+      routeKind: serverRouteKindSchema,
+      enabled: z.boolean(),
+      availability: serverAccessAvailabilitySchema,
+      urls: z.array(z.string().url()),
     }),
   ),
-  defaultProviderId: z.string(),
   effectiveUrl: z.string().nullable(),
   urlSource: z.enum(["setting", "BB_EXTERNAL_URL"]).nullable(),
+  localNetwork: z.object({
+    bindHost: z.enum(["127.0.0.1", "0.0.0.0"]),
+    addresses: z.array(z.string()),
+    listenerError: z.string().nullable(),
+  }),
 });
 export type ServerAccessStatus = z.infer<typeof serverAccessStatusSchema>;
 
 export const systemConfigResponseSchema = z.object({
+  serverId: z.string().min(1),
+  routes: z.array(serverRouteSchema),
   serverAccess: serverAccessStatusSchema,
   generalSettings: appSettingsSchema.extend({
     showUnhandledProviderEvents: z.boolean().optional(),

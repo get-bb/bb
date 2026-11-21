@@ -78,6 +78,7 @@ export function makeHostResponse(
       teardown: null,
     },
     maxPermissionMode: "full",
+    route: null,
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
     createdAt: 0,

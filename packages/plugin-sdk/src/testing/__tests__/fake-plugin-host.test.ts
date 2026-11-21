@@ -36,6 +36,7 @@ describe("fixtures", () => {
       },
       maxPermissionMode: "full",
       lastSeenAt: null,
+      route: null,
       lastRejectedProtocolVersion: null,
       createdAt: 0,
       updatedAt: 0,

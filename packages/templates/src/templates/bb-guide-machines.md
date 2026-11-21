@@ -275,16 +275,54 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
-Set Machines → Server URL reachable by machines, or run `bb settings general
-machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
-Set Default machine access with
-`bb settings general defaultMachineAccess direct`, `connect`, or `tailscale`
-(with the Tailscale plugin installed); `null` uses the provider of the
-earliest-installed plugin, or direct when none is registered. An
-unpaired provider reports setup required. `bb settings show --json` includes
-fresh provider availability and the effective selection; failed or timed-out
-checks report unavailable. Machines use this access for ongoing runtime
-requests, including account-pool endpoints. A machine on bb connect access holds
+Machines and apps reach this server over routes: every turned-on access
+provider, in order. Routes are advertised to machines only with the
+`serverRoutes` experiment (on for early adopters); while it is off,
+`routes` is empty, `local-network` is unavailable and each machine uses only
+the URL it was installed with. Settings → Machine access ("How devices reach this server")
+lists each route with a toggle, its status and address; the CLI is
+`bb server access list|enable <id>|disable <id>|order <id...>` (`--json` for
+`{serverId, routes, serverAccess}`). Routes:
+
+- `local-network` (Local network, off by default): bb also listens on this
+  computer's private LAN addresses (`http://192.168.x.y:<port>`); no restart.
+  Anyone on that network can use bb, so turn it on only for a trusted network.
+  Starting bb with `--server-bind-host 0.0.0.0` already listens everywhere.
+- Plugin providers, such as `connect` (bb connect, `<handle>.getbb.app`) and
+  `tailscale` (the Tailscale plugin's Serve address,
+  `https://<machine>.<tailnet>.ts.net`; machines must be on the same tailnet).
+- `direct` (Manual): your own URL from Machines → Server URL reachable by
+  machines, or `bb settings general machineServerUrl https://bb.example.com`;
+  an unset value uses BB_EXTERNAL_URL.
+
+The default order is local network, private overlay (for example Tailscale),
+relay (bb connect), then custom; `bb server access order` puts the listed ids
+first. A route that needs setup or is unavailable is skipped. A new machine is
+installed with the first working route it can reach from anywhere (relay or
+custom), and with a local network or private overlay route only when nothing
+else is turned on; each
+connected machine then receives every route with its own credentials when its
+session opens, and is shown "via <route>" in Settings → Machines and the Route
+column of `bb machine list`. Each time a machine connects it probes every route
+(`/health` with a matching `serverId`, 2 s timeout) and uses the first that
+answers, giving each better-ranked route a 500 ms head start. It stays on that
+route until the connection drops and then picks again, so when its route stops
+answering a machine moves to the next route that answers, keeping its session
+when `resumeDaemonSessions` is on. Machines remember learned routes in
+`server-routes.json` in their data directory, so a restart starts on the best
+one. Attachments and daemon updates always use an encrypted route (HTTPS, such
+as bb connect) unless the server offers only
+its local network. The server has a
+stable id (`serverId` in `bb status --json`, `bb server access list --json`
+and `/health`) that moves with `bb server move`. An enabled route's hostname is
+accepted by the server's host and origin checks without BB_APP_URL (a plugin
+route's, such as Tailscale's, even with the experiment off). The server
+remembers the admitted addresses across restarts, keeps one through a failed or
+timed-out availability check, and drops it when the provider answers that it is
+unavailable, the route is turned off, or its plugin is disabled or removed.
+`bb settings show --json` includes fresh provider availability; failed or
+timed-out checks report unavailable. Machines use these routes for ongoing
+runtime requests, including account-pool endpoints. A machine on bb connect access holds
 a getbb.app machine credential that `bb machine remove` revokes; if that
 revocation fails, the machine is still removed and the response carries a
 warning (printed to stderr) to revoke the machine in the getbb.app dashboard.

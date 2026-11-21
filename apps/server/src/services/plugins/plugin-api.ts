@@ -1321,7 +1321,7 @@ export function createPluginApi(options: {
     {
       register(declaration) {
         assertLive();
-        validateServerAccessProviderDeclaration(declaration);
+        const provider = validateServerAccessProviderDeclaration(declaration);
         if (
           serverAccessProviders.has(declaration.id) ||
           listServerAccessProviders().some(
@@ -1334,7 +1334,7 @@ export function createPluginApi(options: {
             `Server access provider "${declaration.id}" is already registered`,
           );
         }
-        serverAccessProviders.set(declaration.id, declaration);
+        serverAccessProviders.set(provider.id, provider);
       },
       recheck() {
         assertLive();

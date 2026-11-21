@@ -38,6 +38,7 @@ import type {
   QueuedMessagePayloadKind,
   QueuedMessageWaitHolder,
   ReasoningLevel,
+  ServerRouteKind,
   ServiceTier,
   SystemThreadInterruptedReason,
   TerminalSessionCloseReason,
@@ -159,6 +160,20 @@ export const hosts = sqliteTable(
       .on(table.launchKey)
       .where(sql`${table.destroyedAt} is null`),
   ],
+);
+
+export const hostServerAccessGrants = sqliteTable(
+  "host_server_access_grants",
+  {
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    grantId: text("grant_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.hostId, table.providerId] })],
 );
 
 export const projects = sqliteTable(
@@ -1222,6 +1237,8 @@ export const hostDaemonSessions = sqliteTable(
     hostName: text("host_name").notNull(),
     dataDir: text("data_dir").notNull(),
     protocolVersion: integer("protocol_version").notNull(),
+    routeProviderId: text("route_provider_id"),
+    routeKind: text("route_kind").$type<ServerRouteKind>(),
     heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull(),
     leaseTimeoutMs: integer("lease_timeout_ms").notNull(),
     status: text("status").notNull(),

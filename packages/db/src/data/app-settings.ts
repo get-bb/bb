@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   GIT_PLUGIN_ID,
   aiServiceSelectionSchema,
@@ -40,7 +41,9 @@ const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
 const SKIPPED_APP_UPDATE_KEY = "skippedAppUpdate";
 const AUTO_APP_UPDATE_KEY = "autoAppUpdate";
+const SERVER_ID_KEY = "serverId";
 const SERVER_ACCESS_ORIGINS_KEY = "serverAccessOrigins";
+const SERVER_ID_PREFIX = "srv_";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -233,6 +236,28 @@ export function getPluginSafeMode(db: DbConnection): boolean {
 
 export function setPluginSafeMode(db: DbConnection, enabled: boolean): void {
   writeValue(db, PLUGIN_SAFE_MODE_KEY, enabled, Date.now());
+}
+
+export function getOrCreateServerId(db: DbConnection): string {
+  const candidate = `${SERVER_ID_PREFIX}${randomUUID().replaceAll("-", "")}`;
+  db.insert(appSettingsValues)
+    .values({
+      key: SERVER_ID_KEY,
+      value: JSON.stringify(candidate),
+      updatedAt: Date.now(),
+    })
+    .onConflictDoNothing({ target: appSettingsValues.key })
+    .run();
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, SERVER_ID_KEY))
+    .get();
+  const stored = row === undefined ? undefined : parseStoredValue(row.value);
+  if (typeof stored !== "string" || !stored.startsWith(SERVER_ID_PREFIX)) {
+    throw new Error("Stored server id is invalid");
+  }
+  return stored;
 }
 
 export function getDisabledProviderIds(db: DbConnection): string[] {

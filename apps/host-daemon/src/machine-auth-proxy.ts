@@ -9,10 +9,28 @@ import type { Duplex } from "node:stream";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
+export interface MachineAuthProxyTarget {
+  url: string;
+  headers: Record<string, string>;
+}
+
 interface StartMachineAuthProxyOptions {
-  serverHeaders: Record<string, string>;
-  serverUrl: string;
+  target: () => MachineAuthProxyTarget;
   port?: number;
+}
+
+interface ResolvedProxyTarget {
+  url: URL;
+  headers: Record<string, string>;
+}
+
+function resolveProxyTarget(
+  target: MachineAuthProxyTarget,
+): ResolvedProxyTarget | null {
+  const url = new URL(target.url);
+  return url.protocol === "http:" || url.protocol === "https:"
+    ? { url, headers: target.headers }
+    : null;
 }
 
 export interface MachineAuthProxy {
@@ -108,42 +126,41 @@ function rejectedProxyStatus(
 
 function openUpstreamRequest(
   request: IncomingMessage,
-  target: URL,
-  serverHeaders: Record<string, string>,
+  target: ResolvedProxyTarget,
 ): http.ClientRequest {
-  const requestFn = target.protocol === "https:" ? https.request : http.request;
+  const requestFn =
+    target.url.protocol === "https:" ? https.request : http.request;
   return requestFn({
-    protocol: target.protocol,
-    hostname: target.hostname,
-    port: target.port,
+    protocol: target.url.protocol,
+    hostname: target.url.hostname,
+    port: target.url.port,
     method: request.method,
     path: request.url,
     headers: {
       ...request.headers,
-      host: target.host,
-      ...serverHeaders,
+      host: target.url.host,
+      ...target.headers,
     },
   });
 }
 
 function proxyRequest(args: {
   boundPort: number | null;
-  serverHeaders: Record<string, string>;
   request: IncomingMessage;
   response: ServerResponse;
-  target: URL;
+  target: ResolvedProxyTarget | null;
 }): void {
   const rejectedStatus = rejectedProxyStatus(args.request, args.boundPort);
   if (rejectedStatus !== null) {
     args.response.writeHead(rejectedStatus).end();
     return;
   }
+  if (args.target === null) {
+    args.response.writeHead(502).end();
+    return;
+  }
 
-  const upstream = openUpstreamRequest(
-    args.request,
-    args.target,
-    args.serverHeaders,
-  );
+  const upstream = openUpstreamRequest(args.request, args.target);
   args.response.once("close", () => {
     if (!args.response.writableFinished) upstream.destroy();
   });
@@ -174,21 +191,20 @@ function proxyUpgrade(args: {
   boundPort: number | null;
   clientSocket: Duplex;
   head: Buffer;
-  serverHeaders: Record<string, string>;
   request: IncomingMessage;
-  target: URL;
+  target: ResolvedProxyTarget | null;
 }): void {
   const rejectedStatus = rejectedProxyStatus(args.request, args.boundPort);
   if (rejectedStatus !== null) {
     writeRejectedSocket(args.clientSocket, rejectedStatus);
     return;
   }
+  if (args.target === null) {
+    writeRejectedSocket(args.clientSocket, 400);
+    return;
+  }
 
-  const upstreamRequest = openUpstreamRequest(
-    args.request,
-    args.target,
-    args.serverHeaders,
-  );
+  const upstreamRequest = openUpstreamRequest(args.request, args.target);
   upstreamRequest.on("upgrade", (response, upstreamSocket, upstreamHead) => {
     upstreamSocket.on("error", () => upstreamSocket.destroy());
     upstreamSocket.on("close", () => args.clientSocket.destroy());
@@ -222,10 +238,9 @@ function proxyUpgrade(args: {
 export async function startMachineAuthProxy(
   options: StartMachineAuthProxyOptions,
 ): Promise<MachineAuthProxy> {
-  const target = new URL(options.serverUrl);
-  if (target.protocol !== "http:" && target.protocol !== "https:") {
+  if (resolveProxyTarget(options.target()) === null) {
     throw new Error(
-      `Unsupported machine proxy server protocol: ${target.protocol}`,
+      `Unsupported machine proxy server protocol: ${new URL(options.target().url).protocol}`,
     );
   }
   const sockets = new Set<Socket>();
@@ -233,10 +248,9 @@ export async function startMachineAuthProxy(
   const server = http.createServer((request, response) =>
     proxyRequest({
       boundPort,
-      serverHeaders: options.serverHeaders,
       request,
       response,
-      target,
+      target: resolveProxyTarget(options.target()),
     }),
   );
   server.on("connect", (_request, socket) => writeRejectedSocket(socket, 405));
@@ -245,9 +259,8 @@ export async function startMachineAuthProxy(
       boundPort,
       clientSocket: socket,
       head,
-      serverHeaders: options.serverHeaders,
       request,
-      target,
+      target: resolveProxyTarget(options.target()),
     }),
   );
   server.on("connection", (socket) => {

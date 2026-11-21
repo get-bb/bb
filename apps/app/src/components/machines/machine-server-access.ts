@@ -3,17 +3,19 @@ import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 
 export const MACHINE_SERVER_ACCESS_TITLE = "Machines cannot reach this bb yet";
 
+type ServerAccessProvider = ServerAccessStatus["providers"][number];
+
+function providerReachable(provider: ServerAccessProvider): boolean {
+  if (!provider.enabled || provider.availability.status !== "available")
+    return false;
+  if (provider.urls.length === 0) return provider.pluginId !== null;
+  return provider.urls.some((url) => !isLocalOnlyUrl(url));
+}
+
 export function machineServerAccessReady(
   access: ServerAccessStatus | undefined,
 ): boolean {
-  if (access === undefined) return false;
-  const provider = access.providers.find(
-    (candidate) => candidate.id === access.defaultProviderId,
-  );
-  if (provider === undefined) return false;
-  if (access.defaultProviderId !== "direct")
-    return provider.availability?.status === "available";
-  return access.effectiveUrl !== null && !isLocalOnlyUrl(access.effectiveUrl);
+  return access !== undefined && access.providers.some(providerReachable);
 }
 
 export const MACHINE_SERVER_ACCESS_UNSET_REASON =
@@ -21,18 +23,12 @@ export const MACHINE_SERVER_ACCESS_UNSET_REASON =
 
 export function machineServerAccessBlockedReason(
   access: ServerAccessStatus | undefined,
-  providerId = access?.defaultProviderId,
 ): string | null {
   if (access === undefined) return MACHINE_SERVER_ACCESS_UNSET_REASON;
-  const selected = {
-    ...access,
-    defaultProviderId: providerId ?? access.defaultProviderId,
-  };
-  if (machineServerAccessReady(selected)) return null;
-  const availability = access.providers.find(
-    (provider) => provider.id === providerId,
-  )?.availability;
-  return availability && availability.status !== "available"
-    ? availability.message
-    : MACHINE_SERVER_ACCESS_UNSET_REASON;
+  if (machineServerAccessReady(access)) return null;
+  for (const provider of access.providers) {
+    if (provider.enabled && provider.availability.status !== "available")
+      return provider.availability.message;
+  }
+  return MACHINE_SERVER_ACCESS_UNSET_REASON;
 }

@@ -12,6 +12,7 @@ import {
   listStoredTurnCompletedKeys,
   replaceStoredProviderModelCatalog,
   updateHost,
+  upsertHostServerAccessGrant,
 } from "@bb/db";
 import {
   createHostJoinCodeResponseSchema,
@@ -117,12 +118,14 @@ describe("public host management", () => {
       const host = seedHost(harness.deps, { id: "host_reconnect" });
       harness.db
         .update(hosts)
-        .set({
-          serverAccessProviderId: "relay",
-          serverAccessGrantId: host.id,
-        })
+        .set({ serverAccessProviderId: "relay" })
         .where(eq(hosts.id, host.id))
         .run();
+      upsertHostServerAccessGrant(harness.db, {
+        hostId: host.id,
+        providerId: "relay",
+        grantId: host.id,
+      });
       let accessToken = "old-access";
       const release = vi.fn(async () => {
         accessToken = "new-access";
@@ -131,6 +134,7 @@ describe("public host management", () => {
         id: "relay",
         displayName: "Relay",
         description: "Test relay",
+        routeKind: "relay" as const,
         availability: () => ({ status: "available" as const }),
         acquire: async () => ({
           id: host.id,

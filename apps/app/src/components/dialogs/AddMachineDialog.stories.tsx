@@ -41,7 +41,7 @@ export function AccessGate() {
       </StoryRow>
       <StoryRow
         label="bb connect unpaired"
-        hint="default provider is setup-required — the primary action leaves for plugin settings"
+        hint="no route is ready — bb connect needs setup and links to its plugin settings"
       >
         <DialogStage>
           <MachineAccessGate state={{ status: "blocked" }}>
@@ -53,7 +53,7 @@ export function AccessGate() {
       </StoryRow>
       <StoryRow
         label="bb connect unavailable"
-        hint="paired once, now refused — a status line appears because there is a verdict to report"
+        hint="paired once, now refused — the route reports the provider's message"
       >
         <DialogStage>
           <MachineAccessGate state={{ status: "blocked" }}>
@@ -65,7 +65,7 @@ export function AccessGate() {
       </StoryRow>
       <StoryRow
         label="manual, no address"
-        hint="the direct provider with nothing saved — machines would have nothing to dial"
+        hint="bb connect off and no manual address — machines would have nothing to dial"
       >
         <DialogStage>
           <MachineAccessGate state={{ status: "blocked" }}>

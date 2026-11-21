@@ -25,6 +25,9 @@ import {
   createHostDaemonApp,
   loadHostIdentity,
   persistHostId,
+  persistServerRoutes,
+  readPersistedServerRoutes,
+  ServerRouteResolver,
   type HostDaemon,
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
@@ -496,7 +499,13 @@ async function startHarnessDaemon(
       localApiConfig: null,
       logger: testLogger,
       releaseLock,
-      serverUrl,
+      routes: new ServerRouteResolver({
+        anchorUrl: serverUrl,
+        anchorHeaders: {},
+        persisted: await readPersistedServerRoutes(dataDir, testLogger),
+        persist: persistServerRoutes(dataDir),
+        logger: testLogger,
+      }),
     });
     for (
       let attempt = 1;

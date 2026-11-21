@@ -10,7 +10,7 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
     seedHost(harness.deps, { id: "local" });
     setAppSettings(harness.db, {
       ...defaultAppSettings,
-      defaultMachineAccess: "direct",
+      serverAccessOrder: ["direct"],
       machineServerUrl: "https://machine.example.test",
     });
     const response = await harness.app.request("/api/v1/hosts", {
