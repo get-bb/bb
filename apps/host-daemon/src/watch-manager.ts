@@ -35,6 +35,7 @@ const LOCAL_WORKSPACE_WATCH_CHANGE_KINDS: readonly WorkspaceStatusWatchChangeKin
 interface WorkspaceWatchState {
   lastBranchName: string | null | undefined;
   lastDefaultBranch: string | null | undefined;
+  lastResolvedDefaultBranch: string | null | undefined;
   lastLocalFingerprint: string | null;
   lastSharedRefsFingerprint: string | null;
   lastBranchNamesFingerprint: string | null;
@@ -265,6 +266,7 @@ export class WatchManager {
         watchState: {
           lastBranchName: undefined,
           lastDefaultBranch: undefined,
+          lastResolvedDefaultBranch: undefined,
           lastLocalFingerprint: null,
           lastSharedRefsFingerprint: null,
           lastBranchNamesFingerprint: null,
@@ -470,15 +472,18 @@ export class WatchManager {
         : localGitChanged || entry.watchState.lastBranchName === undefined
           ? entry.workspace.getCurrentBranch()
           : entry.watchState.lastBranchName,
-      sharedRefs === undefined
-        ? entry.workspace.getDefaultBranch()
-        : sharedRefs.defaultBranch,
+      sharedRefs !== undefined
+        ? sharedRefs.defaultBranch
+        : entry.watchState.lastResolvedDefaultBranch !== undefined
+          ? entry.watchState.lastResolvedDefaultBranch
+          : entry.workspace.getDefaultBranch(),
     ]);
     const defaultBranch = resolvedDefaultBranch ?? branchName;
+    if (this.workspaceEntries.get(entry.target.environmentId) !== entry) return;
+    entry.watchState.lastResolvedDefaultBranch = resolvedDefaultBranch;
     if (
-      this.workspaceEntries.get(entry.target.environmentId) !== entry ||
-      (entry.watchState.lastBranchName === branchName &&
-        entry.watchState.lastDefaultBranch === defaultBranch)
+      entry.watchState.lastBranchName === branchName &&
+      entry.watchState.lastDefaultBranch === defaultBranch
     )
       return;
     entry.watchState.lastBranchName = branchName;
@@ -537,6 +542,7 @@ export class WatchManager {
     entry.workspace = workspace;
     entry.watchState.lastBranchName = branchName;
     entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
+    entry.watchState.lastResolvedDefaultBranch = resolvedDefaultBranch;
     entry.watchState.lastSharedRefsFingerprint = sharedRefs.fingerprintFor({
       branchName,
       mergeBaseBranch: entry.target.mergeBaseBranch,
