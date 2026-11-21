@@ -14,6 +14,7 @@ import type {
   ComponentType,
   CSSProperties,
   ReactNode,
+  RefCallback,
   RefObject,
 } from "react";
 import type {
@@ -2016,6 +2017,19 @@ export interface ExperimentalThreadContextSegmentProps extends ExperimentalThrea
   /** One segment of a thread's context row is expanded at a time. */
   isExpanded: boolean;
   onToggle(): void;
+  /**
+   * Attach to the control that expands this segment, usually a button in
+   * `summary`. When `onToggle` collapses the segment while focus is on its
+   * collapse control, bb moves focus here.
+   */
+  toggleRef: RefCallback<HTMLElement>;
+  /**
+   * Attach to the control in `details` that collapses this segment. When
+   * `onToggle` expands the segment while focus is on its toggle, bb moves
+   * focus here once `details` has rendered. A segment that attaches neither
+   * ref keeps focus where the browser leaves it.
+   */
+  collapseRef: RefCallback<HTMLElement>;
 }
 
 /**
@@ -6099,6 +6113,16 @@ export interface PluginSdkApp {
     readonly changes: "2_changes";
     readonly storage: "3_storage";
   };
+  /**
+   * One thread of {@link PluginSdkApp.experimental_useSidebarThreads}, the
+   * same object that hook returns, or null when the sidebar does not hold it:
+   * an unknown, deleted or archived thread (archived threads appear only
+   * after an archived read loaded them), or any thread before the sidebar's
+   * first load. The component re-renders when this thread changes, not when
+   * other threads do. For a thread it returns null for, read
+   * `useSdk().threads.get`. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarThread(threadId: string): PluginSidebarThread | null;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.

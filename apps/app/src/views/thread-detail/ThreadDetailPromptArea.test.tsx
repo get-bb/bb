@@ -173,7 +173,6 @@ function buildPromptAreaElement({
         providerCommands={null}
         sessionOptions={sessionOptions}
         modelFallback={modelFallback}
-        parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={queuedMessageCount}
         pendingTodos={null}

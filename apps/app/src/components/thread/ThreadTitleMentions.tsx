@@ -739,6 +739,21 @@ export function resolveSerializedPromptMentions(
   return mentions;
 }
 
+function hasTitleMentionToken(title: string): boolean {
+  TITLE_MENTION_PATTERN.lastIndex = 0;
+  const found = TITLE_MENTION_PATTERN.test(title);
+  TITLE_MENTION_PATTERN.lastIndex = 0;
+  return found;
+}
+
+export function useThreadTitleMentionResourcesFor(
+  title: string,
+): ThreadTitleMentionResources {
+  return hasTitleMentionToken(title)
+    ? use(ThreadTitleMentionResourcesContext)
+    : EMPTY_TITLE_MENTION_RESOURCES;
+}
+
 export function resolveThreadTitleDisplayText(
   title: string,
   resources: ThreadTitleMentionResources,

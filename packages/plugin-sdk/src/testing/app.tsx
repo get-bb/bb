@@ -106,6 +106,7 @@ import {
   type PluginSidebarThreadShortcut,
   type PluginSidebarThreadSplit,
   type PluginProvidersState,
+  type PluginSidebarThread,
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type ExperimentalThreadContextSegmentRegistration,
@@ -1927,6 +1928,13 @@ const testPluginSdkApp = {
   experimental_InfoListRow: TestInfoListRow,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
+  },
+  experimental_useSidebarThread(threadId): PluginSidebarThread | null {
+    return (
+      useSlotEnv("experimental_useSidebarThread").sidebarThreads.threads.find(
+        (thread) => thread.id === threadId,
+      ) ?? null
+    );
   },
   experimental_useProviders(): PluginProvidersState {
     return useSlotEnv("experimental_useProviders").providers;

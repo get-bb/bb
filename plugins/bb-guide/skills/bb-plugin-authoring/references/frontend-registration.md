@@ -211,6 +211,23 @@ below it. Props carry `threadId`, `projectId`, `environment` (null without a
 usable environment), the visible `segments`
 as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
 `bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
+bb moves keyboard focus for that disclosure: attach `toggleRef` to the expand
+control and `collapseRef` to the collapse control in `details`, and bb focuses
+the collapse control on expand and the toggle on collapse, but only when focus
+was on one of them. Don't write your own focus handoff:
+
+```tsx
+function Summary({ isExpanded, onToggle, toggleRef }: ExperimentalThreadContextSegmentProps) {
+  return <button ref={toggleRef} aria-expanded={isExpanded} onClick={onToggle}>Deploy</button>;
+}
+function Details({ isExpanded, onToggle, collapseRef }: ExperimentalThreadContextSegmentProps) {
+  return isExpanded ? <button ref={collapseRef} onClick={onToggle}>Collapse deploy</button> : null;
+}
+```
+
+For data about the segment's thread or a related thread (its parent, a fork
+source), read `experimental_useSidebarThread(id)` rather than searching
+`experimental_useSidebarThreads()`.
 `useVisible(input)` false leaves it out. A segment whose content is also a
 thread context card row or section hides itself while
 `experimental_useThreadContextKind()` is `card`; see
@@ -415,6 +432,13 @@ const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcu
 const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
 const rowStatuses = useSidebarThreadRowStatuses(); // ReadonlyMap, for group rollups
 const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, threadId, isFocused }] } | null
+
+// A single thread by id, without re-rendering when other threads change (use it
+// instead of threads.find in rows, banners, and segments). It returns the same
+// object as the list, or null for a thread the sidebar does not hold: unknown,
+// deleted, archived (until an archived read loads it), or before the first
+// load. Read useSdk().threads.get for those:
+const parent = experimental_useSidebarThread(thread.parentThreadId ?? "");
 // projects: PluginSidebarProject[] — { id, name, isPersonal, href, settingsHref }
 
 // Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`

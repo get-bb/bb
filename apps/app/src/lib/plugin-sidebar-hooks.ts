@@ -22,6 +22,7 @@ import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/comp
 import {
   resolveThreadTitleDisplayText,
   useThreadTitleMentionResources,
+  useThreadTitleMentionResourcesFor,
   type ThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import { getThreadDisplayTitle } from "./thread-title";
@@ -36,7 +37,7 @@ import {
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRetiredSidebarEnvironmentPullRequest } from "./retired-sidebar-pull-request";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { useHostName, useHosts } from "@/hooks/queries/host-queries";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
@@ -214,6 +215,25 @@ export function useSidebarThreads(
     archived.data,
     archiveState,
   ]);
+}
+
+export function useSidebarThread(threadId: string): PluginSidebarThread | null {
+  const entry = useSidebarThreadEntry(threadId);
+  const hostId = entry?.environmentHostId ?? null;
+  const hostName = useHostName(hostId);
+  const hostNamesById = useMemo(
+    () =>
+      hostId === null || hostName === null
+        ? EMPTY_HOST_NAMES
+        : new Map([[hostId, hostName]]),
+    [hostId, hostName],
+  );
+  const titleResources = useThreadTitleMentionResourcesFor(
+    entry === null ? "" : getThreadDisplayTitle(entry),
+  );
+  return entry === null
+    ? null
+    : toPluginSidebarThreadCached(entry, hostNamesById, titleResources);
 }
 
 export function useSidebarThreadActions(): PluginSidebarThreadActions {

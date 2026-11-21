@@ -3,6 +3,7 @@
 import {
   act,
   cleanup,
+  render,
   renderHook as renderHookBase,
 } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
@@ -11,6 +12,7 @@ import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
+  useSidebarThread,
   useSidebarThreadActions,
   useSidebarThreadDraft,
   useSidebarThreadDraftIds,
@@ -26,8 +28,11 @@ import {
 import { useEnvironmentProviders } from "./plugin-sdk-hooks";
 import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarThreadShortcuts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import { useSidebarThreadEntries } from "./sidebar-thread-entries";
 
 const renderHook: typeof renderHookBase = (callback, options) => {
   const queryClient = new QueryClient();
@@ -96,7 +101,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 
 vi.mock("@/hooks/queries/host-queries", () => {
   const hosts: never[] = [];
-  return { useHosts: () => ({ data: hosts }) };
+  return { useHosts: () => ({ data: hosts }), useHostName: () => null };
 });
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
@@ -168,6 +173,8 @@ vi.mock("@/hooks/usePromptDraftStorage", async () => {
   };
 });
 
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
+
 function payload(threads: ThreadListEntry[], sections: SidebarSection[] = []) {
   return {
     sections,
@@ -225,6 +232,108 @@ describe("useSidebarThreads", () => {
     second.rerender();
     expect(first.result.current.threads[0]).toBe(before);
     expect(second.result.current.threads[0]).toBe(before);
+  });
+});
+
+describe("useSidebarThread", () => {
+  it("re-renders for its own thread and the threads its title mentions only", async () => {
+    const watched = makeThreadListEntry({
+      id: "thr_watched",
+      title: "Watched",
+    });
+    const other = makeThreadListEntry({ id: "thr_other", title: "Other" });
+    const mentioning = makeThreadListEntry({
+      id: "thr_mentioning",
+      title: "Follow up @thread:thr_other",
+    });
+    const queryClient = new QueryClient();
+    const renders = { watched: 0, mentioning: 0, list: 0 };
+    const seen: Record<string, PluginSidebarThread | null | undefined> = {};
+    let publish: (threads: ThreadListEntry[]) => void = () => {};
+    const Watched = memo(function Watched() {
+      renders.watched += 1;
+      seen.watched = useSidebarThread("thr_watched");
+      return null;
+    });
+    const Mentioning = memo(function Mentioning() {
+      renders.mentioning += 1;
+      seen.mentioning = useSidebarThread("thr_mentioning");
+      return null;
+    });
+    function FromList() {
+      seen.fromList = useSidebarThreads().threads.find(
+        (thread) => thread.id === "thr_watched",
+      );
+      return null;
+    }
+    function WholeList() {
+      renders.list += 1;
+      useSidebarThreadEntries();
+      return null;
+    }
+    function Tree() {
+      const [threads, setThreads] = useState([watched, other, mentioning]);
+      publish = (next) => {
+        state.data = payload(next);
+        queryClient.setQueryData(sidebarNavigationQueryKey(), state.data);
+        setThreads(next);
+      };
+      const threadById = useMemo(
+        () => new Map(threads.map((thread) => [thread.id, thread])),
+        [threads],
+      );
+      return (
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={NO_NAMES}
+          projectNamesById={NO_NAMES}
+          threadById={threadById}
+        >
+          <Watched />
+          <Mentioning />
+          <FromList />
+          <WholeList />
+        </ThreadTitleMentionResourcesProvider>
+      );
+    }
+    state.data = payload([watched, other, mentioning]);
+    queryClient.setQueryData(sidebarNavigationQueryKey(), state.data);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Tree />
+      </QueryClientProvider>,
+    );
+    expect(seen.watched).toBe(seen.fromList);
+    expect(seen.mentioning?.displayTitle).toBe("Follow up Other");
+    const before = { ...renders };
+
+    await act(async () => {
+      publish([
+        watched,
+        makeThreadListEntry({ id: "thr_other", title: "Renamed" }),
+        mentioning,
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(renders.list).toBeGreaterThan(before.list);
+    expect(renders.watched).toBe(before.watched);
+    expect(seen.mentioning?.displayTitle).toBe("Follow up Renamed");
+
+    await act(async () => {
+      publish([
+        makeThreadListEntry({ id: "thr_watched", title: "Watched again" }),
+        makeThreadListEntry({ id: "thr_other", title: "Renamed" }),
+        mentioning,
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(renders.watched).toBe(before.watched + 1);
+    expect(seen.watched?.title).toBe("Watched again");
+  });
+
+  it("returns null for a thread the sidebar does not hold", () => {
+    state.data = payload([makeThreadListEntry({ id: "thr_known" })]);
+    const { result } = renderHook(() => useSidebarThread("thr_archived"));
+    expect(result.current).toBeNull();
   });
 });
 
