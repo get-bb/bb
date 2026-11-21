@@ -507,7 +507,10 @@ describe("listTaskTiming", () => {
       prefix: "TST",
       color: "blue",
     });
-    const task = store.tasks.createTask({ projectId: project.id, title: "Test" });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Test",
+    });
     for (const threadId of ["thr_root", "thr_deleted"]) {
       store.tasks.upsertTaskThread({
         taskId: task.id,
@@ -520,7 +523,9 @@ describe("listTaskTiming", () => {
     const result = tasksRpcContract.listTaskTiming.output.parse(
       await harness.callRpc("listTaskTiming", { projectId: project.id }),
     );
-    expect(result.timings).toEqual([{ taskId: task.id, start: 100, working: true }]);
+    expect(result.timings).toEqual([
+      { taskId: task.id, start: 100, working: true },
+    ]);
     expect(calls).toEqual([200, 3]);
   });
 });

@@ -205,12 +205,7 @@ const demoTasks = [
 
 describe("taskMatches", () => {
   it.each<[string, Partial<TaskMatchCriteria>, Partial<Task>, boolean]>([
-    [
-      "passes an unfiltered task",
-      {},
-      {},
-      true,
-    ],
+    ["passes an unfiltered task", {}, {}, true],
     [
       "finds a task by key search",
       { search: "demo-9" },
@@ -266,9 +261,9 @@ describe("taskMatches", () => {
       false,
     ],
   ])("%s", (_name, criteriaOverrides, taskOverrides, expected) => {
-    expect(taskMatches(demoTask(9, taskOverrides), criteria(criteriaOverrides))).toBe(
-      expected,
-    );
+    expect(
+      taskMatches(demoTask(9, taskOverrides), criteria(criteriaOverrides)),
+    ).toBe(expected);
   });
 
   it.each<[string, ReadonlySet<string>, boolean]>([
@@ -288,16 +283,20 @@ describe("visible task tree", () => {
   it.each([
     ["search", criteria({ search: "palette" }), true],
     ["status filter", criteria({ statuses: ["done"] }), true],
-    ["active filter", criteria({ activeIds: new Set([demoChildPalette.id]) }), true],
+    [
+      "active filter",
+      criteria({ activeIds: new Set([demoChildPalette.id]) }),
+      true,
+    ],
     ["no filter", criteria(), false],
   ] as const)("respects saved collapse with %s", (_name, match, expected) => {
     const visible = visibleChildrenByParent(all, match, "manual");
     const collapsed = [demoParent.id];
     const open = parentIsOpen(demoParent.id, collapsed, match, visible);
     expect(open).toBe(expected);
-    expect(open ? visible.get(demoParent.id)?.map((child) => child.id) : []).toEqual(
-      expected ? [demoChildPalette.id] : [],
-    );
+    expect(
+      open ? visible.get(demoParent.id)?.map((child) => child.id) : [],
+    ).toEqual(expected ? [demoChildPalette.id] : []);
     expect(collapsed).toEqual([demoParent.id]);
   });
 
@@ -374,7 +373,12 @@ describe("visible task tree", () => {
 describe("list counts", () => {
   it.each<[string, TaskMatchCriteria, number, number]>([
     ["counts tasks and sub-tasks separately", criteria(), 2, 3],
-    ["narrows both counts to matches while searching", criteria({ search: "palette" }), 0, 1],
+    [
+      "narrows both counts to matches while searching",
+      criteria({ search: "palette" }),
+      0,
+      1,
+    ],
   ])("%s", (_name, criteria, tasks, subTasks) => {
     const all = childrenByParent(demoTasks);
     const display = displayRows([demoParent, demoOther], criteria, all);
@@ -390,16 +394,46 @@ describe("list counts", () => {
 });
 
 describe("subTaskTotals", () => {
-  const activeChild = demoTask(6, { parentTaskId: demoParent.id, status: "in_progress" });
-  it.each<[string, Task[], TaskMatchCriteria, { done: number; total: number }]>([
-    ["excludes canceled sub-tasks from the done/total count", demoTasks.slice(2), criteria(), { done: 1, total: 2 }],
-    ["returns zero for no sub-tasks", [], criteria(), { done: 0, total: 0 }],
-    ["counts only non-canceled done sub-tasks", [demoChildCanceled, demoChildPalette], criteria(), { done: 1, total: 1 }],
-    ["counts all non-canceled children in active view", [...demoTasks.slice(2), activeChild], criteria({ activeIds: new Set([activeChild.id]) }), { done: 1, total: 3 }],
-    ["counts all non-canceled children under a filter", [...demoTasks.slice(2), activeChild], criteria({ search: "palette" }), { done: 1, total: 3 }],
-  ])("%s", (_name, children, match, expected) => {
-    const { visible, totals } = childrenForList(childrenByParent(children), match, "manual");
-    if (match.activeIds || match.search) expect(visible.get(demoParent.id)).toHaveLength(1);
+  const activeChild = demoTask(6, {
+    parentTaskId: demoParent.id,
+    status: "in_progress",
+  });
+  it.each<[string, Task[], TaskMatchCriteria, { done: number; total: number }]>(
+    [
+      [
+        "excludes canceled sub-tasks from the done/total count",
+        demoTasks.slice(2),
+        criteria(),
+        { done: 1, total: 2 },
+      ],
+      ["returns zero for no sub-tasks", [], criteria(), { done: 0, total: 0 }],
+      [
+        "counts only non-canceled done sub-tasks",
+        [demoChildCanceled, demoChildPalette],
+        criteria(),
+        { done: 1, total: 1 },
+      ],
+      [
+        "counts all non-canceled children in active view",
+        [...demoTasks.slice(2), activeChild],
+        criteria({ activeIds: new Set([activeChild.id]) }),
+        { done: 1, total: 3 },
+      ],
+      [
+        "counts all non-canceled children under a filter",
+        [...demoTasks.slice(2), activeChild],
+        criteria({ search: "palette" }),
+        { done: 1, total: 3 },
+      ],
+    ],
+  )("%s", (_name, children, match, expected) => {
+    const { visible, totals } = childrenForList(
+      childrenByParent(children),
+      match,
+      "manual",
+    );
+    if (match.activeIds || match.search)
+      expect(visible.get(demoParent.id)).toHaveLength(1);
     expect(totals.get(demoParent.id) ?? subTaskTotals([])).toEqual(expected);
   });
 });
@@ -424,7 +458,11 @@ describe("active view rows", () => {
     const active = criteria({
       activeIds: new Set([child.id, solo.id]),
     });
-    const rows = displayRows(activeTopRows([child, solo], [parent, child, solo, idle]), active, all);
+    const rows = displayRows(
+      activeTopRows([child, solo], [parent, child, solo, idle]),
+      active,
+      all,
+    );
     expect(rows.map((task) => task.id)).toEqual([solo.id, parent.id]);
     expect(rows.map((task) => taskMatches(task, active))).toEqual([
       true,

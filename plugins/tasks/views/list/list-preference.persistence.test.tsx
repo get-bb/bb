@@ -524,9 +524,13 @@ describe("list filter/sort preference persistence", () => {
         },
       }),
     );
-    const slot = renderSlot(app.navPanels[0]!, { subPath: PROJECT_A }, {
-      rpc: baseRpc(),
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_A },
+      {
+        rpc: baseRpc(),
+      },
+    );
     await slot.findByRole("button", { name: /^Label/ });
     expect(slot.getByRole("button", { name: /^Label/ }).textContent).toContain(
       "DeletedLabel",

@@ -181,14 +181,13 @@ export function parentIsOpen(
     criteria.priorities.length > 0 ||
     criteria.labelIds !== null ||
     criteria.activeIds !== null;
-  return !collapsed.includes(parentId) ||
-    (filtering && (visibleChildren.get(parentId)?.length ?? 0) > 0);
+  return (
+    !collapsed.includes(parentId) ||
+    (filtering && (visibleChildren.get(parentId)?.length ?? 0) > 0)
+  );
 }
 
-export function taskMatches(
-  task: Task,
-  criteria: TaskMatchCriteria,
-): boolean {
+export function taskMatches(task: Task, criteria: TaskMatchCriteria): boolean {
   return (
     (criteria.activeIds === null || criteria.activeIds.has(task.id)) &&
     matchesFilters(
@@ -263,9 +262,10 @@ export function displayRows(
   );
 }
 
-export function subTaskTotals(
-  children: readonly Task[],
-): { done: number; total: number } {
+export function subTaskTotals(children: readonly Task[]): {
+  done: number;
+  total: number;
+} {
   let done = 0;
   let total = 0;
   for (const child of children) {
@@ -299,7 +299,9 @@ export function listCounts(
   for (const task of rows) {
     subTasks += visibleChildrenByParent.get(task.id)?.length ?? 0;
   }
-  const matchingTasks = rows.filter((task) => taskMatches(task, criteria)).length;
+  const matchingTasks = rows.filter((task) =>
+    taskMatches(task, criteria),
+  ).length;
   const tasks = activeOnly ? matchingTasks + subTasks : matchingTasks;
   return { tasks, subTasks };
 }

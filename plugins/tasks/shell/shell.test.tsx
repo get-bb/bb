@@ -1,6 +1,12 @@
 import type { ExperimentalTabRegistration } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { labelsByProject, makeTask, rpcInput } from "../test-fixtures.js";
@@ -800,12 +806,14 @@ describe("tasks app shell", () => {
         return { tasks: [activeSolo, idleParent, activeChild] };
       },
     });
-    const navSlot = renderSlot(navigationRegistration, { subPath: "active" }, {
-      rpc,
-    });
-    const activeButton = (await navSlot.findByText("Active")).closest(
-      "button",
+    const navSlot = renderSlot(
+      navigationRegistration,
+      { subPath: "active" },
+      {
+        rpc,
+      },
     );
+    const activeButton = (await navSlot.findByText("Active")).closest("button");
     expect(activeButton).toBeTruthy();
     expect(await within(activeButton!).findByText("2")).toBeTruthy();
 

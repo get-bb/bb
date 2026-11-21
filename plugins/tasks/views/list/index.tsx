@@ -216,7 +216,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     [],
   );
   const rolledUpPendingThreads = (task: Task) => {
-    if (parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren)) return undefined;
+    if (parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren))
+      return undefined;
     const children = visibleChildren.get(task.id);
     if (children === undefined) return undefined;
     const pending: PendingThread[] = [];
@@ -311,7 +312,13 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       ? activeTopRows(tasksQuery.data, childrenQuery.data ?? [])
       : tasksQuery.data;
     return displayRows(rows, matchCriteria, allChildrenByParent);
-  }, [tasksQuery.data, childrenQuery.data, activeOnly, matchCriteria, allChildrenByParent]);
+  }, [
+    tasksQuery.data,
+    childrenQuery.data,
+    activeOnly,
+    matchCriteria,
+    allChildrenByParent,
+  ]);
   const counts = useMemo(
     () =>
       displayTasks === undefined
@@ -330,7 +337,8 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       groupTasksByStatus(sortTasks(displayTasks ?? [], sort)).map((group) => {
         let windowCount = group.tasks.length;
         for (const task of group.tasks) {
-          if (!parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren)) continue;
+          if (!parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren))
+            continue;
           windowCount += visibleChildren.get(task.id)?.length ?? 0;
         }
         return { ...group, count: group.tasks.length, windowCount };
@@ -456,7 +464,12 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         const parentVisible = index >= start && index < end;
         const children = visibleChildren.get(task.id);
         const totals = childTotals.get(task.id);
-        const open = parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren);
+        const open = parentIsOpen(
+          task.id,
+          collapsed,
+          matchCriteria,
+          visibleChildren,
+        );
         index += 1;
         if (parentVisible) {
           rows.push(
@@ -481,9 +494,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
             const childVisible = index >= start && index < end;
             index += 1;
             if (!childVisible) continue;
-            rows.push(
-              <SubTaskRow key={child.id} open {...rowProps(child)} />,
-            );
+            rows.push(<SubTaskRow key={child.id} open {...rowProps(child)} />);
           } else if (parentVisible) {
             rows.push(
               <SubTaskRow key={child.id} open={false} {...rowProps(child)} />,

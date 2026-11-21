@@ -58,7 +58,10 @@ function ActiveChip({
   }, [start]);
   if (threads.length === 0 && start === undefined) return null;
   return (
-    <span title={threads.length > 0 ? activeWorkLabel(threads) : undefined} className={RAIL_CHIP_CLASS}>
+    <span
+      title={threads.length > 0 ? activeWorkLabel(threads) : undefined}
+      className={RAIL_CHIP_CLASS}
+    >
       <span
         aria-hidden
         className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
@@ -133,7 +136,13 @@ interface TaskRowProps {
   task: Task;
   timing?: { start: number; working: boolean };
   child?: boolean;
-  subTasks?: { done: number; total: number; open: boolean; disabled: boolean; toggle: () => void };
+  subTasks?: {
+    done: number;
+    total: number;
+    open: boolean;
+    disabled: boolean;
+    toggle: () => void;
+  };
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -312,7 +321,9 @@ export const TaskRow = memo(function TaskRow({
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
           <ActiveChip
             threads={meta?.activeThreads ?? []}
-            start={timing?.working && !needsYou?.length ? timing.start : undefined}
+            start={
+              timing?.working && !needsYou?.length ? timing.start : undefined
+            }
           />
           {needsYou !== undefined && needsYou.length > 0 ? (
             <button

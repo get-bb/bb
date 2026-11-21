@@ -189,29 +189,61 @@ describe("inline row editing", () => {
     });
     const slot = renderList([parent, child]);
     const row = await rowFor(slot, parent.key);
-    fireEvent.click(within(row).getByRole("button", { name: /Collapse sub-tasks/ }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /Collapse sub-tasks/ }),
+    );
     const saved = localStorage.getItem("bb-tasks:collapsed-subtasks");
-    fireEvent.change(slot.getByPlaceholderText("Search"), { target: { value: "palette" } });
-    await waitFor(() => expect(slot.container.querySelector(`[data-task-key="${child.key}"]`)?.closest('[aria-hidden="true"]')).toBeNull());
-    const forcedOpen = within(await rowFor(slot, parent.key)).getByRole("button", { name: /Collapse sub-tasks/ }) as HTMLButtonElement;
+    fireEvent.change(slot.getByPlaceholderText("Search"), {
+      target: { value: "palette" },
+    });
+    await waitFor(() =>
+      expect(
+        slot.container
+          .querySelector(`[data-task-key="${child.key}"]`)
+          ?.closest('[aria-hidden="true"]'),
+      ).toBeNull(),
+    );
+    const forcedOpen = within(await rowFor(slot, parent.key)).getByRole(
+      "button",
+      { name: /Collapse sub-tasks/ },
+    ) as HTMLButtonElement;
     expect(forcedOpen.disabled).toBe(true);
     fireEvent.click(forcedOpen);
     expect(localStorage.getItem("bb-tasks:collapsed-subtasks")).toBe(saved);
-    fireEvent.change(slot.getByPlaceholderText("Search"), { target: { value: "" } });
-    await waitFor(() => expect(slot.container.querySelector(`[data-task-key="${child.key}"]`)?.closest('[aria-hidden="true"][inert]')).toBeTruthy());
+    fireEvent.change(slot.getByPlaceholderText("Search"), {
+      target: { value: "" },
+    });
+    await waitFor(() =>
+      expect(
+        slot.container
+          .querySelector(`[data-task-key="${child.key}"]`)
+          ?.closest('[aria-hidden="true"][inert]'),
+      ).toBeTruthy(),
+    );
   });
 
   it("keeps status before the sub-task toggle in both states", async () => {
     const parent = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 });
-    const child = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT2", number: 2, parentTaskId: parent.id });
+    const child = task({
+      id: "01HZT1ZZZZZZZZZZZZZZZZZZT2",
+      number: 2,
+      parentTaskId: parent.id,
+    });
     const slot = renderList([parent, child], {
-      timings: [{ taskId: parent.id, start: Date.now() - 60_000, working: true }],
+      timings: [
+        { taskId: parent.id, start: Date.now() - 60_000, working: true },
+      ],
     });
     const row = await rowFor(slot, parent.key);
     for (const state of ["Collapse", "Expand"]) {
-      const toggle = within(row).getByRole("button", { name: new RegExp(`${state} sub-tasks`) });
+      const toggle = within(row).getByRole("button", {
+        name: new RegExp(`${state} sub-tasks`),
+      });
       const active = within(row).getByText(/^Active/);
-      expect(active.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        active.compareDocumentPosition(toggle) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       fireEvent.click(toggle);
     }
   });
@@ -392,14 +424,18 @@ describe("needs you label", () => {
           { taskId: item.id, start: Date.now() - 60_000, working: true },
         ],
         taskThreads: { [item.id]: [makeTaskThread("thr_wait", item.id)] },
-        sidebarThreads: [makeSidebarThread("thr_wait", { hasPendingInteraction: pending })],
+        sidebarThreads: [
+          makeSidebarThread("thr_wait", { hasPendingInteraction: pending }),
+        ],
       });
     const slot = render(true);
     const row = await rowFor(slot, item.key);
     expect(await within(row).findByText("Needs you")).toBeTruthy();
     expect(within(row).queryByText(/^1m \d+s$/)).toBeNull();
     fireEvent.click(
-      within(row).getByRole("button", { name: /Open the thread waiting on you/ }),
+      within(row).getByRole("button", {
+        name: /Open the thread waiting on you/,
+      }),
     );
     expect(slot.navigateCalls).toContainEqual({
       method: "toThread",
@@ -424,9 +460,9 @@ describe("needs you label", () => {
     const idle = render(false);
     await rowFor(idle, item.key);
     await waitFor(() =>
-      expect(
-        idle.rpcCalls.some((call) => call.method === "listAllTasks"),
-      ).toBe(true),
+      expect(idle.rpcCalls.some((call) => call.method === "listAllTasks")).toBe(
+        true,
+      ),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(
@@ -462,8 +498,13 @@ describe("needs you label", () => {
       within(row).getByRole("button", { name: /Collapse sub-tasks/ }),
     );
     const needsYou = await within(row).findByText("Needs you");
-    const toggle = within(row).getByRole("button", { name: /Expand sub-tasks/ });
-    expect(needsYou.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const toggle = within(row).getByRole("button", {
+      name: /Expand sub-tasks/,
+    });
+    expect(
+      needsYou.compareDocumentPosition(toggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("keeps a pending sub-task's label on its own row while the parent is expanded", async () => {
@@ -520,7 +561,9 @@ describe("needs you label", () => {
 
 describe("list search and key column", () => {
   it("keeps the task count visible while the filter strip scrolls", async () => {
-    const slot = renderList([task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 })]);
+    const slot = renderList([
+      task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1 }),
+    ]);
     const priority = await slot.findByRole("button", { name: "Priority" });
     const count = await slot.findByText("1 task");
     expect(priority.className).toContain("shrink-0");
@@ -548,12 +591,28 @@ describe("list search and key column", () => {
   });
 
   it("dims a context parent but not its matching child", async () => {
-    const parent = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT1", number: 1, title: "Parent" });
-    const child = task({ id: "01HZT1ZZZZZZZZZZZZZZZZZZT2", number: 2, parentTaskId: parent.id, title: "Needle" });
+    const parent = task({
+      id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
+      number: 1,
+      title: "Parent",
+    });
+    const child = task({
+      id: "01HZT1ZZZZZZZZZZZZZZZZZZT2",
+      number: 2,
+      parentTaskId: parent.id,
+      title: "Needle",
+    });
     const slot = renderList([parent, child]);
     await rowFor(slot, parent.key);
-    fireEvent.change(slot.getByRole("searchbox", { name: "Search tasks" }), { target: { value: "Needle" } });
-    await waitFor(() => expect(slot.container.querySelector(`[data-task-key="${parent.key}"]`)?.className).toContain("opacity-50"));
+    fireEvent.change(slot.getByRole("searchbox", { name: "Search tasks" }), {
+      target: { value: "Needle" },
+    });
+    await waitFor(() =>
+      expect(
+        slot.container.querySelector(`[data-task-key="${parent.key}"]`)
+          ?.className,
+      ).toContain("opacity-50"),
+    );
   });
 
   it("sizes the key column from the widest key per prefix across all loaded tasks", async () => {
