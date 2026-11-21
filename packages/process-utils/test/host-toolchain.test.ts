@@ -12,7 +12,7 @@ import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HostToolchain,
   execHostFile,
@@ -249,6 +249,47 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     expect(toolchain.environment().PATH?.split(delimiter)[0]).toBe(
       "/interactive-bin",
     );
+  });
+
+  it("probes the interactive shell again after a failure when only the login PATH was read", async () => {
+    const root = await scratch();
+    const shell = join(root, "shell");
+    const slow = join(root, "slow");
+    const calls = join(root, "calls");
+    await writeFile(slow, "");
+    await script(
+      shell,
+      `#!/bin/sh\nprintf x >> "${calls}"\nif [ "$1" = '-ilc' ] && [ -f "${slow}" ]; then exit 1; fi\nif [ "$1" = '-ilc' ]; then printf '__BB_SHELL_ENV_START__\\nPATH=/interactive-bin\\n__BB_SHELL_ENV_END__\\n'; else printf '__BB_SHELL_ENV_START__\\nPATH=/login-bin\\n__BB_SHELL_ENV_END__\\n'; fi\n`,
+    );
+    const toolchain = new HostToolchain({
+      HOME: root,
+      PATH: "/usr/bin:/bin",
+      SHELL: shell,
+    });
+    const firstPath = () => toolchain.environment().PATH?.split(delimiter)[0];
+    await toolchain.refresh();
+    expect(firstPath()).toBe("/login-bin");
+    await rm(slow);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now");
+    try {
+      toolchain.invalidateFailure(1);
+      expect(await readFile(calls, "utf8")).toBe("xx");
+      clock.mockReturnValue(now + 30_000);
+      toolchain.invalidateFailure(1);
+      for (
+        let tries = 0;
+        tries < 100 && firstPath() !== "/interactive-bin";
+        tries++
+      )
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(firstPath()).toBe("/interactive-bin");
+      clock.mockReturnValue(now + 60_000);
+      toolchain.invalidateFailure(1);
+      expect(await readFile(calls, "utf8")).toBe("xxx");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("does not block the caller while discovery runs", async () => {
