@@ -6138,8 +6138,11 @@ export interface PluginSdkApp {
    * One thread by id (see {@link ExperimentalThreadState}). A thread bb's
    * sidebar already holds is read from it with no request and re-renders the
    * component only when that thread changes. Any other thread, such as an
-   * archived one, is fetched once and then kept current. An empty `threadId`
-   * is `notFound` without a request. Experimental: see docs/api_to_audit.md.
+   * archived one, is fetched once and then kept current. A thread that leaves
+   * the sidebar while you watch it (archived, say) stays `ready` with its last
+   * sidebar value until that fetch answers. A thread deleted while you watch
+   * it becomes `notFound`. An empty `threadId` is `notFound` without a
+   * request. Experimental: see docs/api_to_audit.md.
    */
   experimental_useThread(threadId: string): ExperimentalThreadState;
   /**

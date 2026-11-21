@@ -6,7 +6,10 @@ import type { ExperimentalThreadState } from "@get-bb/plugin-sdk";
 import { memo } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
-import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import {
+  sidebarNavigationQueryKey,
+  threadQueryKey,
+} from "@/hooks/queries/query-keys";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { addSidebarThreads } from "@/test/fixtures/related-threads";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
@@ -26,9 +29,12 @@ function createQueryClient(): QueryClient {
 function renderStates(queryClient: QueryClient, threadIds: readonly string[]) {
   const seen = new Map<string, ExperimentalThreadState>();
   const renders = new Map<string, number>();
+  const history = new Map<string, string[]>();
   const Reader = memo(function Reader({ threadId }: { threadId: string }) {
     renders.set(threadId, (renders.get(threadId) ?? 0) + 1);
-    seen.set(threadId, useThreadState(threadId));
+    const state = useThreadState(threadId);
+    seen.set(threadId, state);
+    history.set(threadId, [...(history.get(threadId) ?? []), state.status]);
     return null;
   });
   render(
@@ -38,7 +44,7 @@ function renderStates(queryClient: QueryClient, threadIds: readonly string[]) {
       ))}
     </QueryClientProvider>,
   );
-  return { seen, renders };
+  return { seen, renders, history };
 }
 
 function httpError(status: number): BbHttpError {
@@ -159,6 +165,96 @@ describe("useThreadState", () => {
       expect(seen.get("thr_deleted")?.status).toBe("notFound");
       expect(seen.get("thr_broken")?.status).toBe("error");
     });
+  });
+
+  it("reads a fetched thread as not found once it is deleted while watched", async () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarBootstrapResponse(),
+    );
+    const get = vi
+      .spyOn(sdk.threads, "get")
+      .mockResolvedValue(
+        makeThreadResponse({ id: "thr_archived", archivedAt: 5 }),
+      );
+    const { seen } = renderStates(queryClient, ["thr_archived"]);
+    await waitFor(() => {
+      expect(seen.get("thr_archived")?.status).toBe("ready");
+    });
+
+    get.mockRejectedValue(httpError(404));
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: threadQueryKey("thr_archived"),
+      });
+    });
+    await waitFor(() => {
+      expect(seen.get("thr_archived")).toEqual({
+        status: "notFound",
+        thread: null,
+      });
+    });
+  });
+
+  it("reads thread data that carries deletedAt as not found", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarBootstrapResponse(),
+    );
+    queryClient.setQueryData(
+      threadQueryKey("thr_gone"),
+      makeThreadResponse({ id: "thr_gone", deletedAt: 9 }),
+    );
+    vi.spyOn(sdk.threads, "get").mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const { seen } = renderStates(queryClient, ["thr_gone"]);
+    expect(seen.get("thr_gone")).toEqual({ status: "notFound", thread: null });
+  });
+
+  it("keeps a thread that leaves the sidebar ready until its fetch answers", async () => {
+    const queryClient = createQueryClient();
+    addSidebarThreads(queryClient, "proj_1", [
+      makeThreadListEntry({ id: "thr_leaving", projectId: "proj_1" }),
+    ]);
+    let resolveFetch: (
+      thread: ReturnType<typeof makeThreadResponse>,
+    ) => void = () => {};
+    vi.spyOn(sdk.threads, "get").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { seen, history } = renderStates(queryClient, ["thr_leaving"]);
+
+    await act(async () => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarBootstrapResponse(),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(seen.get("thr_leaving")).toMatchObject({
+      status: "ready",
+      thread: { id: "thr_leaving", archivedAt: null },
+    });
+
+    await act(async () => {
+      resolveFetch(
+        makeThreadResponse({
+          id: "thr_leaving",
+          projectId: "proj_1",
+          archivedAt: 7,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(seen.get("thr_leaving")?.thread?.archivedAt).toBe(7);
+    });
+    expect(history.get("thr_leaving")).not.toContain("loading");
   });
 
   it("reports an empty id as not found without a request", () => {
