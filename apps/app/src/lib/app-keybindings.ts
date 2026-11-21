@@ -1,4 +1,9 @@
-import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
+import type {
+  AppCommandContext,
+  AppCommandContextKey,
+  AppKeybinding,
+  AppShortcut,
+} from "@bb/domain";
 import { isMacKeyboardPlatform } from "@bb/domain";
 
 export interface AppShortcutPresentation {
@@ -26,13 +31,46 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   );
 }
 
-export function matchesAppCommandContext(
-  binding: AppKeybinding,
+export function isTypeaheadKeyboardTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest('[role="menu"], [role="menubar"], [role="listbox"]') !== null
+  );
+}
+
+function isAppCommandContextActive(
+  binding: Pick<AppKeybinding, "command">,
   context: AppCommandContext,
+  pluginPageId: string | null,
+  key: AppCommandContextKey,
+): boolean {
+  if (key !== "pluginPage") return context[key];
+  return (
+    pluginPageId !== null &&
+    binding.command.startsWith(`plugin:${pluginPageId}/`)
+  );
+}
+
+export function isAppCommandWhenSatisfied(
+  binding: Pick<AppKeybinding, "command" | "when">,
+  context: AppCommandContext,
+  pluginPageId: string | null,
+): boolean {
+  return binding.when.all.every((key) =>
+    isAppCommandContextActive(binding, context, pluginPageId, key),
+  );
+}
+
+export function matchesAppCommandContext(
+  binding: Pick<AppKeybinding, "command" | "when">,
+  context: AppCommandContext,
+  pluginPageId: string | null,
 ): boolean {
   return (
-    binding.when.all.every((key) => context[key]) &&
-    binding.when.none.every((key) => !context[key])
+    isAppCommandWhenSatisfied(binding, context, pluginPageId) &&
+    binding.when.none.every(
+      (key) => !isAppCommandContextActive(binding, context, pluginPageId, key),
+    )
   );
 }
 

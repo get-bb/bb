@@ -55,6 +55,7 @@ import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { ExperimentalFilePreview } from "@/components/plugin/ExperimentalFilePreview";
 import { usePluginId } from "@/components/plugin/plugin-context";
+import { useExperimentalCommandShortcut } from "@/lib/plugin-command-shortcut";
 import { CollapsibleStackCard } from "@/components/promptbox/banner/CollapsibleStackCard";
 import { usePluginThreadExtensionState } from "@/components/plugin/usePluginThreadExtensionState";
 import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
@@ -189,6 +190,7 @@ export const pluginSdkAppImplementation = {
   experimental_VoiceRecordingBar: VoiceRecordingBar,
   experimental_FailedVoiceRecordings: FailedVoiceRecordings,
   experimental_ShortcutHint: AppCommandShortcutHint,
+  experimental_useCommandShortcut: useExperimentalCommandShortcut,
   experimental_matchesShortcutKey: matchesAppShortcutKey,
   experimental_sliceUtf16Head: sliceUtf16Head,
   experimental_ImageLightbox: ImageLightbox,

@@ -25,6 +25,7 @@ import { APP_COMMAND_GROUPS } from "@/lib/app-command-metadata";
 import {
   areAppShortcutsEqual,
   appShortcutFromInput,
+  allowsBareKeyShortcut,
   canAssignAppShortcut,
   getCommandShortcut,
   getShortcutConflicts,
@@ -72,6 +73,7 @@ function areNullableAppShortcutsEqual(
 }
 
 interface ShortcutRecorderProps {
+  allowsBareKey: boolean;
   label: string;
   command: KeyboardCommandId;
   disabled: boolean;
@@ -83,6 +85,7 @@ interface ShortcutRecorderProps {
 
 const ShortcutRecorder = memo(
   function ShortcutRecorder({
+    allowsBareKey,
     label,
     command,
     disabled,
@@ -111,7 +114,7 @@ const ShortcutRecorder = memo(
         setError("Press a non-modifier key.");
         return;
       }
-      if (!canAssignAppShortcut(command, next)) {
+      if (!canAssignAppShortcut(next, allowsBareKey)) {
         setError("Use Command, Control, or Alt with a key.");
         return;
       }
@@ -169,6 +172,7 @@ const ShortcutRecorder = memo(
   },
   function areShortcutRecorderPropsEqual(left, right) {
     return (
+      left.allowsBareKey === right.allowsBareKey &&
       left.label === right.label &&
       left.command === right.command &&
       left.disabled === right.disabled &&
@@ -191,6 +195,7 @@ interface KeyboardCommandRowProps {
 }
 
 interface KeyboardCommandRowModel {
+  allowsBareKey: boolean;
   availableOnClient: boolean;
   command: KeyboardCommandId;
   conflicts: readonly string[];
@@ -271,6 +276,7 @@ function buildKeyboardCommandRowModel({
     : [];
 
   return {
+    allowsBareKey: allowsBareKeyShortcut(defaults, command),
     availableOnClient,
     command,
     conflicts: conflicts.map((id) => labels.get(id) ?? id),
@@ -304,6 +310,7 @@ function areKeyboardCommandRowModelsEqual(
     left.label === right.label &&
     left.description === right.description &&
     areCommandListsEqual(left.defaultConflicts, right.defaultConflicts) &&
+    left.allowsBareKey === right.allowsBareKey &&
     left.availableOnClient === right.availableOnClient &&
     left.customized === right.customized &&
     left.desktopOnly === right.desktopOnly &&
@@ -420,6 +427,7 @@ const KeyboardCommandRow = memo(
         </div>
         <div className="flex shrink-0 items-start justify-end gap-1">
           <ShortcutRecorder
+            allowsBareKey={model.allowsBareKey}
             label={metadata.label}
             command={command}
             disabled={!availableOnClient}

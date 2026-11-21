@@ -63,9 +63,22 @@ export function areAppShortcutsEqual(
   );
 }
 
-export function canAssignAppShortcut(
+export function allowsBareKeyShortcut(
+  defaults: AppDefaultKeybindings,
   command: KeyboardCommandId,
+): boolean {
+  return (
+    QUESTION_COMMANDS.has(command) ||
+    defaults.some(
+      (binding) =>
+        binding.command === command && binding.when.all.includes("pluginPage"),
+    )
+  );
+}
+
+export function canAssignAppShortcut(
   shortcut: AppShortcut,
+  allowsBareKey: boolean,
 ): boolean {
   return (
     shortcut.mod ||
@@ -73,7 +86,7 @@ export function canAssignAppShortcut(
     shortcut.control ||
     shortcut.alt ||
     /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key) ||
-    QUESTION_COMMANDS.has(command)
+    allowsBareKey
   );
 }
 

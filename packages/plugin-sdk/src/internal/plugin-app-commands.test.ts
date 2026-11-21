@@ -56,6 +56,62 @@ describe("app.commands.register", () => {
     }
   });
 
+  it("accepts a bare-key default only under the plugin page key scope", () => {
+    const collect = (
+      registration: Pick<
+        PluginCommandRegistration,
+        "defaultShortcut" | "experimental_keyScope"
+      >,
+    ) =>
+      collectPluginAppRegistrations({
+        __bbPluginApp: true,
+        setup(app) {
+          app.commands.register({
+            id: "new-task",
+            title: "New task",
+            ...registration,
+            run() {},
+          });
+        },
+      }).commandPaletteActions[0];
+    expect(
+      collect({
+        defaultShortcut: { key: "c" },
+        experimental_keyScope: "pluginPage",
+      }),
+    ).toMatchObject({
+      defaultShortcut: { key: "c", mod: false, alt: false, shift: false },
+      experimental_keyScope: "pluginPage",
+    });
+    expect(
+      collect({
+        defaultShortcut: { key: "c", shift: true },
+        experimental_keyScope: "pluginPage",
+      })?.defaultShortcut,
+    ).toMatchObject({ key: "c", shift: true });
+    expect(
+      collect({ defaultShortcut: { key: "k", mod: true } }),
+    ).not.toHaveProperty("experimental_keyScope");
+    expect(() => collect({ defaultShortcut: { key: "c" } })).toThrow(
+      /experimental_keyScope: "pluginPage"/,
+    );
+    expect(() =>
+      collect({ defaultShortcut: { key: "c", shift: true } }),
+    ).toThrow(/experimental_keyScope/);
+    expect(() =>
+      collect({
+        defaultShortcut: { key: "Shift" },
+        experimental_keyScope: "pluginPage",
+      }),
+    ).toThrow();
+    expect(() =>
+      collect({
+        defaultShortcut: { key: "c" },
+        experimental_keyScope: "app" as "pluginPage",
+      }),
+    ).toThrow(/experimental_keyScope/);
+  });
+
   it.each(entryPoints)(
     "preserves callbacks through the %s entry point",
     async (entryPoint) => {
