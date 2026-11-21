@@ -226,13 +226,19 @@ export function buildSessionOptions(
 ): SdkSessionOptions {
   const systemPrompt: Exclude<Options["systemPrompt"], undefined> =
     params.instructionMode === "replace"
-      ? (params.baseInstructions ?? "You are a helpful coding assistant.")
+      ? {
+          type: "custom",
+          prompt:
+            params.baseInstructions ?? "You are a helpful coding assistant.",
+          snapshot: false,
+        }
       : {
           type: "preset",
           preset: "claude_code",
           ...(params.baseInstructions && params.baseInstructions.length > 0
             ? { append: params.baseInstructions }
             : {}),
+          snapshot: false,
         };
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
