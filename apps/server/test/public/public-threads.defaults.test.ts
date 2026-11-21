@@ -339,6 +339,93 @@ describe("public thread default routes", () => {
     });
   });
 
+  it("keeps a provider's remembered defaults after a thread on another provider", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: "codex",
+        models: [
+          availableModelFixture({ model: "gpt-5", reasoningLevels: ["high"] }),
+        ],
+      });
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: "claude-code",
+        models: [
+          availableModelFixture({
+            model: "claude-opus",
+            reasoningLevels: ["low"],
+          }),
+        ],
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-per-provider",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-defaults-per-provider",
+      });
+      const createThread = async (body: Record<string, unknown>) => {
+        const response = await harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "app",
+            projectId: project.id,
+            input: [{ type: "text", text: "Create" }],
+            environment: {
+              type: "host",
+              hostId: host.id,
+              workspace: { type: "unmanaged", path: null },
+            },
+            ...body,
+          }),
+        });
+        expect(response.status).toBe(201);
+        const thread = threadSchema.parse(await readJson(response));
+        return waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === thread.id,
+        );
+      };
+
+      await createThread({
+        providerId: "codex",
+        model: "gpt-5",
+        serviceTier: "fast",
+        reasoningLevel: "high",
+        permissionMode: "accept-edits",
+      });
+      await createThread({
+        providerId: "claude-code",
+        model: "claude-opus",
+        serviceTier: "default",
+        reasoningLevel: "low",
+        permissionMode: "full",
+      });
+      const codexStart = await createThread({
+        providerId: "codex",
+        environment: { type: "reuse", environmentId: environment.id },
+      });
+
+      expect(codexStart.command).toMatchObject({
+        options: {
+          model: "gpt-5",
+          serviceTier: "fast",
+          reasoningLevel: "high",
+          permissionMode: "accept-edits",
+        },
+      });
+      expect(
+        getProjectExecutionDefaults(harness.db, { projectId: project.id }),
+      ).toMatchObject({ providerId: "claude-code", model: "claude-opus" });
+    });
+  });
+
   it("uses the catalog isDefault model when provider and project defaults are omitted", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

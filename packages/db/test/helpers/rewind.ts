@@ -184,6 +184,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
@@ -216,6 +217,16 @@ export function dropEnvironmentHoldColumns(db: DbConnection): void {
 
 export function dropThreadSearchOrderIndex(db: DbConnection): void {
   db.$client.exec("DROP INDEX IF EXISTS `threads_search_order_idx`");
+}
+
+export function restoreProjectExecutionDefaultsProjectIndex(
+  db: DbConnection,
+): void {
+  db.$client.exec(`
+    DROP INDEX IF EXISTS project_execution_defaults_project_provider_idx;
+    CREATE UNIQUE INDEX IF NOT EXISTS project_execution_defaults_project_idx
+      ON project_execution_defaults (project_id);
+  `);
 }
 
 export function restoreDiffViewedFilesTable(db: DbConnection): void {

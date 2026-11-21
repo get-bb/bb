@@ -87,6 +87,7 @@ export function loadThreadExecutionDefaults(
     ),
     projectDefaults: getProjectExecutionDefaults(deps.db, {
       projectId: thread.projectId,
+      providerId: thread.providerId,
     }),
     providerId: thread.providerId,
   });
@@ -126,7 +127,7 @@ export function resolveProjectExecutionDefaultsForCreate(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveProjectExecutionDefaultsForCreateArgs,
 ): ResolvedProjectExecutionDefaultsForCreate {
-  const storedDefaults = getProjectExecutionDefaults(deps.db, {
+  const lastUsedDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: args.projectId,
   });
   const requestedProviderId = resolveRequestedCreateExecutionValue({
@@ -148,13 +149,20 @@ export function resolveProjectExecutionDefaultsForCreate(
         isSelectableProvider(deps.providerRegistry, parent.providerId)
           ? parent.providerId
           : undefined),
-      storedDefaults,
+      storedDefaults: lastUsedDefaults,
     });
+  const projectDefaults =
+    lastUsedDefaults === null || lastUsedDefaults.providerId === providerId
+      ? lastUsedDefaults
+      : getProjectExecutionDefaults(deps.db, {
+          projectId: args.projectId,
+          providerId,
+        });
 
   return {
     defaultModel: resolveThreadExecutionDefaults(deps.providerRegistry, {
       parent,
-      projectDefaults: storedDefaults,
+      projectDefaults,
       providerId,
     }).model,
     providerId,

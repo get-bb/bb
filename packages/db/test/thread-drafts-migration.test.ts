@@ -23,6 +23,7 @@ import {
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadSearchOrderIndex,
+  restoreProjectExecutionDefaultsProjectIndex,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
@@ -137,6 +138,7 @@ it.each([false, true])(
       dropQueuedMessageRecheckAtColumn(db);
       dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
+      restoreProjectExecutionDefaultsProjectIndex(db);
       dropThreadSearchOrderIndex(db);
       migrate(db);
       migrate(db);

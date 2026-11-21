@@ -1,0 +1,2 @@
+DROP INDEX `project_execution_defaults_project_idx`;--> statement-breakpoint
+CREATE UNIQUE INDEX `project_execution_defaults_project_provider_idx` ON `project_execution_defaults` (`project_id`,`provider_id`);

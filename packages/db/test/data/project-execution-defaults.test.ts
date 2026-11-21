@@ -3,6 +3,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import { deleteProject, createProject } from "../../src/data/projects.js";
 import {
   getProjectExecutionDefaults,
+  listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,
 } from "../../src/data/project-execution-defaults.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -121,6 +122,87 @@ describe("project-execution-defaults", () => {
       providerId: "claude-code",
       model: "claude-opus-4-1",
     });
+  });
+
+  it("keeps each provider's defaults when another provider is used", () => {
+    const { db, project } = setup();
+
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "claude-code",
+      model: "claude-opus-4-1",
+      reasoningLevel: "medium",
+      permissionMode: "auto",
+      serviceTier: "fast",
+    });
+
+    expect(
+      getProjectExecutionDefaults(db, {
+        projectId: project.id,
+        providerId: "codex",
+      }),
+    ).toEqual({
+      providerId: "codex",
+      model: "gpt-5",
+      reasoningLevel: "high",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    expect(
+      getProjectExecutionDefaults(db, {
+        projectId: project.id,
+        providerId: "claude-code",
+      }),
+    ).toMatchObject({ providerId: "claude-code", model: "claude-opus-4-1" });
+    expect(
+      getProjectExecutionDefaults(db, {
+        projectId: project.id,
+        providerId: "pi",
+      }),
+    ).toBeNull();
+  });
+
+  it("reports the most recently used provider when no provider is given", () => {
+    const { db, project } = setup();
+    const defaults = {
+      model: "model",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    } as const;
+
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "codex",
+      ...defaults,
+    });
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "claude-code",
+      ...defaults,
+    });
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "codex",
+      ...defaults,
+    });
+
+    expect(
+      getProjectExecutionDefaults(db, { projectId: project.id }),
+    ).toMatchObject({ providerId: "codex" });
+    expect(
+      listProjectExecutionDefaultsByProjectIds(db, {
+        projectIds: [project.id],
+      }).get(project.id),
+    ).toMatchObject({ providerId: "codex" });
   });
 
   it("deletes defaults when the project is deleted", () => {

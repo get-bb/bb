@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
   ProjectExecutionDefaults,
   PermissionMode,
@@ -10,13 +10,15 @@ import { projectExecutionDefaults } from "../schema.js";
 
 export interface GetProjectExecutionDefaultsArgs {
   projectId: string;
+  providerId?: string;
 }
 
 export interface ListProjectExecutionDefaultsByProjectIdsArgs {
   projectIds: readonly string[];
 }
 
-export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionDefaultsArgs {
+export interface UpsertProjectExecutionDefaultsArgs {
+  projectId: string;
   providerId: string;
   model: string;
   reasoningLevel: ReasoningLevel;
@@ -37,7 +39,16 @@ export function getProjectExecutionDefaults(
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
-    .where(eq(projectExecutionDefaults.projectId, args.projectId))
+    .where(
+      args.providerId === undefined
+        ? eq(projectExecutionDefaults.projectId, args.projectId)
+        : and(
+            eq(projectExecutionDefaults.projectId, args.projectId),
+            eq(projectExecutionDefaults.providerId, args.providerId),
+          ),
+    )
+    .orderBy(desc(projectExecutionDefaults.updatedAt), desc(sql`rowid`))
+    .limit(1)
     .get();
 
   return row ?? null;
@@ -63,6 +74,7 @@ export function listProjectExecutionDefaultsByProjectIds(
     })
     .from(projectExecutionDefaults)
     .where(inArray(projectExecutionDefaults.projectId, [...args.projectIds]))
+    .orderBy(asc(projectExecutionDefaults.updatedAt), asc(sql`rowid`))
     .all();
 
   for (const row of rows) {
@@ -76,37 +88,33 @@ export function upsertProjectExecutionDefaults(
   db: DbConnection,
   args: UpsertProjectExecutionDefaultsArgs,
 ): ProjectExecutionDefaults {
-  const updatedAt = Date.now();
-  const row = db
-    .insert(projectExecutionDefaults)
-    .values({
-      projectId: args.projectId,
-      providerId: args.providerId,
-      model: args.model,
-      reasoningLevel: args.reasoningLevel,
-      permissionMode: args.permissionMode,
-      serviceTier: args.serviceTier,
-      updatedAt,
-    })
-    .onConflictDoUpdate({
-      target: [projectExecutionDefaults.projectId],
-      set: {
+  return db.transaction((tx) => {
+    tx.delete(projectExecutionDefaults)
+      .where(
+        and(
+          eq(projectExecutionDefaults.projectId, args.projectId),
+          eq(projectExecutionDefaults.providerId, args.providerId),
+        ),
+      )
+      .run();
+    return tx
+      .insert(projectExecutionDefaults)
+      .values({
+        projectId: args.projectId,
         providerId: args.providerId,
         model: args.model,
         reasoningLevel: args.reasoningLevel,
         permissionMode: args.permissionMode,
         serviceTier: args.serviceTier,
-        updatedAt,
-      },
-    })
-    .returning({
-      providerId: projectExecutionDefaults.providerId,
-      model: projectExecutionDefaults.model,
-      reasoningLevel: projectExecutionDefaults.reasoningLevel,
-      permissionMode: projectExecutionDefaults.permissionMode,
-      serviceTier: projectExecutionDefaults.serviceTier,
-    })
-    .get();
-
-  return row;
+        updatedAt: Date.now(),
+      })
+      .returning({
+        providerId: projectExecutionDefaults.providerId,
+        model: projectExecutionDefaults.model,
+        reasoningLevel: projectExecutionDefaults.reasoningLevel,
+        permissionMode: projectExecutionDefaults.permissionMode,
+        serviceTier: projectExecutionDefaults.serviceTier,
+      })
+      .get();
+  });
 }

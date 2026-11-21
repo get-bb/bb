@@ -17,6 +17,7 @@ import {
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadSearchOrderIndex,
+  restoreProjectExecutionDefaultsProjectIndex,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
   restoreDiffViewedFilesTable,
@@ -380,6 +381,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropNewOnboardingExperimentColumn(db);
   dropSteerActiveThreadOnEnterColumn(db);
   dropOnboardingCompletedAtColumn(db);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
   db.$client.exec("DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`");
@@ -772,6 +774,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropQueuedMessageRecheckAtColumn(db);
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -829,6 +832,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   dropQueuedMessageRecheckAtColumn(db);
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -918,6 +922,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropQueuedMessageRecheckAtColumn(db);
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
@@ -1215,7 +1220,8 @@ function restorePre0022ThreadTypeSchema(db: DbConnection): void {
   db.$client.exec(`
     ALTER TABLE project_execution_defaults
       ADD COLUMN thread_type text DEFAULT 'standard' NOT NULL;
-    DROP INDEX project_execution_defaults_project_idx;
+    DROP INDEX IF EXISTS project_execution_defaults_project_provider_idx;
+    DROP INDEX IF EXISTS project_execution_defaults_project_idx;
     CREATE UNIQUE INDEX project_execution_defaults_project_thread_type_idx
       ON project_execution_defaults (project_id, thread_type);
     CREATE INDEX project_execution_defaults_project_idx
@@ -2727,6 +2733,7 @@ describe("migrate", () => {
       dropQueuedMessageRecheckAtColumn(db);
       dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
+      restoreProjectExecutionDefaultsProjectIndex(db);
       dropThreadSearchOrderIndex(db);
       restoreDiffViewedFilesTable(db);
       db.$client
@@ -3570,6 +3577,7 @@ describe("migrate", () => {
       dropQueuedMessageRecheckAtColumn(db);
       dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
+      restoreProjectExecutionDefaultsProjectIndex(db);
       dropThreadSearchOrderIndex(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
@@ -3994,6 +4002,7 @@ describe("migrate", () => {
       dropQueuedMessageRecheckAtColumn(db);
       dropForkHistoryCopyIndex(db);
       dropEnvironmentHoldColumns(db);
+      restoreProjectExecutionDefaultsProjectIndex(db);
       dropThreadSearchOrderIndex(db);
 
       expect(() => migrate(db)).not.toThrow();

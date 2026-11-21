@@ -79,7 +79,9 @@ Spawning:
     --source-seq-end <seq>         Fork after the source turn containing this event sequence
 
   Execution defaults resolve from explicit flags, live parent execution, and
-  remembered project defaults. With no remembered model, bb uses the explicitly
+  remembered project defaults. A project remembers the last app-created
+  options for each provider; with no provider requested, a new thread uses the
+  project's most recently used provider. With no remembered model, bb uses the explicitly
   requested provider or Codex and resolves its provider-reported default model
   on the target machine (or the first catalog model when none is marked). The product reasoning and permission defaults are
   medium and auto.

@@ -8,6 +8,7 @@ import {
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
   dropThreadSearchOrderIndex,
+  restoreProjectExecutionDefaultsProjectIndex,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
 } from "./helpers/rewind.js";
@@ -27,6 +28,7 @@ function databaseBeforeHandoff(
   dropQueuedMessageRecheckAtColumn(db);
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
+  restoreProjectExecutionDefaultsProjectIndex(db);
   dropThreadSearchOrderIndex(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(
