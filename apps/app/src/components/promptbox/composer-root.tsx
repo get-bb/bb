@@ -18,9 +18,11 @@ import {
 import { PluginComposerCommands } from "@/components/plugin/PluginComposerCommands";
 import {
   APP_COMPOSER_SELECTOR,
-  composerOwnsCommand,
-  resolveComposerCommandScope,
-} from "@/lib/composer-command-ownership";
+  isActiveComposerShell,
+  registerActiveComposerCandidate,
+} from "@/lib/active-composer";
+import { useAppNavigationSurfaceId } from "@/lib/app-navigation-host";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -43,7 +45,7 @@ export interface ComposerRootHost {
     | ((layout: { height: number; isOpen: boolean }) => void)
     | null;
   runsPluginCommands: boolean;
-  isFocusedPane: boolean;
+  composerHost: PluginComposerHost | null;
 }
 
 export const ComposerRootHostContext = createContext<ComposerRootHost | null>(
@@ -100,8 +102,8 @@ export function ComposerRoot({
     );
   }
   const { key, registerEditor, attachEditor, onFocusCommand } = host;
-  const { runsPluginCommands } = host;
-  const { isFocusedPane } = host;
+  const { runsPluginCommands, composerHost } = host;
+  const surface = useAppNavigationSurfaceId();
   const editorRef = useRef(editor);
   useLayoutEffect(() => {
     editorRef.current = editor;
@@ -181,17 +183,23 @@ export function ComposerRoot({
     };
   }, [rootRef]);
 
-  const ownsTarget = (target: EventTarget | null) =>
-    composerOwnsCommand(
-      resolveComposerCommandScope({
-        composer: rootRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
-        target,
-        isFocusedPane,
+  useLayoutEffect(
+    () =>
+      registerActiveComposerCandidate({
+        shell: () => rootRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+        surface,
+        host: composerHost,
       }),
+    [composerHost, rootRef, surface],
+  );
+  const ownsCommand = (target: EventTarget | null) =>
+    isActiveComposerShell(
+      rootRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+      target,
     );
 
   return (
-    <ComposerCommandOwnerProvider value={ownsTarget}>
+    <ComposerCommandOwnerProvider value={ownsCommand}>
       {onFocusCommand !== undefined ? (
         <ComposerCommand command="composer.focus" run={onFocusCommand} />
       ) : null}

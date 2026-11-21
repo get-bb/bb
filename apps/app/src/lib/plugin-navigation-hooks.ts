@@ -42,6 +42,7 @@ import {
   createRetiredOpenPanel,
   withRetiredPanelAlias,
 } from "@/lib/plugin-panel-controller";
+import { getActiveComposerHandle } from "@/lib/active-composer";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
@@ -204,6 +205,7 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
         sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
         navigate: createBbNavigate(pluginId, host, () => latest.current),
         panel: createPluginPanelController(pluginId, () => host().panel),
+        composer: getActiveComposerHandle(pluginId),
       });
     return bindContext;
   });

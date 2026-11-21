@@ -225,6 +225,7 @@ function SidebarStateBridge({
       }
       framed={usesDesktopChrome}
       data-testid="app-layout-root"
+      data-app-shell=""
       open={open}
       onOpenChange={handleOpenChange}
     >

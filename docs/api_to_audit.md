@@ -439,6 +439,50 @@ Before stabilizing, remove the runtime `experimental_panel` alias once
 marketplace plugins have moved to `panel`, and decide whether `BbContext`
 should describe the invoking surface too.
 
+## `ExperimentalPluginActionContext.composer` and `experimental_useActiveComposer` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.177.
+
+`context.composer` is the composer a callback acts on: the handling composer
+for composer commands and menu rows, the message thread's composer for message
+actions (`PluginMessageActionContext` keeps its own meaning), and the focused
+surface's active composer, or null, for every other callback.
+`experimental_useActiveComposer()` returns that active composer to app-wide
+components such as overlays and plugin pages. The active composer is the one
+holding the caret. Focus that moves into an app-wide layer, meaning anything
+outside the app shell (`data-app-shell` on `AppLayout`'s `SidebarProvider`
+root: the command palette, dialogs, popovers, plugin overlays and
+content-script layers), does not count as leaving it. Failing that, it is the
+focused surface's first primary composer (`data-app-composer-role`); failing
+that, null. Handles are detached like `useComposers()` handles and name the
+same composer by `key`.
+
+Docs: `frontend-hooks-and-ui.md#callback-context` and the Plugin Guide's
+composer card.
+
+Core callers: `resolveActiveComposer` (`apps/app/src/lib/active-composer.ts`)
+is the only owner rule. `ComposerRoot` (`composer-root.tsx`) uses it for
+`composer.focus` and plugin composer commands, and `ModelReasoningPicker` uses
+it for the model picker toggle and cycle chords, replacing the per-composer DOM
+check in the deleted `composer-command-ownership.ts`.
+`usePluginActionContextBinder` reads it for `context.composer` and
+`useActiveComposer` (`plugin-sdk-hooks.ts`) for the hook. Keyboard and palette
+dispatch pass their event target, which the resolver reads in place of
+tracked focus. Contract test: `active-composer.test.tsx` checks that the hook,
+the palette's `context.composer` and `composer.focus` agree across caret, app
+layer, surface-focus and unmount cases.
+
+Plugin caller: Conductor's New chat transcript chips, replacing a
+`useComposers()` key match that never matched (the handle key is
+URI-encoded). Community callers that can migrate: brsbl desktop's
+library-bridge (needs Send to keep focus and a raised window to focus its
+composer; its body-level notes pads render outside bb's tree, so they can't
+call the hook), smsunarto vimium's `NavigationBridge`, and
+vburojevic floating-terminal's `pick()`.
+
+Before stabilizing, decide whether a pointerdown in an app-wide layer that
+moves no focus should keep the caret composer too; today it clears it.
+
 ## `BbContext.experimental_pluginPanel` (`@get-bb/plugin-sdk/app`)
 
 Requires SDK 0.6.167.

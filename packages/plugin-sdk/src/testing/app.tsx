@@ -1830,6 +1830,15 @@ const testPluginSdkApp = {
     );
     return composer.apiList;
   },
+  experimental_useActiveComposer(): PluginComposerApi | null {
+    const composer = useSlotEnv("experimental_useActiveComposer").composer;
+    useSyncExternalStore(
+      composer.subscribe,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
+    );
+    return composer.api;
+  },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_FileLink: TestFileLink,

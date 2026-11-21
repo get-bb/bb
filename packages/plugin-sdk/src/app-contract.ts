@@ -3643,6 +3643,18 @@ export interface ExperimentalPluginActionContext {
   navigate: BbNavigate;
   /** The side panel of the surface that invoked the callback. */
   panel: ExperimentalPanelController;
+  /**
+   * The composer this callback acts on, bound to this plugin like
+   * `useComposers()` handles. A composer command or menu item gets the
+   * handling composer; a message action gets the composer of the message's
+   * thread. Every other callback gets the focused surface's active composer:
+   * the one holding the caret, or the one that held it before focus moved into
+   * the command palette, a dialog, a popover or an overlay; otherwise the
+   * surface's main composer; otherwise null, as on a plugin page without a
+   * composer. Read in app-wide components with
+   * `experimental_useActiveComposer()`. Experimental: see docs/api_to_audit.md.
+   */
+  composer: PluginComposerApi | null;
 }
 
 /**
@@ -5925,6 +5937,18 @@ export interface PluginSdkApp {
    * changes.
    */
   useComposers(): readonly PluginComposerApi[];
+  /**
+   * The focused surface's active composer, the value plain commands read as
+   * `context.composer`: the composer holding the caret, or the one that held
+   * it before focus moved into the command palette, a dialog, a popover or an
+   * overlay; otherwise the surface's main composer; otherwise null. For
+   * app-wide components such as overlays and plugin pages; inside a composer
+   * slot use `useComposer()`. The handle names the same composer as the
+   * `useComposers()` entry with its `key`. The calling component re-renders
+   * when the active composer or its draft changes. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useActiveComposer(): PluginComposerApi | null;
   /**
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
    * Reads the host's own cache and realtime subscriptions, so it costs no
