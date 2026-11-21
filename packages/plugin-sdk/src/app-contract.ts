@@ -3597,8 +3597,14 @@ export interface ThreadChatMessageReference {
 /** Stable identity and creation time of one rendered conversation message. */
 export type ExperimentalMessageMetadataContext = Pick<
   ThreadChatMessageReference,
-  "id" | "threadId" | "experimental_messageSeq"
+  "id" | "threadId"
 > & {
+  /**
+   * The message's link sequence, the same value as
+   * `ThreadChatMessageReference.experimental_messageSeq`; pass it to
+   * `navigate.toThread` or `navigate.experimental_threadHref`.
+   */
+  messageSeq: number;
   /** Unix time in milliseconds, supplied by BB's timeline. */
   createdAt: number;
   /** The containing turn, or null for a message outside a turn. */
@@ -5592,14 +5598,14 @@ export interface BbNavigate {
    * split by default, focus when already open, replace at the pane cap) and
    * falls back to plain navigation where splits are off. Opening also expands
    * the thread's conversation if the side panel had collapsed it.
-   * `experimental_messageSeq` opens the thread at that message, as a message
+   * `messageSeq` opens the thread at that message, as a message
    * link does: bb loads older history as needed, scrolls to the message and
    * highlights it, or shows a "Message not found" toast. Repeating the call
    * reveals the message again.
    */
   toThread(
     threadId: string,
-    options?: { split?: boolean; experimental_messageSeq?: number },
+    options?: { split?: boolean; messageSeq?: number },
   ): void;
   toProject(projectId: string): void;
   /**
@@ -5671,7 +5677,7 @@ export interface BbNavigate {
   experimental_toSettings(target?: ExperimentalSettingsTarget): void;
   /**
    * The app-relative href of the location `toThread(threadId, options)`
-   * opens: the thread, or its message at `experimental_messageSeq`. When bb
+   * opens: the thread, or its message at `messageSeq`. When bb
    * has not loaded the thread's project, the href is `/threads/<id>`, which bb
    * redirects to the project route, keeping the message. Use it on an `<a>`:
    * bb routes a plain click in place, Cmd/Ctrl-click opens a split, and
@@ -5681,7 +5687,7 @@ export interface BbNavigate {
    */
   experimental_threadHref(
     threadId: string,
-    options?: { experimental_messageSeq?: number },
+    options?: { messageSeq?: number },
   ): string;
   /**
    * The app-relative href of the settings page `experimental_toSettings(target)`

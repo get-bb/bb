@@ -98,10 +98,10 @@ describe("useBbNavigate thread and settings locations", () => {
   it("opens a message link, and opening the same message again makes a new location so the reveal runs again", () => {
     const { navigate, locations } = renderNavigate();
     act(() => {
-      navigate().toThread("thr_target", { experimental_messageSeq: 42 });
+      navigate().toThread("thr_target", { messageSeq: 42 });
     });
     act(() => {
-      navigate().toThread("thr_target", { experimental_messageSeq: 42 });
+      navigate().toThread("thr_target", { messageSeq: 42 });
     });
     const opened = locations.slice(1);
     expect(opened.map(href)).toEqual([
@@ -111,7 +111,7 @@ describe("useBbNavigate thread and settings locations", () => {
     expect(opened[0]?.key).not.toBe(opened[1]?.key);
     expect(
       navigate().experimental_threadHref("thr_target", {
-        experimental_messageSeq: 42,
+        messageSeq: 42,
       }),
     ).toBe(href(opened[0]!));
   });
@@ -150,7 +150,7 @@ describe("useBbNavigate thread and settings locations", () => {
     act(() => {
       navigate().toThread("thr_target", {
         split: true,
-        experimental_messageSeq: 7,
+        messageSeq: 7,
       });
     });
     expect(locations.map(href).at(-1)).toBe(
@@ -163,7 +163,7 @@ describe("useBbNavigate thread and settings locations", () => {
     const { locations } = renderNavigate({
       renderLink: (navigate) =>
         navigate.experimental_threadHref("thr_unloaded", {
-          experimental_messageSeq: 3,
+          messageSeq: 3,
         }),
     });
     fireEvent.click(screen.getByRole("link", { name: "Plugin link" }));
@@ -175,12 +175,12 @@ describe("useBbNavigate thread and settings locations", () => {
     for (const messageSeq of [-1, 1.5, Number.NaN]) {
       expect(() =>
         navigate().toThread("thr_target", {
-          experimental_messageSeq: messageSeq,
+          messageSeq: messageSeq,
         }),
       ).toThrow(RangeError);
       expect(() =>
         navigate().experimental_threadHref("thr_target", {
-          experimental_messageSeq: messageSeq,
+          messageSeq: messageSeq,
         }),
       ).toThrow(RangeError);
     }

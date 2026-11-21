@@ -143,6 +143,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalSettingsSection,
   type ExperimentalSettingsTarget,
   type ExperimentalFilePreviewFile,
   type ExperimentalFilePreviewOptions,
@@ -476,6 +477,50 @@ export interface SidebarNavigationCall {
   itemIds?: string[];
   isVisible?: boolean;
   target?: ExperimentalSidebarNavigationTarget;
+}
+
+const SETTINGS_SECTIONS: Record<ExperimentalSettingsSection, true> = {
+  general: true,
+  providers: true,
+  "ai-services": true,
+  appearance: true,
+  keyboard: true,
+  browser: true,
+  files: true,
+  projects: true,
+  machines: true,
+  mobile: true,
+  "environment-variables": true,
+  updates: true,
+  plugins: true,
+  marketplaces: true,
+  experiments: true,
+  community: true,
+  archived: true,
+};
+
+function assertTestMessageSeq(messageSeq: number | undefined): void {
+  if (
+    messageSeq !== undefined &&
+    (!Number.isSafeInteger(messageSeq) || messageSeq < 0)
+  ) {
+    throw new RangeError(
+      `messageSeq must be a non-negative integer, got ${messageSeq}`,
+    );
+  }
+}
+
+function assertTestSettingsTarget(
+  target: ExperimentalSettingsTarget | undefined,
+): void {
+  if (
+    target !== undefined &&
+    !Object.hasOwn(SETTINGS_SECTIONS, target.section)
+  ) {
+    throw new RangeError(
+      `Unknown settings section "${String(target.section)}"`,
+    );
+  }
 }
 
 function TestSidebarNavigationIcon({
@@ -3156,6 +3201,7 @@ export function renderSlot<
     openThreadPanel(options: RetiredActionTabOpenOptions): boolean;
   } = {
     toThread(threadId, threadOptions) {
+      assertTestMessageSeq(threadOptions?.messageSeq);
       navigateCalls.push({
         method: "toThread",
         threadId,
@@ -3219,17 +3265,20 @@ export function renderSlot<
       return options.openTerminal?.(terminalOptions) ?? false;
     },
     experimental_toSettings(target) {
+      assertTestSettingsTarget(target);
       navigateCalls.push({
         method: "experimental_toSettings",
         ...(target !== undefined ? { target } : {}),
       });
     },
     experimental_threadHref(threadId, hrefOptions) {
-      const messageSeq = hrefOptions?.experimental_messageSeq;
+      const messageSeq = hrefOptions?.messageSeq;
+      assertTestMessageSeq(messageSeq);
       const path = `/threads/${threadId}`;
       return messageSeq === undefined ? path : `${path}#msg=${messageSeq}`;
     },
     experimental_settingsHref(target) {
+      assertTestSettingsTarget(target);
       if (target === undefined) {
         return `/settings/plugins/${encodeURIComponent(options.pluginId ?? "test-plugin")}`;
       }

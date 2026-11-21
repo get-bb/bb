@@ -110,7 +110,7 @@ function createBbNavigate(
   return {
     toThread(threadId, options) {
       const { isCompact, navigate, onNavigate, queryClient, store } = latest();
-      const messageSeq = options?.experimental_messageSeq;
+      const messageSeq = options?.messageSeq;
       if (messageSeq !== undefined) assertMessageSeq(messageSeq);
       onNavigate?.();
       const open = (projectId: string) => {
@@ -214,7 +214,7 @@ function createBbNavigate(
       void navigate(getSettingsTargetPath(settingsTarget(pluginId, target)));
     },
     experimental_threadHref(threadId, options) {
-      const messageSeq = options?.experimental_messageSeq;
+      const messageSeq = options?.messageSeq;
       if (messageSeq !== undefined) assertMessageSeq(messageSeq);
       const cached = lookupCachedThread(latest().queryClient, threadId);
       return getThreadLocationPath({
