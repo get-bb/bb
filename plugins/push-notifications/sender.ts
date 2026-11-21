@@ -601,6 +601,16 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
     if (parsed.data.errors && parsed.data.errors.length > 0) {
       const codes = parsed.data.errors.map((error) => error.code ?? "unknown");
+      if (batch.length > 1 && codes.includes("PUSH_TOO_MANY_EXPERIENCE_IDS")) {
+        let sentCount = 0;
+        let failure: string | null = null;
+        for (const smallerBatch of chunks(batch, Math.ceil(batch.length / 2))) {
+          const result = await sendBatch(smallerBatch);
+          sentCount += result.sentCount;
+          failure ??= result.failure;
+        }
+        return { sentCount, failure };
+      }
       bb.log.warn(
         `Expo push request was rejected with codes ${codes.join(", ")}`,
       );

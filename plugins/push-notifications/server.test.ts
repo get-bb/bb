@@ -5,6 +5,7 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { EnvHttpProxyAgent } from "undici";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
   listPushSubscriptionsOutputSchema,
@@ -850,6 +851,146 @@ describe("push sender", () => {
       await host.cleanup();
     }
   });
+
+  it("delivers alerts and dismissals across mixed Expo projects", async () => {
+    const tokens = [
+      "ExponentPushToken[development-one]",
+      "ExponentPushToken[production-one]",
+      "ExponentPushToken[development-two]",
+      "ExponentPushToken[production-two]",
+    ];
+    const projectByToken = new Map(
+      tokens.map((token, index) => [token, index % 2]),
+    );
+    const acceptedTokens: string[] = [];
+    const expo = createFakeExpo();
+    const host = await setup({
+      expo,
+      dismissReadNotifications: true,
+      fetch: async (url, init) => {
+        const batchTokens = z
+          .array(z.object({ to: z.string() }))
+          .parse(JSON.parse(init.body))
+          .map((message) => message.to);
+        if (
+          new Set(batchTokens.map((token) => projectByToken.get(token))).size >
+          1
+        ) {
+          return {
+            ok: false,
+            status: 400,
+            text: async () =>
+              JSON.stringify({
+                errors: [{ code: "PUSH_TOO_MANY_EXPERIENCE_IDS" }],
+              }),
+          };
+        }
+        acceptedTokens.push(...batchTokens);
+        return expo.fetch(url, init);
+      },
+    });
+    try {
+      for (const token of tokens) await host.addSubscription(token);
+      const thread = host.setThread();
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          title: "Cross-project delivery",
+          threadId: thread.id,
+        }),
+      ).resolves.toEqual({ ok: true, channels: ["web", "desktop", "mobile"] });
+      expect([...acceptedTokens].sort()).toEqual([...tokens].sort());
+      const status = await host.harness.behavior.runCli(["status", "--json"]);
+      expect(JSON.parse(status.stdout).lastSendOutcome).toMatchObject({
+        status: "sent",
+        sentCount: tokens.length,
+      });
+
+      acceptedTokens.length = 0;
+      expo.requests.length = 0;
+      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
+        thread: { ...thread, lastReadAt: 200 },
+      });
+      await vi.waitFor(() =>
+        expect([...acceptedTokens].sort()).toEqual([...tokens].sort()),
+      );
+      expect(expo.requests.flat()).toHaveLength(tokens.length);
+      expect(
+        expo.requests
+          .flat()
+          .every((message) => message.data.kind === "dismiss"),
+      ).toBe(true);
+      expo.ticketErrors.set(
+        "ExponentPushToken[production-one]",
+        "DeviceNotRegistered",
+      );
+      expo.ticketErrors.set(
+        "ExponentPushToken[development-two]",
+        "MessageRateExceeded",
+      );
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          title: "Partial",
+        }),
+      ).resolves.toEqual({ ok: true, channels: ["web", "desktop", "mobile"] });
+      const failedStatus = await host.harness.behavior.runCli([
+        "status",
+        "--json",
+      ]);
+      expect(JSON.parse(failedStatus.stdout).lastSendOutcome).toMatchObject({
+        status: "failed",
+        reason: "relay rejected one or more tickets",
+      });
+      const listed = listPushSubscriptionsOutputSchema.parse(
+        await host.harness.behavior.callRpc("pushSubscriptions.list", {}),
+      );
+      expect(
+        listed.subscriptions.map((subscription) => subscription.id),
+      ).toEqual(["subscription-1", "subscription-3", "subscription-4"]);
+      expect(JSON.stringify(host.harness.logEntries)).not.toContain(
+        "ExponentPushToken",
+      );
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it.each([
+    { code: "PUSH_TOO_MANY_EXPERIENCE_IDS", subscriptionCount: 1 },
+    { code: "TOO_MANY_REQUESTS", subscriptionCount: 2 },
+  ])(
+    "does not split $code for $subscriptionCount subscriptions",
+    async ({ code, subscriptionCount }) => {
+      let attempts = 0;
+      const host = await setup({
+        fetch: async () => {
+          attempts += 1;
+          return {
+            ok: false,
+            status: 400,
+            text: async () => JSON.stringify({ errors: [{ code }] }),
+          };
+        },
+      });
+      try {
+        for (let index = 0; index < subscriptionCount; index += 1) {
+          await host.addSubscription(`ExponentPushToken[device-${index}]`);
+        }
+        await expect(
+          host.harness.behavior.callRpc("notifications.send", {
+            title: "Rejected",
+          }),
+        ).resolves.toEqual({ ok: true, channels: ["web", "desktop"] });
+        expect(attempts).toBe(1);
+        const status = await host.harness.behavior.runCli(["status", "--json"]);
+        expect(JSON.parse(status.stdout).lastSendOutcome).toMatchObject({
+          status: "failed",
+          reason: "relay rejected the request",
+        });
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
 
   it("warns once per hour for network failures and logs only row ids", async () => {
     let now = 10_000;
