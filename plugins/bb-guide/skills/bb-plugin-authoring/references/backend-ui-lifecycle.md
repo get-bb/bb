@@ -50,15 +50,19 @@ retries the load.
 the plugin and its server entry has loaded. It does not run on update,
 reload, enable, or server restart, and not for bb's bundled plugins;
 reinstalling after removal runs it again. Use it for one-time setup the user
-would expect from installing, such as picking the plugin's thread list:
+would expect from installing, such as picking the plugin's thread list. Leave
+a pick the user already made alone (see frontend-registration.md, Exclusive
+slots):
 
 ```ts
 bb.onInstall(async () => {
   const { preferences } = await bb.sdk.system.uiPreferences.list();
+  const current = preferences["sidebar.threadListProvider"];
+  if (current === undefined || current.value !== "__automatic__") return;
   await bb.sdk.system.uiPreferences.set({
     key: "sidebar.threadListProvider",
     value: "my-plugin/inbox",
-    expectedRevision: preferences["sidebar.threadListProvider"].revision,
+    expectedRevision: current.revision,
   });
 });
 ```

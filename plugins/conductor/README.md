@@ -86,5 +86,5 @@ read; without either plugin those parts are simply left out. Which projects
 are expanded and the last chat opened in each workspace are kept in this
 browser's local storage.
 
-Switch back to bb's own list under Settings → Appearance → Sidebar, or disable
-the plugin.
+Switch back to bb's own list under Settings → Installed plugins → Plugin
+choices, or disable the plugin.

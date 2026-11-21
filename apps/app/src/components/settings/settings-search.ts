@@ -12,13 +12,14 @@ export type SettingsSearchCondition =
   | "composers"
   | "desktopBrowser"
   | "diffRenderers"
-  | "fileOpeners"
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "pluginChoices"
   | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
+  | "threadHeaderTitles"
   | "threadLists";
 
 interface SettingsSearchSetting {
@@ -153,31 +154,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
       { title: "Favicon color", keywords: ["icon", "tab"] },
       { title: "Fade inactive splits", keywords: ["dim", "panes", "focus"] },
       {
-        title: "Navigation",
-        keywords: ["sidebar", "rail", "top list", "layout", "labels", "plugin"],
-        when: "sidebarNavigations",
-      },
-      {
-        title: "Sidebar thread list",
-        keywords: ["threads", "plugin"],
-        when: "threadLists",
-      },
-      {
-        title: "Source code",
-        keywords: ["viewer", "renderer", "syntax highlighting", "files"],
-        when: "sourceCodeRenderers",
-      },
-      {
-        title: "Diffs",
-        keywords: ["renderer", "split", "unified"],
-        when: "diffRenderers",
-      },
-      {
-        title: "Composer",
-        keywords: ["prompt box", "input", "editor", "renderer", "plugin"],
-        when: "composers",
-      },
-      {
         title: "Sidebar footer",
         keywords: ["reorder", "buttons", "navigation"],
       },
@@ -203,11 +179,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
         title: "File preferences",
         keywords: ["editor", "directory default", "file default", "open with"],
         when: "filePreferences",
-      },
-      {
-        title: "File openers",
-        keywords: ["extensions", "file types", "viewer", "plugins"],
-        when: "fileOpeners",
       },
     ],
   },
@@ -246,7 +217,54 @@ export const SETTINGS_SEARCH_INDEX: Record<
   },
   plugins: {
     keywords: ["extensions", "manage", "uninstall"],
-    settings: [],
+    settings: [
+      {
+        title: "Plugin choices",
+        keywords: [
+          "file openers",
+          "extensions",
+          "file types",
+          "viewer",
+          "code blocks",
+          "code fences",
+          "directives",
+          "renderer",
+          "automatic",
+          "conflict",
+        ],
+        when: "pluginChoices",
+      },
+      {
+        title: "Navigation",
+        keywords: ["sidebar", "rail", "top list", "layout", "labels", "plugin"],
+        when: "sidebarNavigations",
+      },
+      {
+        title: "Sidebar thread list",
+        keywords: ["threads", "plugin"],
+        when: "threadLists",
+      },
+      {
+        title: "Composer",
+        keywords: ["prompt box", "input", "editor", "renderer", "plugin"],
+        when: "composers",
+      },
+      {
+        title: "Thread header title",
+        keywords: ["thread title", "header", "plugin"],
+        when: "threadHeaderTitles",
+      },
+      {
+        title: "Source code",
+        keywords: ["viewer", "renderer", "syntax highlighting", "files"],
+        when: "sourceCodeRenderers",
+      },
+      {
+        title: "Diffs",
+        keywords: ["renderer", "split", "unified"],
+        when: "diffRenderers",
+      },
+    ],
   },
   marketplaces: {
     keywords: ["catalog", "sources", "registry"],

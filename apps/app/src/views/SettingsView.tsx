@@ -54,9 +54,6 @@ import {
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { useAppThemePreview } from "@/hooks/useAppThemePreview";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
-import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
-import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
-import { SidebarNavigationProviderSetting } from "@/components/settings/SidebarNavigationProviderSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
@@ -65,7 +62,6 @@ import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginDetailPaneView } from "@/views/ToolsView";
 import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
-import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -863,9 +859,6 @@ export function AppearanceSettingsSection({
       </SettingsSection>
       <SettingsSection title="Interface">
         <div className="space-y-5">
-          <SidebarNavigationProviderSetting />
-          <SidebarThreadListSetting />
-          <CodeRendererSettings />
           <SidebarFooterSettings />
         </div>
       </SettingsSection>
@@ -1403,19 +1396,16 @@ export function SettingsView() {
     content = <BrowserSettingsSection />;
   } else if (activeSection === "files") {
     content = (
-      <>
-        <LocalOpenTargetSettingsSection
-          accessState={accessState}
-          directoryTargetId={directoryTargetId}
-          fileTargetId={fileTargetId}
-          hasDaemon={hasDaemon}
-          onDirectoryTargetChange={setDirectoryTargetId}
-          onFileTargetChange={setFileTargetId}
-          onRequestAccess={requestAccess}
-          targets={workspaceOpenTargets}
-        />
-        <FileOpenersSettingsSection />
-      </>
+      <LocalOpenTargetSettingsSection
+        accessState={accessState}
+        directoryTargetId={directoryTargetId}
+        fileTargetId={fileTargetId}
+        hasDaemon={hasDaemon}
+        onDirectoryTargetChange={setDirectoryTargetId}
+        onFileTargetChange={setFileTargetId}
+        onRequestAccess={requestAccess}
+        targets={workspaceOpenTargets}
+      />
     );
   } else if (activeSection === "projects") {
     content = <ProjectsSettingsSection />;

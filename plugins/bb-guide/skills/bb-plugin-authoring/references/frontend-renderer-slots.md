@@ -4,14 +4,11 @@
   replace bb's source or diff renderer everywhere it draws supplied content:
   the native file preview, timeline file diffs, the environment diff panel's
   file bodies, and every plugin calling the host components. Registration:
-  `{ id, title, description?, component }`. Like `experimental_threadList`
-  each slot is **exclusive** — one renderer at a time; a plugin the user
-  installed wins over one bundled with bb, then the first in slot order, and
-  a crashing replacement falls back to bb's renderer. Installing and enabling
-  the plugin activates it, and the user can pin bb's renderer or a specific
-  provider under **Settings → Appearance** ("Source code" / "Diffs"), per
-  client. A pinned provider whose plugin is disabled or uninstalled behaves as
-  Automatic until it returns. There are no
+  `{ id, title, description?, component }`. Each slot is **exclusive** (see
+  exclusive-slots.md); the picks are
+  `sourceCode.provider` and `diff.provider`, synced across the user's
+  devices, and `__builtin__` keeps bb's renderer. A crashing replacement
+  falls back to bb's renderer. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, Original }`;
@@ -44,12 +41,11 @@ Original }`. `experimental_fullFileContents` is either
   sent message editors): the editor, @-mention and slash-command menus,
   attachments, voice, the `+` and send menus and the send and stop controls.
   Banners, approval cards and queued messages above the box stay bb's.
-  Registration: `{ id, title, description?, component }`. Exclusive like
-  `experimental_threadList`: a composer from a plugin the user installed wins
-  over the bundled Composer plugin; users choose under **Settings → Appearance
-  → Composer** (`composer.provider`). A pinned composer whose plugin is
-  disabled or uninstalled behaves as Automatic until it returns. With no
-  composer plugin enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
+  Registration: `{ id, title, description?, component }`. Exclusive (see
+  exclusive-slots.md); the pick is `composer.provider`.
+  While your composer is crashed, bb shows the bundled one with the same draft
+  and attachments, and its toast offers Reload. With no composer plugin
+  enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
   plugin, built on this slot; copy it to make your own.
 
   Read and write the draft with `useComposer()` (`draft`, `replace`) and
@@ -154,9 +150,12 @@ openWorkspaceFile }` — register a leaf
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
   fenced code blocks stay literal. Incomplete streaming directives stay
-  literal until the closing syntax arrives. Unknown, disabled, malformed,
-  conflicting, or crashing directives fall back to rendering the original
-  `source` (the component ErrorBoundary still isolates a throw). Treat
+  literal until the closing syntax arrives. Unknown, disabled, malformed, or
+  crashing directives fall back to rendering the original `source` (the
+  component ErrorBoundary still isolates a throw). A name several plugins
+  claim shows its `source` with a "N plugins claim ::name · Choose" link until
+  the user picks one in `messageDirective.byName` (see
+  exclusive-slots.md). Treat
   attributes as attacker-controlled even though the model emitted them;
   load workspace data through `bb.sdk.files` with root/host confinement
   rather than trusting paths. Reference implementation:
@@ -187,9 +186,10 @@ message, Original }` — render fenced code blocks of chosen languages in
   works inside it as for `messageDirective`. **Host behavior / fallbacks:**
   activates only where `messageDirective` does (assistant and nested agent
   Markdown); user messages, file previews, and plugin Markdown keep BB's code
-  block. BB's code block also renders when two plugins claim the same
-  language (BB logs a console warning naming them), when the plugin is
-  missing or disabled, and for a fence whose component throws. A throw
+  block. A language several plugins claim follows the exclusive-slot rule
+  (`codeFence.byLanguage`; see exclusive-slots.md).
+  BB's code block renders when the user picks it, when the plugin is missing
+  or disabled, and for a fence whose component throws. A throw
   affects that fence only, and BB tries the component again when the fence's
   `code` or `status` changes, so a renderer that fails on a half-streamed
   body recovers on the next chunk. Treat `code` as attacker-controlled even

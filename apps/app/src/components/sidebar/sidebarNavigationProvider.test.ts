@@ -163,7 +163,7 @@ describe("resolveSidebarNavigation", () => {
           loadFailed: false,
           settledOnce: input.settled,
           ...input,
-          builtinPluginIds: new Set(["navigation"]),
+          bbPluginIds: new Set(["navigation"]),
         }),
       ),
     ).toBe(expected);

@@ -27,6 +27,7 @@ import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { createPluginToast } from "@/lib/notifications/plugin-toast";
+import { isOfficialPlugin } from "@/lib/official-plugins";
 import { appQueryClient } from "./app-query-client";
 import {
   setServerPluginsStarting,
@@ -65,6 +66,7 @@ import {
   flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
+  setOfficialMarketplacePluginIds,
   setLoadingPluginFrontends,
   setPluginSlotRegistrations,
   settleLoadingPluginFrontend,
@@ -335,6 +337,9 @@ export async function fetchFrontendCandidates(
     plugins.flatMap((plugin) =>
       plugin.provenance === "builtin" ? [plugin.id] : [],
     ),
+  );
+  setOfficialMarketplacePluginIds(
+    plugins.flatMap((plugin) => (isOfficialPlugin(plugin) ? [plugin.id] : [])),
   );
   return { candidates, startingPluginIds };
 }

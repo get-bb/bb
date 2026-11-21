@@ -55,6 +55,7 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
     "produces a %s tab the thread-tabs contract accepts",
     (_label, request) => {
       const tab = createFileOpenerTabForRequest({
+        boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
         fileOpeners: [MARKDOWN_OPENER],
         preference: {},
         projectId: null,
@@ -70,6 +71,7 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
 
   it("keeps a projectless workspace opener tab contract-valid", () => {
     const tab = createFileOpenerTabForRequest({
+      boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
       fileOpeners: [MARKDOWN_OPENER],
       preference: {},
       projectId: null,
@@ -97,6 +99,7 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
 
   it("preserves the selected host for a project-backed opener", () => {
     const tab = createFileOpenerTabForRequest({
+      boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
       fileOpeners: [MARKDOWN_OPENER],
       preference: {},
       projectHostId: "host_remote",

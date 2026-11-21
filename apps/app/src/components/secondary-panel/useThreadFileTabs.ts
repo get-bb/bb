@@ -30,6 +30,7 @@ import {
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { allowBrowserViewRecreation } from "./browserViewVisibilityCoordinator";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
+import { useExclusiveBootState } from "@/lib/plugin-replacement-preference";
 import {
   createFileOpenerTabForRequest,
   fileOpenerIdFromActionId,
@@ -475,6 +476,7 @@ export function useThreadFileTabs({
 
   const fileOpeners = usePluginSlotKind("fileOpeners");
   const fileOpenerPreference = useFileOpenerPreferenceValue();
+  const { bbPluginIds, settled, settledOnce } = useExclusiveBootState();
 
   const openResolvedTab = useCallback(
     (
@@ -483,6 +485,7 @@ export function useThreadFileTabs({
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
       const openerTab = createFileOpenerTabForRequest({
+        boot: { bbPluginIds, settled, settledOnce },
         fileOpeners,
         preference: fileOpenerPreference,
         projectHostId,
@@ -525,8 +528,11 @@ export function useThreadFileTabs({
       return tab;
     },
     [
+      bbPluginIds,
       fileOpenerPreference,
       fileOpeners,
+      settled,
+      settledOnce,
       projectHostId,
       recordRecentItem,
       projectId,

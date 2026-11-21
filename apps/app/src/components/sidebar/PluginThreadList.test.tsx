@@ -15,7 +15,7 @@ import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
 } from "@/lib/plugin-frontend-boot-state";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ExclusiveResolution } from "@/lib/plugin-replacement-preference";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { PluginThreadList } from "./PluginThreadList";
 
@@ -24,7 +24,7 @@ vi.mock("@/components/ui/app-toast", () => ({ appToast: toast }));
 
 function pluginReplacement(
   component: (props: PluginThreadListProps) => React.ReactNode,
-): ResolvedReplacement<PluginThreadListSlot> {
+): ExclusiveResolution<PluginThreadListSlot> {
   return {
     kind: "plugin",
     registration: {
@@ -34,10 +34,11 @@ function pluginReplacement(
       title: "Demo list",
       component,
     },
+    fallback: null,
   };
 }
 
-function renderList(replacement: ResolvedReplacement<PluginThreadListSlot>) {
+function renderList(replacement: ExclusiveResolution<PluginThreadListSlot>) {
   return render(
     <MemoryRouter>
       <SidebarProvider>
@@ -60,7 +61,7 @@ afterEach(() => {
 
 describe("PluginThreadList", () => {
   it("shows the loading placeholder until plugin frontends have booted, then the missing state", () => {
-    const { container } = renderList({ kind: "owner" });
+    const { container } = renderList({ kind: "builtin" });
     expect(
       container.querySelector('[data-thread-list-placeholder="loading"]'),
     ).not.toBeNull();
@@ -124,5 +125,42 @@ describe("PluginThreadList", () => {
     expect(
       container.querySelector("[data-thread-list-placeholder]"),
     ).toBeNull();
+  });
+
+  it("shows the bundled list while an installed list is crashed, and the toast's Reload brings the installed one back", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let shouldCrash = true;
+    const replacement = pluginReplacement(() => {
+      if (shouldCrash) throw new Error("boom");
+      return <div data-testid="plugin-list">recovered</div>;
+    });
+    if (replacement.kind !== "plugin") throw new Error("expected a plugin");
+    const { container } = renderList({
+      ...replacement,
+      fallback: {
+        pluginId: "thread-list",
+        generation: 1,
+        id: "thread-list",
+        title: "Thread list",
+        component: () => <div data-testid="bundled-list">bundled</div>,
+      },
+    });
+
+    expect(screen.getByTestId("bundled-list")).toBeDefined();
+    expect(
+      container.querySelector("[data-thread-list-placeholder]"),
+    ).toBeNull();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    const [, options] = toast.error.mock.calls[0] ?? [];
+    expect(options.action.label).toBe("Reload");
+
+    shouldCrash = false;
+    act(() => {
+      options.action.onClick();
+    });
+
+    expect(screen.getByTestId("plugin-list").textContent).toBe("recovered");
+    expect(screen.queryByTestId("bundled-list")).toBeNull();
   });
 });

@@ -33,6 +33,7 @@ import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
 
 export function PluginMarketplaceByline({
   entry,
@@ -116,7 +117,7 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      {entry.marketplace === "bb-official" ? null : (
+      {isOfficialMarketplace(entry.marketplace) ? null : (
         <PluginDetailMetadataItem label="Marketplace">
           {entry.marketplaceDisplayName}
         </PluginDetailMetadataItem>
@@ -287,7 +288,7 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      {entry.marketplace === "bb-official" &&
+      {isOfficialMarketplace(entry.marketplace) &&
       entry.publishedAt === undefined ? null : (
         <ResourceDefinitionSection label="Details">
           <PluginDetailMetadata>

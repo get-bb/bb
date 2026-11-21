@@ -1,3 +1,4 @@
+import { PluginChoicesSection } from "@/components/settings/PluginChoicesSection";
 import {
   pluginSourceFilterId,
   pluginSourceFilterOptions,
@@ -272,6 +273,11 @@ export function PluginsOverview({
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
           <PluginAttentionBanner plugins={plugins} onOpenPlugin={openPlugin} />
+          {normalizedInstalledQuery === "" &&
+          selectedCategories.length === 0 &&
+          activeSourceFilters.length === 0 ? (
+            <PluginChoicesSection />
+          ) : null}
           {listQuery.isError ? (
             <ResourceListState
               state="error"

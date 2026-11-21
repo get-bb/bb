@@ -66,6 +66,9 @@ the same change.
 
 - Read references/frontend-registration.md for definePluginApp, thread header
   and Browser toolbar controls, and sidebar replacement.
+- Read references/exclusive-slots.md for which plugin draws a one-plugin
+  surface (composer, thread list, navigation, renderers, file openers, code
+  fences, directives) and how a plugin may write that pick.
 - Read references/frontend-thread-header-row.md to add a full-width row under
   the thread header (`experimental_threadHeaderRow`), such as a tab strip, or
   to replace the thread title in the header (`experimental_threadHeaderTitle`).

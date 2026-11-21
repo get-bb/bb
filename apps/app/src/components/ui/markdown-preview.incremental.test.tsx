@@ -96,7 +96,11 @@ function legMessageDirectives(leg: PreviewLeg) {
           component: countingDirective(leg),
         },
       ],
-      { unclaimed: "literal" },
+      {
+        unclaimed: "literal",
+        picks: {},
+        boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
+      },
     ),
     message: {
       id: "msg_stream",

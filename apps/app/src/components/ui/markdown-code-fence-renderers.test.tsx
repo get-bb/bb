@@ -30,6 +30,12 @@ import {
 } from "./markdown-code-fence-renderers";
 import { MarkdownPreview } from "./markdown-preview";
 
+const SETTLED_BOOT = {
+  bbPluginIds: new Set<string>(),
+  settled: true,
+  settledOnce: true,
+};
+
 const MESSAGE = {
   id: "msg_1",
   threadId: "thr_1",
@@ -133,7 +139,11 @@ beforeEach(() => {
 
 describe("code fence renderers in assistant messages", () => {
   it("renders claimed fences with code, language, per-language index, status, and message", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(
       assistantMessage(
         registry,
@@ -172,7 +182,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("renders claimed fences in document order between the surrounding prose", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(
       assistantMessage(registry, "Before\n\n```ui\n{ a }\n```\n\nAfter"),
     );
@@ -189,7 +203,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("keeps BB's code block in user messages", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -241,7 +259,11 @@ describe("code fence renderers in assistant messages", () => {
         </button>
       );
     }
-    const registry = buildCodeFenceRendererRegistry([slot(StatefulFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(StatefulFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const steps: ReadonlyArray<readonly [string, string, string]> = [
       ["Intro\n\n```ui\n{ par", "{ par", "streaming"],
       ["Intro\n\n```ui\n{ partial }\n", "{ partial }", "streaming"],
@@ -286,7 +308,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("numbers fences across the settled and streaming regions of one reply", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(
       assistantMessage(
         registry,
@@ -304,7 +330,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("reports a fence the reply never closed as unclosed once streaming stops", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(assistantMessage(registry, "```ui\n{ cut", true));
     expect(renderedFences()).toEqual([
       { code: "{ cut", status: "streaming", index: "0" },
@@ -316,7 +346,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("removes a fence's component when the fence leaves the message", async () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(assistantMessage(registry, "```ui\n{ gone }\n```"));
     expect(screen.getAllByTestId("ui-fence")).toHaveLength(1);
     view.rerender(assistantMessage(registry, "Plain prose only."));
@@ -329,7 +363,11 @@ describe("code fence renderers in assistant messages", () => {
   });
 
   it("keeps claimed fences through the sanitized HTML pipeline", () => {
-    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(UiFence)],
+      {},
+      SETTLED_BOOT,
+    );
     render(
       assistantMessage(
         registry,
@@ -349,7 +387,11 @@ describe("code fence renderers in assistant messages", () => {
       }
       return <UiFence {...props} />;
     }
-    const registry = buildCodeFenceRendererRegistry([slot(FragileFence)]);
+    const registry = buildCodeFenceRendererRegistry(
+      [slot(FragileFence)],
+      {},
+      SETTLED_BOOT,
+    );
     const view = render(
       assistantMessage(registry, "```ui\n{ good }\n```\n\n```ui\n{ bad", true),
     );
@@ -378,7 +420,7 @@ describe("code fence renderers in assistant messages", () => {
     ).toHaveLength(0);
   });
 
-  it("renders BB's code block for a language two plugins claim, from the slot store", () => {
+  it("gives a language two plugins claim to the first by plugin id, from the slot store", () => {
     function ZetaFence() {
       return <div data-testid="zeta-fence" />;
     }
@@ -399,7 +441,7 @@ describe("code fence renderers in assistant messages", () => {
       }),
     );
 
-    const view = render(
+    render(
       <MemoryRouter>
         <ThreadTimelineRows
           threadId="thr_main"
@@ -418,12 +460,10 @@ describe("code fence renderers in assistant messages", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByTestId("ui-fence")).toBeNull();
+    const [alphaFence, ...others] = screen.getAllByTestId("ui-fence");
+    expect(others).toHaveLength(0);
+    expect(alphaFence?.dataset.code).toBe("{ contested }");
     expect(screen.getAllByTestId("zeta-fence")).toHaveLength(1);
-    expect(view.container.textContent).toContain("{ contested }");
-    expect(console.warn).toHaveBeenCalledWith(
-      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering BB\'s code block',
-    );
   });
 });
 
@@ -450,7 +490,10 @@ describe("MarkdownPreview inside a code fence host", () => {
     ["a closed tilde fence", "~~~ui\na\n~~~", "closed"],
   ])("derives the status from the source for %s", (_label, content, status) => {
     render(
-      hostedMarkdown(buildCodeFenceRendererRegistry([slot(UiFence)]), content),
+      hostedMarkdown(
+        buildCodeFenceRendererRegistry([slot(UiFence)], {}, SETTLED_BOOT),
+        content,
+      ),
     );
     expect(screen.getByTestId("ui-fence").getAttribute("data-status")).toBe(
       status,
@@ -467,7 +510,11 @@ describe("MarkdownPreview inside a code fence host", () => {
     }
     render(
       hostedMarkdown(
-        buildCodeFenceRendererRegistry([slot(DelegatingFence)]),
+        buildCodeFenceRendererRegistry(
+          [slot(DelegatingFence)],
+          {},
+          SETTLED_BOOT,
+        ),
         "```ui\n{ delegated }\n```",
       ),
     );
@@ -486,20 +533,43 @@ describe("MarkdownPreview inside a code fence host", () => {
 });
 
 describe("buildCodeFenceRendererRegistry", () => {
-  it("drops a language two plugins claim, keeps the rest, and warns once", () => {
-    const warn = vi.fn();
+  it("gives a language several plugins claim to the user's pick, else the first installed plugin by id, with bundled ones last", () => {
     const alpha = slot(UiFence, {
       pluginId: "alpha",
       languages: ["ui", "app"],
     });
     const zeta = slot(UiFence, { pluginId: "zeta", languages: ["ui"] });
-    const registry = buildCodeFenceRendererRegistry([zeta, alpha], { warn });
+    const bundled = slot(UiFence, {
+      pluginId: "aaa-bundled",
+      languages: ["ui"],
+    });
+    const boot = {
+      bbPluginIds: new Set(["aaa-bundled"]),
+      settled: true,
+      settledOnce: true,
+    };
 
-    expect(registry.has("ui")).toBe(false);
-    expect(registry.get("app")).toBe(alpha);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering BB\'s code block',
+    const automatic = buildCodeFenceRendererRegistry(
+      [bundled, alpha, zeta],
+      {},
+      boot,
     );
+    expect(automatic.get("ui")).toBe(alpha);
+    expect(automatic.get("app")).toBe(alpha);
+
+    const picked = buildCodeFenceRendererRegistry(
+      [bundled, alpha, zeta],
+      { ui: "zeta/generative-ui" },
+      boot,
+    );
+    expect(picked.get("ui")).toBe(zeta);
+    expect(picked.get("app")).toBe(alpha);
+
+    const builtin = buildCodeFenceRendererRegistry(
+      [bundled, alpha, zeta],
+      { ui: "__builtin__" },
+      boot,
+    );
+    expect(builtin.has("ui")).toBe(false);
   });
 });

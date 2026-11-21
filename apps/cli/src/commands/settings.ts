@@ -376,7 +376,7 @@ function parseUiPreferenceInput<Key extends UiPreferenceKey>(
     message = parsed.message;
   }
   throw new Error(
-    `Invalid value '${value}' for '${key}': ${message}. Lists and null take JSON; plain strings may be unquoted.`,
+    `Invalid value '${value}' for '${key}': ${message}. Lists, maps and null take JSON; plain strings may be unquoted.`,
   );
 }
 
@@ -626,7 +626,7 @@ export function registerSettingsCommands(
       }),
     );
   ui.command("set <key> <value>")
-    .description("Set a UI preference; lists and null take JSON")
+    .description("Set a UI preference; lists, maps and null take JSON")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (keyInput: string, value: string, opts: JsonOptions) => {
