@@ -4222,7 +4222,9 @@ Requires SDK 0.6.178.
   a complete `ExperimentalPluginActionContext` plus `calls:
   ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
-  false, `panel` is `experimental_makePanelController()`, and `sdk` methods
+  false except `experimental_threadHref` and `experimental_settingsHref`,
+  which return the test harness's paths (`/threads/<id>#msg=<seq>`,
+  `/settings/<section>`), `panel` is `experimental_makePanelController()`, and `sdk` methods
   reject with `sdk.<area>.<method> is not stubbed`. Overrides replace members;
   tests spread the result and add the callback's own fields.
 - **Why:** every member added to `ExperimentalPluginActionContext` broke every

@@ -143,7 +143,6 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
-  type ExperimentalSettingsSection,
   type ExperimentalSettingsTarget,
   type ExperimentalFilePreviewFile,
   type ExperimentalFilePreviewOptions,
@@ -168,6 +167,12 @@ import {
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { matchesAppShortcutKey } from "@bb/domain";
+import {
+  assertTestMessageSeq,
+  assertTestSettingsTarget,
+  testSettingsHref,
+  testThreadHref,
+} from "./navigation-hrefs.js";
 import { sliceUtf16Head } from "@bb/text-utils";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
@@ -477,50 +482,6 @@ export interface SidebarNavigationCall {
   itemIds?: string[];
   isVisible?: boolean;
   target?: ExperimentalSidebarNavigationTarget;
-}
-
-const SETTINGS_SECTIONS: Record<ExperimentalSettingsSection, true> = {
-  general: true,
-  providers: true,
-  "ai-services": true,
-  appearance: true,
-  keyboard: true,
-  browser: true,
-  files: true,
-  projects: true,
-  machines: true,
-  mobile: true,
-  "environment-variables": true,
-  updates: true,
-  plugins: true,
-  marketplaces: true,
-  experiments: true,
-  community: true,
-  archived: true,
-};
-
-function assertTestMessageSeq(messageSeq: number | undefined): void {
-  if (
-    messageSeq !== undefined &&
-    (!Number.isSafeInteger(messageSeq) || messageSeq < 0)
-  ) {
-    throw new RangeError(
-      `messageSeq must be a non-negative integer, got ${messageSeq}`,
-    );
-  }
-}
-
-function assertTestSettingsTarget(
-  target: ExperimentalSettingsTarget | undefined,
-): void {
-  if (
-    target !== undefined &&
-    !Object.hasOwn(SETTINGS_SECTIONS, target.section)
-  ) {
-    throw new RangeError(
-      `Unknown settings section "${String(target.section)}"`,
-    );
-  }
 }
 
 function TestSidebarNavigationIcon({
@@ -3272,19 +3233,10 @@ export function renderSlot<
       });
     },
     experimental_threadHref(threadId, hrefOptions) {
-      const messageSeq = hrefOptions?.messageSeq;
-      assertTestMessageSeq(messageSeq);
-      const path = `/threads/${threadId}`;
-      return messageSeq === undefined ? path : `${path}#msg=${messageSeq}`;
+      return testThreadHref(threadId, hrefOptions);
     },
     experimental_settingsHref(target) {
-      assertTestSettingsTarget(target);
-      if (target === undefined) {
-        return `/settings/plugins/${encodeURIComponent(options.pluginId ?? "test-plugin")}`;
-      }
-      return target.section === "general"
-        ? "/settings"
-        : `/settings/${target.section}`;
+      return testSettingsHref(target, options.pluginId ?? "test-plugin");
     },
   };
 

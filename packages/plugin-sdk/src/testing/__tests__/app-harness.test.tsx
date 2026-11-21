@@ -1544,6 +1544,12 @@ describe("loadPluginApp", () => {
     await context.threadRequests.requestArchive(["thr_a", "thr_b"]);
     await context.threadRequests.requestDelete(["thr_c"]);
     expect(context.navigate.openUrl("https://example.com")).toBe(false);
+    expect(
+      context.navigate.experimental_threadHref("thr_a", { messageSeq: 4 }),
+    ).toBe("/threads/thr_a#msg=4");
+    expect(
+      context.navigate.experimental_settingsHref({ section: "appearance" }),
+    ).toBe("/settings/appearance");
     await expect(
       context.sdk.threads.get({ threadId: "thr_a" }),
     ).rejects.toThrow("sdk.threads.get is not stubbed");
@@ -1552,6 +1558,14 @@ describe("loadPluginApp", () => {
       { member: "threadRequests.requestArchive", args: [["thr_a", "thr_b"]] },
       { member: "threadRequests.requestDelete", args: [["thr_c"]] },
       { member: "navigate.openUrl", args: ["https://example.com"] },
+      {
+        member: "navigate.experimental_threadHref",
+        args: ["thr_a", { messageSeq: 4 }],
+      },
+      {
+        member: "navigate.experimental_settingsHref",
+        args: [{ section: "appearance" }],
+      },
       { member: "sdk.threads.get", args: [{ threadId: "thr_a" }] },
     ]);
   });
