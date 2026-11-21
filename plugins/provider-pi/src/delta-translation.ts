@@ -1201,7 +1201,6 @@ export function createPiDeltaTranslator(
                 ...parentRefField,
               },
               text: snapshot,
-              noTurnFallback: noTurnFallbackFor(piEvent.data, context),
             },
           ];
         }
@@ -1213,7 +1212,6 @@ export function createPiDeltaTranslator(
               ...parentRefField,
             },
             message: extractPiToolProgressText(piEvent.data),
-            noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
       }
