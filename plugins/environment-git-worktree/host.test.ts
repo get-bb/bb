@@ -1647,9 +1647,10 @@ describe("warm worktree handoff", () => {
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/env_warm",
     );
-    expect(await readFile(join(path, "upstream.txt"), "utf8")).toBe(
-      "upstream.txt\n",
-    );
+    expect(
+      (await readFile(join(path, "upstream.txt"), "utf8")).trimEnd(),
+    ).toBe("upstream.txt");
+    expect(await git(path, "status", "--porcelain")).toBe("");
     expect(
       await harness.experimental_call("refreshPoolBase", {
         sourcePath: clone,
