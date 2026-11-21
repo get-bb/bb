@@ -2079,7 +2079,12 @@ with or without a split: `toThread`, `experimental_useSidebarThreadActions`'
 `bb thread open`, mention links, the archived-thread toast, and new threads
 after creation. Pane bookkeeping (closing, replacing or reconciling panes)
 uses only the path builder. The palette keeps its `searchMessageSeq` state
-because its hits can be non-message events. `getSettingsTargetPath`
+because its hits can be non-message events. Every reveal of a message in the
+timeline, whether from a message link, the palette or the thread outline,
+runs through `useScrollToSearchedMessage`: it loads older pages, keeps the
+target rendered, waits for its position to settle, highlights it, and toasts
+when it is missing. The outline sends an in-place request with the
+message's seq instead of a URL, so it adds no history entry. `getSettingsTargetPath`
 (`settings-sections.ts`) is the only settings path builder: sections, plugin,
 machine and project pages, including `experimental_toSettings` and
 `experimental_settingsHref`. The sidebar footer's `openSettings` /
@@ -2093,10 +2098,7 @@ Docs: `frontend-navigation.md`.
 
 1. Decide whether plugins need other plugins' settings pages or project and
    machine settings pages; each had one community caller.
-2. Decide whether the thread table of contents should move to the seq path;
-   on a 21k-event thread both reach a row three pages back in about 115 ms
-   with no jump, but the TOC does not add history entries.
-3. Confirm copied absolute URLs from desktop, which point at the local
+2. Confirm copied absolute URLs from desktop, which point at the local
    server origin like core's Copy link does.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `ExperimentalHostRpcContext.experimental_paths`, `ExperimentalHostRpcContext.experimental_emitSignal`, `ExperimentalHostRpcContext.experimental_watch`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)

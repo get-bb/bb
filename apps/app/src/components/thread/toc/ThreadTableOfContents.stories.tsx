@@ -107,8 +107,7 @@ export function Default() {
               contextBoundarySeq={null}
               threadId="thr_toc_story"
               timelineRows={timelineRows}
-              hasOlderTimelineRows={false}
-              loadOlderTimelineRows={() => {}}
+              onRevealMessage={() => {}}
             />
           </div>
         }
