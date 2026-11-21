@@ -1413,6 +1413,25 @@ describe("claude unhandled and ignored events", () => {
     expect(events).toMatchObject([]);
   });
 
+  it.each([
+    { subtype: "session_title_changed", title: "Metadata test session" },
+    { subtype: "dev_intent", kind: "ios_app", trigger: "project_scan" },
+    { subtype: "dev_intent", kind: "android_app", trigger: "project_scan" },
+  ])("ignores session metadata without diagnostic events: %j", (metadata) => {
+    const harness = createClaudeDeltaHarness();
+
+    const events = harness.translate(
+      sdkMessage({
+        type: "system",
+        ...metadata,
+        session_id: "metadata-session",
+        uuid: "metadata-message",
+      }),
+    );
+
+    expect(events).toEqual([]);
+  });
+
   it("ignores async hook lifecycle system events from the SDK envelope", () => {
     const harness = createClaudeDeltaHarness();
 
