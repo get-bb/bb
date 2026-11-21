@@ -218,6 +218,9 @@ export const experimental_useFixedTabTarget = runtimeFunction(
 );
 export const useComposer = runtimeFunction("useComposer");
 export const useComposers = runtimeFunction("useComposers");
+export const experimental_useActiveComposer = runtimeFunction(
+  "experimental_useActiveComposer",
+);
 export const experimental_useComposerRenderer = runtimeFunction(
   "experimental_useComposerRenderer",
 );

@@ -99,7 +99,6 @@ import {
   resolveThreadMentionsInBatches,
 } from "@/lib/thread-links";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
-import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ComposerPlaceholder } from "./ComposerPlaceholder";
 import { PluginComposerPopup } from "@/components/plugin/PluginComposerPopup";
 import {
@@ -504,7 +503,6 @@ function useComposerRendererHostApi({
   const threadTitleResources = useThreadTitleMentionResources();
   const queryClient = useContext(QueryClientContext);
   const reportTypeaheadLayout = useContext(QueuedEditorTypeaheadLayoutContext);
-  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   const maxHeight = useContext(ComposerMaxHeightContext);
 
   const decorationSources = composerDecorationSources(
@@ -634,7 +632,7 @@ function useComposerRendererHostApi({
     onFocusCommand,
     reportMenuLayout: reportTypeaheadLayout,
     runsPluginCommands: host !== null,
-    isFocusedPane,
+    composerHost: host,
   };
   const contributions: ExperimentalComposerContributions = {
     popups: resolved.popups,

@@ -4,6 +4,7 @@ import {
   getFocusedAppNavigationSurface,
   type ResolvedAppNavigationHostCapabilities,
 } from "@/lib/app-navigation-host";
+import { getActiveComposerHandle } from "@/lib/active-composer";
 import {
   usePluginActionContextBinder,
   type BindPluginActionContext,
@@ -30,6 +31,7 @@ export function unavailablePluginActionContext(
     sdk: unavailable(pluginId, "sdk"),
     navigate: unavailable(pluginId, "navigate"),
     panel: unavailable(pluginId, "panel"),
+    composer: getActiveComposerHandle(pluginId),
   };
 }
 

@@ -45,8 +45,14 @@ import {
   composerScopeIdentity,
   useOptionalPluginComposerView,
   usePluginComposerHost,
+  usePluginComposerHostDraft,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
+import {
+  activeComposerHandle,
+  getActiveComposer,
+  subscribeActiveComposer,
+} from "@/lib/active-composer";
 import {
   getComposerEditorBridges,
   subscribeComposerEditorBridges,
@@ -824,6 +830,18 @@ export function useComposers(): readonly PluginComposerApi[] {
     () => listedComposerHandles(pluginId, hosts),
     [hosts, pluginId],
   );
+}
+
+export function useActiveComposer(): PluginComposerApi | null {
+  const pluginId = usePluginId();
+  const active = useSyncExternalStore(
+    subscribeActiveComposer,
+    getActiveComposer,
+    getActiveComposer,
+  );
+  const host = active?.host ?? null;
+  usePluginComposerHostDraft(host);
+  return useMemo(() => activeComposerHandle(pluginId, host), [host, pluginId]);
 }
 
 const rpcQueryHosts = new WeakMap<

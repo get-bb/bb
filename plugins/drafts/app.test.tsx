@@ -26,6 +26,7 @@ function unusedActionContext(): ExperimentalPluginActionContext {
     sdk: unused("sdk"),
     navigate: unused("navigate"),
     panel: experimental_makePanelController(),
+    composer: null,
   };
 }
 

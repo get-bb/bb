@@ -300,3 +300,27 @@ output }` for a tool call), `presentation` (the bridge's label, icon,
   per plugin; if two plugins claim one provider kind and id the host keeps
   the first by plugin id and warns. providers.md shows an example; the
   `experimental_ProviderIcon` resolution order is in frontend-components.md.
+
+## Active composer
+
+`context.composer` (every [callback context](frontend-hooks-and-ui.md#callback-context))
+is the composer the callback acts on: the handling composer for composer commands and
+`plusMenu`/`sendMenu` rows, the message thread's composer for `messageAction`, and the
+focused surface's active composer, or null, for everything else.
+`experimental_useActiveComposer()` returns that active composer to app-wide components
+such as overlays and plugin pages; inside a composer slot use `useComposer()`.
+
+The active composer is the one holding the caret, or the one that held it before focus
+moved into the command palette, a dialog, a popover or an overlay; otherwise the focused
+surface's main composer; otherwise null (a plugin page without a composer). The handle is
+detached like a `useComposers()` handle and names the same composer by `key`; the hook
+re-renders when the active composer or its draft changes. Experimental: see
+`docs/api_to_audit.md`.
+
+```ts
+app.commands.register({
+  id: "insert-date",
+  title: "Insert today's date",
+  run: ({ composer }) => composer?.insert(new Date().toDateString()),
+});
+```

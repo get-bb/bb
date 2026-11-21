@@ -96,6 +96,7 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
         sdk,
         navigate,
         panel,
+        composer: null,
       }),
     );
   });

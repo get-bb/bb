@@ -186,6 +186,7 @@ function Probe({
           sdk,
           navigate,
           panel,
+          composer: null,
         }),
       (threads) =>
         notificationsThreadAction.experimental_bulkItem?.({
@@ -194,6 +195,7 @@ function Probe({
           sdk,
           navigate,
           panel,
+          composer: null,
         }) ?? null,
     );
   });

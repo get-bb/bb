@@ -153,6 +153,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
   `setInputLock` have no effect here. Re-renders when the list or a listed
   draft or selection changes.
+- `experimental_useActiveComposer()` → see [Active composer](frontend-renderer-slots.md#active-composer).
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code
@@ -330,16 +331,15 @@ compile in plugin builds.
 
 ## Callback context
 
-Callbacks run outside your components and cannot call hooks, so every callback's
-context extends `ExperimentalPluginActionContext` `{ sdk, navigate, panel }`: your
-`useSdk()`, your `useBbNavigate()`, and the [panel controller](#panel-controller)
-of the surface that invoked it. That covers `app.commands`, `messageAction`,
-`experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
-sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
-`navigate` and `panel` act on the focused surface for commands, thread actions
-and footer actions; on the message's thread view for message actions; on the
-launching surface for panel actions; and on the composer's surface for composer
-callbacks. Experimental: see `docs/api_to_audit.md`.
+Callbacks cannot call hooks, so every callback's context extends `ExperimentalPluginActionContext`
+`{ sdk, navigate, panel, composer }`: your `useSdk()`, your `useBbNavigate()`, the
+[panel controller](#panel-controller) of the invoking surface, and the composer it acts on
+(see [Active composer](frontend-renderer-slots.md#active-composer)). That covers `app.commands`,
+`messageAction`, `experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
+sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows. `navigate` and
+`panel` act on the focused surface for commands, thread actions and footer actions; on the
+message's thread view for message actions; on the launching surface for panel actions; and
+on the composer's surface for composer callbacks. Experimental: see `docs/api_to_audit.md`.
 
 ## Panel controller
 
