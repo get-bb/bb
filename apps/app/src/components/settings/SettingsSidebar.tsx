@@ -37,7 +37,7 @@ import { useCloseMobileSidebar, useSidebar } from "@/components/ui/sidebar.js";
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import {} from "@/lib/route-paths";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
 import {
@@ -48,7 +48,7 @@ import {
   type SettingsSearchCondition,
   type SettingsSearchItem,
 } from "./settings-search";
-import { getSettingsSectionRoutePath } from "./settings-sections";
+import { getSettingsTargetPath } from "./settings-sections";
 import { usePluginSettingSearch } from "./usePluginSettingSearch";
 import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
 import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
@@ -422,7 +422,7 @@ export function SettingsSidebarContent({
                   key={section.id}
                   active={activeSection === section.id}
                   label={section.label}
-                  to={getSettingsSectionRoutePath(section.id)}
+                  to={getSettingsTargetPath({ section: section.id })}
                 >
                   <SectionSidebarIcon name={section.icon} />
                 </SectionSidebarRow>
@@ -439,7 +439,7 @@ export function SettingsSidebarContent({
                     key={entry.id}
                     active={activePluginId === entry.id}
                     label={entry.label}
-                    to={getPluginConfigurationRoutePath({ pluginId: entry.id })}
+                    to={getSettingsTargetPath({ pluginId: entry.id })}
                   >
                     <PluginIcon
                       pluginId={entry.id}
@@ -480,7 +480,7 @@ export function SettingsSidebarContent({
                       key={section.id}
                       active={activeSection === section.id}
                       label={section.label}
-                      to={getSettingsSectionRoutePath(section.id)}
+                      to={getSettingsTargetPath({ section: section.id })}
                     >
                       <SectionSidebarIcon name={section.icon} />
                     </SectionSidebarRow>

@@ -63,7 +63,7 @@ import {
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -230,7 +230,7 @@ function useChildThreadsSection(
       .map((entry) => ({
         id: entry.id,
         title: getThreadDisplayTitle(entry),
-        href: getThreadRoutePath({
+        href: getThreadLocationPath({
           projectId: entry.projectId,
           threadId: entry.id,
         }),

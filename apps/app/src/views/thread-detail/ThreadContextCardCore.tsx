@@ -17,7 +17,7 @@ import { InfoList } from "@/components/secondary-panel/info/info-list";
 import { ThreadListEntryStatusGlyph } from "@/components/thread/ThreadListEntryStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useChildThreads, useThread } from "@/hooks/queries/thread-queries";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
 
@@ -72,7 +72,7 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadContextCardProps) {
                 trailing={<InfoRowTime timestamp={child.updatedAt} />}
                 onClick={() =>
                   void navigate(
-                    getThreadRoutePath({
+                    getThreadLocationPath({
                       projectId: child.projectId,
                       threadId: child.id,
                     }),

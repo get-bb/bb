@@ -25,7 +25,7 @@ import {
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import {} from "@/lib/route-paths";
 import {
   pluginHasUpdateSurfaces,
   reviewableRangeUpgrade,
@@ -84,6 +84,7 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 function pluginMarketplaceUrl({
   marketplace,
@@ -623,9 +624,7 @@ export function PluginDetail({
                 onConfigure();
                 return;
               }
-              void navigate(
-                getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-              );
+              void navigate(getSettingsTargetPath({ pluginId: plugin.id }));
             }}
           />
         ) : undefined

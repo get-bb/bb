@@ -3,7 +3,7 @@ import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import {} from "@/lib/route-paths";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { COARSE_POINTER_INPUT_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -14,6 +14,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { SettingsWithControl } from "@/components/ui/settings-section";
 import { machineServerAccessBlockedReason } from "@/components/machines/machine-server-access";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 function parseUrl(value: string): URL | null {
   try {
@@ -371,9 +372,7 @@ function MachineAccessStatus({
           >
             <Link
               onClick={onNavigate}
-              to={getPluginConfigurationRoutePath({
-                pluginId: effective.pluginId,
-              })}
+              to={getSettingsTargetPath({ pluginId: effective.pluginId })}
             >
               {setup ? (
                 <>

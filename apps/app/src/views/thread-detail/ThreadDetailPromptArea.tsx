@@ -133,7 +133,6 @@ import {
 } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   buildThreadHandoffCreateRequest,
@@ -168,6 +167,7 @@ import {
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
 } from "@bb/client-core";
+import { openThread } from "@/lib/split-layout/openThread";
 
 const ignoreReportedSubmitError = () => {};
 const ignorePermissionModeChange = () => {};
@@ -1337,12 +1337,11 @@ export function ThreadDetailPromptArea({
             submittedDraft,
             () => createThread.mutateAsync(request),
           );
-          navigate(
-            getThreadRoutePath({
-              projectId: created.projectId,
-              threadId: created.id,
-            }),
-          );
+          openThread({
+            navigate,
+            projectId: created.projectId,
+            threadId: created.id,
+          });
         },
       );
       return true;

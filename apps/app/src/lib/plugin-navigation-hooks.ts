@@ -29,7 +29,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { lookupCachedThread } from "@/lib/cached-thread";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
-import { openThread } from "@/lib/split-layout/openThread";
+import { openThread, type OpenThreadArgs } from "@/lib/split-layout/openThread";
 import {
   getSettingsTargetPath,
   isSettingsSectionId,
@@ -100,6 +100,23 @@ function settingsTarget(
   return { section: target.section };
 }
 
+export function openThreadForPlugin({
+  store,
+  isCompact,
+  split,
+  ...args
+}: Omit<OpenThreadArgs, "split"> & {
+  store: ReturnType<typeof useStore>;
+  isCompact: boolean;
+  split: boolean;
+}): void {
+  store.set(getThreadConversationCollapsedAtom(args.threadId), false);
+  openThread({
+    ...args,
+    ...(split ? { split: { zone: "right", store, isCompact } } : {}),
+  });
+}
+
 function createBbNavigate(
   pluginId: string,
   host: () => ResolvedAppNavigationHostCapabilities,
@@ -114,8 +131,7 @@ function createBbNavigate(
       if (messageSeq !== undefined) assertMessageSeq(messageSeq);
       onNavigate?.();
       const open = (projectId: string) => {
-        store.set(getThreadConversationCollapsedAtom(threadId), false);
-        openThread({
+        openThreadForPlugin({
           store,
           navigate: (route, navigateOptions) => {
             void navigate(route, navigateOptions);

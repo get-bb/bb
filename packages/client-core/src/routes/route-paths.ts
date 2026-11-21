@@ -82,20 +82,6 @@ export function getProjectComposeRoutePath(projectId: string): string {
     : getLegacyProjectComposeRoutePath(projectId);
 }
 
-export function getSettingsRoutePath(section?: string): string {
-  return section === undefined
-    ? SETTINGS_ROUTE_PATH
-    : `/settings/${encodeURIComponent(section)}`;
-}
-
-export function getSettingsMachineRoutePath(hostId: string): string {
-  return `/settings/machines/${encodeURIComponent(hostId)}`;
-}
-
-export function getSettingsProjectRoutePath(projectId: string): string {
-  return `/settings/projects/${encodeURIComponent(projectId)}`;
-}
-
 export function getSkillsRoutePath(): string {
   return SKILLS_ROUTE_PATH;
 }
@@ -141,12 +127,6 @@ export function getPluginDetailRoutePath({
   return view === "installed"
     ? `${SETTINGS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}?view=installed`
     : path;
-}
-
-export function getPluginConfigurationRoutePath(
-  args: PluginDetailRoutePathArgs,
-): string {
-  return `/settings/plugins/${encodeURIComponent(args.pluginId)}`;
 }
 
 export function getAutomationsRoutePath(): string {
@@ -196,12 +176,6 @@ export function getPluginPanelRoutePath({
   return encoded.length > 0 ? `${root}/${encoded}` : root;
 }
 
-export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
-  return isProjectlessProjectId(args.projectId)
-    ? `/threads/${args.threadId}`
-    : `/projects/${args.projectId}/threads/${args.threadId}`;
-}
-
 const MESSAGE_LINK_PARAM = "msg";
 
 export interface ThreadLocationPathArgs {
@@ -225,9 +199,9 @@ export function getThreadLocationPath({
   messageSeq,
 }: ThreadLocationPathArgs): string {
   const path =
-    projectId === undefined
+    projectId === undefined || isProjectlessProjectId(projectId)
       ? `/threads/${threadId}`
-      : getThreadRoutePath({ projectId, threadId });
+      : `/projects/${projectId}/threads/${threadId}`;
   return messageSeq === undefined
     ? path
     : `${path}#${MESSAGE_LINK_PARAM}=${messageSeq}`;

@@ -29,7 +29,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import type { SplitLayout } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { threadRequestsAtom } from "@/lib/thread-requests";
@@ -515,7 +515,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "the thread already in view",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
@@ -559,7 +559,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "a thread open in another split pane",
       thread: baseThread,
-      route: getThreadRoutePath({ projectId: "proj_a", threadId: "thr_other" }),
+      route: getThreadLocationPath({
+        projectId: "proj_a",
+        threadId: "thr_other",
+      }),
       layout: twoPaneLayout("pane_other"),
       desktop: [
         "Focus split",
@@ -601,7 +604,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "the thread in the focused split pane",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
