@@ -1231,10 +1231,12 @@ describe("Account Pool plugin", () => {
     );
     await expect(fs.access(legacyDir)).rejects.toThrow();
     expect(await readFiles(accountsDir)).toEqual(legacyFiles);
-    expect(
-      Object.values(legacyFiles).every((file) => file.mode === 0o600),
-    ).toBe(true);
-    expect((await fs.stat(accountsDir)).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") {
+      expect(
+        Object.values(legacyFiles).every((file) => file.mode === 0o600),
+      ).toBe(true);
+      expect((await fs.stat(accountsDir)).mode & 0o777).toBe(0o700);
+    }
 
     const reloaded = await host.harness.lifecycle.reload(plugin);
     cleanups.push(() => reloaded.harness.lifecycle.dispose());

@@ -732,7 +732,9 @@ describe("plugin settings + storage", () => {
         directory: join(pluginDir, "files"),
         previous: null,
       });
-      expect((await stat(join(pluginDir, "files"))).mode & 0o777).toBe(0o700);
+      if (process.platform !== "win32") {
+        expect((await stat(join(pluginDir, "files"))).mode & 0o777).toBe(0o700);
+      }
 
       await service.reload("filer");
       expect(filer().previous).toBe("kept");
