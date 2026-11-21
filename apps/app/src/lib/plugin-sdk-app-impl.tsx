@@ -92,11 +92,11 @@ import {
   useSidebarThreadRowStatus,
   useSidebarThreadRowStatuses,
   useSidebarThreadShortcut,
-  useSidebarThread,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
 import { useSidebarSplitLayout } from "./plugin-split-layout";
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
+import { useThreadState } from "./thread-state";
 import { useExperiment } from "./plugin-experiments";
 import {
   experimental_PluginRpcCallError,
@@ -231,7 +231,7 @@ export const pluginSdkAppImplementation = {
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
-  experimental_useSidebarThread: useSidebarThread,
+  experimental_useThread: useThreadState,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,
   experimental_useArchiveEnvironmentThreads: useArchiveEnvironmentThreads,

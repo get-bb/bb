@@ -414,7 +414,7 @@ const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcu
 const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
 const rowStatuses = useSidebarThreadRowStatuses(); // ReadonlyMap, for group rollups
 const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, threadId, isFocused }] } | null
-const one = experimental_useSidebarThread(id); // one thread, re-renders only for it; null if not loaded
+const one = experimental_useThread(thread.id); // { status: loading | ready | notFound | error, thread }
 // projects: PluginSidebarProject[] — { id, name, isPersonal, href, settingsHref }
 
 // Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`

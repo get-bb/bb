@@ -96,8 +96,16 @@ function Details({ isExpanded, onToggle, collapseRef }: ExperimentalThreadContex
 ```
 
 For the segment's thread or a related one (its parent, a fork source), read
-`experimental_useSidebarThread(id)`, not `experimental_useSidebarThreads()`
-plus `find`: it returns the same object and re-renders only for that thread.
-It is null for a thread the sidebar does not hold (unknown, deleted, archived
-until an archived read loads it, or before the first load); read
-`useSdk().threads.get` for those, as bb's parent-thread segment does.
+`experimental_useThread(id)`, not `experimental_useSidebarThreads()` plus
+`find`. It returns `{ status, thread }`: `ready` with the thread, `loading`,
+`notFound` (unknown or deleted), or `error`. A thread the sidebar holds is
+ready at once and re-renders the component only when it changes; any other,
+such as an archived parent, is fetched and kept current. `thread` has the
+fields `useSdk().threads.get` returns except the five that only that request
+computes (`canEditMessages` and the like). bb's parent-thread segment reads
+the thread and its parent this way:
+
+```tsx
+const { thread } = experimental_useThread(threadId);
+const { thread: parent } = experimental_useThread(thread?.parentThreadId ?? "");
+```

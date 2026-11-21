@@ -29,6 +29,7 @@ import type {
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
   ThreadStatus,
+  ThreadWithRuntime,
   WorkspaceGitOperation,
 } from "@bb/domain";
 import type {
@@ -1984,6 +1985,26 @@ export interface ExperimentalThreadInfoProps {
    */
   environment: ExperimentalThreadEnvironment | null;
 }
+
+/**
+ * A thread as {@link PluginSdkApp.experimental_useThread} reports it: the
+ * fields `useSdk().threads.get` returns, without `activeBackgroundAgentCount`,
+ * `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and
+ * `queuedMessageCount`, which only that request computes. Read those from
+ * `threads.get` when you need them.
+ */
+export type ExperimentalThread = ThreadWithRuntime;
+
+/**
+ * What {@link PluginSdkApp.experimental_useThread} knows about one thread.
+ * `notFound` means bb has no such thread: an unknown id, a deleted thread, or
+ * a thread in a deleted project. `error` is any other failed read.
+ */
+export type ExperimentalThreadState =
+  | { status: "loading"; thread: null }
+  | { status: "ready"; thread: ExperimentalThread }
+  | { status: "notFound"; thread: null }
+  | { status: "error"; thread: null };
 
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
@@ -6114,15 +6135,13 @@ export interface PluginSdkApp {
     readonly storage: "3_storage";
   };
   /**
-   * One thread of {@link PluginSdkApp.experimental_useSidebarThreads}, the
-   * same object that hook returns, or null when the sidebar does not hold it:
-   * an unknown, deleted or archived thread (archived threads appear only
-   * after an archived read loaded them), or any thread before the sidebar's
-   * first load. The component re-renders when this thread changes, not when
-   * other threads do. For a thread it returns null for, read
-   * `useSdk().threads.get`. Experimental: see docs/api_to_audit.md.
+   * One thread by id (see {@link ExperimentalThreadState}). A thread bb's
+   * sidebar already holds is read from it with no request and re-renders the
+   * component only when that thread changes. Any other thread, such as an
+   * archived one, is fetched once and then kept current. An empty `threadId`
+   * is `notFound` without a request. Experimental: see docs/api_to_audit.md.
    */
-  experimental_useSidebarThread(threadId: string): PluginSidebarThread | null;
+  experimental_useThread(threadId: string): ExperimentalThreadState;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.

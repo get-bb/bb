@@ -36,18 +36,6 @@ export function useHosts(
   });
 }
 
-export function useHostName(hostId: string | null): string | null {
-  const enabled = hostId !== null;
-  useHostListRealtimeSubscription({ enabled });
-  const { data } = useQuery({
-    ...hostsQueryOptions(false),
-    enabled,
-    staleTime: 60_000,
-    select: (hosts) => hosts.find((host) => host.id === hostId)?.name ?? null,
-  });
-  return data ?? null;
-}
-
 export function hostsQueryOptions(includeCreating: boolean) {
   return queryOptions<Host[]>({
     queryKey: hostsQueryKey(includeCreating),
