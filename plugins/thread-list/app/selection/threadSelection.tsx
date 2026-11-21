@@ -12,7 +12,7 @@ import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useSidebarData } from "../model/use-sidebar-data.js";
 import { toThreadActionTarget } from "../rows/threadActionTarget.js";
-import { SIDEBAR_CONTENT_SELECTOR } from "../ui/sidebar.js";
+import { useSidebarScrollArea } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
 import { isNonImeKey } from "@/lib/ime-keyboard";
 
@@ -34,6 +34,7 @@ export class ThreadSelectionStore {
   private selectedSet: ReadonlySet<string> = new Set();
   private anchor: string | null = null;
   private activeThreadId: string | null = null;
+  private scrollElement: HTMLElement | null = null;
   private listedThreadsById: ReadonlyMap<string, SidebarThread> = new Map();
   private selectionTargets: readonly PluginThreadActionTarget[] | null = null;
   private readonly listeners = new Set<() => void>();
@@ -78,6 +79,10 @@ export class ThreadSelectionStore {
     this.activeThreadId = threadId;
   }
 
+  setScrollElement(element: HTMLElement | null): void {
+    this.scrollElement = element;
+  }
+
   clear(): void {
     this.anchor = null;
     this.replace(NO_THREAD_IDS);
@@ -115,7 +120,7 @@ export class ThreadSelectionStore {
       if (this.selected.length > 0) this.replace(NO_THREAD_IDS);
       return false;
     }
-    const order = collectVisibleThreadIds(origin);
+    const order = collectVisibleThreadIds(origin, this.scrollElement);
     if (!modifiers.metaKey && !modifiers.ctrlKey) {
       const anchor = this.anchor ?? this.activeThreadId ?? threadId;
       const from = order.indexOf(anchor);
@@ -170,12 +175,12 @@ function sortByOrder(
   );
 }
 
-export function collectVisibleThreadIds(origin: Element): string[] {
+export function collectVisibleThreadIds(
+  origin: Element,
+  scrollElement: HTMLElement | null,
+): string[] {
   const overflow = origin.closest("[data-sidebar-overflow='true']");
-  const root =
-    overflow ??
-    origin.closest(SIDEBAR_CONTENT_SELECTOR) ??
-    origin.ownerDocument;
+  const root = overflow ?? scrollElement ?? origin.ownerDocument;
   const elements = root.querySelectorAll<HTMLElement>(
     `${THREAD_ROW_TARGET_SELECTOR}, [${SIDEBAR_WINDOWED_NAV_ATTRIBUTE}]`,
   );
@@ -222,6 +227,12 @@ export function ThreadSelectionProvider({
   useLayoutEffect(() => {
     store.setActiveThreadId(activeThreadId);
   }, [activeThreadId, store]);
+  const scrollArea = useSidebarScrollArea();
+  const scrollElement =
+    scrollArea.kind === "sidebar" ? scrollArea.element : null;
+  useLayoutEffect(() => {
+    store.setScrollElement(scrollElement);
+  }, [scrollElement, store]);
   const { projects } = useSidebarData();
   const listedThreadsById = useMemo(
     () =>

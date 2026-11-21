@@ -17,7 +17,7 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
-import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadListContent } from "./PluginThreadList";
 
 const toast = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock("@/components/ui/app-toast", () => ({ appToast: toast }));
@@ -41,7 +41,10 @@ function renderList(replacement: ResolvedReplacement<PluginThreadListSlot>) {
   return render(
     <MemoryRouter>
       <SidebarProvider>
-        <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        <SidebarThreadListContent
+          replacement={replacement}
+          onNavigate={() => {}}
+        />
       </SidebarProvider>
     </MemoryRouter>,
   );
@@ -96,6 +99,23 @@ describe("PluginThreadList", () => {
       searchQuery: "",
     });
     expect("Original" in (seen[0] ?? {})).toBe(false);
+  });
+
+  it("hands the list the sidebar element that scrolls it once that element mounts", () => {
+    const scrollElements: (HTMLElement | null)[] = [];
+    const { container } = renderList(
+      pluginReplacement(({ experimental_scrollElement }) => {
+        scrollElements.push(experimental_scrollElement);
+        return <div data-testid="plugin-list">plugin list</div>;
+      }),
+    );
+
+    const scroller = container.querySelector('[data-sidebar="content"]');
+    expect(scroller).not.toBeNull();
+    expect(scroller?.contains(screen.getByTestId("plugin-list"))).toBe(true);
+    expect(scrollElements[0]).toBeNull();
+    expect(scrollElements.at(-1)).toBe(scroller);
+    expect(new Set(scrollElements.slice(1))).toEqual(new Set([scroller]));
   });
 
   it("replaces a crashed list with the crashed placeholder and remounts on reload", () => {

@@ -65,7 +65,10 @@ the same change.
 ### Frontend
 
 - Read references/frontend-registration.md for definePluginApp, thread header
-  and Browser toolbar controls, and sidebar replacement.
+  and Browser toolbar controls.
+- Read references/frontend-thread-list.md to replace the sidebar thread list
+  (`experimental_threadList`), read live threads, and window rows against the
+  sidebar's scroll element.
 - Read references/frontend-thread-header-row.md to add a full-width row under
   the thread header (`experimental_threadHeaderRow`), such as a tab strip, or
   to replace the thread title in the header (`experimental_threadHeaderTitle`).
