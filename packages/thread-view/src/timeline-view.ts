@@ -878,10 +878,23 @@ function closeOpenStepAtBoundary(
   if (!work.some((row) => row.kind === "work")) return work;
   if (work.length === 1) {
     return work.map((row) =>
-      row.kind === "work" ? { ...row, inClosedStep: true } : row,
+      row.kind === "work" ? closedStepWorkRow(row) : row,
     );
   }
   return [buildStepSummaryRow(work)];
+}
+
+const closedStepWorkRows = new WeakMap<
+  TimelineViewWorkRow,
+  TimelineViewWorkRow
+>();
+
+function closedStepWorkRow(row: TimelineViewWorkRow): TimelineViewWorkRow {
+  const cached = closedStepWorkRows.get(row);
+  if (cached !== undefined) return cached;
+  const closed = { ...row, inClosedStep: true };
+  closedStepWorkRows.set(row, closed);
+  return closed;
 }
 
 function flushOpenStepAsBundles(
@@ -923,13 +936,13 @@ function flushOpenStepAsBundles(
   return out;
 }
 
-type TimelineViewRowsCache = WeakMap<
-  readonly TimelineRow[],
-  ThreadTimelineViewRow[]
->;
+interface TimelineViewRowsCache {
+  rows: WeakMap<readonly TimelineRow[], ThreadTimelineViewRow[]>;
+  row: WeakMap<TimelineRow, ThreadTimelineViewRow>;
+}
 
 export function createTimelineViewRowsCache(): TimelineViewRowsCache {
-  return new WeakMap();
+  return { rows: new WeakMap(), row: new WeakMap() };
 }
 
 function toTimelineViewWorkRow(
@@ -951,6 +964,17 @@ function toTimelineViewWorkRow(
 }
 
 function toTimelineViewRow(
+  row: TimelineRow,
+  cache: TimelineViewRowsCache,
+): ThreadTimelineViewRow {
+  const cached = cache.row.get(row);
+  if (cached !== undefined) return cached;
+  const viewRow = buildTimelineViewRow(row, cache);
+  if (viewRow !== row) cache.row.set(row, viewRow);
+  return viewRow;
+}
+
+function buildTimelineViewRow(
   row: TimelineRow,
   cache: TimelineViewRowsCache,
 ): ThreadTimelineViewRow {
@@ -986,7 +1010,7 @@ export function buildTimelineViewRows(
 ): ThreadTimelineViewRow[] {
   const cache = options.cache;
   if (cache) {
-    const cached = cache.get(rows);
+    const cached = cache.rows.get(rows);
     if (cached) return cached;
   }
   const childCache = cache ?? createTimelineViewRowsCache();
@@ -1015,7 +1039,7 @@ export function buildTimelineViewRows(
     result.push(...flushOpenStepAsBundles(openStep));
   }
   if (cache) {
-    cache.set(rows, result);
+    cache.rows.set(rows, result);
   }
   return result;
 }
