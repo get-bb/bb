@@ -503,6 +503,13 @@ async function readCompletedBranch(
   }
 }
 
+export async function readNamedWorktreeBranch(
+  completionPath: string,
+): Promise<string | null> {
+  const completed = await readCompletedBranch(completionPath);
+  return completed === DETACHED_COMPLETION ? null : completed;
+}
+
 async function refreshWorktreeIndex(
   worktreePath: string,
   signal: AbortSignal | undefined,

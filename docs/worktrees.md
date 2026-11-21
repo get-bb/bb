@@ -132,15 +132,16 @@ Contract:
 A project can keep up to four warm worktrees per checkout: worktrees already
 created at the project's default base with `.worktreeinclude` copied and
 `.bb-env-setup.sh` finished. A new worktree thread on the default base takes
-one instead of waiting for git and the setup script: once the thread's title
-settles, the plugin renames the warm worktree's unused placeholder branch to
-the thread's branch and hands it over. If core refuses the handover, the
-branch is renamed back. While the title is being generated, bb asks the remote
-for its current default base (`git ls-remote`). A warm worktree at that commit
-starts the thread without running setup again. A warm worktree behind it is
-fast-forwarded to that commit after the handover, and `.bb-env-setup.sh` runs
-again before the thread starts, so a thread never starts on older code than a
-fresh worktree would. A setup script that skips work whose inputs did not
+one instead of waiting for git and the setup script, in the same order as a
+fresh worktree: bb asks the remote for its current default base
+(`git ls-remote`), hands the warm worktree to the thread, brings it up to date
+while the thread's title is generated, and names the branch from the title
+last. A warm worktree at the remote's commit starts the thread without running
+setup again. A warm worktree behind it is fast-forwarded to that commit and
+`.bb-env-setup.sh` runs again before the thread starts, so a thread never
+starts on older code than a fresh worktree would. If bb restarts before the
+handover finishes, that warm worktree is deleted and the thread gets another
+one, or a fresh worktree. A setup script that skips work whose inputs did not
 change (this repository's skips `pnpm install` when the lockfile is unchanged)
 makes that second run short. If the remote can't be reached, bb uses the last
 fetched default base instead, as a fresh worktree would, and the thread's

@@ -86,7 +86,7 @@ export interface WarmHandOff {
   baseCommit: string;
   memberCommit: string;
   offline: boolean;
-  branchName: string;
+  placeholder: string;
 }
 
 export interface WarmPools {
@@ -98,7 +98,6 @@ export interface WarmPools {
     projectId: string;
     hostId: string;
     sourcePath: string;
-    branchName(): Promise<string>;
     adopt(environmentId: string, handOff: WarmHandOff): Promise<void>;
     signal: AbortSignal;
   }): Promise<WarmHandOff | null>;
@@ -575,25 +574,20 @@ export async function createWarmPools(args: {
         break;
       tried.add(member.id);
       remoteBase ??= readRemoteBase();
-      let result;
-      let toBranch;
       let base;
+      let checked;
       try {
-        [toBranch, base] = await Promise.all([
-          request.branchName(),
-          remoteBase,
-        ]);
+        base = await remoteBase;
         if (base === null) {
           reserved.delete(member.id);
           break;
         }
-        result = await host.call(
-          "handOff",
+        checked = await host.call(
+          "checkPoolMember",
           {
             sourcePath: request.sourcePath,
             path: member.path,
-            fromBranch: member.branchName,
-            toBranch,
+            placeholder: member.branchName,
             baseBranch: base.ref,
             baseCommit: base.commit,
           },
@@ -611,10 +605,10 @@ export async function createWarmPools(args: {
         );
         break;
       }
-      if (result.status !== "handed-off") {
+      if (checked.status !== "usable") {
         reserved.delete(member.id);
-        if (result.status === "busy") break;
-        const reason = result.reason;
+        if (checked.status === "busy") break;
+        const reason = checked.reason;
         await serialFor(request)(() =>
           discard(member, `it cannot be handed off: ${reason}`),
         );
@@ -624,25 +618,14 @@ export async function createWarmPools(args: {
         path: member.path,
         baseBranch: base.ref,
         baseCommit: base.commit,
-        memberCommit: result.head,
+        memberCommit: checked.head,
         offline: base.offline,
-        branchName: toBranch,
+        placeholder: member.branchName,
       };
       try {
         await request.adopt(member.id, handed);
       } catch (error) {
         reserved.delete(member.id);
-        await host
-          .call(
-            "restorePoolMember",
-            {
-              sourcePath: request.sourcePath,
-              path: member.path,
-              placeholder: member.branchName,
-            },
-            { hostId: request.hostId, timeoutMs: HANDOFF_TIMEOUT_MS },
-          )
-          .catch(() => undefined);
         if (request.signal.aborted) throw error;
         bb.log.warn(
           `Warm worktree ${member.id} could not be adopted: ${errorMessage(error)}`,

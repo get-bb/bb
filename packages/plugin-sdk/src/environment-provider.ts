@@ -99,14 +99,16 @@ export interface PluginEnvironmentProviderSteps {
   setup(path: string): Promise<void>;
   /**
    * Hands this operation a ready environment this plugin holds, at once and
-   * atomically: the hold is cleared, the environment becomes the one this
-   * create produces, keeps its setup, and takes `resource`, which `remove()`
-   * receives if create never returns. Rejects when the environment is not a
-   * ready one this plugin holds on the same project and machine; then nothing
-   * changed. Setup does not run again unless `setup(path)` is called afterwards
-   * with the adopted path; then it runs after create returns, before the
-   * thread starts. A `created` result must name its path; any other outcome
-   * leaves the environment in error, and its thread fails.
+   * atomically: the environment becomes the one this create produces, keeps
+   * its setup, and takes `resource`, which `remove()` receives if create never
+   * returns. The hold is cleared when create returns. Rejects when the
+   * environment is not a ready one this plugin holds on the same project and
+   * machine; then nothing changed. Setup does not run again unless
+   * `setup(path)` is called afterwards with the adopted path, which starts it
+   * at once. A `created` result must name its path; any other outcome leaves
+   * the environment in error, and its thread fails. If bb restarts before
+   * create returns, the environment is removed and the thread is provisioned
+   * again.
    */
   adopt(environmentId: string, resource: JsonValue): Promise<void>;
 }

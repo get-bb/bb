@@ -4406,23 +4406,30 @@ plugin; a plugin's `bb.sdk` always sends its own id): threads cannot join it
 ("held by <plugin>"), and a create that returns its path without adopting it
 fails. A version-2 provider of that plugin hands one to a new thread with
 `adopt(environmentId, resource)` (`adoptHeldEnvironment` in
-`packages/db/src/data/environments.ts`), which in one transaction clears the
-hold, moves the thread's reservation onto the held environment, records
-`resource`, and drops the reservation; setup does not run again unless the
-provider then calls `setup(path)` with the adopted path, which runs setup
-again after create returns and before the thread starts. The create must
-return the held environment's path. A refused adopt changes nothing. The thread starts only once create returns `created`. Any other
-outcome after an adopt (a failed or aborted create, or a path other than the
-adopted one) fails the environment and its thread, and the environment is
-then retired and removed with the recorded resource. After a restart between
-adopt and create returning, core finishes the create from what adopt
-recorded, runs setup again (the provider may have changed the checkout
-before it could ask), and starts the thread. Its only caller is the Worktree
-plugin's warm pool, which renames a member's placeholder branch under the git
-ref lock, then adopts it with a resource naming the new branch, and renames
-the branch back when core refuses. When the member is behind the remote's
-default base, the pool fast-forwards it after adopt and calls `setup(path)`. Disabling or uninstalling a plugin releases its holds
-(`releasePluginEnvironmentHolds`, on the plugin service's
+`packages/db/src/data/environments.ts`), which in one transaction moves the
+thread's reservation onto the held environment, records `resource`, and drops
+the reservation. The hold stays until create returns, so other threads still
+cannot join and a restart can tell the handover was unfinished. Setup does not
+run again unless the provider then calls `setup(path)` with the adopted path,
+which starts setup at once, as for a fresh create. The create must return the
+held environment's path; the resource it returns replaces the one adopt
+recorded, and the hold is cleared. A refused adopt changes nothing. The thread
+starts only once create returns `created`. Any other outcome after an adopt (a
+failed or aborted create, or a path other than the adopted one) fails the
+environment and its thread, releases the hold, and the environment is retired
+and removed with the recorded resource. Stopping the thread before create
+returns discards the environment, as for a fresh create. After a restart
+between adopt and create returning, core discards the environment (removed
+with the resource adopt recorded) and puts the thread back on its provider
+request, so it is provisioned again (`restartInterruptedHandOff`). Its only
+caller is the Worktree plugin's warm pool, which checks a member under the git
+ref lock, adopts it with a resource naming its placeholder branch,
+fast-forwards it and calls `setup(path)` when it is behind the remote's default
+base, waits for the thread's branch name, and renames the placeholder last.
+Its removal also deletes the branch named in the worktree's completion file,
+which the rename writes first, so a restart after the rename leaks nothing.
+Disabling or uninstalling a plugin releases its holds on environments no
+thread is taking (`releasePluginEnvironmentHolds`, on the plugin service's
 `onPluginUnregistered`, the same signal that clears its queue waits), so the
 environments retire like any other. Steps a provider reports after `adopt`
 land on the adopted environment and the thread's provisioning transcript.

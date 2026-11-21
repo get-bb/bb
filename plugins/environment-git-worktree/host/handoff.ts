@@ -211,21 +211,19 @@ export async function restorePoolMember(args: {
   );
 }
 
-export type HandOffResult =
-  | { status: "handed-off"; head: string }
+export type PoolMemberCheck =
+  | { status: "usable"; head: string }
   | { status: "refused"; reason: string }
   | { status: "busy" };
 
-export async function handOffWorktree(args: {
+export async function checkPoolMember(args: {
   sourcePath: string;
   path: string;
-  fromBranch: string;
-  toBranch: string;
+  placeholder: string;
   baseBranch: string;
   baseCommit: string;
-  completionPath: string;
   signal: AbortSignal | undefined;
-}): Promise<HandOffResult> {
+}): Promise<PoolMemberCheck> {
   if ((await readCommit(args.path, args.baseCommit, args.signal)) === null) {
     const base = await resolveWorktreeBaseBranch(args.sourcePath, {
       kind: "default",
@@ -248,12 +246,12 @@ export async function handOffWorktree(args: {
   try {
     return await withGitRefMutationLock(
       await getGitCommonDir(args.path),
-      async (): Promise<HandOffResult> => {
+      async (): Promise<PoolMemberCheck> => {
         locked = true;
         const placeholder = await restorePlaceholderUnlocked({
           sourcePath: args.sourcePath,
           path: args.path,
-          placeholder: args.fromBranch,
+          placeholder: args.placeholder,
           signal: args.signal,
         });
         if (placeholder.status === "used")
@@ -272,19 +270,7 @@ export async function handOffWorktree(args: {
             status: "refused",
             reason: `it is not on ${args.baseBranch}`,
           };
-        await runGit(["branch", "-m", args.fromBranch, args.toBranch], {
-          cwd: args.path,
-          ...signalOption(args.signal),
-        });
-        try {
-          await fs.writeFile(args.completionPath, `${args.toBranch}\n`, "utf8");
-        } catch (error) {
-          await runGit(["branch", "-m", args.toBranch, args.fromBranch], {
-            cwd: args.path,
-          });
-          throw error;
-        }
-        return { status: "handed-off", head };
+        return { status: "usable", head };
       },
       { ...signalOption(args.signal), timeoutMs: HANDOFF_LOCK_TIMEOUT_MS },
     );
@@ -292,6 +278,26 @@ export async function handOffWorktree(args: {
     if (!locked && !args.signal?.aborted) return { status: "busy" };
     throw error;
   }
+}
+
+export async function nameHandedOffBranch(args: {
+  path: string;
+  fromBranch: string;
+  toBranch: string;
+  completionPath: string;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  await withGitRefMutationLock(
+    await getGitCommonDir(args.path),
+    async () => {
+      await fs.writeFile(args.completionPath, `${args.toBranch}\n`, "utf8");
+      await runGit(["branch", "-m", args.fromBranch, args.toBranch], {
+        cwd: args.path,
+        ...signalOption(args.signal),
+      });
+    },
+    signalOption(args.signal),
+  );
 }
 
 export async function fastForwardWorktree(args: {

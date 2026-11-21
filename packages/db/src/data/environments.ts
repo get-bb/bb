@@ -691,10 +691,10 @@ export function adoptHeldEnvironment(db: DbConnection, provisioning: Environment
     if (held.projectId !== current.projectId || held.hostId !== current.hostId) throw new Error(`Environment ${environmentId} is on another project or machine`);
     if (held.teardownStatus !== null || held.status !== "ready" || held.ownerThreadId !== null) throw new Error(`Environment ${environmentId} is not ready to hand over`);
     tx.update(environments).set({ ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null, createPending: false }).where(eq(environments.id, current.id)).run();
-    return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, heldBy: null, createPending: true, resource, retireAt: current.retireAt, statusMessage: current.statusMessage, pendingLog: "" }).where(eq(environments.id, held.id)).returning().get()!;
+    return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, createPending: true, resource, retireAt: current.retireAt, statusMessage: current.statusMessage, pendingLog: "" }).where(eq(environments.id, held.id)).returning().get()!;
   }, { behavior: "immediate" });
 }
 
 export function releaseEnvironmentHolds(db: EnvironmentWriteConnection, holder: EnvironmentHolder): string[] {
-  return db.update(environments).set({ heldBy: null, updatedAt: Date.now() }).where(eq(environments.heldBy, holder)).returning({ id: environments.id }).all().map((row) => row.id);
+  return db.update(environments).set({ heldBy: null, updatedAt: Date.now() }).where(and(eq(environments.heldBy, holder), isNull(environments.ownerThreadId))).returning({ id: environments.id }).all().map((row) => row.id);
 }
