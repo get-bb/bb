@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { providerRawEventSchema, threadUsageCostSchema } from "@bb/domain";
 import type { ProviderRawEvent, ThreadUsageCost } from "@bb/domain";
 import {
@@ -169,6 +170,38 @@ interface AcpOpenToolCall {
   openedType: DeltaItemShape["type"];
   permissionTitle?: string;
   delegation?: AcpDelegationReport;
+}
+
+const OPENCODE_RETRY_META_KEY = "opencode/retry";
+
+const openCodeRetryMetaSchema = z.object({
+  attempt: z.number().int().positive().optional(),
+  nextRetryAt: z.string().min(1).optional(),
+  error: z.object({
+    message: z.string().min(1),
+    status: z.number().int().optional(),
+  }),
+});
+type OpenCodeRetryMeta = z.infer<typeof openCodeRetryMetaSchema>;
+
+function openCodeRetryMeta(update: unknown): OpenCodeRetryMeta | null {
+  if (!isJsonObject(update)) return null;
+  const meta = update["_meta"];
+  if (!isJsonObject(meta)) return null;
+  const parsed = openCodeRetryMetaSchema.safeParse(
+    meta[OPENCODE_RETRY_META_KEY],
+  );
+  return parsed.success ? parsed.data : null;
+}
+
+function openCodeRetryDetail(retry: OpenCodeRetryMeta): string {
+  const attempt =
+    retry.attempt === undefined ? "" : ` attempt ${retry.attempt}`;
+  const next =
+    retry.nextRetryAt === undefined ? "" : `, next at ${retry.nextRetryAt}`;
+  const status =
+    retry.error.status === undefined ? "" : ` HTTP ${retry.error.status}`;
+  return `OpenCode retry${attempt}${next}:${status} ${retry.error.message}`;
 }
 
 export function createAcpDeltaTranslator(
@@ -965,17 +998,27 @@ export function createAcpDeltaTranslator(
         return translateCompactionUpdate(update, context, rawEvent);
 
       case "session_info_update": {
+        const deltas: ThreadDelta[] = [];
         const title = isJsonObject(update) ? update["title"] : undefined;
         if (
-          typeof title !== "string" ||
-          title.trim() === "" ||
-          title.trimStart().startsWith(SYSTEM_INSTRUCTIONS_OPEN_TAG) ||
-          title === lastAgentTitle
+          typeof title === "string" &&
+          title.trim() !== "" &&
+          !title.trimStart().startsWith(SYSTEM_INSTRUCTIONS_OPEN_TAG) &&
+          title !== lastAgentTitle
         ) {
-          return [];
+          lastAgentTitle = title;
+          deltas.push({ kind: "thread.name", name: title, source: "agent" });
         }
-        lastAgentTitle = title;
-        return [{ kind: "thread.name", name: title, source: "agent" }];
+        const retry = openCodeRetryMeta(update);
+        if (retry !== null) {
+          deltas.push({
+            kind: "provider.error",
+            message: "Provider error",
+            detail: openCodeRetryDetail(retry),
+            willRetry: true,
+          });
+        }
+        return deltas;
       }
 
       default:
