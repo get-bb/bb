@@ -44,6 +44,7 @@ import { ImageLightbox } from "./image-lightbox.js";
 import { getWrappedImageIndex } from "@bb/shared-ui/lib/image-preview";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { remarkInlineDollarMath } from "./markdown-inline-dollar-math.js";
+import { remarkSlackDates } from "./markdown-slack-dates.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout.js";
 import {
@@ -1884,6 +1885,7 @@ function MarkdownPreviewComponent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       remarkInlineDollarMath,
+      remarkSlackDates,
     ];
     if (headingAnchors) {
       plugins.push(remarkHeadingIds);
