@@ -24,6 +24,7 @@ import {
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
+import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import {
   listQueuedCommands,
   reportQueuedCommandSuccess,
@@ -94,9 +95,9 @@ function installProviders(
             };
           }
         }
-        await args.afterAdopt?.();
         if (args.setupAfterAdopt && held?.path != null)
           await context.setup(held.path);
+        await args.afterAdopt?.();
         if (args.stepAfterAdopt !== undefined)
           context.report.step(args.stepAfterAdopt);
         return {
@@ -629,10 +630,10 @@ describe("plugin holds", () => {
     });
   });
 
-  it("runs setup again and starts the thread on the adopted environment, with the resource adopt recorded, after a restart before create returned", async () => {
+  it("discards a handed-over environment and gives the thread a new one after a restart before create returned", async () => {
     await withTestHarness(async (harness) => {
       let paused: Promise<void> | undefined;
-      installProviders({ afterAdopt: () => paused });
+      const { removed } = installProviders({ afterAdopt: () => paused });
       const { host, project } = seed(harness);
       const pooled = await readyHeldEnvironment(
         harness,
@@ -658,29 +659,126 @@ describe("plugin holds", () => {
         .from(environments)
         .where(eq(environments.ownerThreadId, thread.id))
         .get()!;
-      const branch = `bb/warm-start-${thread.id}`;
+      const placeholder = { branch: `bb/${pooled.id}` };
       adoptHeldEnvironment(
         harness.db,
         reservation,
         pooled.id,
         `plugin:${POOL_PLUGIN}`,
-        { branch },
+        placeholder,
       );
+      expect(getEnvironment(harness.db, pooled.id)).toMatchObject({
+        heldBy: `plugin:${POOL_PLUGIN}`,
+        ownerThreadId: thread.id,
+        createPending: true,
+      });
+      paused = undefined;
       await runEnvironmentProvisioningSweep(harness.deps);
-      await finishSetup(harness, pooled.id, "thread");
+      await expect.poll(() => removed).toEqual([placeholder]);
+      expect(getEnvironment(harness.db, pooled.id)).toMatchObject({
+        heldBy: null,
+        ownerThreadId: null,
+        teardownStatus: "removed",
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.environmentId)
+        .not.toBeNull();
+      const replacement = getThread(harness.db, thread.id)!.environmentId!;
+      expect(replacement).not.toBe(pooled.id);
+      await finishSetup(harness, replacement, "thread");
       await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
         5_000,
       );
-      expect(getThread(harness.db, thread.id)?.environmentId).toBe(pooled.id);
-      expect(getEnvironment(harness.db, pooled.id)).toMatchObject({
-        status: "ready",
-        createPending: false,
-        heldBy: null,
-        resource: { branch },
+    });
+  });
+
+  it("keeps the plugin's hold until create returns, so other threads cannot join a handover", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      let release: () => void = () => {};
+      let paused: Promise<void> | undefined;
+      installProviders({ adopt: () => handOff, afterAdopt: () => paused });
+      const { host, project } = seed(harness);
+      const pooled = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      handOff = pooled;
+      paused = new Promise<void>((resolve) => {
+        release = resolve;
       });
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getEnvironment(harness.db, pooled.id)?.ownerThreadId)
+        .toBe(thread.id);
+      expect(getEnvironment(harness.db, pooled.id)?.heldBy).toBe(
+        `plugin:${POOL_PLUGIN}`,
+      );
+      const refusal = await createThreadFromRequest(harness.deps, {
+        startedOnBehalfOf: null,
+        environment: { type: "reuse", environmentId: pooled.id },
+        input: textInput("join the handover"),
+        origin: "cli",
+        projectId: project.id,
+        providerId: "codex",
+      }).catch((error: unknown) => error);
+      expect(refusal).toMatchObject({ status: 409 });
+      release();
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+        5_000,
+      );
+      expect(getEnvironment(harness.db, pooled.id)?.heldBy).toBeNull();
+    });
+  });
+
+  it("discards a handed-over environment when its thread is stopped before create returns", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      let paused: Promise<void> | undefined;
+      let release: () => void = () => {};
+      const { removed } = installProviders({
+        adopt: () => handOff,
+        setupAfterAdopt: true,
+        afterAdopt: () => paused,
+      });
+      const { host, project } = seed(harness);
+      const pooled = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      handOff = pooled;
+      paused = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getThread(harness.db, thread.id)?.environmentId)
+        .toBe(pooled.id);
+      requestThreadStopForCurrentState(
+        harness.deps,
+        getThread(harness.db, thread.id)!,
+      );
+      release();
+      await expect
+        .poll(() => getEnvironment(harness.db, pooled.id)?.teardownStatus)
+        .toBe("removed");
+      expect(getEnvironment(harness.db, pooled.id)?.heldBy).toBeNull();
+      expect(removed).toEqual([{ branch: `bb/warm-start-${thread.id}` }]);
+      expect(threadStarts(harness, thread.id)).toEqual([]);
     });
   });
 

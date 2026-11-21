@@ -310,11 +310,11 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         return adoptExistingWorktree(context, context.inputs.path);
       }
       if (context.inputs.branch.kind === "default") {
-        const handedOffResource = (warm: WarmHandOff) => ({
+        const ownedBranch = (name: string, baseBranch: string) => ({
           ownedBranch: {
-            name: warm.branchName,
+            name,
             repositoryPath: context.projectCheckout.path,
-            baseBranch: warm.baseBranch,
+            baseBranch,
           },
         });
         const warm = await pools.handOff({
@@ -322,22 +322,25 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           projectId: context.project.id,
           hostId: context.host.id,
           sourcePath: context.projectCheckout.path,
-          branchName: context.branchName,
           adopt: (environmentId, handed) =>
-            context.adopt(environmentId, handedOffResource(handed)),
+            context.adopt(
+              environmentId,
+              ownedBranch(handed.placeholder, handed.baseBranch),
+            ),
           signal: context.signal,
         });
         if (warm !== null) {
           const commit = warm.baseCommit.slice(0, 7);
+          const hostOptions = {
+            hostId: context.host.id,
+            signal: context.signal,
+            timeoutMs: CREATE_TIMEOUT_MS,
+          };
           if (warm.memberCommit !== warm.baseCommit) {
             await host.call(
               "fastForward",
               { path: warm.path, commit: warm.baseCommit },
-              {
-                hostId: context.host.id,
-                signal: context.signal,
-                timeoutMs: CREATE_TIMEOUT_MS,
-              },
+              hostOptions,
             );
             context.report.step(
               `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
@@ -349,12 +352,22 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
               : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
           );
+          const branchName = await context.branchName();
+          await host.call(
+            "nameHandedOffBranch",
+            {
+              path: warm.path,
+              fromBranch: warm.placeholder,
+              toBranch: branchName,
+            },
+            hostOptions,
+          );
           return {
             status: "created",
             path: warm.path,
             ownsPath: true,
             mergeBaseBranch: warm.baseBranch,
-            resource: handedOffResource(warm),
+            resource: ownedBranch(branchName, warm.baseBranch),
           };
         }
       }

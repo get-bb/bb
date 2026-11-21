@@ -54,10 +54,10 @@ function environment(member: Member) {
 async function setup(args: {
   members: Member[];
   size?: number;
-  handOff?: (
+  check?: (
     call: ExperimentalFakeHostRpcCall,
   ) =>
-    | { status: "handed-off"; head: string }
+    | { status: "usable"; head: string }
     | { status: "refused"; reason: string }
     | { status: "busy" };
   remoteBase?: { ref: string; commit: string; offline: boolean } | null;
@@ -87,9 +87,10 @@ async function setup(args: {
       }
       hostCalls.push(call);
       order.push(`host:${call.method}`);
-      if (call.method === "handOff")
-        return args.handOff?.(call) ?? { status: "handed-off", head: "base" };
+      if (call.method === "checkPoolMember")
+        return args.check?.(call) ?? { status: "usable", head: "base" };
       if (call.method === "fastForward") return null;
+      if (call.method === "nameHandedOffBranch") return null;
       if (call.method === "refreshPoolBase") {
         const input = call.input as { memberPaths: string[] };
         return {
@@ -261,42 +262,61 @@ const READY: Member = {
 };
 
 describe("warm worktree handoff", () => {
-  it("hands a ready warm worktree to a default-base create on its new branch", async () => {
+  const ownedBranch = (name: string) => ({
+    ownedBranch: {
+      name,
+      repositoryPath: SOURCE_PATH,
+      baseBranch: "origin/main",
+    },
+  });
+
+  function pendingTitle() {
+    let settle: (name: string) => void = () => {};
+    const title = () =>
+      new Promise<string>((resolve) => {
+        settle = resolve;
+      });
+    return { title, settle: (name: string) => settle(name) };
+  }
+
+  it("adopts a ready warm worktree on its placeholder, then renames it to the thread's branch", async () => {
     const fixture = await setup({ members: [READY] });
     const result = await fixture.provider.create(
       fixture.context("env_thread", "bb/fix-login-thr_1"),
     );
-    const resource = {
-      ownedBranch: {
-        name: "bb/fix-login-thr_1",
-        repositoryPath: SOURCE_PATH,
-        baseBranch: "origin/main",
-      },
-    };
     expect(result).toEqual({
       status: "created",
       path: READY.path,
       ownsPath: true,
       mergeBaseBranch: "origin/main",
-      resource,
+      resource: ownedBranch("bb/fix-login-thr_1"),
     });
-    expect(fixture.adoptedResources).toEqual([resource]);
-    expect(fixture.hostCalls.map((call) => call.method)).toEqual(["handOff"]);
+    expect(fixture.adoptedResources).toEqual([ownedBranch("bb/env_warm")]);
+    expect(fixture.order).toEqual([
+      "host:checkPoolMember",
+      `adopt:${READY.id}`,
+      "host:nameHandedOffBranch",
+    ]);
     expect(fixture.hostCalls[0]?.input).toEqual({
       sourcePath: SOURCE_PATH,
       path: READY.path,
-      fromBranch: "bb/env_warm",
-      toBranch: "bb/fix-login-thr_1",
+      placeholder: "bb/env_warm",
       baseBranch: "origin/main",
       baseCommit: "base",
     });
+    expect(fixture.hostCalls[1]?.input).toEqual({
+      path: READY.path,
+      fromBranch: "bb/env_warm",
+      toBranch: "bb/fix-login-thr_1",
+    });
+    expect(fixture.setups).toEqual([]);
     expect(fixture.steps).toEqual([
       "Using a warm worktree at origin/main (base)",
     ]);
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("moves a warm worktree behind the remote base forward after adopting it, then runs setup again", async () => {
+  it("moves a warm worktree behind the remote base forward and starts setup before the title settles", async () => {
     const fixture = await setup({
       members: [READY],
       remoteBase: {
@@ -304,21 +324,30 @@ describe("warm worktree handoff", () => {
         commit: "fedcba9876543210",
         offline: false,
       },
-      handOff: () => ({ status: "handed-off", head: "0123456789abcdef" }),
+      check: () => ({ status: "usable", head: "0123456789abcdef" }),
     });
-    const result = await fixture.provider.create(
-      fixture.context("env_thread", "bb/behind-thr_b"),
+    const { title, settle } = pendingTitle();
+    const creating = fixture.provider.create(
+      fixture.context("env_thread", title),
     );
-    expect(result).toMatchObject({ status: "created", path: READY.path });
-    expect(fixture.order).toEqual([
-      "host:handOff",
-      `adopt:${READY.id}`,
-      "host:fastForward",
-      `setup:${READY.path}`,
-    ]);
+    await vi.waitFor(() =>
+      expect(fixture.order).toEqual([
+        "host:checkPoolMember",
+        `adopt:${READY.id}`,
+        "host:fastForward",
+        `setup:${READY.path}`,
+      ]),
+    );
     expect(
       fixture.hostCalls.find((call) => call.method === "fastForward")?.input,
     ).toEqual({ path: READY.path, commit: "fedcba9876543210" });
+    settle("bb/behind-thr_b");
+    expect(await creating).toMatchObject({
+      status: "created",
+      path: READY.path,
+      resource: ownedBranch("bb/behind-thr_b"),
+    });
+    expect(fixture.order.at(-1)).toBe("host:nameHandedOffBranch");
     expect(fixture.steps).toEqual([
       "Moved the warm worktree from 0123456 to fedcba9; setup runs again",
       "Using a warm worktree at origin/main (fedcba9)",
@@ -327,23 +356,24 @@ describe("warm worktree handoff", () => {
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("reads the remote base while the branch name is still pending", async () => {
+  it("hands the warm worktree over while the title is pending, and names the branch once it settles", async () => {
     const fixture = await setup({ members: [READY] });
-    let nameBranch: (name: string) => void = () => {};
+    const { title, settle } = pendingTitle();
     const creating = fixture.provider.create(
-      fixture.context(
-        "env_thread",
-        () =>
-          new Promise<string>((resolve) => {
-            nameBranch = resolve;
-          }),
-      ),
+      fixture.context("env_thread", title),
     );
-    await vi.waitFor(() => expect(fixture.remoteReads()).toBe(1));
-    expect(fixture.hostCalls).toEqual([]);
-    nameBranch("bb/titled-thr_t");
-    expect(await creating).toMatchObject({ path: READY.path });
+    await vi.waitFor(() => expect(fixture.adopted).toEqual([READY.id]));
     expect(fixture.remoteReads()).toBe(1);
+    expect(
+      fixture.hostCalls.some((call) => call.method === "nameHandedOffBranch"),
+    ).toBe(false);
+    settle("bb/titled-thr_t");
+    expect(await creating).toMatchObject({ path: READY.path });
+    expect(fixture.hostCalls.at(-1)?.input).toEqual({
+      path: READY.path,
+      fromBranch: "bb/env_warm",
+      toBranch: "bb/titled-thr_t",
+    });
     await fixture.harness.lifecycle.dispose();
   });
 
@@ -370,7 +400,7 @@ describe("warm worktree handoff", () => {
         commit: "0123456789abcdef",
         offline: true,
       },
-      handOff: () => ({ status: "handed-off", head: "0123456789abcdef" }),
+      check: () => ({ status: "usable", head: "0123456789abcdef" }),
     });
     expect(
       await fixture.provider.create(
@@ -413,28 +443,29 @@ describe("warm worktree handoff", () => {
   it.each([
     ["the host lock is busy", () => ({ status: "busy" as const })],
     [
-      "the handoff call times out",
+      "the check times out",
       () => {
-        throw new Error("Host RPC handOff timed out");
+        throw new Error("Host RPC checkPoolMember timed out");
       },
     ],
   ])(
     "builds a fresh worktree at once when %s, without trying other members",
-    async (_case, handOff) => {
+    async (_case, check) => {
       const second: Member = {
         ...READY,
         id: "env_second",
         path: "/worktrees/env_second-1/bb",
         branchName: "bb/env_second",
       };
-      const fixture = await setup({ members: [READY, second], handOff });
+      const fixture = await setup({ members: [READY, second], check });
       const result = await fixture.provider.create(
         fixture.context("env_thread", "bb/busy-thr_9"),
       );
       expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
       expect(
-        fixture.hostCalls.filter((call) => call.method === "handOff"),
+        fixture.hostCalls.filter((call) => call.method === "checkPoolMember"),
       ).toHaveLength(1);
+      expect(fixture.adopted).toEqual([]);
       expect(fixture.deleted).toEqual([]);
       await fixture.harness.lifecycle.dispose();
     },
@@ -443,10 +474,7 @@ describe("warm worktree handoff", () => {
   it("deletes a warm worktree the host refuses and builds a fresh one", async () => {
     const fixture = await setup({
       members: [READY],
-      handOff: () => ({
-        status: "refused",
-        reason: "it is not on origin/main",
-      }),
+      check: () => ({ status: "refused", reason: "it is not on origin/main" }),
     });
     const result = await fixture.provider.create(
       fixture.context("env_thread", "bb/late-thr_2"),
@@ -454,14 +482,14 @@ describe("warm worktree handoff", () => {
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.deleted).toEqual([READY.id]);
     expect(fixture.hostCalls.map((call) => call.method)).toEqual([
-      "handOff",
+      "checkPoolMember",
       "create",
       "nameBranch",
     ]);
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("reserves a member, waits for the branch name outside the pool lock, and never runs setup", async () => {
+  it("gives another create the next member while a handed-over one waits for its title", async () => {
     const second: Member = {
       ...READY,
       id: "env_second",
@@ -469,64 +497,36 @@ describe("warm worktree handoff", () => {
       branchName: "bb/env_second",
     };
     const fixture = await setup({ members: [READY, second], size: 2 });
-    let nameBranch: (name: string) => void = () => {};
-    const waiting = fixture.provider.create(
-      fixture.context(
-        "env_slow",
-        () =>
-          new Promise<string>((resolve) => {
-            nameBranch = resolve;
-          }),
-      ),
-    );
+    const { title, settle } = pendingTitle();
+    const waiting = fixture.provider.create(fixture.context("env_slow", title));
+    await vi.waitFor(() => expect(fixture.adopted).toEqual([READY.id]));
     const meanwhile = await fixture.provider.create(
       fixture.context("env_fast", "bb/fast-thr_f"),
     );
-    expect(meanwhile).toMatchObject({ path: second.path });
-    expect(fixture.hostCalls.map((call) => call.input)).toEqual([
-      expect.objectContaining({ path: second.path, toBranch: "bb/fast-thr_f" }),
-    ]);
-    nameBranch("bb/slow-thr_s");
+    expect(meanwhile).toMatchObject({
+      path: second.path,
+      resource: ownedBranch("bb/fast-thr_f"),
+    });
+    settle("bb/slow-thr_s");
     expect(await waiting).toMatchObject({
       path: READY.path,
-      resource: { ownedBranch: { name: "bb/slow-thr_s" } },
+      resource: ownedBranch("bb/slow-thr_s"),
     });
-    expect(fixture.hostCalls.map((call) => call.input)).toEqual([
-      expect.objectContaining({ path: second.path }),
-      expect.objectContaining({ path: READY.path, toBranch: "bb/slow-thr_s" }),
-    ]);
     expect(fixture.setups).toEqual([]);
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("renames the branch only before an adopt core accepts, and renames it back when core refuses", async () => {
+  it("leaves the branch alone and tries the next option when core refuses the adopt", async () => {
     const fixture = await setup({ members: [READY], refuseAdopt: [READY.id] });
     const result = await fixture.provider.create(
       fixture.context("env_thread", "bb/refused-thr_r"),
     );
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.adopted).toEqual([READY.id]);
-    expect(fixture.hostCalls.map((call) => [call.method, call.input])).toEqual([
-      [
-        "handOff",
-        expect.objectContaining({
-          path: READY.path,
-          fromBranch: "bb/env_warm",
-          toBranch: "bb/refused-thr_r",
-        }),
-      ],
-      [
-        "restorePoolMember",
-        expect.objectContaining({
-          path: READY.path,
-          placeholder: "bb/env_warm",
-        }),
-      ],
-      ["create", expect.objectContaining({ branchName: null })],
-      [
-        "nameBranch",
-        expect.objectContaining({ branchName: "bb/refused-thr_r" }),
-      ],
+    expect(fixture.hostCalls.map((call) => call.method)).toEqual([
+      "checkPoolMember",
+      "create",
+      "nameBranch",
     ]);
     expect(fixture.deleted).toEqual([]);
     await fixture.harness.lifecycle.dispose();
@@ -544,7 +544,7 @@ describe("warm worktree handoff", () => {
         .sort(),
     ).toEqual(["/worktrees/cold/bb", READY.path].sort());
     expect(
-      fixture.hostCalls.filter((call) => call.method === "handOff"),
+      fixture.hostCalls.filter((call) => call.method === "checkPoolMember"),
     ).toHaveLength(1);
     await fixture.harness.lifecycle.dispose();
   });

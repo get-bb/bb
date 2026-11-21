@@ -133,26 +133,35 @@ export const worktreeHostContract = defineRpcContract({
       .strict()
       .nullable(),
   },
-  handOff: {
+  checkPoolMember: {
     input: z
       .object({
         sourcePath: z.string().min(1),
         path: z.string().min(1),
-        fromBranch: z.string().min(1),
-        toBranch: z.string().min(1),
+        placeholder: z.string().min(1),
         baseBranch: z.string().min(1),
         baseCommit: z.string().min(1),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
       z
-        .object({ status: z.literal("handed-off"), head: z.string().min(1) })
+        .object({ status: z.literal("usable"), head: z.string().min(1) })
         .strict(),
       z
         .object({ status: z.literal("refused"), reason: z.string().min(1) })
         .strict(),
       z.object({ status: z.literal("busy") }).strict(),
     ]),
+  },
+  nameHandedOffBranch: {
+    input: z
+      .object({
+        path: z.string().min(1),
+        fromBranch: z.string().min(1),
+        toBranch: z.string().min(1),
+      })
+      .strict(),
+    output: z.null(),
   },
   fastForward: {
     input: z
