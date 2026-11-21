@@ -47,6 +47,7 @@ export default {
     ".ladle/workflows.stories.tsx",
     "../../plugins/provider-usage/*.stories.tsx",
     "../../plugins/composer/src/**/*.stories.tsx",
+    "../../plugins/thread-list/app/**/*.stories.tsx",
   ],
   defaultStory: "",
   viteConfig: "./.ladle/vite.config.ts",
