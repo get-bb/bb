@@ -161,6 +161,43 @@ export function buildBridgeInjectionScript(
     };
     native.__apply(handshake);
     root.native = native;
+
+    try {
+      var zoomViewport =
+        "width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no";
+      var lockPageZoom = function () {
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (meta == null) {
+          meta = document.createElement("meta");
+          meta.setAttribute("name", "viewport");
+          (document.head || document.documentElement).appendChild(meta);
+        }
+        if (meta.getAttribute("content") !== zoomViewport) {
+          meta.setAttribute("content", zoomViewport);
+        }
+      };
+      var cancelZoomGesture = function (event) {
+        event.preventDefault();
+      };
+      document.addEventListener("gesturestart", cancelZoomGesture, {
+        passive: false,
+      });
+      document.addEventListener("gesturechange", cancelZoomGesture, {
+        passive: false,
+      });
+      document.addEventListener("gestureend", cancelZoomGesture, {
+        passive: false,
+      });
+      lockPageZoom();
+      if (typeof MutationObserver === "function") {
+        new MutationObserver(lockPageZoom).observe(document.documentElement, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ["content"],
+        });
+      }
+    } catch (zoomError) {}
   } catch (error) {
     // No bridge is a supported state. Leave the page alone.
   }

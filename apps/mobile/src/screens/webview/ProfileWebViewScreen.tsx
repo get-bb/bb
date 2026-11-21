@@ -367,6 +367,8 @@ export function ProfileWebViewScreen() {
         hideKeyboardAccessoryView
         allowsBackForwardNavigationGestures={false}
         bounces={false}
+        setBuiltInZoomControls={false}
+        setDisplayZoomControls={false}
         pullToRefreshEnabled={false}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"

@@ -270,6 +270,128 @@ describe("buildBridgeInjectionScript", () => {
     const native = (fakeWindow.bb as { native: NativeShellApi }).native;
     expect(() => native.post({ type: "ready", path: "/" })).not.toThrow();
   });
+
+  it("locks the page viewport and cancels iOS zoom gestures", () => {
+    const zoomViewport =
+      "width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no";
+    const meta = {
+      name: "viewport",
+      content: "width=device-width, initial-scale=1",
+      getAttribute(name: string) {
+        if (name === "content") return this.content;
+        if (name === "name") return this.name;
+        return null;
+      },
+      setAttribute(name: string, value: string) {
+        if (name === "content") this.content = value;
+        if (name === "name") this.name = value;
+      },
+    };
+    const listeners = new Map<
+      string,
+      Array<(event: { preventDefault(): void }) => void>
+    >();
+    const document = {
+      documentElement: {},
+      querySelector(selector: string) {
+        return selector === 'meta[name="viewport"]' ? meta : null;
+      },
+      addEventListener(
+        type: string,
+        listener: (event: { preventDefault(): void }) => void,
+      ) {
+        const list = listeners.get(type) ?? [];
+        list.push(listener);
+        listeners.set(type, list);
+      },
+    };
+    const { native } = installBridge({}, { document });
+    expect(native.platform).toBe("ios");
+    expect(meta.content).toBe(zoomViewport);
+    const prevented: string[] = [];
+    for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+      const handlers = listeners.get(type);
+      expect(handlers, type).toHaveLength(1);
+      handlers?.[0]?.({
+        preventDefault: () => {
+          prevented.push(type);
+        },
+      });
+    }
+    expect(prevented).toEqual(["gesturestart", "gesturechange", "gestureend"]);
+  });
+
+  it("inserts a viewport meta tag when the page has none", () => {
+    const created: Array<{ content: string }> = [];
+    const document = {
+      documentElement: {},
+      head: {
+        appendChild(node: { content: string }) {
+          created.push(node);
+        },
+      },
+      querySelector() {
+        return null;
+      },
+      createElement() {
+        return {
+          content: "",
+          getAttribute(name: string) {
+            return name === "content" ? this.content : null;
+          },
+          setAttribute(name: string, value: string) {
+            if (name === "content") this.content = value;
+          },
+        };
+      },
+      addEventListener() {},
+    };
+    installBridge({}, { document });
+    expect(created).toHaveLength(1);
+    expect(created[0]?.content).toContain("user-scalable=no");
+    expect(created[0]?.content).toContain("maximum-scale=1");
+  });
+
+  it("re-locks the viewport when the page overwrites it", () => {
+    let notify: (() => void) | undefined;
+    class FakeObserver {
+      constructor(callback: () => void) {
+        notify = callback;
+      }
+      observe() {}
+    }
+    vi.stubGlobal("MutationObserver", FakeObserver);
+    try {
+      const meta = {
+        content: "width=device-width, initial-scale=1",
+        getAttribute(name: string) {
+          return name === "content" ? this.content : null;
+        },
+        setAttribute(name: string, value: string) {
+          if (name === "content") this.content = value;
+        },
+      };
+      installBridge(
+        {},
+        {
+          document: {
+            documentElement: {},
+            querySelector() {
+              return meta;
+            },
+            addEventListener() {},
+          },
+        },
+      );
+      expect(meta.content).toContain("user-scalable=no");
+      meta.content = "width=device-width, initial-scale=1";
+      notify?.();
+      expect(meta.content).toContain("maximum-scale=1");
+      expect(meta.content).toContain("user-scalable=no");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 interface ImagePasteApi extends NativeShellApi {

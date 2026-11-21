@@ -728,7 +728,14 @@ index 3890426..7a8ba15 100644
  @end
  
  @implementation RNCWebViewImpl
-@@ -627,6 +631,9 @@ RCTAutoInsetsProtocol>
+@@ -547,5 +551,6 @@ RCTAutoInsetsProtocol>
+     _webView.scrollView.pagingEnabled = _pagingEnabled;
+     //For UIRefreshControl to work correctly, the bounces should always be true
+     _webView.scrollView.bounces = _pullToRefreshEnabled || _bounces;
++    [self bb_disablePageZoom];
+     _webView.scrollView.showsHorizontalScrollIndicator = _showsHorizontalScrollIndicator;
+     _webView.scrollView.showsVerticalScrollIndicator = _showsVerticalScrollIndicator;
+@@ -627,6 +632,9 @@ RCTAutoInsetsProtocol>
  - (void)removeFromSuperview
  #endif
  {
@@ -755,10 +762,31 @@ index 3890426..7a8ba15 100644
      if (_onOpenWindow && !hasTargetFrame) {
        // When OnOpenWindow should be called, we want to prevent the navigation
        // If not prevented, the `decisionHandler` is called first and after that `createWebViewWithConfiguration` is called
-@@ -1434,6 +1451,115 @@ RCTAutoInsetsProtocol>
+@@ -1434,6 +1452,136 @@ RCTAutoInsetsProtocol>
      decisionHandler(WKNavigationActionPolicyAllow);
  }
  
++- (void)bb_disablePageZoom
++{
++#if !TARGET_OS_OSX
++  WKWebView *webView = _webView;
++  if (webView == nil) return;
++  UIScrollView *scrollView = webView.scrollView;
++  scrollView.minimumZoomScale = 1.0;
++  scrollView.maximumZoomScale = 1.0;
++  scrollView.pinchGestureRecognizer.enabled = NO;
++  NSMutableArray<UIView *> *views = [NSMutableArray arrayWithObjects:webView, scrollView, nil];
++  [views addObjectsFromArray:scrollView.subviews];
++  for (UIView *view in views) {
++    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
++      if ([gesture isKindOfClass:[UIPinchGestureRecognizer class]]) {
++        gesture.enabled = NO;
++      }
++    }
++  }
++#endif
++}
++
 +#if TARGET_OS_IOS
 +- (void)cancelFileDownloads API_AVAILABLE(ios(14.5))
 +{
@@ -908,6 +936,14 @@ index 3890426..7a8ba15 100644
      if (isAttachment || !navigationResponse.canShowMIMEType) {
        if (_onFileDownload) {
          policy = WKNavigationResponsePolicyCancel;
+@@ -1582,6 +1748,7 @@ RCTAutoInsetsProtocol>
+ - (void)webView:(WKWebView *)webView
+ didFinishNavigation:(WKNavigation *)navigation
+ {
++  [self bb_disablePageZoom];
+   if (_ignoreSilentHardwareSwitch) {
+     [self forceIgnoreSilentHardwareSwitch:true];
+   }
 diff --git a/apple/RNCWebViewModule.mm b/apple/RNCWebViewModule.mm
 index 547b95f..3aa9583 100644
 --- a/apple/RNCWebViewModule.mm
