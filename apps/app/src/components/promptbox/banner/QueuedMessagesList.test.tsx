@@ -329,6 +329,72 @@ describe("QueuedMessagesList", () => {
     queryClient.clear();
   });
 
+  it("labels a user message a thread requested as requested by that thread, not from it", () => {
+    const { container } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_spawn",
+        initiator: "user",
+        senderThreadId: "thr_requester",
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "concurrency-limit",
+          reason: "1 of 1 running",
+        },
+      }),
+    ]);
+    expandQueue();
+    const sender = container.querySelector<HTMLElement>(
+      '[data-queued-message-id="q_spawn"] [data-queued-message-sender]',
+    );
+    expect(sender?.textContent).toBe("Requested bythr_requester");
+    expect(sender?.title).toBe("Requested by thr_requester");
+    expect(sender?.querySelector(".prompt-mention-pill")?.textContent).toBe(
+      "thr_requester",
+    );
+    expect(
+      container.querySelector(
+        '[data-queued-message-id="q_spawn"] [data-queued-message-wait]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("keeps a readable sender next to a wait line on narrow rows", () => {
+    const waitingOn = {
+      kind: "plugin",
+      pluginId: "concurrency-limit",
+      reason: "1 of 1 running on all hosts",
+    } as const;
+    const { container } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_spawn",
+        initiator: "user",
+        senderThreadId: "thr_requester",
+        waitingOn,
+      }),
+      makeThreadQueuedMessage({
+        id: "q_agent",
+        initiator: "agent",
+        senderThreadId: "thr_sender",
+        waitingOn,
+      }),
+    ]);
+    expandQueue();
+    for (const id of ["q_spawn", "q_agent"]) {
+      const sender = container.querySelector<HTMLElement>(
+        `[data-queued-message-id="${id}"] [data-queued-message-sender]`,
+      );
+      expect(sender?.classList).toContain("max-w-[max(40%,11rem)]");
+      expect(sender?.classList).toContain("shrink-0");
+      expect(
+        container
+          .querySelector(
+            `[data-queued-message-id="${id}"] [data-queued-message-wait]`,
+          )
+          ?.classList.contains("min-w-0"),
+      ).toBe(true);
+    }
+  });
+
   it.each([
     {
       label: "a system notice with nothing to wait on",
@@ -355,6 +421,14 @@ describe("QueuedMessagesList", () => {
       message: {
         initiator: "agent" as const,
         senderThreadId: "thr_sender",
+      },
+      height: "124px",
+    },
+    {
+      label: "a user message a thread requested",
+      message: {
+        initiator: "user" as const,
+        senderThreadId: "thr_requester",
       },
       height: "124px",
     },

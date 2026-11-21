@@ -16,7 +16,7 @@ import type {
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
   ResolvedThreadExecutionOptions,
-  StartedOnBehalfOf,
+  DispatchRequester,
   Thread,
   ThreadCreateOrigin,
   ThreadQueuedMessage,
@@ -73,7 +73,7 @@ export interface QueuedDispatchMessage {
    */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
-  requestedBy: StartedOnBehalfOf | null;
+  requestedBy: DispatchRequester | null;
   payload: QueuedMessagePayload;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;

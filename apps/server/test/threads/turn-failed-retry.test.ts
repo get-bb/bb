@@ -310,7 +310,7 @@ async function sendUserMessage(
     pluginSubmission: null,
     origin: null,
     originPluginId: null,
-    startedOnBehalfOf: null,
+    requestedBy: null,
     trigger: "user",
   });
   expect(delivery.kind).toBe("dispatched");

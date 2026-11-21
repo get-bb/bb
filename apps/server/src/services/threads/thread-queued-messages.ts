@@ -12,8 +12,8 @@ import type {
   QueuedMessageState,
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
-  StartedOnBehalfOf,
-  StartedOnBehalfOfInitiator,
+  DispatchRequester,
+  DispatchRequesterInitiator,
   ThreadQueuedMessage,
   ThreadCreateOrigin,
 } from "@bb/domain";
@@ -40,7 +40,7 @@ interface StoredQueuedThreadMessageRow {
   serviceTier: string;
   senderThreadId: string | null;
   state: QueuedMessageState;
-  requestedByInitiator: StartedOnBehalfOfInitiator | null;
+  requestedByInitiator: DispatchRequesterInitiator | null;
   requestedByThreadId: string | null;
   systemNotice: string | null;
   threadId: string;
@@ -133,7 +133,7 @@ export function storedQueuedThreadMessageRequestedBy(
     StoredQueuedThreadMessageRow,
     "id" | "threadId" | "requestedByInitiator" | "requestedByThreadId"
   >,
-): StartedOnBehalfOf | null {
+): DispatchRequester | null {
   if (row.requestedByInitiator === null && row.requestedByThreadId === null) {
     return null;
   }
@@ -187,7 +187,7 @@ export function toThreadQueuedMessage(
     retrying: row.payloadKind === "retry",
     systemNotice: row.systemNotice !== null,
     senderThreadId: row.senderThreadId,
-    startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(row),
+    requestedBy: storedQueuedThreadMessageRequestedBy(row),
   });
   return threadQueuedMessageSchema.parse({
     id: row.id,
