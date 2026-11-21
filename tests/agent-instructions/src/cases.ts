@@ -8,6 +8,7 @@ const matcherSchema = z
     bb: z.string().optional(),
     skill: z.string().optional(),
     command: z.string().optional(),
+    tool: z.string().optional(),
     text: z.string().optional(),
     final: z.string().optional(),
     times: z.number().int().nonnegative().optional(),
@@ -18,10 +19,11 @@ const matcherSchema = z
         matcher.bb,
         matcher.skill,
         matcher.command,
+        matcher.tool,
         matcher.text,
         matcher.final,
       ].filter((value) => value !== undefined).length === 1,
-    "A matcher names exactly one of bb, skill, command, text or final",
+    "A matcher names exactly one of bb, skill, command, tool, text or final",
   );
 export type Matcher = z.infer<typeof matcherSchema>;
 
@@ -54,6 +56,9 @@ export const evalCaseSchema = z.object({
       responses: z.array(bbResponseSchema).default([]),
     })
     .default({ responses: [] }),
+  toolResults: z
+    .array(z.object({ tool: z.string(), result: z.string() }))
+    .default([]),
   checks: z.array(checkSchema).min(1),
 });
 export type EvalCase = z.infer<typeof evalCaseSchema>;

@@ -4,6 +4,7 @@ import type { Check, Matcher } from "./cases.js";
 export interface Observation {
   bbCalls: string[];
   commands: string[];
+  tools: string[];
   skills: string[];
   texts: string[];
   final: string;
@@ -34,9 +35,11 @@ function matches(matcher: Matcher, observation: Observation): boolean {
       ? [matcher.bb, observation.bbCalls]
       : matcher.command !== undefined
         ? [matcher.command, observation.commands]
-        : matcher.text !== undefined
-          ? [matcher.text, observation.texts]
-          : [matcher.final ?? "", [observation.final]];
+        : matcher.tool !== undefined
+          ? [matcher.tool, observation.tools]
+          : matcher.text !== undefined
+            ? [matcher.text, observation.texts]
+            : [matcher.final ?? "", [observation.final]];
   const found = count(pattern, values);
   return matcher.times === undefined ? found > 0 : found === matcher.times;
 }
@@ -92,6 +95,7 @@ export function observeStream(
   bbCalls: readonly string[],
 ): Observation {
   const commands: string[] = [];
+  const tools: string[] = [];
   const skills: string[] = [];
   const texts: string[] = [];
   let final = "";
@@ -108,6 +112,7 @@ export function observeStream(
         continue;
       }
       if (!("input" in block)) continue;
+      tools.push(`${block.name} ${JSON.stringify(block.input)}`);
       const { command, skill } = block.input;
       if (block.name === "Bash" && typeof command === "string") {
         commands.push(command);
@@ -117,5 +122,5 @@ export function observeStream(
       }
     }
   }
-  return { bbCalls: [...bbCalls], commands, skills, texts, final };
+  return { bbCalls: [...bbCalls], commands, tools, skills, texts, final };
 }

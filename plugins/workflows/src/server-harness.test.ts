@@ -286,7 +286,7 @@ describe("workflows plugin", () => {
       ]);
       expect(authorConfig.skills).toEqual(["workflows"]);
       expect(authorConfig.instructions).toContain(
-        "copy its previewDirective into your response exactly once as a standalone line",
+        "copy its previewDirective into your response exactly once, on its own line",
       );
 
       await expect(

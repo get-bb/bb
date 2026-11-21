@@ -26,6 +26,7 @@ The eval runs `claude -p` with your Claude Code login. It needs no API key. Each
 
 - The session gets bb's system text through `--append-system-prompt`, the same way the Claude Code provider appends it.
 - The session gets the bundled skills as the `bb-global-skills` plugin.
+- The enabled plugins' agent tools come from a fake MCP server named `bb-bridge`, with their real descriptions and schemas. A tool call returns the case's `toolResults` entry for that tool, or `{"ok":true}`.
 - `--setting-sources project` and `--strict-mcp-config` keep your own settings, hooks, CLAUDE.md, and MCP servers out of the run.
 - The agent can run only `bb` in the shell, and it can read only the temporary directory and the skill files. It can edit only the workspace, and only when the case lets it. A fake `bb` on `PATH` records each call and gives the case's canned output. `bb guide` gives the real guide text from `packages/templates`.
 
@@ -60,8 +61,9 @@ Cases are JSON lines in `cases/`. `src/cases.ts` has the schema.
 - `plugins`: plugins to enable that are off by default.
 - `parentThreadId`: the parent of the thread. bb gives a child thread extra instructions.
 - `files`: files in the temporary workspace. `allowEdits` lets the agent edit them.
+- `toolResults`: a list of `{ tool, result }`; `result` is the text a `bb-bridge` tool call returns.
 - `bb.status`: the output of `bb status`. `bb.responses`: a list of `{ args, stdout, exitCode }`, where `args` is a regular expression for the arguments.
-- `checks`: each check has a `label` and an `anyOf` list. A check passes when any matcher matches. `not: true` inverts it. A matcher has one of `bb` (a `bb` call, with its stdin), `command` (a shell command), `skill` (a skill name), `text` (any assistant text), or `final` (the last answer). `times` asks for an exact count.
+- `checks`: each check has a `label` and an `anyOf` list. A check passes when any matcher matches. `not: true` inverts it. A matcher has one of `bb` (a `bb` call, with its stdin), `command` (a shell command), `tool` (a tool call as `name {json input}`, for example `^mcp__bb-bridge__bb_workflow_run `), `skill` (a skill name), `text` (any assistant text), or `final` (the last answer). `times` asks for an exact count.
 
 Add a case before you change the text. Run it on the old text, and with `--without-bb-text`. Then change the text and run it again.
 

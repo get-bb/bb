@@ -226,7 +226,7 @@ export default async function plugin(bb: BbPluginApi) {
       tools: ["bb_workflow_run"],
       skills: ["workflows"],
       instructions:
-        "When bb_workflow_run succeeds, copy its previewDirective into your response exactly once as a standalone line. Do not wrap it in backticks or a code fence, and do not invent or edit the run ID. The directive renders live workflow progress in BB chat. `bb workflows status <run-id>` returns a compact summary. For detailed history, redirect `bb workflows history <run-id> --cursor <call-index> --limit <1-100>` into a file under `$BB_THREAD_STORAGE`, then inspect that JSONL file with normal filesystem tools. Use each page record's `nextCursor` to continue.",
+        "When bb_workflow_run succeeds, copy its previewDirective into your response exactly once, on its own line, outside backticks or a code fence, with the run ID unchanged. It shows the user live progress.",
     };
   });
 

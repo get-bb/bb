@@ -76,6 +76,40 @@ if (args[0] === "guide") {
 process.stdout.write("OK\\n");
 `;
 
+const FAKE_MCP = `#!/usr/bin/env node
+const fs = require("node:fs");
+const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+let buffer = "";
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString();
+  let index;
+  while ((index = buffer.indexOf("\\n")) >= 0) {
+    const line = buffer.slice(0, index).trim();
+    buffer = buffer.slice(index + 1);
+    if (line === "") continue;
+    const request = JSON.parse(line);
+    if (request.id === undefined) continue;
+    if (request.method === "initialize") {
+      send({ jsonrpc: "2.0", id: request.id, result: {
+        protocolVersion: request.params.protocolVersion,
+        capabilities: { tools: {} },
+        serverInfo: { name: "bb-bridge", version: "1.0.0" },
+      } });
+    } else if (request.method === "tools/list") {
+      send({ jsonrpc: "2.0", id: request.id, result: { tools: config.tools } });
+    } else if (request.method === "tools/call") {
+      const canned = config.results.find((entry) => entry.tool === request.params.name);
+      send({ jsonrpc: "2.0", id: request.id, result: {
+        content: [{ type: "text", text: canned ? canned.result : "{\\"ok\\":true}" }],
+      } });
+    } else {
+      send({ jsonrpc: "2.0", id: request.id, result: {} });
+    }
+  }
+});
+`;
+
 interface SampleResult {
   caseId: string;
   sample: number;
@@ -173,12 +207,44 @@ async function runSample(args: {
     );
     writeFileSync(join(bin, "bb"), FAKE_BB);
     chmodSync(join(bin, "bb"), 0o755);
+    const tools = enabled.flatMap((context) => context.tools);
+    const mcpArgs: string[] = [];
+    if (tools.length > 0) {
+      const mcpServer = join(root, "fake-mcp.cjs");
+      const mcpServerConfig = join(root, "fake-mcp.json");
+      writeFileSync(mcpServer, FAKE_MCP);
+      writeFileSync(
+        mcpServerConfig,
+        JSON.stringify({
+          tools: tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: JSON.parse(tool.schemaJson),
+          })),
+          results: evalCase.toolResults,
+        }),
+      );
+      const mcpConfig = join(root, "mcp.json");
+      writeFileSync(
+        mcpConfig,
+        JSON.stringify({
+          mcpServers: {
+            "bb-bridge": {
+              command: process.execPath,
+              args: [mcpServer, mcpServerConfig],
+            },
+          },
+        }),
+      );
+      mcpArgs.push("--mcp-config", mcpConfig);
+    }
     const allowedTools = [
       "Bash(bb:*)",
       "Bash(bb *)",
       `Read(/${root}/**)`,
       `Read(/${join(REPO_ROOT, "plugins")}/*/skills/**)`,
       "Skill",
+      ...(tools.length > 0 ? ["mcp__bb-bridge"] : []),
       ...(evalCase.allowEdits
         ? [`Edit(/${workspace}/**)`, `Write(/${workspace}/**)`]
         : []),
@@ -193,6 +259,7 @@ async function runSample(args: {
       "--setting-sources",
       "project",
       "--strict-mcp-config",
+      ...mcpArgs,
       "--model",
       args.model,
       "--max-turns",

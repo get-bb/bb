@@ -80,7 +80,7 @@ export const PLUGIN_CONTEXT_BUDGETS: Readonly<Record<string, number>> = {
   tasks: 150,
   "theme-preview": 150,
   "thread-list": 200,
-  workflows: 2950,
+  workflows: 2600,
 };
 
 export const DEFAULT_CONTEXT_BUDGET = 4_500;

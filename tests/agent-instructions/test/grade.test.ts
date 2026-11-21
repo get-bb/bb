@@ -10,6 +10,7 @@ import {
 const observation: Observation = {
   bbCalls: ["thread tell thr_peer42 Port 5174", "status"],
   commands: ["bb thread tell thr_peer42 'Port 5174'", "cat package.json"],
+  tools: ['mcp__bb-bridge__bb_workflow_run {"source":"x"}'],
   skills: ["automations"],
   texts: ['Watch it here:\n::browser-preview{session="bas_7k2"}', "Done."],
   final: "Done. See @thread:thr_login42.",
@@ -48,6 +49,18 @@ describe("gradeObservation", () => {
     ).toBe(true);
     expect(
       grade({ label: "twice", anyOf: [{ text: directive, times: 2 }] }),
+    ).toBe(false);
+  });
+
+  it("matches tool calls by name and input", () => {
+    expect(
+      grade({
+        label: "workflow",
+        anyOf: [{ tool: "^mcp__bb-bridge__bb_workflow_run " }],
+      }),
+    ).toBe(true);
+    expect(
+      grade({ label: "other", anyOf: [{ tool: "bb_workflow_result" }] }),
     ).toBe(false);
   });
 
@@ -96,6 +109,10 @@ describe("observeStream", () => {
     expect(observeStream(lines, ["status"])).toEqual({
       bbCalls: ["status"],
       commands: ["bb status"],
+      tools: [
+        'Skill {"skill":"bb-global-skills:automations"}',
+        'Bash {"command":"bb status"}',
+      ],
       skills: ["automations"],
       texts: ["Checking."],
       final: "All set.",
