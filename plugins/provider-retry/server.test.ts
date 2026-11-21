@@ -452,7 +452,7 @@ describe("provider retry plugin", () => {
     expect(host.harness.registrations.hooks["message.dispatch"]).toBeNull();
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
-    ).toEqual(["status", "explain", "cancel", "retry"]);
+    ).toEqual(["status", "explain", "cancel", "continue", "retry"]);
     await host.harness.dispose();
   });
 

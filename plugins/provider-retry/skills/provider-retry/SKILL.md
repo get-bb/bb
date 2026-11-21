@@ -50,6 +50,7 @@ bb provider-retry status [thread-id] [--json]
 bb provider-retry explain [thread-id] [--json]
 bb provider-retry retry <thread-id> [--json]
 bb provider-retry cancel <thread-id> [--json]
+bb provider-retry continue <thread-id> [--json]
 ```
 
 `status` defaults to the current thread and lists every thread outside one.
@@ -62,3 +63,19 @@ the same nullable diagnostic.
 before retrying manually, and avoid duplicating an existing queued retry. Use
 the core `bb thread retry` command for an intentional manual retry of a turn
 with no pending row; follow its live help for selection and scheduling flags.
+
+`continue` hands a thread that stopped at a usage limit to the fallback
+provider (`bb settings general fallbackProviderId <id>`). It works while the
+thread is in `error` and its latest request failed on a rate limit, with or
+without a pending retry. Threads that another plugin started, such as workflow
+workers and automation runs, are left to that plugin. `continue` first deletes
+the pending retry, and stops if that retry already started. It then starts a
+new thread on the fallback provider in the same environment, with the old
+thread's title and a prompt that holds its last 20 messages (200 characters
+each) and its last output. If that start fails, the retry is queued again. The
+old thread stays as it is. A second `continue` for the same failure returns
+the thread that already continues it. The thread's composer shows the same
+choice as a "Continue in" button that names the fallback provider. `--json`
+returns `{ ok, threadId, continuedIn, providerId }`; error code `no_handoff`
+means the thread is not waiting on a usage limit, no other fallback provider
+is available, or the retry already started.

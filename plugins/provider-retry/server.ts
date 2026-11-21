@@ -10,6 +10,12 @@ import {
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import {
+  handoffContract,
+  handoffTag,
+  readHandoffOffer,
+  startHandoff,
+} from "./src/handoff.js";
+import {
   DEFAULT_MAXIMUM_WAIT_MS,
   decideRetry,
   isRateLimitFailure,
@@ -61,9 +67,36 @@ export default async function plugin(bb: BbPluginApi) {
         "The last automatic retry decision for a thread, recorded after a scheduled retry is queued. A plugin that re-runs failed work waits for the decision on its failed request before re-running it.",
     },
   );
+  const handoffs = new Map<string, Promise<{ threadId: string }>>();
+  const handoff = (threadId: string) => {
+    const running = handoffs.get(threadId);
+    if (running !== undefined) return running;
+    const started = startHandoff(bb, threadId).finally(() =>
+      handoffs.delete(threadId),
+    );
+    handoffs.set(threadId, started);
+    return started;
+  };
+  bb.rpc.register(handoffContract, {
+    "handoff.get": ({ threadId }) => readHandoffOffer(bb, threadId),
+    "handoff.start": ({ threadId }) => handoff(threadId),
+  });
+  const refreshHandoff = (threadId: string) =>
+    bb.rpc.experimental_invalidate([handoffTag(threadId)]);
+  bb.events.on("message.dispatched", ({ entry }) =>
+    refreshHandoff(entry.threadId),
+  );
+  bb.events.on("message.cancelled", ({ entry }) =>
+    refreshHandoff(entry.threadId),
+  );
+  bb.events.on("experimental_thread.settled", ({ thread }) =>
+    refreshHandoff(thread.id),
+  );
+  bb.events.on("thread.active", ({ thread }) => refreshHandoff(thread.id));
   bb.events.on("turn.failed", async (event) => {
+    const rateLimited = isRateLimitFailure(event);
     let availability: RetryAvailability = { kind: "not-routed" };
-    if (isRateLimitFailure(event)) {
+    if (rateLimited) {
       const sources = await bb.sdk.plugins.experimental_discoverRpc({
         method: retryAvailabilityMethod,
       });
@@ -95,13 +128,16 @@ export default async function plugin(bb: BbPluginApi) {
       now: Date.now(),
       random: Math.random(),
     });
-    const recordDecision = () =>
-      bb.storage.kv.set(`decision:${event.threadId}`, {
+    const recordDecision = async () => {
+      await bb.storage.kv.set(`decision:${event.threadId}`, {
         requestId: event.requestId,
         observedAt: Date.now(),
         availability,
+        rateLimited,
         decision,
       });
+      refreshHandoff(event.threadId);
+    };
     if (decision.kind === "decline") {
       await recordDecision();
       bb.log.info(
@@ -118,5 +154,5 @@ export default async function plugin(bb: BbPluginApi) {
     await recordDecision();
   });
 
-  registerProviderRetryCli(bb);
+  registerProviderRetryCli(bb, handoff);
 }

@@ -8,6 +8,11 @@ import {
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import {
+  HandoffUnavailableError,
+  noHandoffMessage,
+  readHandoffOffer,
+} from "./handoff.js";
+import {
   findQueuedRetry,
   listQueuedRetries,
   type QueuedRetry,
@@ -34,7 +39,7 @@ function textQueuedRetry(queued: QueuedRetry): string {
 function requiredThreadId(
   requested: string | undefined,
   context: PluginCliContext,
-  command: "cancel" | "retry" | "explain",
+  command: "cancel" | "retry" | "explain" | "continue",
 ): string {
   const threadId = requested ?? context.threadId;
   if (threadId === undefined) {
@@ -89,7 +94,42 @@ async function act(
   };
 }
 
-export function registerProviderRetryCli(bb: BbPluginApi): void {
+async function continueElsewhere(
+  bb: BbPluginApi,
+  threadId: string,
+  json: boolean,
+  handoff: (threadId: string) => Promise<{ threadId: string }>,
+): Promise<PluginCliResult> {
+  const refuse = (message: string) =>
+    new PluginCliError(message, {
+      code: "no_handoff",
+      hint: "Set a fallback provider with `bb settings general fallbackProviderId <id>`, and run `bb provider-retry explain` for the last failure.",
+    });
+  const offer = await readHandoffOffer(bb, threadId);
+  if (offer === null) throw refuse(noHandoffMessage(threadId));
+  const created = await handoff(threadId).catch((error: unknown) => {
+    if (error instanceof HandoffUnavailableError) throw refuse(error.message);
+    throw error;
+  });
+  if (json) {
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify({ ok: true, threadId, continuedIn: created.threadId, providerId: offer.to.id }, null, 2)}\n`,
+    };
+  }
+  return {
+    exitCode: 0,
+    stdout:
+      offer.continuedIn === null
+        ? `Continued ${threadId} in ${offer.to.name}: ${created.threadId}\n`
+        : `${threadId} already continues in ${created.threadId}.\n`,
+  };
+}
+
+export function registerProviderRetryCli(
+  bb: BbPluginApi,
+  handoff: (threadId: string) => Promise<{ threadId: string }>,
+): void {
   bb.cli.register(
     defineCli({
       name: "provider-retry",
@@ -172,6 +212,23 @@ export function registerProviderRetryCli(bb: BbPluginApi): void {
               ),
               input.options.json,
               "cancel",
+            ),
+        }),
+        continue: cliCommand({
+          summary:
+            "Continue a thread that hit a usage limit in a new thread on the fallback provider",
+          positionals: [THREAD_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input, context) =>
+            continueElsewhere(
+              bb,
+              requiredThreadId(
+                input.positionals["thread-id"],
+                context,
+                "continue",
+              ),
+              input.options.json,
+              handoff,
             ),
         }),
         retry: cliCommand({

@@ -8,6 +8,7 @@ Keep threads moving when a provider is overloaded or unreachable, or your subscr
 - A queued message card on the thread that you can send now or cancel.
 - A cap of four retries per turn.
 - No retry of a scheduled run of a recurring automation. That automation runs again on its own schedule.
+- A "Continue in" button above the composer of a thread that stopped at a usage limit, when a fallback provider is set, for example "Continue in Codex". It starts a new thread on the fallback provider in the same environment, with a summary of the conversation, and cancels the pending retry.
 
 ## How it works
 
@@ -22,6 +23,7 @@ The plugin reacts to each failed turn. It retries overload errors, server and co
 - `bb provider-retry status [thread-id] [--json]`: show pending retries.
 - `bb provider-retry retry <thread-id>`: send a pending retry now.
 - `bb provider-retry cancel <thread-id>`: cancel a pending retry.
+- `bb provider-retry continue <thread-id>`: continue a thread that stopped at a usage limit on the fallback provider.
 
 For pooled threads, the pool’s availability overrides provider-local quota snapshots, which can be missing or refer to an account the pool has already replaced. Recovery uses the earliest usable account after all its blocking windows and temporary holds clear, including limits for the failed request’s model. Parent pools use the same authenticated availability lookup. Unknown resets, authentication failures, and unavailable sources are explained without scheduling a speculative retry.
 

@@ -150,8 +150,9 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   the thread's machine has a window at 100% that has not reset (a window for
   one model counts only for that model). The thread then starts on the
   fallback with that provider's own defaults. Forks and running threads do not
-  change. A usage read that fails or takes over two seconds keeps the default.
-  `null` turns it off. `bb settings usage` shows the windows.
+  change; a thread that stops at a usage limit can continue on the fallback
+  with `bb provider-retry continue <thread-id>`. A usage read that fails or
+  takes over two seconds keeps the default. `null` turns it off. `bb settings usage` shows the windows.
 - `idleProviderSessionTimeoutMinutes` (default `30`; Settings → Providers → Configuration → Release idle agent sessions) sets how long an agent can sit idle after its last turn before every machine stops its provider process. Allowed values are `0` (ASAP), `5`, `10`, `30`, and `60`, for example `bb settings general idleProviderSessionTimeoutMinutes 5`. Machines check every five minutes, so release can take up to five minutes beyond the timeout. Changes apply live and on reconnect. Only restorable sessions without active or pending work are eligible; threads keep their history and resume on the next message. `bb thread stop` still releases a runtime manually. This is not a limit on loaded processes or memory. Read the value with `bb settings show`; SDK callers use `system.config()` and `system.updateGeneralSettings({ ...config.generalSettings, idleProviderSessionTimeoutMinutes: 5 })`.
 - `telemetryEnabled`: see Telemetry below.
 

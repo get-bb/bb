@@ -6,6 +6,7 @@ export const retryDiagnosticSchema = z.object({
   requestId: z.string(),
   observedAt: z.number(),
   availability: retryAvailabilitySchema,
+  rateLimited: z.boolean().default(false),
   decision: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("decline"), reason: z.string() }),
     z.object({
