@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
+import { PANEL_COLLAPSE_INSTANT_ATTRIBUTE } from "./panelTransitionTokens";
 
 interface UsePanelResizeSnapArgs {
   onResize: (leadingFraction: number) => void;
@@ -63,13 +64,9 @@ export function usePanelResizeSnap({
       const grid = divider.closest<HTMLElement>(
         "[data-split-resize-grid-root]",
       );
-      const transitionDuration = grid?.style.getPropertyValue(
-        "--panel-collapse-duration",
-      );
-      const transitionPriority = grid?.style.getPropertyPriority(
-        "--panel-collapse-duration",
-      );
-      grid?.style.setProperty("--panel-collapse-duration", "0ms");
+      const transitionsWereInstant =
+        grid?.hasAttribute(PANEL_COLLAPSE_INSTANT_ATTRIBUTE) ?? false;
+      grid?.setAttribute(PANEL_COLLAPSE_INSTANT_ATTRIBUTE, "");
       const pointerId = event.pointerId;
       divider.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
@@ -134,16 +131,8 @@ export function usePanelResizeSnap({
           ownerWindow.cancelAnimationFrame(frame);
         }
         onDragging(false);
-        if (grid !== null) {
-          if (transitionDuration === "" || transitionDuration === undefined) {
-            grid.style.removeProperty("--panel-collapse-duration");
-          } else {
-            grid.style.setProperty(
-              "--panel-collapse-duration",
-              transitionDuration,
-              transitionPriority,
-            );
-          }
+        if (grid !== null && !transitionsWereInstant) {
+          grid.removeAttribute(PANEL_COLLAPSE_INSTANT_ATTRIBUTE);
         }
       };
       const commitDrag = () => complete(true);

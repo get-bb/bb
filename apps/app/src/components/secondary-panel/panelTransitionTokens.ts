@@ -1,19 +1,9 @@
-import { useEffect, useState, type CSSProperties, type Key } from "react";
+import { useEffect, useState, type Key } from "react";
 
-type PanelCollapseTransitionStyle = CSSProperties & {
-  "--panel-collapse-duration": string;
-};
+export const PANEL_COLLAPSE_INSTANT_ATTRIBUTE = "data-panel-collapse-instant";
 
 export const PANEL_COLLAPSE_TRANSITION_CLASS =
-  "duration-[var(--panel-collapse-duration,220ms)] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
-
-export function getPanelCollapseTransitionStyle(
-  transitionsReady: boolean,
-): PanelCollapseTransitionStyle {
-  return {
-    "--panel-collapse-duration": transitionsReady ? "220ms" : "0ms",
-  };
-}
+  "duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none [[data-panel-collapse-instant]_&]:duration-0";
 
 export function usePanelCollapseTransitionsReady(
   resetKey: Key,

@@ -318,9 +318,7 @@ describe("SecondaryPanelLayout", () => {
     });
     const panelGroup = screen.getByTestId("panel-group");
     const mainContent = screen.getByTestId("main-content");
-    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
-    );
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(false);
     expect(mainContent.parentElement?.className).toContain(
       "motion-reduce:transition-none",
     );
@@ -329,9 +327,7 @@ describe("SecondaryPanelLayout", () => {
 
     expect(screen.getByTestId("panel-group")).toBe(panelGroup);
     expect(screen.getByTestId("main-content")).toBe(mainContent);
-    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "0ms",
-    );
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(true);
   });
 
   it("settles mount-time panel state before enabling layout transitions", () => {
@@ -344,20 +340,63 @@ describe("SecondaryPanelLayout", () => {
     });
 
     const panelGroup = screen.getByTestId("panel-group");
-    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "0ms",
-    );
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(true);
 
     view.rerenderWith({ open: false });
     act(() => frames.flushAll());
-    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "0ms",
-    );
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(true);
 
     act(() => frames.flushAll());
-    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(false);
+  });
+
+  it("switches threads without changing a custom property above the thread content", () => {
+    const frames = installAnimationFrameQueue();
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      panelGroupKey: "thread-detail",
+      renderPanel: createPanelRenderer(),
+      resetKey: "thr_a",
+    });
+    act(() => frames.flushAll());
+    act(() => frames.flushAll());
+    const mainContent = screen.getByTestId("main-content");
+    const inheritedCustomProperties = () => {
+      const declarations: string[] = [];
+      for (
+        let element = mainContent.parentElement;
+        element !== null;
+        element = element.parentElement
+      ) {
+        for (const name of Array.from(element.style)) {
+          if (name.startsWith("--")) {
+            declarations.push(
+              `${name}: ${element.style.getPropertyValue(name)}`,
+            );
+          }
+        }
+      }
+      return declarations;
+    };
+    const settled = inheritedCustomProperties();
+
+    const panelGroup = screen.getByTestId("panel-group");
+    view.rerenderWith({ resetKey: "thr_b" });
+    const duringSwitch = inheritedCustomProperties();
+    const instantDuringSwitch = panelGroup.hasAttribute(
+      "data-panel-collapse-instant",
     );
+    act(() => frames.flushAll());
+    act(() => frames.flushAll());
+
+    expect([duringSwitch, inheritedCustomProperties()]).toEqual([
+      settled,
+      settled,
+    ]);
+    expect(screen.getByTestId("main-content")).toBe(mainContent);
+    expect(instantDuringSwitch).toBe(true);
+    expect(panelGroup.hasAttribute("data-panel-collapse-instant")).toBe(false);
   });
 
   it("waits for a secondary panel before applying a two-panel layout", () => {
