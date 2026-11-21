@@ -1,4 +1,5 @@
 import type { BbPluginApi, ExperimentalHostClient } from "@get-bb/plugin-sdk";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { WARM_POOLS_CHANGED_CHANNEL } from "./channels.js";
 import {
@@ -18,6 +19,7 @@ const RESERVATION_TTL_MS = 10 * 60 * 1000;
 const REFRESH_TIMEOUT_MS = 5 * 60 * 1000;
 const HANDOFF_TIMEOUT_MS = 15_000;
 const LIST_PAGE_SIZE = 500;
+const SETTLE_POLL_MS = 2_000;
 
 const poolSizeSchema = z.number().int().min(0).max(MAX_POOL_SIZE);
 const configurationSchema = z.array(
@@ -275,8 +277,9 @@ export async function createWarmPools(args: {
     const key = checkoutKey(checkout.hostId, checkout.sourcePath);
     if (refilling.has(checkout.hostId)) return;
     refilling.add(checkout.hostId);
+    let created: Environment;
     try {
-      await bb.sdk.environments.experimental_create({
+      created = await bb.sdk.environments.experimental_create({
         projectId: checkout.projectId,
         hostId: checkout.hostId,
         provider: {
@@ -295,8 +298,30 @@ export async function createWarmPools(args: {
       bb.log.warn(
         `Warm worktree for ${checkout.sourcePath} on ${checkout.hostId} failed: ${errorMessage(error)}`,
       );
+      return;
     } finally {
       refilling.delete(checkout.hostId);
+    }
+    bb.realtime.publish(WARM_POOLS_CHANGED_CHANNEL, {});
+    await untilSettled(created);
+  }
+
+  async function untilSettled(member: Environment): Promise<void> {
+    let current = member;
+    while (isPreparing(current)) {
+      try {
+        await delay(SETTLE_POLL_MS, undefined, { signal: lifetime.signal });
+        current = await bb.sdk.environments.get({
+          environmentId: member.id,
+          signal: lifetime.signal,
+        });
+      } catch (error) {
+        if (lifetime.signal.aborted || isNotFound(error)) return;
+        bb.log.warn(
+          `Could not check warm worktree ${member.id}: ${errorMessage(error)}`,
+        );
+        return;
+      }
     }
   }
 

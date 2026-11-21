@@ -121,10 +121,15 @@ async function setup(args: {
     },
     sdk: {
       environments: {
-        get: ({ environmentId }) => ({
-          id: environmentId,
-          heldBy: args.heldBy?.[environmentId] ?? null,
-        }),
+        get: ({ environmentId }) => {
+          const member = members.find((entry) => entry.id === environmentId);
+          return member === undefined
+            ? {
+                id: environmentId,
+                heldBy: args.heldBy?.[environmentId] ?? null,
+              }
+            : environment(member);
+        },
         list: (filter) =>
           members
             .filter(
@@ -140,13 +145,15 @@ async function setup(args: {
         },
         experimental_create: (input) => {
           created.push(input);
-          return environment({
+          const member: Member = {
             id: `env_new${created.length}`,
             status: "creating",
             path: null,
             branchName: null,
             createdAt: Date.now(),
-          });
+          };
+          members.push(member);
+          return environment(member);
         },
       },
       projects: {
@@ -246,6 +253,7 @@ async function setup(args: {
     remoteReads: () => remoteReads,
     steps,
     created,
+    members,
     deleted,
     setups,
     adopted,
@@ -659,6 +667,22 @@ describe("warm worktree reconcile", () => {
       ]);
     await fixture.harness.lifecycle.dispose();
   });
+
+  it("starts the next refill as soon as the previous member finishes setup", async () => {
+    const fixture = await setup({ members: [], size: 2 });
+    await expect.poll(() => fixture.created.length, { timeout: 8_000 }).toBe(1);
+    const first = fixture.members.find((member) => member.id === "env_new1")!;
+    first.status = "provisioning";
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(fixture.created).toHaveLength(1);
+    Object.assign(first, {
+      status: "ready",
+      path: "/worktrees/env_new1-1/bb",
+      branchName: "bb/env_new1",
+    });
+    await expect.poll(() => fixture.created.length, { timeout: 5_000 }).toBe(2);
+    await fixture.harness.lifecycle.dispose();
+  }, 20_000);
 
   it("deletes failed members and every member once the pool is turned off", async () => {
     const failed: Member = {
