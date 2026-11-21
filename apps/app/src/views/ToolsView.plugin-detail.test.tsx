@@ -1820,7 +1820,7 @@ describe("BB Official plugin detail routing", () => {
 });
 
 describe("plugin removal confirmation", () => {
-  it("warns that removing a local plugin deletes its settings, secrets, and schedules and names the move path", async () => {
+  it("warns that removing a local plugin deletes its settings, secrets, stored files, and schedules and names the move path", async () => {
     const localPlugin = {
       id: "github",
       source: "path:/Users/you/src/bb-plugin-github",
@@ -1894,7 +1894,7 @@ describe("plugin removal confirmation", () => {
     ).toBeTruthy();
     const description = screen.getByText(/Remove "github" from bb/);
     expect(description.textContent).toContain(
-      "delete its settings, secrets, and schedules",
+      "delete its settings, secrets, stored files, and schedules",
     );
     expect(description.textContent).toContain("source files stay on disk");
     expect(description.textContent).toContain("install the new path instead");

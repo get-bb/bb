@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ServerLogger } from "../../types.js";
+import { pluginDirectory } from "./plugin-directory.js";
 
 const PLUGIN_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const PLUGIN_LOG_FILE = "plugin.log";
@@ -14,10 +15,6 @@ export type PluginEventLog = Record<
   (pluginId: string, message: string, error?: unknown) => void
 >;
 
-function pluginLogsDir(dataDir: string, pluginId: string): string {
-  return join(dataDir, "plugins", pluginId, "logs");
-}
-
 function appendPluginLogLine(
   dataDir: string,
   pluginId: string,
@@ -26,7 +23,7 @@ function appendPluginLogLine(
   stack: string | null,
 ): void {
   try {
-    const dir = pluginLogsDir(dataDir, pluginId);
+    const dir = pluginDirectory(dataDir, pluginId, "logs");
     mkdirSync(dir, { recursive: true });
     const file = join(dir, PLUGIN_LOG_FILE);
     try {
@@ -91,7 +88,7 @@ export async function readPluginLogTail(
   pluginId: string,
   tail: number,
 ): Promise<string[]> {
-  const dir = pluginLogsDir(dataDir, pluginId);
+  const dir = pluginDirectory(dataDir, pluginId, "logs");
   const lines: string[] = [];
   for (const name of [PLUGIN_LOG_ROTATED_FILE, PLUGIN_LOG_FILE]) {
     try {

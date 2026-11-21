@@ -1326,7 +1326,8 @@ The builtin Account Pooler plugin pools Claude and Codex accounts behind the bb
 server. It is disabled on fresh installations (`bb plugin enable
 account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`
 enables it. Account tokens and per-machine hub tokens are 0600 files under
-`<dataDir>/plugins/account-pool/secrets/accounts/`.
+`<dataDir>/plugins/account-pool/files/accounts/`. A pool from an earlier bb
+keeps them in `secrets/accounts/`; the plugin moves them on its next load.
 
 | Setting                    | Default                                 | Effect                                                                                                                                             |
 | -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |

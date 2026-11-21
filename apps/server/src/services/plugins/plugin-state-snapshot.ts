@@ -1,5 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { constants } from "node:fs";
 import {
   copyFile,
   cp,
@@ -9,7 +11,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import { z } from "zod";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
@@ -26,6 +29,7 @@ import {
   type InstalledPluginRow,
   type PluginStateSnapshotRow,
 } from "@bb/db";
+import { pluginDirectory } from "./plugin-directory.js";
 
 const kvRowSchema = z.object({
   pluginId: z.string(),
@@ -120,8 +124,21 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-function pluginDataDir(dataDir: string, pluginId: string): string {
-  return join(dataDir, "plugins", pluginId);
+const execFileAsync = promisify(execFile);
+
+async function cloneTree(source: string, destination: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await execFileAsync("/bin/cp", ["-cRp", source, destination]);
+    return;
+  }
+  await cp(source, destination, {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
+  });
+}
+
+function snapshotFilesPath(snapshotPath: string): string {
+  return join(snapshotPath, "files");
 }
 
 export async function createPluginStateSnapshotOnDisk(args: {
@@ -142,15 +159,24 @@ export async function createPluginStateSnapshotOnDisk(args: {
     args.pluginId,
     `${args.now}-${args.toArtifactId}-${id}`,
   );
-  const sourceDir = pluginDataDir(args.dataDir, args.pluginId);
-  const sourceDatabasePath = join(sourceDir, "data.db");
+  const sourceDatabasePath = pluginDirectory(
+    args.dataDir,
+    args.pluginId,
+    "data.db",
+  );
   const databasePath = join(snapshotPath, "data.db");
   const statePath = join(snapshotPath, "host-state.json");
   const registrationPath = join(snapshotPath, "previous-registration.json");
-  const sourceSecretsPath = join(sourceDir, "secrets");
+  const sourceSecretsPath = pluginDirectory(
+    args.dataDir,
+    args.pluginId,
+    "secrets",
+  );
   const secretsPath = join(snapshotPath, "secrets");
+  const sourceFilesPath = pluginDirectory(args.dataDir, args.pluginId, "files");
   const hasDatabase = await exists(sourceDatabasePath);
   const hasSecrets = await exists(sourceSecretsPath);
+  const hasFiles = await exists(sourceFilesPath);
   const record = createPluginStateSnapshot(args.db, {
     id,
     pluginId: args.pluginId,
@@ -184,7 +210,10 @@ export async function createPluginStateSnapshotOnDisk(args: {
       await copyFile(sourceDatabasePath, databasePath);
     }
     if (hasSecrets) {
-      await cp(sourceSecretsPath, secretsPath, { recursive: true });
+      await cloneTree(sourceSecretsPath, secretsPath);
+    }
+    if (hasFiles) {
+      await cloneTree(sourceFilesPath, snapshotFilesPath(snapshotPath));
     }
     await writeFile(
       statePath,
@@ -229,9 +258,12 @@ export async function restorePluginStateSnapshot(args: {
     );
   }
   setPluginStateSnapshotStatus(args.db, snapshot.id, "restoring", args.now);
-  const targetDir = pluginDataDir(args.dataDir, snapshot.pluginId);
-  await mkdir(targetDir, { recursive: true });
-  const targetDatabasePath = join(targetDir, "data.db");
+  const targetDatabasePath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "data.db",
+  );
+  await mkdir(dirname(targetDatabasePath), { recursive: true });
   await rm(`${targetDatabasePath}-wal`, { force: true });
   await rm(`${targetDatabasePath}-shm`, { force: true });
   if (snapshot.databasePath === null) {
@@ -239,10 +271,24 @@ export async function restorePluginStateSnapshot(args: {
   } else {
     await copyFile(snapshot.databasePath, targetDatabasePath);
   }
-  const targetSecretsPath = join(targetDir, "secrets");
+  const targetSecretsPath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "secrets",
+  );
   await rm(targetSecretsPath, { recursive: true, force: true });
   if (snapshot.secretsPath !== null) {
-    await cp(snapshot.secretsPath, targetSecretsPath, { recursive: true });
+    await cloneTree(snapshot.secretsPath, targetSecretsPath);
+  }
+  const targetFilesPath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "files",
+  );
+  await rm(targetFilesPath, { recursive: true, force: true });
+  const filesPath = snapshotFilesPath(snapshot.snapshotPath);
+  if (await exists(filesPath)) {
+    await cloneTree(filesPath, targetFilesPath);
   }
   await restorePluginHostStateSnapshot({
     db: args.db,
