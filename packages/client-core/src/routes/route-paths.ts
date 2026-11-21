@@ -204,8 +204,10 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
 
 const MESSAGE_LINK_PARAM = "msg";
 
-export interface MessageLinkPathArgs extends ThreadRoutePathArgs {
-  seq: number;
+export interface ThreadLocationPathArgs {
+  threadId: string;
+  projectId?: string;
+  messageSeq?: number;
 }
 
 export interface MessageLinkTarget {
@@ -217,8 +219,18 @@ const THREAD_ROUTE_PATHNAME_PATTERN =
   /^\/(?:projects\/[^/]+\/)?threads\/([^/]+)\/?$/;
 const MESSAGE_LINK_SEQ_PATTERN = /^(0|[1-9]\d*)$/;
 
-export function getMessageLinkPath(args: MessageLinkPathArgs): string {
-  return `${getThreadRoutePath(args)}#${MESSAGE_LINK_PARAM}=${args.seq}`;
+export function getThreadLocationPath({
+  threadId,
+  projectId,
+  messageSeq,
+}: ThreadLocationPathArgs): string {
+  const path =
+    projectId === undefined
+      ? `/threads/${threadId}`
+      : getThreadRoutePath({ projectId, threadId });
+  return messageSeq === undefined
+    ? path
+    : `${path}#${MESSAGE_LINK_PARAM}=${messageSeq}`;
 }
 
 export function parseMessageLink(href: string): MessageLinkTarget | null {

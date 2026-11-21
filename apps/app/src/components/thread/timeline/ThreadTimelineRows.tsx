@@ -50,7 +50,7 @@ import {
   resolveDeferredTimelineContent,
 } from "@bb/client-core";
 import {
-  getMessageLinkPath,
+  getThreadLocationPath,
   isRunningThreadRuntimeDisplayStatus,
 } from "@bb/client-core";
 import type {
@@ -927,10 +927,10 @@ const ConversationRowContent = memo(function ConversationRowContent({
       : () => {
           void copyToClipboardWithToast(
             new URL(
-              getMessageLinkPath({
+              getThreadLocationPath({
                 projectId,
                 threadId: row.threadId,
-                seq: row.messageSeq,
+                messageSeq: row.messageSeq,
               }),
               window.location.origin,
             ).toString(),
@@ -944,6 +944,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: messageMetadata,
     id: row.id,
     threadId: row.threadId,
+    messageSeq: row.messageSeq,
     createdAt: row.startedAt,
     turnId: row.turnId,
     ...(row.role === "user"

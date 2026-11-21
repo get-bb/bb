@@ -73,6 +73,7 @@ export {
   getAutomationEditRoutePath,
   getPluginPanelRoutePath,
   getThreadRoutePath,
+  getThreadLocationPath,
 } from "@bb/client-core";
 export type { ThreadRoutePathArgs } from "@bb/client-core";
 

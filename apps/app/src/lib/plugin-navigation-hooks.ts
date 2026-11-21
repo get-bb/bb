@@ -9,6 +9,7 @@ import {
 import type {
   BbNavigate,
   ExperimentalPluginActionContext,
+  ExperimentalSettingsTarget,
   PluginBrowserBbSdk,
 } from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
@@ -19,7 +20,7 @@ import {
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
-  getThreadRoutePath,
+  getThreadLocationPath,
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
@@ -28,7 +29,12 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { lookupCachedThread } from "@/lib/cached-thread";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
+import { openThread } from "@/lib/split-layout/openThread";
+import {
+  getSettingsTargetPath,
+  isSettingsSectionId,
+  type SettingsTarget,
+} from "@/components/settings/settings-sections";
 import {
   useAppNavigationHost,
   type ResolvedAppNavigationHostCapabilities,
@@ -73,6 +79,27 @@ interface BbNavigateDeps {
   setRootComposeProjectId: (projectId: string) => void;
 }
 
+function assertMessageSeq(messageSeq: number): void {
+  if (!Number.isSafeInteger(messageSeq) || messageSeq < 0) {
+    throw new RangeError(
+      `messageSeq must be a non-negative integer, got ${messageSeq}`,
+    );
+  }
+}
+
+function settingsTarget(
+  pluginId: string,
+  target: ExperimentalSettingsTarget | undefined,
+): SettingsTarget {
+  if (target === undefined) return { pluginId };
+  if (!isSettingsSectionId(target.section)) {
+    throw new RangeError(
+      `Unknown settings section "${String(target.section)}"`,
+    );
+  }
+  return { section: target.section };
+}
+
 function createBbNavigate(
   pluginId: string,
   host: () => ResolvedAppNavigationHostCapabilities,
@@ -83,22 +110,22 @@ function createBbNavigate(
   return {
     toThread(threadId, options) {
       const { isCompact, navigate, onNavigate, queryClient, store } = latest();
+      const messageSeq = options?.experimental_messageSeq;
+      if (messageSeq !== undefined) assertMessageSeq(messageSeq);
       onNavigate?.();
       const open = (projectId: string) => {
         store.set(getThreadConversationCollapsedAtom(threadId), false);
-        if (options?.split) {
-          openThreadInSplit({
-            store,
-            navigate: (route, navigateOptions) => {
-              void navigate(route, navigateOptions);
-            },
-            projectId,
-            threadId,
-            isCompact,
-          });
-          return;
-        }
-        void navigate(getThreadRoutePath({ projectId, threadId }));
+        openThread({
+          store,
+          navigate: (route, navigateOptions) => {
+            void navigate(route, navigateOptions);
+          },
+          projectId,
+          threadId,
+          isCompact,
+          split: options?.split ?? false,
+          ...(messageSeq === undefined ? {} : { messageSeq }),
+        });
       };
       const cached = lookupCachedThread(queryClient, threadId);
       if (cached !== null) {
@@ -108,7 +135,14 @@ function createBbNavigate(
       void sdk.threads
         .get({ threadId })
         .then((thread) => open(thread.projectId))
-        .catch(() => navigate(`/threads/${threadId}`));
+        .catch(() =>
+          navigate(
+            getThreadLocationPath({
+              threadId,
+              ...(messageSeq === undefined ? {} : { messageSeq }),
+            }),
+          ),
+        );
     },
     toProject(projectId) {
       const { navigate, onNavigate } = latest();
@@ -173,6 +207,24 @@ function createBbNavigate(
     experimental_openFileExternally(options) {
       const normalized = normalizeExperimentalFileOpenOptions(options);
       return normalized !== null && host().openFileExternally(normalized);
+    },
+    experimental_toSettings(target) {
+      const { navigate, onNavigate } = latest();
+      onNavigate?.();
+      void navigate(getSettingsTargetPath(settingsTarget(pluginId, target)));
+    },
+    experimental_threadHref(threadId, options) {
+      const messageSeq = options?.experimental_messageSeq;
+      if (messageSeq !== undefined) assertMessageSeq(messageSeq);
+      const cached = lookupCachedThread(latest().queryClient, threadId);
+      return getThreadLocationPath({
+        threadId,
+        ...(cached === null ? {} : { projectId: cached.projectId }),
+        ...(messageSeq === undefined ? {} : { messageSeq }),
+      });
+    },
+    experimental_settingsHref(target) {
+      return getSettingsTargetPath(settingsTarget(pluginId, target));
     },
     async experimental_openTerminal({ terminalId }) {
       const session = await sdk.terminals

@@ -1,0 +1,228 @@
+// @vitest-environment jsdom
+
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createStore, Provider as JotaiProvider } from "jotai";
+import { MemoryRouter, useLocation, type Location } from "react-router-dom";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
+import type {
+  BbNavigate,
+  ExperimentalSettingsSection,
+} from "@get-bb/plugin-sdk";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import type { SettingsSectionId } from "@/components/settings/settings-sections";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import type { SplitLayout } from "@/lib/split-layout";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { useBbNavigate } from "./plugin-navigation-hooks";
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
+
+interface Harness {
+  navigate: () => BbNavigate;
+  locations: Location[];
+  store: ReturnType<typeof createStore>;
+}
+
+function renderNavigate({
+  initialPath = "/plugins/demo/home",
+  layout = null,
+  renderLink,
+}: {
+  initialPath?: string;
+  layout?: SplitLayout | null;
+  renderLink?: (navigate: BbNavigate) => string;
+} = {}): Harness {
+  const { queryClient } = createQueryClientTestHarness();
+  queryClient.setQueryData(
+    threadQueryKey("thr_target"),
+    makeThreadResponse({ id: "thr_target", projectId: "proj_demo" }),
+  );
+  const store = createStore();
+  store.set(splitLayoutAtom, layout);
+  const locations: Location[] = [];
+  let current: BbNavigate | null = null;
+  function Probe() {
+    const navigate = useBbNavigate();
+    current = navigate;
+    return renderLink === undefined ? null : (
+      <a href={renderLink(navigate)}>Plugin link</a>
+    );
+  }
+  function LocationProbe() {
+    const location = useLocation();
+    if (locations.at(-1)?.key !== location.key) locations.push(location);
+    return null;
+  }
+  render(
+    <QueryClientProvider client={queryClient}>
+      <JotaiProvider store={store}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <RouteNavigationProvider>
+            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+              <Probe />
+            </PluginSlotMount>
+            <LocationProbe />
+          </RouteNavigationProvider>
+        </MemoryRouter>
+      </JotaiProvider>
+    </QueryClientProvider>,
+  );
+  return {
+    navigate: () => {
+      if (current === null) throw new Error("navigate probe did not render");
+      return current;
+    },
+    locations,
+    store,
+  };
+}
+
+function href(location: Location): string {
+  return `${location.pathname}${location.hash}`;
+}
+
+describe("useBbNavigate thread and settings locations", () => {
+  it("opens a message link, and opening the same message again makes a new location so the reveal runs again", () => {
+    const { navigate, locations } = renderNavigate();
+    act(() => {
+      navigate().toThread("thr_target", { experimental_messageSeq: 42 });
+    });
+    act(() => {
+      navigate().toThread("thr_target", { experimental_messageSeq: 42 });
+    });
+    const opened = locations.slice(1);
+    expect(opened.map(href)).toEqual([
+      "/projects/proj_demo/threads/thr_target#msg=42",
+      "/projects/proj_demo/threads/thr_target#msg=42",
+    ]);
+    expect(opened[0]?.key).not.toBe(opened[1]?.key);
+    expect(
+      navigate().experimental_threadHref("thr_target", {
+        experimental_messageSeq: 42,
+      }),
+    ).toBe(href(opened[0]!));
+  });
+
+  it("keeps the message when the thread is already open in another pane", () => {
+    const layout: SplitLayout = {
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-1",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "demo",
+              panelPath: "home",
+              subPath: "",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-2",
+            content: {
+              kind: "thread",
+              projectId: "proj_demo",
+              threadId: "thr_target",
+            },
+          },
+        ],
+      },
+      focusedPaneId: "pane-1",
+    };
+    const { navigate, locations, store } = renderNavigate({ layout });
+    act(() => {
+      navigate().toThread("thr_target", {
+        split: true,
+        experimental_messageSeq: 7,
+      });
+    });
+    expect(locations.map(href).at(-1)).toBe(
+      "/projects/proj_demo/threads/thr_target#msg=7",
+    );
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
+  });
+
+  it("routes a plain click on a plugin anchor to a thread bb has not loaded through the projectless route", () => {
+    const { locations } = renderNavigate({
+      renderLink: (navigate) =>
+        navigate.experimental_threadHref("thr_unloaded", {
+          experimental_messageSeq: 3,
+        }),
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Plugin link" }));
+    expect(locations.map(href).at(-1)).toBe("/threads/thr_unloaded#msg=3");
+  });
+
+  it("refuses a message seq that no message link can carry", () => {
+    const { navigate, locations } = renderNavigate();
+    for (const messageSeq of [-1, 1.5, Number.NaN]) {
+      expect(() =>
+        navigate().toThread("thr_target", {
+          experimental_messageSeq: messageSeq,
+        }),
+      ).toThrow(RangeError);
+      expect(() =>
+        navigate().experimental_threadHref("thr_target", {
+          experimental_messageSeq: messageSeq,
+        }),
+      ).toThrow(RangeError);
+    }
+    expect(locations).toHaveLength(1);
+  });
+
+  it("opens this plugin's settings page or a bb section, at the href it reports", () => {
+    const { navigate, locations } = renderNavigate();
+    const targets = [
+      undefined,
+      { section: "appearance" },
+      { section: "general" },
+    ] as const;
+    for (const target of targets) {
+      act(() => {
+        navigate().experimental_toSettings(target);
+      });
+      expect(href(locations.at(-1)!)).toBe(
+        navigate().experimental_settingsHref(target),
+      );
+    }
+    expect(locations.slice(1).map(href)).toEqual([
+      "/settings/plugins/demo",
+      "/settings/appearance",
+      "/settings",
+    ]);
+  });
+
+  it("rejects a settings section bb does not have", () => {
+    const { navigate } = renderNavigate();
+    const target = JSON.parse('{"section":"billing"}') as {
+      section: ExperimentalSettingsSection;
+    };
+    expect(() => navigate().experimental_toSettings(target)).toThrow(
+      RangeError,
+    );
+    expect(() => navigate().experimental_settingsHref(target)).toThrow(
+      RangeError,
+    );
+  });
+
+  it("names exactly the sections bb's settings has", () => {
+    expectTypeOf<ExperimentalSettingsSection>().toEqualTypeOf<SettingsSectionId>();
+  });
+});

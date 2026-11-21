@@ -1285,8 +1285,9 @@ export interface PluginPendingInteractionRegistration {
  */
 export interface PluginSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /**
-   * Navigate to this plugin's detail page in Tools, where declarative settings
-   * and `settingsSection` slots render.
+   * Open this plugin's settings page, where declarative settings and
+   * `settingsSection` slots render; the same as
+   * `navigate.experimental_toSettings()`.
    */
   openSettings(): void;
 }
@@ -1316,7 +1317,7 @@ export interface PluginSidebarFooterActionRegistration {
  * `panel` act on the focused surface, as for commands.
  */
 export interface ExperimentalSidebarFooterActionContext extends ExperimentalPluginActionContext {
-  /** Navigate to this plugin's detail page in Tools. */
+  /** Open this plugin's settings page; the same as `navigate.experimental_toSettings()`. */
   openPluginDetails(): void;
 }
 
@@ -3596,7 +3597,7 @@ export interface ThreadChatMessageReference {
 /** Stable identity and creation time of one rendered conversation message. */
 export type ExperimentalMessageMetadataContext = Pick<
   ThreadChatMessageReference,
-  "id" | "threadId"
+  "id" | "threadId" | "experimental_messageSeq"
 > & {
   /** Unix time in milliseconds, supplied by BB's timeline. */
   createdAt: number;
@@ -5560,14 +5561,46 @@ export interface BbContext {
   experimental_pluginPanel: ExperimentalPluginPanelPage | null;
 }
 
+/** A bb settings section, as `/settings/<section>` names it. */
+export type ExperimentalSettingsSection =
+  | "general"
+  | "providers"
+  | "ai-services"
+  | "appearance"
+  | "keyboard"
+  | "browser"
+  | "files"
+  | "projects"
+  | "machines"
+  | "mobile"
+  | "environment-variables"
+  | "updates"
+  | "plugins"
+  | "marketplaces"
+  | "experiments"
+  | "community"
+  | "archived";
+
+/** A bb settings page; omit it to mean the calling plugin's own settings page. */
+export interface ExperimentalSettingsTarget {
+  section: ExperimentalSettingsSection;
+}
+
 export interface BbNavigate {
   /**
    * Open a thread. `split: true` applies bb's split placement rules (a right
    * split by default, focus when already open, replace at the pane cap) and
    * falls back to plain navigation where splits are off. Opening also expands
    * the thread's conversation if the side panel had collapsed it.
+   * `experimental_messageSeq` opens the thread at that message, as a message
+   * link does: bb loads older history as needed, scrolls to the message and
+   * highlights it, or shows a "Message not found" toast. Repeating the call
+   * reveals the message again.
    */
-  toThread(threadId: string, options?: { split?: boolean }): void;
+  toThread(
+    threadId: string,
+    options?: { split?: boolean; experimental_messageSeq?: number },
+  ): void;
   toProject(projectId: string): void;
   /**
    * Navigate to one of this plugin's own nav panels by its `path`.
@@ -5630,6 +5663,31 @@ export interface BbNavigate {
    * docs/api_to_audit.md.
    */
   experimental_openTerminal(options: { terminalId: string }): Promise<boolean>;
+  /**
+   * Open bb settings: this plugin's own settings page, or `target.section`.
+   * Settings replaces the whole window, including any split panes; Back
+   * returns to them. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_toSettings(target?: ExperimentalSettingsTarget): void;
+  /**
+   * The app-relative href of the location `toThread(threadId, options)`
+   * opens: the thread, or its message at `experimental_messageSeq`. When bb
+   * has not loaded the thread's project, the href is `/threads/<id>`, which bb
+   * redirects to the project route, keeping the message. Use it on an `<a>`:
+   * bb routes a plain click in place, Cmd/Ctrl-click opens a split, and
+   * middle-click a new tab. For a URL to copy, use
+   * `new URL(href, location.origin)`, as bb's Copy link does. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadHref(
+    threadId: string,
+    options?: { experimental_messageSeq?: number },
+  ): string;
+  /**
+   * The app-relative href of the settings page `experimental_toSettings(target)`
+   * opens. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_settingsHref(target?: ExperimentalSettingsTarget): string;
 }
 
 // ---------------------------------------------------------------------------

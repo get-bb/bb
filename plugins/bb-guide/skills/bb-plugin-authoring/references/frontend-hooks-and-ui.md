@@ -52,10 +52,28 @@ registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
   fire from text fields inside an element marked `data-question-form`. The
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
-{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openUrl(url), experimental_openFilePreview(options),
-experimental_openFileExternally(options), experimental_openTerminal({ terminalId }) }`.
+- `useBbNavigate()` → `{ toThread(id, { split?, experimental_messageSeq? }?),
+toProject(id), toPluginPanel(path, { subPath?, replace? }?),
+toCompose({ initialPrompt?, focusPrompt? }?), openUrl(url),
+experimental_openFilePreview(options), experimental_openFileExternally(options),
+experimental_openTerminal({ terminalId }), experimental_toSettings(target?),
+experimental_threadHref(id, { experimental_messageSeq? }?),
+experimental_settingsHref(target?) }`.
+  `experimental_messageSeq` opens the thread at that message the way a
+  message link does: bb loads older history, scrolls to the message and
+  highlights it, or toasts "Message not found". Take the seq from
+  `ThreadChatMessageReference.experimental_messageSeq`, a message metadata
+  slot's `message.experimental_messageSeq`, or `sdk.threads.timeline()` rows'
+  `messageSeq`; never page or scroll the timeline DOM yourself.
+  `experimental_toSettings()` opens your plugin's settings page;
+  `experimental_toSettings({ section: "appearance" })` opens a bb section
+  (`ExperimentalSettingsSection`). Never push history state or dispatch
+  `popstate` to reach a bb route.
+  `experimental_threadHref` and `experimental_settingsHref` return the
+  app-relative href of the same location, for an `<a href>`: bb routes plain
+  clicks in place, Cmd/Ctrl-click opens a split, and middle-click a new tab.
+  For a URL to copy, use `new URL(href, location.origin)`. Do not build
+  `/threads/…`, `#msg=` or `/settings/…` paths by hand.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
   with the [panel controller](#panel-controller).

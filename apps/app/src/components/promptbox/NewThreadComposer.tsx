@@ -8,10 +8,7 @@ import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { operationFailureReason } from "@/components/onboarding/onboarding-model";
-import {
-  getPluginConfigurationRoutePath,
-  getSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import {
   useCallback,
   useEffect,
@@ -2214,7 +2211,9 @@ export function NewThreadComposer({
                       size="sm"
                       className="h-8 shrink-0 px-3"
                       onClick={() =>
-                        void navigate(getSettingsRoutePath("machines"))
+                        void navigate(
+                          getSettingsTargetPath({ section: "machines" }),
+                        )
                       }
                     >
                       Set up machine access
@@ -2232,7 +2231,7 @@ export function NewThreadComposer({
                       className="h-8 shrink-0 px-3"
                       onClick={() =>
                         void navigate(
-                          getPluginConfigurationRoutePath({
+                          getSettingsTargetPath({
                             pluginId: setupRequiredProvider.pluginId,
                           }),
                         )

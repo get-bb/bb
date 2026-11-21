@@ -1,5 +1,10 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import { SETTINGS_ROUTE_PATH, getSettingsRoutePath } from "@/lib/route-paths";
+import type { ExperimentalSettingsSection } from "@get-bb/plugin-sdk";
+import {
+  SETTINGS_ROUTE_PATH,
+  getPluginConfigurationRoutePath,
+  getSettingsRoutePath,
+} from "@/lib/route-paths";
 
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
@@ -25,7 +30,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {
   icon: IconName;
-  id: string;
+  id: ExperimentalSettingsSection;
   label: string;
 }[];
 
@@ -43,4 +48,14 @@ export function getSettingsSectionRoutePath(
   return sectionId === "general"
     ? SETTINGS_ROUTE_PATH
     : getSettingsRoutePath(sectionId);
+}
+
+export type SettingsTarget =
+  | { section: SettingsSectionId }
+  | { pluginId: string };
+
+export function getSettingsTargetPath(target: SettingsTarget): string {
+  return "section" in target
+    ? getSettingsSectionRoutePath(target.section)
+    : getPluginConfigurationRoutePath({ pluginId: target.pluginId });
 }

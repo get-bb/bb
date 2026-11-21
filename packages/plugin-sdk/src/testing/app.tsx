@@ -143,6 +143,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalSettingsTarget,
   type ExperimentalFilePreviewFile,
   type ExperimentalFilePreviewOptions,
   type ExperimentalFilePreviewProps,
@@ -268,6 +269,10 @@ export type NavigateCall =
   | {
       method: "experimental_openTerminal";
       options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
+    }
+  | {
+      method: "experimental_toSettings";
+      target?: ExperimentalSettingsTarget;
     };
 
 interface RetiredActionTabOpenOptions {
@@ -3212,6 +3217,25 @@ export function renderSlot<
         options: terminalOptions,
       });
       return options.openTerminal?.(terminalOptions) ?? false;
+    },
+    experimental_toSettings(target) {
+      navigateCalls.push({
+        method: "experimental_toSettings",
+        ...(target !== undefined ? { target } : {}),
+      });
+    },
+    experimental_threadHref(threadId, hrefOptions) {
+      const messageSeq = hrefOptions?.experimental_messageSeq;
+      const path = `/threads/${threadId}`;
+      return messageSeq === undefined ? path : `${path}#msg=${messageSeq}`;
+    },
+    experimental_settingsHref(target) {
+      if (target === undefined) {
+        return `/settings/plugins/${encodeURIComponent(options.pluginId ?? "test-plugin")}`;
+      }
+      return target.section === "general"
+        ? "/settings"
+        : `/settings/${target.section}`;
     },
   };
 
