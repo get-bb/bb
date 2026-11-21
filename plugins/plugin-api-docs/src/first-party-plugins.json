@@ -80,6 +80,11 @@
     "icon": "Coffee"
   },
   {
+    "id": "bb--dev-servers",
+    "name": "Dev servers",
+    "icon": "Globe"
+  },
+  {
     "id": "bb--github-star",
     "name": "GitHub Star",
     "icon": "Star"

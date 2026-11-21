@@ -146,6 +146,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "dev-servers",
+    pluginId: "bb--dev-servers",
+    defaultEnabled: true,
+  },
+  {
     name: "plugin-api-docs",
     pluginId: "plugin-api-docs",
     defaultEnabled: false,

@@ -47,6 +47,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "push-notifications",
   "connect",
   "custom-instructions",
+  "bb--dev-servers",
   "inline-vis",
   "keep-awake",
   "pdf-preview",

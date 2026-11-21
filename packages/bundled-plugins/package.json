@@ -50,6 +50,7 @@
     "bb-plugin-secrets": "workspace:*",
     "bb-plugin-side-chat": "workspace:*",
     "bb-plugin-simple-notes": "workspace:*",
+    "bb-plugin-bb--dev-servers": "workspace:*",
     "bb-plugin-bb--tailscale": "workspace:*",
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
