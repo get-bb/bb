@@ -4,10 +4,12 @@ import {
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
   type AppKeybindings,
+  type KeyboardCommandId,
 } from "@bb/domain";
 import { APP_COMMAND_GROUPS } from "./app-command-metadata";
 import {
   appShortcutFromInput,
+  allowsBareKeyShortcut,
   canAssignAppShortcut,
   getCommandShortcut,
   resetCommandShortcutOverride,
@@ -130,7 +132,7 @@ describe("keyboard shortcut settings", () => {
     ).toMatchObject({ key: "k", mod: true, control: true, shift: true });
   });
 
-  it("rejects unmodified typing keys except for question choices", () => {
+  it("rejects unmodified typing keys except for question choices and plugin page commands", () => {
     const plainKey = {
       key: "x",
       mod: false,
@@ -139,11 +141,30 @@ describe("keyboard shortcut settings", () => {
       alt: false,
       shift: false,
     };
-    expect(canAssignAppShortcut("thread.new", plainKey)).toBe(false);
-    expect(canAssignAppShortcut("question.select.1", plainKey)).toBe(true);
-    expect(canAssignAppShortcut("thread.new", { ...plainKey, key: "F2" })).toBe(
-      true,
-    );
+    const defaults: AppDefaultKeybindings = [
+      {
+        command: "plugin:tasks/new-task",
+        desktopOnly: false,
+        shortcut: { ...plainKey, key: "c" },
+        when: {
+          all: ["mainSurface", "pluginPage"],
+          none: ["modalOpen", "editableFocus"],
+        },
+      },
+      {
+        command: "plugin:tasks/sync",
+        desktopOnly: false,
+        shortcut: null,
+        when: { all: ["mainSurface"], none: ["modalOpen"] },
+      },
+    ];
+    const assignable = (command: KeyboardCommandId, shortcut = plainKey) =>
+      canAssignAppShortcut(shortcut, allowsBareKeyShortcut(defaults, command));
+    expect(assignable("thread.new")).toBe(false);
+    expect(assignable("plugin:tasks/sync")).toBe(false);
+    expect(assignable("question.select.1")).toBe(true);
+    expect(assignable("plugin:tasks/new-task")).toBe(true);
+    expect(assignable("thread.new", { ...plainKey, key: "F2" })).toBe(true);
   });
 
   it("stores edits and disabled bindings explicitly for the current platform", () => {

@@ -3801,8 +3801,21 @@ export interface ExperimentalShortcutKeyEvent {
  * `run`, and the host owns matching, ordering, and recency.
  */
 export interface PluginCommandRegistration {
-  /** Initial keyboard binding. Users can rebind every command, including ones without a default. Conflicting defaults remain unbound. */
+  /**
+   * Initial keyboard binding. Users can rebind every command, including ones without a default. Conflicting defaults remain unbound.
+   * It needs Command, Control or Alt, or a function key; with `experimental_keyScope: "pluginPage"` it may be a bare key such as `{ key: "c" }`.
+   */
   defaultShortcut?: PluginCommandShortcut;
+  /**
+   * Where the keyboard binding works. Omitted, it works app-wide outside
+   * modals. `"pluginPage"` limits it to while one of this plugin's nav panel
+   * pages is the focused surface, and never while focus is in a field, an
+   * editor or a menu, or a modal is open; only this scope accepts a bare-key
+   * default.
+   * The palette still lists the command everywhere `isAvailable` allows.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_keyScope?: "pluginPage";
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** The row's label, e.g. "Linear: open issue for this thread". */
@@ -6542,6 +6555,18 @@ export interface PluginSdkApp {
   experimental_VoiceRecordingBar: ComponentType<ExperimentalVoiceRecordingBarProps>;
   experimental_FailedVoiceRecordings: ComponentType<ExperimentalFailedVoiceRecordingsProps>;
   experimental_ShortcutHint: ComponentType<ExperimentalShortcutHintProps>;
+  /**
+   * The shortcut currently bound to this plugin's command `commandId` (the
+   * `id` given to `app.commands.register`), formatted for this platform and
+   * following the user's rebinds: the label bb's own buttons and tooltips
+   * show. Null when the command is unbound, including a default left unbound
+   * by a conflict, or when this plugin registered no such command. Throws for
+   * an id that is not letters, digits, `-` and `_`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useCommandShortcut(
+    commandId: string,
+  ): ExperimentalShortcutPresentation | null;
   /**
    * Whether `event` presses `key` (a `PluginCommandShortcut` key such as
    * `"k"`, `"["` or `"Enter"`), compared the way bb compares keys for its own

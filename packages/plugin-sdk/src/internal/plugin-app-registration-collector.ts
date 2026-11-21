@@ -275,6 +275,9 @@ export type CollectedPluginProviderIconRegistration = Omit<
   providerKind: PluginProviderIconRegistration["providerKind"] | "all";
 };
 
+const BARE_KEY_SHORTCUT_MESSAGE =
+  'Use Command, Control, or Alt with a key, or a function key; bare keys need experimental_keyScope: "pluginPage"';
+
 function createCommandShortcutSchema() {
   return z
     .object({
@@ -300,16 +303,19 @@ function createCommandShortcutSchema() {
       alt: z.boolean().default(false),
       shift: z.boolean().default(false),
     })
-    .strict()
-    .refine(
-      (shortcut) =>
-        shortcut.mod ||
-        shortcut.meta ||
-        shortcut.control ||
-        shortcut.alt ||
-        /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key),
-      "Use Command, Control, or Alt with a key, or a function key",
-    );
+    .strict();
+}
+
+function isBareKeyShortcut(
+  shortcut: z.infer<ReturnType<typeof createCommandShortcutSchema>>,
+): boolean {
+  return !(
+    shortcut.mod ||
+    shortcut.meta ||
+    shortcut.control ||
+    shortcut.alt ||
+    /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key)
+  );
 }
 
 type CollectedCommandShortcut = z.infer<
@@ -667,25 +673,40 @@ export function collectPluginAppRegistrations(
     registration:
       | PluginCommandRegistration
       | ExperimentalComposerCommandRegistration,
+    keyScope: PluginCommandRegistration["experimental_keyScope"],
   ) {
     const id = requireSlotId(kind, registration?.id);
     requireUniqueId(kind, seenIds.command, id);
     if (typeof registration.run !== "function") {
       throw new Error(`${kind}: "run" must be a function`);
     }
+    const defaultShortcut =
+      registration.defaultShortcut === undefined
+        ? null
+        : commandShortcutSchema.parse(registration.defaultShortcut);
+    if (
+      defaultShortcut !== null &&
+      keyScope !== "pluginPage" &&
+      isBareKeyShortcut(defaultShortcut)
+    ) {
+      throw new Error(`${kind}: ${BARE_KEY_SHORTCUT_MESSAGE}`);
+    }
     return {
       id,
-      defaultShortcut:
-        registration.defaultShortcut === undefined
-          ? null
-          : commandShortcutSchema.parse(registration.defaultShortcut),
+      defaultShortcut,
       title: requireNonEmptyString(kind, "title", registration.title),
     };
   }
 
   function registerCommand(registration: PluginCommandRegistration): void {
     const kind = "commands.register";
-    const command = collectCommand(kind, registration);
+    const keyScope = registration?.experimental_keyScope;
+    if (keyScope !== undefined && keyScope !== "pluginPage") {
+      throw new Error(
+        `${kind}: "experimental_keyScope" must be "pluginPage" or omitted`,
+      );
+    }
+    const command = collectCommand(kind, registration, keyScope);
     if (
       registration.isAvailable !== undefined &&
       typeof registration.isAvailable !== "function"
@@ -695,6 +716,7 @@ export function collectPluginAppRegistrations(
     collected.commandPaletteActions.push({
       target: "app",
       ...command,
+      ...(keyScope !== undefined ? { experimental_keyScope: keyScope } : {}),
       ...(registration.isAvailable !== undefined
         ? { isAvailable: registration.isAvailable }
         : {}),
@@ -707,7 +729,11 @@ export function collectPluginAppRegistrations(
   ): void {
     collected.commandPaletteActions.push({
       target: "composer",
-      ...collectCommand("composer.experimental_registerCommand", registration),
+      ...collectCommand(
+        "composer.experimental_registerCommand",
+        registration,
+        undefined,
+      ),
       run: registration.run,
     });
   }
