@@ -26,6 +26,14 @@ function getMessageContentTypes(message: Record<string, unknown>): string[] {
   }
   return [...types];
 }
+function isEchoedUserPrompt(message: Record<string, unknown>): boolean {
+  const content = getRecordProperty(message, "message")?.["content"];
+  return (
+    typeof content === "string" &&
+    (message["isReplay"] === true ||
+      typeof message["parent_tool_use_id"] === "string")
+  );
+}
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
   "fallback",
   "text",
@@ -409,9 +417,10 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
     case "user":
       return {
         kind: "sdk/user",
-        contentTypes: getMessageContentTypes(message).map(
-          toClaudeMessageContentType,
-        ),
+        contentTypes: (isEchoedUserPrompt(message)
+          ? ["text"]
+          : getMessageContentTypes(message)
+        ).map(toClaudeMessageContentType),
       };
 
     case "tool_progress":
