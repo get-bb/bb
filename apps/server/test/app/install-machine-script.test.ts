@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
+import { CLI_LAUNCHER_MARKER } from "@bb/config/cli-command";
 import {
   createProcessLifeline,
   killProcessesReferencingPath,
@@ -719,6 +720,51 @@ exec '${process.execPath}' "$@"
     rmSync(launcher);
     rmSync(join(fixture.dataDir, "npm"), { recursive: true });
     expect(runShim({})).toBe("other-launcher");
+  });
+
+  it("points the data dir's bb launcher at the machine package unless a running bb owns it", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const install = () => {
+      const result = runScript(BOOTSTRAP_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    const launcher = join(fixture.dataDir, "bin", "bb");
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    const runShim = () => {
+      const result = spawnSync(shim, ["--version"], {
+        env: createScriptEnv(fixture, {}),
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+
+    install();
+    writeExecutable(
+      join(fixture.dataDir, "npm", "bin", "bb"),
+      "#!/bin/sh\necho machine-package\n",
+    );
+    expect(readFileSync(launcher, "utf8")).toContain(CLI_LAUNCHER_MARKER);
+    expect(runShim()).toBe("machine-package");
+
+    writeExecutable(
+      launcher,
+      `#!/bin/sh\n# ${CLI_LAUNCHER_MARKER}\necho running-app\n`,
+    );
+    install();
+    expect(runShim()).toBe("running-app");
+
+    writeFileSync(join(fixture.dataDir, "server-moved.json"), "{}\n");
+    install();
+    expect(runShim()).toBe("machine-package");
+
+    const foreign = "#!/bin/sh\necho someone-else\n";
+    writeExecutable(launcher, foreign);
+    install();
+    expect(readFileSync(launcher, "utf8")).toBe(foreign);
   });
 
   it("publishes cleanup before package installation can fail", () => {

@@ -175,12 +175,17 @@ SDK methods are `system.experimental_cliCommand()`,
 - bb never replaces another `bb`. If one already comes first on your PATH
   (for example a global `npm install -g bb-app` or Babashka), the setting
   names it and Install is refused with `409 cli_command_blocked`.
-- A bb machine install adds its own `~/.local/bin/bb`. It runs the data dir's
-  `<dataDir>/bin/bb` launcher when one exists, so it follows in-app updates
-  once that machine runs a bb server, and falls back to the machine's npm
-  install otherwise. Older machine installs wrote one that always runs the
-  npm install from enrollment, which goes stale after in-app updates. Install
-  replaces either kind with a link to this bb's launcher, in the same place.
+- A bb machine install adds its own `~/.local/bin/bb`, which runs the data
+  dir's `<dataDir>/bin/bb` launcher (or the machine's npm install when the
+  data dir has none). The machine install writes that launcher pointing at
+  its npm install, which the daemon keeps updated, unless the data dir already
+  has one. Once the data dir runs a bb server, each start points the launcher
+  at that bb instead. After the server moves away,
+  `bb server install-machine-service` reinstalls the machine and points the
+  launcher back at the npm install. Older machine installs wrote a
+  `~/.local/bin/bb` that always runs the npm install from enrollment, which
+  goes stale after in-app updates. Install replaces either kind with a link
+  to this bb's launcher, in the same place.
 - Remove deletes only links that point at a bb launcher, or the
   `<dataDir>\bin` PATH entry on Windows.
 - Machine credentials cannot install or remove the command.

@@ -883,6 +883,30 @@ if [ -n "$bb_app_npm_prefix" ]; then
     (umask 077 && printf '%s\n' "$package_digest" >"$host_artifact_digest_temp")
     mv "$host_artifact_digest_temp" "$host_artifact_digest_file"
   fi
+  cli_launcher="$canonical_data_dir/bin/bb"
+  cli_launcher_marker='Written by bb: runs the bb command of the bb installed on this computer.'
+  if { [ ! -e "$cli_launcher" ] && [ ! -L "$cli_launcher" ]; } || {
+    [ -f "$canonical_data_dir/server-moved.json" ] &&
+    [ -f "$cli_launcher" ] && [ ! -L "$cli_launcher" ] &&
+    grep -qF "$cli_launcher_marker" "$cli_launcher"
+  }; then
+    mkdir -p "$canonical_data_dir/bin"
+    cli_launcher_file=$(mktemp "$canonical_data_dir/bin/.bb-machine.XXXXXX")
+    machine_cli_quoted=$(printf '%s' "$bb_app_npm_prefix/bin/bb" | sed "s/'/'\\''/g")
+    {
+      printf '#!/bin/sh\n# %s\n' "$cli_launcher_marker"
+      printf 'cli=\047%s\047\n' "$machine_cli_quoted"
+      cat <<'BB_MACHINE_LAUNCHER'
+if [ ! -x "$cli" ]; then
+  echo "This bb machine's package is missing. Rerun the machine install command." >&2
+  exit 127
+fi
+exec "$cli" "$@"
+BB_MACHINE_LAUNCHER
+    } > "$cli_launcher_file"
+    chmod 755 "$cli_launcher_file"
+    mv -f "$cli_launcher_file" "$cli_launcher"
+  fi
 fi
 
 if [ "$adopt" = no ]; then
