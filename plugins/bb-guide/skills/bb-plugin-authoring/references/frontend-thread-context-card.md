@@ -76,3 +76,28 @@ app.slots.experimental_threadContextSegment({
   useVisible: () => experimental_useThreadContextKind() === "banner",
 });
 ```
+
+## Segment focus and related threads
+
+bb owns keyboard focus for a segment's disclosure. Attach `toggleRef` to the
+expand control and `collapseRef` to the collapse control in `details`; when
+`onToggle` runs while focus is on one of them, bb focuses the other once the
+row re-renders. Focus elsewhere (the composer, another segment) stays put, and
+a segment that attaches neither ref keeps the browser's behavior. Don't write
+your own handoff:
+
+```tsx
+function Summary({ isExpanded, onToggle, toggleRef }: ExperimentalThreadContextSegmentProps) {
+  return <button ref={toggleRef} aria-expanded={isExpanded} onClick={onToggle}>Deploy</button>;
+}
+function Details({ isExpanded, onToggle, collapseRef }: ExperimentalThreadContextSegmentProps) {
+  return isExpanded ? <button ref={collapseRef} onClick={onToggle}>Collapse deploy</button> : null;
+}
+```
+
+For the segment's thread or a related one (its parent, a fork source), read
+`experimental_useSidebarThread(id)`, not `experimental_useSidebarThreads()`
+plus `find`: it returns the same object and re-renders only for that thread.
+It is null for a thread the sidebar does not hold (unknown, deleted, archived
+until an archived read loads it, or before the first load); read
+`useSdk().threads.get` for those, as bb's parent-thread segment does.
