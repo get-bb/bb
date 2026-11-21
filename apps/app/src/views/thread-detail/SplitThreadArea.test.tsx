@@ -2393,6 +2393,31 @@ describe("SplitThreadArea", () => {
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(2);
   });
 
+  it("focuses the pane keyboard focus moves into, but not one hidden by maximize", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const draftB = await screen.findByTestId("draft-thr-b");
+
+    act(() => draftB.focus());
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(screen.getByTestId("pane-thr-a").dataset.focused).toBe("false");
+
+    act(() => screen.getByTestId("draft-thr-a").focus());
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+
+    act(() => draftB.focus());
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
+  });
+
   it("leaves uninvolved panes unrendered and pane callbacks stable when focus moves in a four-pane split", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),

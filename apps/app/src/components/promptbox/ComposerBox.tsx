@@ -99,6 +99,7 @@ import {
   resolveThreadMentionsInBatches,
 } from "@/lib/thread-links";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ComposerPlaceholder } from "./ComposerPlaceholder";
 import { PluginComposerPopup } from "@/components/plugin/PluginComposerPopup";
 import {
@@ -504,6 +505,8 @@ function useComposerRendererHostApi({
   const queryClient = useContext(QueryClientContext);
   const reportTypeaheadLayout = useContext(QueuedEditorTypeaheadLayoutContext);
   const maxHeight = useContext(ComposerMaxHeightContext);
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
+  const [mountedInFocusedPane] = useState(isFocusedPane);
 
   const decorationSources = composerDecorationSources(
     resolved.effects,
@@ -560,6 +563,7 @@ function useComposerRendererHostApi({
     {
       input: {
         ...input,
+        ...(mountedInFocusedPane ? {} : { autoFocus: false }),
         ...(maxHeight === undefined ? {} : { maxHeight }),
         submission: composerSubmission(submission, onSubmit),
         voice: composerVoice(voice),
