@@ -4936,7 +4936,8 @@ at all and, if so, how they are namespaced and rate limited.
 computer: `supported` (false without an installed bb-app launcher),
 `installedPath`, `onPath`, and `shadowedBy` (`source` `npm`, `machine`, or
 `other`). Install links `<dataDir>/bin/bb` into a PATH folder (on Windows,
-adds `<dataDir>\bin` to the user PATH) and refuses to replace another `bb`
+adds `<dataDir>\bin` to the user PATH), replaces a bb machine install's
+`~/.local/bin/bb` in place, and refuses to replace another `bb`
 (`409 cli_command_blocked`); install and remove return the new status, fail
 with `409 cli_command_unsupported` when unsupported, and 403 for machine
 credentials. Core callers: Settings → General → Command line
