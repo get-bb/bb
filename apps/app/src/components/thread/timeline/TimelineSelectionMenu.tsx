@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   type MouseEvent,
@@ -239,10 +238,10 @@ export function TimelineSelectionMenu({
         : createSelectionAnchor(selection, collisionBoundary),
     [selection, collisionBoundary],
   );
-  const virtualAnchorRef = useRef(virtualAnchor);
-  useLayoutEffect(() => {
-    virtualAnchorRef.current = virtualAnchor;
-  }, [virtualAnchor]);
+  const virtualAnchorRef = useMemo(
+    () => ({ current: virtualAnchor }),
+    [virtualAnchor],
+  );
 
   if (!selection) return null;
 
@@ -280,6 +279,7 @@ export function TimelineSelectionMenu({
       <PopoverPrimitive.Portal container={container ?? undefined}>
         <PopoverPrimitive.Content
           {...portalScopeProps}
+          data-touch-selection-passthrough
           side={anchorSide}
           align="center"
           sideOffset={6}
