@@ -29,6 +29,12 @@ interface ClaudePluginManifest {
 
 const MANIFEST_SCHEMA = "https://anthropic.com/claude-code/plugin.schema.json";
 
+export function directoryLinkType(
+  platform: NodeJS.Platform = process.platform,
+): "dir" | "junction" {
+  return platform === "win32" ? "junction" : "dir";
+}
+
 function pluginDirectoryName(root: ClaudeSkillPluginRoot): string {
   return createHash("sha256")
     .update(`${root.id}\0${root.path}`)
@@ -88,14 +94,14 @@ export function ensureClaudeSkillPlugin(args: {
   let current: string | null = null;
   try {
     current = lstatSync(skillsLink).isSymbolicLink()
-      ? readlinkSync(skillsLink)
+      ? resolve(readlinkSync(skillsLink))
       : "";
   } catch {
     current = null;
   }
-  if (current !== args.root.path) {
+  if (current !== resolve(args.root.path)) {
     rmSync(skillsLink, { recursive: true, force: true });
-    symlinkSync(args.root.path, skillsLink, "dir");
+    symlinkSync(args.root.path, skillsLink, directoryLinkType());
   }
   return pluginPath;
 }
@@ -174,7 +180,7 @@ export async function filterClaudeSkillRoots(args: {
     for (const file of retained) {
       const linkPath = join(filteredPath, file.name);
       try {
-        symlinkSync(dirname(file.realPath), linkPath, "dir");
+        symlinkSync(dirname(file.realPath), linkPath, directoryLinkType());
       } catch (error) {
         if (
           !(
