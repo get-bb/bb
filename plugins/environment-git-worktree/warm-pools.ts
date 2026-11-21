@@ -292,7 +292,7 @@ export async function createWarmPools(args: {
       if (lifetime.signal.aborted) return;
       const state = checkouts.get(key);
       if (state !== undefined) {
-        state.lastError = errorMessage(error);
+        state.lastError = `Could not create a warm worktree, trying again in 10 minutes: ${errorMessage(error)}`;
         state.retryAt = Date.now() + FAILURE_BACKOFF_MS;
       }
       bb.log.warn(
@@ -352,9 +352,18 @@ export async function createWarmPools(args: {
       );
     } catch (error) {
       if (lifetime.signal.aborted) throw error;
-      state.lastError = `Could not fetch the default base: ${errorMessage(error)}`;
+      bb.log.warn(
+        `Could not check ${checkout.sourcePath} on ${checkout.hostId} for updates: ${errorMessage(error)}`,
+      );
+      state.lastError =
+        "Could not check the default branch for updates, trying again in 2 minutes.";
       return;
     }
+    if (refreshed.status === "no-repository") {
+      state.lastError = `The project folder ${checkout.sourcePath} is missing or is not a git repository.`;
+      return;
+    }
+    if (state.retryAt <= now) state.lastError = null;
     state.base = refreshed.ref;
     const observed = new Map(
       refreshed.members.map((member) => [member.path, member]),
@@ -395,7 +404,10 @@ export async function createWarmPools(args: {
     });
     const discards: Array<[Environment, string]> = [];
     for (const member of own.filter((entry) => entry.status === "error")) {
-      state.lastError = member.statusMessage ?? "Warm worktree setup failed";
+      state.lastError =
+        member.statusMessage === null
+          ? "Setup failed in a warm worktree, trying again in 10 minutes."
+          : `Setup failed in a warm worktree, trying again in 10 minutes: ${member.statusMessage}`;
       state.retryAt = now + FAILURE_BACKOFF_MS;
       discards.push([member, "its setup failed"]);
     }

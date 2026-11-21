@@ -21,15 +21,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function checkoutSummary(
-  checkout: WarmPoolStatus["pools"][number]["checkouts"][number],
-): string {
-  const counts = `${checkout.ready} ready${
-    checkout.preparing > 0 ? `, ${checkout.preparing} preparing` : ""
-  }${checkout.base === null ? "" : ` at ${checkout.base}`}`;
-  return checkout.lastError === null
-    ? `${checkout.hostName}: ${counts}`
-    : `${checkout.hostName}: ${counts} · ${checkout.lastError}`;
+type Checkout = WarmPoolStatus["pools"][number]["checkouts"][number];
+
+function checkoutSummary(checkout: Checkout, showHost: boolean): string {
+  const counts =
+    checkout.preparing > 0
+      ? `${checkout.ready} ready, ${checkout.preparing} being set up`
+      : `${checkout.ready} ready`;
+  const summary =
+    checkout.base === null ? counts : `${counts} on ${checkout.base}`;
+  return showHost ? `${checkout.hostName}: ${summary}` : summary;
 }
 
 export function WarmPoolSettings() {
@@ -79,11 +80,9 @@ export function WarmPoolSettings() {
       <div className="pr-2">
         <h3 className="text-sm font-medium text-foreground">Warm worktrees</h3>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Keep worktrees checked out at the default base with setup finished, so
-          new worktree threads on the default base start without waiting. A warm
-          worktree behind the default base is moved forward when a thread takes
-          it, and the project&apos;s setup script runs again before the thread
-          starts.
+          Set up worktrees ahead of time so new worktree threads on the default
+          branch start right away. If the branch has moved on, the worktree is
+          updated and setup runs again before the thread starts.
         </p>
       </div>
       {status === null ? (
@@ -114,9 +113,16 @@ export function WarmPoolSettings() {
                   ? pool.checkouts.map((checkout) => (
                       <div
                         key={`${checkout.hostId}:${checkout.path}`}
-                        className="text-xs break-words text-muted-foreground"
+                        className="text-xs break-words"
                       >
-                        {checkoutSummary(checkout)}
+                        <div className="text-muted-foreground">
+                          {checkoutSummary(checkout, pool.checkouts.length > 1)}
+                        </div>
+                        {checkout.lastError === null ? null : (
+                          <div className="text-destructive">
+                            {checkout.lastError}
+                          </div>
+                        )}
                       </div>
                     ))
                   : null}

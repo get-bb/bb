@@ -1647,9 +1647,9 @@ describe("warm worktree handoff", () => {
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/env_warm",
     );
-    expect(
-      (await readFile(join(path, "upstream.txt"), "utf8")).trimEnd(),
-    ).toBe("upstream.txt");
+    expect((await readFile(join(path, "upstream.txt"), "utf8")).trimEnd()).toBe(
+      "upstream.txt",
+    );
     expect(await git(path, "status", "--porcelain")).toBe("");
     expect(
       await harness.experimental_call("refreshPoolBase", {
@@ -1657,10 +1657,31 @@ describe("warm worktree handoff", () => {
         memberPaths: [path],
       }),
     ).toEqual({
+      status: "refreshed",
       ref: "origin/main",
       commit: upstream,
       members: [{ path, head: upstream, branch: "bb/env_warm", onBase: true }],
     });
+  });
+
+  it("reports a project folder that is gone or is not a git repository", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: `${clone}-missing`,
+        memberPaths: [path],
+      }),
+    ).toEqual({ status: "no-repository" });
+    const plain = `${clone}-plain`;
+    await mkdir(plain);
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: plain,
+        memberPaths: [],
+      }),
+    ).toEqual({ status: "no-repository" });
   });
 
   it("refuses a warm worktree that is not on the base after the base was rewritten", async ({
@@ -1676,6 +1697,7 @@ describe("warm worktree handoff", () => {
       sourcePath: clone,
       memberPaths: [path],
     });
+    if (refreshed.status !== "refreshed") throw new Error("Expected a refresh");
     expect(refreshed.commit).toBe(rewritten);
     expect(refreshed.members[0]?.onBase).toBe(false);
     expect(
