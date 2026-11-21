@@ -839,6 +839,60 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   const checkoutProvider = makeProjectProvider("project-checkout");
   const worktreeProvider = makeProjectProvider("git-worktree");
 
+  it.each([
+    {
+      name: "starts an unset selection on the project's default provider",
+      environmentSelectionValue: "",
+      expected: "provider:sandbox",
+    },
+    {
+      name: "keeps a selection made on this device over the project default",
+      environmentSelectionValue: "provider:git-worktree",
+      expected: "provider:git-worktree",
+    },
+    {
+      name: "replaces a selection whose provider is gone with the project default",
+      environmentSelectionValue: "provider:uninstalled",
+      expected: "provider:sandbox",
+    },
+  ])("$name", ({ environmentSelectionValue, expected }) => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        seededReuseEnvironment: null,
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue,
+        environmentProviders: [
+          checkoutProvider,
+          worktreeProvider,
+          makeProjectProvider("sandbox"),
+        ],
+        isProjectless: false,
+        projectDefaultEnvironmentProviderId: "sandbox",
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe(expected);
+  });
+
+  it("falls back to the checkout when the project's default provider is not installed", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        seededReuseEnvironment: null,
+        knownHostIds: new Set(["host_1"]),
+        environmentSelectionValue: "",
+        environmentProviders: [checkoutProvider, worktreeProvider],
+        isProjectless: false,
+        projectDefaultEnvironmentProviderId: "sandbox",
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("provider:project-checkout");
+  });
+
   it("falls back to the checkout on the primary host for a project with a source there", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
@@ -847,6 +901,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "",
         environmentProviders: [checkoutProvider, worktreeProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -863,6 +918,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_2")],
         reuseThreadOptions: [],
@@ -878,6 +934,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         knownHostIds: new Set(["host_1"]),
         environmentSelectionValue: "provider:git-worktree",
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -891,6 +948,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
       knownHostIds: new Set(["host_1"]),
       environmentProviders: [checkoutProvider, worktreeProvider],
       isProjectless: false,
+      projectDefaultEnvironmentProviderId: null,
       primaryHostId: "host_1",
       projectSources: [makeProjectSource("host_1")],
       reuseThreadOptions: [],
@@ -920,6 +978,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_current",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
@@ -934,6 +993,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_stale",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
@@ -953,6 +1013,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -972,6 +1033,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -991,6 +1053,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_seeded",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -1010,6 +1073,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_stale",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -1026,6 +1090,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -1040,6 +1105,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [makeReuseThreadOption("env_current")],
@@ -1056,6 +1122,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         environmentSelectionValue: "reuse:env_pending",
         environmentProviders: [checkoutProvider],
         isProjectless: false,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [makeProjectSource("host_1")],
         reuseThreadOptions: [],
@@ -1074,6 +1141,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           makeProjectlessProvider("personal-workspace", true),
         ],
         isProjectless: true,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [],
         reuseThreadOptions: [makeReuseThreadOption("env_personal")],
@@ -1092,6 +1160,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           makeProjectlessProvider("personal-workspace", true),
         ],
         isProjectless: true,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [],
         reuseThreadOptions: [makeReuseThreadOption("env_personal")],
@@ -1111,6 +1180,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           makeProjectlessProvider("personal-workspace", true),
         ],
         isProjectless: true,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [],
         reuseThreadOptions: [],
@@ -1130,6 +1200,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
           makeProjectlessProvider("personal-workspace", true),
         ],
         isProjectless: true,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [],
         reuseThreadOptions: [],
@@ -1145,6 +1216,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         knownHostIds: new Set(["host_1"]),
         environmentSelectionValue: "provider:personal-workspace",
         isProjectless: true,
+        projectDefaultEnvironmentProviderId: null,
         primaryHostId: "host_1",
         projectSources: [],
         reuseThreadOptions: [],

@@ -398,6 +398,125 @@ describe("bb project command output", () => {
     );
   });
 
+  describe("bb project update --default-environment", () => {
+    const providerBase = {
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
+      machineAvailability: {},
+      availability: null,
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+    };
+    const providers = [
+      {
+        ...providerBase,
+        id: "sandbox",
+        displayName: "Sandbox",
+        pluginId: "sandbox",
+        acceptsEmptyInputs: false,
+        inputs: { type: "object", properties: { preset: { type: "string" } } },
+      },
+      {
+        ...providerBase,
+        id: "git-worktree",
+        displayName: "Worktree",
+        pluginId: "environment-git-worktree",
+        acceptsEmptyInputs: true,
+        inputs: { type: "object" },
+      },
+    ];
+    const project = {
+      id: "proj-1",
+      kind: "standard",
+      name: "Alpha",
+      gitRemoteUrl: null,
+      createdAt: 1,
+      updatedAt: 2,
+      sources: [],
+      defaultEnvironment: null,
+    };
+
+    function stubUpdate() {
+      const patch = vi.fn(async () => project);
+      stubServerApi({
+        "v1.projects.:id.$patch": patch,
+        "v1.system.environment-providers.$get": vi.fn(async () => ({
+          providers,
+        })),
+      });
+      return patch;
+    }
+
+    it.each([
+      {
+        name: "parsed inputs",
+        args: [
+          "--default-environment",
+          "sandbox",
+          "--default-environment-inputs",
+          '{"preset":"large"}',
+        ],
+        defaultEnvironment: {
+          environmentProviderId: "sandbox",
+          inputs: { preset: "large" },
+        },
+      },
+      {
+        name: "empty inputs for a provider that accepts them",
+        args: ["--default-environment", "git-worktree"],
+        defaultEnvironment: {
+          environmentProviderId: "git-worktree",
+          inputs: {},
+        },
+      },
+      {
+        name: "a cleared default",
+        args: ["--clear-default-environment"],
+        defaultEnvironment: null,
+      },
+    ])("sends $name", async ({ args, defaultEnvironment }) => {
+      const patch = stubUpdate();
+      await runCommand(["project", "update", "proj-1", ...args], register);
+      expect(patch).toHaveBeenCalledWith({
+        param: { id: "proj-1" },
+        json: { defaultEnvironment },
+      });
+    });
+
+    it.each([
+      {
+        args: ["--default-environment", "sandbox"],
+        message: /needs --default-environment-inputs/u,
+      },
+      {
+        args: ["--default-environment", "missing"],
+        message:
+          /Unknown environment provider 'missing'. Available: sandbox, git-worktree/u,
+      },
+      {
+        args: [
+          "--clear-default-environment",
+          "--default-environment",
+          "sandbox",
+        ],
+        message: /Cannot combine --clear-default-environment/u,
+      },
+    ])("refuses $args before saving", async ({ args, message }) => {
+      const patch = stubUpdate();
+      await expect(
+        runCommand(["project", "update", "proj-1", ...args], register),
+      ).rejects.toThrow("process.exit:1");
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringMatching(message),
+      );
+      expect(patch).not.toHaveBeenCalled();
+    });
+  });
+
   it("bb project create --json prints the created project", async () => {
     const created = {
       id: "proj-created",

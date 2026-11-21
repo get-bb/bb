@@ -13,6 +13,7 @@ export function makeProjectResponse(
     name: "Test project",
     gitRemoteUrl: null,
     sources: [],
+    defaultEnvironment: null,
     createdAt: 0,
     updatedAt: 0,
     ...overrides,

@@ -25,6 +25,7 @@ export * from "./plugin-storage.js";
 export * from "./plugins.js";
 export * from "./project-attachment-backfill.js";
 export * from "./project-attachments.js";
+export * from "./project-environment-defaults.js";
 export * from "./project-execution-defaults.js";
 export * from "./project-sources.js";
 export * from "./projects.js";

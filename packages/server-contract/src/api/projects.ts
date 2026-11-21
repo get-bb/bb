@@ -3,6 +3,7 @@ import {
   FILE_LIST_QUERY_MAX_LENGTH,
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
+  projectEnvironmentDefaultSchema,
   projectExecutionDefaultsSchema,
   projectSchema,
   projectSourceSchema,
@@ -226,10 +227,12 @@ export type ProjectAttachmentUploadForm = Record<"file", Blob>;
 export const updateProjectRequestSchema = z
   .object({
     name: z.string().min(1),
+    defaultEnvironment: projectEnvironmentDefaultSchema.nullable(),
   })
   .partial()
   .refine(
-    (value) => value.name !== undefined,
+    (value) =>
+      value.name !== undefined || value.defaultEnvironment !== undefined,
     "At least one field must be provided",
   );
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
@@ -416,6 +419,7 @@ export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;
 
 export const projectResponseSchema = projectSchema.extend({
   sources: z.array(projectSourceSchema),
+  defaultEnvironment: projectEnvironmentDefaultSchema.nullable(),
 });
 export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 

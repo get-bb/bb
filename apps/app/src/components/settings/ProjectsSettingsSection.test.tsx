@@ -336,6 +336,7 @@ describe("ProjectsSettingsSection", () => {
       createdAt: NOW,
       updatedAt: NOW,
       sources: [],
+      defaultEnvironment: null,
     });
 
     renderSection();

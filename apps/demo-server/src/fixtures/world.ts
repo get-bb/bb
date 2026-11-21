@@ -142,6 +142,7 @@ export function sidebarBootstrap(
     createdAt,
     updatedAt: Math.max(...views.map((view) => view.updatedAt)),
     sources: [],
+    defaultEnvironment: null,
     threads: views.map((view) => threadListEntry(view, now)),
     defaultExecutionOptions: PROJECT_DEFAULT_EXECUTION_OPTIONS,
   };
@@ -153,6 +154,7 @@ export function sidebarBootstrap(
     createdAt,
     updatedAt: createdAt,
     sources: [],
+    defaultEnvironment: null,
     threads: [],
     defaultExecutionOptions: PROJECT_DEFAULT_EXECUTION_OPTIONS,
   };

@@ -95,6 +95,11 @@ import {
   upsertProjectExecutionDefaults,
 } from "../../src/data/project-execution-defaults.js";
 import {
+  getProjectEnvironmentDefault,
+  listProjectEnvironmentDefaultsByProjectIds,
+  setProjectEnvironmentDefault,
+} from "../../src/data/project-environment-defaults.js";
+import {
   countProjectSources,
   createProjectSource,
   deleteProjectSource,
@@ -162,6 +167,8 @@ const MACHINES = "packages/db/src/data/machines.ts";
 const BACKFILL = "packages/db/src/data/project-attachment-backfill.ts";
 const ATTACHMENTS = "packages/db/src/data/project-attachments.ts";
 const DEFAULTS = "packages/db/src/data/project-execution-defaults.ts";
+const ENVIRONMENT_DEFAULTS =
+  "packages/db/src/data/project-environment-defaults.ts";
 const SOURCES = "packages/db/src/data/project-sources.ts";
 const PROJECTS = "packages/db/src/data/projects.ts";
 const SERVER_MOVE = "packages/db/src/data/server-move.ts";
@@ -860,6 +867,29 @@ const DEFAULTS_CASES: readonly Case[] = [
   },
 ];
 
+const ENVIRONMENT_DEFAULTS_CASES: readonly Case[] = [
+  {
+    name: `${ENVIRONMENT_DEFAULTS}#getProjectEnvironmentDefault`,
+    run: (db, fixture) =>
+      getProjectEnvironmentDefault(db, { projectId: fixture.projectId }),
+  },
+  {
+    name: `${ENVIRONMENT_DEFAULTS}#listProjectEnvironmentDefaultsByProjectIds`,
+    run: (db, _fixture, seed) =>
+      listProjectEnvironmentDefaultsByProjectIds(db, {
+        projectIds: seed.projectIds,
+      }),
+  },
+  {
+    name: `${ENVIRONMENT_DEFAULTS}#setProjectEnvironmentDefault`,
+    run: (db, fixture) =>
+      setProjectEnvironmentDefault(db, {
+        projectId: fixture.projectId,
+        value: { environmentProviderId: "sandbox", inputs: { preset: "b" } },
+      }),
+  },
+];
+
 const SOURCE_CASES: readonly Case[] = [
   {
     name: `${SOURCES}#createProjectSource`,
@@ -1201,6 +1231,7 @@ export const HOSTS_ENVIRONMENTS_COST_GROUP = registerCostGroup({
     ...BACKFILL_CASES,
     ...ATTACHMENT_CASES,
     ...DEFAULTS_CASES,
+    ...ENVIRONMENT_DEFAULTS_CASES,
     ...SOURCE_CASES,
     ...PROJECT_CASES,
     ...SERVER_MOVE_CASES,

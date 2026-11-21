@@ -1,4 +1,5 @@
 import { ScopedMachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
+import { ProjectDefaultEnvironmentSettings } from "@/components/settings/ProjectDefaultEnvironmentSettings";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
@@ -496,6 +497,18 @@ export function ProjectDetailSettingsView() {
             </SettingsRowList>
           )}
         </SettingsSection>
+
+        <ProjectDefaultEnvironmentSettings
+          projectId={project.id}
+          saved={project.defaultEnvironment}
+          inputsHostId={
+            primaryHostId !== null &&
+            findLocalPathProjectSourceForHost(sources, primaryHostId) !==
+              undefined
+              ? primaryHostId
+              : (sources[0]?.hostId ?? primaryHostId)
+          }
+        />
 
         <SettingsSection title="Project information">
           <SettingsRowList>

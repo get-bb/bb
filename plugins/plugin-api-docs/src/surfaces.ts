@@ -1342,7 +1342,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Provide new places a thread can run, picked like any environment. With this, a plugin can:",
         bullets: [
           "Create a workspace for each thread, such as a worktree or a cloud checkout",
-          "Ask for inputs, such as a branch, on the new-thread screen",
+          "Ask for inputs, such as a branch, for new threads and project defaults",
           "Stream setup progress, and clean up when the thread is done",
           "Restore a thread's workspace after it was removed",
         ],

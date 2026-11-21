@@ -3940,9 +3940,15 @@ export interface PluginTimelineRendererRegistration {
  * Props passed to an `experimental_environmentProviderInputs` component — the
  * control the New Thread environment picker renders beside this plugin's
  * selected environment provider, for the provider's declared `inputs`.
+ * Project settings render the same control when this provider is picked as
+ * the project's default environment, and save its value as the default's
+ * inputs.
  */
 export interface PluginEnvironmentProviderInputsProps {
-  /** Project selected in the composer; null in projectless compose. */
+  /**
+   * Project selected in the composer, or the project whose default is being
+   * edited; null in projectless compose.
+   */
   projectId: string | null;
   /** Whether setup uses an existing host or provisions a new host before create. */
   target: { kind: "existing-host"; hostId: string } | { kind: "new-host" };

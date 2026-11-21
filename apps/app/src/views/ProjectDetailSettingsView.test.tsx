@@ -7,7 +7,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { Host, ProjectExecutionDefaults } from "@bb/domain";
+import type {
+  Host,
+  ProjectEnvironmentDefault,
+  ProjectExecutionDefaults,
+} from "@bb/domain";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +31,7 @@ vi.mock("@/lib/sdk", () => ({
       pathsExist: vi.fn(),
       pickFolder: vi.fn(),
     },
+    environments: { listProviders: vi.fn() },
     projects: {
       defaultExecutionOptions: vi.fn(),
       delete: vi.fn(),
@@ -72,7 +78,11 @@ interface SourceFixture {
 
 function stubSidebarBootstrapFetch(
   sources: SourceFixture[],
-  options: { status?: number; projectId?: string } = {},
+  options: {
+    status?: number;
+    projectId?: string;
+    defaultEnvironment?: ProjectEnvironmentDefault;
+  } = {},
 ): void {
   const projectId = options.projectId ?? "proj_bb";
   vi.stubGlobal(
@@ -100,6 +110,7 @@ function stubSidebarBootstrapFetch(
                   createdAt: NOW,
                   updatedAt: NOW,
                 })),
+                defaultEnvironment: options.defaultEnvironment ?? null,
                 defaultExecutionOptions: null,
                 threads: [{ id: "thr_1", projectId }],
               },
@@ -112,6 +123,7 @@ function stubSidebarBootstrapFetch(
               createdAt: NOW,
               updatedAt: NOW,
               sources: [],
+              defaultEnvironment: null,
               defaultExecutionOptions: null,
               threads: [],
             },
@@ -158,7 +170,58 @@ beforeEach(() => {
     path: "/home/me/bb",
   });
   vi.mocked(sdk.projects.defaultExecutionOptions).mockResolvedValue(null);
+  vi.mocked(sdk.environments.listProviders).mockResolvedValue([
+    environmentProvider({ id: "sandbox", displayName: "Sandbox" }),
+    environmentProvider({
+      id: "configurable",
+      displayName: "Configurable",
+      inputs: { type: "object" },
+    }),
+    environmentProvider({
+      id: "personal-workspace",
+      displayName: "Personal workspace",
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: true,
+      },
+    }),
+  ]);
 });
+
+function environmentProvider(
+  overrides: Partial<SystemEnvironmentProvider> &
+    Pick<SystemEnvironmentProvider, "id" | "displayName">,
+): SystemEnvironmentProvider {
+  return {
+    machineProviderId: null,
+    description: null,
+    icon: "Folder",
+    logoUrl: null,
+    pluginId: overrides.id,
+    acceptsEmptyInputs: true,
+    machineAvailability: {},
+    availability: null,
+    requires: {
+      projectCheckout: false,
+      gitCheckout: false,
+      gitRemote: false,
+      projectless: false,
+    },
+    inputs: null,
+    ...overrides,
+  };
+}
+
+async function pickDefaultEnvironment(label: string | RegExp): Promise<void> {
+  const trigger = await screen.findByRole("button", {
+    name: /Default environment/u,
+  });
+  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+}
 
 afterEach(() => {
   cleanup();
@@ -391,6 +454,83 @@ describe("ProjectDetailSettingsView", () => {
       await screen.findByText("Couldn't load thread defaults."),
     ).toBeDefined();
     expect(screen.queryByText(/^No threads have run here yet/u)).toBeNull();
+  });
+
+  it.each([
+    {
+      label: "Sandbox",
+      saved: { environmentProviderId: "sandbox", inputs: null },
+    },
+    {
+      label: "Configurable",
+      saved: { environmentProviderId: "configurable", inputs: {} },
+    },
+  ])(
+    "saves $label as the default environment with the inputs it accepts",
+    async ({ label, saved }) => {
+      stubSidebarBootstrapFetch([
+        { hostId: "host_primary", path: "/Users/me/bb" },
+      ]);
+      vi.mocked(sdk.projects.update).mockResolvedValue({
+        id: "proj_bb",
+        kind: "standard",
+        name: "bb",
+        gitRemoteUrl: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+        sources: [],
+        defaultEnvironment: saved,
+      });
+
+      renderView();
+      await pickDefaultEnvironment(label);
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() =>
+        expect(sdk.projects.update).toHaveBeenCalledWith({
+          projectId: "proj_bb",
+          defaultEnvironment: saved,
+        }),
+      );
+      expect(
+        screen.queryByRole("menuitem", { name: "Personal workspace" }),
+      ).toBeNull();
+    },
+  );
+
+  it("goes back to the built-in default", async () => {
+    stubSidebarBootstrapFetch(
+      [{ hostId: "host_primary", path: "/Users/me/bb" }],
+      {
+        defaultEnvironment: { environmentProviderId: "sandbox", inputs: null },
+      },
+    );
+    vi.mocked(sdk.projects.update).mockResolvedValue({
+      id: "proj_bb",
+      kind: "standard",
+      name: "bb",
+      gitRemoteUrl: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      sources: [],
+      defaultEnvironment: null,
+    });
+
+    renderView();
+    const trigger = await screen.findByRole("button", {
+      name: /Default environment/u,
+    });
+    await waitFor(() => expect(trigger.textContent).toContain("Sandbox"));
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    await pickDefaultEnvironment(/^Not set/u);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sdk.projects.update).toHaveBeenCalledWith({
+        projectId: "proj_bb",
+        defaultEnvironment: null,
+      }),
+    );
   });
 
   it("deletes the project and returns to the list", async () => {

@@ -6,6 +6,11 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
+import {
+  jsonValueSchema,
+  type JsonValue,
+  type ProjectEnvironmentDefault,
+} from "@bb/domain";
 import type {
   CreateProjectSourceRequest,
   HostDiscoveredRepo,
@@ -78,6 +83,9 @@ function addProjectWorkspaceRoutingOptions(command: Command): Command {
 }
 
 interface ProjectUpdateCommandOptions {
+  clearDefaultEnvironment?: boolean;
+  defaultEnvironment?: string;
+  defaultEnvironmentInputs?: string;
   name?: string;
   json?: boolean;
 }
@@ -555,16 +563,40 @@ export function registerProjectCommands(
     .command("update <id>")
     .description("Update a project")
     .option("--name <name>", "Set the project name")
+    .option(
+      "--default-environment <provider-id>",
+      "Place new threads with this environment provider by default (`bb environment providers` lists them)",
+    )
+    .option(
+      "--default-environment-inputs <json>",
+      "Inputs for --default-environment, as JSON matching the provider's schema",
+    )
+    .option(
+      "--clear-default-environment",
+      "Go back to bb's built-in default: a worktree for Git projects, the folder itself otherwise",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectUpdateCommandOptions) => {
-        if (!opts.name) {
-          throw new Error("No changes requested. Provide --name.");
+        if (
+          !opts.name &&
+          opts.defaultEnvironment === undefined &&
+          !opts.clearDefaultEnvironment
+        ) {
+          throw new Error(
+            "No changes requested. Provide --name, --default-environment or --clear-default-environment.",
+          );
         }
         const sdk = createCliBbSdk(getUrl());
+        const defaultEnvironment = await resolveDefaultEnvironmentFlags(
+          sdk,
+          id,
+          opts,
+        );
         const updated = await sdk.projects.update({
           projectId: id,
-          name: opts.name,
+          ...(opts.name ? { name: opts.name } : {}),
+          ...(defaultEnvironment === undefined ? {} : { defaultEnvironment }),
         });
         if (outputJson(opts, updated)) return;
         console.log(`Project ${updated.id} updated`);
@@ -712,10 +744,78 @@ export function registerProjectCommands(
     );
 }
 
+async function resolveDefaultEnvironmentFlags(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  projectId: string,
+  opts: ProjectUpdateCommandOptions,
+): Promise<ProjectEnvironmentDefault | null | undefined> {
+  if (opts.clearDefaultEnvironment) {
+    if (
+      opts.defaultEnvironment !== undefined ||
+      opts.defaultEnvironmentInputs !== undefined
+    ) {
+      throw new Error(
+        "Cannot combine --clear-default-environment with --default-environment.",
+      );
+    }
+    return null;
+  }
+  if (opts.defaultEnvironment === undefined) {
+    if (opts.defaultEnvironmentInputs !== undefined) {
+      throw new Error(
+        "--default-environment-inputs requires --default-environment.",
+      );
+    }
+    return undefined;
+  }
+  const requested = opts.defaultEnvironment.trim();
+  const providers = await sdk.environments.listProviders({ projectId });
+  const match = providers.find((provider) => provider.id === requested);
+  if (match === undefined) {
+    const available = providers.map((provider) => provider.id).join(", ");
+    throw new Error(
+      `Unknown environment provider '${requested}'.${available ? ` Available: ${available}.` : ""}`,
+    );
+  }
+  let inputs: JsonValue | null = null;
+  if (opts.defaultEnvironmentInputs !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(opts.defaultEnvironmentInputs);
+    } catch {
+      throw new Error("--default-environment-inputs must be valid JSON.");
+    }
+    inputs = jsonValueSchema.parse(parsed);
+  }
+  if (match.inputs !== null && inputs === null) {
+    if (!match.acceptsEmptyInputs) {
+      throw new Error(
+        `The '${match.id}' environment provider needs --default-environment-inputs <json>; \`bb environment providers --json\` shows its schema.`,
+      );
+    }
+    inputs = {};
+  }
+  if (match.inputs === null && inputs !== null) {
+    throw new Error(
+      `The '${match.id}' environment provider takes no --default-environment-inputs.`,
+    );
+  }
+  return { environmentProviderId: match.id, inputs };
+}
+
 function printProject(project: ProjectResponse): void {
   console.log("");
   console.log(`  ID:       ${project.id}`);
   console.log(`  Name:     ${project.name}`);
+  console.log(
+    `  Default environment: ${
+      project.defaultEnvironment === null
+        ? "built-in (worktree for Git projects, the folder otherwise)"
+        : project.defaultEnvironment.inputs === null
+          ? project.defaultEnvironment.environmentProviderId
+          : `${project.defaultEnvironment.environmentProviderId} ${JSON.stringify(project.defaultEnvironment.inputs)}`
+    }`,
+  );
   console.log(`  Created:  ${new Date(project.createdAt).toLocaleString()}`);
   console.log(`  Updated:  ${new Date(project.updatedAt).toLocaleString()}`);
   if (project.sources.length > 0) {

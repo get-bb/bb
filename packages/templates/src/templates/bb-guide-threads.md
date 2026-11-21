@@ -120,12 +120,16 @@ Spawning:
   starts from the last fetched copy and provisioning reports it; an explicit
   origin/<branch> fails instead. refs/remotes/origin/<branch> uses the last
   fetched copy without fetching.
-  With no environment flag, a new thread gets a fresh worktree of the
-  project's default branch (the project checkout when the project has no
-  branch) on the primary host, or on the persistent machine that holds the
-  project's source when the primary host has none. A child of a live thread
-  in the same project gets a worktree on its parent's machine; a child of an
-  unmanaged non-Git folder reuses its parent's environment.
+  With no environment flag, a new thread uses the project's saved default
+  environment (`bb project update <id> --default-environment <provider-id>`).
+  Without a saved default it gets a fresh worktree of the project's default
+  branch (the project checkout when the project has no branch). Either runs on
+  the primary host, or on the persistent machine that holds the project's
+  source when the primary host has none. A child of a live thread in the same project follows its parent: a
+  child of a non-Git folder reuses the parent's environment, a child of a
+  worktree or Git checkout gets a fresh worktree, and a child of a plugin
+  provider's environment gets that provider with the parent's inputs, all on
+  the parent's machine.
   Before selecting a provider, run `bb environment providers --project <id>
   --machine <id-or-name>` to see whether it is available, needs setup, or is
   unavailable and why. The first-party providers are Project checkout,

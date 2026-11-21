@@ -22,7 +22,12 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
-import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
+import {
+  installFakeEnvironmentProvider,
+  installFakeGitWorktreeProvider,
+} from "../helpers/environment-provider.js";
+import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { z } from "zod";
 
 interface CreateThreadBodyOverrides {
   environment: unknown;
@@ -542,6 +547,171 @@ describe("plugin thread attribution", () => {
         environment,
       });
       expect(strayPluginId.status).toBe(400);
+    });
+  });
+});
+
+describe("saved project default environment", () => {
+  function installSandboxProvider() {
+    return installFakeEnvironmentProvider({
+      id: "test-sandbox",
+      pluginId: "test-sandbox-plugin",
+      displayName: "Sandbox",
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: z.object({ preset: z.string().min(1) }),
+      decide: () => ({ action: "wait", reason: "Preparing sandbox" }),
+    });
+  }
+
+  async function patchDefaultEnvironment(
+    harness: TestAppHarness,
+    projectId: string,
+    defaultEnvironment: unknown,
+  ): Promise<Response> {
+    return harness.app.request(`/api/v1/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ defaultEnvironment }),
+    });
+  }
+
+  it("places project-default and implicit host threads with the saved provider and inputs", async () => {
+    await withTestHarness(async (harness) => {
+      installSandboxProvider();
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-saved-default",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/saved-default-source",
+      });
+      const saved = {
+        environmentProviderId: "test-sandbox",
+        inputs: { preset: "large" },
+      };
+
+      const response = await patchDefaultEnvironment(
+        harness,
+        project.id,
+        saved,
+      );
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toMatchObject({
+        id: project.id,
+        defaultEnvironment: saved,
+      });
+
+      const expectedIntent = {
+        type: "provider",
+        environmentProviderId: "test-sandbox",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { preset: "large" },
+        selectionResolved: true,
+      };
+      const projectDefault = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
+      expect(projectDefault.intent).toEqual(expectedIntent);
+      const implicitHost = await createAndCaptureIntent(harness, {
+        projectId: project.id,
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+      });
+      expect(implicitHost.intent).toEqual(expectedIntent);
+
+      const cleared = await patchDefaultEnvironment(harness, project.id, null);
+      expect(cleared.status).toBe(200);
+      expect(await readJson(cleared)).toMatchObject({
+        defaultEnvironment: null,
+      });
+    });
+  });
+
+  it.each([
+    {
+      name: "an unknown provider",
+      defaultEnvironment: { environmentProviderId: "missing", inputs: null },
+      message: /Unknown environment provider "missing"/u,
+    },
+    {
+      name: "inputs the provider refuses",
+      defaultEnvironment: {
+        environmentProviderId: "test-sandbox",
+        inputs: { preset: "" },
+      },
+      message: /refused the inputs/u,
+    },
+    {
+      name: "missing inputs",
+      defaultEnvironment: {
+        environmentProviderId: "test-sandbox",
+        inputs: null,
+      },
+      message: /needs inputs/u,
+    },
+  ])("refuses to save $name", async ({ defaultEnvironment, message }) => {
+    await withTestHarness(async (harness) => {
+      installSandboxProvider();
+      const host = seedHost(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      const response = await patchDefaultEnvironment(
+        harness,
+        project.id,
+        defaultEnvironment,
+      );
+      expect(response.status).toBe(400);
+      expect((await readJson(response)) as { message: string }).toMatchObject({
+        message: expect.stringMatching(message),
+      });
+      const projectResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}`,
+      );
+      expect(await readJson(projectResponse)).toMatchObject({
+        defaultEnvironment: null,
+      });
+    });
+  });
+
+  it("refuses an unavailable saved provider with a 409 instead of silently falling back", async () => {
+    await withTestHarness(async (harness) => {
+      installSandboxProvider();
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-saved-default-missing",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      expect(
+        (
+          await patchDefaultEnvironment(harness, project.id, {
+            environmentProviderId: "test-sandbox",
+            inputs: { preset: "small" },
+          })
+        ).status,
+      ).toBe(200);
+      setPluginEnvironmentProviderBridge(undefined);
+
+      const response = await postCreateThread(harness, project.id, {
+        environment: { type: "project-default" },
+      });
+      expect(response.status).toBe(409);
+      expect(await readJson(response)).toMatchObject({
+        code: "environment_provider_rejected",
+      });
     });
   });
 });

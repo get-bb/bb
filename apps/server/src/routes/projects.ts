@@ -20,6 +20,7 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  listProjectEnvironmentDefaultsByProjectIds,
   listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
@@ -105,12 +106,16 @@ import {
 } from "../services/providers/native-roots.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import { listProviderLiveCommands } from "../services/providers/provider-live-commands.js";
+import { saveProjectEnvironmentDefault } from "../services/projects/project-environment-default.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
 } from "../services/projects/project-workspace.js";
 
-type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
+type ProjectResponseProjectFields = Omit<
+  ProjectResponse,
+  "sources" | "defaultEnvironment"
+>;
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -144,10 +149,15 @@ function buildProjectResponsesFromRows(
     }
     sourcesByProjectId.set(source.projectId, [source]);
   }
+  const defaultEnvironmentByProjectId =
+    listProjectEnvironmentDefaultsByProjectIds(deps.db, {
+      projectIds: projects.map((project) => project.id),
+    });
 
   return projects.map((project) => ({
     ...toProjectResponseProjectFields(project),
     sources: sourcesByProjectId.get(project.id) ?? [],
+    defaultEnvironment: defaultEnvironmentByProjectId.get(project.id) ?? null,
   }));
 }
 
@@ -506,17 +516,25 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.update, async (context, payload) => {
-    requirePublicStandardProject(deps.db, context.req.param("id"));
-    const project = updateProject(
+    const projectId = requirePublicStandardProject(
       deps.db,
-      deps.hub,
       context.req.param("id"),
-      payload,
-    );
-    if (!project) {
-      throw new ApiError(404, "project_not_found", "Project not found");
+    ).id;
+    if (payload.defaultEnvironment !== undefined) {
+      await saveProjectEnvironmentDefault(deps, {
+        projectId,
+        value: payload.defaultEnvironment,
+      });
     }
-    return context.json(buildProjectResponses(deps, project.id)[0]);
+    if (payload.name !== undefined) {
+      const project = updateProject(deps.db, deps.hub, projectId, {
+        name: payload.name,
+      });
+      if (!project) {
+        throw new ApiError(404, "project_not_found", "Project not found");
+      }
+    }
+    return context.json(buildProjectResponses(deps, projectId)[0]);
   });
 
   patch(routes.reorder, async (context, payload) => {

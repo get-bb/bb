@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { jsonObjectSchema } from "./json-value.js";
+import { jsonObjectSchema, jsonValueSchema } from "./json-value.js";
 
 export const reasoningLevelValues = [
   "none",
@@ -599,4 +599,12 @@ export const projectExecutionDefaultsSchema = z.object({
 });
 export type ProjectExecutionDefaults = z.infer<
   typeof projectExecutionDefaultsSchema
+>;
+
+export const projectEnvironmentDefaultSchema = z.object({
+  environmentProviderId: z.string().min(1),
+  inputs: jsonValueSchema.nullable(),
+});
+export type ProjectEnvironmentDefault = z.infer<
+  typeof projectEnvironmentDefaultSchema
 >;

@@ -19,6 +19,7 @@ import {
   recordProjectAttachment,
 } from "../../src/data/project-attachments.js";
 import { upsertProjectExecutionDefaults } from "../../src/data/project-execution-defaults.js";
+import { setProjectEnvironmentDefault } from "../../src/data/project-environment-defaults.js";
 import {
   createProjectSource,
   getProjectSourceByHost,
@@ -881,6 +882,10 @@ export function seedHostsEnvironments(
           reasoningLevel: "high",
           permissionMode: "full",
           serviceTier: "default",
+        });
+        setProjectEnvironmentDefault(db, {
+          projectId,
+          value: { environmentProviderId: "sandbox", inputs: { preset: "a" } },
         });
       }
       for (const projectId of [

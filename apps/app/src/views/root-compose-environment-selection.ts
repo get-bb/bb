@@ -26,6 +26,7 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   environmentSelectionValue: string;
   environmentProviders?: readonly SystemEnvironmentProvider[];
   isProjectless: boolean;
+  projectDefaultEnvironmentProviderId: string | null;
   knownHostIds: ReadonlySet<string>;
   primaryHostId: string | null;
   projectSources: readonly ProjectSource[];
@@ -232,6 +233,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   isProjectless,
   knownHostIds,
   primaryHostId,
+  projectDefaultEnvironmentProviderId,
   projectSources,
   reuseThreadOptions,
   reuseThreadOptionsLoading,
@@ -264,14 +266,23 @@ export function resolveRootComposeEffectiveEnvironmentValue({
           (provider) => provider.id === parsedSelection.environmentProviderId,
         )
       : undefined;
+  const projectDefaultProvider =
+    projectDefaultEnvironmentProviderId === null
+      ? undefined
+      : environmentProviders.find(
+          (provider) => provider.id === projectDefaultEnvironmentProviderId,
+        );
   const fallbackValue =
-    primaryHostId !== null &&
-    knownHostIds.has(primaryHostId) &&
-    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
-      undefined &&
-    providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
-      ? encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
-      : "";
+    projectDefaultProvider !== undefined &&
+    (projectDefaultProvider.machineProviderId || primaryHostId !== null)
+      ? encodeProviderValue(projectDefaultProvider.id)
+      : primaryHostId !== null &&
+          knownHostIds.has(primaryHostId) &&
+          findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
+            undefined &&
+          providerRegistered(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
+        ? encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID)
+        : "";
 
   if (parsedSelection?.type === "reuse") {
     if (parsedSelection.environmentId === null) {

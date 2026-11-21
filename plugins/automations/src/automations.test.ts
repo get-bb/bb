@@ -220,6 +220,7 @@ function createAutomationServiceBb() {
             createdAt: 1,
             updatedAt: 1,
             sources,
+            defaultEnvironment: null,
           };
         },
         list: async () => [],
@@ -2216,6 +2217,7 @@ describe("script process containment", () => {
               updatedAt: 1,
               deletedAt: null,
               sources: [],
+              defaultEnvironment: null,
             };
           },
         },
@@ -2432,6 +2434,7 @@ describe("script project context", () => {
             createdAt: 1,
             updatedAt: 1,
             sources: args.sources,
+            defaultEnvironment: null,
           }),
         },
       },

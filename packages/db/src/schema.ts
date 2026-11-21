@@ -201,6 +201,18 @@ export const projectExecutionDefaults = sqliteTable(
   ],
 );
 
+export const projectEnvironmentDefaults = sqliteTable(
+  "project_environment_defaults",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    environmentProviderId: text("environment_provider_id").notNull(),
+    inputs: text("inputs", { mode: "json" }).$type<JsonValue>(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);
+
 export const systemExperiments = sqliteTable("system_experiments", {
   key: text("key").primaryKey(),
   value: integer("value", { mode: "boolean" }).notNull(),

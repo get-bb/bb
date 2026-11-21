@@ -1,4 +1,5 @@
 import {
+  installFakeEnvironmentProvider,
   installFakeGitWorktreeProvider,
   installFakePersonalWorkspaceProvider,
 } from "../helpers/environment-provider.js";
@@ -26,7 +27,7 @@ import {
   seedPrimaryHost,
   seedProjectWithSource,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const registry = await createTestProviderRegistry();
 
@@ -252,41 +253,210 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   }
 
-  it("defaults implicit child host environments to the worktree provider", async () => {
-    await expect(
-      resolveEnvironment({
-        parentThread: makeParentThread(),
-        projectId: "proj-1",
-        requestedEnvironment: {
-          type: "host",
-          hostId: "host-1",
-          workspace: { type: "unmanaged", path: null },
+  function respondWithBranchCheckout(
+    harness: TestAppHarness,
+    args: { hostId: string; sessionId: string },
+  ) {
+    registerHostRpcResponder(harness, {
+      ...args,
+      handle: () => ({
+        ok: true,
+        result: {
+          checkout: {
+            kind: "branch" as const,
+            branchName: "main",
+            headSha: "abc123",
+          },
         },
       }),
-    ).resolves.toEqual({
-      type: "provider",
-      environmentProviderId: "git-worktree",
-      machine: { type: "existing" as const, hostId: "host-1" },
-      inputs: { branch: { kind: "default" } },
+    });
+  }
+
+  it.each([
+    { name: "a missing parent environment", parentProjectId: null },
+    { name: "a parent from another project", parentProjectId: "proj-2" },
+  ])(
+    "gives an implicit child host request with $name the project default on that machine",
+    async ({ parentProjectId }) => {
+      await withTestHarness(async (harness) => {
+        installFakeGitWorktreeProvider();
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-implicit-child",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/implicit-child-source",
+        });
+        respondWithBranchCheckout(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+        await expect(
+          resolveCreateThreadEnvironment(harness.deps, {
+            parentThread: makeParentThread({
+              projectId: parentProjectId ?? project.id,
+            }),
+            projectId: project.id,
+            requestedEnvironment: {
+              type: "host",
+              hostId: host.id,
+              workspace: { type: "unmanaged", path: null },
+            },
+          }),
+        ).resolves.toEqual({
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing" as const, hostId: host.id },
+          inputs: { branch: { kind: "default" } },
+        });
+      });
+    },
+  );
+
+  it("gives a child the parent's plugin provider and inputs on the parent's machine", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeEnvironmentProvider({
+        id: "test-sandbox",
+        pluginId: "test-sandbox-plugin",
+        displayName: "Sandbox",
+        requires: {
+          projectCheckout: false,
+          gitCheckout: false,
+          gitRemote: false,
+          projectless: false,
+        },
+        decide: () => ({ action: "wait", reason: "Preparing" }),
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-sandbox-parent",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/sandbox-parent-source",
+      });
+      const parentEnvironment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/sandbox-parent",
+        isGitRepo: true,
+        providerOwnsPath: true,
+        status: "ready",
+        environmentProvider: {
+          environmentProviderId: "test-sandbox",
+          pluginId: "test-sandbox-plugin",
+          instanceKey: null,
+          selection: {
+            machine: {
+              type: "new",
+              machineProviderId: "test-machine-provider",
+              inputs: null,
+            },
+            inputs: { preset: "large" },
+          },
+        },
+      });
+      await expect(
+        resolveCreateThreadEnvironment(harness.deps, {
+          parentThread: makeParentThread({
+            projectId: project.id,
+            environmentId: parentEnvironment.id,
+          }),
+          projectId: project.id,
+          requestedEnvironment: { type: "project-default" },
+        }),
+      ).resolves.toEqual({
+        type: "provider",
+        environmentProviderId: "test-sandbox",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { preset: "large" },
+      });
     });
   });
 
-  it("defaults a child under a parent from another project to the worktree provider", async () => {
-    await expect(
-      resolveEnvironment({
-        parentThread: makeParentThread({ projectId: "proj-2" }),
-        projectId: "proj-1",
-        requestedEnvironment: {
-          type: "host",
-          hostId: "host-1",
-          workspace: { type: "unmanaged", path: null },
+  it("keeps the parent's plain-folder checkout for a child whose parent is still provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-plain-provisioning",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/plain-provisioning",
+      });
+      const parentEnvironment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: null,
+        isGitRepo: false,
+        providerOwnsPath: false,
+        status: "provisioning",
+        environmentProvider: {
+          environmentProviderId: "project-checkout",
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: { path: "/tmp/plain-provisioning" },
+          },
         },
-      }),
-    ).resolves.toEqual({
-      type: "provider",
-      environmentProviderId: "git-worktree",
-      machine: { type: "existing" as const, hostId: "host-1" },
-      inputs: { branch: { kind: "default" } },
+      });
+      await expect(
+        resolveCreateThreadEnvironment(harness.deps, {
+          parentThread: makeParentThread({
+            projectId: project.id,
+            environmentId: parentEnvironment.id,
+          }),
+          projectId: project.id,
+          requestedEnvironment: { type: "project-default" },
+        }),
+      ).resolves.toEqual({
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { path: "/tmp/plain-provisioning" },
+      });
+    });
+  });
+
+  it("gives a child of a Git checkout parent its own worktree", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-git-checkout-parent",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/git-checkout-parent",
+      });
+      const parentEnvironment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: host.id,
+        path: "/tmp/git-checkout-parent",
+        isGitRepo: true,
+        providerOwnsPath: false,
+        status: "ready",
+        environmentProvider: {
+          environmentProviderId: "project-checkout",
+          instanceKey: null,
+          selection: {
+            machine: { type: "existing", hostId: host.id },
+            inputs: { path: "/tmp/git-checkout-parent" },
+          },
+        },
+      });
+      await expect(
+        resolveCreateThreadEnvironment(harness.deps, {
+          parentThread: makeParentThread({
+            projectId: project.id,
+            environmentId: parentEnvironment.id,
+          }),
+          projectId: project.id,
+          requestedEnvironment: { type: "project-default" },
+        }),
+      ).resolves.toEqual({
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { branch: { kind: "default" } },
+      });
     });
   });
 

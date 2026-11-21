@@ -185,6 +185,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
   dropThreadSearchOrderIndex(db);
+  dropProjectEnvironmentDefaultsTable(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
 }
@@ -230,4 +231,8 @@ export function restoreDiffViewedFilesTable(db: DbConnection): void {
       FOREIGN KEY (environment_id) REFERENCES environments(id) ON UPDATE no action ON DELETE cascade
     )
   `);
+}
+
+export function dropProjectEnvironmentDefaultsTable(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS `project_environment_defaults`");
 }

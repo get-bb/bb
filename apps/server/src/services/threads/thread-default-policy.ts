@@ -7,7 +7,12 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
-import { getEnvironment, getProjectSourceOnPersistentHost } from "@bb/db";
+import {
+  getEnvironment,
+  getProjectEnvironmentDefault,
+  getProjectSourceOnPersistentHost,
+  type EnvironmentRow,
+} from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import { DEFAULT_SERVICE_TIER, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -124,7 +129,7 @@ type ImplicitHostDefaultEnvironment = Extract<
 };
 
 function isImplicitHostDefaultEnvironment(
-  environment: ResolvedCreateThreadEnvironment,
+  environment: CreateThreadEnvironment,
 ): environment is ImplicitHostDefaultEnvironment {
   return (
     environment.type === "host" &&
@@ -317,9 +322,29 @@ async function projectSourceHasWorktreeBase(
   return inspection.defaultWorktreeBaseBranch !== null;
 }
 
+function storedProjectDefaultEnvironment(
+  deps: WorkSessionDeps,
+  args: { hostId: string; projectId: string },
+): ResolvedCreateThreadEnvironment | null {
+  const stored = getProjectEnvironmentDefault(deps.db, {
+    projectId: args.projectId,
+  });
+  if (stored === null) {
+    return null;
+  }
+  return {
+    type: "provider",
+    environmentProviderId: requireDefaultEnvironmentProvider(
+      stored.environmentProviderId,
+    ),
+    machine: { type: "existing", hostId: args.hostId },
+    inputs: stored.inputs,
+  };
+}
+
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
-  args: { projectId: string },
+  args: { hostId?: string; projectId: string },
 ): Promise<ResolvedCreateThreadEnvironment> {
   if (args.projectId === PERSONAL_PROJECT_ID) {
     return {
@@ -329,13 +354,21 @@ export async function resolveProjectDefaultThreadEnvironment(
       ),
       machine: {
         type: "existing",
-        hostId: requireConnectedPrimaryHostId(deps),
+        hostId: args.hostId ?? requireConnectedPrimaryHostId(deps),
       },
       inputs: null,
     };
   }
 
-  const hostId = await resolveProjectDefaultHostId(deps, args.projectId);
+  const hostId =
+    args.hostId ?? (await resolveProjectDefaultHostId(deps, args.projectId));
+  const stored = storedProjectDefaultEnvironment(deps, {
+    hostId,
+    projectId: args.projectId,
+  });
+  if (stored !== null) {
+    return stored;
+  }
   const source = resolveProjectWorkspaceTarget(deps, {
     hostId,
     projectId: args.projectId,
@@ -361,35 +394,88 @@ export async function resolveProjectDefaultThreadEnvironment(
   };
 }
 
+function childEnvironmentFromParent(
+  parentEnvironment: EnvironmentRow,
+): ResolvedCreateThreadEnvironment {
+  const machine = {
+    type: "existing" as const,
+    hostId: parentEnvironment.hostId,
+  };
+  const providerId = parentEnvironment.environmentProviderId;
+  const selection = parentEnvironment.environmentProviderSelection;
+  const parentGetsOwnWorktree =
+    providerId === null ||
+    selection === null ||
+    providerId === DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree ||
+    (providerId === DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout &&
+      parentEnvironment.isGitRepo);
+  if (parentGetsOwnWorktree) {
+    return {
+      type: "provider",
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      ),
+      machine,
+      inputs: worktreeProviderInputs({ kind: "default" }),
+    };
+  }
+  return {
+    type: "provider",
+    environmentProviderId: requireDefaultEnvironmentProvider(providerId),
+    machine,
+    inputs: selection.inputs,
+  };
+}
+
+function parentEnvironmentForChild(
+  deps: WorkSessionDeps,
+  args: ResolveCreateThreadEnvironmentArgs,
+): EnvironmentRow | null {
+  const parentThread = args.parentThread;
+  const requested = args.requestedEnvironment;
+  if (
+    !isLiveParentThread({ parentThread }) ||
+    parentThread === null ||
+    parentThread.projectId !== args.projectId ||
+    parentThread.environmentId === null ||
+    args.projectId === PERSONAL_PROJECT_ID ||
+    !(
+      requested.type === "project-default" ||
+      isImplicitHostDefaultEnvironment(requested)
+    )
+  ) {
+    return null;
+  }
+  const parentEnvironment = getEnvironment(deps.db, parentThread.environmentId);
+  if (
+    parentEnvironment === null ||
+    parentEnvironment.projectId !== args.projectId ||
+    (requested.type === "host" &&
+      requested.hostId !== undefined &&
+      requested.hostId !== parentEnvironment.hostId)
+  ) {
+    return null;
+  }
+  return parentEnvironment;
+}
+
 export async function resolveCreateThreadEnvironment(
   deps: WorkSessionDeps,
   args: ResolveCreateThreadEnvironmentArgs,
 ): Promise<ResolvedCreateThreadEnvironment> {
   const parentThread = args.parentThread;
   const hasLiveParent = isLiveParentThread({ parentThread });
-  if (
-    hasLiveParent &&
-    parentThread?.projectId === args.projectId &&
-    parentThread.environmentId &&
-    args.projectId !== PERSONAL_PROJECT_ID &&
-    (args.requestedEnvironment.type === "project-default" ||
-      isImplicitHostDefaultEnvironment(args.requestedEnvironment))
-  ) {
-    const parentEnvironment = getEnvironment(
-      deps.db,
-      parentThread.environmentId,
-    );
+  const parentEnvironment = parentEnvironmentForChild(deps, args);
+  if (parentEnvironment !== null) {
     if (
-      parentEnvironment?.status === "ready" &&
-      parentEnvironment.projectId === args.projectId &&
+      parentEnvironment.status === "ready" &&
       parentEnvironment.path !== null &&
       !parentEnvironment.isGitRepo &&
-      !parentEnvironment.providerOwnsPath &&
-      (args.requestedEnvironment.type === "project-default" ||
-        args.requestedEnvironment.hostId === undefined ||
-        args.requestedEnvironment.hostId === parentEnvironment.hostId)
-    )
+      !parentEnvironment.providerOwnsPath
+    ) {
       return { type: "reuse", environmentId: parentEnvironment.id };
+    }
+    return childEnvironmentFromParent(parentEnvironment);
   }
   if (
     hasLiveParent &&
@@ -417,86 +503,28 @@ export async function resolveCreateThreadEnvironment(
       return { type: "reuse", environmentId: parentThread.environmentId };
     }
   }
-  if (
-    hasLiveParent &&
-    parentThread?.projectId === args.projectId &&
-    args.projectId !== PERSONAL_PROJECT_ID &&
-    args.requestedEnvironment.type === "project-default"
-  ) {
-    if (!parentThread.environmentId) {
-      throw new Error("Parent thread is missing an environment");
-    }
-    const parentEnvironment = getEnvironment(
-      deps.db,
-      parentThread.environmentId,
-    );
-    if (parentEnvironment === null) {
-      throw new Error("Parent thread environment is missing");
-    }
-    return {
-      type: "provider",
-      environmentProviderId: requireDefaultEnvironmentProvider(
-        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
-      ),
-      machine: { type: "existing", hostId: parentEnvironment.hostId },
-      inputs: worktreeProviderInputs({ kind: "default" }),
-    };
+  const environment = args.requestedEnvironment;
+  if (environment.type === "project-default") {
+    return resolveProjectDefaultThreadEnvironment(deps, {
+      projectId: args.projectId,
+    });
   }
-  const environment =
-    args.requestedEnvironment.type === "project-default"
-      ? await resolveProjectDefaultThreadEnvironment(deps, {
-          projectId: args.projectId,
-        })
-      : args.requestedEnvironment;
-
-  if (
-    args.projectId === PERSONAL_PROJECT_ID &&
-    isImplicitHostDefaultEnvironment(environment)
-  ) {
-    return {
-      type: "provider",
-      environmentProviderId: requireDefaultEnvironmentProvider(
-        DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
-      ),
-      machine: {
-        type: "existing",
-        hostId: requireHostEnvironmentId(environment),
-      },
-      inputs: null,
-    };
+  if (!isImplicitHostDefaultEnvironment(environment)) {
+    return environment;
   }
-
-  if (hasLiveParent && isImplicitHostDefaultEnvironment(environment)) {
-    return {
-      type: "provider",
-      environmentProviderId: requireDefaultEnvironmentProvider(
-        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
-      ),
-      machine: {
-        type: "existing",
-        hostId: requireHostEnvironmentId(environment),
-      },
-      inputs: worktreeProviderInputs({ kind: "default" }),
-    };
+  const hostId = requireHostEnvironmentId(environment);
+  if (args.projectId === PERSONAL_PROJECT_ID || hasLiveParent) {
+    return resolveProjectDefaultThreadEnvironment(deps, {
+      hostId,
+      projectId: args.projectId,
+    });
   }
-  if (
-    hasLiveParent &&
-    environment.type === "provider" &&
-    environment.environmentProviderId ===
-      DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout &&
-    args.requestedEnvironment.type === "project-default"
-  ) {
-    return {
-      type: "provider",
-      environmentProviderId: requireDefaultEnvironmentProvider(
-        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
-      ),
-      machine: environment.machine,
-      inputs: worktreeProviderInputs({ kind: "default" }),
-    };
-  }
-
-  return environment;
+  return (
+    storedProjectDefaultEnvironment(deps, {
+      hostId,
+      projectId: args.projectId,
+    }) ?? environment
+  );
 }
 
 export function normalizeRecordedPermissionMode(

@@ -39,6 +39,7 @@ import type {
   PluginEnvironmentProviderInputsChange,
 } from "@get-bb/plugin-sdk";
 import type {
+  CreateThreadEnvironmentArgs,
   CreateThreadRequest,
   CreateExecutionInputSources,
   SidebarBootstrapResponse,
@@ -931,6 +932,29 @@ export function NewThreadComposer({
   const { providers: machineProviders } = useSystemMachineProviders();
   const pluginList = usePluginList({ enabled: true });
 
+  const projectDefaultEnvironment = isProjectless
+    ? null
+    : (currentProject?.defaultEnvironment ?? null);
+  const projectDefaultEnvironmentProviderId =
+    projectDefaultEnvironment?.environmentProviderId ?? null;
+  const projectDefaultEnvironmentInputs =
+    projectDefaultEnvironment?.inputs ?? null;
+  const seedEnvironment = useMemo(
+    (): CreateThreadEnvironmentArgs | undefined =>
+      seed?.environment ??
+      (projectDefaultEnvironmentProviderId === null
+        ? undefined
+        : {
+            type: "provider",
+            environmentProviderId: projectDefaultEnvironmentProviderId,
+            inputs: projectDefaultEnvironmentInputs,
+          }),
+    [
+      projectDefaultEnvironmentInputs,
+      projectDefaultEnvironmentProviderId,
+      seed?.environment,
+    ],
+  );
   const seedSignature = JSON.stringify([
     projectId,
     resetKey ?? null,
@@ -939,9 +963,8 @@ export function NewThreadComposer({
     seed?.reasoningLevel ?? null,
     seed?.serviceTier ?? null,
     seed?.permissionMode ?? null,
-    seed?.environment ?? null,
+    seedEnvironment ?? null,
   ]);
-  const seedEnvironment = seed?.environment;
   const environmentSeed = useMemo(
     () =>
       seedEnvironment === undefined
@@ -1097,6 +1120,7 @@ export function NewThreadComposer({
         isProjectless,
         knownHostIds,
         primaryHostId,
+        projectDefaultEnvironmentProviderId,
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
@@ -1118,6 +1142,7 @@ export function NewThreadComposer({
       isProjectless,
       knownHostIds,
       primaryHostId,
+      projectDefaultEnvironmentProviderId,
       projectSources,
       resolveProviderSelection,
       reuseThreadOptions,
@@ -1310,6 +1335,7 @@ export function NewThreadComposer({
         isProjectless,
         knownHostIds,
         primaryHostId,
+        projectDefaultEnvironmentProviderId,
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
@@ -1321,6 +1347,7 @@ export function NewThreadComposer({
       isProjectless,
       knownHostIds,
       primaryHostId,
+      projectDefaultEnvironmentProviderId,
       projectSources,
       reuseThreadOptions,
       reuseThreadOptionsLoading,

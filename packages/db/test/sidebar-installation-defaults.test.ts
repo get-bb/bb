@@ -21,6 +21,7 @@ import {
   dropEnvironmentHoldColumns,
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
+  dropProjectEnvironmentDefaultsTable,
   dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -112,6 +113,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropForkHistoryCopyIndex(db);
           dropEnvironmentHoldColumns(db);
           dropThreadSearchOrderIndex(db);
+          dropProjectEnvironmentDefaultsTable(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
             .run(SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP);

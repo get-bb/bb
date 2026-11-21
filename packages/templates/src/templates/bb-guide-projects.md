@@ -31,6 +31,17 @@ A project maps to a code repository. All threads belong to a project.
     Accepts proj_personal to inspect Personal.
   bb project update <id>                  Update a project
     --name <name>                         New name
+    --default-environment <provider-id>   Environment provider for new threads
+    --default-environment-inputs <json>   Inputs for that provider
+    --clear-default-environment           Back to the built-in default
+
+    The default environment applies when a thread is created without an
+    environment (the app's composer, `bb thread spawn` without environment
+    flags, and SDK `{ type: "project-default" }`). The server checks the
+    inputs against the provider's schema when they are saved; `bb environment
+    providers --project <id> --json` shows each provider's schema. A saved
+    provider that later becomes unavailable makes thread creation fail
+    instead of falling back. `bb project show` prints the saved default.
 
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
