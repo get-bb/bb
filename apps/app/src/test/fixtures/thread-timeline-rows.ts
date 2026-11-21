@@ -496,6 +496,7 @@ export function conversationRow({
         kind: "message",
         status: "accepted",
       },
+      executionChange: null,
     };
   }
   return {

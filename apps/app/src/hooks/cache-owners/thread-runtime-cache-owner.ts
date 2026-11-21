@@ -659,6 +659,7 @@ function buildOptimisticUserMessageRow({
       kind: optimisticTurnRequestKind({ mode, threadStatus }),
       status: "pending",
     },
+    executionChange: null,
   };
 }
 

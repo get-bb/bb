@@ -1213,6 +1213,7 @@ describe("thread runtime cache owner", () => {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    executionChange: null,
   };
   const unrelatedRow: TimelineRow = {
     ...serverUserRow,

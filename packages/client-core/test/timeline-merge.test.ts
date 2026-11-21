@@ -59,6 +59,7 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
       kind: "message",
       status: args.turnRequestStatus ?? "accepted",
     },
+    executionChange: null,
   };
 }
 

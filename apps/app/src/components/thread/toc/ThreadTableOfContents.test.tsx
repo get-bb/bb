@@ -113,6 +113,7 @@ function userConversationRow(index = 1): TimelineConversationRow {
       kind: "message",
       status: "accepted",
     },
+    executionChange: null,
     mentions: [],
   };
 }

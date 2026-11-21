@@ -57,6 +57,7 @@ function userRow(text: string): TimelineConversationRow {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    executionChange: null,
   };
 }
 
@@ -321,6 +322,7 @@ describe("findTimelineFrontierRow", () => {
         systemMessageKind: "unlabeled",
         systemMessageSubject: null,
         turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
+        executionChange: null,
       },
     ]);
 

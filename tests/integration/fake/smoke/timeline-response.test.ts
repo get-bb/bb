@@ -40,6 +40,7 @@ const USER_ROW = {
   systemMessageKind: "unlabeled",
   systemMessageSubject: null,
   turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+  executionChange: null,
 } satisfies TimelineRow;
 
 function makeTimelineResponse(

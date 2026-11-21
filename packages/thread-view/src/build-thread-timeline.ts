@@ -549,6 +549,7 @@ function convertMessage(
           systemMessageKind: message.systemMessageKind,
           systemMessageSubject: message.systemMessageSubject,
           turnRequest: message.turnRequest,
+          executionChange: message.executionChange,
         },
       ];
     case "assistant-text":
@@ -918,6 +919,7 @@ function convertSteerMessage(
     systemMessageKind: message.systemMessageKind,
     systemMessageSubject: message.systemMessageSubject,
     turnRequest: message.turnRequest,
+    executionChange: message.executionChange,
   };
 }
 

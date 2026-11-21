@@ -391,6 +391,27 @@ function formatConversationRequestLabel(
   return "steer";
 }
 
+function formatExecutionChange(
+  row: Extract<ThreadTimelineViewRow, { kind: "conversation" }>,
+  context: TimelineTextFormatContext,
+): string | null {
+  if (row.role !== "user" || row.executionChange === null) return null;
+  const { from, to } = row.executionChange;
+  const modelChanged = from.model !== to.model;
+  const reasoningChanged = from.reasoningLevel !== to.reasoningLevel;
+  const describe = (side: typeof from) =>
+    [
+      modelChanged ? side.model : null,
+      reasoningChanged ? side.reasoningLevel : null,
+    ]
+      .filter((part) => part !== null)
+      .join(" ");
+  return dim(
+    `Settings changed: ${describe(from)} → ${describe(to)}`,
+    context.color,
+  );
+}
+
 function formatRow(
   row: ThreadTimelineViewRow,
   context: TimelineTextFormatContext,
@@ -398,6 +419,7 @@ function formatRow(
   switch (row.kind) {
     case "conversation":
       return [
+        formatExecutionChange(row, context),
         rowHeader(row.role === "user" ? "User" : "Assistant", context),
         row.text,
         formatConversationRequestLabel(row),

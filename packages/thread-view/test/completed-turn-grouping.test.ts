@@ -78,6 +78,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
       kind: "message",
       status: "accepted",
     },
+    executionChange: null,
     text: args.id,
     mentions: [],
   };

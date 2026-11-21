@@ -65,6 +65,7 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
+import { ExecutionChangeDivider } from "./ExecutionChangeDivider.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
@@ -993,6 +994,9 @@ const ConversationRowContent = memo(function ConversationRowContent({
       : undefined;
     return (
       <>
+        {row.executionChange === null ? null : (
+          <ExecutionChangeDivider change={row.executionChange} />
+        )}
         <MessageMetadata placement="above" {...metadata} />
         <ConversationMessageContent
           attachments={row.attachments}

@@ -9,6 +9,7 @@ import {
 } from "./pending-interactions.js";
 import {
   promptInputSchema,
+  reasoningLevelSchema,
   recordedThreadExecutionOptionsSchema,
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
@@ -60,6 +61,14 @@ export type ClientTurnLifecycleEventData = z.infer<
   typeof clientTurnLifecycleEventDataSchema
 >;
 
+export const turnRequestPreviousExecutionSchema = z.object({
+  model: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema,
+});
+export type TurnRequestPreviousExecution = z.infer<
+  typeof turnRequestPreviousExecutionSchema
+>;
+
 export const turnRequestEventDataSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
@@ -86,6 +95,7 @@ export const turnRequestEventDataSchema = z.object({
     params: z.record(z.string(), z.unknown()),
   }),
   execution: turnRequestOptionsSchema,
+  previousExecution: turnRequestPreviousExecutionSchema.optional(),
 });
 export type TurnRequestEventData = z.infer<typeof turnRequestEventDataSchema>;
 

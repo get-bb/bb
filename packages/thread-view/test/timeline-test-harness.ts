@@ -13,6 +13,7 @@ import type {
   PromptInput,
   ProviderRawEvent,
   ProvisioningTranscriptEntry,
+  ReasoningLevel,
   ResolvedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
   JsonValue,
@@ -89,6 +90,7 @@ interface DefaultTurnEventOptions extends EventFactoryRowOptions {
 
 type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   execution?: ResolvedThreadExecutionOptions;
+  previousExecution?: { model: string; reasoningLevel: ReasoningLevel };
   initiator?: ThreadTurnInitiator;
   input?: PromptInput[];
   inputGroups?: PromptInput[][];
@@ -717,6 +719,9 @@ export function createTimelineEventFactory(
             params: {},
           },
           execution: args.execution ?? defaultExecution,
+          ...(args.previousExecution !== undefined
+            ? { previousExecution: args.previousExecution }
+            : {}),
         },
       };
     },

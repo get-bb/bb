@@ -450,4 +450,95 @@ describe("thread event appends", () => {
       await harness.cleanup();
     }
   });
+
+  describe("previous execution on turn requests", () => {
+    const execution = (
+      model: string,
+      reasoningLevel: "low" | "medium" | "high",
+    ) => ({
+      model,
+      reasoningLevel,
+      permissionMode: "full" as const,
+      serviceTier: "default" as const,
+      source: "client/turn/requested" as const,
+    });
+
+    it("records the previous model and reasoning only when they change", async () => {
+      const { environment, harness, thread } =
+        await createThreadEventTestContext();
+      try {
+        const request = (
+          options: ReturnType<typeof execution>,
+          target:
+            | { kind: "new-turn" }
+            | { kind: "steer"; expectedTurnId: null },
+        ) =>
+          appendClientTurnEvent(harness.deps, {
+            threadId: thread.id,
+            environmentId: environment.id,
+            type: "client/turn/requested",
+            originPluginId: null,
+            input: textInput("Next step"),
+            target,
+            execution: options,
+            initiator: "user",
+            senderThreadId: null,
+            requestMethod: "turn/start",
+            source: "tell",
+          });
+        const previousOf = (sequence: number) => {
+          const row = harness.db
+            .select({ data: events.data })
+            .from(events)
+            .where(eq(events.sequence, sequence))
+            .get();
+          return JSON.parse(row?.data ?? "{}").previousExecution ?? null;
+        };
+        const first = request(execution("gpt-5", "low"), { kind: "new-turn" });
+        const same = request(execution("gpt-5", "low"), { kind: "new-turn" });
+        const switched = request(execution("gpt-5-mini", "high"), {
+          kind: "new-turn",
+        });
+        const steered = request(execution("gpt-5", "low"), {
+          kind: "steer",
+          expectedTurnId: null,
+        });
+        const afterSteer = request(execution("gpt-5-mini", "high"), {
+          kind: "new-turn",
+        });
+        const rejected = request(execution("gpt-5", "medium"), {
+          kind: "new-turn",
+        });
+        appendThreadEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          type: "client/turn/rejected",
+          scope: threadScope(),
+          data: {
+            requestId: rejected.requestId,
+            reason: "provider_rpc_error",
+            message: "Provider refused the turn",
+          },
+        });
+        const afterRejected = request(execution("gpt-5-mini", "high"), {
+          kind: "new-turn",
+        });
+        expect(previousOf(first.sequence)).toBeNull();
+        expect(previousOf(same.sequence)).toBeNull();
+        expect(previousOf(switched.sequence)).toEqual({
+          model: "gpt-5",
+          reasoningLevel: "low",
+        });
+        expect(previousOf(steered.sequence)).toBeNull();
+        expect(previousOf(afterSteer.sequence)).toBeNull();
+        expect(previousOf(rejected.sequence)).toEqual({
+          model: "gpt-5-mini",
+          reasoningLevel: "high",
+        });
+        expect(previousOf(afterRejected.sequence)).toBeNull();
+      } finally {
+        await harness.cleanup();
+      }
+    });
+  });
 });

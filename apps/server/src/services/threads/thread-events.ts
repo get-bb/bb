@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   appendStoredThreadEventsInTransaction,
   createEventId,
@@ -6,6 +7,7 @@ import {
   isStoredTurnProviderCompactionRunning,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
+  getLastStoredTurnStartingRequestEvent,
   getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
   getThread,
@@ -25,6 +27,7 @@ import {
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
+  turnRequestPreviousExecutionSchema,
   WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
@@ -36,6 +39,7 @@ import type {
   RecordedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
   TurnRequestEventData,
+  TurnRequestPreviousExecution,
   TurnRequestTarget,
   ThreadEventType,
   ResolvedThreadExecutionOptions,
@@ -197,9 +201,48 @@ function buildClientTurnBaseEventData(
   };
 }
 
+const storedRequestExecutionSchema = z.object({
+  execution: turnRequestPreviousExecutionSchema,
+});
+
+function readStoredRequestExecution(
+  data: string,
+): TurnRequestPreviousExecution | null {
+  try {
+    const parsed = storedRequestExecutionSchema.safeParse(JSON.parse(data));
+    return parsed.success ? parsed.data.execution : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPreviousExecution(
+  db: DbQueryConnection,
+  args: ClientTurnRequestedEventArgs,
+): TurnRequestPreviousExecution | null {
+  if (
+    args.target.kind === "steer" ||
+    (args.target.kind === "auto" && args.target.expectedTurnId !== null) ||
+    args.retryOf !== undefined
+  ) {
+    return null;
+  }
+  const row = getLastStoredTurnStartingRequestEvent(db, args.threadId);
+  const previous = row === null ? null : readStoredRequestExecution(row.data);
+  if (
+    previous === null ||
+    (previous.model === args.execution.model &&
+      previous.reasoningLevel === args.execution.reasoningLevel)
+  ) {
+    return null;
+  }
+  return { model: previous.model, reasoningLevel: previous.reasoningLevel };
+}
+
 function buildClientTurnRequestedEventData(
   args: ClientTurnRequestedEventArgs,
   requestId: ClientTurnRequestId,
+  previousExecution: TurnRequestPreviousExecution | null,
 ): TurnRequestEventData {
   return {
     ...buildClientTurnBaseEventData(args),
@@ -226,6 +269,7 @@ function buildClientTurnRequestedEventData(
       : {}),
     target: args.target,
     execution: args.execution,
+    ...(previousExecution !== null ? { previousExecution } : {}),
   };
 }
 
@@ -263,6 +307,7 @@ export function createClientTurnRequestId(): ClientTurnRequestId {
 }
 
 function buildClientTurnRequestedEventArgs(
+  db: DbQueryConnection,
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendThreadEventArgs<"client/turn/requested"> {
   return {
@@ -270,19 +315,25 @@ function buildClientTurnRequestedEventArgs(
     environmentId: args.environmentId,
     type: args.type,
     scope: threadScope(),
-    data: buildClientTurnRequestedEventData(args, args.requestId),
+    data: buildClientTurnRequestedEventData(
+      args,
+      args.requestId,
+      readPreviousExecution(db, args),
+    ),
   };
 }
 
 function appendBuiltClientTurnRequestedEvent(
+  db: DbQueryConnection,
   append: AppendClientTurnEvent,
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequest {
-  const sequence = append(buildClientTurnRequestedEventArgs(args));
+  const sequence = append(buildClientTurnRequestedEventArgs(db, args));
   return { requestId: args.requestId, sequence };
 }
 
 function appendBuiltClientTurnEvent(
+  db: DbQueryConnection,
   append: AppendClientTurnEvent,
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
@@ -296,7 +347,7 @@ function appendBuiltClientTurnEvent(
         data: buildClientTurnBaseEventData(args),
       });
     case "client/turn/requested": {
-      return appendBuiltClientTurnRequestedEvent(append, {
+      return appendBuiltClientTurnRequestedEvent(db, append, {
         ...args,
         requestId: createClientTurnRequestId(),
       });
@@ -530,6 +581,7 @@ export function appendClientTurnEvent(
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
   return appendBuiltClientTurnEvent(
+    deps.db,
     (eventArgs) => appendThreadEvent(deps, eventArgs),
     args,
   );
@@ -544,6 +596,7 @@ export function appendClientTurnEventInTransaction(
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
   return appendBuiltClientTurnEvent(
+    db,
     (eventArgs) => appendThreadEventInTransaction(db, eventArgs),
     args,
   );
@@ -555,7 +608,7 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
 ): AppendedClientTurnRequestWithNotification {
   const result = appendThreadEventInTransactionWithAttention(
     db,
-    buildClientTurnRequestedEventArgs(args),
+    buildClientTurnRequestedEventArgs(db, args),
   );
   const supersededRetries = supersedeQueuedRetriesInTransaction(db, {
     threadId: args.threadId,

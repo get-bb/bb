@@ -131,6 +131,7 @@ function makeUserRow(
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    executionChange: null,
   };
 }
 
@@ -975,6 +976,7 @@ describe("useThreadTimelineController", () => {
       ...makeUserRow("thread-1:user-seed:5", 7),
       messageSeq: 5,
       turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+      executionChange: null,
     };
     const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
       { queries: { staleTime: Infinity } },

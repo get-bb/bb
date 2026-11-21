@@ -5198,6 +5198,55 @@ function listStoredTurnRequestEventRowsByType(
   `);
 }
 
+const TURN_STARTING_REQUEST_CANDIDATES = 5;
+
+function storedRequestId(data: string): string | null {
+  try {
+    const value: unknown = JSON.parse(data);
+    return typeof value === "object" &&
+      value !== null &&
+      "requestId" in value &&
+      typeof value.requestId === "string"
+      ? value.requestId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getLastStoredTurnStartingRequestEvent(
+  db: DbQueryConnection,
+  threadId: string,
+): StoredTurnRequestEventRow | null {
+  const candidates = listStoredTurnRequestEventRowsByType(db, {
+    filter: sql`candidate.type = 'client/turn/requested'
+      AND json_extract(candidate.data, '$.target.kind') != 'steer'
+      AND NOT (
+        json_extract(candidate.data, '$.target.kind') = 'auto'
+        AND json_type(candidate.data, '$.target.expectedTurnId') = 'text'
+      )`,
+    limit: TURN_STARTING_REQUEST_CANDIDATES,
+    order: "newest",
+    threadId,
+  });
+  const oldest = candidates.at(-1);
+  if (oldest === undefined) return null;
+  const rejected = new Set(
+    db
+      .all<{ requestId: string | null }>(
+        sql`SELECT json_extract(data, '$.requestId') AS requestId
+          FROM ${events} INDEXED BY events_thread_type_sequence_idx
+          WHERE thread_id = ${threadId}
+            AND type = 'client/turn/rejected'
+            AND sequence > ${oldest.sequence}`,
+      )
+      .map((row) => row.requestId),
+  );
+  return (
+    candidates.find((row) => !rejected.has(storedRequestId(row.data))) ?? null
+  );
+}
+
 export function getLastStoredTurnRequestEvent(
   db: DbQueryConnection,
   threadId: string,

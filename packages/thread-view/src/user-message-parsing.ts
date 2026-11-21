@@ -339,6 +339,18 @@ function buildClientUserMessage({
     systemMessageKind: decoded.systemMessageKind ?? "unlabeled",
     systemMessageSubject: decoded.systemMessageSubject ?? null,
     turnRequest,
+    executionChange:
+      decoded.previousExecution === undefined ||
+      inputGroupIndex > 0 ||
+      turnRequest.kind === "steer"
+        ? null
+        : {
+            from: decoded.previousExecution,
+            to: {
+              model: decoded.execution.model,
+              reasoningLevel: decoded.execution.reasoningLevel,
+            },
+          },
     text: parsedInput.text,
     mentions: parsedInput.mentions,
     attachments: buildAttachments(parsedInput),
@@ -511,6 +523,7 @@ export function parseProviderUserMessage(
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    executionChange: null,
     text,
     mentions: [],
   };

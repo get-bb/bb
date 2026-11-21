@@ -19,7 +19,10 @@ import type {
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
-import type { TimelineConversationAttachments } from "@bb/server-contract";
+import type {
+  TimelineConversationAttachments,
+  TimelineExecutionChange,
+} from "@bb/server-contract";
 import type { EventProjection } from "./event-projection.js";
 
 const eventProjectionMessageStatusValues = [
@@ -106,6 +109,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
   turnRequest: EventProjectionTurnRequest;
+  executionChange: TimelineExecutionChange | null;
   text: string;
   mentions: PromptTextMention[];
   attachments?: {

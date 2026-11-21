@@ -61,6 +61,7 @@ export function conversationRow(args: {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    executionChange: null,
   };
 }
 

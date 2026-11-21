@@ -30,6 +30,7 @@ function userRow(args: {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    executionChange: null,
   };
 }
 
@@ -41,6 +42,7 @@ function steerRow(args: {
   return {
     ...userRow(args),
     turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    executionChange: null,
   };
 }
 
@@ -162,6 +164,7 @@ describe("paginateTimelineRows", () => {
       ...userRow({ id: "thread-1:late-older-row", seq: 2, text: "late" }),
       sourceSeqEnd: 31,
       turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+      executionChange: null,
     };
     const latestUser = userRow({
       id: "thread-1:user-seed:20",
@@ -256,6 +259,7 @@ describe("paginateTimelineRows", () => {
       ...userRow({ id: "thread-1:settled", seq: 6, text: "settled" }),
       sourceSeqEnd: 10,
       turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+      executionChange: null,
     };
 
     const page = paginateTimelineRows({

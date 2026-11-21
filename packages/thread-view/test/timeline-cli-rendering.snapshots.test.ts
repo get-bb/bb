@@ -75,6 +75,21 @@ function getOnlyTimelineWebWorkRow(
 }
 
 describe("timeline CLI rendering snapshots", () => {
+  it("names a model or reasoning change before the user message", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.clientTurnRequested({
+        createdAt: 0,
+        text: "Now be careful",
+        target: { kind: "new-turn" },
+        previousExecution: { model: "gpt-5-mini", reasoningLevel: "low" },
+      }),
+    ]);
+    expect(timeline.text).toContain(
+      "Settings changed: gpt-5-mini low → gpt-5 medium",
+    );
+  });
+
   it("keeps accepted steer rows outside summaries while preserving summary segments", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events: TimelineFixtureEvent[] = [

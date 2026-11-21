@@ -7,6 +7,7 @@ import {
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
   promptTextMentionSchema,
+  reasoningLevelSchema,
   systemMessageKindSchema,
   systemMessageSubjectSchema,
   threadEventItemPresentationSchema,
@@ -113,6 +114,19 @@ export type TimelineConversationTurnRequest = z.infer<
   typeof timelineConversationTurnRequestSchema
 >;
 
+const timelineExecutionSettingsSchema = z.object({
+  model: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema,
+});
+
+export const timelineExecutionChangeSchema = z.object({
+  from: timelineExecutionSettingsSchema,
+  to: timelineExecutionSettingsSchema,
+});
+export type TimelineExecutionChange = z.infer<
+  typeof timelineExecutionChangeSchema
+>;
+
 const timelineConversationRowBaseSchema = timelineRowBaseSchema.extend({
   kind: z.literal("conversation"),
   messageSeq: z.number().int(),
@@ -128,6 +142,7 @@ export const timelineUserConversationRowSchema =
     systemMessageKind: systemMessageKindSchema,
     systemMessageSubject: systemMessageSubjectSchema.nullable(),
     turnRequest: timelineConversationTurnRequestSchema,
+    executionChange: timelineExecutionChangeSchema.nullable(),
     mentions: z.array(promptTextMentionSchema),
   });
 export type TimelineUserConversationRow = z.infer<

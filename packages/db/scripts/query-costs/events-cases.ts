@@ -35,6 +35,7 @@ import {
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
+  getLastStoredTurnStartingRequestEvent,
   getLatestCompletedThreadContextClearSequence,
   getLatestModelFallbackRowSinceTurnRequest,
   getLatestStoredConversationOutlineSequence,
@@ -625,6 +626,12 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
     variant: LIVE_TURN,
     run: (db, fixture) =>
       getLastStoredTurnRequestEvent(db, fixture.liveTurn.threadId),
+  },
+  {
+    name: `${EVENTS}#getLastStoredTurnStartingRequestEvent`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      getLastStoredTurnStartingRequestEvent(db, fixture.liveTurn.threadId),
   },
   {
     name: `${EVENTS}#listCommandItemDataByItemIds`,

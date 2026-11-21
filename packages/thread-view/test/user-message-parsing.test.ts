@@ -176,6 +176,56 @@ describe("user message parsing", () => {
     });
   });
 
+  it("carries a model or reasoning change on the user message", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const { event, meta } = decodeThreadEventRow(
+      factory.clientTurnRequested({
+        initiator: "user",
+        target: { kind: "new-turn" },
+        text: "Now be careful",
+        previousExecution: { model: "gpt-5-mini", reasoningLevel: "low" },
+      }),
+    );
+    const message = parseUsersFromClientRequest({
+      decoded: event,
+      meta,
+      options: standardProjectionOptions,
+    })[0];
+    expect(message?.executionChange).toEqual({
+      from: { model: "gpt-5-mini", reasoningLevel: "low" },
+      to: { model: "gpt-5", reasoningLevel: "medium" },
+    });
+    const { event: plain, meta: plainMeta } =
+      decodeThreadEventRow(userMessageRequest());
+    expect(
+      parseUsersFromClientRequest({
+        decoded: plain,
+        meta: plainMeta,
+        options: standardProjectionOptions,
+      })[0]?.executionChange,
+    ).toBeNull();
+  });
+
+  it("puts no change on a steer", () => {
+    const factory = createTimelineEventFactory({ threadId: "thread-1" });
+    const { event, meta } = decodeThreadEventRow(
+      factory.clientTurnRequested({
+        initiator: "user",
+        target: { kind: "steer", expectedTurnId: "turn-1" },
+        text: "Also check the tests",
+        previousExecution: { model: "gpt-5-mini", reasoningLevel: "low" },
+      }),
+    );
+    const steer = parsePendingSteersFromClientRequest({
+      acceptedClientRequest: undefined,
+      decoded: event,
+      meta,
+      options: standardProjectionOptions,
+    })[0];
+    expect(steer?.turnRequest.kind).toBe("steer");
+    expect(steer?.executionChange).toBeNull();
+  });
+
   it("renders grouped queued turn requests as separate user messages", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
     const row = factory.clientTurnRequested({

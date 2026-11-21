@@ -51,6 +51,7 @@ function conversationRow({
         kind: "message",
         status: "accepted",
       },
+      executionChange: null,
       mentions: [],
     };
   }
