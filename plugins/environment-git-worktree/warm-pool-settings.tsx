@@ -114,7 +114,7 @@ export function WarmPoolSettings() {
                   ? pool.checkouts.map((checkout) => (
                       <div
                         key={`${checkout.hostId}:${checkout.path}`}
-                        className="truncate text-xs text-muted-foreground"
+                        className="text-xs break-words text-muted-foreground"
                       >
                         {checkoutSummary(checkout)}
                       </div>
