@@ -17,6 +17,7 @@ const MEMBER_TTL_MS = 8 * 60 * 60 * 1000;
 const RESERVATION_TTL_MS = 10 * 60 * 1000;
 const REFRESH_TIMEOUT_MS = 5 * 60 * 1000;
 const HANDOFF_TIMEOUT_MS = 15_000;
+const LIST_PAGE_SIZE = 500;
 
 const poolSizeSchema = z.number().int().min(0).max(MAX_POOL_SIZE);
 const configurationSchema = z.array(
@@ -198,16 +199,23 @@ export async function createWarmPools(args: {
     );
   }
 
-  function listMembers(filter: {
+  async function listMembers(filter: {
     projectId?: string;
     hostId?: string;
   }): Promise<Environment[]> {
-    return bb.sdk.environments.list({
-      ...filter,
-      heldBy: holder,
-      environmentProviderId: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
-      signal: lifetime.signal,
-    });
+    const members: Environment[] = [];
+    for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+      const page = await bb.sdk.environments.list({
+        ...filter,
+        heldBy: holder,
+        environmentProviderId: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
+        limit: LIST_PAGE_SIZE,
+        offset,
+        signal: lifetime.signal,
+      });
+      members.push(...page);
+      if (page.length < LIST_PAGE_SIZE) return members;
+    }
   }
 
   async function discard(member: Environment, why: string): Promise<void> {
