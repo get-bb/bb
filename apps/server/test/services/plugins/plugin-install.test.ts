@@ -170,10 +170,9 @@ async function initScratchRepo(dir: string): Promise<string> {
   return dir;
 }
 
-async function withGitConfig<T>(
+function gitConfigEnv(
   entries: ReadonlyArray<readonly [key: string, value: string]>,
-  body: () => Promise<T>,
-): Promise<T> {
+): Record<string, string> {
   const env: Record<string, string> = {
     GIT_CONFIG_COUNT: String(entries.length),
   };
@@ -181,8 +180,15 @@ async function withGitConfig<T>(
     env[`GIT_CONFIG_KEY_${index}`] = key;
     env[`GIT_CONFIG_VALUE_${index}`] = value;
   });
+  return env;
+}
+
+async function withProcessGitConfig<T>(
+  entries: ReadonlyArray<readonly [key: string, value: string]>,
+  body: () => Promise<T>,
+): Promise<T> {
   const previous = new Map<string, string | undefined>();
-  for (const [key, value] of Object.entries(env)) {
+  for (const [key, value] of Object.entries(gitConfigEnv(entries))) {
     previous.set(key, process.env[key]);
     process.env[key] = value;
   }
@@ -897,81 +903,6 @@ describe("plugin install flows", () => {
       },
     );
 
-    test("fetches only the resolved commit instead of the whole repository", async ({
-      fixture,
-    }) => {
-      const { db, workDir, service } = fixture;
-
-      const repoDir = join(workDir, "repo-shallow");
-      await writePluginFixture(repoDir, { name: "bb-plugin-shallow" });
-      await initGitRepo(repoDir);
-      await writeFile(join(repoDir, "retired.txt"), "older release");
-      await commitAll(repoDir, "older release");
-      const retiredBlob = await git(repoDir, ["rev-parse", "HEAD:retired.txt"]);
-      await rm(join(repoDir, "retired.txt"));
-      const commit = await commitAll(repoDir, "selected release");
-      await rm(
-        join(
-          repoDir,
-          ".git",
-          "objects",
-          retiredBlob.slice(0, 2),
-          retiredBlob.slice(2),
-        ),
-      );
-
-      await withGitConfig(
-        [[`url.${pathToFileURL(repoDir).href}.insteadOf`, repoDir]],
-        async () => {
-          await expect(
-            run("git", ["clone", "--quiet", repoDir, join(workDir, "full")]),
-          ).rejects.toThrow(/unable to read/);
-
-          const entry = await service.install(`git:${repoDir}@main`, {
-            kind: "root",
-          });
-          expect(entry.status).toBe("running");
-          expect(existsSync(join(entry.rootDir, ".git"))).toBe(false);
-          expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
-            gitResolvedCommit: commit,
-          });
-        },
-      );
-    });
-
-    test("falls back to a full clone when the server refuses to serve the commit directly", async ({
-      fixture,
-    }) => {
-      const { db, workDir, service } = fixture;
-
-      const repoDir = join(workDir, "repo-fallback");
-      await writePluginFixture(repoDir, { name: "bb-plugin-fallback" });
-      await initGitRepo(repoDir);
-      const sha = await commitAll(repoDir, "init");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-fallback",
-        version: "9.9.9",
-      });
-      await commitAll(repoDir, "later");
-
-      await withGitConfig([["protocol.version", "0"]], async () => {
-        await expect(
-          run("git", ["fetch", "--depth", "1", repoDir, sha], {
-            cwd: await initScratchRepo(join(workDir, "scratch")),
-          }),
-        ).rejects.toThrow(/unadvertised object/);
-
-        const entry = await service.install(`git:${repoDir}@${sha}`, {
-          kind: "root",
-        });
-        expect(entry.status).toBe("running");
-        expect(entry.version).toBe("0.1.0");
-        expect(getInstalledPluginRegistration(db, "fallback")).toMatchObject({
-          gitResolvedCommit: sha,
-        });
-      });
-    });
-
     test("never reuses an exact-resolution artifact owned by another plugin", async ({
       fixture,
     }) => {
@@ -1452,6 +1383,90 @@ describe("plugin install flows", () => {
       },
     );
   });
+
+  describe.skipIf(!hasGit)(
+    "git sources configured through the server process environment",
+    { timeout: 30_000 },
+    () => {
+      test("fetches only the resolved commit instead of the whole repository", async ({
+        fixture,
+      }) => {
+        const { db, workDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-shallow");
+        await writePluginFixture(repoDir, { name: "bb-plugin-shallow" });
+        await initGitRepo(repoDir);
+        await writeFile(join(repoDir, "retired.txt"), "older release");
+        await commitAll(repoDir, "older release");
+        const retiredBlob = await git(repoDir, [
+          "rev-parse",
+          "HEAD:retired.txt",
+        ]);
+        await rm(join(repoDir, "retired.txt"));
+        const commit = await commitAll(repoDir, "selected release");
+        await rm(
+          join(
+            repoDir,
+            ".git",
+            "objects",
+            retiredBlob.slice(0, 2),
+            retiredBlob.slice(2),
+          ),
+        );
+
+        const gitConfig = [
+          [`url.${pathToFileURL(repoDir).href}.insteadOf`, repoDir],
+        ] as const;
+        await expect(
+          run("git", ["clone", "--quiet", repoDir, join(workDir, "full")], {
+            env: { ...process.env, ...gitConfigEnv(gitConfig) },
+          }),
+        ).rejects.toThrow(/unable to read/);
+
+        const entry = await withProcessGitConfig(gitConfig, () =>
+          service.install(`git:${repoDir}@main`, { kind: "root" }),
+        );
+        expect(entry.status).toBe("running");
+        expect(existsSync(join(entry.rootDir, ".git"))).toBe(false);
+        expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
+          gitResolvedCommit: commit,
+        });
+      });
+
+      test("falls back to a full clone when the server refuses to serve the commit directly", async ({
+        fixture,
+      }) => {
+        const { db, workDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-fallback");
+        await writePluginFixture(repoDir, { name: "bb-plugin-fallback" });
+        await initGitRepo(repoDir);
+        const sha = await commitAll(repoDir, "init");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-fallback",
+          version: "9.9.9",
+        });
+        await commitAll(repoDir, "later");
+
+        const gitConfig = [["protocol.version", "0"]] as const;
+        await expect(
+          run("git", ["fetch", "--depth", "1", repoDir, sha], {
+            cwd: await initScratchRepo(join(workDir, "scratch")),
+            env: { ...process.env, ...gitConfigEnv(gitConfig) },
+          }),
+        ).rejects.toThrow(/unadvertised object/);
+
+        const entry = await withProcessGitConfig(gitConfig, () =>
+          service.install(`git:${repoDir}@${sha}`, { kind: "root" }),
+        );
+        expect(entry.status).toBe("running");
+        expect(entry.version).toBe("0.1.0");
+        expect(getInstalledPluginRegistration(db, "fallback")).toMatchObject({
+          gitResolvedCommit: sha,
+        });
+      });
+    },
+  );
 
   describeGit("multi-plugin repositories", { timeout: 60_000 }, () => {
     async function writeCollectionRepo(repoDir: string): Promise<string> {
