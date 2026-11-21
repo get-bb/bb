@@ -243,7 +243,8 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   navigation is active. Read items and host actions
   with `experimental_useSidebarNavigation()`. Exclusive; see
   frontend-sidebar-navigation.md. Experimental: see `docs/api_to_audit.md`.
-- `experimental_threadList`, `experimental_threadRowMetadata`,
+- `experimental_threadList` is covered in frontend-thread-list.md.
+- `experimental_threadRowMetadata`,
   `experimental_threadInfoRow`, `experimental_threadInfoSection`,
   `experimental_threadContextCardRow`, `experimental_threadContextCardSection`,
   `experimental_threadAction` (menu entries and header buttons), and

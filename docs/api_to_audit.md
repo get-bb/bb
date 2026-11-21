@@ -3166,7 +3166,7 @@ An exclusive slot that replaces the sidebar's scrolling thread list. bb's own
 list is the bundled `thread-list` plugin. Automatic selection prefers another
 registered list, and the user can pin one with `sidebar.threadListProvider`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3205,7 +3205,7 @@ for windowing (`SidebarWindowedItems`), "is the list shown"
 autoscroll walkers (thread-tree, switchboard, chat-sidebar, recent,
 bb-sidebar, cursor-suite project-sort).
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3517,7 +3517,7 @@ doc covers three September 2026 additions:
 - `openNewThread({ hostId })`, unprefixed by request, preselects a machine for
   a new environment. `environmentId` takes priority.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3598,7 +3598,7 @@ from `PluginSidebarThread`:
   order. The hook returns null when the modifier is up and for rows without
   the attribute.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 Core callers: the bundled Thread list plugin (`plugins/thread-list`) renders
 bb's sidebar through all five. `ThreadRow` reads the draft, row status and
@@ -4015,7 +4015,7 @@ thread list's multi-selection is the only caller of
 `experimental_bulkThreads`, and its Move to section and push-notifications'
 Notifications carry bulk items.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-registration.md`, `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4058,7 +4058,7 @@ deprecated sidebar-actions shim also calls. Its callers are the bundled
 thread-list plugin's environment group menu (`ProjectRow.tsx`) and the
 Conductor plugin's workspace sidebar (`WorkspaceSidebar.tsx`).
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4920,7 +4920,7 @@ the rule for when `rowStatus` replaces the indicator come from
 `packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
 `experimental_resolveThreadStatus`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
