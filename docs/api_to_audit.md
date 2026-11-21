@@ -2044,6 +2044,55 @@ Docs: `frontend-hooks-and-ui.md`.
 4. Decide whether a nav panel should also declare a default terminal scope so
    the native "+ Terminal" button follows the page's worktree.
 
+## Thread, message and settings locations (`BbNavigate.toThread`'s `experimental_messageSeq`, `BbNavigate.experimental_toSettings`, `BbNavigate.experimental_threadHref`, `BbNavigate.experimental_settingsHref`, and `ExperimentalMessageMetadataContext.experimental_messageSeq`)
+
+`toThread(threadId, { experimental_messageSeq })` opens the thread's message
+link, `…/threads/<id>#msg=<seq>`, through the same placement as `split`, so
+bb loads older history, scrolls to and highlights the message, or toasts
+"Message not found"; a repeated call reveals it again.
+`experimental_toSettings()` opens the calling plugin's settings page, and
+`experimental_toSettings({ section })` a bb section
+(`ExperimentalSettingsSection`). Settings replaces the whole window, panes
+included. `experimental_threadHref(threadId, { experimental_messageSeq? })`
+and `experimental_settingsHref(target?)` take the same arguments as the call
+they mirror and return the app-relative location it opens. The thread href
+resolves the project from bb's loaded threads, as `toThread` does; otherwise
+it is `/threads/<id>`, which bb redirects to the project route and keeps
+`#msg=`. bb's plugin slot root
+routes plain clicks on those hrefs in place (Cmd/Ctrl-click opens a split,
+middle-click a new tab). A seq that is not a non-negative integer, or an
+unknown section, throws `RangeError`. Message metadata components receive
+the same seq as `message.experimental_messageSeq`. Requested by the API
+audit: 6 community plugins rebuilt the reveal from the DOM, 13 forged
+history state to reach settings, and about 50 built `/threads/` or
+`/settings/` paths by hand.
+
+**Core callers.** `getThreadLocationPath` (`@bb/client-core`) builds every
+thread and message location: `toThread`, `experimental_threadHref`, Copy link
+(`getThreadUrl`), Copy message link, and thread mention links. `toThread` and
+the search palette open threads through one `openThread`
+(`split-layout/openThread.ts`); the palette keeps its `searchMessageSeq` state
+because its hits can be non-message events. `getSettingsTargetPath`
+(`settings-sections.ts`) builds every targeted settings location:
+`experimental_toSettings`, `experimental_settingsHref`, the palette's section
+and plugin rows, and the New thread screen's machine-access and
+needs-configuration banners. The sidebar footer's `openSettings` /
+`openPluginDetails` call `navigate.experimental_toSettings()`. The generic
+Settings button, nav rail button and "Open settings" command are not
+targets: they reopen the last settings page visited.
+
+Docs: `frontend-hooks-and-ui.md`.
+
+**Audit before stabilizing.**
+
+1. Decide whether plugins need other plugins' settings pages or project and
+   machine settings pages; each had one community caller.
+2. Decide whether the thread table of contents should move to the seq path;
+   on a 21k-event thread both reach a row three pages back in about 115 ms
+   with no jump, but the TOC does not add history entries.
+3. Confirm copied absolute URLs from desktop, which point at the local
+   server origin like core's Copy link does.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `ExperimentalHostRpcContext.experimental_paths`, `ExperimentalHostRpcContext.experimental_emitSignal`, `ExperimentalHostRpcContext.experimental_watch`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** At that date, signals and watches had no

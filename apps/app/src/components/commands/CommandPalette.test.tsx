@@ -1545,7 +1545,7 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(routeNavigateMock).toHaveBeenCalledWith(
         "/projects/project-1/threads/fix-5",
-        { state: undefined },
+        undefined,
       ),
     );
   });

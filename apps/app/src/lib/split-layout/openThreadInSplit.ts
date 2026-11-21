@@ -1,4 +1,4 @@
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { decideThreadDrop } from "@/lib/split-drag";
 import { splitLayoutAtom } from "./atoms";
 import {
@@ -17,7 +17,7 @@ interface SplitLayoutStore {
   set(atom: typeof splitLayoutAtom, value: SplitLayout): void;
 }
 
-interface OpenThreadInSplitArgs {
+export interface OpenThreadInSplitArgs {
   store: SplitLayoutStore;
   navigate: (
     route: string,
@@ -26,6 +26,7 @@ interface OpenThreadInSplitArgs {
   projectId: string;
   threadId: string;
   isCompact: boolean;
+  messageSeq?: number;
   state?: Record<string, unknown>;
 }
 
@@ -35,9 +36,14 @@ export function openThreadInSplit({
   projectId,
   threadId,
   isCompact,
+  messageSeq,
   state,
 }: OpenThreadInSplitArgs): void {
-  const route = getThreadRoutePath({ projectId, threadId });
+  const route = getThreadLocationPath({
+    projectId,
+    threadId,
+    ...(messageSeq === undefined ? {} : { messageSeq }),
+  });
   const layout = store.get(splitLayoutAtom);
   if (isCompact || layout === null) {
     navigate(route, state === undefined ? undefined : { state });

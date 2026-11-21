@@ -44,6 +44,8 @@ import {
   definePluginApp,
 } from "@/lib/plugin-app-definition";
 import { LocationProbe } from "@/test/location-probe";
+import { PluginActionContextProvider } from "@/lib/plugin-action-context-provider";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -61,17 +63,22 @@ function registrationSet(
 }
 
 function renderWithProviders(ui: ReactNode, store = createStore()) {
+  const { wrapper: QueryWrapper } = createQueryClientTestHarness();
   return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <TooltipProvider delayDuration={0}>
-          <SidebarProvider>
-            {ui}
-            <LocationProbe />
-          </SidebarProvider>
-        </TooltipProvider>
-      </MemoryRouter>
-    </Provider>,
+    <QueryWrapper>
+      <Provider store={store}>
+        <MemoryRouter>
+          <PluginActionContextProvider>
+            <TooltipProvider delayDuration={0}>
+              <SidebarProvider>
+                {ui}
+                <LocationProbe />
+              </SidebarProvider>
+            </TooltipProvider>
+          </PluginActionContextProvider>
+        </MemoryRouter>
+      </Provider>
+    </QueryWrapper>,
   );
 }
 
