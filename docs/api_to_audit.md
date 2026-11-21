@@ -1579,9 +1579,13 @@ Docs: `backend-foundation.md`, `quickstart.md`.
 
 **Audit before stabilizing.**
 
-1. **Snapshot size.** Update snapshots copy the whole folder. Decide whether
-   plugins with large files (downloaded engines, mirrors) need a way to keep
-   part of it out of snapshots.
+1. **Snapshot size.** Update snapshots clone the whole folder (`cp -c` on
+   macOS, `COPYFILE_FICLONE` elsewhere), which costs no extra space on APFS,
+   btrfs and XFS but is a full copy on other filesystems. A successful update
+   deletes its snapshot. A rolled-back one is kept until it is 7 days old or
+   the server restarts, one per rolled-back update and with no count cap.
+   Decide whether that needs a per-plugin cap, and whether plugins with large
+   files need a way to keep part of the folder out of snapshots.
 2. **Lifetime split.** Decide whether `data.db` should follow `files/` and
    `secrets/` and be deleted on uninstall, so a plugin's state has one
    lifetime.

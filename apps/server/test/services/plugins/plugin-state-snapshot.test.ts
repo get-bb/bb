@@ -131,6 +131,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify("original"),
     );
     expect(await readFile(secretPath, "utf8")).toBe("opaque-secret");
+    expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
     expect(await readFile(ownFilePath, "utf8")).toBe("original-file");
     await expect(stat(addedFilePath)).rejects.toThrow();
   });

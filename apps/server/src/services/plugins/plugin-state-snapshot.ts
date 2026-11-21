@@ -1,5 +1,7 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { constants } from "node:fs";
 import {
   copyFile,
   cp,
@@ -10,6 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import { z } from "zod";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
@@ -121,6 +124,19 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
+const execFileAsync = promisify(execFile);
+
+async function cloneTree(source: string, destination: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await execFileAsync("/bin/cp", ["-cRp", source, destination]);
+    return;
+  }
+  await cp(source, destination, {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
+  });
+}
+
 function snapshotFilesPath(snapshotPath: string): string {
   return join(snapshotPath, "files");
 }
@@ -194,12 +210,10 @@ export async function createPluginStateSnapshotOnDisk(args: {
       await copyFile(sourceDatabasePath, databasePath);
     }
     if (hasSecrets) {
-      await cp(sourceSecretsPath, secretsPath, { recursive: true });
+      await cloneTree(sourceSecretsPath, secretsPath);
     }
     if (hasFiles) {
-      await cp(sourceFilesPath, snapshotFilesPath(snapshotPath), {
-        recursive: true,
-      });
+      await cloneTree(sourceFilesPath, snapshotFilesPath(snapshotPath));
     }
     await writeFile(
       statePath,
@@ -264,7 +278,7 @@ export async function restorePluginStateSnapshot(args: {
   );
   await rm(targetSecretsPath, { recursive: true, force: true });
   if (snapshot.secretsPath !== null) {
-    await cp(snapshot.secretsPath, targetSecretsPath, { recursive: true });
+    await cloneTree(snapshot.secretsPath, targetSecretsPath);
   }
   const targetFilesPath = pluginDirectory(
     args.dataDir,
@@ -274,7 +288,7 @@ export async function restorePluginStateSnapshot(args: {
   await rm(targetFilesPath, { recursive: true, force: true });
   const filesPath = snapshotFilesPath(snapshot.snapshotPath);
   if (await exists(filesPath)) {
-    await cp(filesPath, targetFilesPath, { recursive: true });
+    await cloneTree(filesPath, targetFilesPath);
   }
   await restorePluginHostStateSnapshot({
     db: args.db,
