@@ -4408,17 +4408,20 @@ fails. A version-2 provider of that plugin hands one to a new thread with
 `adopt(environmentId, resource)` (`adoptHeldEnvironment` in
 `packages/db/src/data/environments.ts`), which in one transaction clears the
 hold, moves the thread's reservation onto the held environment, records
-`resource`, and drops the reservation; setup does not run again, and the
-create must return the held environment's path. A refused adopt changes
-nothing. The thread starts only once create returns `created`. Any other
+`resource`, and drops the reservation; setup does not run again unless the
+provider then calls `setup(path)` with the adopted path, which runs setup
+again after create returns and before the thread starts. The create must
+return the held environment's path. A refused adopt changes nothing. The thread starts only once create returns `created`. Any other
 outcome after an adopt (a failed or aborted create, or a path other than the
 adopted one) fails the environment and its thread, and the environment is
 then retired and removed with the recorded resource. After a restart between
 adopt and create returning, core finishes the create from what adopt
-recorded and starts the thread. Its only caller is the Worktree plugin's warm
-pool, which renames a member's placeholder branch under the git ref lock,
-then adopts it with a resource naming the new branch, and renames the branch
-back when core refuses. Disabling or uninstalling a plugin releases its holds
+recorded, runs setup again (the provider may have changed the checkout
+before it could ask), and starts the thread. Its only caller is the Worktree
+plugin's warm pool, which renames a member's placeholder branch under the git
+ref lock, then adopts it with a resource naming the new branch, and renames
+the branch back when core refuses. When the member is behind the remote's
+default base, the pool fast-forwards it after adopt and calls `setup(path)`. Disabling or uninstalling a plugin releases its holds
 (`releasePluginEnvironmentHolds`, on the plugin service's
 `onPluginUnregistered`, the same signal that clears its queue waits), so the
 environments retire like any other. Steps a provider reports after `adopt`
@@ -4427,9 +4430,8 @@ land on the adopted environment and the thread's provisioning transcript.
 Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
 
 Before stabilizing, decide whether a hold needs release or re-hold (reuse
-after the last thread, or a UI "New workspace" flow), what happens to
-environments held by an uninstalled plugin (today they stay until deleted),
-whether `pluginId` outside a plugin should be authenticated like RPC caller
+after the last thread, or a UI "New workspace" flow), whether `pluginId`
+outside a plugin should be authenticated like RPC caller
 identity, and whether `hold` should be optional for user creates.
 
 ## Machine paths and environment cleanup

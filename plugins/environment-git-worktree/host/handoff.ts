@@ -35,7 +35,25 @@ async function readCommit(
 export interface DefaultBaseState {
   ref: string | null;
   commit: string | null;
-  members: { path: string; head: string | null; branch: string | null }[];
+  members: {
+    path: string;
+    head: string | null;
+    branch: string | null;
+    onBase: boolean;
+  }[];
+}
+
+async function isAncestor(
+  cwd: string,
+  ancestor: string,
+  descendant: string,
+  signal: AbortSignal | undefined,
+): Promise<boolean> {
+  const result = await runGit(
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    { cwd, allowFailure: true, ...signalOption(signal) },
+  );
+  return result.exitCode === 0;
 }
 
 export async function refreshDefaultBase(args: {
@@ -55,18 +73,30 @@ export async function refreshDefaultBase(args: {
       signal: args.signal,
     });
   }
+  const commit =
+    base === null
+      ? null
+      : await readCommit(args.sourcePath, base.ref, args.signal);
   return {
     ref: base?.ref ?? null,
-    commit:
-      base === null
-        ? null
-        : await readCommit(args.sourcePath, base.ref, args.signal),
+    commit,
     members: await Promise.all(
-      args.memberPaths.map(async (path) => ({
-        path,
-        head: await readCommit(path, "HEAD", args.signal).catch(() => null),
-        branch: (await getCurrentBranch(path).catch(() => undefined)) ?? null,
-      })),
+      args.memberPaths.map(async (path) => {
+        const head = await readCommit(path, "HEAD", args.signal).catch(
+          () => null,
+        );
+        return {
+          path,
+          head,
+          branch: (await getCurrentBranch(path).catch(() => undefined)) ?? null,
+          onBase:
+            head !== null &&
+            commit !== null &&
+            (await isAncestor(path, head, commit, args.signal).catch(
+              () => false,
+            )),
+        };
+      }),
     ),
   };
 }
@@ -182,7 +212,7 @@ export async function restorePoolMember(args: {
 }
 
 export type HandOffResult =
-  | { status: "handed-off" }
+  | { status: "handed-off"; head: string }
   | { status: "refused"; reason: string }
   | { status: "busy" };
 
@@ -196,6 +226,24 @@ export async function handOffWorktree(args: {
   completionPath: string;
   signal: AbortSignal | undefined;
 }): Promise<HandOffResult> {
+  if ((await readCommit(args.path, args.baseCommit, args.signal)) === null) {
+    const base = await resolveWorktreeBaseBranch(args.sourcePath, {
+      kind: "default",
+    });
+    if (base !== null)
+      await fetchRemoteBaseBranch({
+        sourcePath: args.sourcePath,
+        baseBranch: base.ref,
+        fetchFailureFallback: base.fetchFailureFallback,
+        onProgress: undefined,
+        signal: args.signal,
+      });
+    if ((await readCommit(args.path, args.baseCommit, args.signal)) === null)
+      return {
+        status: "refused",
+        reason: `${args.baseBranch} is not at the commit the remote reported`,
+      };
+  }
   let locked = false;
   try {
     return await withGitRefMutationLock(
@@ -216,10 +264,13 @@ export async function handOffWorktree(args: {
         const head = await readCommit(args.path, "HEAD", args.signal);
         if (head === null)
           return { status: "refused", reason: "the worktree has no commit" };
-        if (head !== args.baseCommit)
+        if (
+          head !== args.baseCommit &&
+          !(await isAncestor(args.path, head, args.baseCommit, args.signal))
+        )
           return {
             status: "refused",
-            reason: `it is behind ${args.baseBranch}`,
+            reason: `it is not on ${args.baseBranch}`,
           };
         await runGit(["branch", "-m", args.fromBranch, args.toBranch], {
           cwd: args.path,
@@ -233,7 +284,7 @@ export async function handOffWorktree(args: {
           });
           throw error;
         }
-        return { status: "handed-off" };
+        return { status: "handed-off", head };
       },
       { ...signalOption(args.signal), timeoutMs: HANDOFF_LOCK_TIMEOUT_MS },
     );
@@ -241,4 +292,16 @@ export async function handOffWorktree(args: {
     if (!locked && !args.signal?.aborted) return { status: "busy" };
     throw error;
   }
+}
+
+export async function fastForwardWorktree(args: {
+  path: string;
+  commit: string;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  await runGit(["merge", "--ff-only", "--quiet", args.commit], {
+    cwd: args.path,
+    ...signalOption(args.signal),
+    env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+  });
 }

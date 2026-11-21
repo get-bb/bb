@@ -11,6 +11,7 @@ import {
   resolveWorktreeTargetPath,
 } from "./host/paths.js";
 import {
+  fastForwardWorktree,
   handOffWorktree,
   readRemoteBase,
   refreshDefaultBase,
@@ -105,6 +106,14 @@ export function createWorktreeHostEntry() {
           sourcePath: input.sourcePath,
           signal: context.signal,
         });
+      },
+      async fastForward(input, context) {
+        await fastForwardWorktree({
+          path: input.path,
+          commit: input.commit,
+          signal: context.signal,
+        });
+        return null;
       },
       async handOff(input, context) {
         return handOffWorktree({

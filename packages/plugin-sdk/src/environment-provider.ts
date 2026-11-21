@@ -103,8 +103,10 @@ export interface PluginEnvironmentProviderSteps {
    * create produces, keeps its setup, and takes `resource`, which `remove()`
    * receives if create never returns. Rejects when the environment is not a
    * ready one this plugin holds on the same project and machine; then nothing
-   * changed. A `created` result must name its path; any other outcome leaves
-   * the environment in error, and its thread fails.
+   * changed. Setup does not run again unless `setup(path)` is called afterwards
+   * with the adopted path; then it runs after create returns, before the
+   * thread starts. A `created` result must name its path; any other outcome
+   * leaves the environment in error, and its thread fails.
    */
   adopt(environmentId: string, resource: JsonValue): Promise<void>;
 }

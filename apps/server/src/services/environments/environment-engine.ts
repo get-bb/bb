@@ -614,6 +614,17 @@ async function runCreate(
       return;
     }
     signal.throwIfAborted();
+    if (handedOff) {
+      if (
+        provisioning.path === null ||
+        !areHostPathsEqual(provisioning.path, path)
+      )
+        throw new Error(
+          `Setup can't run at ${path}: the adopted environment is at ${provisioning.path}`,
+        );
+      requested.path = path;
+      return;
+    }
     const declared = target.row;
     if (declared?.path != null && areHostPathsEqual(declared.path, path))
       throw new Error(
@@ -827,6 +838,11 @@ async function runCreate(
           if (row.ownerThreadId === null) row.claimPath = null;
         },
       );
+      if (handedOff && setupPath !== null)
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId: provisioning.id,
+          event: { type: "provision.requested" },
+        });
       if (setupPath !== null)
         await finishSetupAfterCreate(deps, provisioning.id);
     } else {
@@ -2509,6 +2525,10 @@ export async function advanceEnvironmentProvisioning(
   if (environment.status === "ready" && environment.createPending) {
     if (createMap.has(environment.id)) return;
     writeEnvironment(deps, environment.id, { createPending: false });
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "provision.requested" },
+    });
     environment = getEnvironment(deps.db, environment.id)!;
   }
   if (

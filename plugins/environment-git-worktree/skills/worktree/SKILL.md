@@ -17,16 +17,17 @@ bb worktree pool set <project-id> <size> [--json]
 `size` is 0 to 4 per checkout; `0` turns the pool off and deletes its idle
 worktrees. Resolve the project id with `bb project list`. Only turn a pool on
 when the user asks for it: each warm worktree runs the project's
-`.bb-env-setup.sh` in the background, and a warm worktree is replaced (and set
-up again) whenever the default base moves.
+`.bb-env-setup.sh` in the background, and it is replaced every eight hours or
+when the default branch is rewritten.
 
-Only new worktree threads on the default base take a warm worktree, and only
-one that is at the remote's current default base (bb checks with
-`git ls-remote` while the title is generated, and falls back to the last
-fetched base when the remote can't be reached); setup does not run again,
-so the thread starts on exactly what setup ran against. Named bases, existing
-worktrees and restores build a fresh worktree, and so does a thread that finds
-no current warm worktree.
+Only new worktree threads on the default base take a warm worktree. bb reads
+the remote's current default base with `git ls-remote` while the title is
+generated (falling back to the last fetched base when the remote can't be
+reached). A warm worktree at that commit starts the thread without setup; one
+behind it is fast-forwarded to that commit and `.bb-env-setup.sh` runs again
+before the thread starts, so the thread always starts on the current base with
+setup run against it. Named bases, existing worktrees and restores build a
+fresh worktree, and so does a thread that finds no usable warm worktree.
 
 Warm worktrees are ordinary environments held by the Worktree plugin:
 `bb environment list --held-by plugin:environment-git-worktree` lists them, and

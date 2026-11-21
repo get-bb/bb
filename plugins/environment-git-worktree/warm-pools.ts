@@ -84,6 +84,7 @@ export interface WarmHandOff {
   path: string;
   baseBranch: string;
   baseCommit: string;
+  memberCommit: string;
   offline: boolean;
   branchName: string;
 }
@@ -372,8 +373,8 @@ export async function createWarmPools(args: {
         discards.push([member, "its checkout left the placeholder branch"]);
       else if (now - member.createdAt > MEMBER_TTL_MS)
         discards.push([member, "it outlived its time to live"]);
-      else if (observed.get(member.path ?? "")?.head !== refreshed.commit)
-        discards.push([member, `it is behind ${refreshed.ref ?? "the base"}`]);
+      else if (observed.get(member.path ?? "")?.onBase !== true)
+        discards.push([member, `it is not on ${refreshed.ref ?? "the base"}`]);
       else current.push(member);
     }
     const live = [...current, ...own.filter(isPreparing)].sort(
@@ -623,6 +624,7 @@ export async function createWarmPools(args: {
         path: member.path,
         baseBranch: base.ref,
         baseCommit: base.commit,
+        memberCommit: result.head,
         offline: base.offline,
         branchName: toBranch,
       };

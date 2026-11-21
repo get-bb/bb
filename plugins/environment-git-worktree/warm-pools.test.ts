@@ -57,12 +57,12 @@ async function setup(args: {
   handOff?: (
     call: ExperimentalFakeHostRpcCall,
   ) =>
-    | { status: "handed-off" }
+    | { status: "handed-off"; head: string }
     | { status: "refused"; reason: string }
     | { status: "busy" };
   remoteBase?: { ref: string; commit: string; offline: boolean } | null;
   baseCommit?: string;
-  heads?: Record<string, string>;
+  offBase?: string[];
   branches?: Record<string, string>;
   restore?: (call: ExperimentalFakeHostRpcCall) => unknown;
   heldBy?: Record<string, string>;
@@ -70,6 +70,7 @@ async function setup(args: {
   refuseAdopt?: string[];
 }) {
   const hostCalls: ExperimentalFakeHostRpcCall[] = [];
+  const order: string[] = [];
   let remoteReads = 0;
   const created: unknown[] = [];
   const deleted: string[] = [];
@@ -85,8 +86,10 @@ async function setup(args: {
           : args.remoteBase;
       }
       hostCalls.push(call);
+      order.push(`host:${call.method}`);
       if (call.method === "handOff")
-        return args.handOff?.(call) ?? { status: "handed-off" };
+        return args.handOff?.(call) ?? { status: "handed-off", head: "base" };
+      if (call.method === "fastForward") return null;
       if (call.method === "refreshPoolBase") {
         const input = call.input as { memberPaths: string[] };
         return {
@@ -94,7 +97,8 @@ async function setup(args: {
           commit: args.baseCommit ?? "base",
           members: input.memberPaths.map((path) => ({
             path,
-            head: args.heads?.[path] ?? "base",
+            head: args.offBase?.includes(path) ? "diverged" : "base",
+            onBase: !(args.offBase?.includes(path) ?? false),
             branch:
               args.branches?.[path] ??
               members.find((member) => member.path === path)?.branchName ??
@@ -213,9 +217,11 @@ async function setup(args: {
     branchName: typeof branch === "string" ? async () => branch : branch,
     setup: async (path) => {
       setups.push(path);
+      order.push(`setup:${path}`);
     },
     adopt: async (id, resource) => {
       adopted.push(id);
+      order.push(`adopt:${id}`);
       adoptedResources.push(resource);
       if (args.refuseAdopt?.includes(id))
         throw new Error(`Environment ${id} is not ready to hand over`);
@@ -235,6 +241,7 @@ async function setup(args: {
     provider,
     context,
     hostCalls,
+    order,
     remoteReads: () => remoteReads,
     steps,
     created,
@@ -289,6 +296,37 @@ describe("warm worktree handoff", () => {
     await fixture.harness.lifecycle.dispose();
   });
 
+  it("moves a warm worktree behind the remote base forward after adopting it, then runs setup again", async () => {
+    const fixture = await setup({
+      members: [READY],
+      remoteBase: {
+        ref: "origin/main",
+        commit: "fedcba9876543210",
+        offline: false,
+      },
+      handOff: () => ({ status: "handed-off", head: "0123456789abcdef" }),
+    });
+    const result = await fixture.provider.create(
+      fixture.context("env_thread", "bb/behind-thr_b"),
+    );
+    expect(result).toMatchObject({ status: "created", path: READY.path });
+    expect(fixture.order).toEqual([
+      "host:handOff",
+      `adopt:${READY.id}`,
+      "host:fastForward",
+      `setup:${READY.path}`,
+    ]);
+    expect(
+      fixture.hostCalls.find((call) => call.method === "fastForward")?.input,
+    ).toEqual({ path: READY.path, commit: "fedcba9876543210" });
+    expect(fixture.steps).toEqual([
+      "Moved the warm worktree from 0123456 to fedcba9; setup runs again",
+      "Using a warm worktree at origin/main (fedcba9)",
+    ]);
+    expect(fixture.deleted).toEqual([]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
   it("reads the remote base while the branch name is still pending", async () => {
     const fixture = await setup({ members: [READY] });
     let nameBranch: (name: string) => void = () => {};
@@ -332,6 +370,7 @@ describe("warm worktree handoff", () => {
         commit: "0123456789abcdef",
         offline: true,
       },
+      handOff: () => ({ status: "handed-off", head: "0123456789abcdef" }),
     });
     expect(
       await fixture.provider.create(
@@ -406,7 +445,7 @@ describe("warm worktree handoff", () => {
       members: [READY],
       handOff: () => ({
         status: "refused",
-        reason: "it is behind origin/main",
+        reason: "it is not on origin/main",
       }),
     });
     const result = await fixture.provider.create(
@@ -587,7 +626,7 @@ describe("warm worktree reconcile", () => {
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("replaces members behind the fetched base and refills one at a time, held by the plugin", async () => {
+  it("replaces members no longer on the fetched base and refills one at a time, held by the plugin", async () => {
     const second: Member = {
       ...READY,
       id: "env_stale",
@@ -598,7 +637,7 @@ describe("warm worktree reconcile", () => {
     const fixture = await setup({
       members: [READY, second],
       size: 2,
-      heads: { [second.path!]: "old" },
+      offBase: [second.path!],
     });
     await fixture.harness.callRpc("setWarmPoolSize", {
       projectId: PROJECT_ID,
