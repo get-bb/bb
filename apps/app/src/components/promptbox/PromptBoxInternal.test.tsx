@@ -64,6 +64,10 @@ import {
 import type { ComposerSubmitOptions } from "@get-bb/plugin-sdk/app";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
+  PaneContext,
+  type PaneContextValue,
+} from "@/views/thread-detail/PaneContext";
+import {
   getComposerInputLock,
   useComposer,
   useComposerView,
@@ -1399,6 +1403,57 @@ describe("ComposerBox controlled value sync", () => {
 
       await waitFor(() =>
         expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("leaves the caret alone when it mounts in an unfocused split pane", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    const pane = (isFocused: boolean): PaneContextValue => ({
+      paneId: "pane-2",
+      isFocused,
+      isSplitPane: true,
+      secondaryPanelHost: null,
+      reservesWindowPanelToggle: false,
+      onRequestClose: null,
+      isMaximized: false,
+      onToggleMaximize: null,
+      isBoundedPane: true,
+      isTopRow: true,
+      ownsWindowTopLeft: false,
+      navigateInPane: () => undefined,
+    });
+    const props = createPromptBoxProps();
+    try {
+      const view = render(
+        <PaneContext.Provider value={pane(false)}>
+          <ControlledComposerBox {...props} />
+        </PaneContext.Provider>,
+      );
+      await waitFor(() =>
+        expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+
+      view.rerender(
+        <PaneContext.Provider value={pane(true)}>
+          <ControlledComposerBox {...props} />
+        </PaneContext.Provider>,
+      );
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
       );
       expect(document.activeElement).not.toBe(getPromptEditorElement());
     } finally {

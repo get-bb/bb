@@ -812,6 +812,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
               setKeyboardFocusRequest(null);
               focusPane(paneId);
             }}
+            onFocusWithinPane={focusPane}
             onClosePane={closePane}
             onToggleMaximizePane={toggleMaximizePane}
             onMovePaneToSide={movePaneToSide}
@@ -912,6 +913,7 @@ interface SplitTreeProps {
   maximizedPaneId: string | null;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry;
   onFocusPane: (paneId: string) => void;
+  onFocusWithinPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onToggleMaximizePane: (paneId: string) => void;
   onMovePaneToSide: (paneId: string, side: SplitSide) => void;
@@ -944,6 +946,11 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
+        onFocusCapture={
+          isHiddenByMaximize
+            ? undefined
+            : () => props.onFocusWithinPane(node.paneId)
+        }
         aria-hidden={isHiddenByMaximize || undefined}
         style={isHiddenByMaximize ? { contentVisibility: "hidden" } : undefined}
         className={cn(
