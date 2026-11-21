@@ -34,8 +34,12 @@ Back returns to them.
 ## Hrefs
 
 ```tsx
-<a href={navigate.experimental_threadHref(threadId, { experimental_messageSeq: seq })}>…</a>
-<a href={navigate.experimental_settingsHref()}>Settings</a>
+<>
+  <a href={navigate.experimental_threadHref(threadId, { experimental_messageSeq: seq })}>
+    Open message
+  </a>
+  <a href={navigate.experimental_settingsHref()}>Settings</a>
+</>
 ```
 
 Each href builder takes the same arguments as the call it mirrors and
