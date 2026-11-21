@@ -281,8 +281,11 @@ describe("process utils", () => {
     ).toBeNull();
   });
 
-  it("scrubs inherited bb runtime env vars and node mode", () => {
+  it("scrubs inherited bb runtime env, node mode, and shell argv overrides", () => {
     const env: NodeJS.ProcessEnv = {
+      ARGV0: "/opt/bb-fixture.AppImage",
+      APPIMAGE: "/opt/bb-fixture.AppImage",
+      APPDIR: "/tmp/bb-fixture-mount",
       BB_DATA_DIR: "/tmp/bb-data",
       BB_HOST_DAEMON_PORT: "38887",
       NODE_ENV: "development",
@@ -294,6 +297,8 @@ describe("process utils", () => {
 
     const sanitizedEnv = sanitizeInheritedChildProcessEnv({ env });
     expect(sanitizedEnv).toEqual({
+      APPIMAGE: "/opt/bb-fixture.AppImage",
+      APPDIR: "/tmp/bb-fixture-mount",
       NODE_OPTIONS: "--enable-source-maps",
       OPENAI_API_KEY: "external-secret",
       PATH: "/bin",
