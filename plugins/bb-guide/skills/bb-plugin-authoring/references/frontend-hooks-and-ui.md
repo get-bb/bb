@@ -332,14 +332,14 @@ compile in plugin builds.
 ## Callback context
 
 Callbacks cannot call hooks, so every callback's context extends `ExperimentalPluginActionContext`
-`{ sdk, navigate, panel, composer }`: your `useSdk()`, your `useBbNavigate()`, the
-[panel controller](#panel-controller) of the invoking surface, and the composer it acts on
-(see [Active composer](frontend-renderer-slots.md#active-composer)). That covers `app.commands`,
-`messageAction`, `experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
-sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows. `navigate` and
-`panel` act on the focused surface for commands, thread actions and footer actions; on the
-message's thread view for message actions; on the launching surface for panel actions; and
-on the composer's surface for composer callbacks. Experimental: see `docs/api_to_audit.md`.
+`{ sdk, navigate, panel, composer, threadRequests }`: your `useSdk()`, your `useBbNavigate()`, the
+[panel controller](#panel-controller) of the invoking surface, the composer it acts on (see
+[Active composer](frontend-renderer-slots.md#active-composer)), and bb's Archive and Delete flows
+(`threadRequests.requestArchive(ids)` / `requestDelete(ids)`: confirmation, child counts, Undo), also
+`experimental_useThreadRequests()` in components. That covers `app.commands`, `messageAction`, `experimental_threadAction`,
+action tabs, `experimental_newThreadPanelAction`, sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
+`navigate` and `panel` act on the focused surface for commands, thread and footer actions; the message's thread view for
+message actions; the launching surface for panel actions; the composer's surface for composer callbacks. Experimental: see `docs/api_to_audit.md`.
 
 ## Panel controller
 

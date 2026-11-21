@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, waitFor } from "@testing-library/react";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -72,19 +73,13 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
       moveThreadAction.item({
         thread,
         data,
-        sdk,
-        navigate,
-        panel,
-        composer: null,
+        ...experimental_makeActionContext({ sdk, navigate, panel }),
       }),
     bulkItem: (threads) =>
       moveThreadAction.experimental_bulkItem?.({
         threads,
         data,
-        sdk,
-        navigate,
-        panel,
-        composer: null,
+        ...experimental_makeActionContext({ sdk, navigate, panel }),
       }) ?? null,
   };
   return null;

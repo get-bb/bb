@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
-import { makePanelController } from "../fixtures.js";
+import { makeActionContext, makePanelController } from "../fixtures.js";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
-  BbNavigate,
   PluginAppSlots,
-  PluginBrowserBbSdk,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -1514,18 +1512,13 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", async () => {
-    const unused = <T extends object>(name: string): T =>
-      new Proxy({} as T, {
-        get() {
-          throw new Error(`${name} is not used by this test`);
-        },
-      });
     const panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
     });
     await app.messageActions[0]!.run({
+      ...makeActionContext({ panel }),
       threadId: "thr_main",
       message: {
         id: "msg_1",
@@ -1536,16 +1529,31 @@ describe("loadPluginApp", () => {
         experimental_messageSeq: 12,
       },
       selectedText: "answer",
-      panel,
       composer: null,
-      sdk: unused<PluginBrowserBbSdk>("sdk"),
-      navigate: unused<BbNavigate>("navigate"),
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({
       threadId: "thr_main",
       selectedText: "answer",
     });
+  });
+
+  it("records the default members of a hand-built action context and names unstubbed sdk calls", async () => {
+    const context = makeActionContext();
+
+    await context.threadRequests.requestArchive(["thr_a", "thr_b"]);
+    await context.threadRequests.requestDelete(["thr_c"]);
+    expect(context.navigate.openUrl("https://example.com")).toBe(false);
+    await expect(
+      context.sdk.threads.get({ threadId: "thr_a" }),
+    ).rejects.toThrow("sdk.threads.get is not stubbed");
+
+    expect(context.calls).toEqual([
+      { member: "threadRequests.requestArchive", args: [["thr_a", "thr_b"]] },
+      { member: "threadRequests.requestDelete", args: [["thr_c"]] },
+      { member: "navigate.openUrl", args: ["https://example.com"] },
+      { member: "sdk.threads.get", args: [{ threadId: "thr_a" }] },
+    ]);
   });
 
   it("renders the ThreadChat stub with recorded props inside a slot", () => {

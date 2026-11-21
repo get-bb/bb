@@ -59,6 +59,7 @@ import {
   getSettingsProjectRoutePath,
   getThreadRoutePath,
 } from "./route-paths";
+import { useThreadRequests } from "@/lib/thread-requests";
 export { lookupCachedThread, resolveThread } from "./cached-thread.js";
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
@@ -98,8 +99,7 @@ function toPluginSidebarThreadCached(
   const hostName =
     entry.environmentHostId === null
       ? null
-      : (hostNamesById.get(entry.environmentHostId) ??
-        entry.environmentHostId);
+      : (hostNamesById.get(entry.environmentHostId) ?? entry.environmentHostId);
   const displayTitle = resolveThreadTitleDisplayText(
     getThreadDisplayTitle(entry),
     titleResources,
@@ -222,6 +222,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const isCompact = useIsCompactViewport();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
+  const threadRequests = useThreadRequests();
   const entries = useSidebarThreadEntriesStore();
   const { mutateAsync: pinThreadAsync } = usePinThread();
   const { mutateAsync: unpinThreadAsync } = useUnpinThread();
@@ -304,13 +305,13 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         await updateThreadAsync({ id: threadId, title });
       },
       archive(threadId) {
-        hostActions.requestArchive(requireEntry(threadId));
+        void threadRequests.requestArchive([threadId]);
       },
       experimental_archiveEnvironmentThreads(environmentId) {
         return hostActions.archiveEnvironmentThreads(environmentId);
       },
       requestDelete(threadId) {
-        hostActions.requestDelete(requireEntry(threadId));
+        void threadRequests.requestDelete([threadId]);
       },
     }),
     [
@@ -322,6 +323,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       requireEntry,
       setRootComposeProjectId,
       store,
+      threadRequests,
       unpinThreadAsync,
       updateThreadAsync,
     ],

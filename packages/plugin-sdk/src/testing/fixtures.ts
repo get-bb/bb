@@ -1,6 +1,9 @@
 import type {
+  BbNavigate,
   BbPluginApi,
   ExperimentalPanelController,
+  ExperimentalPluginActionContext,
+  PluginBrowserBbSdk,
   MessageDispatchHookContext,
   PluginAgentConfigurationContext,
   PluginThreadEventPayloads,
@@ -383,5 +386,79 @@ export function makePanelController(
     selectTab: () => false,
     closeTab: () => false,
     ...overrides,
+  };
+}
+
+/** One call recorded by {@link makeActionContext}'s default members. */
+export interface ExperimentalActionContextCall {
+  /** `"threadRequests.requestArchive"`, `"threadRequests.requestDelete"`, `"navigate.<method>"` or `"sdk.<area>.<method>"`. */
+  member: string;
+  args: unknown[];
+}
+
+/** A complete callback context plus the log of its default members' calls. */
+export interface ExperimentalActionContextFixture extends ExperimentalPluginActionContext {
+  /** Calls to the members `overrides` did not replace, in order. */
+  readonly calls: ExperimentalActionContextCall[];
+}
+
+/**
+ * A complete callback context for tests that call a command, thread action,
+ * message action or composer callback directly, so a test lists only the
+ * members it uses and keeps compiling when bb adds one. Defaults record each
+ * call in `calls`: `threadRequests` methods resolve, `composer` is null, `navigate`
+ * methods return false, `panel` is {@link makePanelController}'s, and `sdk`
+ * methods reject because a test that reads data should stub it. Spread the
+ * result and add a context's own fields, such as a command's `threadId` or a
+ * thread action's `thread`.
+ */
+export function makeActionContext(
+  overrides: Partial<ExperimentalPluginActionContext> = {},
+): ExperimentalActionContextFixture {
+  const calls: ExperimentalActionContextCall[] = [];
+  const record = (member: string, args: unknown[]) => {
+    calls.push({ member, args });
+  };
+  const navigate = new Proxy({} as BbNavigate, {
+    get:
+      (_target, method) =>
+      (...args: unknown[]) => {
+        record(`navigate.${String(method)}`, args);
+        return false;
+      },
+  });
+  const sdk = new Proxy({} as PluginBrowserBbSdk, {
+    get: (_target, area) =>
+      new Proxy(
+        {},
+        {
+          get:
+            (_area, method) =>
+            (...args: unknown[]) => {
+              const member = `sdk.${String(area)}.${String(method)}`;
+              record(member, args);
+              return Promise.reject(
+                new Error(
+                  `${member} is not stubbed; pass sdk in the overrides`,
+                ),
+              );
+            },
+        },
+      ),
+  });
+  return {
+    sdk: overrides.sdk ?? sdk,
+    navigate: overrides.navigate ?? navigate,
+    panel: overrides.panel ?? makePanelController(),
+    composer: overrides.composer ?? null,
+    threadRequests: overrides.threadRequests ?? {
+      async requestArchive(threadIds) {
+        record("threadRequests.requestArchive", [threadIds]);
+      },
+      async requestDelete(threadIds) {
+        record("threadRequests.requestDelete", [threadIds]);
+      },
+    },
+    calls,
   };
 }

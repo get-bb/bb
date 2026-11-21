@@ -1,5 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   experimental_THREAD_ACTION_GROUPS as GROUPS,
   type PluginThreadAction,
@@ -12,10 +11,8 @@ import { useBbContext } from "@/lib/plugin-bb-context";
 import { useSidebarSplitLayout } from "@/lib/plugin-split-layout";
 import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { appToast } from "@/components/ui/app-toast";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
-import { resolveThread } from "@/lib/cached-thread";
 import { getThreadRoutePath } from "@/lib/route-paths";
 
 export function getThreadUrl(thread: PluginThreadActionTarget): string {
@@ -148,59 +145,6 @@ function childThreads(
   threads: readonly PluginThreadActionTarget[],
 ): PluginThreadActionTarget[] {
   return threads.filter((thread) => thread.parentThreadId !== null);
-}
-
-interface LifecycleHandlers {
-  archive: (threadIds: readonly string[]) => Promise<void>;
-  requestDelete: (threadIds: readonly string[]) => Promise<void>;
-}
-
-function useLifecycleHandlers(): LifecycleHandlers {
-  const actions = useThreadActions();
-  const queryClient = useQueryClient();
-  const latest = useRef(actions);
-  useLayoutEffect(() => {
-    latest.current = actions;
-  });
-  return useMemo(
-    () => ({
-      archive: async (threadIds: readonly string[]) => {
-        try {
-          latest.current.requestArchiveThreads(
-            await Promise.all(
-              threadIds.map((threadId) => resolveThread(queryClient, threadId)),
-            ),
-          );
-        } catch (error) {
-          showMutationErrorToast({
-            error,
-            fallbackMessage:
-              threadIds.length === 1
-                ? "Failed to archive thread."
-                : "Failed to archive threads.",
-          });
-        }
-      },
-      requestDelete: async (threadIds: readonly string[]) => {
-        try {
-          latest.current.requestDeleteThreads(
-            await Promise.all(
-              threadIds.map((threadId) => resolveThread(queryClient, threadId)),
-            ),
-          );
-        } catch (error) {
-          showMutationErrorToast({
-            error,
-            fallbackMessage:
-              threadIds.length === 1
-                ? "Failed to delete thread."
-                : "Failed to delete threads.",
-          });
-        }
-      },
-    }),
-    [queryClient],
-  );
 }
 
 const coreThreadActions = definePluginApp((app) => {
@@ -427,15 +371,16 @@ const coreThreadActions = definePluginApp((app) => {
     group: GROUPS.lifecycle,
     title: "Archive",
     icon: "Archive",
-    useData: useLifecycleHandlers,
-    item: ({ thread, data, sdk }) => {
+    item: ({ thread, sdk, threadRequests }) => {
       const isArchived = thread.archivedAt !== null;
       return {
         label: isArchived ? "Unarchive" : "Archive",
         icon: isArchived ? "ArchiveRestore" : "Archive",
         run: async () => {
           if (!isArchived) {
-            afterMenuCloses(() => void data.archive([thread.id]));
+            afterMenuCloses(
+              () => void threadRequests.requestArchive([thread.id]),
+            );
             return;
           }
           try {
@@ -449,7 +394,7 @@ const coreThreadActions = definePluginApp((app) => {
         },
       };
     },
-    experimental_bulkItem: ({ threads, data, sdk }) => {
+    experimental_bulkItem: ({ threads, sdk, threadRequests }) => {
       const active = threads.filter((thread) => thread.archivedAt === null);
       if (active.length > 0) {
         return {
@@ -457,7 +402,10 @@ const coreThreadActions = definePluginApp((app) => {
           icon: "Archive",
           run: () =>
             afterMenuCloses(
-              () => void data.archive(active.map((thread) => thread.id)),
+              () =>
+                void threadRequests.requestArchive(
+                  active.map((thread) => thread.id),
+                ),
             ),
         };
       }
@@ -484,20 +432,23 @@ const coreThreadActions = definePluginApp((app) => {
     group: GROUPS.lifecycle,
     title: "Delete",
     icon: "Trash2",
-    useData: useLifecycleHandlers,
-    item: ({ thread, data }) => ({
+    item: ({ thread, threadRequests }) => ({
       label: "Delete",
       icon: "Trash2",
       variant: "destructive",
-      run: () => afterMenuCloses(() => void data.requestDelete([thread.id])),
+      run: () =>
+        afterMenuCloses(() => void threadRequests.requestDelete([thread.id])),
     }),
-    experimental_bulkItem: ({ threads, data }) => ({
+    experimental_bulkItem: ({ threads, threadRequests }) => ({
       label: `Delete ${describeThreadCount(threads.length)}`,
       icon: "Trash2",
       variant: "destructive",
       run: () =>
         afterMenuCloses(
-          () => void data.requestDelete(threads.map((thread) => thread.id)),
+          () =>
+            void threadRequests.requestDelete(
+              threads.map((thread) => thread.id),
+            ),
         ),
     }),
   });

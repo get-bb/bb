@@ -26,6 +26,7 @@ import {
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type ExperimentalPageTitle,
+  type ExperimentalThreadRequests,
   type BbContext,
   type ExperimentalPluginPanelPage,
   type BbNavigate,
@@ -376,6 +377,7 @@ interface SlotEnv {
   sidebarNavigation: ExperimentalSidebarNavigationState;
   sidebarNavigationCalls: SidebarNavigationCall[];
   environmentArchiveCalls: string[];
+  threadRequestCalls: ExperimentalThreadRequestCall[];
   threadActions: TestThreadActionsResolver;
   threadBulkActions: TestThreadBulkActionsResolver;
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
@@ -441,6 +443,12 @@ export type TestThreadActionsResolver = (
 export type TestThreadBulkActionsResolver = (
   threads: readonly PluginThreadActionTarget[],
 ) => readonly PluginThreadActionEntry[];
+
+/** One recorded `experimental_useThreadRequests()` call. */
+export interface ExperimentalThreadRequestCall {
+  method: keyof ExperimentalThreadRequests;
+  threadIds: string[];
+}
 
 /** @internal One recorded `experimental_useSidebarThreadActions()` call; kept for plugins built against older SDKs. */
 export interface SidebarActionCall {
@@ -1963,6 +1971,22 @@ const testPluginSdkApp = {
       options,
     );
   },
+  experimental_useThreadRequests(): ExperimentalThreadRequests {
+    const calls = useSlotEnv(
+      "experimental_useThreadRequests",
+    ).threadRequestCalls;
+    return useMemo(
+      () => ({
+        async requestArchive(threadIds) {
+          calls.push({ method: "requestArchive", threadIds: [...threadIds] });
+        },
+        async requestDelete(threadIds) {
+          calls.push({ method: "requestDelete", threadIds: [...threadIds] });
+        },
+      }),
+      [calls],
+    );
+  },
   experimental_useArchiveEnvironmentThreads(): (
     environmentId: string,
   ) => Promise<void> {
@@ -2642,6 +2666,8 @@ export interface RenderedSlotInspectionState {
    * call, in order.
    */
   readonly experimental_environmentArchiveCalls: string[];
+  /** Every `experimental_useThreadRequests()` call, in order. */
+  readonly experimental_threadRequestCalls: ExperimentalThreadRequestCall[];
   /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
   readonly sdkCalls: SdkCall[];
   /** Every `experimental_copyToClipboard()` write, in order. */
@@ -3048,6 +3074,7 @@ export function renderSlot<
     },
   };
   const environmentArchiveCalls: string[] = [];
+  const threadRequestCalls: ExperimentalThreadRequestCall[] = [];
   const sidebarDraftThreadIds: ReadonlySet<string> = new Set(
     options.sidebarDraftThreadIds ?? [],
   );
@@ -3490,6 +3517,7 @@ export function renderSlot<
     sidebarNavigation,
     sidebarNavigationCalls,
     environmentArchiveCalls,
+    threadRequestCalls,
     threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
     threadBulkActions: options.threadBulkActions ?? NO_THREAD_BULK_ACTIONS,
     threadActionRegistrations:
@@ -3632,6 +3660,7 @@ export function renderSlot<
     sidebarActionCalls,
     sidebarNavigationCalls,
     experimental_environmentArchiveCalls: environmentArchiveCalls,
+    experimental_threadRequestCalls: threadRequestCalls,
     sdkCalls,
     experimental_clipboardWrites,
     composer: composerLog,
@@ -3653,6 +3682,7 @@ export function renderSlot<
       sidebarActionCalls,
       sidebarNavigationCalls,
       experimental_environmentArchiveCalls: environmentArchiveCalls,
+      experimental_threadRequestCalls: threadRequestCalls,
       sdkCalls,
       experimental_clipboardWrites,
       composer: composerLog,

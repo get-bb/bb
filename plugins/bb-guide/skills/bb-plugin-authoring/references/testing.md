@@ -82,6 +82,11 @@ explicit when their exact complete shape is the assertion.
 `panel` for a command, thread action or message action called
 directly: every method declines and `getTabs()` reports a closed, empty panel
 except the ones you pass, such as `{ toggleTab: vi.fn(() => true) }`.
+`experimental_makeActionContext(overrides?)` builds the whole callback context
+(`sdk`, `navigate`, `panel`, `composer`, `threadRequests`), so a test keeps
+compiling when bb adds a member. Its defaults record calls in `context.calls`
+(`sdk` methods reject until you stub them). Spread it and add the callback's own
+fields: `run({ ...experimental_makeActionContext({ panel }), threadId: "thr-1", projectId: null })`.
 
 Use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns

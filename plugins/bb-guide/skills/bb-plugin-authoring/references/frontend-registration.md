@@ -474,8 +474,8 @@ the sidebar.
 menu (archive and delete confirmation included) plus every plugin's thread
 actions; see "An action in every thread menu".
 For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigation.md.
-`experimental_useArchiveEnvironmentThreads()` archives a whole environment
-group with bb's pane cleanup and Undo toast.
+`experimental_useThreadRequests()` archives or deletes any threads with bb's confirmation and Undo.
+`experimental_useArchiveEnvironmentThreads()` archives a whole environment group (every live thread the server finds there, without a confirmation) with bb's pane cleanup and Undo toast.
 
 **bb's status glyph on your row.** Pass the row's thread, its hidden children,
 its draft, and `useSidebarThreadRowStatus(threadId)` to

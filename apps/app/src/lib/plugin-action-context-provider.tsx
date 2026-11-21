@@ -24,6 +24,18 @@ function unavailable<T extends object>(pluginId: string, name: string): T {
   });
 }
 
+function unavailableRequest(
+  pluginId: string,
+  name: string,
+): () => Promise<void> {
+  return () =>
+    Promise.reject(
+      new Error(
+        `Plugin ${pluginId} used ${name} outside PluginActionContextProvider`,
+      ),
+    );
+}
+
 export function unavailablePluginActionContext(
   pluginId: string,
 ): ExperimentalPluginActionContext {
@@ -32,6 +44,16 @@ export function unavailablePluginActionContext(
     navigate: unavailable(pluginId, "navigate"),
     panel: unavailable(pluginId, "panel"),
     composer: getActiveComposerHandle(pluginId),
+    threadRequests: {
+      requestArchive: unavailableRequest(
+        pluginId,
+        "threadRequests.requestArchive",
+      ),
+      requestDelete: unavailableRequest(
+        pluginId,
+        "threadRequests.requestDelete",
+      ),
+    },
   };
 }
 
