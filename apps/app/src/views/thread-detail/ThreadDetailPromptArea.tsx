@@ -63,7 +63,6 @@ import {
 import {
   ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
-  type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
@@ -221,7 +220,6 @@ interface ThreadDetailPromptAreaProps {
   modelFallback: ThreadTimelineModelFallback | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
-  parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   contextEnvironmentId: string | null;
   sendMessage: SendMessageMutationLike;
@@ -511,7 +509,6 @@ export function ThreadDetailPromptArea({
   modelFallback,
   activeWorkflows,
   activeBackgroundCommands,
-  parentThreadSection,
   childThreadsSection,
   contextEnvironmentId,
   sendMessage,
@@ -2297,9 +2294,6 @@ export function ThreadDetailPromptArea({
                 ? null
                 : { id: contextEnvironmentId },
           }}
-          core={{
-            parentThread: parentThreadSection,
-          }}
           expandedSegment={expandedBannerSegment}
           onToggleSegment={handleToggleBannerSegment}
         />
@@ -2377,7 +2371,6 @@ export function ThreadDetailPromptArea({
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
       modelFallback,
-      parentThreadSection,
       childThreadsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,

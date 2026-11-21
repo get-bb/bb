@@ -1,14 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
-import type {
-  MergeBaseState,
-} from "../../../../../../plugins/git/ui/merge-base";
+import type { MergeBaseState } from "../../../../../../plugins/git/ui/merge-base";
 import {
   ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
   type ThreadPromptArchivedSection,
   type ThreadPromptEnvironmentGoneSection,
-  type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
@@ -20,6 +18,10 @@ import {
   GitSegmentFixtureProvider,
   gitSegmentFixtureMergeBase,
 } from "@/test/fixtures/git-segment-plugin";
+import {
+  seedRelatedThread,
+  type RelatedThreadFixture,
+} from "@/test/fixtures/related-threads";
 import type {
   WorkspaceFileStatus,
   WorkspaceStatus,
@@ -338,7 +340,9 @@ const committedUnmergedStatus: WorkspaceStatus = {
   },
 };
 
-function sectionFor(status: WorkspaceStatus): WorkspaceChangedFilesSection<WorkspaceFileStatus> {
+function sectionFor(
+  status: WorkspaceStatus,
+): WorkspaceChangedFilesSection<WorkspaceFileStatus> {
   const section = selectWorkspaceChangedFilesSection(status);
   if (!section) throw new Error("fixture should produce a section");
   return section;
@@ -357,30 +361,50 @@ const committedManyFiles: WorkspaceFileStatus[] = Array.from(
     deletions: 2,
   }),
 );
-const committedManySection: WorkspaceChangedFilesSection<WorkspaceFileStatus> = {
-  ...committedSection,
-  files: committedManyFiles,
-  stats: {
-    ...committedSection.stats,
+const committedManySection: WorkspaceChangedFilesSection<WorkspaceFileStatus> =
+  {
+    ...committedSection,
     files: committedManyFiles,
-    insertions: 720,
-    deletions: 144,
-  },
-};
+    stats: {
+      ...committedSection.stats,
+      files: committedManyFiles,
+      insertions: 720,
+      deletions: 144,
+    },
+  };
 
 const featureBranchMergeBase = gitSegmentFixtureMergeBase();
 
-const parentThreadFixture: ThreadPromptParentThreadSection = {
-  parentThreadTitle: "Parent thread",
-  href: "/projects/proj-1/threads/thr_parent_demo",
+type RelatedThread = RelatedThreadFixture["related"];
+
+const parentThreadFixture: RelatedThread = {
+  id: "thr_parent_demo",
+  title: "Parent thread",
   relationship: "parent",
 };
 
-const forkedFromFixture: ThreadPromptParentThreadSection = {
-  parentThreadTitle: "Investigate flaky test",
-  href: "/projects/proj-1/threads/thr_source_demo",
+const forkedFromFixture: RelatedThread = {
+  id: "thr_source_demo",
+  title: "Investigate flaky test",
   relationship: "fork",
 };
+
+const STORY_PROJECT_ID = "proj_story";
+
+function useStoryThreadId(related: RelatedThread | null): string {
+  const queryClient = useQueryClient();
+  const [threadId] = useState(() => {
+    if (related === null) return "thr_story";
+    const id = `thr_story_${related.id}`;
+    seedRelatedThread(queryClient, {
+      threadId: id,
+      projectId: STORY_PROJECT_ID,
+      related,
+    });
+    return id;
+  });
+  return threadId;
+}
 
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
   items: [
@@ -551,7 +575,7 @@ interface RowConfig {
   mergeBase?: MergeBaseState | null;
   archived?: ThreadPromptArchivedSection | null;
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;
-  parentThread?: ThreadPromptParentThreadSection | null;
+  parentThread?: RelatedThread | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
   initiallyExpandedSection?: string | null;
   initiallyChildThreadsExpanded?: boolean;
@@ -574,6 +598,7 @@ function ContextBannerPreview({
   const [isChildThreadsExpanded, setIsChildThreadsExpanded] = useState(
     initiallyChildThreadsExpanded,
   );
+  const threadId = useStoryThreadId(parentThread);
   return (
     <PromptStage size={size}>
       <GitSegmentFixtureProvider
@@ -586,12 +611,9 @@ function ContextBannerPreview({
         />
         <ThreadPromptContextBanner
           input={{
-            threadId: "thr_story",
-            projectId: "proj_story",
+            threadId,
+            projectId: STORY_PROJECT_ID,
             environment: null,
-          }}
-          core={{
-            parentThread,
           }}
           archivedSection={archived}
           environmentGoneSection={environmentGone}

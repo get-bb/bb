@@ -14,6 +14,7 @@ import type {
   ComponentType,
   CSSProperties,
   ReactNode,
+  RefCallback,
   RefObject,
 } from "react";
 import type {
@@ -28,6 +29,7 @@ import type {
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
   ThreadStatus,
+  ThreadWithRuntime,
   WorkspaceGitOperation,
 } from "@bb/domain";
 import type {
@@ -1984,6 +1986,26 @@ export interface ExperimentalThreadInfoProps {
   environment: ExperimentalThreadEnvironment | null;
 }
 
+/**
+ * A thread as {@link PluginSdkApp.experimental_useThread} reports it: the
+ * fields `useSdk().threads.get` returns, without `activeBackgroundAgentCount`,
+ * `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and
+ * `queuedMessageCount`, which only that request computes. Read those from
+ * `threads.get` when you need them.
+ */
+export type ExperimentalThread = ThreadWithRuntime;
+
+/**
+ * What {@link PluginSdkApp.experimental_useThread} knows about one thread.
+ * `notFound` means bb has no such thread: an unknown id, a deleted thread, or
+ * a thread in a deleted project. `error` is any other failed read.
+ */
+export type ExperimentalThreadState =
+  | { status: "loading"; thread: null }
+  | { status: "ready"; thread: ExperimentalThread }
+  | { status: "notFound"; thread: null }
+  | { status: "error"; thread: null };
+
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
   id: string;
@@ -2016,6 +2038,19 @@ export interface ExperimentalThreadContextSegmentProps extends ExperimentalThrea
   /** One segment of a thread's context row is expanded at a time. */
   isExpanded: boolean;
   onToggle(): void;
+  /**
+   * Attach to the control that expands this segment, usually a button in
+   * `summary`. When `onToggle` collapses the segment while focus is on its
+   * collapse control, bb moves focus here.
+   */
+  toggleRef: RefCallback<HTMLElement>;
+  /**
+   * Attach to the control in `details` that collapses this segment. When
+   * `onToggle` expands the segment while focus is on its toggle, bb moves
+   * focus here once `details` has rendered. A segment that attaches neither
+   * ref keeps focus where the browser leaves it.
+   */
+  collapseRef: RefCallback<HTMLElement>;
 }
 
 /**
@@ -6099,6 +6134,17 @@ export interface PluginSdkApp {
     readonly changes: "2_changes";
     readonly storage: "3_storage";
   };
+  /**
+   * One thread by id (see {@link ExperimentalThreadState}). A thread bb's
+   * sidebar already holds is read from it with no request and re-renders the
+   * component only when that thread changes. Any other thread, such as an
+   * archived one, is fetched once and then kept current. A thread that leaves
+   * the sidebar while you watch it (archived, say) stays `ready` with its last
+   * sidebar value until that fetch answers. A thread deleted while you watch
+   * it becomes `notFound`. An empty `threadId` is `notFound` without a
+   * request. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThread(threadId: string): ExperimentalThreadState;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.
