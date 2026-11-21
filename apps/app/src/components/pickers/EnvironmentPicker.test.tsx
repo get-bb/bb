@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import type { Host, ProjectSource } from "@bb/domain";
@@ -128,6 +134,53 @@ function renderPicker(ui: ReactElement) {
 }
 
 describe("EnvironmentPickerUI", () => {
+  it("prompts for an environment in both layouts before a remote checkout is selected", () => {
+    const remoteHost = makeHost({ id: "host_remote", name: "Remote machine" });
+    const onSelectProvider = vi.fn();
+    renderPicker(
+      <EnvironmentPickerUI
+        value=""
+        sources={[{ ...sources[0]!, hostId: remoteHost.id }]}
+        host={host}
+        isLocal
+        machines={{
+          hosts: [host, remoteHost],
+          localDaemonHostId: host.id,
+          primaryHostId: host.id,
+        }}
+        providers={[checkoutProvider]}
+        providersByHostId={
+          new Map([
+            [host.id, []],
+            [remoteHost.id, [checkoutProvider]],
+          ])
+        }
+        onSelectProvider={onSelectProvider}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    expect(
+      ["full", "compact"].map(
+        (layout) =>
+          trigger.querySelector(`[data-promptbox-${layout}-label]`)
+            ?.textContent,
+      ),
+    ).toEqual(["Choose environment", "Choose environment"]);
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      within(screen.getByRole("group", { name: remoteHost.name })).getByRole(
+        "option",
+        { name: "Project checkout" },
+      ),
+    );
+    expect(onSelectProvider).toHaveBeenCalledExactlyOnceWith(
+      checkoutProvider,
+      remoteHost.id,
+    );
+  });
+
   it("does not expose an ephemeral host through the single-machine fallback", () => {
     const ephemeralHost: Host = {
       ...host,
