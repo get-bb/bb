@@ -125,8 +125,8 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
 
 export function pluginRemovalDescription(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin)
-    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
-    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
+    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, stored files, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
+    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, stored files, and schedules?`;
 }
 
 function PluginLocalSource({

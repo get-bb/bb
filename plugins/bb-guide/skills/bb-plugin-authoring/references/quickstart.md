@@ -207,5 +207,6 @@ The scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
 ## On-disk state
 
 Each plugin has `<dataDir>/plugins/<id>/data.db` (its SQLite), `secrets/`
-(secret settings + HTTP token), and `logs/plugin.log` (JSONL, rotated at
-5MB).
+(secret settings + HTTP token), `files/` (the plugin's own files, from
+`bb.storage.experimental_directory()`), and `logs/plugin.log` (JSONL, rotated
+at 5MB). Uninstall deletes `secrets/` and `files/`; `data.db` and logs stay.

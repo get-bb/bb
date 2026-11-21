@@ -223,7 +223,7 @@ async function startPool(providers: FakeProviders) {
   });
   const store = new AccountStore(
     host.bb.storage.kv,
-    path.join(dataDir, "plugins", "account-pool", "secrets", "accounts"),
+    path.join(host.bb.storage.experimental_directory(), "accounts"),
   );
   return { host, store };
 }

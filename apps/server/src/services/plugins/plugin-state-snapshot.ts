@@ -9,7 +9,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import { z } from "zod";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
@@ -26,6 +26,7 @@ import {
   type InstalledPluginRow,
   type PluginStateSnapshotRow,
 } from "@bb/db";
+import { pluginDirectory } from "./plugin-directory.js";
 
 const kvRowSchema = z.object({
   pluginId: z.string(),
@@ -120,8 +121,8 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-function pluginDataDir(dataDir: string, pluginId: string): string {
-  return join(dataDir, "plugins", pluginId);
+function snapshotFilesPath(snapshotPath: string): string {
+  return join(snapshotPath, "files");
 }
 
 export async function createPluginStateSnapshotOnDisk(args: {
@@ -142,15 +143,24 @@ export async function createPluginStateSnapshotOnDisk(args: {
     args.pluginId,
     `${args.now}-${args.toArtifactId}-${id}`,
   );
-  const sourceDir = pluginDataDir(args.dataDir, args.pluginId);
-  const sourceDatabasePath = join(sourceDir, "data.db");
+  const sourceDatabasePath = pluginDirectory(
+    args.dataDir,
+    args.pluginId,
+    "data.db",
+  );
   const databasePath = join(snapshotPath, "data.db");
   const statePath = join(snapshotPath, "host-state.json");
   const registrationPath = join(snapshotPath, "previous-registration.json");
-  const sourceSecretsPath = join(sourceDir, "secrets");
+  const sourceSecretsPath = pluginDirectory(
+    args.dataDir,
+    args.pluginId,
+    "secrets",
+  );
   const secretsPath = join(snapshotPath, "secrets");
+  const sourceFilesPath = pluginDirectory(args.dataDir, args.pluginId, "files");
   const hasDatabase = await exists(sourceDatabasePath);
   const hasSecrets = await exists(sourceSecretsPath);
+  const hasFiles = await exists(sourceFilesPath);
   const record = createPluginStateSnapshot(args.db, {
     id,
     pluginId: args.pluginId,
@@ -185,6 +195,11 @@ export async function createPluginStateSnapshotOnDisk(args: {
     }
     if (hasSecrets) {
       await cp(sourceSecretsPath, secretsPath, { recursive: true });
+    }
+    if (hasFiles) {
+      await cp(sourceFilesPath, snapshotFilesPath(snapshotPath), {
+        recursive: true,
+      });
     }
     await writeFile(
       statePath,
@@ -229,9 +244,12 @@ export async function restorePluginStateSnapshot(args: {
     );
   }
   setPluginStateSnapshotStatus(args.db, snapshot.id, "restoring", args.now);
-  const targetDir = pluginDataDir(args.dataDir, snapshot.pluginId);
-  await mkdir(targetDir, { recursive: true });
-  const targetDatabasePath = join(targetDir, "data.db");
+  const targetDatabasePath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "data.db",
+  );
+  await mkdir(dirname(targetDatabasePath), { recursive: true });
   await rm(`${targetDatabasePath}-wal`, { force: true });
   await rm(`${targetDatabasePath}-shm`, { force: true });
   if (snapshot.databasePath === null) {
@@ -239,10 +257,24 @@ export async function restorePluginStateSnapshot(args: {
   } else {
     await copyFile(snapshot.databasePath, targetDatabasePath);
   }
-  const targetSecretsPath = join(targetDir, "secrets");
+  const targetSecretsPath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "secrets",
+  );
   await rm(targetSecretsPath, { recursive: true, force: true });
   if (snapshot.secretsPath !== null) {
     await cp(snapshot.secretsPath, targetSecretsPath, { recursive: true });
+  }
+  const targetFilesPath = pluginDirectory(
+    args.dataDir,
+    snapshot.pluginId,
+    "files",
+  );
+  await rm(targetFilesPath, { recursive: true, force: true });
+  const filesPath = snapshotFilesPath(snapshot.snapshotPath);
+  if (await exists(filesPath)) {
+    await cp(filesPath, targetFilesPath, { recursive: true });
   }
   await restorePluginHostStateSnapshot({
     db: args.db,

@@ -17,8 +17,9 @@ import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
+import { pluginDirectory } from "./plugin-directory.js";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import {
@@ -765,9 +766,9 @@ export function createPluginApi(options: {
         if (index !== -1) databaseHandles.splice(index, 1);
         void walCheckpointer?.detach(databaseHandle);
       }
-      const dir = join(dataDir, "plugins", pluginId);
-      mkdirSync(dir, { recursive: true });
-      const database = new Database(join(dir, "data.db"));
+      const databasePath = pluginDirectory(dataDir, pluginId, "data.db");
+      mkdirSync(dirname(databasePath), { recursive: true });
+      const database = new Database(databasePath);
       database.pragma("auto_vacuum = INCREMENTAL");
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
@@ -779,6 +780,12 @@ export function createPluginApi(options: {
     migrate(database, statements) {
       assertLive();
       runPluginStorageMigrations(database, statements);
+    },
+    experimental_directory() {
+      assertLive();
+      const directory = pluginDirectory(dataDir, pluginId, "files");
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      return directory;
     },
   };
 

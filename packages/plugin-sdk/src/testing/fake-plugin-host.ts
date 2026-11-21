@@ -54,7 +54,7 @@ import {
   type NormalizedPluginProviderDeclaration,
 } from "../internal/host-policy.js";
 import type { MachineBootstrapApi } from "../machine-bootstrap.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -152,7 +152,9 @@ import {
  * Deliberately different from the real host:
  * - storage is process-local: kv in a Map, `storage.database()` one shared
  *   better-sqlite3 handle in a temp directory (same data across calls, like
- *   the host's shared file), secret settings alongside plain values (no files).
+ *   the host's shared file), `storage.experimental_directory()` a `files`
+ *   folder in that temp directory rather than under `server.experimental_dataDir`,
+ *   secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
  * - http auth modes are recorded but not enforced — signature checks and
@@ -784,6 +786,12 @@ function createFakePluginHostInternal(
     migrate(database, statements) {
       assertLive();
       runPluginStorageMigrations(database, statements);
+    },
+    experimental_directory() {
+      assertLive();
+      const directory = join(storageRoot, "files");
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      return directory;
     },
   };
 

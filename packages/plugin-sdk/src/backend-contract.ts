@@ -202,6 +202,15 @@ export interface PluginStorage {
    * Append-only — never reorder or edit shipped statements.
    */
   migrate(db: Database.Database, statements: string[]): void;
+  /**
+   * The plugin's own directory for files, at
+   * <dataDir>/plugins/<id>/files. Created (mode 0700) on each call if it does
+   * not exist, so call it where the path is needed. bb snapshots it with
+   * `data.db` and secrets before a git: or npm: update, restores it on
+   * rollback, and deletes it when the plugin is uninstalled; `data.db` and
+   * logs survive uninstall. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_directory(): string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1993,9 +2002,10 @@ export interface PluginServerApi {
    * its repo root and instance id, so a plugin that guesses `~/.bb` reads the
    * production file while the dev server reads another one.
    *
-   * For reading bb-managed files a plugin is migrating away from. A plugin's
-   * OWN storage is `bb.storage`, which is scoped for it; this is deliberately
-   * not a place to write.
+   * Read-only, for migrating off files bb used to manage, or comparing paths
+   * against it. Never write under it: a plugin's own files go in
+   * `bb.storage.experimental_directory()`, and its other state in
+   * `bb.storage`.
    */
   readonly experimental_dataDir: string;
 }

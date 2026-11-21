@@ -94,9 +94,9 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  token-authenticated HTTP routes; --rotate
                                  replaces it
   bb plugin remove <id>          Uninstall and delete the plugin's settings,
-                                 secrets, and schedules (local path sources
-                                 stay on disk; builtin removals are
-                                 remembered)
+                                 secrets, stored files, and schedules (local
+                                 path sources stay on disk; builtin removals
+                                 are remembered)
   bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
                                  installed plugin uses (left by earlier bb
                                  releases, rolled-back updates, or
@@ -321,7 +321,7 @@ Exact npm versions, Git tags and commits, path sources, and bundled official
 plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 (the default branch), Git branches, and Git semver ranges track compatible
 updates. Change a pinned git:/npm: source with `bb plugin remove` (which
-deletes settings, secrets, and schedules) and a fresh install. Edit a local
+deletes settings, secrets, stored files, and schedules) and a fresh install. Edit a local
 path plugin in place and `bb plugin reload <id>`, or move it with
 `bb plugin install path:<new dir>`; both keep its configuration. Before bb
 deletes a thread's storage folder or removes a bb-managed workspace (such as

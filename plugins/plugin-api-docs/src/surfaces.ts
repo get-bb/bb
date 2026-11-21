@@ -1619,6 +1619,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Keep small values such as flags and cursors in a key-value store",
           "Get its own SQLite database with migrations",
+          "Keep its own files in a directory bb snapshots on update and deletes on uninstall",
           "Keep internal credentials out of settings",
         ],
         apiSymbols: ["PluginStorage"],

@@ -156,13 +156,13 @@ import {
 import { logPluginBuildWarnings, readPluginLogTail } from "./plugin-log.js";
 import {
   buildPluginSettingsView,
-  pluginSecretsDir,
   readPluginSettingsValues,
   writePluginSettingsUpdate,
   PluginSettingsValidationError,
   type PluginSettingsView,
 } from "./plugin-settings.js";
 import { createPluginActivation } from "./plugin-activation.js";
+import { pluginDirectory } from "./plugin-directory.js";
 import {
   createManagedPluginArtifacts,
   type InstallContext,
@@ -1369,10 +1369,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     forgetMutableRoot(row.rootDir);
     deletePluginSchedules(deps.db, row.id);
     deleteAllPluginSettings(deps.db, row.id);
-    await rm(pluginSecretsDir(deps.dataDir, row.id), {
-      recursive: true,
-      force: true,
-    });
+    for (const part of ["secrets", "files"] as const) {
+      await rm(pluginDirectory(deps.dataDir, row.id, part), {
+        recursive: true,
+        force: true,
+      });
+    }
   }
 
   async function handOverRetiredBuiltins(): Promise<void> {
@@ -1419,7 +1421,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await deleteRemovedPluginData(row, pluginProviderIds(row));
       deleteInstalledPlugin(deps.db, row.id);
       logger.info(
-        `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, and schedules were deleted`,
+        `plugin ${row.id} removed because bb no longer bundles ${row.source}; its settings, secrets, stored files, and schedules were deleted`,
       );
     }
   }
@@ -1879,7 +1881,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (removed && row) {
           await deleteRemovedPluginData(row, providerIds);
           logger.info(
-            `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
+            `plugin ${id} removed from ${row.source}; its settings, secrets, stored files, and schedules were deleted`,
           );
           const managedDir =
             row.activeArtifactId === null && row.sourceKind === "git"
@@ -2376,7 +2378,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async httpToken(id, options) {
       if (!getInstalledPlugin(deps.db, id)) return undefined;
-      const dir = pluginSecretsDir(deps.dataDir, id);
+      const dir = pluginDirectory(deps.dataDir, id, "secrets");
       if (options?.rotate) {
         await deleteSecretFile(join(dir, HTTP_TOKEN_FILE));
       }

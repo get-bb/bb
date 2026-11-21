@@ -1543,22 +1543,50 @@ Docs: `backend-foundation.md`.
 **Kept experimental (2026-08-22).** A bare data-directory path does not
 stabilize.
 
-The server's data directory. Its JSDoc says it is for reading bb-managed
-files and is not a place to write, yet the Account Pool plugin writes secret
-files under `plugins/<pluginId>/secrets/accounts`. Storage retention reads it
-to recognize the running instance's own data directory. About 32 community
-plugins use it too (VKirill/bb-plugin-image-studio,
-VKirill/bb-plugin-project-folders, architawr/bb-plugin-diagram-fences among
-them), several to write files of their own.
+The server's data directory. Its JSDoc limits it to read-only use: migrating
+off files bb used to manage, and comparing paths. A plugin's own files go in
+`bb.storage.experimental_directory()`. First-party callers: storage retention
+compares it with a path to recognize the running instance's own data directory,
+and Account Pool reads it once to move its credentials out of the legacy
+`plugins/account-pool/secrets/accounts` folder. In the 503-repo community
+corpus, 32 repos mention it and about 22 write their own files under
+`plugins/<id>/` with it (OXI-717 account-pool-balanced, nfour performance,
+architawr diagram-fences, ComicBit nudger, sajov recall, g4f4r0 voice-tools,
+smsunarto agent-instructions among them); those can move to
+`bb.storage.experimental_directory()`.
 
 Docs: `backend-foundation.md`.
 
-**Audit before stabilizing.** Decide whether the Account Pool plugin's secret
-files can move to a plugin-scoped primitive. Retiring the member is a breaking
-change for the community plugins above. If it stays,
-decide whether a bare path is the right shape or whether a plugin should get
-named accessors for the bb-managed locations it may use. A path invites
-writes into bb's directory, which `bb.storage` exists to prevent.
+**Audit before stabilizing.** Decide whether the remaining community readers
+need a bare path or named read-only accessors for the bb-managed files they
+migrate from (several read core's `bb.db`, which needs its own SDK reads).
+Retiring the member is a breaking change for them.
+
+## `bb.storage.experimental_directory()`
+
+Returns `<dataDir>/plugins/<id>/files` and creates it (mode 0700) on each call
+if it is missing. Its lifetime matches `secrets/`: the update snapshot copies
+it and rollback restores it, and uninstall deletes it. `data.db` and `logs/`
+keep theirs (they survive uninstall). Core resolves the folder with the same
+`pluginDirectory(dataDir, id, part)` helper it uses for `data.db`
+(`bb.storage.database()`), `logs/` (plugin logs) and `secrets/` (secret
+settings and the HTTP token), in `apps/server/src/services/plugins/plugin-directory.ts`;
+plugin ids that would collide with core's folders under `plugins/` are refused
+by `derivePluginId`. First-party caller: Account Pool keeps account
+credentials and machine tokens in `files/accounts`.
+
+Docs: `backend-foundation.md`, `quickstart.md`.
+
+**Audit before stabilizing.**
+
+1. **Snapshot size.** Update snapshots copy the whole folder. Decide whether
+   plugins with large files (downloaded engines, mirrors) need a way to keep
+   part of it out of snapshots.
+2. **Lifetime split.** Decide whether `data.db` should follow `files/` and
+   `secrets/` and be deleted on uninstall, so a plugin's state has one
+   lifetime.
+3. **Remote hosts.** The folder is on the server's machine. Confirm no caller
+   needs a per-host equivalent before stabilizing.
 
 ## `bb.server.experimental_appUrl`
 
