@@ -432,6 +432,20 @@ function resolvePiImageReadPath(
     : null;
 }
 
+function withoutFileChangeContent(shape: DeltaItemShape): DeltaItemShape {
+  if (shape.type !== "fileChange") {
+    return shape;
+  }
+  return {
+    type: "fileChange",
+    changes: shape.changes.map((change) => ({
+      path: change.path,
+      kind: change.kind,
+      ...(change.movePath === undefined ? {} : { movePath: change.movePath }),
+    })),
+  };
+}
+
 function classifyPiToolResultFallback(toolName: string): DeltaItemShape {
   if (PI_FILE_CHANGE_TOOL_NAMES.has(toolName)) {
     return { type: "fileChange", changes: [] };
@@ -1123,7 +1137,7 @@ export function createPiDeltaTranslator(
               providerItemId: piEvent.data.toolCallId,
               ...parentRefField,
             },
-            item: shape,
+            item: withoutFileChangeContent(shape),
             noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];

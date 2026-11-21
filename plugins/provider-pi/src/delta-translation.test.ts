@@ -1272,11 +1272,11 @@ describe("pi delta translation equivalence", () => {
     ]);
   });
 
-  it("tool_execution_start with edit args emits fileChange with diff", () => {
+  it("stores an edit's diff on completion, not on the started item", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
 
-    const events = harness.translate({
+    const startEvents = harness.translate({
       type: "tool_execution_start",
       toolCallId: "tool-edit-1",
       toolName: "edit",
@@ -1286,13 +1286,30 @@ describe("pi delta translation equivalence", () => {
         newText: "const enabled = true;\n",
       },
     } as AgentSessionEvent);
+    const endEvents = harness.translate({
+      type: "tool_execution_end",
+      toolCallId: "tool-edit-1",
+      toolName: "edit",
+      result: { content: [{ type: "text", text: "ok" }] },
+      isError: false,
+    } as AgentSessionEvent);
 
-    expect(events).toContainEqual(
+    expect(startEvents).toContainEqual(
       expect.objectContaining({
         type: "item/started",
         item: expect.objectContaining({
           type: "fileChange",
           status: "pending",
+          changes: [{ path: "src/app.ts", kind: "update" }],
+        }),
+      }),
+    );
+    expect(endEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileChange",
+          status: "completed",
           changes: [
             expect.objectContaining({
               path: "src/app.ts",
@@ -1335,10 +1352,26 @@ describe("pi delta translation equivalence", () => {
       kind: "update",
     });
     expect(started.item.changes).toHaveLength(2);
-    expect(started.item.changes[0]?.diff).toContain("+after");
-    expect(started.item.changes[0]?.diff).toContain("-before");
-    expect(started.item.changes[1]?.diff).toContain("+second after");
-    expect(started.item.changes[1]?.diff).toContain("-second before");
+    expect(started.item.changes[0]?.diff).toBeUndefined();
+    const completed = harness
+      .translate({
+        type: "tool_execution_end",
+        toolCallId: "tool-edit-batch",
+        toolName: "edit",
+        result: { content: [{ type: "text", text: "ok" }] },
+        isError: false,
+      } as AgentSessionEvent)
+      .find(
+        (event): event is Extract<ThreadEvent, { type: "item/completed" }> =>
+          event.type === "item/completed",
+      );
+    if (!completed || completed.item.type !== "fileChange") {
+      throw new Error("expected a completed fileChange");
+    }
+    expect(completed.item.changes[0]?.diff).toContain("+after");
+    expect(completed.item.changes[0]?.diff).toContain("-before");
+    expect(completed.item.changes[1]?.diff).toContain("+second after");
+    expect(completed.item.changes[1]?.diff).toContain("-second before");
   });
 
   it("falls back to an update without a diff for unrecognized edit batches", () => {
@@ -1389,7 +1422,23 @@ describe("pi delta translation equivalence", () => {
       changes: [{ path: "src/app.ts", kind: "add" }],
     });
     if (!started || started.item.type !== "fileChange") return;
-    expect(started.item.changes[0]?.diff).toContain("+++ b/src/app.ts");
+    expect(started.item.changes[0]?.diff).toBeUndefined();
+    const completed = harness
+      .translate({
+        type: "tool_execution_end",
+        toolCallId: "tool-write-1",
+        toolName: "write",
+        result: { content: [{ type: "text", text: "ok" }] },
+        isError: false,
+      } as AgentSessionEvent)
+      .find(
+        (event): event is Extract<ThreadEvent, { type: "item/completed" }> =>
+          event.type === "item/completed",
+      );
+    if (!completed || completed.item.type !== "fileChange") {
+      throw new Error("expected a completed fileChange");
+    }
+    expect(completed.item.changes[0]?.diff).toContain("+++ b/src/app.ts");
   });
 
   it("tool_execution_start with read args preserves structured tool arguments", () => {
