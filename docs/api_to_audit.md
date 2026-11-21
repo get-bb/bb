@@ -4737,9 +4737,11 @@ Registers a server access provider: `availability` (optionally with a public
 `serverUrl`), `acquire({ key, hostId, signal })` returning a grant
 `{ id, serverUrl, headers? }` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. Machines attach the grant's headers to
-enrollment and runtime traffic. The optional `routeKind`
-(`"local-network" | "private-overlay" | "relay" | "custom"`, default
-`"custom"`) sets the provider's default rank among the server's routes;
+enrollment and runtime traffic. The required `routeKind`
+(`"local-network" | "private-overlay" | "relay" | "custom"`) sets the
+provider's default rank among the server's routes. It is required in the types
+only: registration still accepts a declaration without it, from a plugin built
+against an SDK before 0.6.177, and fills in `"custom"` once there;
 providers of one kind rank by the earliest-installed plugin, not load order.
 Every turned-on provider is a route, each host holds a grant per provider, and
 the daemon session-open response and system configuration advertise the routes

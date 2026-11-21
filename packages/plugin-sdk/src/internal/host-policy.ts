@@ -2953,8 +2953,13 @@ export function validatePluginMachineProviderDeclaration(
   };
 }
 
+type RegisteredServerAccessProviderDeclaration = Omit<
+  ServerAccessProviderDeclaration,
+  "routeKind"
+> & { routeKind?: ServerAccessProviderDeclaration["routeKind"] };
+
 export function validateServerAccessProviderDeclaration(
-  declaration: ServerAccessProviderDeclaration,
+  declaration: RegisteredServerAccessProviderDeclaration,
 ): ServerAccessProviderDeclaration {
   if (typeof declaration !== "object" || declaration === null)
     throw new Error("Invalid server access provider declaration");
@@ -2982,7 +2987,15 @@ export function validateServerAccessProviderDeclaration(
     typeof declaration.release !== "function"
   )
     throw new Error("Invalid server access provider declaration");
-  return declaration;
+  return {
+    id: declaration.id,
+    displayName: declaration.displayName,
+    description: declaration.description,
+    routeKind: declaration.routeKind ?? "custom",
+    availability: () => declaration.availability(),
+    acquire: (context) => declaration.acquire(context),
+    release: (context) => declaration.release(context),
+  };
 }
 
 const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
