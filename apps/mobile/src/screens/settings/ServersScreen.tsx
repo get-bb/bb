@@ -5,7 +5,8 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { useProfiles } from "@/app-shell";
 import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
-import type { ServerProfile } from "@/lib/profiles";
+import { nativeClientCertificates } from "@/lib/native";
+import { supportsClientCertificate, type ServerProfile } from "@/lib/profiles";
 import {
   ActionSheet,
   confirmDestructive,
@@ -24,6 +25,9 @@ import {
 } from "./SettingsRows";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
+const CERTIFICATE_RESTART_DELAY_MS = 1500;
+const CERTIFICATE_RESTART_MESSAGE =
+  "bb restarts to close connections that use the old setting.";
 
 export function ServersScreen() {
   const router = useRouter();
@@ -66,6 +70,76 @@ export function ServersScreen() {
       onConfirm: () => remove(profile),
     });
 
+  const restartForCertificateChange = () => {
+    setTimeout(
+      () => nativeClientCertificates?.restartApp(),
+      CERTIFICATE_RESTART_DELAY_MS,
+    );
+  };
+
+  const chooseCertificate = (profile: ServerProfile) => {
+    nativeClientCertificates
+      ?.choose(profile.serverUrl)
+      .then((alias) => {
+        if (alias === null) return;
+        toast.success(`${profile.label} uses ${alias}`, {
+          description: CERTIFICATE_RESTART_MESSAGE,
+        });
+        restartForCertificateChange();
+      })
+      .catch((error: unknown) => {
+        toast.error("Could not choose a certificate", {
+          description: describeError(error),
+        });
+      });
+  };
+
+  const stopUsingCertificate = (profile: ServerProfile) => {
+    nativeClientCertificates
+      ?.stopUsing(profile.serverUrl)
+      .then(() => {
+        toast.success(`${profile.label} uses no client certificate`, {
+          description: CERTIFICATE_RESTART_MESSAGE,
+        });
+        restartForCertificateChange();
+      })
+      .catch((error: unknown) => {
+        toast.error("Could not stop using the certificate", {
+          description: describeError(error),
+        });
+      });
+  };
+
+  const certificateActionsFor = (
+    profile: ServerProfile,
+  ): ActionSheetAction[] => {
+    if (!nativeClientCertificates || !supportsClientCertificate(profile)) {
+      return [];
+    }
+    const alias = nativeClientCertificates.getAlias(profile.serverUrl);
+    return [
+      {
+        key: "choose-certificate",
+        label:
+          alias === null
+            ? "Choose client certificate"
+            : `Client certificate: ${alias}`,
+        icon: "Lock",
+        onPress: () => chooseCertificate(profile),
+      },
+      ...(alias === null
+        ? []
+        : [
+            {
+              key: "stop-certificate",
+              label: "Stop using client certificate",
+              icon: "CircleX" as const,
+              onPress: () => stopUsingCertificate(profile),
+            },
+          ]),
+    ];
+  };
+
   const actionsFor = (profile: ServerProfile): ActionSheetAction[] => [
     ...(IS_IOS || profile.id !== activeProfile?.id
       ? [
@@ -90,6 +164,7 @@ export function ServersScreen() {
           },
         ]
       : []),
+    ...certificateActionsFor(profile),
     {
       key: "remove",
       label: "Remove",

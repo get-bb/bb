@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import { View, type TextInputInstance } from "react-native";
 import { useProfiles } from "@/app-shell";
+import { nativeClientCertificates } from "@/lib/native";
 import {
   PROFILE_LABEL_MAX_LENGTH,
   probeServer,
@@ -56,6 +57,7 @@ export function AddServerScreen() {
     }
     const { serverUrl } = validation;
     setSubmit({ phase: "probing" });
+    await nativeClientCertificates?.prepare(serverUrl).catch(() => undefined);
     const probe = await probeServer(serverUrl, fetch);
     if (!probe.ok) {
       const where =
