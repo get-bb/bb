@@ -18,7 +18,7 @@ import {
   SidebarThreadListHarness,
   stubPluginRpcFetch,
 } from "@/test/fixtures/sidebar-thread-list";
-import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadListContent } from "./PluginThreadList";
 
 const BENCH_ENABLED = process.env.BB_SIDEBAR_BENCH === "1";
 const THREAD_COUNT = Number(process.env.BB_SIDEBAR_BENCH_THREADS ?? 3000);
@@ -373,7 +373,10 @@ describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
               coreRegistrations={CORE_THREAD_ACTIONS}
               requestRename={() => {}}
             />
-            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+            <SidebarThreadListContent
+              replacement={replacement}
+              onNavigate={() => {}}
+            />
           </>,
         ),
       );

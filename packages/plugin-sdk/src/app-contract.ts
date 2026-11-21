@@ -553,6 +553,15 @@ export interface PluginThreadListProps {
    */
   onNavigate: () => void;
   /**
+   * The sidebar element that scrolls this list. Window rows against it, use
+   * it as an `IntersectionObserver` root, and scroll it for drag autoscroll
+   * instead of walking up the DOM. Null on the first render, before the host
+   * element mounts; the list re-renders once it is set. It changes only when
+   * the list itself remounts.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_scrollElement: HTMLElement | null;
+  /**
    * @internal Retired: the sidebar search field was removed and the quick
    * palette owns thread search. The host still passes "" so lists built
    * against older SDKs keep rendering.
@@ -5982,8 +5991,9 @@ export interface PluginSdkApp {
    * objects keep their identity across updates while the underlying entry is
    * unchanged, so a memoized row re-renders only when its own thread changed;
    * the array itself is new on every update. Window your rows (render only
-   * what is on screen) as the built-in sidebar does — a list that mounts one
-   * row per thread is slow on phones with many threads.
+   * what is on screen) against `PluginThreadListProps.experimental_scrollElement`,
+   * as the built-in sidebar does — a list that mounts one row per thread is
+   * slow on phones with many threads.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useSidebarThreads(options?: {

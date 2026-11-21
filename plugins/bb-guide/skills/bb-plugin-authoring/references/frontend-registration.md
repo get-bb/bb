@@ -362,8 +362,29 @@ interface PluginThreadListProps {
   isCompactViewport: boolean;
   /** Closes the mobile drawer. Always call it after opening a thread. */
   onNavigate: () => void;
+  /** The sidebar element that scrolls your list; null on the first render. */
+  experimental_scrollElement: HTMLElement | null;
 }
 ```
+
+**Windowing and autoscroll.** Window rows, root an `IntersectionObserver`,
+and drag-autoscroll against `experimental_scrollElement` instead of walking
+up the DOM for an `overflow: auto` ancestor or querying bb's markup. It is
+null on the first render and set before the first paint; it changes only
+when your list remounts. bb's own list windows against it; with
+`@tanstack/react-virtual`:
+
+```tsx
+function List({ experimental_scrollElement }: PluginThreadListProps) {
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => experimental_scrollElement,
+    estimateSize: () => 30,
+  });
+}
+```
+
+Until it is set, keep rows windowed rather than mounting every row.
 
 **Reading and acting on threads.** One hook reads the list; writes go through
 the plugin SDK and navigation:

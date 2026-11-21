@@ -13,7 +13,6 @@ import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import {
   Sidebar,
   SidebarCollapsibleBody,
-  SidebarContent,
   SidebarFooter,
   SidebarMenu,
   useCloseMobileSidebar,
@@ -21,7 +20,7 @@ import {
   useIsSidebarFramed,
 } from "@/components/ui/sidebar.js";
 import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
-import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadListContent } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
   PluginSidebarFooterDisclosure,
@@ -350,14 +349,12 @@ export function AppSidebar({
         }
       />
       {placement === "list" ? navigationRegion("shrink-0") : null}
-      <SidebarContent>
-        <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
-          <PluginThreadList
-            replacement={threadListReplacement}
-            onNavigate={closeOnMobile}
-          />
-        </ThreadActionSurfaceVisibility>
-      </SidebarContent>
+      <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
+        <SidebarThreadListContent
+          replacement={threadListReplacement}
+          onNavigate={closeOnMobile}
+        />
+      </ThreadActionSurfaceVisibility>
       <div
         className={cn(
           "relative flex flex-col gap-2",

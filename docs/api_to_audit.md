@@ -3185,6 +3185,39 @@ Docs: `frontend-registration.md`.
    focus order, and the mobile close behavior when a plugin owns the markup;
    `onNavigate` is currently the plugin's responsibility to call.
 
+## `PluginThreadListProps.experimental_scrollElement` (`@get-bb/plugin-sdk/app`)
+
+The sidebar element that scrolls an `experimental_threadList` component:
+core's `SidebarContent`, owned by `SidebarThreadListContent`
+(`apps/app/src/components/sidebar/PluginThreadList.tsx`), which `AppSidebar`
+renders. It is null on the list's first render and set in the same commit,
+before the first paint; it changes only when the list remounts (desktop to
+compact viewport). Lists window rows, root an `IntersectionObserver`, and
+drag-autoscroll against it instead of `closest('[data-sidebar="content"]')`
+or walking up to the nearest `overflow: auto` ancestor.
+
+Core caller on the same path: the bundled `thread-list` plugin reads only this
+prop, through `SidebarScrollAreaProvider` (`plugins/thread-list/app/ui/sidebar.tsx`),
+for windowing (`SidebarWindowedItems`), "is the list shown"
+(`useSidebarListShown`), and visible-row order for Shift-click selection
+(`ThreadSelectionStore`). Community callers that can migrate: the
+`closest()` forks (bb-tinted-threads, oxi-thread-list) and the drag
+autoscroll walkers (thread-tree, switchboard, chat-sidebar, recent,
+bb-sidebar, cursor-suite project-sort).
+
+Docs: `frontend-registration.md`.
+
+**Audit before stabilizing.**
+
+1. **Migrated callers.** At least two community lists window or autoscroll
+   against the prop, with no remaining DOM walk for the sidebar scroller.
+2. **Scroller opt-out.** nested-sidebar and cursor-sidebar override the host
+   scroller with CSS to run their own. Decide whether a list may declare its
+   own scroller, or whether the host element stays the only one.
+3. **Identity.** Confirm the element still changes only together with a list
+   remount if the sidebar layout changes (placement, framed sidebar, split
+   panes).
+
 ## AI services (`bb.experimental_aiServices.register`)
 
 Registers `{ id, displayName, complete?, transcribe?, status? }`. `complete`
