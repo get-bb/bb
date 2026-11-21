@@ -64,8 +64,7 @@ describe("MessageMetadata", () => {
       const pluginId = usePluginId();
       return (
         <span title={String(message.createdAt)}>
-          {pluginId}/{message.id}/{message.experimental_messageSeq}/
-          {message.turnId}/
+          {pluginId}/{message.id}/{message.messageSeq}/{message.turnId}/
           {message.role === "user" ? message.initiator : "assistant"}
         </span>
       );

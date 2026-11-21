@@ -7,15 +7,15 @@ same members. Never push history state, dispatch `popstate`, or build
 ## A message in a thread
 
 ```ts
-navigate.toThread(threadId, { experimental_messageSeq: seq });
-navigate.toThread(threadId, { split: true, experimental_messageSeq: seq });
+navigate.toThread(threadId, { messageSeq: seq });
+navigate.toThread(threadId, { split: true, messageSeq: seq });
 ```
 
 bb opens the thread at the message the way a message link does: it loads
 older history, scrolls to the message and highlights it, or toasts "Message
 not found". Calling it again reveals the message again. Take the seq from
 `ThreadChatMessageReference.experimental_messageSeq` (message actions), a
-message metadata component's `message.experimental_messageSeq`, or the
+message metadata component's `message.messageSeq`, or the
 `messageSeq` of `useSdk().threads.timeline()` conversation rows. Do not page
 or scroll the timeline DOM yourself. A seq that is not a non-negative integer
 throws `RangeError`.
@@ -35,7 +35,7 @@ Back returns to them.
 
 ```tsx
 <>
-  <a href={navigate.experimental_threadHref(threadId, { experimental_messageSeq: seq })}>
+  <a href={navigate.experimental_threadHref(threadId, { messageSeq: seq })}>
     Open message
   </a>
   <a href={navigate.experimental_settingsHref()}>Settings</a>

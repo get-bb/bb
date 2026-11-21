@@ -1753,6 +1753,49 @@ describe("renderSlot", () => {
     ]);
   });
 
+  it("rejects the message seqs and settings sections bb rejects, and records only valid opens", () => {
+    let navigate: ReturnType<typeof useBbNavigate> | null = null;
+    const slot = renderSlot(
+      {
+        component: () => {
+          navigate = useBbNavigate();
+          return null;
+        },
+      },
+      {},
+    );
+    const nav = (): ReturnType<typeof useBbNavigate> => {
+      if (navigate === null) throw new Error("navigate probe did not render");
+      return navigate;
+    };
+    const section = JSON.parse('"billing"') as "general";
+    expect(() => nav().toThread("thr_1", { messageSeq: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      nav().experimental_threadHref("thr_1", { messageSeq: 1.5 }),
+    ).toThrow(RangeError);
+    expect(() => nav().experimental_toSettings({ section })).toThrow(
+      RangeError,
+    );
+    expect(() => nav().experimental_settingsHref({ section })).toThrow(
+      RangeError,
+    );
+    nav().toThread("thr_1", { messageSeq: 3 });
+    nav().experimental_toSettings({ section: "appearance" });
+    expect(nav().experimental_threadHref("thr_1", { messageSeq: 3 })).toBe(
+      "/threads/thr_1#msg=3",
+    );
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "toThread",
+        threadId: "thr_1",
+        options: { messageSeq: 3 },
+      },
+      { method: "experimental_toSettings", target: { section: "appearance" } },
+    ]);
+  });
+
   it("records panel calls and retains target state until the owner clears it", () => {
     const slot = renderSlot(
       { component: FixedTabProbe },

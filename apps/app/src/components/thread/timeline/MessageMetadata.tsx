@@ -42,7 +42,7 @@ export const MessageMetadata = memo(function MessageMetadata({
     () => ({
       id,
       threadId,
-      experimental_messageSeq: messageSeq,
+      messageSeq,
       createdAt,
       turnId,
       ...(role === "user" ? { role, initiator } : { role }),
