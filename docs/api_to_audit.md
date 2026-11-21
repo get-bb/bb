@@ -2081,7 +2081,7 @@ needs-configuration banners. The sidebar footer's `openSettings` /
 Settings button, nav rail button and "Open settings" command are not
 targets: they reopen the last settings page visited.
 
-Docs: `frontend-hooks-and-ui.md`.
+Docs: `frontend-navigation.md`.
 
 **Audit before stabilizing.**
 
