@@ -63,7 +63,7 @@ function describeCliCommandStatus(status: SystemCliCommandStatus): string {
     return `bb is already on your PATH at ${status.shadowedBy.path}, installed by npm.`;
   }
   if (status.shadowedBy.source === "machine") {
-    return `bb is already on your PATH at ${status.shadowedBy.path}, installed with the bb machine on this computer.`;
+    return `The bb machine on this computer added a bb at ${status.shadowedBy.path} that can run an older bb. Run bb settings cli-command install to replace it with this one.`;
   }
   return `The bb CLI is not installed for use outside bb. Another bb at ${status.shadowedBy.path} comes first on your PATH.`;
 }

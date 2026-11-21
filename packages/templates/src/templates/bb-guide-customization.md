@@ -160,8 +160,9 @@ already have `bb`. `bb settings cli-command` shows the state, and `install` or
 `remove` changes it. Install links the launcher at `~/.bb/bin/bb` into a PATH
 folder such as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user
 PATH). bb never replaces another `bb`: install is refused while one runs first
-in a new terminal. Only an installed bb (`npx bb-app` or the desktop app)
-offers this; a source checkout does not.
+in a new terminal. The exception is the `~/.local/bin/bb` a bb machine install
+added, which install replaces with the launcher. Only an installed bb
+(`npx bb-app` or the desktop app) offers this; a source checkout does not.
 
 Completed turns: `bb settings completed-turns` lists how each provider shows a
 finished turn: `collapse` folds the turn's work into one "Worked for" row and
