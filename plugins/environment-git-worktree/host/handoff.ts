@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import {
   getCurrentBranch,
   getGitCommonDir,
+  pathExists,
+  readGitRepo,
   runGit,
 } from "bb-environment-provider-host/git";
 import { withGitRefMutationLock } from "bb-environment-provider-host/locks";
@@ -32,16 +34,19 @@ async function readCommit(
   return result.exitCode === 0 && commit !== "" ? commit : null;
 }
 
-export interface DefaultBaseState {
-  ref: string | null;
-  commit: string | null;
-  members: {
-    path: string;
-    head: string | null;
-    branch: string | null;
-    onBase: boolean;
-  }[];
-}
+export type DefaultBaseState =
+  | {
+      status: "refreshed";
+      ref: string | null;
+      commit: string | null;
+      members: {
+        path: string;
+        head: string | null;
+        branch: string | null;
+        onBase: boolean;
+      }[];
+    }
+  | { status: "no-repository" };
 
 async function isAncestor(
   cwd: string,
@@ -61,6 +66,11 @@ export async function refreshDefaultBase(args: {
   memberPaths: readonly string[];
   signal: AbortSignal | undefined;
 }): Promise<DefaultBaseState> {
+  if (
+    !(await pathExists(args.sourcePath)) ||
+    (await readGitRepo(args.sourcePath)) === null
+  )
+    return { status: "no-repository" };
   const base = await resolveWorktreeBaseBranch(args.sourcePath, {
     kind: "default",
   });
@@ -78,6 +88,7 @@ export async function refreshDefaultBase(args: {
       ? null
       : await readCommit(args.sourcePath, base.ref, args.signal);
   return {
+    status: "refreshed",
     ref: base?.ref ?? null,
     commit,
     members: await Promise.all(

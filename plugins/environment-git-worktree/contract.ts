@@ -105,22 +105,26 @@ export const worktreeHostContract = defineRpcContract({
         memberPaths: z.array(z.string().min(1)),
       })
       .strict(),
-    output: z
-      .object({
-        ref: z.string().min(1).nullable(),
-        commit: z.string().min(1).nullable(),
-        members: z.array(
-          z
-            .object({
-              path: z.string().min(1),
-              head: z.string().min(1).nullable(),
-              branch: z.string().min(1).nullable(),
-              onBase: z.boolean(),
-            })
-            .strict(),
-        ),
-      })
-      .strict(),
+    output: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("refreshed"),
+          ref: z.string().min(1).nullable(),
+          commit: z.string().min(1).nullable(),
+          members: z.array(
+            z
+              .object({
+                path: z.string().min(1),
+                head: z.string().min(1).nullable(),
+                branch: z.string().min(1).nullable(),
+                onBase: z.boolean(),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+      z.object({ status: z.literal("no-repository") }).strict(),
+    ]),
   },
   readRemoteBase: {
     input: z.object({ sourcePath: z.string().min(1) }).strict(),

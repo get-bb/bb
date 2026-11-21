@@ -68,6 +68,7 @@ async function setup(args: {
   heldBy?: Record<string, string>;
   projectLookups?: (call: number) => void;
   refuseAdopt?: string[];
+  refresh?: () => { status: "no-repository" } | undefined;
 }) {
   const hostCalls: ExperimentalFakeHostRpcCall[] = [];
   const order: string[] = [];
@@ -92,8 +93,11 @@ async function setup(args: {
       if (call.method === "fastForward") return null;
       if (call.method === "nameHandedOffBranch") return null;
       if (call.method === "refreshPoolBase") {
+        const refresh = args.refresh?.();
+        if (refresh !== undefined) return refresh;
         const input = call.input as { memberPaths: string[] };
         return {
+          status: "refreshed",
           ref: "origin/main",
           commit: args.baseCommit ?? "base",
           members: input.memberPaths.map((path) => ({
@@ -684,6 +688,41 @@ describe("warm worktree reconcile", () => {
     await fixture.harness.lifecycle.dispose();
   }, 20_000);
 
+  it("shows why a pool cannot refresh, and clears it once a later check succeeds", async () => {
+    let refresh: "missing" | "fails" | "works" = "missing";
+    const fixture = await setup({
+      members: [READY],
+      refresh: () => {
+        if (refresh === "fails") throw new Error("ENOENT: owner");
+        return refresh === "missing" ? { status: "no-repository" } : undefined;
+      },
+    });
+    const lastError = async () =>
+      (
+        (await fixture.harness.callRpc("warmPoolStatus", {})) as {
+          pools: { checkouts: { lastError: string | null }[] }[];
+        }
+      ).pools[0]?.checkouts[0]?.lastError;
+    const resize = () =>
+      fixture.harness.callRpc("setWarmPoolSize", {
+        projectId: PROJECT_ID,
+        size: 1,
+      });
+    await resize();
+    expect(await lastError()).toBe(
+      `The project folder ${SOURCE_PATH} is missing or is not a git repository.`,
+    );
+    refresh = "fails";
+    await resize();
+    expect(await lastError()).toBe(
+      "Could not check the default branch for updates, trying again in 2 minutes.",
+    );
+    refresh = "works";
+    await resize();
+    expect(await lastError()).toBeNull();
+    await fixture.harness.lifecycle.dispose();
+  });
+
   it("deletes failed members and every member once the pool is turned off", async () => {
     const failed: Member = {
       id: "env_failed",
@@ -703,7 +742,7 @@ describe("warm worktree reconcile", () => {
       pools: { checkouts: { lastError: string | null }[] }[];
     };
     expect(status.pools[0]?.checkouts[0]?.lastError).toBe(
-      ".bb-env-setup.sh failed",
+      "Setup failed in a warm worktree, trying again in 10 minutes: .bb-env-setup.sh failed",
     );
     await fixture.harness.callRpc("setWarmPoolSize", {
       projectId: PROJECT_ID,

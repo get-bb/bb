@@ -105,16 +105,14 @@ function formatWarmPoolStatus(status: WarmPoolStatus): string {
   return enabled
     .flatMap((pool) => [
       `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"}, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
-      ...pool.checkouts.map(
-        (checkout) =>
-          `  ${checkout.hostName} ${checkout.path}: ${checkout.ready} ready, ${checkout.preparing} preparing${
-            checkout.base === null ? "" : ` at ${checkout.base}`
-          }${
-            checkout.lastError === null
-              ? ""
-              : ` (last error: ${checkout.lastError})`
-          }`,
-      ),
+      ...pool.checkouts.flatMap((checkout) => [
+        `  ${checkout.hostName} ${checkout.path}: ${checkout.ready} ready, ${checkout.preparing} being set up${
+          checkout.base === null ? "" : ` on ${checkout.base}`
+        }`,
+        ...(checkout.lastError === null
+          ? []
+          : [`    Problem: ${checkout.lastError}`]),
+      ]),
     ])
     .join("\n");
 }
