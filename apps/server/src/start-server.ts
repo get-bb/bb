@@ -1,4 +1,5 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
+import { lockServerDataDir } from "./services/system/data-dir-lock.js";
 import {
   AUTO_UPDATE_CHECK_MS,
   createScheduledAppUpdateService,
@@ -131,6 +132,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
   });
+  await lockServerDataDir({ dataDir: serverConfig.BB_DATA_DIR });
   await refuseInterruptedServerImport({
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
