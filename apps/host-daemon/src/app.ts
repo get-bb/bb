@@ -23,6 +23,7 @@ import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type { ThreadEvent } from "@bb/domain";
 import type {
   HostDaemonDaemonWsMessage,
   HostDaemonInteractiveRequestKey,
@@ -117,12 +118,13 @@ interface IdleProviderSessionReaperTimer {
   unref(): void;
 }
 
-type IdleProviderSessionReaperIntervalFn = (
+type IdleProviderSessionReaperTimerFn = (
   callback: () => void,
-  intervalMs: number,
+  delayMs: number,
 ) => IdleProviderSessionReaperTimer;
 
 interface IdleProviderSessionReaper {
+  observeThreadEvent(event: ThreadEvent): void;
   setTimeoutMinutes(value: number): void;
   stop(): void;
 }
@@ -137,7 +139,8 @@ interface StartIdleProviderSessionReaperArgs {
   logger: HostDaemonLogger;
   nowMs: () => number;
   runtimeManager: IdleProviderSessionReaperRuntimeManager;
-  setIntervalFn: IdleProviderSessionReaperIntervalFn;
+  setIntervalFn: IdleProviderSessionReaperTimerFn;
+  setTimeoutFn: IdleProviderSessionReaperTimerFn;
 }
 
 interface CreateHostDaemonAppOptions {
@@ -198,13 +201,29 @@ type PendingInteractiveInterruptRequest =
 const WITHDRAWN_INTERACTIVE_REQUEST_REASON =
   "The agent stopped waiting for this answer";
 
+function endsProviderTurn(event: ThreadEvent): boolean {
+  return (
+    event.type === "turn/completed" ||
+    (event.type === "provider/error" && event.willRetry !== true)
+  );
+}
+
 export function startIdleProviderSessionReaper(
   args: StartIdleProviderSessionReaperArgs,
 ): IdleProviderSessionReaper {
   let timeoutMinutes: number | null = null;
+  let stopped = false;
   let running = false;
-  const timer = args.setIntervalFn(() => {
-    if (running || timeoutMinutes === null) {
+  let rerunRequested = false;
+  const idleSinceMsByThreadId = new Map<string, number>();
+  let deadlineTimer: IdleProviderSessionReaperTimer | null = null;
+
+  const reap = (): void => {
+    if (stopped || timeoutMinutes === null) {
+      return;
+    }
+    if (running) {
+      rerunRequested = true;
       return;
     }
     running = true;
@@ -240,15 +259,65 @@ export function startIdleProviderSessionReaper(
       })
       .finally(() => {
         running = false;
+        if (rerunRequested) {
+          rerunRequested = false;
+          reap();
+        }
       });
-  }, IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS);
-  timer.unref();
+  };
+
+  const armDeadline = (): void => {
+    deadlineTimer?.clear();
+    deadlineTimer = null;
+    if (stopped || timeoutMinutes === null) {
+      return;
+    }
+    const timeoutMs = timeoutMinutes * 60_000;
+    const nowMs = args.nowMs();
+    let nextDeadlineMs: number | null = null;
+    let due = false;
+    for (const [threadId, idleSinceMs] of idleSinceMsByThreadId) {
+      const deadlineMs = idleSinceMs + timeoutMs;
+      if (deadlineMs <= nowMs) {
+        idleSinceMsByThreadId.delete(threadId);
+        due = true;
+      } else if (nextDeadlineMs === null || deadlineMs < nextDeadlineMs) {
+        nextDeadlineMs = deadlineMs;
+      }
+    }
+    if (due) {
+      reap();
+    }
+    if (nextDeadlineMs !== null) {
+      deadlineTimer = args.setTimeoutFn(armDeadline, nextDeadlineMs - nowMs);
+      deadlineTimer.unref();
+    }
+  };
+
+  const sweepTimer = args.setIntervalFn(
+    reap,
+    IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS,
+  );
+  sweepTimer.unref();
   return {
+    observeThreadEvent(event) {
+      if (!endsProviderTurn(event)) {
+        return;
+      }
+      idleSinceMsByThreadId.set(event.threadId, args.nowMs());
+      armDeadline();
+    },
     setTimeoutMinutes(value) {
       timeoutMinutes = value;
+      armDeadline();
     },
     stop() {
-      timer.clear();
+      stopped = true;
+      rerunRequested = false;
+      sweepTimer.clear();
+      deadlineTimer?.clear();
+      deadlineTimer = null;
+      idleSinceMsByThreadId.clear();
     },
   };
 }
@@ -642,6 +711,7 @@ export async function createHostDaemonApp(
         }
         throw error;
       }
+      idleProviderSessionReaper.observeThreadEvent(event);
     },
     onInjectedSkillsChanged: (change) => {
       options.logger.debug(
@@ -804,11 +874,22 @@ export async function createHostDaemonApp(
     logger: options.logger,
     nowMs: Date.now,
     runtimeManager,
-    setIntervalFn: (callback, intervalMs) => {
-      const timer = setInterval(callback, intervalMs);
+    setIntervalFn: (callback, delayMs) => {
+      const timer = setInterval(callback, delayMs);
       return {
         clear() {
           clearInterval(timer);
+        },
+        unref() {
+          timer.unref();
+        },
+      };
+    },
+    setTimeoutFn: (callback, delayMs) => {
+      const timer = setTimeout(callback, delayMs);
+      return {
+        clear() {
+          clearTimeout(timer);
         },
         unref() {
           timer.unref();
