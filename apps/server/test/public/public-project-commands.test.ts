@@ -104,6 +104,7 @@ function registerCommandRpc(
             projectSkills: [],
             projectSkillsTruncated: false,
             sharedSkills: args.skills ?? [],
+            folders: [],
           },
         };
       }

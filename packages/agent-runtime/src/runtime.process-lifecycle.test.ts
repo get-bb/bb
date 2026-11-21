@@ -128,7 +128,6 @@ describe("createAgentRuntime process lifecycle", () => {
     >,
   ): BridgeProtocolAdapter {
     const adapter = createProviderForId("fake", {
-      additionalWorkspaceWriteRoots: [],
       bridgeLaunch: createScriptedEchoLaunch(),
     });
     const process =
@@ -153,7 +152,6 @@ describe("createAgentRuntime process lifecycle", () => {
     let nextRequestId = 1;
     const adapter = createManagerAdapter(args);
     return new RuntimeProviderProcessManager({
-      additionalWorkspaceWriteRoots: [],
       createAdapter: args.createAdapter ?? (() => adapter),
       bridgeBundleDir: undefined,
       bridgeNodeExecutablePath: process.execPath,
@@ -269,7 +267,6 @@ describe("createAgentRuntime process lifecycle", () => {
         ].join("\n"),
       );
       const adapter = createProviderForId("fake", {
-        additionalWorkspaceWriteRoots: [],
         bridgeLaunch: createScriptedEchoLaunch({
           modulePath: reportingBridgePath,
         }),
@@ -953,6 +950,7 @@ describe("createAgentRuntime process lifecycle", () => {
     try {
       await runtime.startThread({
         bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -961,6 +959,7 @@ describe("createAgentRuntime process lifecycle", () => {
       });
       await runtime.startThread({
         bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
         environmentId: "env-1",
         threadId: "t2",
         projectId: "p1",
@@ -978,6 +977,7 @@ describe("createAgentRuntime process lifecycle", () => {
       };
       await runtime.startThread({
         bridgeLaunch: updatedDeclaration,
+        additionalWorkspaceWriteRoots: [],
         environmentId: "env-1",
         threadId: "t3",
         projectId: "p1",
@@ -1008,6 +1008,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const start = (threadId: string, skillName: string) =>
       runtime.startThread({
         bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
         skillRoots: stageSkillRoots(skillName),
         environmentId: "env-1",
         threadId,

@@ -59,8 +59,6 @@ export interface AgentRuntimeProcessExitInfo {
 export interface AgentRuntimeOptions {
   workspacePath: string;
 
-  additionalWorkspaceWriteRoots?: readonly string[];
-
   env?: Record<string, string>;
 
   shellEnv?: AgentRuntimeShellEnvironment;
@@ -124,6 +122,7 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -148,6 +147,7 @@ export interface StartThreadResult {
 }
 
 interface PrepareThreadRewindArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -173,6 +173,7 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;

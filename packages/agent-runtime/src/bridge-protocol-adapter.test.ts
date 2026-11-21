@@ -36,6 +36,7 @@ const fullModeOptions: ProviderExecutionContext = {
   approvalReviewer: null,
   permissionEscalation: null,
   providerOptions: {},
+  additionalWorkspaceWriteRoots: [],
 };
 
 describe("handshake version gate", () => {

@@ -39,7 +39,6 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
 
 function createBridgeAdapter() {
   return createProviderForId("fake", {
-    additionalWorkspaceWriteRoots: [],
     bridgeLaunch: createScriptedEchoLaunch(),
   });
 }

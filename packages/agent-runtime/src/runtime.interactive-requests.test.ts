@@ -91,7 +91,6 @@ async function answerDirectRequest(args: {
     "process.stdin.pipe(process.stdout)",
   ]);
   const adapter = createProviderForId("fake", {
-    additionalWorkspaceWriteRoots: [],
     bridgeLaunch: createScriptedEchoLaunch(),
   });
   const [initialize] = adapter.buildPostInitializeRequests();
