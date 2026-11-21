@@ -106,7 +106,7 @@ export function machineAccessState(
     editDraft: noop,
     commitUrl: noopAsync,
     setRouteEnabled: noop,
-    moveRoute: noop,
+    reorderRoute: noop,
     ...overrides,
   };
 }

@@ -1,5 +1,8 @@
 import type { ServerAccessStatus } from "@bb/server-contract";
-import { MachineAccessSettingsContent } from "./MachineAccessSettings";
+import {
+  MachineAccessSettingsContent,
+  MobileServerAccessContent,
+} from "./MachineAccessSettings";
 import {
   CONNECT_PAIRED,
   CONNECT_UNAVAILABLE,
@@ -58,7 +61,7 @@ export default {
 
 export function Section() {
   return (
-    <StoryCard labelWidth="200px">
+    <StoryCard className="max-w-4xl [&_section]:w-full" labelWidth="200px">
       <StoryRow
         label="fresh server"
         hint="local network off by default, bb connect not paired, no manual address"
@@ -147,11 +150,20 @@ export function Section() {
         />
       </StoryRow>
       <StoryRow
-        label="plugin settings"
-        hint="an enabled plugin route renders its own settings under its row"
+        label="phone summary, nothing ready"
+        hint="Settings → Mobile before any route is set up"
       >
-        <MachineAccessSettingsContent
-          machineAccess={machineAccessState(CONNECT_PAIRED)}
+        <MobileServerAccessContent
+          machineAccess={machineAccessState(CONNECT_UNPAIRED)}
+          renderPluginSettings={() => null}
+        />
+      </StoryRow>
+      <StoryRow
+        label="phone summary"
+        hint="Settings → Mobile lists ready routes; plugin routes add their pairing section"
+      >
+        <MobileServerAccessContent
+          machineAccess={machineAccessState(LAN_ON)}
           renderPluginSettings={(pluginId) => (
             <p className="rounded-md border border-border px-3 py-2 text-xs text-subtle-foreground">
               Settings from the {pluginId} plugin

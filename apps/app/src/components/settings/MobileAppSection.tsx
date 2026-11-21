@@ -1,6 +1,6 @@
 import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
-import { MachineAccessSettings } from "./MachineAccessSettings";
+import { MobileServerAccess } from "./MachineAccessSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -26,9 +26,6 @@ export function MobileAppSection() {
           Use bb from your phone
         </p>
       </div>
-      <MachineAccessSettings title="Accessing bb from your phone">
-        {(pluginId) => <PluginMobileSettingsSections pluginId={pluginId} />}
-      </MachineAccessSettings>
       <div className="space-y-5">
         <SettingsSection
           title={
@@ -139,6 +136,11 @@ export function MobileAppSection() {
           </a>
         </SettingsSection>
       </div>
+      <MobileServerAccess
+        renderPluginSettings={(pluginId) => (
+          <PluginMobileSettingsSections pluginId={pluginId} />
+        )}
+      />
     </section>
   );
 }

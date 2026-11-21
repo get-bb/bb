@@ -2,18 +2,33 @@ import type { ServerAccessStatus } from "@bb/server-contract";
 import { MANUAL_SERVER_ACCESS_PROVIDER_ID, type AppSettings } from "@bb/domain";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
+import { Link, useNavigate } from "react-router-dom";
+import { Button, buttonVariants } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { Switch } from "@bb/shared-ui/switch";
 import { COARSE_POINTER_INPUT_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { SettingsWithControl } from "@/components/ui/settings-section";
+import {
+  SettingsRow,
+  SettingsRowList,
+  SettingsSection,
+} from "@/components/ui/settings-section";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { reorderStoredOrder } from "@/lib/stored-order";
+import {
+  SortableSettingsRowList,
+  useSortableSettingsRow,
+} from "./sortable-settings-rows";
 
 function parseUrl(value: string): URL | null {
   try {
@@ -41,7 +56,7 @@ export interface MachineAccessState {
   editDraft: (next: string) => void;
   commitUrl: () => Promise<void>;
   setRouteEnabled: (providerId: string, enabled: boolean) => void;
-  moveRoute: (providerId: string, offset: -1 | 1) => void;
+  reorderRoute: (activeId: string, overId: string) => void;
 }
 
 const LOCAL_NETWORK_TRUST_WARNING =
@@ -104,15 +119,18 @@ function useMachineAccess(): MachineAccessState {
           : [...others, providerId],
       });
     },
-    moveRoute: (providerId, offset) => {
+    reorderRoute: (activeId, overId) => {
       if (!settings) return;
-      const ids = routes.map((route) => route.provider.id);
-      const from = ids.indexOf(providerId);
-      const to = from + offset;
-      if (from === -1 || to < 0 || to >= ids.length) return;
-      ids.splice(from, 1);
-      ids.splice(to, 0, providerId);
-      update.mutate({ serverAccessOrder: ids });
+      const next = reorderStoredOrder({
+        order: routes.map((route) => route.provider.id),
+        visibleIds: routes
+          .filter((route) => route.enabled)
+          .map((route) => route.provider.id),
+        activeId,
+        overId,
+      });
+      if (next === null) return;
+      update.mutate({ serverAccessOrder: next });
     },
     commitUrl: async () => {
       if (!settings || draft === null) return;
@@ -153,50 +171,125 @@ function useMachineAccess(): MachineAccessState {
   };
 }
 
-export function MachineAccessSettings({
-  children,
-  title = "How devices reach this server",
-}: {
-  children?: (pluginId: string) => ReactNode;
-  title?: string;
-}) {
+export function MachineAccessSettings() {
   const machineAccess = useMachineAccess();
-  return (
-    <MachineAccessSettingsContent
-      machineAccess={machineAccess}
-      title={title}
-      renderPluginSettings={children}
-    />
-  );
+  return <MachineAccessSettingsContent machineAccess={machineAccess} />;
 }
 
 export function MachineAccessSettingsContent({
   machineAccess,
-  renderPluginSettings,
-  title = "How devices reach this server",
 }: {
   machineAccess: MachineAccessState;
-  renderPluginSettings?: ((pluginId: string) => ReactNode) | undefined;
-  title?: string;
 }) {
+  const manualRoute = machineAccess.routes.find(
+    (route) => route.provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID,
+  );
+  const manualOn = manualRoute !== undefined && isRouteOn(manualRoute);
+  const [addingManual, setAddingManual] = useState(
+    hasManualEdit(machineAccess),
+  );
+  const addable = machineAccess.routes.filter((route) => !isRouteOn(route));
   return (
-    <section aria-label={title} className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="mt-1 text-xs text-subtle-foreground">
-          Machines and devices can use every route that is on, preferring the
-          ones higher in the list.
-        </p>
-      </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="px-4 py-3">
-          <MachineAccessRouteList
+    <SettingsSection
+      title="How devices reach this server"
+      description="Other machines and your phone connect to bb over these routes."
+      action={
+        machineAccess.access !== undefined && addable.length > 0 ? (
+          <AddRouteMenu
             machineAccess={machineAccess}
-            renderPluginSettings={renderPluginSettings}
+            routes={addable}
+            onAddManual={() => setAddingManual(true)}
           />
+        ) : undefined
+      }
+    >
+      {machineAccess.access === undefined ? (
+        <MachineAccessLoading />
+      ) : (
+        <div className="space-y-3">
+          <RoutesOn
+            machineAccess={machineAccess}
+            emptyMessage="Only this computer can reach bb right now. Add a route so other machines and your phone can connect."
+          />
+          {addingManual && !manualOn && (
+            <div
+              className="space-y-1 border-t border-border pt-3"
+              aria-label="New manual address"
+              role="group"
+            >
+              <div className="flex min-h-8 items-center justify-between gap-2">
+                <p className="text-sm text-foreground">Manual</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAddingManual(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+              <ManualAddressInput machineAccess={machineAccess} />
+            </div>
+          )}
         </div>
-      </div>
-    </section>
+      )}
+    </SettingsSection>
+  );
+}
+
+function AddRouteMenu({
+  machineAccess,
+  routes,
+  onAddManual,
+}: {
+  machineAccess: MachineAccessState;
+  routes: MachineAccessRoute[];
+  onAddManual: () => void;
+}) {
+  const navigate = useNavigate();
+  const add = ({ provider, enabled }: MachineAccessRoute) => {
+    if (!enabled) machineAccess.setRouteEnabled(provider.id, true);
+    if (provider.availability.status !== "setup-required") return;
+    if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID) onAddManual();
+    else if (provider.pluginId !== null)
+      void navigate(
+        getSettingsTargetPath({ pluginId: provider.pluginId }),
+      );
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" disabled={machineAccess.disabled}>
+          <Icon name="Plus" className="size-3.5" />
+          Add a route
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        {routes.map((route) => {
+          const localNetwork = route.provider.routeKind === "local-network";
+          return (
+            <DropdownMenuItem
+              key={route.provider.id}
+              className="flex-col items-start gap-0.5"
+              onSelect={() => add(route)}
+            >
+              <span className="text-sm text-foreground">
+                {route.provider.displayName}
+              </span>
+              <span
+                className={cn(
+                  "text-xs",
+                  localNetwork ? "text-warning-text" : "text-subtle-foreground",
+                )}
+              >
+                {localNetwork
+                  ? LOCAL_NETWORK_TRUST_WARNING
+                  : route.provider.description}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -221,189 +314,376 @@ export function MachineAccessControlsContent({
   machineAccess: MachineAccessState;
   onNavigate?: () => void;
 }) {
+  if (machineAccess.access === undefined) return <MachineAccessLoading />;
+  const onRoutes = machineAccess.routes.filter(isRouteOn);
+  const addable = machineAccess.routes.filter((route) => !isRouteOn(route));
   return (
-    <MachineAccessRouteList
-      machineAccess={machineAccess}
-      onNavigate={onNavigate}
-    />
+    <div className="space-y-3">
+      {onRoutes.length > 0 && (
+        <RoutesOn
+          machineAccess={machineAccess}
+          emptyMessage={null}
+          onNavigate={onNavigate}
+        />
+      )}
+      {addable.length > 0 && (
+        <div
+          className={cn(onRoutes.length > 0 && "border-t border-border pt-3")}
+        >
+          <div role="list" aria-label="Routes to add">
+            <SettingsRowList>
+              {addable.map((route) => (
+                <AddRouteRow
+                  key={route.provider.id}
+                  machineAccess={machineAccess}
+                  route={route}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </SettingsRowList>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-function MachineAccessRouteList({
+function MachineAccessLoading() {
+  return (
+    <p
+      role="status"
+      className="flex h-8 items-center gap-2 text-xs text-subtle-foreground"
+    >
+      <Icon name="Spinner" className="size-3.5 animate-spin" />
+      Loading connection settings…
+    </p>
+  );
+}
+
+function isRouteOn(route: MachineAccessRoute): boolean {
+  return (
+    route.enabled && route.provider.availability.status !== "setup-required"
+  );
+}
+
+function hasManualEdit(machineAccess: MachineAccessState): boolean {
+  return machineAccess.draft !== null || machineAccess.error !== null;
+}
+
+function RoutesOn({
   machineAccess,
+  emptyMessage,
   onNavigate,
-  renderPluginSettings,
 }: {
   machineAccess: MachineAccessState;
+  emptyMessage: string | null;
   onNavigate?: (() => void) | undefined;
-  renderPluginSettings?: ((pluginId: string) => ReactNode) | undefined;
 }) {
-  if (machineAccess.access === undefined) {
-    return (
-      <p
-        role="status"
-        className="flex h-8 items-center gap-2 text-xs text-subtle-foreground"
-      >
-        <Icon name="Spinner" className="size-3.5 animate-spin" />
-        Loading connection settings…
-      </p>
+  const onRoutes = machineAccess.routes.filter(isRouteOn);
+  const sortable = onRoutes.length > 1;
+  if (onRoutes.length === 0)
+    return emptyMessage === null ? null : (
+      <p className="text-sm text-subtle-foreground">{emptyMessage}</p>
     );
-  }
-  const { routes } = machineAccess;
   return (
-    <ol aria-label="Routes" className="divide-y divide-border">
-      {routes.map((route, index) => (
-        <li
-          key={route.provider.id}
-          aria-label={route.provider.displayName}
-          className="space-y-3 py-3 first:pt-0 last:pb-0"
+    <div className="space-y-2">
+      {sortable && (
+        <p className="text-xs text-subtle-foreground">
+          Devices try these from the top. Drag to reorder.
+        </p>
+      )}
+      <div role="list" aria-label="Routes">
+        <SortableSettingsRowList
+          ids={onRoutes.map((route) => route.provider.id)}
+          disabled={machineAccess.disabled || !sortable}
+          onReorder={machineAccess.reorderRoute}
         >
-          <MachineAccessRouteRow
-            machineAccess={machineAccess}
-            route={route}
-            first={index === 0}
-            last={index === routes.length - 1}
-            onNavigate={onNavigate}
-          />
-          {route.provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID && (
-            <ManualAddressInput machineAccess={machineAccess} />
-          )}
-          {route.enabled &&
-            route.provider.pluginId !== null &&
-            renderPluginSettings?.(route.provider.pluginId)}
-        </li>
-      ))}
-    </ol>
+          {onRoutes.map((route) => (
+            <RouteRow
+              key={route.provider.id}
+              machineAccess={machineAccess}
+              route={route}
+              sortable={sortable}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </SortableSettingsRowList>
+      </div>
+    </div>
   );
 }
 
-function MachineAccessRouteRow({
+function RouteRow({
   machineAccess,
   route,
-  first,
-  last,
+  sortable,
   onNavigate,
 }: {
   machineAccess: MachineAccessState;
   route: MachineAccessRoute;
-  first: boolean;
-  last: boolean;
+  sortable: boolean;
+  onNavigate?: (() => void) | undefined;
+}) {
+  const { provider } = route;
+  const { availability } = provider;
+  const { disabled } = machineAccess;
+  const manual = provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID;
+  const broken = availability.status === "unavailable";
+  const [editing, setEditing] = useState(
+    manual && hasManualEdit(machineAccess),
+  );
+  const { setNodeRef, style, isDragging, handle } = useSortableSettingsRow({
+    id: provider.id,
+    disabled: disabled || !sortable,
+    label: provider.displayName,
+  });
+  return (
+    <SettingsRow
+      ref={setNodeRef}
+      style={style}
+      role="listitem"
+      aria-label={provider.displayName}
+      className={cn(
+        "items-start",
+        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+      )}
+    >
+      {sortable && handle}
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex min-h-8 min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-foreground">{provider.displayName}</p>
+            <p
+              className={cn(
+                "truncate text-xs",
+                broken ? "text-destructive-text" : "text-subtle-foreground",
+              )}
+            >
+              {availability.status === "unavailable"
+                ? availability.message
+                : provider.urls.length > 0
+                  ? provider.urls.join(", ")
+                  : provider.description}
+            </p>
+          </div>
+          {manual ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              aria-expanded={editing}
+              onClick={() => setEditing((open) => !open)}
+            >
+              Edit address
+            </Button>
+          ) : provider.pluginId !== null ? (
+            <Link
+              className={buttonVariants({
+                variant: broken ? "outline" : "ghost",
+                size: "sm",
+              })}
+              onClick={onNavigate}
+              to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+            >
+              {broken ? "Fix" : "Manage"}
+            </Link>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            aria-label={`Turn off ${provider.displayName}`}
+            onClick={() => machineAccess.setRouteEnabled(provider.id, false)}
+          >
+            Turn off
+          </Button>
+        </div>
+        {provider.routeKind === "local-network" && !broken && (
+          <p className="text-xs text-warning-text">
+            {LOCAL_NETWORK_TRUST_WARNING}
+          </p>
+        )}
+        {manual && editing && (
+          <div className="pb-1">
+            <ManualAddressInput machineAccess={machineAccess} />
+          </div>
+        )}
+      </div>
+    </SettingsRow>
+  );
+}
+
+function AddRouteRow({
+  machineAccess,
+  route,
+  onNavigate,
+}: {
+  machineAccess: MachineAccessState;
+  route: MachineAccessRoute;
   onNavigate?: (() => void) | undefined;
 }) {
   const { provider, enabled } = route;
   const { disabled } = machineAccess;
+  const manual = provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID;
   const localNetwork = provider.routeKind === "local-network";
+  const [editing, setEditing] = useState(
+    manual && hasManualEdit(machineAccess),
+  );
   const alreadyListening =
-    localNetwork &&
-    !enabled &&
-    machineAccess.access?.localNetwork.bindHost === "0.0.0.0";
+    localNetwork && machineAccess.access?.localNetwork.bindHost === "0.0.0.0";
+  const action = !enabled ? (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={disabled}
+      aria-label={`Turn on ${provider.displayName}`}
+      onClick={() => machineAccess.setRouteEnabled(provider.id, true)}
+    >
+      Turn on
+    </Button>
+  ) : manual ? (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={disabled}
+      aria-expanded={editing}
+      onClick={() => setEditing((open) => !open)}
+    >
+      Add address
+    </Button>
+  ) : provider.pluginId !== null ? (
+    <Link
+      className={buttonVariants({ variant: "outline", size: "sm" })}
+      onClick={onNavigate}
+      to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+    >
+      Set up
+    </Link>
+  ) : null;
   return (
-    <div className="flex items-start gap-3">
+    <SettingsRow
+      role="listitem"
+      aria-label={provider.displayName}
+      className="items-start"
+    >
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm text-foreground">{provider.displayName}</p>
-        {localNetwork ? (
-          <p className="text-xs text-warning-text">
-            {LOCAL_NETWORK_TRUST_WARNING}
-          </p>
-        ) : (
-          <p className="text-xs text-subtle-foreground/75">
-            {provider.description}
-          </p>
+        <div className="flex min-h-8 min-w-0 items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-foreground">{provider.displayName}</p>
+            <p
+              className={cn(
+                "text-xs",
+                localNetwork ? "text-warning-text" : "text-subtle-foreground",
+              )}
+            >
+              {localNetwork
+                ? LOCAL_NETWORK_TRUST_WARNING
+                : provider.description}
+            </p>
+            {alreadyListening && (
+              <p className="text-xs text-subtle-foreground">
+                This server already listens on every network, so devices here
+                can reach it now.
+              </p>
+            )}
+          </div>
+          {action}
+        </div>
+        {manual && editing && (
+          <div className="pb-1">
+            <ManualAddressInput machineAccess={machineAccess} />
+          </div>
         )}
-        {alreadyListening && (
-          <p className="text-xs text-subtle-foreground">
-            This server was started listening on every network, so devices on
-            this network can already reach it.
-          </p>
-        )}
-        <MachineAccessRouteStatus route={route} onNavigate={onNavigate} />
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-subtle-foreground"
-          aria-label={`Move ${provider.displayName} up`}
-          disabled={disabled || first}
-          onClick={() => machineAccess.moveRoute(provider.id, -1)}
-        >
-          <Icon name="ChevronUp" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-subtle-foreground"
-          aria-label={`Move ${provider.displayName} down`}
-          disabled={disabled || last}
-          onClick={() => machineAccess.moveRoute(provider.id, 1)}
-        >
-          <Icon name="ChevronDown" />
-        </Button>
-        <Switch
-          className="ml-2"
-          checked={enabled}
-          disabled={disabled}
-          aria-label={`Use ${provider.displayName}`}
-          onCheckedChange={(next) =>
-            machineAccess.setRouteEnabled(provider.id, next)
-          }
-        />
-      </div>
-    </div>
+    </SettingsRow>
   );
 }
 
-function MachineAccessRouteStatus({
-  route,
-  onNavigate,
+export function MobileServerAccess({
+  renderPluginSettings,
 }: {
-  route: MachineAccessRoute;
-  onNavigate?: (() => void) | undefined;
+  renderPluginSettings: (pluginId: string) => ReactNode;
 }) {
-  const { provider, enabled } = route;
-  const { availability } = provider;
-  const ready = enabled && availability.status === "available";
-  const label = !enabled
-    ? "Off"
-    : availability.status === "available"
-      ? "Ready"
-      : availability.status === "setup-required"
-        ? "Needs setup"
-        : "Unavailable";
-  const detail = !enabled
-    ? null
-    : availability.status === "available"
-      ? provider.urls.length > 0
-        ? provider.urls.join(", ")
-        : "Ready to connect devices."
-      : availability.message;
-  const setup = availability.status === "setup-required";
+  const machineAccess = useMachineAccess();
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
-      <p className="inline-flex shrink-0 items-center gap-1.5 font-medium">
-        {ready ? (
-          <span
-            className="size-1.5 shrink-0 rounded-full bg-success"
-            aria-hidden="true"
-          />
-        ) : null}
-        {label}
-      </p>
-      {detail !== null && (
-        <p className="min-w-0 break-words text-subtle-foreground [overflow-wrap:anywhere]">
-          {detail}
+    <MobileServerAccessContent
+      machineAccess={machineAccess}
+      renderPluginSettings={renderPluginSettings}
+    />
+  );
+}
+
+export function MobileServerAccessContent({
+  machineAccess,
+  renderPluginSettings,
+}: {
+  machineAccess: MachineAccessState;
+  renderPluginSettings: (pluginId: string) => ReactNode;
+}) {
+  const title = "Connect your phone";
+  const onRoutes = machineAccess.routes.filter((route) => route.enabled);
+  const readyRoutes = onRoutes.filter(
+    (route) => route.provider.availability.status === "available",
+  );
+  return (
+    <section aria-label={title} className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-xs text-subtle-foreground">
+          Your phone reaches bb over the same routes as your machines.{" "}
+          <Link
+            className="underline underline-offset-2 hover:text-foreground"
+            to={getSettingsTargetPath({ section: "machines" })}
+          >
+            Change routes
+          </Link>
         </p>
-      )}
-      {provider.pluginId !== null && (
-        <Link
-          className="shrink-0 text-subtle-foreground underline-offset-4 hover:text-foreground hover:underline"
-          onClick={onNavigate}
-          to={getSettingsTargetPath({ pluginId: provider.pluginId })}
-        >
-          {setup ? `Set up ${provider.displayName}` : "Manage"}
-        </Link>
-      )}
-    </div>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="space-y-3 px-4 py-3">
+          {machineAccess.access === undefined ? (
+            <MachineAccessLoading />
+          ) : readyRoutes.length === 0 ? (
+            <p className="text-sm text-subtle-foreground">
+              No route is ready yet. Set one up in{" "}
+              <Link
+                className="underline underline-offset-2 hover:text-foreground"
+                to={getSettingsTargetPath({ section: "machines" })}
+              >
+                Settings → Machines
+              </Link>
+              .
+            </p>
+          ) : (
+            <ul aria-label="Ready routes" className="space-y-2">
+              {readyRoutes.map(({ provider }) => (
+                <li
+                  key={provider.id}
+                  aria-label={provider.displayName}
+                  className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm"
+                >
+                  <span className="shrink-0 text-foreground">
+                    {provider.displayName}
+                  </span>
+                  <span className="min-w-0 break-words text-xs text-subtle-foreground [overflow-wrap:anywhere]">
+                    {provider.urls.length > 0
+                      ? provider.urls.join(", ")
+                      : provider.description}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {onRoutes.map(({ provider }) =>
+            provider.pluginId === null ? null : (
+              <div key={provider.id}>
+                {renderPluginSettings(provider.pluginId)}
+              </div>
+            ),
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -414,11 +694,7 @@ function ManualAddressInput({
 }) {
   const { access, disabled, draft, error, saving, value } = machineAccess;
   return (
-    <SettingsWithControl
-      label="Server address"
-      description="Use your own domain or an address on a shared network. Your devices must be able to reach this address; localhost won’t work."
-      controlPlacement="below"
-    >
+    <div className="space-y-1.5 pt-1">
       <div className="flex flex-wrap items-center gap-2">
         <Input
           className="min-w-0 flex-1 basis-48"
@@ -441,11 +717,15 @@ function ManualAddressInput({
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
-      {error !== null && (
-        <p role="alert" className="mt-2 text-xs text-destructive-text">
+      {error !== null ? (
+        <p role="alert" className="text-xs text-destructive-text">
           {error}
         </p>
+      ) : (
+        <p className="text-xs text-subtle-foreground">
+          Your devices must be able to reach this address; localhost won’t work.
+        </p>
       )}
-    </SettingsWithControl>
+    </div>
   );
 }
