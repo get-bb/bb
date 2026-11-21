@@ -587,7 +587,17 @@ export function registerShowCommand(
         }
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
         const text = formatThreadTimelineText(
-          [...rows, ...timeline.pendingSteers],
+          [
+            ...rows.map((row) =>
+              row.kind === "system" &&
+              row.systemKind === "operation" &&
+              row.operationKind === "generic" &&
+              row.title === "Provider environment resolved"
+                ? { ...row, detail: null }
+                : row,
+            ),
+            ...timeline.pendingSteers,
+          ],
           {
             verbose: format === "verbose",
             color,

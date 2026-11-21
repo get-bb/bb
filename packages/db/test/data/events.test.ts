@@ -334,6 +334,66 @@ function createContextWindowUsageData(
 }
 
 describe("events", () => {
+  it("masks environment diagnostic payloads on daemon ingest and legacy history copy", () => {
+    const { db, project, thread } = setup();
+    try {
+      const fork = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const data = JSON.stringify({
+        providerThreadId: "fixture-provider",
+        entries: [
+          { name: "DEMO_AUTH_TOKEN", source: "shell", value: "fictional-shell-3815" },
+          {
+            name: "SECOND",
+            source: { plugin: "fixture" },
+            value: "fictional-plugin-3815",
+            reason: "fictional-plugin-3815",
+          },
+        ],
+      });
+      db.transaction((tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            ...daemonThreadEventFields,
+            threadId: thread.id,
+            type: "provider.env-resolved",
+            providerThreadId: "fixture-provider",
+            data,
+          },
+        ]),
+      );
+      const readPayload = (threadId: string) =>
+        db.$client.prepare<[string], { data: string }>(
+          "SELECT data FROM events WHERE thread_id = ? AND type = 'provider.env-resolved'",
+        ).get(threadId)?.data;
+      const written = readPayload(thread.id);
+      expect(written).toBeDefined();
+      db.$client.prepare("UPDATE events SET data = ? WHERE thread_id = ?")
+        .run(data, thread.id);
+      db.transaction((tx) =>
+        copyStoredThreadEventsInTransaction(tx, {
+          rows: listStoredEventRows(db, { threadId: thread.id }),
+          targetEnvironmentId: null,
+          targetThreadId: fork.id,
+        }),
+      );
+      expect(readPayload(thread.id)).toBe(data);
+      const expected = {
+        providerThreadId: "fixture-provider",
+        entries: [
+          { name: "DEMO_AUTH_TOKEN", source: "shell", value: { masked: true } },
+          { name: "SECOND", source: { plugin: "fixture" }, value: { masked: true } },
+        ],
+      };
+      expect.soft(JSON.parse(written ?? "null")).toEqual(expected);
+      expect.soft(JSON.parse(readPayload(fork.id) ?? "null")).toEqual(expected);
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("preserves reported cache counts through daemon append and stored event decoding", () => {
     const { db, thread } = setup();
     const scope = turnScope("turn-cache-test");

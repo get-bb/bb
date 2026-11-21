@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { setAppSettings, findTimelineWindowBudgetFloorSequence } from "@bb/db";
 import { defaultAppSettings, threadScope } from "@bb/domain";
 import { threadTimelineResponseSchema } from "@bb/server-contract";
+import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -110,11 +111,27 @@ it("excludes hidden diagnostics from rows and budgets while advancing the histor
           {
             name: "LARGE",
             source: "shell",
-            value: "x".repeat(5 * 1024 * 1024),
+            value: { masked: true },
           },
         ],
       },
     });
+    harness.db.$client
+      .prepare(
+        "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 2",
+      )
+      .run(
+        JSON.stringify({
+          entries: [
+            {
+              name: "LARGE",
+              source: "shell",
+              value: "x".repeat(5 * 1024 * 1024),
+            },
+          ],
+        }),
+        thread.id,
+      );
     seedEvent(harness.deps, {
       ...common,
       sequence: 3,
@@ -174,5 +191,123 @@ it("excludes hidden diagnostics from rows and budgets while advancing the histor
       "Model fallback: original → fallback",
       "Model fallback: original → fallback",
     ]);
+  });
+});
+
+it("serves masked diagnostics from a legacy event without rewriting storage", async () => {
+  await withTestHarness(async (harness) => {
+    const { thread } = seedThreadFixture(harness);
+    const legacy = JSON.stringify({
+      entries: [
+        {
+          name: "DEMO_AUTH_TOKEN",
+          source: { plugin: "fixture" },
+          value: "fictional-history-3815",
+          reason: "Copied fictional-history-3815",
+        },
+      ],
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      providerThreadId: "fixture-provider",
+      scope: threadScope(),
+      sequence: 1,
+      type: "provider.env-resolved",
+      data: { entries: [] },
+    });
+    harness.db.$client
+      .prepare("UPDATE events SET data = ? WHERE thread_id = ?")
+      .run(legacy, thread.id);
+    setAppSettings(harness.db, {
+      ...defaultAppSettings,
+      showDiagnosticEvents: true,
+    });
+    const response = await harness.app.request(
+      `/api/v1/threads/${thread.id}/events`,
+    );
+    const timeline = await harness.app.request(
+      `/api/v1/threads/${thread.id}/timeline`,
+    );
+    expect(response.status).toBe(200);
+    expect(timeline.status).toBe(200);
+    expect.soft(await readJson(response)).toMatchObject([
+      {
+        seq: 1,
+        type: "provider.env-resolved",
+        data: {
+          entries: [
+            {
+              name: "DEMO_AUTH_TOKEN",
+              source: { plugin: "fixture" },
+              value: { masked: true },
+            },
+          ],
+        },
+      },
+    ]);
+    const timelineText = await timeline.text();
+    expect(timelineText).toContain("DEMO_AUTH_TOKEN");
+    expect.soft(timelineText).not.toContain("fictional-history-3815");
+    expect(
+      harness.db.$client
+        .prepare("SELECT data FROM events WHERE thread_id = ?")
+        .get(thread.id),
+    ).toEqual({ data: legacy });
+  });
+});
+
+it("accepts legacy daemon wire diagnostics and stores only masked provenance", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session, thread } = seedThreadFixture(harness);
+    const response = await harness.app.request("/internal/session/events", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: host.id }),
+      body: JSON.stringify({
+        sessionId: session.id,
+        eventGroups: [
+          {
+            threadId: thread.id,
+            events: [
+              {
+                type: "provider.env-resolved",
+                threadId: thread.id,
+                providerThreadId: "fixture-provider",
+                scope: threadScope(),
+                entries: [
+                  {
+                    name: "DEMO_AUTH_TOKEN",
+                    source: "shell",
+                    value: "fictional-wire-3815",
+                  },
+                  {
+                    name: "ALREADY_MASKED",
+                    source: { plugin: "fixture" },
+                    value: { masked: true },
+                    reason: "fictional-wire-3815",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stored = harness.db.$client
+      .prepare<[string], { data: string }>(
+        "SELECT data FROM events WHERE thread_id = ? AND type = 'provider.env-resolved'",
+      )
+      .get(thread.id);
+    expect(JSON.parse(stored?.data ?? "null")).toEqual({
+      providerThreadId: "fixture-provider",
+      entries: [
+        { name: "DEMO_AUTH_TOKEN", source: "shell", value: { masked: true } },
+        {
+          name: "ALREADY_MASKED",
+          source: { plugin: "fixture" },
+          value: { masked: true },
+        },
+      ],
+    });
   });
 });

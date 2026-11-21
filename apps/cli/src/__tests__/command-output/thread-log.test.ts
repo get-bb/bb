@@ -127,6 +127,80 @@ describe("bb thread log command output", () => {
     expect(getEvents).not.toHaveBeenCalled();
   });
 
+  it("bb thread log --json masks environment diagnostics served by older servers", async () => {
+    stubServerApi({
+      "v1.threads.:id.events.$get": async () => [
+        {
+          id: "fixture-event",
+          seq: 1,
+          scope: { kind: "thread" },
+          threadId: "fixture-thread",
+          type: "provider.env-resolved",
+          createdAt: 100,
+          data: {
+            providerThreadId: "fixture-provider",
+            entries: [
+              {
+                name: "DEMO_AUTH_TOKEN",
+                source: "shell",
+                value: "fictional-cli-3815",
+                reason: "Copied fictional-cli-3815",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    await runCommand(
+      ["thread", "log", "fixture-thread", "--json", "--all"],
+      register,
+    );
+    const json = collectLogLines(vi.spyOn(console, "log")).join("\n");
+    expect(json).not.toContain("fictional-cli-3815");
+    expect(JSON.parse(json)).toMatchObject([
+      {
+        seq: 1,
+        data: {
+          entries: [
+            {
+              name: "DEMO_AUTH_TOKEN",
+              source: "shell",
+              value: { masked: true },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("bb thread log --format verbose omits environment diagnostics served by older servers", async () => {
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": async () =>
+        fixtures.makeTimelineResponse([
+          {
+            ...fixtures.makeTimelineBase({
+              id: "fixture-event",
+              sourceSeqStart: 1,
+            }),
+            kind: "system",
+            systemKind: "operation",
+            operationKind: "generic",
+            title: "Provider environment resolved",
+            detail: "DEMO_AUTH_TOKEN=fictional-cli-3815 (shell)",
+            status: "completed",
+            completedAt: 100,
+          },
+        ]),
+    });
+    await runCommand(
+      ["thread", "log", "fixture-thread", "--format", "verbose"],
+      register,
+    );
+    const output = collectLogLines(vi.spyOn(console, "log")).join("\n");
+    expect(output).toContain("Provider environment resolved");
+    expect(output).not.toContain("fictional-cli-3815");
+  });
+
   it("bb thread log --json caps at --limit and warns on stderr when more events exist", async () => {
     const events = Array.from({ length: 4 }, (_, index) => ({
       id: `evt-${index + 1}`,
