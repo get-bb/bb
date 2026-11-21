@@ -10,9 +10,12 @@ import {
 } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { MachineAccessSettings } from "./MachineAccessSettings";
+import {
+  MachineAccessSettings,
+  MobileServerAccess,
+} from "./MachineAccessSettings";
 
 type SystemConfig = ReturnType<typeof makeSystemConfig>;
 type ServerAccessProvider = SystemConfig["serverAccess"]["providers"][number];
@@ -95,21 +98,33 @@ const MANUAL: ServerAccessProvider = {
   urls: [],
 };
 
+function CurrentPath() {
+  return <p data-testid="path">{useLocation().pathname}</p>;
+}
+
 function renderSettings() {
   render(
     <MemoryRouter>
-      <MachineAccessSettings>
-        {(pluginId) => <p>{`${pluginId} settings`}</p>}
-      </MachineAccessSettings>
+      <MachineAccessSettings />
+      <CurrentPath />
     </MemoryRouter>,
   );
 }
 
-function routeNames() {
-  const list = screen.getByRole("list", { name: "Routes" });
+function namesIn(listName: string) {
+  const list = screen.queryByRole("list", { name: listName });
+  if (list === null) return [];
   return within(list)
     .getAllByRole("listitem")
     .map((item) => item.getAttribute("aria-label"));
+}
+
+function ready(provider: ServerAccessProvider, url: string) {
+  return {
+    ...provider,
+    availability: { status: "available" as const, serverUrl: url },
+    urls: [url],
+  };
 }
 
 beforeEach(() => {
@@ -120,82 +135,74 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-it("turns routes on and off by rewriting the disabled list", () => {
-  renderSettings();
-  expect(screen.getByText("relay-plugin settings")).toBeTruthy();
+async function addRoute(name: string) {
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Add a route" }), {
+    button: 0,
+  });
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: new RegExp(name) }),
+  );
+}
 
-  fireEvent.click(screen.getByRole("switch", { name: "Use Local network" }));
+it("lists routes that are on and offers the rest from Add a route", async () => {
+  renderSettings();
+  expect(namesIn("Routes")).toEqual([]);
+  expect(screen.getByText(/Only this computer can reach bb/)).toBeTruthy();
+
+  await addRoute("Local network");
   expect(state.mutate).toHaveBeenLastCalledWith({
     disabledServerAccessProviderIds: [],
   });
 
-  fireEvent.click(screen.getByRole("switch", { name: "Use Relay" }));
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    disabledServerAccessProviderIds: ["local-network", "relay"],
-  });
-
-  setSettings({ disabledServerAccessProviderIds: ["relay"] });
-  expect(
-    screen
-      .getByRole("switch", { name: "Use Relay" })
-      .getAttribute("aria-checked"),
-  ).toBe("false");
-  expect(
-    screen
-      .getByRole("switch", { name: "Use Local network" })
-      .getAttribute("aria-checked"),
-  ).toBe("true");
-  expect(screen.queryByText("relay-plugin settings")).toBeNull();
-});
-
-it("reorders routes by writing the full order and shows it before the server catches up", () => {
-  renderSettings();
-  expect(routeNames()).toEqual(["Local network", "Relay", "Manual"]);
-  expect(
-    screen.getByRole<HTMLButtonElement>("button", {
-      name: "Move Local network up",
-    }).disabled,
-  ).toBe(true);
-
-  fireEvent.click(screen.getByRole("button", { name: "Move Relay up" }));
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    serverAccessOrder: ["relay", "local-network", "direct"],
-  });
-
-  setSettings({ serverAccessOrder: ["relay", "local-network", "direct"] });
-  expect(routeNames()).toEqual(["Relay", "Local network", "Manual"]);
-
-  fireEvent.click(
-    screen.getByRole("button", { name: "Move Local network down" }),
-  );
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    serverAccessOrder: ["relay", "direct", "local-network"],
-  });
-});
-
-it("follows a route through setup, readiness, revocation, and being turned off", () => {
-  renderSettings();
-  const relayRow = () => screen.getByRole("listitem", { name: "Relay" });
-  expect(
-    within(relayRow())
-      .getByRole("link", { name: "Set up Relay" })
-      .getAttribute("href"),
-  ).toBe("/settings/plugins/relay-plugin");
-  expect(within(relayRow()).getByText("Pair the relay")).toBeTruthy();
-
+  setSettings({ disabledServerAccessProviderIds: [] });
   setProviders([
-    LAN,
-    {
-      ...RELAY,
-      availability: {
-        status: "available",
-        serverUrl: "https://relay.example.com",
-      },
-      urls: ["https://relay.example.com"],
-    },
+    ready(LAN, "http://10.0.0.5:1"),
+    ready(RELAY, "https://r.example"),
     MANUAL,
   ]);
-  expect(within(relayRow()).getByText("Ready")).toBeTruthy();
+  expect(namesIn("Routes")).toEqual(["Local network", "Relay"]);
+  expect(
+    screen
+      .getAllByRole("button", { name: /^Reorder / })
+      .map((handle) => handle.getAttribute("aria-label")),
+  ).toEqual(["Reorder Local network", "Reorder Relay"]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Turn off Relay" }));
+  expect(state.mutate).toHaveBeenLastCalledWith({
+    disabledServerAccessProviderIds: ["relay"],
+  });
+
+  setSettings({ serverAccessOrder: ["relay", "direct", "local-network"] });
+  expect(namesIn("Routes")).toEqual(["Relay", "Local network"]);
+});
+
+it("offers reordering only once two routes are on", () => {
+  setSettings({ disabledServerAccessProviderIds: [] });
+  setProviders([ready(LAN, "http://10.0.0.5:1"), RELAY, MANUAL]);
+  renderSettings();
+  expect(namesIn("Routes")).toEqual(["Local network"]);
+  expect(screen.queryByRole("button", { name: /^Reorder / })).toBeNull();
+});
+
+it("opens a Manual address editor when Manual is added", async () => {
+  renderSettings();
+  expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
+  await addRoute("Manual");
+  expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
+});
+
+it("follows a plugin route through setup, readiness, failure, and being turned off", async () => {
+  renderSettings();
+  await addRoute("Relay");
+  expect(screen.getByTestId("path").textContent).toBe(
+    "/settings/plugins/relay-plugin",
+  );
+
+  setProviders([LAN, ready(RELAY, "https://relay.example.com"), MANUAL]);
+  const relayRow = () => screen.getByRole("listitem", { name: "Relay" });
+  expect(namesIn("Routes")).toEqual(["Relay"]);
   expect(
     within(relayRow()).getByText("https://relay.example.com"),
   ).toBeTruthy();
@@ -209,10 +216,55 @@ it("follows a route through setup, readiness, revocation, and being turned off",
     },
     MANUAL,
   ]);
-  expect(within(relayRow()).getByText("Unavailable")).toBeTruthy();
+  expect(namesIn("Routes")).toEqual(["Relay"]);
   expect(within(relayRow()).getByText("Credential revoked")).toBeTruthy();
+  expect(within(relayRow()).getByRole("link", { name: "Fix" })).toBeTruthy();
 
   setSettings({ disabledServerAccessProviderIds: ["local-network", "relay"] });
-  expect(within(relayRow()).getByText("Off")).toBeTruthy();
-  expect(within(relayRow()).queryByText("Credential revoked")).toBeNull();
+  expect(namesIn("Routes")).toEqual([]);
+  await addRoute("Relay");
+  expect(state.mutate).toHaveBeenLastCalledWith({
+    disabledServerAccessProviderIds: ["local-network"],
+  });
+});
+
+it("shows the phone only ready routes, and plugin sections for routes that are on", () => {
+  render(
+    <MemoryRouter>
+      <MobileServerAccess
+        renderPluginSettings={(pluginId) => <p>{`${pluginId} pairing`}</p>}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(/No route is ready yet/)).toBeTruthy();
+  expect(screen.getByText("relay-plugin pairing")).toBeTruthy();
+
+  setProviders([
+    {
+      ...LAN,
+      availability: { status: "available", serverUrl: "http://10.0.0.5:1" },
+      urls: ["http://10.0.0.5:1"],
+    },
+    {
+      ...RELAY,
+      availability: { status: "available", serverUrl: "https://r.example" },
+      urls: ["https://r.example"],
+    },
+    MANUAL,
+  ]);
+  setSettings({ disabledServerAccessProviderIds: [] });
+  const ready = screen.getByRole("list", { name: "Ready routes" });
+  expect(
+    within(ready)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent),
+  ).toEqual(["Local networkhttp://10.0.0.5:1", "Relayhttps://r.example"]);
+
+  setSettings({ disabledServerAccessProviderIds: ["relay"] });
+  expect(screen.queryByText("relay-plugin pairing")).toBeNull();
+  expect(
+    within(screen.getByRole("list", { name: "Ready routes" }))
+      .getAllByRole("listitem")
+      .map((item) => item.getAttribute("aria-label")),
+  ).toEqual(["Local network"]);
 });
