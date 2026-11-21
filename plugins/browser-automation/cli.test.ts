@@ -255,32 +255,48 @@ describe("CLI boundaries", () => {
     ]);
   });
 
-  it("reports a failed --json run as JSON on stdout and text on stderr", async () => {
-    const execute = vi.fn(async (): Promise<PluginCliResult> => {
-      throw browserCliFailure(
-        new Error("Session stopped or expired; open a new session"),
-      );
-    });
-    const registration = createBrowserAutomationCli({ execute });
-    const json = await registration.run(["pages", id, "--json"], {
-      threadId: "thread",
-    });
-    expect(json.exitCode).toBe(1);
-    expect(JSON.parse(json.stdout ?? "")).toEqual({
-      ok: false,
-      error: {
-        code: "session_unavailable",
-        message: "Session stopped or expired; open a new session",
-        hint: expect.stringContaining("bb browser-automation open"),
-      },
-    });
-    expect(json.stderr).toContain("Session stopped or expired");
+  it.each([
+    ["Session stopped or expired; open a new session", []],
+    ["Session stopped, expired, or worker restarted; open a new session", []],
+    ["Session expired; open a new session", []],
+    ["Browser session stopped; open a new session", []],
+    ["Session does not belong to this thread", []],
+    ["Browser work cancelled or timed out", ["--timeout", "120 seconds"]],
+  ])(
+    "reports recovery guidance for %s in JSON and text",
+    async (message, extraHints) => {
+      const execute = vi.fn(async (): Promise<PluginCliResult> => {
+        throw browserCliFailure(new Error(message));
+      });
+      const registration = createBrowserAutomationCli({ execute });
+      const json = await registration.run(["pages", id, "--json"], {
+        threadId: "thread",
+      });
+      expect(json.exitCode).toBe(1);
+      expect(JSON.parse(json.stdout ?? "")).toEqual({
+        ok: false,
+        error: {
+          code: "session_unavailable",
+          message,
+          hint: expect.stringContaining("bb browser-automation open"),
+        },
+      });
+      expect(json.stderr).toContain(message);
+      expect(json.stderr).toContain("bb browser-automation open");
 
-    const text = await registration.run(["pages", id], { threadId: "thread" });
-    expect(text.exitCode).toBe(1);
-    expect(text.stdout).toBeUndefined();
-    expect(text.stderr).toContain("Session stopped or expired");
-  });
+      const text = await registration.run(["pages", id], {
+        threadId: "thread",
+      });
+      expect(text.exitCode).toBe(1);
+      expect(text.stdout).toBeUndefined();
+      expect(text.stderr).toContain(message);
+      expect(text.stderr).toContain("bb browser-automation open");
+      for (const hint of extraHints) {
+        expect(JSON.parse(json.stdout ?? "").error.hint).toContain(hint);
+        expect(text.stderr).toContain(hint);
+      }
+    },
+  );
 
   it("classifies capture-limit failures", () => {
     expect(
