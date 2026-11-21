@@ -1355,6 +1355,18 @@ GitHub after more than five prompts, when the window has been idle for 30
 seconds. The server records that it asked, so no other window or device asks
 again. Disable the plugin to never be asked.
 
+### Server switcher
+
+The builtin Server switcher plugin (`bb--server-switcher`) is off by default.
+Enable it in Settings › Plugins or with `bb plugin enable bb--server-switcher`
+to add a **Servers** item to the sidebar footer in bb Desktop and the mobile
+app. It lists the servers the app keeps, with a check on the current one;
+choosing another moves the window to it. **Add server…** opens bb Desktop's Add Server dialog or the
+mobile app's Settings › Servers › Add, and **Sign in to bb Connect…** appears
+whenever bb Desktop's Server menu offers the same sign-in. A web browser keeps
+no server list, so the item is absent there. Hide it from the footer like any
+other item, or disable the plugin again to remove it.
+
 ### Keep Awake
 
 The builtin Keep Awake plugin prevents idle system sleep on selected macOS and

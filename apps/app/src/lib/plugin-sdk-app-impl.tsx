@@ -128,6 +128,7 @@ import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection
 import { useThreadContextKind } from "@/components/plugin/thread-context-card-pane";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
 import { useServerChoices } from "@/hooks/useServerChoices";
+import { getServerChoices } from "@/lib/server-choices";
 import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
 
 function PluginInfoListRow({
@@ -167,6 +168,7 @@ export const pluginSdkAppImplementation = {
   experimental_useCanOpenFileExternally: usePluginCanOpenFileExternally,
   experimental_useTabVisible: useTabVisible,
   experimental_useServers: useServerChoices,
+  experimental_hasServers: () => getServerChoices() !== null,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   experimental_usePanelTabs,

@@ -1,4 +1,4 @@
-import type { BbDesktopServerChoice } from "./servers.js";
+import type { BbDesktopServerChoice, BbDesktopServerList } from "./servers.js";
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
@@ -74,7 +74,13 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onServerChoicesChange?(
     listener: (choices: BbDesktopServerChoice[]) => void,
   ): () => void;
+  getServerList?(): Promise<BbDesktopServerList>;
+  onServerListChange?(
+    listener: (list: BbDesktopServerList) => void,
+  ): () => void;
   selectServer?(id: string): void;
+  addServer?(): void;
+  signInToConnect?(): void;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   focusWindow?(): void;

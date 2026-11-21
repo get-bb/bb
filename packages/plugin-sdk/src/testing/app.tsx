@@ -1688,6 +1688,7 @@ type TestClipboard = (
 ) => Promise<boolean>;
 
 let activeClipboard: TestClipboard | null = null;
+let loadingWithServers = false;
 
 function captureClipboardWrites(
   result: TestClipboard | undefined,
@@ -1928,6 +1929,9 @@ const testPluginSdkApp = {
   },
   experimental_useServers(): ExperimentalServers | null {
     return useSlotEnv("experimental_useServers").servers;
+  },
+  experimental_hasServers(): boolean {
+    return loadingWithServers;
   },
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
@@ -2187,6 +2191,14 @@ export type PluginAppSource =
   | PluginAppModule
   | (() => Promise<PluginAppDefinition | PluginAppModule>);
 
+export interface LoadPluginAppOptions {
+  /**
+   * Answer for `experimental_hasServers()` while the app definition runs.
+   * Omitted → false, as in a web browser.
+   */
+  hasServers?: boolean;
+}
+
 /**
  * Install the test runtime, resolve the plugin app definition, and capture
  * its slot registrations. Pass the imported module, its default export, or a
@@ -2194,6 +2206,7 @@ export type PluginAppSource =
  */
 export async function loadPluginApp(
   source: PluginAppSource,
+  options: LoadPluginAppOptions = {},
 ): Promise<CapturedPluginApp> {
   installTestPluginRuntime();
   const resolved = typeof source === "function" ? await source() : source;
@@ -2205,7 +2218,12 @@ export async function loadPluginApp(
       "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
     );
   }
-  return collectPluginAppRegistrations(definition);
+  loadingWithServers = options.hasServers ?? false;
+  try {
+    return collectPluginAppRegistrations(definition);
+  } finally {
+    loadingWithServers = false;
+  }
 }
 
 export interface ContentScriptTestMountOptions {
@@ -2536,8 +2554,8 @@ export interface RenderSlotOptions<
   tabVisible?: boolean;
   /**
    * Answer for `experimental_useServers()`. Omitted → null, as in a web
-   * browser. Pass `{ status, servers, switchTo }` to act as bb Desktop or the
-   * mobile app.
+   * browser. Pass `{ status, servers, switchTo, addServer, accountSignIn }` to
+   * act as bb Desktop or the mobile app.
    */
   servers?: ExperimentalServers | null;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */

@@ -102,25 +102,39 @@ Before stabilization, verify consent and revoke flows on all supported native
 platforms, per-origin scope, old-client launch errors, and storage recovery. Core
 callers are `ApplicationLinkApprovalsSettings` and the URL confirmation dispatcher.
 
-## Server list (`experimental_useServers`, `@get-bb/plugin-sdk/app`)
+## Server list (`experimental_useServers`, `experimental_hasServers`, `@get-bb/plugin-sdk/app`)
 
-`experimental_useServers()` returns `{ status, servers, switchTo }` on bb Desktop and
-the mobile app, and null in a web browser, whose server list would be scoped to
-one origin. Each `ExperimentalServer` has an `id`, `name`, `origin` (scheme,
+`experimental_useServers()` returns `{ status, servers, switchTo, addServer,
+accountSignIn }` on bb Desktop and the mobile app, and null in a web browser,
+whose server list would be scoped to one origin. Each `ExperimentalServer` has an `id`, `name`, `origin` (scheme,
 host and port only; desktop custom URLs can embed login details and paths),
 `kind` (`local`, `account` or `custom`) and `active`. On desktop, `status` is
 `loading` with no servers until the main process answers; the mobile app
 injects its list with the bridge handshake, so it starts `ready`. Both then
 push changes, and a change that arrives during a read wins over the read. `switchTo(id)` reloads the client on that server, unloading every
-plugin; it ignores the active server and unknown ids. Core's command palette
-server switcher uses the same `useServerChoices` implementation, so the mobile
-app now offers the switcher too. Desktop pages served by an older desktop
-release get null until it updates. Plugins can't add, edit, rename or remove
+plugin; it ignores the active server and unknown ids. `addServer()` opens the
+client's own add-server screen (bb Desktop's Add Server dialog, the mobile
+app's Add server screen from bridge version 5); it is null on clients without
+one. `accountSignIn` is set while bb Desktop skips listing the user's account
+servers because bb Connect needs a sign-in, with the label its Server menu
+uses and a `start()` that opens the same sign-in window; it is always null on
+the mobile app. `experimental_hasServers()` is true exactly where the hook
+returns a value; it is fixed for the life of the page, so a plugin can read it
+in `definePluginApp` and register server controls only on bb Desktop and the
+mobile app. Core's command palette uses the same `getServerChoices` /
+`useServerChoices` implementation, and the bundled Server switcher plugin
+(`plugins/server-switcher`) is the sidebar footer's server switcher, built on
+both functions. `apps/app/src/lib/server-choices.test.tsx` runs the hook
+against bb Desktop and the mobile app, and the plugin's own tests cover its
+registration and panel. Desktop's main process opens the sign-in only while
+its Server menu offers it (`bbDesktopConnectSignInLabel`). Desktop pages
+served by an older desktop release get null until it updates, and a desktop
+release from before `addServer` lists servers without it. Plugins can't edit, rename or remove
 servers, and can't call another server. The list lives in the client, so the
 `bb` CLI has no server list to reach and no command.
 
 Docs: Plugin Guide, Sidebar footer items (`plugins/plugin-api-docs/src/surfaces.ts`).
-Before stabilization, find a plugin caller beyond core's palette, decide
+Before stabilization, decide
 whether desktop custom-server ids should survive a URL edit (they hash the
 URL today), and verify switching on iOS, Android and desktop with account and
 custom servers, including a mobile route pinned to a profile by a deep link.

@@ -52,6 +52,7 @@ import {
   bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopServerList,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -783,6 +784,13 @@ function listServerChoices() {
   );
 }
 
+function getServerList(): BbDesktopServerList {
+  return {
+    servers: listServerChoices(),
+    connectServersSkipReason: connectServerSyncSkipReason,
+  };
+}
+
 function buildMenuServerItems(connectServers: ConnectServerRef[]) {
   return buildDesktopServerChoices(
     serverTargetStore,
@@ -833,13 +841,13 @@ function popupServerMenu(browserWindow: BrowserWindow | null): void {
 }
 
 function refreshApplicationMenu(): void {
-  const choices = listServerChoices();
+  const serverList = getServerList();
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
       sendToApplicationRenderer(
         browserWindow,
         BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
-        choices,
+        serverList,
       );
     }
   }
@@ -2409,8 +2417,14 @@ function registerDesktopUpdateIpc(): void {
   registerServerChoiceIpc({
     applicationWindowWebContentsIds,
     onListRequested: () => connectServerSync?.onListRequested(),
-    list: listServerChoices,
+    list: getServerList,
     select: setActiveServerTarget,
+    addServer() {
+      void openSetServerUrlDialog(true);
+    },
+    signInToConnect() {
+      openConnectSignIn(getFocusedApplicationWindow());
+    },
     onError: (error) =>
       desktopLogger.error(`Could not switch server: ${String(error)}`),
   });
@@ -2676,7 +2690,9 @@ async function waitForWindowsInstallerToFinish(): Promise<boolean> {
   return result === "finished" && !quitting;
 }
 
-async function waitForOwnedRuntimeReady(bbProcess: BbAppProcess): Promise<void> {
+async function waitForOwnedRuntimeReady(
+  bbProcess: BbAppProcess,
+): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   const result = await Promise.race([
     bbProcess.ready.then(() => "ready" as const),

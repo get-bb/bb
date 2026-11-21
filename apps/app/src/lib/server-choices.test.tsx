@@ -1,8 +1,18 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook } from "@testing-library/react";
-import type { BbDesktopServerChoice } from "@bb/desktop-contract";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
+import type {
+  BbDesktopServerChoice,
+  BbDesktopServerList,
+} from "@bb/desktop-contract";
 import {
   buildBridgeEventScript,
   buildBridgeInjectionScript,
@@ -14,6 +24,7 @@ import { createBbDesktopApi } from "../test/bb-desktop-test-utils";
 import { getNativeShell, resetNativeShellForTests } from "./native-shell";
 import { getServerChoices, resetServerChoicesForTests } from "./server-choices";
 import { useServerChoices } from "../hooks/useServerChoices";
+import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 
 const local: BbDesktopServerChoice = {
   id: "builtin",
@@ -73,6 +84,28 @@ function installDesktop() {
   };
 }
 
+function installDesktopWithServerList(
+  connectServersSkipReason: BbDesktopServerList["connectServersSkipReason"],
+) {
+  const selectServer = vi.fn();
+  const addServer = vi.fn();
+  const signInToConnect = vi.fn();
+  window.bbDesktop = {
+    ...createDesktopApi(),
+    listServerChoices: async () => [],
+    onServerChoicesChange: () => () => {},
+    getServerList: async () => ({
+      servers: [local, studio],
+      connectServersSkipReason,
+    }),
+    onServerListChange: () => () => {},
+    selectServer,
+    addServer,
+    signInToConnect,
+  };
+  return { selectServer, addServer, signInToConnect };
+}
+
 const handshake: NativeShellHandshake = {
   bridgeVersion: 4,
   appVersion: "0.50.0",
@@ -83,14 +116,17 @@ const handshake: NativeShellHandshake = {
   capabilities: ["haptic", "badge", "share", "open-external", "safe-area"],
 };
 
-function installMobile(servers?: readonly BridgeServer[]) {
+function installMobile(
+  servers?: readonly BridgeServer[],
+  shellHandshake: NativeShellHandshake = handshake,
+) {
   const posted: string[] = [];
   Object.defineProperty(window, "ReactNativeWebView", {
     configurable: true,
     value: { postMessage: (raw: string) => posted.push(raw) },
   });
   // eslint-disable-next-line no-new-func
-  new Function("window", buildBridgeInjectionScript(handshake, servers))(
+  new Function("window", buildBridgeInjectionScript(shellHandshake, servers))(
     window,
   );
   return {
@@ -146,6 +182,10 @@ describe("server choices", () => {
     expect(result.current?.servers).toEqual(switched);
     result.current?.switchTo("builtin");
     expect(desktop.selectServer).toHaveBeenCalledWith("builtin");
+    expect(result.current).toMatchObject({
+      addServer: null,
+      accountSignIn: null,
+    });
   });
 
   it("keeps a change desktop pushed while an older read was still in flight", async () => {
@@ -198,6 +238,10 @@ describe("server choices", () => {
       ok: true,
       message: { type: "switch-server", id: "profile-2" },
     });
+    expect(result.current).toMatchObject({
+      addServer: null,
+      accountSignIn: null,
+    });
   });
 
   it("keeps the mobile bridge usable when the app's list is one this page cannot read", () => {
@@ -207,5 +251,95 @@ describe("server choices", () => {
     ]);
     expect(getServerChoices()).toBeNull();
     expect(getNativeShell()?.handshake.platform).toBe("ios");
+  });
+});
+
+const usePluginServers = pluginSdkAppImplementation.experimental_useServers;
+
+function PluginServers() {
+  const choices = usePluginServers();
+  if (choices === null) return null;
+  return (
+    <>
+      {choices.servers.map((server) => (
+        <button
+          key={server.id}
+          type="button"
+          onClick={() => choices.switchTo(server.id)}
+        >
+          {server.name}
+        </button>
+      ))}
+      {choices.accountSignIn === null ? null : (
+        <button type="button" onClick={choices.accountSignIn.start}>
+          {choices.accountSignIn.label}
+        </button>
+      )}
+      {choices.addServer === null ? null : (
+        <button type="button" onClick={choices.addServer}>
+          Add server…
+        </button>
+      )}
+    </>
+  );
+}
+
+describe("experimental_useServers", () => {
+  it("reports experimental_hasServers exactly where the hook has a value", () => {
+    const hasServers = pluginSdkAppImplementation.experimental_hasServers;
+    expect(hasServers()).toBe(false);
+    expect(renderHook(() => usePluginServers()).result.current).toBeNull();
+    resetServerChoicesForTests();
+    installDesktopWithServerList(null);
+    expect(hasServers()).toBe(true);
+    expect(renderHook(() => usePluginServers()).result.current).not.toBeNull();
+  });
+
+  it("switches desktop and opens its Add Server dialog", async () => {
+    const desktop = installDesktopWithServerList(null);
+    render(<PluginServers />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Studio/ }));
+    expect(desktop.selectServer).toHaveBeenCalledWith("connect:studio");
+    fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
+    expect(desktop.addServer).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["no-credential", "Sign in to bb Connect…"],
+    ["unauthorized", "Sign in to bb Connect again…"],
+    ["unavailable", null],
+    [null, null],
+  ] as const)(
+    "offers bb Connect sign-in when desktop skips %s only as its Server menu does",
+    async (reason, label) => {
+      const desktop = installDesktopWithServerList(reason);
+      render(<PluginServers />);
+      await screen.findByRole("button", { name: /^Studio/ });
+      const signIn = screen.queryByRole("button", { name: /^Sign in/ });
+      expect(signIn?.textContent ?? null).toBe(label);
+      if (signIn !== null) fireEvent.click(signIn);
+      expect(desktop.signInToConnect).toHaveBeenCalledTimes(label ? 1 : 0);
+    },
+  );
+
+  it("asks the mobile app to switch and to open its Add server screen", () => {
+    const mobile = installMobile(
+      [
+        { ...studio, active: true },
+        { ...local, active: false },
+      ],
+      {
+        ...handshake,
+        bridgeVersion: 5,
+        capabilities: [...handshake.capabilities, "open-native"],
+      },
+    );
+    render(<PluginServers />);
+    fireEvent.click(screen.getByRole("button", { name: /^This Mac/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add server…" }));
+    expect(mobile.posted.map((raw) => parsePageToShellMessage(raw))).toEqual([
+      { ok: true, message: { type: "switch-server", id: "builtin" } },
+      { ok: true, message: { type: "open-native", screen: "add-server" } },
+    ]);
   });
 });

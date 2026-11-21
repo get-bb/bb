@@ -188,6 +188,8 @@ import {
 // loadPluginApp and renderSlot install the test runtime. The SDK looks it up
 // when a hook runs, so a static `import app from "./app"` works as well.
 const app = await loadPluginApp(() => import("./app"));
+// Pass { hasServers: true } to define the app as bb Desktop or the mobile app
+// would; experimental_hasServers() is false otherwise, as in a web browser.
 const contentScripts = await mountPluginContentScripts(app, {
   pluginId: "my-plugin",
   generation: 1,
