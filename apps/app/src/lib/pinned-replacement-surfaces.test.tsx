@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   act,
   cleanup,
@@ -8,11 +8,8 @@ import {
   renderHook,
   screen,
 } from "@testing-library/react";
-import {
-  createStore,
-  Provider as JotaiProvider,
-  type WritableAtom,
-} from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   diffRendererProviderAtom,
@@ -21,12 +18,14 @@ import {
   useSourceCodeRendererReplacement,
 } from "@/components/code/codeRendererProvider";
 import {
+  threadHeaderTitleProviderAtom,
+  usePluginThreadHeaderTitle,
+} from "@/components/plugin/PluginThreadHeaderTitle";
+import {
   composerRendererProviderAtom,
   useComposerReplacement,
 } from "@/components/promptbox/composer-provider";
-import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
-import { SidebarNavigationProviderSetting } from "@/components/settings/SidebarNavigationProviderSetting";
-import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
+import { PluginChoicesSection } from "@/components/settings/PluginChoicesSection";
 import {
   sidebarNavigationProviderAtom,
   useResolvedSidebarNavigation,
@@ -35,96 +34,155 @@ import {
   threadListProviderAtom,
   useThreadListReplacement,
 } from "@/components/sidebar/threadListProvider";
+import { fileOpenerPreferenceAtom } from "@/lib/file-opener-preference";
+import { codeFencePicksAtom } from "@/lib/plugin-choice-picks";
 import {
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
   setPluginFrontendReconcilePending,
 } from "@/lib/plugin-frontend-boot-state";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import {
+  useExclusiveBootState,
+  type ExclusiveResolution,
+} from "@/lib/plugin-replacement-preference";
+import {
+  resolveCodeFenceRendererRegistry,
+  resolveFileOpenerReplacement,
+} from "@/lib/plugin-slot-resolvers";
 import {
   resetPluginSlotStoreForTest,
   setBuiltinPluginIds,
+  setOfficialMarketplacePluginIds,
   setPluginSlotRegistrations,
+  usePluginSlotKind,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
+type Store = ReturnType<typeof createStore>;
+
 interface Provider {
+  pluginId: string;
   id: string;
   title: string;
 }
 
-interface PinnedReplacementSurface {
+interface PinnedSurface {
   name: string;
   settingLabel: string;
-  preferenceAtom: WritableAtom<string, [string], void>;
-  Settings: ComponentType;
+  setPick: (store: Store, pick: string) => void;
   registrations: (provider: Provider) => Partial<PluginRegistrationSet>;
-  useResolvedTitle: () => string | null;
-}
-
-function replacementTitle(
-  resolved: ResolvedReplacement<{ title: string }>,
-): string | null {
-  return resolved.kind === "plugin" ? resolved.registration.title : null;
+  optionTitle: (provider: Provider) => string;
+  useResolvedPluginId: () => string | null;
 }
 
 const component = () => null;
 
-const SURFACES: PinnedReplacementSurface[] = [
+function resolvedPluginId(
+  resolved: ExclusiveResolution<{ pluginId: string }>,
+): string | null {
+  return resolved.kind === "plugin" ? resolved.registration.pluginId : null;
+}
+
+const SURFACES: PinnedSurface[] = [
   {
     name: "composer",
     settingLabel: "Composer",
-    preferenceAtom: composerRendererProviderAtom,
-    Settings: CodeRendererSettings,
-    registrations: (provider) => ({ composers: [{ ...provider, component }] }),
-    useResolvedTitle: () => replacementTitle(useComposerReplacement()),
+    setPick: (store, pick) => store.set(composerRendererProviderAtom, pick),
+    registrations: ({ id, title }) => ({
+      composers: [{ id, title, component }],
+    }),
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () => resolvedPluginId(useComposerReplacement()),
   },
   {
     name: "thread list",
     settingLabel: "Sidebar thread list",
-    preferenceAtom: threadListProviderAtom,
-    Settings: SidebarThreadListSetting,
-    registrations: (provider) => ({
-      threadLists: [{ ...provider, component }],
+    setPick: (store, pick) => store.set(threadListProviderAtom, pick),
+    registrations: ({ id, title }) => ({
+      threadLists: [{ id, title, component }],
     }),
-    useResolvedTitle: () => replacementTitle(useThreadListReplacement()),
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () => resolvedPluginId(useThreadListReplacement()),
   },
   {
     name: "sidebar navigation",
-    settingLabel: "Sidebar navigation",
-    preferenceAtom: sidebarNavigationProviderAtom,
-    Settings: SidebarNavigationProviderSetting,
-    registrations: (provider) => ({
+    settingLabel: "Navigation",
+    setPick: (store, pick) => store.set(sidebarNavigationProviderAtom, pick),
+    registrations: ({ id, title }) => ({
       experimentalSidebarNavigations: [
-        { ...provider, placement: "rail", component },
+        { id, title, placement: "rail", component },
       ],
     }),
-    useResolvedTitle: () => {
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () => {
       const resolved = useResolvedSidebarNavigation();
-      return resolved.kind === "plugin" ? resolved.slot.title : null;
+      return resolved.kind === "plugin" ? resolved.slot.pluginId : null;
     },
   },
   {
     name: "source code renderer",
     settingLabel: "Source code",
-    preferenceAtom: sourceCodeRendererProviderAtom,
-    Settings: CodeRendererSettings,
-    registrations: (provider) => ({
-      sourceCodeRenderers: [{ ...provider, component }],
+    setPick: (store, pick) => store.set(sourceCodeRendererProviderAtom, pick),
+    registrations: ({ id, title }) => ({
+      sourceCodeRenderers: [{ id, title, component }],
     }),
-    useResolvedTitle: () =>
-      replacementTitle(useSourceCodeRendererReplacement()),
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () =>
+      resolvedPluginId(useSourceCodeRendererReplacement()),
   },
   {
     name: "diff renderer",
     settingLabel: "Diffs",
-    preferenceAtom: diffRendererProviderAtom,
-    Settings: CodeRendererSettings,
-    registrations: (provider) => ({
-      diffRenderers: [{ ...provider, component }],
+    setPick: (store, pick) => store.set(diffRendererProviderAtom, pick),
+    registrations: ({ id, title }) => ({
+      diffRenderers: [{ id, title, component }],
     }),
-    useResolvedTitle: () => replacementTitle(useDiffRendererReplacement()),
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () => resolvedPluginId(useDiffRendererReplacement()),
+  },
+  {
+    name: "thread header title",
+    settingLabel: "Thread header title",
+    setPick: (store, pick) => store.set(threadHeaderTitleProviderAtom, pick),
+    registrations: ({ id }) => ({ threadHeaderTitles: [{ id, component }] }),
+    optionTitle: (provider) => provider.pluginId,
+    useResolvedPluginId: () => resolvedPluginId(usePluginThreadHeaderTitle()),
+  },
+  {
+    name: "file opener",
+    settingLabel: "Plugin for .md files",
+    setPick: (store, pick) => store.set(fileOpenerPreferenceAtom, { md: pick }),
+    registrations: ({ id, title }) => ({
+      fileOpeners: [{ id, title, extensions: ["md"], component }],
+    }),
+    optionTitle: (provider) => provider.title,
+    useResolvedPluginId: () => {
+      const resolved = resolveFileOpenerReplacement({
+        registrations: usePluginSlotKind("fileOpeners"),
+        picks: useAtomValue(fileOpenerPreferenceAtom),
+        path: "README.md",
+        boot: useExclusiveBootState(),
+      });
+      return resolved.kind === "plugin" ? resolved.registration.pluginId : null;
+    },
+  },
+  {
+    name: "code fence renderer",
+    settingLabel: "Plugin for bash code blocks",
+    setPick: (store, pick) => store.set(codeFencePicksAtom, { bash: pick }),
+    registrations: ({ id }) => ({
+      codeFenceRenderers: [{ id, languages: ["bash"], component }],
+    }),
+    optionTitle: (provider) => provider.pluginId,
+    useResolvedPluginId: () => {
+      const resolved = resolveCodeFenceRendererRegistry(
+        usePluginSlotKind("codeFenceRenderers"),
+        useAtomValue(codeFencePicksAtom),
+        useExclusiveBootState(),
+      ).get("bash");
+      return resolved?.status === "ok" ? resolved.slot.pluginId : null;
+    },
   },
 ];
 
@@ -135,29 +193,36 @@ const INSTALLED = {
   title: "Installed provider",
 };
 const PINNED = { pluginId: "pinned", id: "main", title: "Pinned provider" };
+const ZEBRA = { pluginId: "zebra", id: "main", title: "Zebra provider" };
+const OFFICIAL = {
+  pluginId: "aaa-official",
+  id: "main",
+  title: "Official provider",
+};
 const PINNED_KEY = `${PINNED.pluginId}/${PINNED.id}`;
 
-function register(
-  surface: PinnedReplacementSurface,
-  { pluginId, id, title }: typeof BUNDLED,
-) {
+function register(surface: PinnedSurface, provider: Provider) {
   setPluginSlotRegistrations(
-    pluginId,
-    makePluginRegistrationSet(surface.registrations({ id, title })),
+    provider.pluginId,
+    makePluginRegistrationSet(surface.registrations(provider)),
   );
 }
 
-function setUp(surface: PinnedReplacementSurface) {
+function setUp(surface: PinnedSurface, pick: string = PINNED_KEY) {
   setBuiltinPluginIds([BUNDLED.pluginId]);
   register(surface, BUNDLED);
   register(surface, INSTALLED);
   const store = createStore();
-  store.set(surface.preferenceAtom, PINNED_KEY);
+  surface.setPick(store, pick);
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <JotaiProvider store={store}>{children}</JotaiProvider>
+    <MemoryRouter>
+      <JotaiProvider store={store}>{children}</JotaiProvider>
+    </MemoryRouter>
   );
-  const resolved = renderHook(() => surface.useResolvedTitle(), { wrapper });
-  render(<surface.Settings />, { wrapper });
+  const resolved = renderHook(() => surface.useResolvedPluginId(), {
+    wrapper,
+  });
+  render(<PluginChoicesSection />, { wrapper });
   const settingText = () =>
     screen.getByRole("button", { name: surface.settingLabel }).textContent;
   return { resolved, settingText };
@@ -171,22 +236,39 @@ afterEach(async () => {
   resetPluginFrontendBootStateForTest();
 });
 
-describe.each(SURFACES)("pinned $name", (surface) => {
-  it("uses the pinned provider and names it in Settings", () => {
+describe.each(SURFACES)("exclusive $name", (surface) => {
+  it("uses the pinned provider and names it in Settings → Plugin choices", () => {
     register(surface, PINNED);
     markPluginFrontendsSettled();
     const { resolved, settingText } = setUp(surface);
 
-    expect(resolved.result.current).toBe(PINNED.title);
-    expect(settingText()).toContain(PINNED.title);
+    expect(resolved.result.current).toBe(PINNED.pluginId);
+    expect(settingText()).toContain(surface.optionTitle(PINNED));
   });
 
   it("behaves as Automatic once plugins settle without the pinned plugin, and Settings says so", () => {
     markPluginFrontendsSettled();
     const { resolved, settingText } = setUp(surface);
 
-    expect(resolved.result.current).toBe(INSTALLED.title);
+    expect(resolved.result.current).toBe(INSTALLED.pluginId);
     expect(settingText()).toContain("Automatic");
+  });
+
+  it("ranks installed plugins by id ahead of bundled ones under Automatic", () => {
+    register(surface, ZEBRA);
+    markPluginFrontendsSettled();
+    const { resolved } = setUp(surface, "__automatic__");
+
+    expect(resolved.result.current).toBe(INSTALLED.pluginId);
+  });
+
+  it("ranks plugins from bb's official marketplace with bb's bundled ones under Automatic", () => {
+    register(surface, OFFICIAL);
+    setOfficialMarketplacePluginIds([OFFICIAL.pluginId]);
+    markPluginFrontendsSettled();
+    const { resolved } = setUp(surface, "__automatic__");
+
+    expect(resolved.result.current).toBe(INSTALLED.pluginId);
   });
 
   it("keeps behaving as Automatic while plugins reload after boot", () => {
@@ -194,10 +276,10 @@ describe.each(SURFACES)("pinned $name", (surface) => {
     const { resolved } = setUp(surface);
 
     act(() => setPluginFrontendReconcilePending(true));
-    expect(resolved.result.current).toBe(INSTALLED.title);
+    expect(resolved.result.current).toBe(INSTALLED.pluginId);
 
     act(() => register(surface, PINNED));
-    expect(resolved.result.current).toBe(PINNED.title);
+    expect(resolved.result.current).toBe(PINNED.pluginId);
   });
 
   it("waits for the pinned plugin while plugins are still loading", () => {
@@ -206,6 +288,6 @@ describe.each(SURFACES)("pinned $name", (surface) => {
     expect(resolved.result.current).toBeNull();
 
     act(() => register(surface, PINNED));
-    expect(resolved.result.current).toBe(PINNED.title);
+    expect(resolved.result.current).toBe(PINNED.pluginId);
   });
 });

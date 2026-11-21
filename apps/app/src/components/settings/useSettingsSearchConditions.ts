@@ -6,18 +6,17 @@ import {
 import { useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
-import { usePluginSlotKind } from "@/lib/plugin-slots";
+import {
+  hasPluginChoices as hasAnyPluginChoice,
+  usePluginChoices,
+} from "./PluginChoicesSection";
 import type { SettingsSearchCondition } from "./settings-search";
 
 export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchCondition> {
-  const composers = usePluginSlotKind("composers");
-  const diffRenderers = usePluginSlotKind("diffRenderers");
-  const experimentalSidebarNavigations = usePluginSlotKind(
-    "experimentalSidebarNavigations",
+  const pluginChoices = usePluginChoices();
+  const choiceLabels = new Set(
+    pluginChoices.slots.map((choice) => choice.label),
   );
-  const fileOpeners = usePluginSlotKind("fileOpeners");
-  const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
-  const threadLists = usePluginSlotKind("threadLists");
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
   const systemConfig = useSystemConfig().data;
@@ -31,14 +30,13 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
         typeof window === "undefined" ? undefined : window.location.hostname,
       ) !== null,
   );
-  const hasFileOpeners = fileOpeners.some(
-    (opener) => opener.extensions.length > 0,
-  );
-  const hasComposers = composers.length > 0;
-  const hasDiffRenderers = diffRenderers.length > 0;
-  const hasSourceCodeRenderers = sourceCodeRenderers.length > 0;
-  const hasThreadLists = threadLists.length > 0;
-  const hasSidebarNavigations = experimentalSidebarNavigations.length > 0;
+  const hasPluginChoices = hasAnyPluginChoice(pluginChoices);
+  const hasComposers = choiceLabels.has("Composer");
+  const hasDiffRenderers = choiceLabels.has("Diffs");
+  const hasSourceCodeRenderers = choiceLabels.has("Source code");
+  const hasThreadLists = choiceLabels.has("Sidebar thread list");
+  const hasSidebarNavigations = choiceLabels.has("Navigation");
+  const hasThreadHeaderTitles = choiceLabels.has("Thread header title");
   const hasFilePreferences = accessState !== "unavailable";
 
   return useMemo(() => {
@@ -47,13 +45,14 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["composers", hasComposers],
       ["desktopBrowser", desktopBrowserAvailable],
       ["diffRenderers", hasDiffRenderers],
-      ["fileOpeners", hasFileOpeners],
       ["filePreferences", hasFilePreferences],
       ["localhostLinkRewrite", rewritesLocalhostLinks],
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
+      ["pluginChoices", hasPluginChoices],
       ["pluginUpdates", pluginUpdatesEnabled],
       ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
+      ["threadHeaderTitles", hasThreadHeaderTitles],
       ["threadLists", hasThreadLists],
     ];
     return new Set(
@@ -64,10 +63,11 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     desktopBrowserAvailable,
     hasComposers,
     hasDiffRenderers,
-    hasFileOpeners,
     hasFilePreferences,
+    hasPluginChoices,
     hasSidebarNavigations,
     hasSourceCodeRenderers,
+    hasThreadHeaderTitles,
     hasThreadLists,
     performanceDiagnosticsAvailable,
     pluginUpdatesEnabled,

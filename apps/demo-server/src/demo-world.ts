@@ -193,6 +193,14 @@ function createUiPreferences(): UiPreferenceEntries {
     ),
     "sidebar.updates.skipped": uiPreferenceEntry("sidebar.updates.skipped"),
     "composer.provider": uiPreferenceEntry("composer.provider"),
+    "diff.provider": uiPreferenceEntry("diff.provider"),
+    "sourceCode.provider": uiPreferenceEntry("sourceCode.provider"),
+    "threadHeader.titleProvider": uiPreferenceEntry(
+      "threadHeader.titleProvider",
+    ),
+    "fileOpener.byExtension": uiPreferenceEntry("fileOpener.byExtension"),
+    "codeFence.byLanguage": uiPreferenceEntry("codeFence.byLanguage"),
+    "messageDirective.byName": uiPreferenceEntry("messageDirective.byName"),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
     ),

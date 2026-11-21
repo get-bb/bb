@@ -1,25 +1,38 @@
-import { atomWithStorage } from "jotai/utils";
 import { useAtom, useAtomValue } from "jotai";
-import { createJsonLocalStorage } from "./browser-storage";
 import {
-  BUILT_IN_FILE_OPENER_PREFERENCE,
-  buildFileOpenerRef,
-  type FileOpenerPreferenceMap,
-} from "./plugin-slot-resolvers";
+  BUILT_IN_REPLACEMENT_PROVIDER,
+  createLegacyLocalPick,
+  createPickMapPreferenceAtom,
+} from "./plugin-replacement-preference";
+import type { FileOpenerPreferenceMap } from "./plugin-slot-resolvers";
 
-export {
-  BUILT_IN_FILE_OPENER_PREFERENCE,
-  buildFileOpenerRef,
-  type FileOpenerPreferenceMap,
-};
+function legacyFileOpenerPicks(stored: unknown): Record<string, string> | null {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+    return null;
+  }
+  const picks: Record<string, string> = {};
+  for (const [extension, pick] of Object.entries(stored)) {
+    if (typeof pick !== "string" || extension.length === 0) continue;
+    if (pick === BUILT_IN_REPLACEMENT_PROVIDER) {
+      picks[extension] = pick;
+      continue;
+    }
+    const separator = pick.indexOf(":");
+    if (separator <= 0 || separator === pick.length - 1) continue;
+    picks[extension] =
+      `${pick.slice(0, separator)}/${pick.slice(separator + 1)}`;
+  }
+  return Object.keys(picks).length === 0 ? null : picks;
+}
 
-const FILE_OPENER_PREFERENCE_STORAGE_KEY = "bb.fileOpenerByExtension";
-
-const fileOpenerPreferenceAtom = atomWithStorage<FileOpenerPreferenceMap>(
-  FILE_OPENER_PREFERENCE_STORAGE_KEY,
-  {},
-  createJsonLocalStorage<FileOpenerPreferenceMap>(),
-  { getOnInit: true },
+export const fileOpenerPreferenceAtom = createPickMapPreferenceAtom(
+  "fileOpener.byExtension",
+  {
+    legacy: createLegacyLocalPick(
+      "bb.fileOpenerByExtension",
+      legacyFileOpenerPicks,
+    ),
+  },
 );
 
 export function useFileOpenerPreference() {

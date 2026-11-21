@@ -27,26 +27,54 @@ afterEach(() => {
 });
 
 describe("buildMessageDirectiveRegistry", () => {
-  it("records cross-plugin collisions with no winner and warns once", () => {
-    const warn = vi.fn();
-    const registry = buildMessageDirectiveRegistry(
-      [
-        slot({ id: "inline-vis", pluginId: "zeta" }),
-        slot({ id: "inline-vis", pluginId: "alpha" }),
-        slot({ id: "chart", pluginId: "alpha" }),
-      ],
-      { unclaimed: "literal", warn },
-    );
+  const settled = {
+    bbPluginIds: new Set(["tasks"]),
+    settled: true,
+    settledOnce: true,
+  };
+  const claimants = [
+    slot({ id: "task", pluginId: "tasks" }),
+    slot({ id: "task", pluginId: "tasks-plus" }),
+    slot({ id: "chart", pluginId: "alpha" }),
+  ];
 
-    expect(registry.directives.get("inline-vis")).toEqual({
+  it("gives a directive several plugins claim no automatic winner, bundled or not", () => {
+    const registry = buildMessageDirectiveRegistry(claimants, {
+      unclaimed: "literal",
+      picks: {},
+      boot: settled,
+    });
+
+    expect(registry.directives.get("task")).toEqual({
       status: "collision",
-      pluginIds: ["alpha", "zeta"],
+      pluginIds: ["tasks", "tasks-plus"],
     });
     expect(registry.directives.get("chart")?.status).toBe("ok");
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[0]).toContain('message directive "inline-vis"');
-    expect(warn.mock.calls[0]?.[0]).toContain("alpha");
-    expect(warn.mock.calls[0]?.[0]).toContain("zeta");
+  });
+
+  it("renders the picked plugin, shows text for __builtin__, and holds an absent pick until plugins settle", () => {
+    const picked = buildMessageDirectiveRegistry(claimants, {
+      unclaimed: "literal",
+      picks: { task: "tasks/task" },
+      boot: settled,
+    }).directives.get("task");
+    expect(picked?.status === "ok" ? picked.slot.pluginId : null).toBe("tasks");
+
+    expect(
+      buildMessageDirectiveRegistry(claimants, {
+        unclaimed: "literal",
+        picks: { task: "__builtin__" },
+        boot: settled,
+      }).directives.get("task"),
+    ).toEqual({ status: "literal" });
+
+    expect(
+      buildMessageDirectiveRegistry(claimants, {
+        unclaimed: "hold",
+        picks: { task: "scott-tasks/task" },
+        boot: { ...settled, settled: false, settledOnce: false },
+      }).directives.get("task"),
+    ).toEqual({ status: "loading" });
   });
 });
 

@@ -157,8 +157,12 @@ popup-id uniqueness across customizations.
 
 `experimental_composer({ id, title, description?, component })` draws bb's
 composer input box everywhere bb shows a composer. It is exclusive, chosen by
-the synced `composer.provider` UI preference (Settings → Appearance →
-Composer), and with no composer plugin enabled no composer is shown. bb's own
+the synced `composer.provider` UI preference through the shared exclusive-slot
+resolver (`resolveExclusive` in
+`apps/app/src/lib/plugin-replacement-preference.ts`; Settings → Installed
+plugins → Plugin choices), and with no composer plugin enabled no composer is
+shown. While another plugin's composer is crashed, `ComposerBox` renders the
+bundled one over the same host draft, with Reload in the toast. bb's own
 composer is the bundled `plugins/composer` plugin (`bb--composer`), built on
 this slot: core renders every composer through `ComposerBox`
 (`apps/app/src/components/promptbox/ComposerBox.tsx`), which resolves the
@@ -2501,8 +2505,8 @@ sidebar the hook returns no items and inert actions.
 bb's glyphs and panel icons with plugin branding as fallback.
 
 **Core callers on the same path.** The bundled Navigation plugin's Rail, Top
-list, and header New thread button use these hooks; the app's Settings →
-Appearance → Navigation picker reads the same registrations.
+list, and header New thread button use these hooks; the Navigation row in
+Settings → Installed plugins → Plugin choices reads the same registrations.
 
 **Audit before stabilizing.**
 
@@ -3516,14 +3520,15 @@ shape.
 
 Exclusive slots that replace bb's source or diff renderer everywhere it draws
 supplied content, including other plugins' calls to the public components.
-Automatic selection prefers a registration from a plugin the user installed
-over one bundled with bb, then the first in slot order, and the user can pin
-bb's renderer or a provider per client in Settings → Appearance. A crash falls
-back to bb's renderer.
+Selection follows the shared exclusive-slot rule (`resolveExclusive`); the
+picks are the synced `sourceCode.provider` and `diff.provider` UI preferences
+(Settings → Installed plugins → Plugin choices, `bb settings ui`), and
+`__builtin__` keeps bb's renderer. A crash falls back to bb's renderer.
 
 Docs: `frontend-renderer-slots.md`.
 
-Decided (Aug 2026): the pin stays per client; a crash swaps back to bb's
+Decided (Aug 2026, revised Nov 2026): the pin is a synced UI preference like
+every other exclusive slot (device-only picks migrate to it once); a crash swaps back to bb's
 renderer silently and disables the slot for the session; the replacement is
 global, other plugins' surfaces included; replacements receive
 `experimental_fullFileContents` like the public component.
@@ -3548,8 +3553,11 @@ nested-agent message Markdown, where `messageDirective` activates. The
 component receives `{ code, language, status, index, message, Original }`,
 mounts once per fence, and survives streaming: the host owns the instance and
 portals it to a placeholder keyed by the fence's source offset, keeping
-iframes alive where `Element.moveBefore` exists. Contested languages, a
-missing plugin, and a throwing fence fall back to `Original`. The harness
+iframes alive where `Element.moveBefore` exists. A language several plugins
+claim follows the shared exclusive-slot rule (`codeFence.byLanguage`, Settings
+→ Installed plugins → Plugin choices, one row per set of languages with the
+same claimants). A missing plugin and a throwing fence fall back to
+`Original`. The harness
 exposes `loadPluginApp(...).codeFenceRenderers`.
 
 **Core callers.** `MarkdownPreview`'s code renderer
@@ -3563,9 +3571,9 @@ Docs: `frontend-renderer-slots.md`, `testing.md`.
 
 **Audit before stabilizing.**
 
-1. **Collision model.** Confirm that a contested language falling back to
-   BB's code block is enough, or whether users need a per-language picker
-   like the source/diff renderer pin.
+1. **Collision model.** Confirm the per-language pick and the grouped
+   Settings row are enough for real clashes (bang-shell and inline-terminal
+   share six shell languages).
 2. **Streaming contract.** Confirm `code`/`status`/`index` cover real
    generative-UI renderers (partial JSON/DSL parsing), and whether the rest
    of the info string should be exposed as `meta`.
@@ -3937,9 +3945,10 @@ A registration is `{ id, component }`. The component receives
 `ExperimentalThreadHeaderTitleProps`, an alias of
 `ExperimentalThreadHeaderRowProps` (`{ threadId, projectId, environment }`),
 and renders in `ThreadDetailHeader` in place of the `ThreadTitle` text, in
-every thread page and split pane. Only one title renders: the first
-registration in slot order, which is plugin id in lexical order, then
-registration order within a plugin. Later registrations are ignored.
+every thread page and split pane. Only one title renders, chosen by the shared
+exclusive-slot rule from the synced `threadHeader.titleProvider` pick
+(`__builtin__` keeps core's title; Automatic is the first plugin the user
+installed by plugin id, then bb's own (bundled or from bb's official marketplace)).
 
 Core keeps the rest of the header: the Thread actions menu after the title,
 plugin header actions, the open-in button, pane maximize and close, the context

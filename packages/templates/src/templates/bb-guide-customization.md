@@ -329,8 +329,8 @@ bb settings ui set <key> <value> [--json]
 bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
-`set` takes plain strings for enum and provider keys and JSON for lists and
-`null`; it retries once if another writer changed the key. `reset` writes the
+`set` takes plain strings for enum and provider keys and JSON for lists, maps
+and `null`; it retries once if another writer changed the key. `reset` writes the
 default. The SDK offers `sdk.system.uiPreferences.list()`, `.set()`, and
 `.reset()`.
 
@@ -353,6 +353,20 @@ restore Automatic. A selected composer whose plugin is disabled or
 uninstalled behaves as Automatic until it returns. With no composer plugin
 enabled, no composer is shown.
 
+Every surface only one plugin can draw follows the same rule, bb's own
+plugins included: your pick wins while its plugin is enabled, otherwise
+Automatic uses the first plugin you installed (by plugin id), then bb's own
+(bundled or from bb's official marketplace), then bb's built-in view. Besides the thread list, navigation and composer
+keys, the picks are `diff.provider`, `sourceCode.provider` and
+`threadHeader.titleProvider` (each also takes `__builtin__` for bb's own), and
+the JSON maps `fileOpener.byExtension`, `codeFence.byLanguage` and
+`messageDirective.byName`, where a missing key means Automatic. A message
+directive several plugins claim has no automatic winner: it shows as text with
+a Choose link until you pick one, for example
+`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Settings
+→ Installed plugins → Plugin choices lists every slot and key with more than
+one choice.
+
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
@@ -373,7 +387,8 @@ plugin, a built-in you can fork like the thread list.
 `navigation/rail` (the rail above), `navigation/top-list` (labeled rows above
 the thread list), another navigation plugin as `<plugin-id>/<slot-id>`, or
 `__automatic__` (the default: the first navigation from another plugin, else
-`navigation/rail`). Pick one in Settings → Appearance → Navigation, or:
+`navigation/rail`). Pick one in Settings → Installed plugins → Plugin
+choices, or:
 
 bb settings ui set sidebar.navigationProvider navigation/top-list
 bb settings ui reset sidebar.navigationProvider

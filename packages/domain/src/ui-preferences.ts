@@ -29,6 +29,15 @@ const uiPreferenceStringSchema = z
 const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
+const UI_PREFERENCE_MAP_MAX_ENTRIES = 1_000;
+const pickMapSchema = z
+  .record(uiPreferenceStringSchema, uiPreferenceStringSchema)
+  .refine(
+    (value) => Object.keys(value).length <= UI_PREFERENCE_MAP_MAX_ENTRIES,
+    `At most ${UI_PREFERENCE_MAP_MAX_ENTRIES} entries`,
+  );
+const EXCLUSIVE_PICK_RULE =
+  "A pick is <pluginId>/<registrationId>; a pick whose plugin is disabled or uninstalled behaves as __automatic__ and comes back when the plugin does.";
 const sidebarHiddenGroupsSchema = z
   .array(uiPreferenceStringSchema.regex(/^(project|section|machine):\S+$/))
   .max(UI_PREFERENCE_LIST_MAX_LENGTH)
@@ -52,6 +61,12 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.updates.providerCli",
   "sidebar.updates.skipped",
   "composer.provider",
+  "diff.provider",
+  "sourceCode.provider",
+  "threadHeader.titleProvider",
+  "fileOpener.byExtension",
+  "codeFence.byLanguage",
+  "messageDirective.byName",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
   "threadContextCard.collapsedSections",
@@ -168,6 +183,36 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. A plugin key whose plugin is disabled or uninstalled behaves as __automatic__. With no composer plugin enabled, no composer is shown.",
+  ),
+  "diff.provider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that renders file diffs: a plugin key, __builtin__ for bb's own diff, or __automatic__ for the first diff renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "sourceCode.provider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that renders source files: a plugin key, __builtin__ for bb's own viewer, or __automatic__ for the first source code renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "threadHeader.titleProvider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that draws the thread title in the thread header: a plugin key, __builtin__ for bb's own title, or __automatic__ for the first header title from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "fileOpener.byExtension": defineUiPreference(
+    pickMapSchema,
+    {},
+    `File opener per extension, as JSON such as {"md":"simple-notes/docs"}: a plugin key or __builtin__ for bb's preview. An extension that is not listed uses Automatic: the first opener from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's preview. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "codeFence.byLanguage": defineUiPreference(
+    pickMapSchema,
+    {},
+    `Code fence renderer per language, as JSON such as {"bash":"bang-shell/run-code-block"}: a plugin key or __builtin__ for bb's code block. A language that is not listed uses Automatic: the first renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's code block. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "messageDirective.byName": defineUiPreference(
+    pickMapSchema,
+    {},
+    `Message directive renderer per directive name, as JSON such as {"task":"tasks/task"}. A directive that one plugin claims needs no entry. A directive that several plugins claim has no automatic winner: it shows as text with a Choose link until it is listed here. ${EXCLUSIVE_PICK_RULE}`,
   ),
   "threadContextCard.pinned": defineUiPreference(
     z.boolean(),

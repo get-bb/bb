@@ -46,7 +46,7 @@ import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   PluginThreadHeaderTitle,
-  usePluginThreadHeaderTitleSlot,
+  usePluginThreadHeaderTitle,
 } from "@/components/plugin/PluginThreadHeaderTitle";
 import { useThreadHeaderActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
@@ -146,7 +146,9 @@ export function ThreadDetailHeader({
   const isCompactViewport = useIsCompactViewport();
   const threadId = thread.id;
   const headerActions = useThreadHeaderActionEntries(thread);
-  const pluginTitleSlot = usePluginThreadHeaderTitleSlot();
+  const pluginTitle = usePluginThreadHeaderTitle();
+  const pluginTitleSlot =
+    pluginTitle.kind === "plugin" ? pluginTitle.registration : null;
   const [primaryAction, ...secondaryActions] = headerActions;
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
@@ -262,6 +264,10 @@ export function ThreadDetailHeader({
         >
           {isEditing ? (
             editor
+          ) : pluginTitle.kind === "loading" ? (
+            <span aria-hidden className="invisible">
+              {coreTitle}
+            </span>
           ) : pluginTitleSlot === null ? (
             coreTitle
           ) : (

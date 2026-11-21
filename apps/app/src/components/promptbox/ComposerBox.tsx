@@ -681,6 +681,7 @@ export function ComposerBox(props: ComposerBoxProps) {
   const [attempt, setAttempt] = useState(0);
   const registration =
     replacement.kind === "plugin" ? replacement.registration : null;
+  const fallback = replacement.kind === "plugin" ? replacement.fallback : null;
   const pluginId = registration?.pluginId ?? null;
   const handleReload = useCallback(() => {
     if (pluginId !== null) resetCrashedPluginSlots(pluginId);
@@ -688,27 +689,30 @@ export function ComposerBox(props: ComposerBoxProps) {
   }, [pluginId]);
   const handleCrash = useCallback(
     (crashedPluginId: string) => {
-      appToast.error("Composer plugin crashed", {
-        description: `${registration?.title ?? "Composer"} (${crashedPluginId}) stopped working.`,
+      appToast.error(`${registration?.title ?? "Composer"} crashed`, {
+        description:
+          fallback === null
+            ? `The ${crashedPluginId} plugin's composer stopped working.`
+            : `The ${crashedPluginId} plugin's composer stopped working; showing ${fallback.title} until you reload it.`,
+        action: { label: "Reload", onClick: handleReload },
+        duration: Number.POSITIVE_INFINITY,
       });
     },
-    [registration?.title],
+    [fallback, handleReload, registration?.title],
   );
 
   if (registration === null) {
+    const loadingShape =
+      props.surface === "new-thread"
+        ? "new-thread"
+        : props.compact?.when === "always"
+          ? "thread-compact"
+          : "thread";
     return (
       <ComposerPlaceholder
         state={
-          !bootSettled
-            ? {
-                kind: "loading",
-                shape:
-                  props.surface === "new-thread"
-                    ? "new-thread"
-                    : props.compact?.when === "always"
-                      ? "thread-compact"
-                      : "thread",
-              }
+          replacement.kind === "loading" || !bootSettled
+            ? { kind: "loading", shape: loadingShape }
             : loadFailed
               ? { kind: "failed", onRetry: schedulePluginFrontendReconcile }
               : { kind: "missing" }
@@ -717,6 +721,16 @@ export function ComposerBox(props: ComposerBoxProps) {
     );
   }
   const Composer = registration.component;
+  const crashedPlaceholder = (
+    <ComposerPlaceholder
+      state={{
+        kind: "crashed",
+        pluginTitle: registration.title,
+        onReload: handleReload,
+      }}
+    />
+  );
+  const FallbackComposer = fallback?.component;
   return (
     <ComposerRendererHostProvider {...props}>
       <div data-composer-box="" className="w-full">
@@ -726,13 +740,19 @@ export function ComposerBox(props: ComposerBoxProps) {
           slotKind={COMPOSER_SLOT_KIND}
           slotId={registration.id}
           crashFallback={
-            <ComposerPlaceholder
-              state={{
-                kind: "crashed",
-                pluginTitle: registration.title,
-                onReload: handleReload,
-              }}
-            />
+            fallback === null || FallbackComposer === undefined ? (
+              crashedPlaceholder
+            ) : (
+              <PluginSlotMount
+                key={`${fallback.pluginId}/${fallback.id}/${fallback.generation}`}
+                pluginId={fallback.pluginId}
+                slotKind={COMPOSER_SLOT_KIND}
+                slotId={fallback.id}
+                crashFallback={crashedPlaceholder}
+              >
+                <FallbackComposer />
+              </PluginSlotMount>
+            )
           }
           onCrash={handleCrash}
         >

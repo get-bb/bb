@@ -76,8 +76,10 @@ window drag region. While the user renames the thread, bb shows its rename
 field in place of your title. Double-click does not start a rename on a
 plugin title, and in a split layout dragging the pane starts only from parts
 of the title that are not links, buttons or inputs. The window title stays
-the thread title. One title wins: the first by plugin id, then registration
-order. A crash shows bb's title for that thread.
+the thread title. One title wins, by the exclusive-slot rule
+(`threadHeader.titleProvider`; see exclusive-slots.md):
+the user's pick, else the first plugin the user installed by plugin id. A crash
+shows bb's title for that thread.
 
 For a plugin page that should look like a thread page, give the navPanel an
 `experimental_headerTitle` with the same breadcrumb and set
