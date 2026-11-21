@@ -6,7 +6,7 @@ import type {
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { labelsByProject, makeTask } from "../test-fixtures.js";
 import type { Task } from "../shared/contract.js";
 import { PROJECTS_TAG, commentsTag } from "../shared/tags";
@@ -947,24 +947,17 @@ describe("tasks app shell", () => {
   });
 
   it("opens quick-create from the new-task command, opening the Tasks page first when it is not mounted", async () => {
-    const toPluginPanel = vi.fn();
-    const unused = <T extends object>(name: string, members = {}): T =>
-      new Proxy(members as T, {
-        get(target, property) {
-          if (property in target) return Reflect.get(target, property);
-          throw new Error(`${name}.${String(property)} is not used`);
-        },
-      });
+    const actionContext = experimental_makeActionContext();
     const context: PluginCommandContext = {
+      ...actionContext,
       threadId: null,
       projectId: null,
-      sdk: unused("sdk"),
-      navigate: unused("navigate", { toPluginPanel }),
-      panel: experimental_makePanelController(),
     };
 
     requestNewTask(context);
-    expect(toPluginPanel).toHaveBeenCalledWith("tasks");
+    expect(actionContext.calls).toEqual([
+      { member: "navigate.toPluginPanel", args: ["tasks"] },
+    ]);
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },
@@ -976,10 +969,10 @@ describe("tasks app shell", () => {
     fireEvent.keyDown(slot.getByRole("dialog"), { key: "Escape" });
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
 
-    toPluginPanel.mockClear();
+    actionContext.calls.length = 0;
     act(() => requestNewTask(context));
     await slot.findByRole("dialog");
-    expect(toPluginPanel).not.toHaveBeenCalled();
+    expect(actionContext.calls).toEqual([]);
   });
 
   it("marks only new-worktree presets with the worktree hint", async () => {
