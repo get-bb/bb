@@ -12,6 +12,7 @@ const app = await loadPluginApp(() => import("./app.js"));
 function unusedLauncherServices(): {
   sdk: PluginBrowserBbSdk;
   navigate: BbNavigate;
+  composer: null;
 } {
   const unused = <T extends object>(name: string): T =>
     new Proxy({} as T, {
@@ -22,6 +23,7 @@ function unusedLauncherServices(): {
   return {
     sdk: unused<PluginBrowserBbSdk>("sdk"),
     navigate: unused<BbNavigate>("navigate"),
+    composer: null,
   };
 }
 

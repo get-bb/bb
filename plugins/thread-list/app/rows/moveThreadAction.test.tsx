@@ -75,6 +75,7 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
         sdk,
         navigate,
         panel,
+        composer: null,
       }),
     bulkItem: (threads) =>
       moveThreadAction.experimental_bulkItem?.({
@@ -83,6 +84,7 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
         sdk,
         navigate,
         panel,
+        composer: null,
       }) ?? null,
   };
   return null;

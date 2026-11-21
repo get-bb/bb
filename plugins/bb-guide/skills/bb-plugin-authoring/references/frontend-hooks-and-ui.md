@@ -153,13 +153,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
   `setInputLock` have no effect here. Re-renders when the list or a listed
   draft or selection changes.
-- `experimental_useActiveComposer()` → the composer the person is using on
-  the focused surface, or null: the one holding the caret, or the one that held
-  it before focus moved into the command palette, a dialog, a popover or an
-  overlay; otherwise that surface's main composer. The same value plain
-  commands read as `context.composer`. For overlays and plugin pages; inside a
-  composer slot use `useComposer()`. A detached handle like `useComposers()`'s,
-  naming the same composer by `key`. Re-renders when it or its draft changes.
+- `experimental_useActiveComposer()` → see [Active composer](frontend-renderer-slots.md#active-composer).
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code
@@ -337,30 +331,15 @@ compile in plugin builds.
 
 ## Callback context
 
-Callbacks run outside your components and cannot call hooks, so every callback's
-context extends `ExperimentalPluginActionContext` `{ sdk, navigate, panel, composer }`:
-your `useSdk()`, your `useBbNavigate()`, the [panel controller](#panel-controller)
-of the surface that invoked it, and the composer it acts on. That covers `app.commands`, `messageAction`,
-`experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
-sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
-`navigate` and `panel` act on the focused surface for commands, thread actions
-and footer actions; on the message's thread view for message actions; on the
-launching surface for panel actions; and on the composer's surface for composer
-callbacks.
-
-`composer` is the composer the callback acts on: the handling composer for
-composer commands and menu rows, the message thread's composer for message
-actions, and the focused surface's active composer (see
-`experimental_useActiveComposer()`) or null for everything else. Experimental:
-see `docs/api_to_audit.md`.
-
-```ts
-app.commands.register({
-  id: "insert-date",
-  title: "Insert today's date",
-  run: ({ composer }) => composer?.insert(new Date().toDateString()),
-});
-```
+Callbacks cannot call hooks, so every callback's context extends `ExperimentalPluginActionContext`
+`{ sdk, navigate, panel, composer }`: your `useSdk()`, your `useBbNavigate()`, the
+[panel controller](#panel-controller) of the invoking surface, and the composer it acts on
+(see [Active composer](frontend-renderer-slots.md#active-composer)). That covers `app.commands`,
+`messageAction`, `experimental_threadAction`, action tabs, `experimental_newThreadPanelAction`,
+sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows. `navigate` and
+`panel` act on the focused surface for commands, thread actions and footer actions; on the
+message's thread view for message actions; on the launching surface for panel actions; and
+on the composer's surface for composer callbacks. Experimental: see `docs/api_to_audit.md`.
 
 ## Panel controller
 

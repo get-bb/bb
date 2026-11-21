@@ -457,7 +457,7 @@ focused surface's first primary composer (`data-app-composer-role`); failing
 that, null. Handles are detached like `useComposers()` handles and name the
 same composer by `key`.
 
-Docs: `frontend-hooks-and-ui.md#callback-context` and the Plugin Guide's
+Docs: `frontend-renderer-slots.md#active-composer` and the Plugin Guide's
 composer card.
 
 Core callers: `resolveActiveComposer` (`apps/app/src/lib/active-composer.ts`)
