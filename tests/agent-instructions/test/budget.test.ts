@@ -11,6 +11,7 @@ import {
   measurePlugin,
   PLUGIN_CONTEXT_BUDGETS,
   SKILL_DESCRIPTION_MAX_CHARS,
+  UNLISTED_PLUGIN_CONTEXT_BUDGET,
 } from "../src/budget.js";
 
 let contexts: PluginAgentContext[] = [];
@@ -26,11 +27,14 @@ describe("agent context budget", () => {
     const overBudget = contexts
       .map(measurePlugin)
       .filter(
-        (size) => size.total > (PLUGIN_CONTEXT_BUDGETS[size.pluginId] ?? 0),
+        (size) =>
+          size.total >
+          (PLUGIN_CONTEXT_BUDGETS[size.pluginId] ??
+            UNLISTED_PLUGIN_CONTEXT_BUDGET),
       )
       .map(
         (size) =>
-          `${size.pluginId}: ${size.total} chars (budget ${PLUGIN_CONTEXT_BUDGETS[size.pluginId] ?? 0}; instructions ${size.instructions}, skills ${size.skills}, tools ${size.tools})`,
+          `${size.pluginId}: ${size.total} chars (budget ${PLUGIN_CONTEXT_BUDGETS[size.pluginId] ?? UNLISTED_PLUGIN_CONTEXT_BUDGET}; instructions ${size.instructions}, skills ${size.skills}, tools ${size.tools})`,
       );
     expect(overBudget).toEqual([]);
   });

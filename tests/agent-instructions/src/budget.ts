@@ -50,6 +50,8 @@ export function measureAgentContext(contexts: readonly PluginAgentContext[]): {
 
 export const SKILL_DESCRIPTION_MAX_CHARS = 140;
 
+export const UNLISTED_PLUGIN_CONTEXT_BUDGET = 300;
+
 export const PLUGIN_CONTEXT_BUDGETS: Readonly<Record<string, number>> = {
   "account-pool": 150,
   "agent-annotations": 200,

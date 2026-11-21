@@ -4,7 +4,7 @@ This package measures and tests the text that bb's bundled plugins add to every 
 
 It has two parts:
 
-- **The budget test** runs in CI. It loads every bundled plugin in the SDK's fake host and measures what each plugin adds. A plugin that goes over its budget in `src/budget.ts` fails the test. The plugins that a new install has and turns on (`autoInstall` and `defaultEnabled`) have a total budget. The test also caps each skill description at 140 characters.
+- **The budget test** runs in CI. It loads every bundled plugin in the SDK's fake host and measures what each plugin adds. A plugin that goes over its budget in `src/budget.ts` fails the test; a plugin without an entry gets 300 characters, enough for about two short skill descriptions. The plugins that a new install has and turns on (`autoInstall` and `defaultEnabled`) have a total budget. The test also caps each skill description at 140 characters.
 - **The eval** runs a real model. CI does not run it. It replays cases in Claude Code with bb's text and a fake `bb` CLI, and it checks what the agent does.
 
 Run the eval when you change text that an agent sees. This includes `contributeInstructions`, the `instructions` of `agents.configure`, tool descriptions, and the `description` in a SKILL.md.
