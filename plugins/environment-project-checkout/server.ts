@@ -17,6 +17,7 @@ import {
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const ATTACH_TIMEOUT_MS = 15 * 60 * 1000;
+const LIST_PAGE_SIZE = 500;
 const LIVE_THREAD_STATUSES = new Set([
   "starting",
   "active",
@@ -56,21 +57,40 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     if (report !== undefined) reportHostProgress(report, event.payload);
   });
 
+  async function listEnvironmentsAtPath(args: {
+    hostId: string;
+    path: string;
+  }) {
+    const environments: Awaited<ReturnType<typeof bb.sdk.environments.list>> =
+      [];
+    for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+      const page = await bb.sdk.environments.list({
+        hostId: args.hostId,
+        path: args.path,
+        limit: LIST_PAGE_SIZE,
+        offset,
+      });
+      environments.push(...page);
+      if (page.length < LIST_PAGE_SIZE) return environments;
+    }
+  }
+
   async function liveThreadUsesPath(args: {
     hostId: string;
     path: string;
   }): Promise<boolean> {
-    const rows = await bb.sdk.environments.list({
-      hostId: args.hostId,
-      path: args.path,
-    });
-    for (const row of rows) {
-      const threads = await bb.sdk.threads.list({
-        environmentId: row.id,
-        archived: false,
-      });
-      if (threads.some((thread) => LIVE_THREAD_STATUSES.has(thread.status))) {
-        return true;
+    for (const row of await listEnvironmentsAtPath(args)) {
+      for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+        const threads = await bb.sdk.threads.list({
+          environmentId: row.id,
+          archived: false,
+          limit: LIST_PAGE_SIZE,
+          offset,
+        });
+        if (threads.some((thread) => LIVE_THREAD_STATUSES.has(thread.status))) {
+          return true;
+        }
+        if (threads.length < LIST_PAGE_SIZE) break;
       }
     }
     return false;
@@ -128,10 +148,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     hostId: string;
     path: string;
   }): Promise<string | null> {
-    const rows = await bb.sdk.environments.list({
-      hostId: args.hostId,
-      path: args.path,
-    });
+    const rows = await listEnvironmentsAtPath(args);
     const environment = rows.find(
       (row) =>
         row.status !== "destroyed" &&

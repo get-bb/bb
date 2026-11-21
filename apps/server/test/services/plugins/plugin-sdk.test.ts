@@ -1260,11 +1260,12 @@ describe("plugin bb.sdk against a running server", () => {
         }),
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
-        api.sdk.threads.list({ projectId: project.id }),
+        api.sdk.threads.list({ limit: 10, projectId: project.id }),
       ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
       const allThreads = await api.sdk.threads.list({
         projectId: project.id,
         includeHidden: true,
+        limit: 10,
       });
       expect(allThreads).toContainEqual(
         expect.objectContaining({ id: thread.id }),

@@ -476,10 +476,6 @@ describe("Git plugin Viewed marks", () => {
             }
             return environment({ id: environmentId });
           },
-          list: async (args?: { status?: string }) =>
-            args?.status === "destroyed"
-              ? []
-              : existing.map((id) => environment({ id })),
         },
       },
     });

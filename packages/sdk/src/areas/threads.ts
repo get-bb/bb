@@ -99,7 +99,12 @@ export interface ThreadListArgs {
   sectionId?: string;
   hasParent?: boolean;
   includeHidden?: boolean;
-  limit?: number;
+  /**
+   * Page size. A caller that needs every row pages with `offset` until a
+   * page comes back shorter than its `limit`.
+   */
+  limit: number;
+  /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   originKind?: ThreadListQuery["originKind"];
   originPluginId?: string;
@@ -693,7 +698,7 @@ export interface ThreadsArea {
   ): Promise<ThreadPluginMetadataResult>;
   queue: ThreadQueueArea;
   interactions: ThreadInteractionsArea;
-  list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  list(args: ThreadListArgs): Promise<ThreadListResult>;
   listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;

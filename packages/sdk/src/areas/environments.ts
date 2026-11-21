@@ -79,7 +79,12 @@ export interface EnvironmentListArgs {
   heldBy?: EnvironmentHolder;
   hostId?: string;
   instanceKey?: string;
-  limit?: number;
+  /**
+   * Page size. A caller that needs every row pages with `offset` until a
+   * page comes back shorter than its `limit`.
+   */
+  limit: number;
+  /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   path?: string;
   projectId?: string;
@@ -127,7 +132,7 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
-  list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
+  list(args: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
     args?: EnvironmentListProvidersArgs,
   ): Promise<EnvironmentListProvidersResult>;

@@ -20,7 +20,12 @@ import { action } from "../action.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { prependErrorContext } from "./helpers.js";
+import {
+  LIST_COMMAND_DEFAULT_LIMIT,
+  parseNonNegativeIntegerOption,
+  prependErrorContext,
+  printListPageNotice,
+} from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
@@ -105,8 +110,7 @@ const GIT_COMMAND_REPLACEMENTS: Record<
 
 function parseEnvironmentHolder(value: string): EnvironmentHolder {
   const parsed = environmentHolderSchema.safeParse(value);
-  if (!parsed.success)
-    throw new Error('--held-by must be "user".');
+  if (!parsed.success) throw new Error('--held-by must be "user".');
   return parsed.data;
 }
 
@@ -135,21 +139,6 @@ function validateLimit(limit: string | undefined): void {
   if (limit !== undefined && !/^\d+$/u.test(limit)) {
     throw new Error("--limit must contain only digits.");
   }
-}
-
-function parseNonNegativeIntegerOption(
-  value: string | undefined,
-  optionName: "--limit" | "--offset",
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!/^\d+$/u.test(value)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  return parsed;
 }
 
 function booleanQueryValue(value: boolean): "true" | "false" {
@@ -304,12 +293,17 @@ export function registerEnvironmentCommands(
       "--status <status>",
       "Only environments in this status: provisioning, ready, error, destroyed",
     )
-    .option("--limit <n>", "At most this many rows, oldest first")
+    .option(
+      "--limit <n>",
+      `At most this many rows, oldest first (default ${LIST_COMMAND_DEFAULT_LIMIT})`,
+    )
     .option("--offset <n>", "Skip this many rows")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: EnvironmentListCommandOptions) => {
-        const limit = parseNonNegativeIntegerOption(opts.limit, "--limit");
+        const limit =
+          parseNonNegativeIntegerOption(opts.limit, "--limit") ??
+          LIST_COMMAND_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const hostId =
@@ -330,7 +324,7 @@ export function registerEnvironmentCommands(
           ...(opts.status === undefined
             ? {}
             : { status: parseEnvironmentStatus(opts.status) }),
-          ...(limit === undefined ? {} : { limit }),
+          limit,
           ...(offset === undefined ? {} : { offset }),
         });
         if (outputJson(opts, rows)) return;
@@ -339,6 +333,12 @@ export function registerEnvironmentCommands(
             `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.heldBy === null ? "" : `  held by ${env.heldBy}`}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
           );
         }
+        printListPageNotice({
+          count: rows.length,
+          limit,
+          noun: "environments",
+          offset,
+        });
       }),
     );
 
