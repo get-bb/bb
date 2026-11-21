@@ -19,7 +19,7 @@ export interface OpenThreadArgs {
   navigate: (
     route: string,
     options?: { replace?: boolean; state?: Record<string, unknown> },
-  ) => void;
+  ) => void | Promise<void>;
   projectId: string;
   threadId: string;
   split?: OpenThreadSplit;
@@ -43,10 +43,10 @@ export function openThread({
   const go = (options?: { replace?: boolean }) => {
     const merged = { ...options, ...(state === undefined ? {} : { state }) };
     if (Object.keys(merged).length === 0) {
-      navigate(route);
+      void navigate(route);
       return;
     }
-    navigate(route, merged);
+    void navigate(route, merged);
   };
   const layout = split?.store.get(splitLayoutAtom) ?? null;
   if (split === undefined || split.isCompact || layout === null) {
