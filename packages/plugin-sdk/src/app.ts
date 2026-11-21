@@ -285,12 +285,15 @@ export const useComposerView = runtimeFunction("useComposerView");
 export const experimental_useSidebarThreads = runtimeFunction(
   "experimental_useSidebarThreads",
 );
-/** @internal Superseded by the thread action registry, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
+/** @internal Superseded by the thread action registry, `experimental_useThreadRequests()`, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",
 );
 export const experimental_useThreadActions = runtimeFunction(
   "experimental_useThreadActions",
+);
+export const experimental_useThreadRequests = runtimeFunction(
+  "experimental_useThreadRequests",
 );
 export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
   "experimental_useArchiveEnvironmentThreads",

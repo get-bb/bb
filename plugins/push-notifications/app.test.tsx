@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { useLayoutEffect } from "react";
 import type {
   PluginThreadAction,
@@ -183,19 +184,13 @@ function Probe({
         notificationsThreadAction.item({
           thread,
           data,
-          sdk,
-          navigate,
-          panel,
-          composer: null,
+          ...experimental_makeActionContext({ sdk, navigate, panel }),
         }),
       (threads) =>
         notificationsThreadAction.experimental_bulkItem?.({
           threads,
           data,
-          sdk,
-          navigate,
-          panel,
-          composer: null,
+          ...experimental_makeActionContext({ sdk, navigate, panel }),
         }) ?? null,
     );
   });

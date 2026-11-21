@@ -1,10 +1,7 @@
-import { makePanelController } from "../testing/fixtures.js";
+import { makeActionContext, makePanelController } from "../testing/fixtures.js";
 import { describe, expect, it, vi } from "vitest";
 import type {
-  BbNavigate,
   PluginAppBuilder,
-  PluginBrowserBbSdk,
-  PluginCommandContext,
   PluginCommandRegistration,
 } from "../app-contract.js";
 import { collectPluginAppRegistrations } from "./plugin-app-collector.js";
@@ -18,22 +15,6 @@ function register(
 ) {
   if (entryPoint === "commands") app.commands.register(command);
   else app.slots.commandPaletteAction(command);
-}
-
-function unusedLauncherServices(): Pick<
-  PluginCommandContext,
-  "sdk" | "navigate"
-> {
-  const unused = <T extends object>(name: string): T =>
-    new Proxy({} as T, {
-      get() {
-        throw new Error(`${name} is not used by this test`);
-      },
-    });
-  return {
-    sdk: unused<PluginBrowserBbSdk>("sdk"),
-    navigate: unused<BbNavigate>("navigate"),
-  };
 }
 
 describe("app.commands.register", () => {
@@ -92,15 +73,15 @@ describe("app.commands.register", () => {
         },
       });
       const context = {
+        ...makeActionContext({
+          panel: makePanelController({
+            openTab: vi.fn(() => true),
+            toggleTab: vi.fn(() => true),
+            close: vi.fn(() => true),
+          }),
+        }),
         threadId: "thread-1",
         projectId: "project-1",
-        composer: null,
-        panel: makePanelController({
-          openTab: vi.fn(() => true),
-          toggleTab: vi.fn(() => true),
-          close: vi.fn(() => true),
-        }),
-        ...unusedLauncherServices(),
       };
       const command = collected.commandPaletteActions[0]!;
       if (command.target !== "app") throw new Error("expected an app command");

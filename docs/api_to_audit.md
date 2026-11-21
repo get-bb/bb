@@ -397,9 +397,10 @@ extending the context model or default binding policy.
 
 Requires SDK 0.6.167.
 
-`{ sdk, navigate, panel }`: the registering plugin's `useSdk()`
-client, its `useBbNavigate()`, and the panel controller of the surface that
-invoked the callback. Every plugin callback context extends it:
+`{ sdk, navigate, panel, requestArchive, requestDelete }`: the registering
+plugin's `useSdk()` client, its `useBbNavigate()`, the panel controller of the
+surface that invoked the callback, and bb's Archive and Delete flows (see the
+`ExperimentalThreadRequests` entry). Every plugin callback context extends it:
 `PluginCommandContext`, `PluginMessageActionContext`,
 `PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`,
 `ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`,
@@ -789,7 +790,9 @@ Also kept only until the next major:
 `experimental_useSidebarThreadActions` and `PluginSidebarThreadActions`
 (`@get-bb/plugin-sdk/app`), with the testing harness's `SidebarActionCall` /
 `inspection.sidebarActionCalls`, are superseded by the thread action
-registry, `useSdk().threads`, and `useBbNavigate().toThread` / `toCompose`;
+registry, `experimental_useThreadRequests()` (whose calls `archive` and
+`requestDelete` now alias), `useSdk().threads`, and
+`useBbNavigate().toThread` / `toCompose`;
 `experimental_archiveEnvironmentThreads` moved to
 `experimental_useArchiveEnvironmentThreads`. Like `useComposerView` they are
 `@internal`: published declarations drop them, while the runtime keeps
@@ -3964,10 +3967,9 @@ row menus and quick actions use the SDK exports. The contract table in
 registrations. Core's Mark read, Pin, Notify parent, Archive and Delete
 registrations carry the bulk items; Notify parent reads the target's
 `parentNotifications` and updates only the selected threads that have a
-parent; Archive and Delete call `ThreadActionsProvider`'s
-`requestArchiveThreads` / `requestDeleteThreads`, which the single-thread
-`requestArchive` / `requestDelete` (and so every single-thread menu) also go
-through. Delete, for one thread or several, and archive for two or more plan
+parent; Archive and Delete call `context.requestArchive` /
+`context.requestDelete` (the `ExperimentalThreadRequests` entry) for one
+thread or the selection. Delete, for one thread or several, and archive for two or more plan
 the selection with `threads.experimental_listCascade`, confirm once with the
 count of unselected threads in the cascade (archive honors the confirmation
 setting), act on
@@ -4024,16 +4026,124 @@ Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
-1. **Scope.** A per-flow hook was the smallest honest path. If more host UI
-   flows need exposing (thread archive and delete outside a menu), decide
-   whether they become thread actions, bound-SDK side effects, or a small
-   flows area instead of one hook each.
+1. **Scope.** Thread archive and delete outside a menu became
+   `ExperimentalThreadRequests`. Decide at stabilization whether this hook
+   joins it as a third member (taking an environment id) or stays separate.
 2. **Undo route repair.** The toast's route restore assumes the user has not
    navigated since; confirm that matches plugin-hosted surfaces.
 3. **Coverage.** Verify group archive and Undo with descendants, already
    archived threads, split panes, navigation during the Undo window, and
    failure rollback across sidebar organization modes.
 
+**Kept beside `requestArchive` (2026-11-20).** Kill-test: is
+`archiveEnvironmentThreads(envId)` the same as `requestArchive(rootIdsOf(env))`?
+No. On a dev instance with a worktree environment holding three root threads,
+one with a child in the same environment and one in the project checkout,
+selecting the three roots and choosing Archive opened "Archive 3 threads?
+Their 2 child threads will be archived too." The environment menu's Archive
+archived the same five threads with no dialog and one "Archived 5 threads"
+toast. Two differences keep the hook:
+
+1. **Confirmation.** The environment action is itself the choice to archive
+   everything in the environment, so it never asks. `requestArchive` asks
+   whenever a tree has children outside the list.
+2. **Selection.** The server picks the threads when the call lands
+   (`listLiveThreadsInEnvironment`: every live thread in the environment,
+   hidden ones included). A client can pass only ids it has loaded, so a
+   thread created in the environment after the list rendered, or one the
+   list does not show, would be left behind.
+
+Both run the same code after the server call: `presentArchivedThreads` in
+`ThreadActionsProvider` closes panes, repairs the route and shows the one
+Undo toast.
+
+## `ExperimentalThreadRequests` / `ExperimentalPluginActionContext.requestArchive` / `ExperimentalPluginActionContext.requestDelete` / `experimental_useThreadRequests` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.177.
+
+- **Surface:** `requestArchive(threadIds: readonly string[]): Promise<void>`
+  and `requestDelete(threadIds: readonly string[]): Promise<void>`, the
+  members of `ExperimentalThreadRequests`. Every callback context has them
+  through `ExperimentalPluginActionContext`, and
+  `experimental_useThreadRequests()` returns the same two for components. The
+  testing harness records hook calls in
+  `inspection.experimental_threadRequestCalls` (`ExperimentalThreadRequestCall`
+  is `{ method, threadIds }`).
+- **Behavior:** bb's Archive and Delete flows for any ids. Ids are
+  deduplicated; threads the app has not loaded are fetched with
+  `threads.get` (an id that fails to load shows an error toast and nothing
+  runs). The selection is planned with `threads.experimental_listCascade`, so
+  the child count comes from the server. Delete always confirms once;
+  Archive confirms once when a tree has children outside the list and
+  Settings → General's archive confirmation is on, and skips archived
+  threads. Afterwards both close split panes and repair the route; Archive
+  shows one ten-second Undo toast that restores the threads and the route.
+  The promise resolves when the flow settles: done, cancelled, or failed
+  after bb's error toast (an archive failure closes the dialog; a delete
+  failure keeps it open, so the promise waits for the retry or Cancel). It
+  never rejects inside the app.
+- **Core callers:** `ThreadActionsProvider` publishes the flows into
+  `threadRequestsAtom` (`apps/app/src/lib/thread-requests.ts`), and
+  `usePluginActionContextBinder` binds every callback context to it, so core
+  and plugins share one path. Core's Archive and Delete thread actions
+  (`core-thread-actions.ts`, `item` and `experimental_bulkItem`) call
+  `context.requestArchive` / `context.requestDelete`, which covers every thread
+  menu, the thread list's selection menu, row quick actions and the
+  `thread.archive` keyboard command. The superseded
+  `PluginSidebarThreadActions.archive` / `requestDelete` are aliases of the
+  same calls. Tests: `ThreadRequests.test.tsx` (unloaded ids, settle on cancel,
+  confirm and failed delete, unknown id) next to the unchanged
+  `ThreadActionsProvider.test.tsx`.
+- **Not covered:** environment-group archive stays on
+  `experimental_useArchiveEnvironmentThreads` (see its entry). Server code
+  keeps `bb.sdk.threads.archive` / `delete`, which run no confirmation.
+- **Callers that can migrate:** community rows and lists that rebuild the
+  confirmation or Undo (`wy3z/bb-cursor-suite` cursor-sidebar,
+  `kalindudc/bb-marketplace` switchboard), call raw `threads.archive` from UI
+  (`Johannes-Berggren/bb-plugin-jb-flow`, `ahkohd/bb-plugin-beside`,
+  `cristoslc/bb-plugin-focus-board`, `euanguo/euanguo-plugins` nested-sidebar),
+  or use `experimental_useSidebarThreadActions().archive` / `requestDelete`
+  (about 28 repos, e.g. `joozio/bb-plugin-work-map`, `grrowl/bb-lanes`,
+  `grrowl/bb-tinted-threads`).
+
+**Audit before stabilizing.**
+
+1. **Outcome.** The promise says the flow settled, not how. Decide whether
+   callers need `"done" | "cancelled" | "failed"` (or the archived ids) before
+   the shape freezes.
+2. **Concurrency.** A second request replaces an open dialog of the same kind
+   and settles the first as cancelled; a request while a selection plan is in
+   flight aborts the earlier plan. Confirm that is right for plugins that fire
+   several requests.
+3. **Surface binding.** Route repair and pane cleanup act on the window's
+   split layout, not the calling surface. Check plugin-hosted surfaces (nav
+   panel pages, overlays) once they host threads.
+
+
+## `experimental_makeActionContext` / `ExperimentalActionContextFixture` / `ExperimentalActionContextCall` (`@get-bb/plugin-sdk/testing`)
+
+Requires SDK 0.6.177.
+
+- **Surface:** `experimental_makeActionContext(overrides?: Partial<ExperimentalPluginActionContext>): ExperimentalActionContextFixture`,
+  a complete `ExperimentalPluginActionContext` plus `calls:
+  ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
+  call: `requestArchive` and `requestDelete` resolve, `navigate` methods return
+  false, `panel` is `experimental_makePanelController()`, and `sdk` methods
+  reject with `sdk.<area>.<method> is not stubbed`. Overrides replace members;
+  tests spread the result and add the callback's own fields.
+- **Why:** every member added to `ExperimentalPluginActionContext` broke every
+  test that built a context by hand. With the fixture, the next member changes
+  only `packages/plugin-sdk/src/testing/fixtures.ts`, whose object literal the
+  compiler checks against the interface.
+- **Callers:** the git plugin's command test (`plugins/git/app.test.tsx`) and
+  Commit action test (`plugins/git/ui/commit/commit-action.test.tsx`),
+  push-notifications' Notifications action test, thread-list's Move action
+  test, side-chat's message action test, drafts' composer test, and the SDK's
+  own command collector and harness tests.
+- **Stabilization:** decide whether `navigate` should record into the same
+  `NavigateCall` shape `renderSlot` uses, and whether composer and message
+  contexts need their own builders once their fields grow. Then rename
+  project-wide and remove this entry.
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
 Renders a plugin component beside the address bar in each Browser tab. It

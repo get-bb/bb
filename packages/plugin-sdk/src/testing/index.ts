@@ -42,6 +42,9 @@ export {
   makeThreadResponse,
   makeTurnFailedEvent,
   makePanelController as experimental_makePanelController,
+  makeActionContext as experimental_makeActionContext,
+  type ExperimentalActionContextCall,
+  type ExperimentalActionContextFixture,
 } from "./fixtures.js";
 export {
   scanPublicSdkOnly as experimental_scanPublicSdkOnly,

@@ -1897,15 +1897,11 @@ export interface PluginSidebarThreadActions {
   setRead(threadId: string, read: boolean): Promise<void>;
   /** Silent rename — no dialog. For inline editing in your own row. */
   rename(threadId: string, title: string): Promise<void>;
-  /** Confirms before including child threads unless archive confirmation is disabled in Settings → General. */
+  /** `experimental_useThreadRequests().requestArchive([threadId])`. */
   archive(threadId: string): void;
   /** Archives an environment's active thread trees with bb's optimistic updates, pane cleanup, and one Undo toast. Rejects after bb shows an error toast on failure. */
   experimental_archiveEnvironmentThreads(environmentId: string): Promise<void>;
-  /**
-   * Opens bb's delete confirmation, which counts child threads first. Deletion
-   * is destructive and recursive, so the host owns the confirmation: there is
-   * deliberately no silent `delete`.
-   */
+  /** `experimental_useThreadRequests().requestDelete([threadId])`. */
   requestDelete(threadId: string): void;
 }
 
@@ -3628,12 +3624,36 @@ export interface ExperimentalMessageMetadataRegistration {
 export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
 
 /**
+ * bb's own Archive and Delete flows, the ones its thread menus and selection
+ * menu run. Each takes thread ids, fetches any thread the app has not loaded,
+ * counts child threads on the server, and confirms once for the whole list:
+ * Delete always, Archive when a tree has child threads outside the list and
+ * archive confirmation is on in Settings → General. Archive then removes the
+ * threads, closes their split panes, leaves a route that showed one of them,
+ * and shows one Undo toast that restores the threads and the route. Delete
+ * cleans up panes and routes the same way and has no Undo.
+ *
+ * The promise resolves once the flow settles: done, cancelled in the dialog,
+ * or failed after bb has shown its error toast. It never rejects. Archive
+ * skips threads that are already archived. Server code should call
+ * `bb.sdk.threads.archive` instead, which has no confirmation or Undo.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalThreadRequests {
+  requestArchive(threadIds: readonly string[]): Promise<void>;
+  requestDelete(threadIds: readonly string[]): Promise<void>;
+}
+
+/**
  * What every plugin callback's context carries besides its own fields:
  * commands, message actions, thread actions, panel and New thread panel
  * actions, sidebar footer actions, and composer commands and menu items.
+ * `requestArchive` and `requestDelete` are bb's Archive and Delete flows (see
+ * {@link ExperimentalThreadRequests}); components get the same two from
+ * `experimental_useThreadRequests()`.
  * Experimental: see docs/api_to_audit.md.
  */
-export interface ExperimentalPluginActionContext {
+export interface ExperimentalPluginActionContext extends ExperimentalThreadRequests {
   /** The registering plugin's `useSdk()` client. */
   sdk: PluginBrowserBbSdk;
   /**
@@ -5974,10 +5994,18 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    *
    * @internal Superseded by `experimental_useThreadActions`, the thread
-   * action components, `useSdk().threads`, and `useBbNavigate()`; kept for
-   * plugins built against older SDKs.
+   * action components, `experimental_useThreadRequests()` for archive and
+   * delete, `useSdk().threads` for pin, read and rename, and
+   * `useBbNavigate()`; kept for plugins built against older SDKs.
    */
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
+  /**
+   * bb's Archive and Delete flows for any thread ids, with its confirmation,
+   * child counts, Undo and error toast (see
+   * {@link ExperimentalThreadRequests}). Callbacks get the same two on their
+   * context. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadRequests(): ExperimentalThreadRequests;
   /**
    * Archive an environment's active thread trees the way bb's own list does:
    * optimistic removal, closing their split panes, leaving a route that shows
