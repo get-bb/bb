@@ -81,8 +81,9 @@ export function WarmPoolSettings() {
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           Keep worktrees checked out at the default base with setup finished, so
           new worktree threads on the default base start without waiting. A warm
-          worktree is replaced when the default base moves, and each replacement
-          runs the project&apos;s setup script in the background.
+          worktree behind the default base is moved forward when a thread takes
+          it, and the project&apos;s setup script runs again before the thread
+          starts.
         </p>
       </div>
       {status === null ? (

@@ -58,6 +58,7 @@ function installProviders(
     adopt?: () => EnvironmentRow | null;
     afterAdopt?: () => Promise<void> | undefined;
     stepAfterAdopt?: string;
+    setupAfterAdopt?: boolean;
     createdPath?: () => string | undefined;
   } = {},
 ) {
@@ -94,6 +95,8 @@ function installProviders(
           }
         }
         await args.afterAdopt?.();
+        if (args.setupAfterAdopt && held?.path != null)
+          await context.setup(held.path);
         if (args.stepAfterAdopt !== undefined)
           context.report.step(args.stepAfterAdopt);
         return {
@@ -173,6 +176,7 @@ async function createHeld(
 async function finishSetup(
   harness: TestAppHarness,
   environmentId: string,
+  initiator: "none" | "thread" = "none",
 ): Promise<EnvironmentRow> {
   const queued = await waitForQueuedCommand(
     harness,
@@ -183,7 +187,8 @@ async function finishSetup(
   );
   if (queued.command.type !== "environment.attach")
     throw new Error("Expected an attach command");
-  expect(queued.command.initiator).toBeNull();
+  if (initiator === "none") expect(queued.command.initiator).toBeNull();
+  else expect(queued.command.initiator).not.toBeNull();
   await reportQueuedCommandSuccess(harness, queued, {
     path: queued.command.path,
     isGitRepo: true,
@@ -294,11 +299,7 @@ describe("environments created before threads", () => {
     await withTestHarness(async (harness) => {
       installProviders();
       const { project } = seed(harness);
-      const held = await readyHeldEnvironment(
-        harness,
-        project.id,
-        "user",
-      );
+      const held = await readyHeldEnvironment(harness, project.id, "user");
       vi.useFakeTimers({ toFake: ["Date"] });
       try {
         refreshProviderRetirement(harness.deps, held.id);
@@ -462,6 +463,48 @@ describe("plugin holds", () => {
     });
   });
 
+  it("runs setup again, before the thread starts, when the provider calls setup after adopt", async () => {
+    await withTestHarness(async (harness) => {
+      let handOff: EnvironmentRow | null = null;
+      installProviders({ adopt: () => handOff, setupAfterAdopt: true });
+      const { host, project } = seed(harness);
+      const pooled = await readyHeldEnvironment(
+        harness,
+        project.id,
+        `plugin:${POOL_PLUGIN}`,
+      );
+      const [setupBefore] = setupRows(harness);
+      handOff = pooled;
+      const thread = await providerThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      await expect
+        .poll(() => getEnvironment(harness.db, pooled.id)?.status)
+        .toBe("provisioning");
+      expect(threadStarts(harness, thread.id)).toEqual([]);
+      await finishSetup(harness, pooled.id, "thread");
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+        5_000,
+      );
+      const setupAfter = setupRows(harness);
+      expect(setupAfter).toHaveLength(1);
+      expect(setupAfter[0]?.id).toBe(setupBefore?.id);
+      expect(setupAfter[0]?.startedAt).toBeGreaterThan(
+        setupBefore?.finishedAt ?? Number.POSITIVE_INFINITY,
+      );
+      expect(getEnvironment(harness.db, pooled.id)).toMatchObject({
+        heldBy: null,
+        status: "ready",
+        createPending: false,
+        resource: { branch: `bb/warm-start-${thread.id}` },
+      });
+    });
+  });
+
   it("shows a step the provider reports after adopt on the thread and the environment", async () => {
     await withTestHarness(async (harness) => {
       let handOff: EnvironmentRow | null = null;
@@ -544,7 +587,8 @@ describe("plugin holds", () => {
       const { removed } = installProviders({
         adopt: () => handOff,
         afterAdopt: () => paused,
-        createdPath: () => (paused === undefined ? undefined : "/tmp/holds/elsewhere"),
+        createdPath: () =>
+          paused === undefined ? undefined : "/tmp/holds/elsewhere",
       });
       const { host, project } = seed(harness);
       const pooled = await readyHeldEnvironment(
@@ -585,7 +629,7 @@ describe("plugin holds", () => {
     });
   });
 
-  it("starts the thread on the adopted environment, with the resource adopt recorded, after a restart before create returned", async () => {
+  it("runs setup again and starts the thread on the adopted environment, with the resource adopt recorded, after a restart before create returned", async () => {
     await withTestHarness(async (harness) => {
       let paused: Promise<void> | undefined;
       installProviders({ afterAdopt: () => paused });
@@ -623,6 +667,7 @@ describe("plugin holds", () => {
         { branch },
       );
       await runEnvironmentProvisioningSweep(harness.deps);
+      await finishSetup(harness, pooled.id, "thread");
       await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -739,5 +784,4 @@ describe("restarts and path admission", () => {
       });
     },
   );
-
 });

@@ -134,24 +134,27 @@ created at the project's default base with `.worktreeinclude` copied and
 `.bb-env-setup.sh` finished. A new worktree thread on the default base takes
 one instead of waiting for git and the setup script: once the thread's title
 settles, the plugin renames the warm worktree's unused placeholder branch to
-the thread's branch and hands it over, and setup does not run again. If core
-refuses the handover, the branch is renamed back. While the title is being
-generated, bb asks the remote for its current default base (`git ls-remote`),
-and a warm worktree is only handed out if it is at that commit, so a thread
-never starts on older code than a fresh worktree would. If the remote can't be
-reached, bb compares against the last fetched default base instead, as a fresh
-worktree would, and the thread's provisioning log says it may be out of date.
-The log names the warm worktree's commit. The checkout is never moved at
-handoff, because setup already ran against it. Named bases, existing
-worktrees and restores always build a fresh worktree, and so does a thread
-that finds no current warm worktree.
+the thread's branch and hands it over. If core refuses the handover, the
+branch is renamed back. While the title is being generated, bb asks the remote
+for its current default base (`git ls-remote`). A warm worktree at that commit
+starts the thread without running setup again. A warm worktree behind it is
+fast-forwarded to that commit after the handover, and `.bb-env-setup.sh` runs
+again before the thread starts, so a thread never starts on older code than a
+fresh worktree would. A setup script that skips work whose inputs did not
+change (this repository's skips `pnpm install` when the lockfile is unchanged)
+makes that second run short. If the remote can't be reached, bb uses the last
+fetched default base instead, as a fresh worktree would, and the thread's
+provisioning log says it may be out of date. The log names the commit the
+thread starts on. Named bases, existing worktrees and restores always build a
+fresh worktree, and so does a thread that finds no usable warm worktree.
 
 Turn it on per project in the Worktree plugin's settings, or with
 `bb worktree pool set <project-id> <size>` (`0` turns it off and deletes the
 idle ones); `bb worktree pool status` lists them. While a project keeps warm
 worktrees, bb fetches its default base every two minutes and replaces warm
-worktrees that fell behind it, so a busy default branch costs one setup run
-per warm worktree per upstream change. Refills run one at a time per machine
+worktrees that are no longer on it (the default branch was rewritten); a warm
+worktree that is only behind is kept and moved forward when a thread takes it.
+Refills run one at a time per machine
 after a handoff, idle worktrees are replaced after eight hours, and a failed
 one is deleted and retried after ten minutes. Warm worktrees are environments
 held by the Worktree plugin (`bb environment list --held-by

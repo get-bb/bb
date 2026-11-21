@@ -1038,12 +1038,10 @@ describe.concurrent("worktree host entry", () => {
     expect(
       (await git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
     ).toBe("bb/named-later-thr_later");
-    expect(
-      (await git(created.path, "rev-parse", "HEAD")).trim(),
-    ).toBe((await git(sourcePath, "rev-parse", "main")).trim());
-    expect(await branchConfig(sourcePath, "bb/named-later-thr_later")).toBe(
-      "",
+    expect((await git(created.path, "rev-parse", "HEAD")).trim()).toBe(
+      (await git(sourcePath, "rev-parse", "main")).trim(),
     );
+    expect(await branchConfig(sourcePath, "bb/named-later-thr_later")).toBe("");
     expect(await harness.experimental_call("create", input)).toEqual(created);
     expect(existsSync(join(created.path, "setup-output.txt"))).toBe(true);
     await harness.experimental_dispose();
@@ -1601,7 +1599,7 @@ describe("warm worktree handoff", () => {
       "handOff",
       at("bb/fix-login-thr_1"),
     );
-    expect(result).toEqual({ status: "handed-off" });
+    expect(result).toEqual({ status: "handed-off", head });
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/fix-login-thr_1",
     );
@@ -1612,7 +1610,7 @@ describe("warm worktree handoff", () => {
     );
   });
 
-  it("reads a remote base commit that has not been fetched yet, and refuses a warm worktree behind it", async ({
+  it("fetches a remote base commit that has not been fetched yet, hands off a warm worktree behind it, and moves it forward", async ({
     onTestFinished,
   }) => {
     const { sourcePath, clone, harness, path, head } =
@@ -1630,6 +1628,16 @@ describe("warm worktree handoff", () => {
       (await git(clone, "rev-parse", "refs/remotes/origin/main")).trim(),
     ).toBe(head);
     expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: clone,
+        memberPaths: [path],
+      }),
+    ).toEqual({
+      ref: "origin/main",
+      commit: upstream,
+      members: [{ path, head, branch: "bb/env_warm", onBase: true }],
+    });
+    expect(
       await harness.experimental_call("handOff", {
         sourcePath: clone,
         path,
@@ -1638,20 +1646,45 @@ describe("warm worktree handoff", () => {
         baseBranch: "origin/main",
         baseCommit: upstream,
       }),
-    ).toEqual({ status: "refused", reason: "it is behind origin/main" });
+    ).toEqual({ status: "handed-off", head });
+    await harness.experimental_call("fastForward", { path, commit: upstream });
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/late-thr_2",
+    );
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(upstream);
+    expect(await readFile(join(path, "upstream.txt"), "utf8")).toBe(
+      "upstream.txt\n",
+    );
+  });
+
+  it("refuses a warm worktree that is not on the base after the base was rewritten", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, clone, harness, path } =
+      await warmWorktree(onTestFinished);
+    await git(sourcePath, "checkout", "--orphan", "rewritten");
+    const rewritten = await commitIn(sourcePath, "rewritten.txt");
+    await git(sourcePath, "branch", "-f", "main", rewritten);
+    await git(sourcePath, "checkout", "main");
+    const refreshed = await harness.experimental_call("refreshPoolBase", {
+      sourcePath: clone,
+      memberPaths: [path],
+    });
+    expect(refreshed.commit).toBe(rewritten);
+    expect(refreshed.members[0]?.onBase).toBe(false);
+    expect(
+      await harness.experimental_call("handOff", {
+        sourcePath: clone,
+        path,
+        fromBranch: "bb/env_warm",
+        toBranch: "bb/rewritten-thr_8",
+        baseBranch: "origin/main",
+        baseCommit: rewritten,
+      }),
+    ).toEqual({ status: "refused", reason: "it is not on origin/main" });
     expect((await git(path, "branch", "--show-current")).trim()).toBe(
       "bb/env_warm",
     );
-    expect(
-      await harness.experimental_call("refreshPoolBase", {
-        sourcePath: clone,
-        memberPaths: [path],
-      }),
-    ).toEqual({
-      ref: "origin/main",
-      commit: upstream,
-      members: [{ path, head, branch: "bb/env_warm" }],
-    });
   });
 
   it("falls back to the last fetched base when the remote cannot be reached", async ({

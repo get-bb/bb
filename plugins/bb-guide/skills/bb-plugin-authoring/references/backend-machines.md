@@ -293,7 +293,10 @@ retire like any other.
 That plugin's version-2 provider hands one to a new thread by calling
 `adopt(environmentId, resource)` in `create` and returning its path: core
 clears the hold, moves the thread onto it and records `resource` at once, and
-setup does not run again; a refused adopt changes nothing. After an adopt, a
+setup does not run again unless the provider then calls `setup(path)` with the
+adopted path, which runs setup again after create returns and before the
+thread starts (do this after changing the checkout); a restart before create
+returns also runs setup again. A refused adopt changes nothing. After an adopt, a
 create that does not return `created` at that path fails the environment and
 its thread, and `remove()` later receives the recorded resource. Environment responses carry `heldBy`
 (`"user"`, `"plugin:<id>"` or null) and `statusMessage`, and
