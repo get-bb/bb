@@ -1035,7 +1035,10 @@ export function createAcpDeltaTranslator(
     const status = turnStatusForStopReason(stopReason);
     const notice = stopReasonNotice(stopReason);
     return [
-      ...flushOpenTurnWork(context, itemStatusForTurnStatus(status)),
+      ...flushOpenTurnWork(
+        context,
+        status === "interrupted" ? "interrupted" : "failed",
+      ),
       ...(notice === undefined
         ? []
         : ([
