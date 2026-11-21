@@ -119,20 +119,16 @@ function userConversationRow(index = 1): TimelineConversationRow {
 
 function TocHost({
   contextBoundarySeq = null,
-  hasOlderTimelineRows = false,
   hostPaddingX = 0,
   hostWidth = 1_200,
-  loadOlderTimelineRows = () => {},
-  onNavigateToRow,
+  onRevealMessage = () => {},
   threadId = "thr_toc_test",
   timelineRows,
 }: {
   contextBoundarySeq?: number | null;
-  hasOlderTimelineRows?: boolean;
   hostPaddingX?: number;
   hostWidth?: number;
-  loadOlderTimelineRows?: () => void | Promise<void>;
-  onNavigateToRow?: (rowId: string) => void;
+  onRevealMessage?: (messageSeq: number) => void;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -155,9 +151,7 @@ function TocHost({
         contextBoundarySeq={contextBoundarySeq}
         threadId={threadId}
         timelineRows={timelineRows}
-        hasOlderTimelineRows={hasOlderTimelineRows}
-        loadOlderTimelineRows={loadOlderTimelineRows}
-        onNavigateToRow={onNavigateToRow}
+        onRevealMessage={onRevealMessage}
       />
     </div>
   );
@@ -302,18 +296,19 @@ function sidebarNavigation(
 }
 
 const userItems: TocItem[] = [
-  { id: "user-1", label: "First prompt", role: "user" },
-  { id: "user-2", label: "Second prompt", role: "user" },
+  { id: "user-1", messageSeq: 1, label: "First prompt", role: "user" },
+  { id: "user-2", messageSeq: 3, label: "Second prompt", role: "user" },
 ];
 
 const agentItems: TocItem[] = [
-  { id: "agent-1", label: "First response", role: "assistant" },
-  { id: "agent-2", label: "Second response", role: "assistant" },
+  { id: "agent-1", messageSeq: 2, label: "First response", role: "assistant" },
+  { id: "agent-2", messageSeq: 4, label: "Second response", role: "assistant" },
 ];
 
 function manyUserItems(count: number): TocItem[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `user-${index + 1}`,
+    messageSeq: index + 1,
     label: `Question ${index + 1}`,
     role: "user",
   }));
@@ -393,6 +388,7 @@ describe("ThreadTableOfContents", () => {
     setOutline(
       [1, 2, 3].map((index) => ({
         id: `old-${index}`,
+        messageSeq: 101,
         role: "user" as const,
         preview: `Old message ${index}`,
         attachmentSummary: null,
@@ -433,12 +429,14 @@ describe("ThreadTableOfContents", () => {
     setOutline([
       ...[1, 2, 3].map((index) => ({
         id: `u${index}`,
+        messageSeq: 102,
         role: "user" as const,
         preview: `Question ${index}`,
         attachmentSummary: null,
       })),
       {
         id: "a1",
+        messageSeq: 103,
         role: "assistant",
         preview: "Agent answer",
         attachmentSummary: null,
@@ -511,6 +509,7 @@ describe("ThreadTableOfContents", () => {
                   role === "assistant"
                     ? [1, 2, 3].map((index) => ({
                         id: `earlier_agent_${index}`,
+                        messageSeq: 104,
                         role: "assistant" as const,
                         preview: `Earlier agent answer ${index}`,
                         attachmentSummary: null,
@@ -809,24 +808,28 @@ describe("ThreadTableOfContents", () => {
     setOutline([
       {
         id: "u1",
+        messageSeq: 105,
         role: "user",
         preview: "First question",
         attachmentSummary: null,
       },
       {
         id: "a1",
+        messageSeq: 106,
         role: "assistant",
         preview: "First answer",
         attachmentSummary: null,
       },
       {
         id: "u2",
+        messageSeq: 107,
         role: "user",
         preview: "Second question",
         attachmentSummary: null,
       },
       {
         id: "u3",
+        messageSeq: 108,
         role: "user",
         preview: "",
         attachmentSummary: { imageCount: 1, fileCount: 0 },
@@ -846,18 +849,21 @@ describe("ThreadTableOfContents", () => {
     setOutline([
       {
         id: "row_user_1",
+        messageSeq: 109,
         role: "user",
         preview: "First cached question",
         attachmentSummary: null,
       },
       {
         id: "row_user_2",
+        messageSeq: 110,
         role: "user",
         preview: "Second cached question",
         attachmentSummary: null,
       },
       {
         id: "row_user_3",
+        messageSeq: 111,
         role: "user",
         preview: "Stale third question",
         attachmentSummary: null,
@@ -885,12 +891,14 @@ describe("ThreadTableOfContents", () => {
     setOutline([
       {
         id: "u1",
+        messageSeq: 112,
         role: "user",
         preview: "First question",
         attachmentSummary: null,
       },
       {
         id: "u2",
+        messageSeq: 113,
         role: "user",
         preview:
           "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
@@ -898,6 +906,7 @@ describe("ThreadTableOfContents", () => {
       },
       {
         id: "u3",
+        messageSeq: 114,
         role: "user",
         preview: "Third question",
         attachmentSummary: null,
@@ -938,12 +947,14 @@ describe("ThreadTableOfContents", () => {
     setOutline([
       {
         id: "u1",
+        messageSeq: 115,
         role: "user",
         preview: "First question",
         attachmentSummary: null,
       },
       {
         id: "u2",
+        messageSeq: 116,
         role: "user",
         preview:
           "[bb message from thread:thr_worker] Release bug report: the calendar is stale.",
@@ -951,6 +962,7 @@ describe("ThreadTableOfContents", () => {
       },
       {
         id: "u3",
+        messageSeq: 117,
         role: "user",
         preview: "Third question",
         attachmentSummary: null,
@@ -986,155 +998,37 @@ describe("ThreadTableOfContents", () => {
     ).not.toBeNull();
   });
 
-  it("scrolls straight to a message already loaded in the window", async () => {
-    const target = timelineRowElement("u2");
-    scrollElement.appendChild(target);
-    const loadOlder = vi.fn();
-    const onNavigateToRow = vi.fn();
+  it("asks bb to reveal the clicked message by its sequence", async () => {
+    const onRevealMessage = vi.fn();
     setOutline([
       {
         id: "u1",
+        messageSeq: 4,
         role: "user",
         preview: "First question",
         attachmentSummary: null,
       },
       {
         id: "u2",
+        messageSeq: 17,
         role: "user",
-        preview: "Loaded question",
+        preview: "Older question",
         attachmentSummary: null,
       },
       {
         id: "u3",
+        messageSeq: 30,
         role: "user",
         preview: "Third question",
         attachmentSummary: null,
       },
     ]);
 
-    render(
-      <TocHost
-        timelineRows={[]}
-        hasOlderTimelineRows
-        loadOlderTimelineRows={loadOlder}
-        onNavigateToRow={onNavigateToRow}
-      />,
-    );
+    render(<TocHost timelineRows={[]} onRevealMessage={onRevealMessage} />);
     openTocPanel();
-    fireEvent.click(await screen.findByText("Loaded question"));
+    fireEvent.click(await screen.findByText("Older question"));
 
-    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
-    expect(target.classList.contains("bb-search-flash")).toBe(true);
-    expect(onNavigateToRow).toHaveBeenCalledWith("u2");
-    expect(loadOlder).not.toHaveBeenCalled();
-  });
-
-  it("waits for a loaded but unmounted message to render instead of paginating", async () => {
-    const loadOlder = vi.fn();
-    const onNavigateToRow = vi.fn((rowId: string) => {
-      queueMicrotask(() => {
-        scrollElement.appendChild(timelineRowElement(rowId));
-      });
-    });
-    const timelineRows = [1, 2, 3].map((index) => userConversationRow(index));
-
-    render(
-      <TocHost
-        timelineRows={timelineRows}
-        hasOlderTimelineRows
-        loadOlderTimelineRows={loadOlder}
-        onNavigateToRow={onNavigateToRow}
-      />,
-    );
-    openTocPanel();
-    fireEvent.click(
-      await screen.findByText("Loaded after client-side navigation 1"),
-    );
-
-    await waitFor(() =>
-      expect(scrollElementIntoView).toHaveBeenCalledWith({
-        element: scrollElement.querySelector(
-          '[data-timeline-row-id="row_user_1"]',
-        ),
-        options: { block: "start", inline: "nearest" },
-      }),
-    );
-    expect(loadOlder).not.toHaveBeenCalled();
-  });
-
-  it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
-    const loadOlder = vi.fn(() => {
-      scrollElement.appendChild(timelineRowElement("u_old"));
-    });
-    setOutline([
-      {
-        id: "u_old",
-        role: "user",
-        preview: "Ancient question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Second question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
-    ]);
-
-    render(
-      <TocHost
-        timelineRows={[]}
-        hasOlderTimelineRows
-        loadOlderTimelineRows={loadOlder}
-      />,
-    );
-    openTocPanel();
-    fireEvent.click(await screen.findByText("Ancient question"));
-
-    await waitFor(() => expect(loadOlder).toHaveBeenCalled());
-    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalled());
-  });
-
-  it("does not paginate when there are no older pages to load", async () => {
-    const loadOlder = vi.fn();
-    setOutline([
-      {
-        id: "missing",
-        role: "user",
-        preview: "Unreachable",
-        attachmentSummary: null,
-      },
-      {
-        id: "u2",
-        role: "user",
-        preview: "Second question",
-        attachmentSummary: null,
-      },
-      {
-        id: "u3",
-        role: "user",
-        preview: "Third question",
-        attachmentSummary: null,
-      },
-    ]);
-
-    render(
-      <TocHost
-        timelineRows={[]}
-        hasOlderTimelineRows={false}
-        loadOlderTimelineRows={loadOlder}
-      />,
-    );
-    openTocPanel();
-    fireEvent.click(await screen.findByText("Unreachable"));
-
-    await waitFor(() => expect(loadOlder).not.toHaveBeenCalled());
+    expect(onRevealMessage).toHaveBeenCalledWith(17);
     expect(scrollElementIntoView).not.toHaveBeenCalled();
   });
 
@@ -1224,6 +1118,7 @@ describe("ThreadTableOfContents", () => {
   it("finds active items with logarithmic row measurements", () => {
     const allItems = Array.from({ length: 256 }, (_, index): TocItem => ({
       id: `item-${index}`,
+      messageSeq: index,
       label: `Message ${index}`,
       role: index % 2 === 0 ? "user" : "assistant",
     }));
