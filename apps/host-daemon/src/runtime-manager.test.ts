@@ -973,7 +973,7 @@ describe("RuntimeManager", () => {
     ]);
   });
 
-  it("passes thread storage root to created runtimes as a workspace-write root", async () => {
+  it("does not grant the shared thread storage root as an environment write root", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const runtimeOptions: RuntimeOptionsRef = { current: null };
     const manager = new RuntimeManager({
@@ -990,9 +990,10 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-1",
     });
 
-    expect(runtimeOptions.current?.additionalWorkspaceWriteRoots).toEqual([
+    expect(runtimeOptions.current?.additionalWorkspaceWriteRoots).toEqual([]);
+    expect(runtimeOptions.current?.threadStorageRootPath).toBe(
       "/tmp/bb-thread-storage",
-    ]);
+    );
   });
 
   it("forwards the bridge record-mode directory to provider processes but not the shell env", async () => {

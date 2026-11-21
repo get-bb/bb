@@ -10,6 +10,7 @@ interface AssertProviderSupportsExecutionOptionsArgs {
 }
 
 interface ToProviderExecutionContextArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   envVars: Record<string, string>;
   execOpts: AgentRuntimeExecutionOptions;
   instructions: string | undefined;
@@ -53,8 +54,16 @@ export function toProviderExecutionContext(
     ...(args.execOpts.sessionOptions !== undefined
       ? { sessionOptions: args.execOpts.sessionOptions }
       : {}),
-    providerOptions: args.execOpts.providerOptions,
     ...permissionPolicy,
+    providerOptions:
+      args.additionalWorkspaceWriteRoots.length > 0
+        ? {
+            ...args.execOpts.providerOptions,
+            additionalWorkspaceWriteRoots: [
+              ...args.additionalWorkspaceWriteRoots,
+            ],
+          }
+        : args.execOpts.providerOptions,
     instructions: args.instructions,
     envVars: args.envVars,
   };

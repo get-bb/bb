@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,7 @@ interface CreateContractRuntimeArgs {
   onEvent?: (event: ThreadEvent) => void;
   onStderr?: (line: string) => void;
   shellEnv?: Record<string, string>;
+  threadStorageRootPath?: string;
 }
 
 interface ContractRuntime {
@@ -69,6 +70,9 @@ describe("createAgentRuntime command contracts", () => {
         onEvent: args.onEvent ?? (() => {}),
         ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
         ...(args.shellEnv !== undefined ? { shellEnv: args.shellEnv } : {}),
+        ...(args.threadStorageRootPath !== undefined
+          ? { threadStorageRootPath: args.threadStorageRootPath }
+          : {}),
         onToolCall: async () => ({
           contentItems: [{ type: "inputText", text: "ok" }],
           success: true,
@@ -106,6 +110,45 @@ describe("createAgentRuntime command contracts", () => {
         cwd: tmpDir,
         options: { providerOptions: { additionalWorkspaceWriteRoots } },
       });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("grants each thread only its own storage folder, not the shared storage root", async () => {
+    const storageRoot = join(tmpDir, "thread-storage");
+    const workspaceRoot = "/repo/.git/objects";
+    const { record, runtime } = createContractRuntime({
+      additionalWorkspaceWriteRoots: [workspaceRoot],
+      threadStorageRootPath: storageRoot,
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+      const ownRoots = [workspaceRoot, join(storageRoot, "t1")];
+      expect(record.last("thread/start")?.params).toMatchObject({
+        options: {
+          providerOptions: { additionalWorkspaceWriteRoots: ownRoots },
+        },
+      });
+      expect(record.last("turn/start")?.params).toMatchObject({
+        options: {
+          providerOptions: { additionalWorkspaceWriteRoots: ownRoots },
+        },
+      });
+      expect(existsSync(join(storageRoot, "t1"))).toBe(true);
     } finally {
       await runtime.shutdown();
     }

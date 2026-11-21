@@ -205,11 +205,6 @@ interface ReleaseThreadFromOtherEnvironmentsResult {
   releasedEnvironmentIds: string[];
 }
 
-interface RuntimeWorkspaceWriteRootsArgs {
-  threadStorageRootPath: string | null | undefined;
-  workspaceRoots: readonly string[];
-}
-
 interface PendingEnvironmentProvision {
   abortController: AbortController;
   done: Promise<unknown>;
@@ -310,16 +305,6 @@ export class RuntimeManager {
       ttlMs: PROVIDER_INSTALLATION_GATE_TTL_MS,
     });
     this.ensureDataDirSkillsWatcher();
-  }
-
-  private runtimeWorkspaceWriteRoots(
-    args: RuntimeWorkspaceWriteRootsArgs,
-  ): string[] {
-    const roots = [...args.workspaceRoots];
-    if (args.threadStorageRootPath) {
-      roots.push(args.threadStorageRootPath);
-    }
-    return [...new Set(roots)];
   }
 
   get(environmentId: string): RuntimeEntry | undefined {
@@ -1228,10 +1213,7 @@ export class RuntimeManager {
     });
     const workspaceWriteRoots =
       await workspace.getAdditionalWorkspaceWriteRoots();
-    const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
-      threadStorageRootPath: this.options.threadStorageRootPath,
-      workspaceRoots: workspaceWriteRoots,
-    });
+    const additionalWorkspaceWriteRoots = [...new Set(workspaceWriteRoots)];
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
     const shellEnvGeneration = this.shellEnvGeneration;
