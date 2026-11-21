@@ -533,9 +533,11 @@ export interface ServerAccessProviderDeclaration {
    * How machines and apps travel to this server over the provider's address.
    * Core ranks enabled routes by kind (local network, private overlay such as
    * a tailnet, relay, then custom) until the user orders them in Settings.
-   * Omitted means `"custom"`.
+   * New machines install on a `"relay"` or `"custom"` route before a
+   * `"local-network"` or `"private-overlay"` one. Plugins built against an SDK
+   * before 0.6.177 may omit it; core treats those as `"custom"`.
    */
-  routeKind?: ServerAccessRouteKind;
+  routeKind: ServerAccessRouteKind;
   availability():
     | (import("./machine-provider.js").PluginMachineProviderAvailability & {
         serverUrl?: string;

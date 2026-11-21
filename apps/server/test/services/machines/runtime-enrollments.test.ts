@@ -248,6 +248,7 @@ describe("production machine enrollment wiring", () => {
         id: "runtime-access",
         displayName: "Runtime access",
         description: "Reach the server through the runtime test provider.",
+        routeKind: "custom",
         availability: () => ({ status: "available" }),
         acquire,
         release,

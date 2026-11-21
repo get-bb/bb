@@ -53,6 +53,7 @@ function provider(): ServerAccessProviderDeclaration {
     id: "relay",
     displayName: "Relay",
     description: "Use a managed relay.",
+    routeKind: "custom",
     availability: () => ({ status: "available" }),
     acquire: async ({ hostId }) => ({
       id: hostId,
@@ -539,6 +540,35 @@ it("rejects duplicate server-access registrations in real and fake hosts", async
           api.experimental_serverAccess.register(provider()),
         ).toThrow("already registered");
       }
+    } finally {
+      await fake.harness.lifecycle.dispose();
+    }
+  });
+});
+
+it("ranks a provider from a plugin built before routeKind existed as custom in real and fake hosts", async () => {
+  await withTestHarness(async (h) => {
+    await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+    const real = h.pluginService.getApi("keep-awake");
+    if (!real) throw new Error("Test plugin did not load");
+    const fake = createFakePluginHost();
+    const { routeKind: _omitted, ...legacy } = provider();
+    try {
+      real.experimental_serverAccess.register(
+        legacy as ServerAccessProviderDeclaration,
+      );
+      fake.bb.experimental_serverAccess.register(
+        legacy as ServerAccessProviderDeclaration,
+      );
+      expect(
+        (await serverAccessStatus(h.deps)).providers.find(
+          (entry) => entry.id === "relay",
+        )?.routeKind,
+      ).toBe("custom");
+      expect(
+        fake.harness.registrations.serverAccessProviders.get("relay")
+          ?.routeKind,
+      ).toBe("custom");
     } finally {
       await fake.harness.lifecycle.dispose();
     }

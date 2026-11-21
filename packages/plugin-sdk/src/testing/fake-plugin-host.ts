@@ -1653,12 +1653,12 @@ function createFakePluginHostInternal(
     experimental_serverAccess: {
       register(declaration) {
         assertLive();
-        validateServerAccessProviderDeclaration(declaration);
+        const provider = validateServerAccessProviderDeclaration(declaration);
         if (serverAccessProviders.has(declaration.id))
           throw new Error(
             `Server access provider "${declaration.id}" is already registered`,
           );
-        serverAccessProviders.set(declaration.id, declaration);
+        serverAccessProviders.set(provider.id, provider);
       },
       recheck() {
         assertLive();

@@ -134,6 +134,7 @@ describe("public host management", () => {
         id: "relay",
         displayName: "Relay",
         description: "Test relay",
+        routeKind: "relay" as const,
         availability: () => ({ status: "available" as const }),
         acquire: async () => ({
           id: host.id,

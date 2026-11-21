@@ -153,7 +153,7 @@ export function orderedServerAccessProviders(
       displayName: record.provider.displayName,
       description: record.provider.description,
       pluginId: record.pluginId,
-      routeKind: record.provider.routeKind ?? ("custom" as const),
+      routeKind: record.provider.routeKind,
       record,
     })),
     MANUAL_PROVIDER,
