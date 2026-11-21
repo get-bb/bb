@@ -285,7 +285,7 @@ export function PluginSidebarFooterItems({
         : `experimental_sidebarFooter item "${slot.id}"`,
       () => {
         const context = actionContext(slot.pluginId);
-        slot.onActivate({
+        return slot.onActivate({
           ...context,
           openPluginDetails: () => context.navigate.experimental_toSettings(),
         });
