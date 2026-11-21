@@ -314,12 +314,10 @@ export function ThreadSearchPaletteMode({
                 searchThreadId: row.threadId,
               };
         openThread({
-          store,
           navigate,
           projectId: row.projectId,
           threadId: row.threadId,
-          isCompact,
-          split,
+          ...(split ? { split: { zone: "right", store, isCompact } } : {}),
           ...(state === undefined ? {} : { state }),
         });
       });

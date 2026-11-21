@@ -2069,19 +2069,23 @@ audit: 6 community plugins rebuilt the reveal from the DOM, 13 forged
 history state to reach settings, and about 50 built `/threads/` or
 `/settings/` paths by hand.
 
-**Core callers.** `getThreadLocationPath` (`@bb/client-core`) builds every
-thread and message location: `toThread`, `experimental_threadHref`, Copy link
-(`getThreadUrl`), Copy message link, and thread mention links. `toThread` and
-the search palette open threads through one `openThread`
-(`split-layout/openThread.ts`); the palette keeps its `searchMessageSeq` state
+**Core callers.** `getThreadLocationPath` (`@bb/client-core`) is the only
+thread path builder in the web and mobile apps: every thread link, Copy link,
+Copy message link, mention, pane route and notification target, plus
+`toThread` and `experimental_threadHref`. `openThread`
+(`split-layout/openThread.ts`) is the only way to open a thread for the user,
+with or without a split: `toThread`, `experimental_useSidebarThreadActions`'
+`open`, the search palette, sidebar Open in split and keyboard navigation,
+`bb thread open`, mention links, the archived-thread toast, and new threads
+after creation. Pane bookkeeping (closing, replacing or reconciling panes)
+uses only the path builder. The palette keeps its `searchMessageSeq` state
 because its hits can be non-message events. `getSettingsTargetPath`
-(`settings-sections.ts`) builds every targeted settings location:
-`experimental_toSettings`, `experimental_settingsHref`, the palette's section
-and plugin rows, and the New thread screen's machine-access and
-needs-configuration banners. The sidebar footer's `openSettings` /
+(`settings-sections.ts`) is the only settings path builder: sections, plugin,
+machine and project pages, including `experimental_toSettings` and
+`experimental_settingsHref`. The sidebar footer's `openSettings` /
 `openPluginDetails` call `navigate.experimental_toSettings()`. The generic
-Settings button, nav rail button and "Open settings" command are not
-targets: they reopen the last settings page visited.
+Settings button, nav rail button and "Open settings" command reopen the last
+settings page visited, which is a stored location, not a target.
 
 Docs: `frontend-navigation.md`.
 

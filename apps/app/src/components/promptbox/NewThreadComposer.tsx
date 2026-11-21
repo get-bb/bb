@@ -130,7 +130,6 @@ import {
 } from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
-  getThreadRoutePath,
   isProjectlessProjectId,
 } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
@@ -147,6 +146,7 @@ import {
   MACHINE_SERVER_ACCESS_TITLE,
   machineServerAccessBlockedReason,
 } from "@/components/machines/machine-server-access";
+import { openThread } from "@/lib/split-layout/openThread";
 
 type NewThreadComposerSelectionScope = "new-thread" | "component-local";
 
@@ -1779,12 +1779,11 @@ export function NewThreadComposer({
       if (resource.kind === "thread") {
         const targetProjectId = resource.projectId ?? projectId;
         return () =>
-          void navigate(
-            getThreadRoutePath({
-              projectId: targetProjectId,
-              threadId: resource.threadId,
-            }),
-          );
+          openThread({
+            navigate,
+            projectId: targetProjectId,
+            threadId: resource.threadId,
+          });
       }
       if (resource.kind === "project") {
         return () =>

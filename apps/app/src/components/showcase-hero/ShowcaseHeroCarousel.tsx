@@ -16,10 +16,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { ShowcaseFrame } from "./ShowcaseFrame";
 import type { ShowcaseArchetype, ShowcaseScenes } from "./showcase-archetype";
 import { accentInk, accentTint, neutral } from "./showcase-tokens";
+import { openThread } from "@/lib/split-layout/openThread";
 
 const SLIDE_MS = 5000;
 
@@ -308,12 +308,11 @@ export function ShowcaseHeroCarousel({
                     executionInputSources: request.executionInputSources,
                     environment: request.environment,
                   });
-                  void navigate(
-                    getThreadRoutePath({
-                      projectId: thread.projectId ?? request.projectId,
-                      threadId: thread.id,
-                    }),
-                  );
+                  openThread({
+                    navigate,
+                    projectId: thread.projectId ?? request.projectId,
+                    threadId: thread.id,
+                  });
                 }}
               />
             </div>
