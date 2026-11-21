@@ -79,6 +79,7 @@ function measured(
     planLabel,
     windows: [
       {
+        kind: "weekly",
         label: "Weekly limit",
         usedPercent,
         resetsAt: futureIso(usedPercent > 90 ? 18 : 83),
@@ -129,12 +130,14 @@ function twoWindows(
     planLabel,
     windows: [
       {
+        kind: "five-hour",
         label: "Five-hour limit",
         usedPercent: fiveHour,
         resetsAt: futureIso(3),
         cost: null,
       },
       {
+        kind: "weekly",
         label: "Weekly limit",
         usedPercent: weekly,
         resetsAt: futureIso(83),
@@ -211,6 +214,11 @@ function liveUsage(
     accountEmail: email,
     planLabel,
     windows: windows.map(([label, usedPercent, resetHours]) => ({
+      kind: /week/i.test(label)
+        ? "weekly"
+        : /5-hour|five-hour|session/i.test(label)
+          ? "five-hour"
+          : "custom",
       label,
       usedPercent,
       resetsAt: futureIso(resetHours),

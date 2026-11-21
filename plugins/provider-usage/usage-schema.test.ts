@@ -27,6 +27,7 @@ function provider(
       planLabel: null,
       windows: [
         {
+          kind: "five-hour",
           label: "Five-hour limit",
           usedPercent,
           resetsAt: null,

@@ -87,6 +87,7 @@ describe("provider usage footer disclosure", () => {
         planLabel: "Pro",
         windows: [
           {
+            kind: "weekly",
             label: "Weekly limit",
             usedPercent: usedPercent,
             resetsAt:
@@ -130,6 +131,7 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Max",
                         windows: [
                           {
+                            kind: "five-hour",
                             label: "Five-hour limit",
                             usedPercent: 82,
                             resetsAt: "2026-09-02T18:42:00.000Z",
@@ -154,6 +156,7 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Plus",
                         windows: [
                           {
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 37,
                             resetsAt: null,
@@ -186,6 +189,7 @@ describe("provider usage footer disclosure", () => {
                         planLabel: "Plus",
                         windows: [
                           {
+                            kind: "weekly",
                             label: "Weekly limit",
                             usedPercent: 97,
                             resetsAt: null,
@@ -496,6 +500,7 @@ it.each([
               ? []
               : [
                   {
+                    kind: "weekly",
                     label: "Weekly limit",
                     usedPercent: 42,
                     resetsAt: null,
@@ -599,6 +604,7 @@ it("keeps a measured refresh when an older snapshot response arrives late", asyn
           planLabel: null,
           windows: [
             {
+              kind: "weekly",
               label: "Weekly limit",
               usedPercent: 37,
               resetsAt: null,

@@ -575,7 +575,7 @@ describe("OpenCode Go usage", () => {
         windows: [
           {
             label: "5 hour",
-            kind: "five-hour",
+            kind: "custom",
             model: null,
             usedPercent: 12.5,
             resetsAt: reportedUsage.usage.rolling.resetsAt,

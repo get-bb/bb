@@ -6,7 +6,15 @@ const costSchema = z.strictObject({
   limitUsdCents: z.number().check(z.positive()),
 });
 
+export const usageWindowKindValues = [
+  "five-hour",
+  "daily",
+  "weekly",
+  "custom",
+] as const;
+
 export const usageWindowSchema = z.strictObject({
+  kind: z.enum(usageWindowKindValues),
   label: nonemptyStringSchema,
   usedPercent: z.number(),
   resetsAt: z.nullable(nonemptyStringSchema),

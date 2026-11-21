@@ -70,6 +70,7 @@ function normalizedUsage(
         accountEmail: usage.accountEmail || null,
         planLabel: usage.planLabel || null,
         windows: usage.windows.map((window) => ({
+          kind: window.kind,
           label: window.label,
           usedPercent: window.usedPercent,
           resetsAt: window.resetsAt || null,

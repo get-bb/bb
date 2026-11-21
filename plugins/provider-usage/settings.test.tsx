@@ -28,6 +28,7 @@ function account(id: string, providerId = "codex"): UsageProvider {
       planLabel: "Ultra",
       windows: [
         {
+          kind: "weekly",
           label: "Weekly limit",
           usedPercent: 42,
           resetsAt: new Date(Date.now() + 3600_000).toISOString(),
@@ -241,5 +242,14 @@ describe("UsageSettingsContent", () => {
     expect(html).toContain("Session expired.");
     expect(html).toContain("No usage limits reported for this plan.");
     expect(html).not.toContain("0% used");
+  });
+
+  it("marks the pace on a window with a known length and reset", () => {
+    const html = renderContent({
+      machines: [machine("host", [account("a")])],
+      selectedId: "host",
+    });
+    expect(html).toContain('data-testid="usage-pace-mark"');
+    expect(html).toContain("Under pace");
   });
 });

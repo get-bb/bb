@@ -264,7 +264,7 @@ export async function readOpenCodeGoUsage(
           : null,
         planLabel: "OpenCode Go",
         windows: [
-          { label: "5 hour", kind: "five-hour", window: rolling },
+          { label: "5 hour", kind: "custom", window: rolling },
           { label: "Weekly", kind: "weekly", window: weekly },
           { label: "Monthly", kind: "custom", window: monthly },
         ].map(({ label, kind, window }) => ({

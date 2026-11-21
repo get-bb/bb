@@ -29,6 +29,9 @@ import {
   formatUsageReset,
   formatUsdCents,
   usageBarColorClass,
+  currentUsageWindowPace,
+  describeUsagePace,
+  USAGE_PACE_LABELS,
 } from "./usage-format.js";
 import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
@@ -271,6 +274,23 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
   const [showReset, setShowReset] = useState(false);
   const reset = formatUsageReset(window.resetsAt);
   const countdown = formatResetCountdown(window.resetsAt);
+  const pace = currentUsageWindowPace(window);
+  const paceText =
+    pace === null
+      ? ""
+      : ` · ${USAGE_PACE_LABELS[pace.pace]}, ${pace.elapsedPercent}% of the window passed`;
+  const usedPercent = Math.min(100, Math.max(0, window.usedPercent));
+  const band =
+    pace === null || pace.pace === "on"
+      ? null
+      : {
+          left: Math.min(usedPercent, pace.elapsedPercent),
+          width: Math.abs(usedPercent - pace.elapsedPercent),
+          className:
+            pace.pace === "ahead"
+              ? "bg-destructive"
+              : "bg-sidebar-foreground/15",
+        };
   const value =
     window.cost === null
       ? Math.round(window.usedPercent) + "% used"
@@ -281,8 +301,8 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
     <button
       type="button"
       className="col-span-full grid grid-cols-subgrid rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-      title={`${window.label} · ${reset ?? "Reset time not reported"}`}
-      aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
+      title={`${window.label} · ${reset ?? "Reset time not reported"}${paceText}`}
+      aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}${paceText}`}
       aria-expanded={showReset}
       onClick={() => setShowReset((shown) => !shown)}
     >
@@ -290,16 +310,36 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
         <span className="max-w-20 truncate text-subtle-foreground">
           {shortWindowLabel(window.label)}
         </span>
-        <span className="h-1 min-w-0 overflow-hidden rounded-full bg-sidebar-border">
-          <span
-            className={
-              "block h-full rounded-full " +
-              usageBarColorClass(window.usedPercent)
-            }
-            style={{
-              width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
-            }}
-          />
+        <span className="relative min-w-0">
+          <span className="relative block h-1 overflow-hidden rounded-full bg-sidebar-border">
+            <span
+              className={
+                "block h-full rounded-full " +
+                usageBarColorClass(window.usedPercent)
+              }
+              style={{
+                width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
+              }}
+            />
+            {band === null ? null : (
+              <span
+                aria-hidden="true"
+                data-testid={`usage-pace-band-${pace?.pace}`}
+                className={cn("absolute inset-y-0", band.className)}
+                style={{ left: `${band.left}%`, width: `${band.width}%` }}
+              />
+            )}
+          </span>
+          {pace === null ? null : (
+            <span
+              aria-hidden="true"
+              data-testid="usage-pace-mark"
+              className="absolute -inset-y-0.5 w-px bg-sidebar-foreground"
+              style={{
+                left: `clamp(0px, ${pace.elapsedPercent}%, calc(100% - 1px))`,
+              }}
+            />
+          )}
         </span>
         <span
           className={cn(
@@ -308,6 +348,12 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
           )}
         >
           {Math.round(window.usedPercent)}%
+          {pace === null ? null : (
+            <span className="text-subtle-foreground">
+              {" / "}
+              {pace.elapsedPercent}%
+            </span>
+          )}
         </span>
         <span
           aria-hidden="true"
@@ -320,6 +366,13 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
         <span className="col-span-full pb-1 text-2xs text-subtle-foreground">
           {reset ?? "Reset time not reported."}
           {window.cost === null ? "" : ` · ${value}`}
+          {pace === null
+            ? null
+            : describeUsagePace(pace).map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
         </span>
       ) : null}
     </button>

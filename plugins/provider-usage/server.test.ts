@@ -72,6 +72,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
         windows: [
           {
             id: "week",
+            kind: "weekly",
             label: "Weekly",
             usedPercent: 42,
             resetsAt: null,
@@ -357,7 +358,9 @@ it("collapses known account observations per machine, preserves unknown identiti
               id: "adapter:account",
               usage: {
                 planLabel: "Max (20x)",
-                windows: [{ label: "Weekly limit", usedPercent: 42 }],
+                windows: [
+                  { kind: "weekly", label: "Weekly limit", usedPercent: 42 },
+                ],
               },
             },
             { id: "adapter:unknown", usage: null },

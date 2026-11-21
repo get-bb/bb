@@ -28,6 +28,13 @@ import {
   type UsageSnapshot,
   type UsageWindow,
 } from "./usage-schema.js";
+import {
+  currentUsageWindowPace,
+  formatUsageReset,
+  formatUsdCents,
+  usageBarColorClass,
+  USAGE_PACE_LABELS,
+} from "./usage-format.js";
 function SettingsBadge({ children }: { children: ReactNode }) {
   return (
     <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
@@ -44,63 +51,6 @@ interface ProviderConfig {
   provider: UsageProvider;
 }
 
-function barColorClass(usedPercent: number): string {
-  if (usedPercent >= 95) {
-    return "bg-destructive";
-  }
-  if (usedPercent >= 80) {
-    return "bg-warning";
-  }
-  return "bg-primary";
-}
-
-function formatReset(resetsAt: string | null): string | null {
-  if (!resetsAt) {
-    return null;
-  }
-  const reset = new Date(resetsAt);
-  if (Number.isNaN(reset.getTime())) {
-    return null;
-  }
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0) {
-    return "Resetting now";
-  }
-
-  const diffMinutes = Math.round(diffMs / 60_000);
-  if (diffMinutes < 60) {
-    return `Resets in ${diffMinutes} min`;
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    const minutes = diffMinutes % 60;
-    return minutes > 0
-      ? `Resets in ${diffHours} hr ${minutes} min`
-      : `Resets in ${diffHours} hr`;
-  }
-
-  const withinWeek = diffMs < 7 * 24 * 60 * 60_000;
-  const formatted = reset.toLocaleString(undefined, {
-    weekday: withinWeek ? "short" : undefined,
-    month: withinWeek ? undefined : "short",
-    day: withinWeek ? undefined : "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `Resets ${formatted}`;
-}
-
-function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
-  const hasFractionalDollar = cents % 100 !== 0;
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: alwaysShowCents || hasFractionalDollar ? 2 : 0,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
-}
-
 function usageWindowValue(window: UsageWindow): string {
   if (!window.cost) {
     return `${window.usedPercent}% used`;
@@ -109,7 +59,8 @@ function usageWindowValue(window: UsageWindow): string {
 }
 
 function UsageWindowRow({ window }: { window: UsageWindow }) {
-  const reset = formatReset(window.resetsAt);
+  const reset = formatUsageReset(window.resetsAt);
+  const pace = currentUsageWindowPace(window);
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
@@ -118,18 +69,41 @@ function UsageWindowRow({ window }: { window: UsageWindow }) {
           {usageWindowValue(window)}
         </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            "h-full rounded-full",
-            barColorClass(window.usedPercent),
-          )}
-          style={{
-            width: `${Math.min(100, Math.max(window.usedPercent, 2))}%`,
-          }}
-        />
+      <div className="relative">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full",
+              usageBarColorClass(window.usedPercent),
+            )}
+            style={{
+              width: `${Math.min(100, Math.max(window.usedPercent, 2))}%`,
+            }}
+          />
+        </div>
+        {pace === null ? null : (
+          <div
+            aria-hidden="true"
+            data-testid="usage-pace-mark"
+            className="absolute -inset-y-1 w-px bg-foreground"
+            style={{
+              left: `clamp(0px, ${pace.elapsedPercent}%, calc(100% - 1px))`,
+            }}
+          />
+        )}
       </div>
-      {reset ? <p className="text-xs text-muted-foreground">{reset}</p> : null}
+      {reset || pace ? (
+        <p className="text-xs text-muted-foreground">
+          {[
+            reset,
+            pace === null
+              ? null
+              : `${USAGE_PACE_LABELS[pace.pace]}, ${pace.elapsedPercent}% of the window passed`,
+          ]
+            .filter((part) => part !== null)
+            .join(" · ")}
+        </p>
+      ) : null}
     </div>
   );
 }
