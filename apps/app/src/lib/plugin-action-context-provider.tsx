@@ -44,8 +44,16 @@ export function unavailablePluginActionContext(
     navigate: unavailable(pluginId, "navigate"),
     panel: unavailable(pluginId, "panel"),
     composer: getActiveComposerHandle(pluginId),
-    requestArchive: unavailableRequest(pluginId, "requestArchive"),
-    requestDelete: unavailableRequest(pluginId, "requestDelete"),
+    threadRequests: {
+      requestArchive: unavailableRequest(
+        pluginId,
+        "threadRequests.requestArchive",
+      ),
+      requestDelete: unavailableRequest(
+        pluginId,
+        "threadRequests.requestDelete",
+      ),
+    },
   };
 }
 

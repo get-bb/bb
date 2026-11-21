@@ -3648,12 +3648,9 @@ export interface ExperimentalThreadRequests {
  * What every plugin callback's context carries besides its own fields:
  * commands, message actions, thread actions, panel and New thread panel
  * actions, sidebar footer actions, and composer commands and menu items.
- * `requestArchive` and `requestDelete` are bb's Archive and Delete flows (see
- * {@link ExperimentalThreadRequests}); components get the same two from
- * `experimental_useThreadRequests()`.
  * Experimental: see docs/api_to_audit.md.
  */
-export interface ExperimentalPluginActionContext extends ExperimentalThreadRequests {
+export interface ExperimentalPluginActionContext {
   /** The registering plugin's `useSdk()` client. */
   sdk: PluginBrowserBbSdk;
   /**
@@ -3675,6 +3672,11 @@ export interface ExperimentalPluginActionContext extends ExperimentalThreadReque
    * `experimental_useActiveComposer()`. Experimental: see docs/api_to_audit.md.
    */
   composer: PluginComposerApi | null;
+  /**
+   * bb's own Archive and Delete flows (see {@link ExperimentalThreadRequests}),
+   * the same object `experimental_useThreadRequests()` returns in components.
+   */
+  threadRequests: ExperimentalThreadRequests;
 }
 
 /**
@@ -6002,8 +6004,8 @@ export interface PluginSdkApp {
   /**
    * bb's Archive and Delete flows for any thread ids, with its confirmation,
    * child counts, Undo and error toast (see
-   * {@link ExperimentalThreadRequests}). Callbacks get the same two on their
-   * context. Experimental: see docs/api_to_audit.md.
+   * {@link ExperimentalThreadRequests}). Callbacks get the same object as
+   * their context's `threadRequests`. Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadRequests(): ExperimentalThreadRequests;
   /**

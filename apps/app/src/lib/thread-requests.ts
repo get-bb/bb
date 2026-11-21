@@ -1,4 +1,5 @@
-import { atom, type useStore } from "jotai";
+import { useMemo } from "react";
+import { atom, useStore } from "jotai";
 import type { ExperimentalThreadRequests } from "@get-bb/plugin-sdk";
 
 export const threadRequestsAtom = atom<ExperimentalThreadRequests | null>(null);
@@ -19,4 +20,9 @@ export function bindThreadRequests(
     requestArchive: async (threadIds) => requests().requestArchive(threadIds),
     requestDelete: async (threadIds) => requests().requestDelete(threadIds),
   };
+}
+
+export function useThreadRequests(): ExperimentalThreadRequests {
+  const store = useStore();
+  return useMemo(() => bindThreadRequests(() => store), [store]);
 }

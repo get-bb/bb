@@ -59,7 +59,7 @@ import {
   getSettingsProjectRoutePath,
   getThreadRoutePath,
 } from "./route-paths";
-import { bindThreadRequests } from "@/lib/thread-requests";
+import { useThreadRequests } from "@/lib/thread-requests";
 export { lookupCachedThread, resolveThread } from "./cached-thread.js";
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
@@ -222,10 +222,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const isCompact = useIsCompactViewport();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
-  const threadRequests = useMemo(
-    () => bindThreadRequests(() => store),
-    [store],
-  );
+  const threadRequests = useThreadRequests();
   const entries = useSidebarThreadEntriesStore();
   const { mutateAsync: pinThreadAsync } = usePinThread();
   const { mutateAsync: unpinThreadAsync } = useUnpinThread();

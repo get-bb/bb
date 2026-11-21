@@ -391,7 +391,7 @@ export function makePanelController(
 
 /** One call recorded by {@link makeActionContext}'s default members. */
 export interface ExperimentalActionContextCall {
-  /** `"requestArchive"`, `"requestDelete"`, `"navigate.<method>"` or `"sdk.<area>.<method>"`. */
+  /** `"threadRequests.requestArchive"`, `"threadRequests.requestDelete"`, `"navigate.<method>"` or `"sdk.<area>.<method>"`. */
   member: string;
   args: unknown[];
 }
@@ -406,7 +406,7 @@ export interface ExperimentalActionContextFixture extends ExperimentalPluginActi
  * A complete callback context for tests that call a command, thread action,
  * message action or composer callback directly, so a test lists only the
  * members it uses and keeps compiling when bb adds one. Defaults record each
- * call in `calls`: `requestArchive` and `requestDelete` resolve, `navigate`
+ * call in `calls`: `threadRequests` methods resolve, `composer` is null, `navigate`
  * methods return false, `panel` is {@link makePanelController}'s, and `sdk`
  * methods reject because a test that reads data should stub it. Spread the
  * result and add a context's own fields, such as a command's `threadId` or a
@@ -450,16 +450,15 @@ export function makeActionContext(
     sdk: overrides.sdk ?? sdk,
     navigate: overrides.navigate ?? navigate,
     panel: overrides.panel ?? makePanelController(),
-    requestArchive:
-      overrides.requestArchive ??
-      (async (threadIds) => {
-        record("requestArchive", [threadIds]);
-      }),
-    requestDelete:
-      overrides.requestDelete ??
-      (async (threadIds) => {
-        record("requestDelete", [threadIds]);
-      }),
+    composer: overrides.composer ?? null,
+    threadRequests: overrides.threadRequests ?? {
+      async requestArchive(threadIds) {
+        record("threadRequests.requestArchive", [threadIds]);
+      },
+      async requestDelete(threadIds) {
+        record("threadRequests.requestDelete", [threadIds]);
+      },
+    },
     calls,
   };
 }

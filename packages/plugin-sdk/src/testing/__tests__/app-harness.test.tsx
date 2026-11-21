@@ -1541,16 +1541,16 @@ describe("loadPluginApp", () => {
   it("records the default members of a hand-built action context and names unstubbed sdk calls", async () => {
     const context = makeActionContext();
 
-    await context.requestArchive(["thr_a", "thr_b"]);
-    await context.requestDelete(["thr_c"]);
+    await context.threadRequests.requestArchive(["thr_a", "thr_b"]);
+    await context.threadRequests.requestDelete(["thr_c"]);
     expect(context.navigate.openUrl("https://example.com")).toBe(false);
     await expect(
       context.sdk.threads.get({ threadId: "thr_a" }),
     ).rejects.toThrow("sdk.threads.get is not stubbed");
 
     expect(context.calls).toEqual([
-      { member: "requestArchive", args: [["thr_a", "thr_b"]] },
-      { member: "requestDelete", args: [["thr_c"]] },
+      { member: "threadRequests.requestArchive", args: [["thr_a", "thr_b"]] },
+      { member: "threadRequests.requestDelete", args: [["thr_c"]] },
       { member: "navigate.openUrl", args: ["https://example.com"] },
       { member: "sdk.threads.get", args: [{ threadId: "thr_a" }] },
     ]);

@@ -75,7 +75,7 @@ function Capture() {
   const bind = usePluginActionContextBinder();
   const host = useAppNavigationHost();
   useLayoutEffect(() => {
-    captured = { hook, context: bind("fixture", () => host) };
+    captured = { hook, context: bind("fixture", () => host).threadRequests };
   });
   return null;
 }

@@ -83,7 +83,7 @@ import {
   experimental_usePanelTabs,
 } from "./plugin-sdk-hooks";
 import { useAppNavigationHost } from "./app-navigation-host";
-import { useThreadRequests } from "./plugin-navigation-hooks";
+import { useThreadRequests } from "./thread-requests";
 import {
   useSidebarThreadActions,
   useSidebarThreadDraft,

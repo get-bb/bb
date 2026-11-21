@@ -371,14 +371,16 @@ const coreThreadActions = definePluginApp((app) => {
     group: GROUPS.lifecycle,
     title: "Archive",
     icon: "Archive",
-    item: ({ thread, sdk, requestArchive }) => {
+    item: ({ thread, sdk, threadRequests }) => {
       const isArchived = thread.archivedAt !== null;
       return {
         label: isArchived ? "Unarchive" : "Archive",
         icon: isArchived ? "ArchiveRestore" : "Archive",
         run: async () => {
           if (!isArchived) {
-            afterMenuCloses(() => void requestArchive([thread.id]));
+            afterMenuCloses(
+              () => void threadRequests.requestArchive([thread.id]),
+            );
             return;
           }
           try {
@@ -392,7 +394,7 @@ const coreThreadActions = definePluginApp((app) => {
         },
       };
     },
-    experimental_bulkItem: ({ threads, sdk, requestArchive }) => {
+    experimental_bulkItem: ({ threads, sdk, threadRequests }) => {
       const active = threads.filter((thread) => thread.archivedAt === null);
       if (active.length > 0) {
         return {
@@ -400,7 +402,10 @@ const coreThreadActions = definePluginApp((app) => {
           icon: "Archive",
           run: () =>
             afterMenuCloses(
-              () => void requestArchive(active.map((thread) => thread.id)),
+              () =>
+                void threadRequests.requestArchive(
+                  active.map((thread) => thread.id),
+                ),
             ),
         };
       }
@@ -427,19 +432,23 @@ const coreThreadActions = definePluginApp((app) => {
     group: GROUPS.lifecycle,
     title: "Delete",
     icon: "Trash2",
-    item: ({ thread, requestDelete }) => ({
+    item: ({ thread, threadRequests }) => ({
       label: "Delete",
       icon: "Trash2",
       variant: "destructive",
-      run: () => afterMenuCloses(() => void requestDelete([thread.id])),
+      run: () =>
+        afterMenuCloses(() => void threadRequests.requestDelete([thread.id])),
     }),
-    experimental_bulkItem: ({ threads, requestDelete }) => ({
+    experimental_bulkItem: ({ threads, threadRequests }) => ({
       label: `Delete ${describeThreadCount(threads.length)}`,
       icon: "Trash2",
       variant: "destructive",
       run: () =>
         afterMenuCloses(
-          () => void requestDelete(threads.map((thread) => thread.id)),
+          () =>
+            void threadRequests.requestDelete(
+              threads.map((thread) => thread.id),
+            ),
         ),
     }),
   });

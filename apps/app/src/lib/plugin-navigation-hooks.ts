@@ -9,7 +9,6 @@ import {
 import type {
   BbNavigate,
   ExperimentalPluginActionContext,
-  ExperimentalThreadRequests,
   PluginBrowserBbSdk,
 } from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
@@ -208,7 +207,7 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
         navigate: createBbNavigate(pluginId, host, () => latest.current),
         panel: createPluginPanelController(pluginId, () => host().panel),
         composer: getActiveComposerHandle(pluginId),
-        ...bindThreadRequests(() => latest.current.store),
+        threadRequests: bindThreadRequests(() => latest.current.store),
       });
     return bindContext;
   });
@@ -223,17 +222,4 @@ export function useBbNavigate(): BbNavigate {
     () => bind(pluginId, () => appNavigation).navigate,
     [appNavigation, bind, pluginId],
   );
-}
-
-export function useThreadRequests(): ExperimentalThreadRequests {
-  const pluginId = usePluginId();
-  const appNavigation = useAppNavigationHost();
-  const bind = usePluginActionContextBinder();
-  return useMemo(() => {
-    const { requestArchive, requestDelete } = bind(
-      pluginId,
-      () => appNavigation,
-    );
-    return { requestArchive, requestDelete };
-  }, [appNavigation, bind, pluginId]);
 }
