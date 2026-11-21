@@ -48,10 +48,13 @@ bb plugin reload github
 ```
 
 A background service refreshes immediately on startup, then waits 15 minutes
-after each completed sync. Each tracked repository uses one bounded `gh api graphql`
+after each completed sync. Each tracked repository uses one `gh api graphql`
 request per sweep, using the existing GitHub CLI authentication. It fetches
 100 open and 50 closed issues, plus 50 open and 30 closed or merged PRs,
-ordered by creation time descending. Labels and assignees are each limited to
+ordered by creation time descending. When a repository has more open issues
+or open PRs, the sync follows the GraphQL page cursor with one extra request
+per page, up to 10 pages per list (1,000 open issues and 500 open PRs). Open
+items beyond that cap are not cached. Labels and assignees are each limited to
 100 per item, matching the previous list commands. Repositories with Issues
 disabled still sync PRs. Failed or incomplete repository responses retain that
 repository’s cached rows.

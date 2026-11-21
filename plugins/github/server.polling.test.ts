@@ -30,9 +30,15 @@ vi.mock("@get-bb/plugin-sdk/process", () => ({
           data: {
             repository: {
               hasIssuesEnabled: true,
-              openIssues: { nodes: [] },
+              openIssues: {
+                nodes: [],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
               closedIssues: { nodes: [] },
-              openPrs: { nodes: [] },
+              openPrs: {
+                nodes: [],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
               closedPrs: { nodes: [] },
             },
           },
@@ -93,7 +99,7 @@ it.each([0, 1, 34])(
   },
 );
 
-it("uses one bounded GraphQL request for each repository", async () => {
+it("uses one bounded GraphQL request for each single-page repository", async () => {
   await start(2);
   expect(lists()).toHaveLength(2);
   for (const [i, args] of lists().entries()) {
@@ -118,6 +124,7 @@ it("uses one bounded GraphQL request for each repository", async () => {
     ).toHaveLength(4);
     expect(query).toContain("labels(first: 100)");
     expect(query).toContain("assignees(first: 100)");
+    expect(query.match(/pageInfo { hasNextPage endCursor }/g)).toHaveLength(2);
   }
 });
 

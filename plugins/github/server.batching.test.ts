@@ -44,9 +44,15 @@ function node(number: number, state = "OPEN") {
 function repository() {
   return {
     hasIssuesEnabled: true,
-    openIssues: { nodes: [node(1)] },
+    openIssues: {
+      nodes: [node(1)],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    },
     closedIssues: { nodes: [node(2, "CLOSED")] },
-    openPrs: { nodes: [node(3)] },
+    openPrs: {
+      nodes: [node(3)],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    },
     closedPrs: { nodes: [node(4, "CLOSED"), node(5, "MERGED")] },
   };
 }
@@ -131,6 +137,7 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
           assignees: { nodes: [] },
         },
       ],
+      pageInfo: { hasNextPage: false, endCursor: null },
     },
     closedPrs: { nodes: [] },
   };
@@ -146,9 +153,12 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
     "one",
     response({
       hasIssuesEnabled: true,
-      openIssues: { nodes: [] },
+      openIssues: {
+        nodes: [],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
       closedIssues: { nodes: [] },
-      openPrs: { nodes: [] },
+      openPrs: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
       closedPrs: { nodes: [] },
     }),
   );
@@ -190,7 +200,10 @@ it.each([
     "malformed node",
     response({
       ...repository(),
-      openIssues: { nodes: [{ ...node(1), number: -1 }] },
+      openIssues: {
+        ...repository().openIssues,
+        nodes: [{ ...node(1), number: -1 }],
+      },
     }),
   ],
 ])(
