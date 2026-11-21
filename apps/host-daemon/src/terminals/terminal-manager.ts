@@ -398,8 +398,13 @@ async function resolveDefaultTerminalShell(): Promise<string> {
       fileExists: pathIsExecutable,
     });
   }
+  let loginShell: string | undefined;
+  try {
+    loginShell = os.userInfo().shell ?? undefined;
+  } catch {}
   const candidates = [
     process.env.SHELL,
+    loginShell,
     "/bin/zsh",
     "/bin/bash",
     "/bin/sh",
