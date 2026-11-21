@@ -222,6 +222,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   ) => {
     appCommandHandlers.set(command, handler);
   },
+  useAppCommandFocusedPluginPage: () => undefined,
   useAppCommandShortcut: () => null,
 }));
 

@@ -232,7 +232,7 @@ message, Original }` — render fenced code blocks of chosen languages in
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
+  component — registration: `{ id, title, defaultShortcut?, experimental_keyScope?, isAvailable?, run }`. Both callbacks
   receive `{ threadId, projectId }` plus the
   [callback context](frontend-hooks-and-ui.md#callback-context), where
   `threadId` and `projectId` are null on surfaces without one, and
@@ -257,6 +257,21 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  `experimental_keyScope: "pluginPage"` limits the binding to while one of
+  the plugin's own nav panel pages is the focused surface (the focused pane in
+  a split), and never while focus is in a field, an editor or a menu, or a
+  modal is open.
+  Only this scope accepts a bare-key default such as `{ key: "c" }`, and only
+  its commands can be rebound to bare keys; registering a bare default without
+  it rejects plugin setup. The palette still lists the command wherever
+  `isAvailable` allows, so a page command's `run` should work from other pages
+  too (Tasks' `new-task` opens the Tasks page first).
+  Show a command's current shortcut on the plugin's own buttons with
+  `experimental_useCommandShortcut(id)`, which returns
+  `{ label, ariaKeyshortcuts }` for the user's binding on this platform, or
+  null while the command is unbound; never hardcode a label such as "⌥⌘R".
+  In `renderSlot`, pass `experimental_commandShortcuts` (presentations by
+  command id) to set what it returns.
   A focused terminal keeps unmodified keys and plain Control+letter for the
   shell, so prefer a chord with Command, Alt or Shift, or a function key,
   when the command should also run from a terminal.

@@ -1,8 +1,12 @@
-import type { ExperimentalTabRegistration } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalTabRegistration,
+  PluginCommandContext,
+} from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
 import { labelsByProject, makeTask } from "../test-fixtures.js";
 import type { Task } from "../shared/contract.js";
 import { PROJECTS_TAG, commentsTag } from "../shared/tags";
@@ -11,6 +15,7 @@ const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
 const { loadViewMode } = await import("./view-preference.js");
+const { requestNewTask } = await import("./new-task-requests.js");
 const { querySnapshotStorageKey, resetQuerySnapshotStateForTest } =
   await import("./query-snapshot.js");
 
@@ -941,7 +946,25 @@ describe("tasks app shell", () => {
     await slot.findByText("Labels, agent presets, and folders.");
   });
 
-  it("opens quick-create on bare 'c' but not from editable targets or dialogs", async () => {
+  it("opens quick-create from the new-task command, opening the Tasks page first when it is not mounted", async () => {
+    const toPluginPanel = vi.fn();
+    const unused = <T extends object>(name: string, members = {}): T =>
+      new Proxy(members as T, {
+        get(target, property) {
+          if (property in target) return Reflect.get(target, property);
+          throw new Error(`${name}.${String(property)} is not used`);
+        },
+      });
+    const context: PluginCommandContext = {
+      threadId: null,
+      projectId: null,
+      sdk: unused("sdk"),
+      navigate: unused("navigate", { toPluginPanel }),
+      panel: experimental_makePanelController(),
+    };
+
+    requestNewTask(context);
+    expect(toPluginPanel).toHaveBeenCalledWith("tasks");
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },
@@ -949,11 +972,14 @@ describe("tasks app shell", () => {
         rpc: seededRpc(),
       },
     );
-    await slot.findByText("All tasks");
-    fireEvent.keyDown(window, { key: "c" });
     await slot.findByRole("dialog");
-    fireEvent.keyDown(window, { key: "c" });
-    expect(slot.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.keyDown(slot.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
+
+    toPluginPanel.mockClear();
+    act(() => requestNewTask(context));
+    await slot.findByRole("dialog");
+    expect(toPluginPanel).not.toHaveBeenCalled();
   });
 
   it("marks only new-worktree presets with the worktree hint", async () => {

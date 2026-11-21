@@ -145,6 +145,7 @@ const APP_COMMAND_CONTEXT_KEYS = [
   "questionOpen",
   "questionFocus",
   "promptAvailable",
+  "pluginPage",
   "splitActive",
   "webSurface",
   "macPlatform",
