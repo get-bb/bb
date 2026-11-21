@@ -73,6 +73,11 @@
     "experimental_providers": [
       {
         "kind": "agent",
+        "id": "acp-antigravity",
+        "displayName": "Antigravity"
+      },
+      {
+        "kind": "agent",
         "id": "acp-cursor",
         "displayName": "Cursor"
       },

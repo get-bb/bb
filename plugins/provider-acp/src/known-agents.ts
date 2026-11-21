@@ -35,6 +35,22 @@ function ancestorRoots(entries: readonly RootEntry[]) {
 
 export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
+    id: "acp-antigravity",
+    displayName: "Antigravity",
+    icon: declaredIcon("registry-antigravity-acp"),
+    signInCommand: "agy acp --login",
+    installUrl: "https://antigravity.google/docs/getting-started?tab=cli",
+    visibility: "installed",
+    dialect: "antigravity",
+    providerUsage: true,
+    launch: {
+      displayName: "Antigravity",
+      command: "agy",
+      args: ["acp"],
+      env: {},
+    },
+  },
+  {
     id: "acp-cursor",
     displayName: "Cursor",
     icon: declaredIcon("cursor"),

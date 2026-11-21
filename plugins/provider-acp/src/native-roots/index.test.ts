@@ -336,13 +336,17 @@ describe("resolveAcpNativeRoots", () => {
 });
 
 describe("known agent declarations", () => {
-  it("declares the native-roots resolver flag for every shipped agent", () => {
+  it("declares the native-roots resolver flag only for agents with a resolver", () => {
     expect(
       KNOWN_ACP_AGENTS.filter(
         (agent) =>
           acpProviderDeclaration(agent).experimental_resolvesNativeRoots ===
           true,
       ).map((agent) => agent.id),
-    ).toEqual(KNOWN_ACP_AGENTS.map((agent) => agent.id));
+    ).toEqual(
+      KNOWN_ACP_AGENTS.filter(
+        (agent) => agent.nativeRootsResolver !== undefined,
+      ).map((agent) => agent.id),
+    );
   });
 });

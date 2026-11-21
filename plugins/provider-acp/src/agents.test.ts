@@ -245,6 +245,38 @@ describe("custom agents that report usage", () => {
     ).toBe(true);
   });
 
+  it("exposes quota collection for the detected Antigravity CLI and custom wrappers", () => {
+    const known = KNOWN_ACP_AGENTS.find(
+      (agent) => agent.id === "acp-antigravity",
+    )!;
+    expect(acpProviderDeclaration(known)).toMatchObject({
+      maintenance: { usage: true, installation: false },
+      experimental_visibility: "installed",
+      experimental_bridgeOptions: {
+        acpDialect: "antigravity",
+        acpLaunchSpec: { command: "agy", args: ["acp"] },
+      },
+    });
+    const custom = customAcpAgentDefinition(
+      parse({
+        id: "antigravity",
+        displayName: "Antigravity",
+        command: "/custom/agy",
+        args: ["acp"],
+        dialect: "antigravity",
+        providerUsage: true,
+      }),
+      known,
+    );
+    expect(acpProviderDeclaration(custom)).toMatchObject({
+      maintenance: { usage: true },
+      experimental_bridgeOptions: {
+        acpDialect: "antigravity",
+        acpLaunchSpec: { command: "/custom/agy" },
+      },
+    });
+  });
+
   it("stays out of the usage surface by default", () => {
     const agent = parse({
       id: "amp-plain",

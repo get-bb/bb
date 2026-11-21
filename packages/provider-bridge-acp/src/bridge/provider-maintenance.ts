@@ -20,6 +20,7 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
 import { readOpenCodeGoUsage } from "./opencode-usage.js";
+import { readAntigravityUsage } from "./antigravity-usage.js";
 
 const execFileAsync = execHostFile;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -407,6 +408,14 @@ export async function getAcpProviderUsage(args: {
   dialectId: string;
   env: NodeJS.ProcessEnv;
 }): Promise<ProviderUsageResult> {
+  if (args.dialectId === "antigravity") {
+    if (
+      args.command === null ||
+      (await resolveExecutablePath(args.command, args.env)) === null
+    )
+      return { supported: true, usage: { status: "not_installed" } };
+    return readAntigravityUsage(args.command, args.env);
+  }
   const readUsage =
     args.dialectId === "opencode"
       ? () => readOpenCodeGoUsage(args.env)

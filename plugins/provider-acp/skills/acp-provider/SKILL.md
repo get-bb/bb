@@ -6,8 +6,8 @@ description: "Configure or troubleshoot ACP agent discovery, custom models, skil
 # ACP providers
 
 Known agents can be discovered automatically when their CLI is installed on the
-host: `opencode`, `omp`, `grok`, and `hermes` appear as `acp-opencode`, `acp-omp`,
-`acp-grok`, and `acp-hermes-agent`. Inspect the target host's catalog with
+host: `opencode`, `omp`, `grok`, `hermes`, and `agy` appear as `acp-opencode`,
+`acp-omp`, `acp-grok`, `acp-hermes-agent`, and `acp-antigravity`. Inspect the target host's catalog with
 `bb provider list` and `bb provider models <provider-id>` using its environment
 or machine selector.
 
@@ -168,6 +168,20 @@ environment. A custom OpenCode wrapper must declare
 Missing credentials, rejected keys, and collection errors remain unavailable
 states rather than zero usage. Never print API keys when diagnosing setup.
 
+## Antigravity usage
+
+Install Google's Antigravity CLI (`agy`) on the thread's host and sign in with
+`agy acp --login`. The detected `acp-antigravity` provider exposes model-group
+quotas and reset times in Provider usage, `bb settings usage --machine <id>
+--json`, and `bb.sdk.system.usageLimits({ hostId, providerId: "acp-antigravity" })`.
+The collector runs `agy -p /usage --output-format json` without an agent turn
+and converts remaining fractions to percentage consumed. It does not infer a
+plan or account identity from the quota groups. Failed or malformed output is
+unavailable, never zero usage. Custom launch environment values take precedence
+over the host environment. A custom Antigravity entry, including one replacing
+the detected agent, needs `dialect: "antigravity"` and `providerUsage: true`;
+its command must accept the headless usage flags as well as `acp`.
+
 ## Custom ACP agents
 
 Register another ACP agent in the ACP providers plugin's `customAgents`
@@ -179,14 +193,14 @@ restart is needed.
 
 - Required: `id` (lowercase letters, digits, and dashes; permanent),
   `displayName`, and `command`. The provider id is `acp-<id>`. `cursor` is
-  reserved; an entry with id `opencode`, `omp`, `grok`, or `hermes-agent`
+  reserved; an entry with id `opencode`, `omp`, `grok`, `hermes-agent`, or `antigravity`
   replaces the shipped agent.
 - Launch: `args`, `env`, and `cwd`.
 - `modelCli` for CLI model listing and selection, `reasoningCli` for
   launch-time reasoning flags, `nativeReasoning` for ACP
   `session/set_config_option` reasoning, and `permissionCli` for
   permission-mode launch flags.
-- `dialect` (`cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
+- `dialect` (`cursor`, `opencode`, `omp`, `grok`, or `antigravity`) selects the vendor side
   channels bb reads.
 - `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
   from the target host's home directory and a `project` list resolved from the

@@ -1,7 +1,18 @@
 # ACP providers
 
 First-party plugin for ACP (Agent Client Protocol) agent providers: Cursor,
-opencode, omp, Grok Build and Hermes Agent.
+opencode, omp, Grok Build, Hermes Agent and Antigravity.
+
+Antigravity usage appears for the selected machine when `agy` is installed and
+signed in (`agy acp --login`). BB runs the official headless
+`agy -p /usage --output-format json` command without creating an agent turn.
+It reports each model group's quota consumption and reset times through the
+Provider usage panel, `bb settings usage --json`, and
+`bb.sdk.system.usageLimits({ hostId, providerId: "acp-antigravity" })`.
+The CLI owns authentication; BB does not read Google credentials or call
+undocumented quota endpoints. Missing or invalid readings are unavailable,
+never zero consumption. Custom wrappers opt in with `dialect: "antigravity"`
+and `providerUsage: true` and must support the same headless usage command.
 
 OpenCode Go usage appears under OpenCode in the Provider usage panel for the
 selected machine. It reads the official Go endpoint using the machine's OpenCode

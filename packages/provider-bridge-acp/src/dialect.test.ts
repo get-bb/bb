@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANTIGRAVITY_ACP_DIALECT,
   CURSOR_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
   GROK_ACP_DIALECT,
@@ -39,6 +40,18 @@ describe("resolveAcpDialect", () => {
     expect(resolveAcpDialect({ command: "/usr/local/bin/opencode" })).toBe(
       OPENCODE_ACP_DIALECT,
     );
+  });
+
+  it("recognizes Antigravity commands and explicit wrappers for quota collection", () => {
+    expect(resolveAcpDialect({ command: "/Users/test/.local/bin/agy" })).toBe(
+      ANTIGRAVITY_ACP_DIALECT,
+    );
+    expect(resolveAcpDialect({ command: "agy.exe" })).toBe(
+      ANTIGRAVITY_ACP_DIALECT,
+    );
+    expect(
+      resolveAcpDialect({ command: "wrapper", dialectId: "antigravity" }),
+    ).toBe(ANTIGRAVITY_ACP_DIALECT);
   });
 
   it("is generic for a dialect id it does not ship", () => {

@@ -756,7 +756,7 @@ bb plugin config provider-acp set customAgents '[
 Each entry needs `id` (lowercase letters, digits, and dashes), `displayName`,
 and `command`. bb derives the provider id `acp-<id>`, which never changes once
 a thread has used it. `cursor` is reserved; an entry with an id bb lists only
-where the agent is installed (`opencode`, `omp`, `grok`, `hermes-agent`)
+where the agent is installed (`opencode`, `omp`, `grok`, `hermes-agent`, `antigravity`)
 replaces the shipped agent and keeps its `nativeSkillRoots` unless it sets its
 own. Optional fields: `args`, `env`, `cwd`, `modelCli` (CLI model listing and
 selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
@@ -765,12 +765,12 @@ selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 `{"path": ..., "recursive": true, "ancestors": true}`), `permissionCli`
 (permission-mode launch flags), `supportsManualCompaction` (bb hides
 `/compact` otherwise), `providerUsage`, and `dialect` (`cursor`, `opencode`,
-`omp`, or `grok`).
+`omp`, `grok`, or `antigravity`).
 
 Changes apply immediately, with no restart. A custom agent's command is local
 code execution and only works with a co-located daemon. The `customAcpAgents`
 key in `config.json` is no longer read. Known agents, OpenCode launch settings,
-and OpenCode Go usage are covered by the `acp-provider` skill.
+OpenCode Go usage, and Antigravity usage are covered by the `acp-provider` skill.
 
 Agents from the official ACP registry can be added in the same settings
 section or with `bb acp registry`, `bb acp add <agent-id>`, and

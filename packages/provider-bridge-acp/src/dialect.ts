@@ -66,6 +66,7 @@ export interface AcpClientRequestOutcome {
 }
 
 export const GENERIC_ACP_DIALECT: AcpDialect = { id: "acp" };
+export const ANTIGRAVITY_ACP_DIALECT: AcpDialect = { id: "antigravity" };
 
 const grokToolMetaSchema = z
   .object({
@@ -479,6 +480,7 @@ export const OPENCODE_ACP_DIALECT: AcpDialect = {
 };
 
 const BUILT_IN_DIALECTS: readonly AcpDialect[] = [
+  ANTIGRAVITY_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
   CURSOR_ACP_DIALECT,
   GROK_ACP_DIALECT,
@@ -503,6 +505,8 @@ export function registerAcpDialect(dialect: AcpDialect): void {
 }
 
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
+  agy: ANTIGRAVITY_ACP_DIALECT.id,
+  "agy.exe": ANTIGRAVITY_ACP_DIALECT.id,
   "cursor-agent": CURSOR_ACP_DIALECT.id,
   grok: GROK_ACP_DIALECT.id,
   omp: OMP_ACP_DIALECT.id,
