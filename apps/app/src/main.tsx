@@ -18,10 +18,12 @@ import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import { installStaleChunkRecovery } from "./lib/stale-chunk-recovery";
 import { moveStylesheetPropertiesToRegistry } from "./lib/stylesheet-property-registry";
+import { installTouchSelectionPassthrough } from "./lib/touch-selection-passthrough";
 import "./app.css";
 
 installStaleChunkRecovery();
 installForeignDomMutationGuard();
+installTouchSelectionPassthrough(document);
 
 Error.stackTraceLimit = 50;
 
