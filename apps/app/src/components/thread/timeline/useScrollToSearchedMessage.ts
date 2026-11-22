@@ -10,7 +10,9 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
+import { useIsFetching } from "@tanstack/react-query";
 import { parseMessageLink } from "@bb/client-core";
+import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { appToast } from "@/components/ui/app-toast";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { revealTimelineRow } from "./reveal-timeline-row.js";
@@ -356,6 +358,12 @@ export function useScrollToSearchedMessage(
   const handledKeyRef = useRef<string | null>(null);
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
   const targetLocationKey = target?.locationKey ?? null;
+  const isRefreshingTimeline =
+    useIsFetching({
+      queryKey: threadTimelineQueryKey(threadId ?? ""),
+      exact: true,
+      predicate: () => reportsMissingTarget && targetLocationKey !== null,
+    }) > 0;
   const [initialLocationKey] = useState(targetLocationKey);
   const [settledLocationKey, setSettledLocationKey] = useState<string | null>(
     null,
@@ -380,7 +388,12 @@ export function useScrollToSearchedMessage(
     initialLocationKey !== null &&
     initialLocationKey === targetLocationKey &&
     settledLocationKey !== initialLocationKey &&
-    !(targetIsMissing && !canLoadOlderTarget && !isLoadingOlderRows);
+    !(
+      targetIsMissing &&
+      !canLoadOlderTarget &&
+      !isLoadingOlderRows &&
+      !isRefreshingTimeline
+    );
 
   useEffect(() => {
     if (
@@ -433,13 +446,19 @@ export function useScrollToSearchedMessage(
         reportsMissingTarget &&
         targetIsMissing &&
         !canLoadOlderTarget &&
-        !isLoadingOlderRows
+        !isLoadingOlderRows &&
+        !isRefreshingTimeline
       ) {
-        handledKeyRef.current = targetLocationKey;
-        appToast.message("Message not found", {
-          description:
-            "It may have been removed by an edit or hidden by a context clear.",
+        const frame = requestAnimationFrame(() => {
+          if (readLocationKey() !== targetLocationKey) return;
+          handledKeyRef.current = targetLocationKey;
+          setSettledLocationKey(targetLocationKey);
+          appToast.message("Message not found", {
+            description:
+              "It may have been removed by an edit or hidden by a context clear.",
+          });
         });
+        return () => cancelAnimationFrame(frame);
       }
       return;
     }
@@ -492,6 +511,7 @@ export function useScrollToSearchedMessage(
     bottomAnchor,
     canLoadOlderTarget,
     isLoadingOlderRows,
+    isRefreshingTimeline,
     loadedRange,
     onLoadOlderRows,
     readLocationKey,
