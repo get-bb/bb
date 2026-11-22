@@ -2046,6 +2046,142 @@ describe("DesktopBrowserCdpAdapter", () => {
     },
   );
 
+  it("focuses a visible unfocused tab when a pointer press does not transfer native focus", async () => {
+    vi.useFakeTimers();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+      focusHostWebContents,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    const focusedPushes = () =>
+      hostWindow.webContents.sentChannels.filter(
+        (channel) => channel === "bb-desktop:browser:focused",
+      ).length;
+    try {
+      const initialFocusCalls = view.webContents.focusCalls;
+      view.webContents.nativelyFocused = false;
+      view.webContents.emitInputEvent("mouseMove");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls);
+
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls + 1);
+      expect(focusedPushes()).toBe(1);
+    } finally {
+      manager.destroyAll();
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores focus when a pointer press arrives after reload focus returned to the host", async () => {
+    vi.useFakeTimers();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+      focusHostWebContents,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    try {
+      view.webContents.emitDidStartLoading();
+      view.webContents.nativelyFocused = true;
+      view.webContents.emitFocus();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(focusHostWebContents).toHaveBeenCalledExactlyOnceWith(92);
+
+      const focusCallsBeforePress = view.webContents.focusCalls;
+      view.webContents.nativelyFocused = false;
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(focusCallsBeforePress + 1);
+    } finally {
+      manager.destroyAll();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not focus hidden, leased, automation-controlled, or background-window tabs on pointer press", async () => {
+    vi.useFakeTimers();
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 92,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      threadId: "thread-1",
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+    const tabRef = {
+      hostWebContentsId: 92,
+      threadId: "thread-1",
+      tabId: "browser:a",
+      generation: manager.listTabs({
+        hostWebContentsId: 92,
+        threadId: "thread-1",
+      })[0]!.generation,
+    };
+    try {
+      view.webContents.nativelyFocused = false;
+      const initialFocusCalls = view.webContents.focusCalls;
+
+      manager.setAutomationControlled(view.webContents as never, true);
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls);
+      manager.setAutomationControlled(view.webContents as never, false);
+
+      manager.setTabLeased(tabRef, true);
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls);
+      manager.setTabLeased(tabRef, false);
+
+      hostWindow.focused = false;
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls);
+      hostWindow.focused = true;
+
+      manager.setVisible({
+        hostWindow,
+        request: { tabId: "browser:a", visible: false },
+      });
+      view.webContents.emitInputEvent("mouseDown");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.webContents.focusCalls).toBe(initialFocusCalls);
+    } finally {
+      manager.destroyAll();
+      vi.useRealTimers();
+    }
+  });
+
   it("returns native focus to the host from a hidden tab", async () => {
     vi.useFakeTimers();
     const focusHostWebContents = vi.fn();

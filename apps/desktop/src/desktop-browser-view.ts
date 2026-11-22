@@ -11,7 +11,6 @@ import {
   dialog,
   systemPreferences,
   type BrowserWindowConstructorOptions,
-  type Event as ElectronEvent,
   type InputEvent,
   type NavigationEntry,
   type Session,
@@ -171,8 +170,6 @@ const POINTER_PRESS_INPUT_TYPES: ReadonlySet<InputEvent["type"]> = new Set([
   "gestureTapDown",
 ]);
 
-type PointerFocusListener = (event: ElectronEvent, input: InputEvent) => void;
-
 export interface DesktopBrowserNativeTab extends BbDesktopBrowserState {
   threadId: string;
   generation: string;
@@ -208,7 +205,7 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   suppressNextFocusNotification: boolean;
-  pointerFocusListener: PointerFocusListener | null;
+  awaitingPointerFocus: boolean;
   visible: boolean;
   activeFindRequestId: number | null;
   agentOwned: boolean;
@@ -1013,6 +1010,26 @@ export function createDesktopBrowserViewManager(
 
     webContents.on("did-start-loading", () => awaitPointerFocus(entry));
 
+    webContents.on("input-event", (_event, input) => {
+      if (!POINTER_PRESS_INPUT_TYPES.has(input.type)) {
+        return;
+      }
+      stopAwaitingPointerFocus(entry);
+      setTimeout(() => {
+        if (
+          entry.registry === entries &&
+          !rejectsNativeFocus(entry) &&
+          !leasedPages.has(webContents) &&
+          !webContents.isDestroyed() &&
+          !webContents.isFocused() &&
+          !hostWindow.isDestroyed() &&
+          hostWindow.isFocused()
+        ) {
+          webContents.focus();
+        }
+      }, 0);
+    });
+
     webContents.on("focus", () => {
       if (entry.suppressNextFocusNotification) {
         entry.suppressNextFocusNotification = false;
@@ -1307,7 +1324,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       suppressNextFocusNotification: false,
-      pointerFocusListener: null,
+      awaitingPointerFocus: false,
       visible: false,
       activeFindRequestId: null,
       agentOwned: false,
@@ -1445,27 +1462,19 @@ export function createDesktopBrowserViewManager(
     return (
       automationControlled.has(entry.webContents) ||
       !entry.visible ||
-      entry.pointerFocusListener !== null
+      entry.awaitingPointerFocus
     );
   }
 
   function awaitPointerFocus(entry: BrowserViewEntry): void {
-    if (entry.pointerFocusListener !== null || entry.webContents.isFocused()) {
+    if (entry.awaitingPointerFocus || entry.webContents.isFocused()) {
       return;
     }
-    const listener: PointerFocusListener = (_event, input) => {
-      if (POINTER_PRESS_INPUT_TYPES.has(input.type)) {
-        stopAwaitingPointerFocus(entry);
-      }
-    };
-    entry.pointerFocusListener = listener;
-    entry.webContents.on("input-event", listener);
+    entry.awaitingPointerFocus = true;
   }
 
   function stopAwaitingPointerFocus(entry: BrowserViewEntry): void {
-    if (entry.pointerFocusListener === null) return;
-    entry.webContents.off("input-event", entry.pointerFocusListener);
-    entry.pointerFocusListener = null;
+    entry.awaitingPointerFocus = false;
   }
 
   function returnFocusToHost(hostWindow: DesktopBrowserHostWindow): void {
