@@ -699,6 +699,76 @@ describe("mention search time box", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  it.each(["fulfill", "reject"])(
+    "keeps one pending search per registration through timeout and %s",
+    async (settlement) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-pending-search",
+        serverSource: `
+          export default function plugin(bb: any) {
+            let searches = 0;
+            let blocked = true;
+            let fulfill: () => void;
+            let reject: (error: Error) => void;
+            const gate = new Promise<void>((resolve, fail) => {
+              fulfill = resolve;
+              reject = fail;
+            });
+            bb.ui.registerMentionProvider({
+              id: "waiting",
+              label: "Waiting",
+              async search() {
+                searches += 1;
+                if (blocked) await gate;
+                return [{ id: "ready", title: "Ready" }];
+              },
+              resolve(action: string) {
+                blocked = false;
+                if (action === "reject") reject(new Error("released failure"));
+                else fulfill();
+                return { context: "released" };
+              },
+            });
+            bb.ui.registerMentionProvider({
+              id: "healthy",
+              label: "Healthy",
+              search: () => [{ id: "count", title: String(searches) }],
+              resolve: () => ({ context: "healthy" }),
+            });
+          }
+        `,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("running");
+      const search = () =>
+        service.searchMentions({
+          trigger: "@",
+          query: "ready",
+          projectId: null,
+          threadId: null,
+        });
+      await Promise.all([search(), search()]);
+      const repeated = [];
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        repeated.push(await search());
+      }
+      const release = await service.resolveMention({
+        pluginId: "pending-search",
+        itemId: `waiting:${settlement}`,
+      });
+      expect(release).toEqual({ ok: true, context: "released", images: [] });
+      const recovered = await search();
+      for (const groups of repeated) {
+        expect(groups.map((group) => group.providerId)).toEqual(["healthy"]);
+      }
+      expect(repeated.at(-1)?.[0]?.items[0]?.title).toBe("1");
+      expect(recovered.map((group) => group.providerId)).toEqual([
+        "waiting",
+        "healthy",
+      ]);
+      expect(recovered[1]?.items[0]?.title).toBe("2");
+    },
+  );
+
   it("drops a slow provider after the time box and keeps fast providers", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-slow-mentions",

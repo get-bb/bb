@@ -670,6 +670,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       !bundledPlugins.some((bundled) => bundled.name === row.sourceBuiltinName)
     );
   }
+  const pendingMentionSearches = new WeakSet<
+    LoadedPlugin["handle"]["mentionProviders"][number]
+  >();
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
@@ -2733,19 +2736,26 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
           if (!record.triggers.includes(args.trigger)) continue;
+          if (pendingMentionSearches.has(record)) continue;
           tasks.push(
             (async () => {
               const outcome = await invokeWrapped(
                 plugin,
                 `mention search ${record.id}`,
                 async () => {
-                  const searchPromise = (async () =>
-                    record.search({
-                      trigger: args.trigger,
-                      query: args.query,
-                      projectId: args.projectId,
-                      threadId: args.threadId,
-                    }))();
+                  pendingMentionSearches.add(record);
+                  const searchPromise = (async () => {
+                    try {
+                      return await record.search({
+                        trigger: args.trigger,
+                        query: args.query,
+                        projectId: args.projectId,
+                        threadId: args.threadId,
+                      });
+                    } finally {
+                      pendingMentionSearches.delete(record);
+                    }
+                  })();
                   searchPromise.catch(() => {});
                   const result = await raceTimeout(
                     searchPromise,
