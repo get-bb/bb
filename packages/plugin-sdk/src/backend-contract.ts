@@ -2265,7 +2265,8 @@ export interface BbPluginApi {
    */
   readonly sdk: PluginBbSdk;
   /**
-   * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
+   * Register cleanup to run on reload/disable/shutdown, and when a load fails
+   * after the factory ran. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.
    */
   onDispose(hook: () => void | Promise<void>): void;

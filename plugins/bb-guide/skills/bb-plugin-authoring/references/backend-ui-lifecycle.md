@@ -71,7 +71,11 @@ waits at most 30 seconds for handlers. In tests,
 
 `bb.onDispose(hook)` registers cleanup; hooks run **LIFO**. On reload the
 host first runs the factory against a candidate registration set; if it
-throws, the complete previous set stays live. Once the candidate succeeds, the
+throws, the complete previous set stays live. Whenever a load fails after its
+factory ran (the factory throws, the host entry fails to build, or the old
+generation's services are still hung after teardown), the candidate's own
+dispose hooks run in LIFO order before its `bb` is invalidated, on a first load
+as well as a reload. Once the candidate succeeds, the
 old generation is torn down in order: its WebSockets close with code 1012, the
 CLI `ctx.signal` and RPC `experimental_signal` of its in-flight calls abort,
 its host workers stop, input it requested is interrupted (forms the new
