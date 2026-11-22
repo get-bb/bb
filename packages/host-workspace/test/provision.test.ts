@@ -90,6 +90,7 @@ describe("provisionWorkspace", () => {
         path.join(commonGitDir, "logs"),
         path.join(commonGitDir, "packed-refs"),
         path.join(commonGitDir, "packed-refs.lock"),
+        path.join(commonGitDir, "packed-refs.new"),
       ]);
     });
 

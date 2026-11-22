@@ -331,14 +331,18 @@ export class RuntimeManager {
       ),
     );
     const threadStorageRootPath = this.options.threadStorageRootPath;
+    const threadStoragePath = threadStorageRootPath
+      ? path.join(threadStorageRootPath, args.threadId)
+      : null;
+    if (threadStoragePath) {
+      await mkdir(threadStoragePath, { recursive: true });
+    }
     return [
       ...new Set([
         ...args.entry.workspaceWriteRoots,
         ...args.additionalWorkspaceFolders,
         ...folderGitRoots.flat(),
-        ...(threadStorageRootPath
-          ? [path.join(threadStorageRootPath, args.threadId)]
-          : []),
+        ...(threadStoragePath ? [threadStoragePath] : []),
       ]),
     ];
   }

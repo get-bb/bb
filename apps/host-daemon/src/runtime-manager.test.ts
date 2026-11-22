@@ -948,9 +948,12 @@ describe("RuntimeManager", () => {
     await runGit(["worktree", "add", "-B", "bb/extra", extraWorktreePath], {
       cwd: otherRepoPath,
     });
+    const threadStorageRootPath = await makeTempDir(
+      "bb-runtime-manager-thread-storage-",
+    );
     const manager = new RuntimeManager({
       provisionWorkspace,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
+      threadStorageRootPath,
       createRuntime: () => createFakeRuntime(),
     });
     const entry = await manager.ensureEnvironment({
@@ -971,9 +974,14 @@ describe("RuntimeManager", () => {
       );
       return [
         path.resolve(gitDir),
-        ...["objects", "refs", "logs", "packed-refs", "packed-refs.lock"].map(
-          (name) => path.join(commonGitDir, name),
-        ),
+        ...[
+          "objects",
+          "refs",
+          "logs",
+          "packed-refs",
+          "packed-refs.lock",
+          "packed-refs.new",
+        ].map((name) => path.join(commonGitDir, name)),
       ];
     };
 
@@ -992,7 +1000,7 @@ describe("RuntimeManager", () => {
       extraWorktreePath,
       plainFolderPath,
       ...(await gitRoots(extraWorktreePath)),
-      path.join("/tmp/bb-thread-storage", "thr_one"),
+      path.join(threadStorageRootPath, "thr_one"),
     ]);
     await expect(
       manager.resolveThreadWorkspaceWriteRoots({
@@ -1002,8 +1010,16 @@ describe("RuntimeManager", () => {
       }),
     ).resolves.toEqual([
       ...(await gitRoots(worktreePath)),
-      path.join("/tmp/bb-thread-storage", "thr_two"),
+      path.join(threadStorageRootPath, "thr_two"),
     ]);
+    const threadOneStoragePath = path.join(threadStorageRootPath, "thr_one");
+    await fs.rm(threadOneStoragePath, { recursive: true });
+    await manager.resolveThreadWorkspaceWriteRoots({
+      additionalWorkspaceFolders: [],
+      entry,
+      threadId: "thr_one",
+    });
+    expect((await fs.stat(threadOneStoragePath)).isDirectory()).toBe(true);
   });
 
   it("forwards the bridge record-mode directory to provider processes but not the shell env", async () => {
