@@ -699,6 +699,79 @@ describe("mention search time box", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  it.each(["resolve", "reject"])(
+    "keeps timed-out searches single-flight until they %s",
+    async (settlement) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-pending-mentions",
+        serverSource: `
+          let calls = 0;
+          let finish: () => void;
+          let fail: (error: Error) => void;
+          const pending = new Promise<void>((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          });
+          export default function plugin(bb: any) {
+            bb.ui.registerMentionProvider({
+              id: "pending", label: "Pending",
+              async search() {
+                calls += 1;
+                await pending;
+                return [{ id: "done", title: "Done" }];
+              },
+              resolve(action: string) {
+                if (action === "resolve") finish();
+                if (action === "reject") fail(new Error("late failure"));
+                return { context: String(calls) };
+              },
+            });
+            bb.ui.registerMentionProvider({
+              id: "fast", label: "Fast",
+              search: () => [{ id: "one", title: "One" }],
+              resolve: () => ({ context: "one" }),
+            });
+          }
+        `,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("running");
+      const args: Parameters<PluginService["searchMentions"]>[0] = {
+        trigger: "@",
+        query: "one",
+        projectId: null,
+        threadId: null,
+      };
+      const control = (action: string) =>
+        service.resolveMention({
+          pluginId: "pending-mentions",
+          itemId: `pending:${action}`,
+        });
+      try {
+        const first = service.searchMentions(args);
+        const overlapping = service.searchMentions(args);
+        await Promise.all([first, overlapping]);
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const groups = await service.searchMentions(args);
+          expect(groups.some((group) => group.providerId === "fast")).toBe(
+            true,
+          );
+        }
+        expect(await control("count")).toMatchObject({
+          ok: true,
+          context: "1",
+        });
+        await control(settlement);
+        await service.searchMentions(args);
+        expect(await control("count")).toMatchObject({
+          ok: true,
+          context: "2",
+        });
+      } finally {
+        await control("resolve");
+      }
+    },
+  );
+
   it("drops a slow provider after the time box and keeps fast providers", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-slow-mentions",

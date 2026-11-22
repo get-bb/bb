@@ -1913,8 +1913,10 @@ export interface PluginMentionProviderRegistration {
   /**
    * Runs server-side as the user types after one of this provider's triggers
    * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
-   * or throwing provider contributes an empty list — it can never break the
-   * mention menu.
+   * or throwing provider contributes an empty list. While a call remains
+   * pending, further searches for this registration contribute no results,
+   * including after its time box expires. A timeout does not cancel the
+   * provider's work; searches resume when that work settles.
    */
   search(
     ctx: PluginMentionSearchContext,
