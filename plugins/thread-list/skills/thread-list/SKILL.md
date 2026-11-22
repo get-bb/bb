@@ -43,6 +43,13 @@ groups. Children sharing their parent’s worktree stay directly beneath the
 parent without another worktree header. `sortDirection` is `default` (each field's natural order: newest first
 for dates, A–Z for titles), `ascending`, or `descending`.
 
+With the default direction in Updated at order, active threads come first
+(newest-created first). Inactive
+roots use their latest attention time; inactive children use the later of their
+attention time and last status change, so successful completion moves a child
+above older activity without making it unread. This applies at every nesting
+level and beneath pinned roots. Reading or renaming does not move a child.
+
 `hiddenGroups` (default `[]`) moves groups into More, the same as a group
 menu's Hide from list. Keys are `threads`, `project:<projectId>`,
 `section:<sectionId>`, and `machine:<hostId>` (`machine:no-machine` for the

@@ -89,14 +89,20 @@ export function compareByCreatedAtDescending(
   return compareCodepoint(left.id, right.id);
 }
 
-function compareByLatestAttentionAtDescending(
+function latestSortActivityAt(thread: SidebarThread): number {
+  return thread.parentThreadId === null
+    ? thread.latestAttentionAt
+    : Math.max(thread.latestAttentionAt, thread.experimental_statusChangedAt);
+}
+
+function compareByLatestActivityAtDescending(
   left: SidebarThread,
   right: SidebarThread,
 ): number {
-  const latestAttentionAtDelta =
-    right.latestAttentionAt - left.latestAttentionAt;
-  if (latestAttentionAtDelta !== 0) {
-    return latestAttentionAtDelta;
+  const latestActivityAtDelta =
+    latestSortActivityAt(right) - latestSortActivityAt(left);
+  if (latestActivityAtDelta !== 0) {
+    return latestActivityAtDelta;
   }
 
   return compareByCreatedAtDescending(left, right);
@@ -117,7 +123,7 @@ export function compareStandardThreads(
     return compareByCreatedAtDescending(left, right);
   }
 
-  return compareByLatestAttentionAtDescending(left, right);
+  return compareByLatestActivityAtDescending(left, right);
 }
 
 function representativeThread(item: ProjectThreadItem): SidebarThread {

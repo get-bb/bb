@@ -5563,3 +5563,20 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## `PluginSidebarThread.experimental_statusChangedAt` (`@get-bb/plugin-sdk/app`)
+
+The sidebar DTO exposes the existing durable status-transition timestamp in
+milliseconds since the epoch (creation time for new threads, 0 for legacy rows).
+Reading, renaming, or reparenting a thread does not advance it. Successful child
+completion advances it without changing unread attention. The server sends it
+in list responses and realtime status metadata; the sidebar cache preserves it.
+
+Core caller: the bundled Thread list plugin uses the maximum of this timestamp
+and `latestAttentionAt` for inactive child rows in Updated at order. Top-level
+rows retain attention ordering, active rows retain creation ordering, and pinned
+roots retain their manual order. Other sort modes retain their existing behavior.
+
+Before stabilizing, confirm that durable status transitions are the right
+activity boundary for sidebar consumers, whether background activity should be
+represented separately, and whether the legacy-zero sentinel should remain.

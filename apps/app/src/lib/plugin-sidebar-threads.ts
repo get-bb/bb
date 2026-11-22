@@ -105,5 +105,6 @@ export function toPluginSidebarThread(
     updatedAt: entry.updatedAt,
     lastReadAt: entry.lastReadAt,
     latestAttentionAt: entry.latestAttentionAt,
+    experimental_statusChangedAt: entry.statusChangedAt,
   };
 }
