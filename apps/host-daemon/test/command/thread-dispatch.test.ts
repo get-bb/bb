@@ -290,6 +290,54 @@ describe("thread command dispatch", () => {
     ).rejects.toThrow();
   });
 
+  it("resolves each turn's write roots from the folders that turn.submit carries", async () => {
+    const threadStorageRootPath = await makeTempDir("bb-turn-folders-");
+    const folder = await makeTempDir("bb-turn-folders-extra-");
+    const harness = createHarness();
+    const submit = (additionalWorkspaceFolders: string[]) =>
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "turn.submit",
+          environmentId: "env-turn-folders",
+          threadId: "thread-turn-folders",
+          requestId: nextClientRequestId(),
+          input: [textPromptInput("continue")],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            workspaceContext: { workspacePath: "/tmp/env-turn-folders" },
+            projectId: "project-turn-folders",
+            providerId: "fake",
+            providerThreadId: "provider-turn-folders",
+            instructions: "Be a helpful coding agent.",
+            additionalWorkspaceFolders,
+            dynamicTools: [],
+            contributedEnv: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "start" },
+        },
+        harness.dispatchOptions({ threadStorageRootPath }),
+      );
+
+    await submit([folder]);
+    expect(harness.runtimeState.ranTurnWriteRoots).toEqual([folder]);
+
+    await submit([]);
+    expect(harness.runtimeState.ranTurnWriteRoots).toEqual([]);
+  });
+
   it("stages uploaded turn.submit attachments before runtime input", async () => {
     const threadStorageRootPath = await makeTempDir(
       "bb-turn-submit-attachments-",

@@ -7,6 +7,7 @@ import {
   dropEnvironmentHoldColumns,
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
+  dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
   restoreDiffViewedFilesTable,
@@ -25,6 +26,7 @@ function databaseBeforeHandoff(
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropProjectFolderSchema(db);
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);

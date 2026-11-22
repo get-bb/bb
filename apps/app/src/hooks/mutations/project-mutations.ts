@@ -227,3 +227,54 @@ export function useUploadPromptAttachment() {
     retry: false,
   });
 }
+
+interface AddProjectSourceFolderRequest {
+  path: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useAddProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to add folder.",
+    },
+    mutationFn: (request: AddProjectSourceFolderRequest) =>
+      sdk.projects.sources.folders.add(request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+interface RemoveProjectSourceFolderRequest {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useRemoveProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to remove folder.",
+    },
+    mutationFn: async (
+      request: RemoveProjectSourceFolderRequest,
+    ): Promise<void> => {
+      await sdk.projects.sources.folders.remove(request);
+    },
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}

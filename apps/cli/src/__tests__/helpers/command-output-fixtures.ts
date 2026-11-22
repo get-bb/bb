@@ -147,6 +147,7 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
   return {
     name: null,
     path: "/tmp/environment",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: false,
     branchName: "bb/thread",

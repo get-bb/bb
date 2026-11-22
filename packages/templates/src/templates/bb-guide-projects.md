@@ -1,7 +1,7 @@
 ---
 kind: instruction
 title: bb Guide — Projects
-summary: Command reference for project CRUD, attachments, and sources.
+summary: Command reference for project CRUD, attachments, sources, and folders.
 intent: Provide complete project command documentation for agents.
 editingNotes: Keep flags accurate against the CLI implementation.
 ---
@@ -112,3 +112,31 @@ Sources:
 
   A live project must retain at least one source; a project pending deletion
   may remove its last source.
+
+Folders:
+
+  Folders are extra existing directories, outside a machine's checkout, that
+  every thread of the project on that machine can read and write: sibling
+  repositories, shared data, or a docs checkout.
+
+  bb project folder list <projectId>      List a checkout's folders
+  bb project folder add <projectId> <path>
+                                          Add an absolute folder path
+  bb project folder remove <projectId> <path-or-id>
+                                          Remove a folder
+    --machine <id-or-name>                Machine whose checkout to change
+                                          (--host is an alias; default: the
+                                          local CLI machine)
+
+  A folder must exist on the machine, and must not be the checkout, inside
+  it, or contain it. bb reads the list before every turn, so adding or
+  removing a folder changes a running thread's write access at its next turn.
+  The agent's instructions list each folder and whether it is a git
+  repository; they are written when the agent session starts, so a running
+  session may still name a folder added or removed since. A
+  folder missing on the machine is marked missing in the instructions, left
+  out of the writable folders, and reported once in the thread's timeline.
+
+  An environment provider can add folders of its own environment
+  (`Environment.additionalPaths`, the Folder lines of `bb environment show`);
+  they join the project's folders for threads in that environment.

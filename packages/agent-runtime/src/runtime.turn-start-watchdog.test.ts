@@ -63,6 +63,7 @@ describe("turn-start watchdog", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222222w",
       threadId: "t1",
       input: [promptTextInput({ text: "hello" })],
@@ -114,6 +115,7 @@ describe("turn-start watchdog", () => {
     vi.useFakeTimers();
     try {
       const turnStart = liveRuntime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222u",
         threadId: "t1",
         input: [promptTextInput({ text: "hello" })],
@@ -135,6 +137,7 @@ describe("turn-start watchdog", () => {
       expect(liveRuntime.getLiveThreadIds()).toEqual(["t1"]);
       await expect(
         liveRuntime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222222v",
           threadId: "t1",
           input: [promptTextInput({ text: "competing" })],
@@ -171,6 +174,7 @@ describe("turn-start watchdog", () => {
     vi.useFakeTimers();
     try {
       const turnStart = liveRuntime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222t",
         threadId: "t1",
         input: [promptTextInput({ text: "hello" })],
@@ -224,6 +228,7 @@ describe("turn-start watchdog", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222222x",
       threadId: "t1",
       input: [promptTextInput({ text: "hello" })],

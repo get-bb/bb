@@ -97,6 +97,7 @@ describe("createAgentRuntime command contracts", () => {
         additionalWorkspaceWriteRoots: t2Roots,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: t1Roots,
         clientRequestId: "creq_222222225t",
         threadId: "t1",
         input: [promptTextInput({ text: "hello" })],
@@ -125,6 +126,39 @@ describe("createAgentRuntime command contracts", () => {
         threadId: "t1",
         options: {
           providerOptions: { additionalWorkspaceWriteRoots: t1Roots },
+        },
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("sends a turn the write roots it was submitted with, so a removed folder loses access", async () => {
+    const withFolder = ["/work/api", "/data/thread-storage/t1"];
+    const withoutFolder = ["/data/thread-storage/t1"];
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        additionalWorkspaceWriteRoots: withFolder,
+      });
+      await runtime.runTurn({
+        additionalWorkspaceWriteRoots: withoutFolder,
+        clientRequestId: "creq_222222226t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+
+      expect(record.last("turn/start")?.params).toMatchObject({
+        threadId: "t1",
+        options: {
+          providerOptions: { additionalWorkspaceWriteRoots: withoutFolder },
         },
       });
     } finally {
@@ -422,6 +456,7 @@ describe("createAgentRuntime command contracts", () => {
       method: "turn/start",
       send: (runtime: LaunchBoundAgentRuntime) =>
         runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224t",
           threadId: "t1",
           input: [promptTextInput({ text: "hello" })],
@@ -662,6 +697,7 @@ describe("createAgentRuntime command contracts", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224v",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500" })],

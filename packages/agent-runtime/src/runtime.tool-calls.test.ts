@@ -79,6 +79,7 @@ describe("createAgentRuntime tool calls", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223z",
         threadId: "t1",
         input: [promptTextInput({ text: "call_tool:question" })],
@@ -133,6 +134,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222223z",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:my_test_tool" })],
@@ -194,6 +196,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222223y",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool_unresolved:my_test_tool" })],
@@ -372,6 +375,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222242",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:my_test_tool" })],
@@ -415,6 +419,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222243",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:failing_tool" })],

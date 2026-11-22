@@ -77,6 +77,7 @@ describe("skills/configure handshake capability", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_skcapab222",
       threadId: "t1",
       input: [promptTextInput({ text: "hello" })],
@@ -161,6 +162,7 @@ describe("skills/configure handshake capability", () => {
       current.providerThreadId.split("-")[1],
     );
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_skcapab223",
       threadId: "original",
       input: [promptTextInput({ text: "original session still works" })],

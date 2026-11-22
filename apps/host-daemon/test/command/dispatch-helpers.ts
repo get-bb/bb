@@ -95,6 +95,7 @@ interface FakeRuntimeState {
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
   ranTurnInput: PromptInput[] | undefined;
   ranTurnText: string | undefined;
+  ranTurnWriteRoots: readonly string[] | undefined;
   renamedTitle: string | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
@@ -111,6 +112,7 @@ interface FakeRuntimeState {
   steeredClientRequestId: ClientTurnRequestId | undefined;
   steeredTurnId: string | undefined;
   steeredTurnInstructions: string | undefined;
+  steeredTurnWriteRoots: readonly string[] | undefined;
   stoppedThreadId: string | undefined;
   unarchivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   unarchivedProviderId: string | undefined;
@@ -175,6 +177,7 @@ export function createFakeRuntime() {
     ranTurnClientRequestId: undefined,
     ranTurnInput: undefined,
     ranTurnText: undefined,
+    ranTurnWriteRoots: undefined,
     renamedTitle: undefined,
     resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
@@ -191,6 +194,7 @@ export function createFakeRuntime() {
     steeredClientRequestId: undefined,
     steeredTurnId: undefined,
     steeredTurnInstructions: undefined,
+    steeredTurnWriteRoots: undefined,
     stoppedThreadId: undefined,
     unarchivedBridgeLaunch: undefined,
     unarchivedProviderId: undefined,
@@ -266,6 +270,7 @@ export function createFakeRuntime() {
         firstInput?.type === "text" ? firstInput.text : undefined;
       state.ranTurnClientRequestId = args.clientRequestId;
       state.ranTurnInput = args.input;
+      state.ranTurnWriteRoots = args.additionalWorkspaceWriteRoots;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
       return { status: "started" };
     },
@@ -273,6 +278,7 @@ export function createFakeRuntime() {
       state.steeredTurnId = args.expectedTurnId;
       state.steeredClientRequestId = args.clientRequestId;
       state.steeredTurnInstructions = args.instructions;
+      state.steeredTurnWriteRoots = args.additionalWorkspaceWriteRoots;
       return { status: "steered" };
     },
     async stopThread(args) {

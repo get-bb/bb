@@ -297,6 +297,8 @@ clears it, and omitting it keeps it; a failed create is terminal, and a retry is
 an explicit new attempt on the same environment row after cleanup. `report.step`
 and `report.log` stream durable progress while the call runs.
 
+Experimental: a `created` result (also from `restore`) may list `additionalPaths`, absolute folders of this environment outside `path` (sibling checkouts); threads there can write them, core stores them as `Environment.additionalPaths`, and omitting the field on a reused environment keeps the list. See docs/api_to_audit.md.
+
 Core claims a provider's directory through `locate` or `setup(path)`.
 `bb.sdk.environments.list({ hostId, path })` compares stored paths without
 contacting hosts.

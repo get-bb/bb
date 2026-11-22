@@ -121,6 +121,12 @@ interface ProjectSourceDeleteCommandOptions {
   json?: boolean;
 }
 
+interface ProjectFolderCommandOptions {
+  host?: string;
+  json?: boolean;
+  machine?: string;
+}
+
 interface ProjectSourceInputOptions {
   path?: string;
 }
@@ -216,6 +222,27 @@ function buildProjectSourceUpdateRequest(
   };
 }
 
+async function resolveProjectFolderSource(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  args: {
+    opts: ProjectFolderCommandOptions;
+    projectId: string;
+    serverUrl: string;
+  },
+): Promise<ProjectSource> {
+  const hostId = await resolveProjectSourceHostId(args.opts, args.serverUrl);
+  const project = await sdk.projects.get({ projectId: args.projectId });
+  const source = project.sources.find(
+    (candidate) => candidate.hostId === hostId,
+  );
+  if (!source) {
+    throw new Error(
+      `Project ${project.id} has no checkout on machine ${hostId}. Add one with \`bb project source add\` first.`,
+    );
+  }
+  return source;
+}
+
 function getProjectDisplaySource(
   project: ProjectResponse,
 ): ProjectSource | undefined {
@@ -256,6 +283,11 @@ export function registerProjectCommands(
   const source = project
     .command("source")
     .description("Manage project sources");
+  const folder = project
+    .command("folder")
+    .description(
+      "Manage extra folders every thread of a project can read and write on a machine",
+    );
   const attachment = project
     .command("attachment")
     .description("Upload and download server-managed project attachments");
@@ -707,6 +739,129 @@ export function registerProjectCommands(
           const result = { ok: true as const, projectId, sourceId };
           if (outputJson(opts, result)) return;
           console.log(`Project source ${sourceId} deleted`);
+        },
+      ),
+    );
+
+  folder
+    .command("list <projectId>")
+    .description("List a project's extra folders on a machine")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout to read (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (projectId: string, opts: ProjectFolderCommandOptions) => {
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const projectSource = await resolveProjectFolderSource(sdk, {
+          opts,
+          projectId,
+          serverUrl,
+        });
+        const folders = await sdk.projects.sources.folders.list({
+          projectId,
+          sourceId: projectSource.id,
+        });
+        if (outputJson(opts, folders)) return;
+        if (folders.length === 0) {
+          console.log(`No extra folders. Main folder: ${projectSource.path}`);
+          return;
+        }
+        for (const entry of folders) {
+          console.log(`${entry.id}  ${entry.path}`);
+        }
+      }),
+    );
+
+  folder
+    .command("add <projectId> <path>")
+    .description(
+      "Add an existing folder that every thread of the project can read and write",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout gets the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          path: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const added = await sdk.projects.sources.folders.add({
+            projectId,
+            sourceId: projectSource.id,
+            path,
+          });
+          if (outputJson(opts, added)) return;
+          console.log(`Project folder added: ${added.id}  ${added.path}`);
+        },
+      ),
+    );
+
+  folder
+    .command("remove <projectId> <pathOrId>")
+    .description("Remove an extra folder from a project")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout loses the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          pathOrId: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const folders = await sdk.projects.sources.folders.list({
+            projectId,
+            sourceId: projectSource.id,
+          });
+          const target = folders.find(
+            (entry) =>
+              entry.id === pathOrId ||
+              entry.path === pathOrId.replace(/(?<=.)[\\/]+$/u, ""),
+          );
+          if (!target) {
+            throw new Error(
+              `Folder ${pathOrId} is not one of project ${projectId}'s folders on that machine.`,
+            );
+          }
+          await sdk.projects.sources.folders.remove({
+            projectId,
+            sourceId: projectSource.id,
+            folderId: target.id,
+          });
+          const result = {
+            ok: true as const,
+            projectId,
+            folderId: target.id,
+            path: target.path,
+          };
+          if (outputJson(opts, result)) return;
+          console.log(`Project folder removed: ${target.path}`);
         },
       ),
     );

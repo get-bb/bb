@@ -465,6 +465,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
+  grantedWriteRoots: string[];
   environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
@@ -1372,6 +1373,7 @@ async function constructThreadSession(
       decoded.sessionOptions,
       envHash,
     ),
+    grantedWriteRoots: decoded.additionalWorkspaceWriteRoots,
     environmentHash: envHash,
     turnPermissionSettings: toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
@@ -1632,6 +1634,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
+    grantedWriteRoots: session.grantedWriteRoots,
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
@@ -1661,6 +1664,7 @@ async function rebuildThreadSession(
   session: CodexBridgeSession,
   options: BridgeExecutionOptions,
   reason: string,
+  restore: "resume" | "fork",
 ): Promise<CodexBridgeSession> {
   const codexThreadId = session.codexThreadId;
   if (codexThreadId === null) {
@@ -1678,7 +1682,10 @@ async function rebuildThreadSession(
       ...(session.construction.dynamicTools !== undefined
         ? { dynamicTools: session.construction.dynamicTools }
         : {}),
-      request: { kind: "resume", providerThreadId: codexThreadId },
+      request:
+        restore === "fork"
+          ? { kind: "fork", sourceProviderThreadId: codexThreadId }
+          : { kind: "resume", providerThreadId: codexThreadId },
     });
   } catch (error) {
     if (!(error instanceof CodexSessionReleasedError)) {
@@ -1856,23 +1863,43 @@ async function requireLiveSessionForTurn(
       session,
       params.options,
       "codex app-server exited; the session was restored from its rollout.",
+      "resume",
     );
   } else if (session.rebuildBeforeNextTurnReason !== null) {
     session = await rebuildThreadSession(
       session,
       params.options,
       session.rebuildBeforeNextTurnReason,
+      "resume",
+    );
+  } else if (
+    session.grantedWriteRoots.some(
+      (root) => !decoded.additionalWorkspaceWriteRoots.includes(root),
+    )
+  ) {
+    session = await rebuildThreadSession(
+      session,
+      params.options,
+      "A writable folder was removed; the codex session was forked from its rollout to drop its access.",
+      "fork",
     );
   } else if (signature !== session.constructionSignature) {
     session = await rebuildThreadSession(
       session,
       params.options,
       "Execution settings changed; the codex session was rebuilt to apply them.",
+      "resume",
     );
   }
   if (session.connection === null) {
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
+  session.grantedWriteRoots = [
+    ...new Set([
+      ...session.grantedWriteRoots,
+      ...decoded.additionalWorkspaceWriteRoots,
+    ]),
+  ];
   return { session, connection: session.connection };
 }
 

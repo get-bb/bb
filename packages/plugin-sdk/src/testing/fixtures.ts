@@ -241,6 +241,7 @@ export function makeMessageDispatchHookContext(
     projectId: "project-1",
     hostId: "host-1",
     path: "/tmp/test",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: false,
     branchName: "main",

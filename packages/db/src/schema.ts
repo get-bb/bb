@@ -533,6 +533,25 @@ export const projectSources = sqliteTable(
   ],
 );
 
+export const projectSourceFolders = sqliteTable(
+  "project_source_folders",
+  {
+    id: text("id").primaryKey(),
+    projectSourceId: text("project_source_id")
+      .notNull()
+      .references(() => projectSources.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    sortKey: text("sort_key").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_source_folders_source_path_idx").on(
+      table.projectSourceId,
+      table.path,
+    ),
+  ],
+);
+
 export const environments = sqliteTable(
   "environments",
   {
@@ -545,6 +564,10 @@ export const environments = sqliteTable(
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
+    additionalPaths: text("additional_paths", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
       .notNull()
       .default(false),

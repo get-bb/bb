@@ -9,9 +9,10 @@ import {
   usePrimaryHost,
 } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
-import type {
-  ProjectPathDialogSubmitHandler,
-  ProjectPathDialogTarget,
+import {
+  projectPathDialogTargetHostId,
+  type ProjectPathDialogSubmitHandler,
+  type ProjectPathDialogTarget,
 } from "@/components/dialogs/ProjectPathDialog";
 
 export interface LocalPathSubmitParams {
@@ -109,7 +110,7 @@ export function useLocalPathPicker({
 
   const openPicker = useCallback(
     (target: ProjectPathDialogTarget) => {
-      const targetHostId = target.kind === "update" ? target.hostId : hostId;
+      const targetHostId = projectPathDialogTargetHostId(target) ?? hostId;
       if (isPending || !targetHostId) return;
 
       if (

@@ -139,6 +139,7 @@ describe("checkpoint identity through runtime, ingestion, and editing", () => {
             requests.push(request.sequence);
             const start = events.length;
             await runtime.runTurn({
+              additionalWorkspaceWriteRoots: [],
               threadId: source.id,
               input,
               options,

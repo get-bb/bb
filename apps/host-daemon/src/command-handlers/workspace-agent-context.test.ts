@@ -65,10 +65,10 @@ describe("readWorkspaceAgentContext", () => {
     });
 
     expect(context.folders).toEqual([
-      { path: root, isGitRepo: false },
-      { path: repo, isGitRepo: true },
-      { path: nested, isGitRepo: true },
-      { path: missing, isGitRepo: false },
+      { path: root, exists: true, isGitRepo: false },
+      { path: repo, exists: true, isGitRepo: true },
+      { path: nested, exists: true, isGitRepo: true },
+      { path: missing, exists: false, isGitRepo: false },
     ]);
   });
 

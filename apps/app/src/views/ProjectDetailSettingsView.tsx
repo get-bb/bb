@@ -44,7 +44,9 @@ import {
 } from "@/components/ui/settings-section";
 import {
   useAddLocalProjectSource,
+  useAddProjectSourceFolder,
   useDeleteLocalProjectSource,
+  useRemoveProjectSourceFolder,
   useDeleteProject,
   useUpdateLocalProjectSource,
   useUpdateProject,
@@ -55,6 +57,7 @@ import {
 } from "@/hooks/queries/host-path-queries";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
+import { useProjectSourceFolders } from "@/hooks/queries/project-source-folders-query";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
@@ -70,6 +73,9 @@ import {
 
 const CHECKOUTS_DESCRIPTION =
   "Where this project lives on each machine. A machine needs a checkout before it can run threads for this project.";
+
+const FOLDERS_DESCRIPTION =
+  "Extra folders every thread in this project can read and write on a machine, next to its checkout. Threads pick up changes before their next turn.";
 
 const DEFAULTS_DESCRIPTION =
   "What new threads in this project start with. bb remembers the last options you used here.";
@@ -171,6 +177,91 @@ function CheckoutRow({
   );
 }
 
+interface FolderRowProps {
+  host: Host;
+  source: LocalPathProjectSource;
+  pending: boolean;
+  onAdd: () => void;
+}
+
+function FolderRow({ host, source, pending, onAdd }: FolderRowProps) {
+  const connected = host.status === "connected";
+  const foldersQuery = useProjectSourceFolders({
+    projectId: source.projectId,
+    sourceId: source.id,
+  });
+  const removeFolder = useRemoveProjectSourceFolder();
+  const folders = foldersQuery.data ?? [];
+  return (
+    <SettingsRow className="items-start">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Icon
+            name="Laptop"
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground",
+              !connected && "opacity-60",
+            )}
+          />
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {host.name}
+          </span>
+        </div>
+        {foldersQuery.isError ? (
+          <p className="text-xs text-destructive" role="alert">
+            Couldn't load folders.
+          </p>
+        ) : folders.length === 0 ? (
+          <p className="text-xs italic text-subtle-foreground/75">
+            {foldersQuery.isPending ? "Loading…" : "No extra folders"}
+          </p>
+        ) : (
+          <ul className="space-y-0.5">
+            {folders.map((folder) => (
+              <li key={folder.id} className="flex min-w-0 items-center gap-1.5">
+                <Icon
+                  name="Folder"
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-subtle-foreground/75">
+                  {folder.path}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 shrink-0"
+                  aria-label={`Remove ${folder.path}`}
+                  disabled={removeFolder.isPending}
+                  onClick={() =>
+                    removeFolder.mutate({
+                      projectId: source.projectId,
+                      sourceId: source.id,
+                      folderId: folder.id,
+                    })
+                  }
+                >
+                  <Icon name="X" className="size-3.5" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        disabled={pending || !connected}
+        onClick={onAdd}
+      >
+        {connected ? "Add folder" : "Offline"}
+      </Button>
+    </SettingsRow>
+  );
+}
+
 function LoadingShell({ children }: { children: ReactNode }) {
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
@@ -200,6 +291,7 @@ export function ProjectDetailSettingsView() {
   const addLocalSource = useAddLocalProjectSource();
   const updateLocalSource = useUpdateLocalProjectSource();
   const deleteSource = useDeleteLocalProjectSource();
+  const addFolder = useAddProjectSourceFolder();
 
   const [renameTarget, setRenameTarget] =
     useState<ProjectRenameDialogTarget | null>(null);
@@ -233,13 +325,20 @@ export function ProjectDetailSettingsView() {
   const primaryHostId = systemConfig.data?.primaryHostId ?? null;
 
   const localSourcePending =
-    addLocalSource.isPending || updateLocalSource.isPending;
+    addLocalSource.isPending ||
+    updateLocalSource.isPending ||
+    addFolder.isPending;
   const localSourceSubmit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
       if (!projectId) return;
       if (target.kind === "add-source") {
         addLocalSource.mutate(
           { projectId, path, hostId },
+          { onSuccess: closeDialog },
+        );
+      } else if (target.kind === "add-folder") {
+        addFolder.mutate(
+          { projectId, sourceId: target.sourceId, path },
           { onSuccess: closeDialog },
         );
       } else if (target.kind === "update") {
@@ -251,7 +350,7 @@ export function ProjectDetailSettingsView() {
         );
       }
     },
-    [addLocalSource, projectId, sources, updateLocalSource],
+    [addFolder, addLocalSource, projectId, sources, updateLocalSource],
   );
   const localSourcePicker = useLocalPathPicker({
     isPending: localSourcePending,
@@ -327,6 +426,10 @@ export function ProjectDetailSettingsView() {
       ? null
       : formatGitRemote(project.gitRemoteUrl);
   const configuredHostIds = new Set(sources.map((source) => source.hostId));
+  const checkoutHosts = hosts.flatMap((host) => {
+    const source = findLocalPathProjectSourceForHost(sources, host.id);
+    return source === undefined ? [] : [{ host, source }];
+  });
   const configuredCount = hosts.filter((host) =>
     configuredHostIds.has(host.id),
   ).length;
@@ -463,6 +566,31 @@ export function ProjectDetailSettingsView() {
             </button>
           ) : null}
         </SettingsSection>
+
+        {checkoutHosts.length > 0 ? (
+          <SettingsSection title="Folders" description={FOLDERS_DESCRIPTION}>
+            <SettingsRowList>
+              {checkoutHosts.map(({ host, source }) => (
+                <FolderRow
+                  key={source.id}
+                  host={host}
+                  source={source}
+                  pending={localSourcePending}
+                  onAdd={() =>
+                    localSourcePicker.openPicker({
+                      kind: "add-folder",
+                      projectId: project.id,
+                      projectName,
+                      sourceId: source.id,
+                      hostId: host.id,
+                      hostName: host.name,
+                    })
+                  }
+                />
+              ))}
+            </SettingsRowList>
+          </SettingsSection>
+        ) : null}
 
         <SettingsSection
           title="Thread defaults"

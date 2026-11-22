@@ -163,6 +163,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224h",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command ship it" })],
@@ -231,6 +232,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224w",
       threadId: "t1",
       input: [
@@ -273,6 +275,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224i",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command hello" })],
@@ -350,6 +353,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224j",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command denied" })],
@@ -389,6 +393,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224k",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command provider-enforced" })],
@@ -439,6 +444,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224m",
       threadId: "t1",
       input: [promptTextInput({ text: "ask_user" })],
@@ -518,6 +524,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224n",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command boom" })],

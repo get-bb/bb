@@ -27,6 +27,7 @@ export * from "./project-attachment-backfill.js";
 export * from "./project-attachments.js";
 export * from "./project-execution-defaults.js";
 export * from "./project-sources.js";
+export * from "./project-source-folders.js";
 export * from "./projects.js";
 export * from "./prompt-history.js";
 export * from "./provider-model-catalogs.js";

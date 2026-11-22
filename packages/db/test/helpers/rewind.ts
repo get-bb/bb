@@ -187,6 +187,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);
+  dropProjectFolderSchema(db);
 }
 
 export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
@@ -198,6 +199,16 @@ export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
     db.$client.exec(
       "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
     );
+  }
+}
+
+export function dropProjectFolderSchema(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS project_source_folders");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "additional_paths")) {
+    db.$client.exec("ALTER TABLE environments DROP COLUMN additional_paths");
   }
 }
 

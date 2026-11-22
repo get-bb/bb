@@ -456,6 +456,9 @@ export function registerEnvironmentCommands(
         if (env.path) {
           console.log(`  Path: ${env.path}`);
         }
+        for (const additionalPath of env.additionalPaths) {
+          console.log(`  Folder: ${additionalPath}`);
+        }
         if (env.name) {
           console.log(`  Name: ${env.name}`);
         }

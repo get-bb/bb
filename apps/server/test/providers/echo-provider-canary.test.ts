@@ -472,6 +472,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
 
     const before = rows.length;
     await runtimeInstance.runTurn({
+      additionalWorkspaceWriteRoots: [],
       threadId: thread.id,
       clientRequestId: encodeClientTurnRequestIdNumber({ value: 2 }),
       input: textInput("malformed-receipt now"),

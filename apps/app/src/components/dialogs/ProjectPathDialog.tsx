@@ -45,7 +45,23 @@ export type ProjectPathDialogTarget =
       kind: "add-source";
       projectId: string;
       projectName: string;
+    }
+  | {
+      kind: "add-folder";
+      projectId: string;
+      projectName: string;
+      sourceId: string;
+      hostId: string;
+      hostName: string;
     };
+
+export function projectPathDialogTargetHostId(
+  target: ProjectPathDialogTarget,
+): string | null {
+  return target.kind === "update" || target.kind === "add-folder"
+    ? target.hostId
+    : null;
+}
 
 export type ProjectPathDialogSubmitHandler = (
   target: ProjectPathDialogTarget,
@@ -117,6 +133,8 @@ function getDialogTitle(kind: ProjectPathDialogTarget["kind"]): string {
       return "Update project path";
     case "add-source":
       return "Add project source";
+    case "add-folder":
+      return "Add folder";
   }
 }
 
@@ -128,6 +146,8 @@ function getDialogSubmitLabel(kind: ProjectPathDialogTarget["kind"]): string {
       return "Save path";
     case "add-source":
       return "Add source";
+    case "add-folder":
+      return "Add folder";
   }
 }
 
@@ -166,8 +186,11 @@ export function ProjectPathDialogContent({
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
-  const targetHostId = target.kind === "update" ? target.hostId : hostId;
-  const targetHostName = target.kind === "update" ? target.hostName : hostName;
+  const targetHostId = projectPathDialogTargetHostId(target) ?? hostId;
+  const targetHostName =
+    target.kind === "update" || target.kind === "add-folder"
+      ? target.hostName
+      : hostName;
   const machineOptions =
     target.kind === "create" ? selectHosts(hosts, "all") : undefined;
   const firstConnectedHostId = machineOptions?.find(
@@ -225,7 +248,11 @@ export function ProjectPathDialogContent({
     if (pending) return;
 
     if (!selectedPath) {
-      setValidationMessage("Choose a project folder.");
+      setValidationMessage(
+        target.kind === "add-folder"
+          ? "Choose a folder."
+          : "Choose a project folder.",
+      );
       return;
     }
 
@@ -253,13 +280,15 @@ export function ProjectPathDialogContent({
       <DialogHeader>
         <DialogTitle>{getDialogTitle(target.kind)}</DialogTitle>
         <DialogDescription>
-          {selectedHostId
-            ? `Browse to the project folder${
-                selectedHostName ? ` on ${selectedHostName}` : ""
-              }, or edit the path directly.`
-            : noMachineAvailable
-              ? "No machine is online. Start one to choose a project folder."
-              : copy.description}
+          {target.kind === "add-folder"
+            ? `Every thread in ${target.projectName} on ${target.hostName} can read and write this folder. Pick a folder outside the project's checkout.`
+            : selectedHostId
+              ? `Browse to the project folder${
+                  selectedHostName ? ` on ${selectedHostName}` : ""
+                }, or edit the path directly.`
+              : noMachineAvailable
+                ? "No machine is online. Start one to choose a project folder."
+                : copy.description}
         </DialogDescription>
       </DialogHeader>
       <form className="min-w-0 space-y-4" onSubmit={handleSubmit}>

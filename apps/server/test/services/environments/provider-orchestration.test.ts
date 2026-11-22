@@ -1141,6 +1141,47 @@ describe("core environment orchestration", () => {
       });
     }));
 
+  it("records the environment's own folders from the create result", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: ["/tmp/siblings/api/", "/tmp/siblings/docs"],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      fixture.attach();
+      expect(fixture.row()).toMatchObject({
+        status: "ready",
+        additionalPaths: ["/tmp/siblings/api", "/tmp/siblings/docs"],
+      });
+    }));
+
+  it("fails a create whose folders overlap its workspace", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: [`/tmp/${context.pathKey}/nested`],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.ask()).toMatchObject({
+        action: "reject",
+        message: expect.stringContaining("is inside the main folder"),
+      });
+      expect(fixture.row()).toMatchObject({
+        status: "error",
+        additionalPaths: [],
+      });
+    }));
+
   it("re-runs a persisted creating attempt with the same path key", async () =>
     withTestHarness(async (harness) => {
       const calls: Array<{ attempt: number; pathKey: string }> = [];

@@ -193,6 +193,7 @@ export interface ResumeThreadResult {
 }
 
 export interface RunTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   input: PromptInput[];
   clientRequestId: ClientTurnRequestId;
@@ -204,6 +205,7 @@ export interface RunTurnArgs {
 export type RunTurnResult = { status: "started" } | { status: "unconfirmed" };
 
 export interface SteerTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   expectedTurnId: string;
   input: PromptInput[];

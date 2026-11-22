@@ -65,6 +65,7 @@ import {
   type PendingInteraction,
   type ProjectExecutionDefaults,
   type ProjectSource,
+  type ProjectSourceFolder,
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
   type ThreadQueuedMessage,
@@ -108,6 +109,7 @@ import {
   type CreateTerminalRequest,
   type CreateProjectRequest,
   type CreateProjectSourceRequest,
+  type CreateProjectSourceFolderRequest,
   type CreateQueuedMessageRequest,
   type CreateThreadSectionRequest,
   type CreateThreadRequest,
@@ -307,6 +309,7 @@ import {
   createHostJoinCodeRequestSchema,
   createMachineRequestSchema,
   createProjectSourceRequestSchema,
+  createProjectSourceFolderRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
   updateQueuedMessageRequestSchema,
@@ -433,6 +436,9 @@ import {
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
+type PathProjectSourceFolderId = {
+  param: { id: string; sourceId: string; folderId: string };
+};
 type PathThreadMessage = { param: { id: string; seq: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
@@ -569,6 +575,27 @@ export const publicApiRoutes = {
       path: "/projects/:id/sources/:sourceId",
       method: "delete",
       request: noRequest<PathProjectSourceId>(),
+      response: jsonResponse<OperationResponse>(),
+    }),
+    listSourceFolders: defineRoute({
+      path: "/projects/:id/sources/:sourceId/folders",
+      method: "get",
+      request: noRequest<PathProjectSourceId>(),
+      response: jsonResponse<ProjectSourceFolder[]>(),
+    }),
+    addSourceFolder: defineRoute({
+      path: "/projects/:id/sources/:sourceId/folders",
+      method: "post",
+      request: jsonRequest<
+        PathProjectSourceId,
+        CreateProjectSourceFolderRequest
+      >(createProjectSourceFolderRequestSchema),
+      response: jsonResponse<ProjectSourceFolder>({ status: 201 }),
+    }),
+    removeSourceFolder: defineRoute({
+      path: "/projects/:id/sources/:sourceId/folders/:folderId",
+      method: "delete",
+      request: noRequest<PathProjectSourceFolderId>(),
       response: jsonResponse<OperationResponse>(),
     }),
     files: defineRoute({

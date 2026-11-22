@@ -1093,7 +1093,13 @@ const hostReadWorkspaceAgentContextResultSchema = z
     projectSkillsTruncated: z.boolean(),
     sharedSkills: z.array(discoveredSkillSchema),
     folders: z.array(
-      z.object({ path: z.string(), isGitRepo: z.boolean() }).strict(),
+      z
+        .object({
+          path: z.string(),
+          exists: z.boolean(),
+          isGitRepo: z.boolean(),
+        })
+        .strict(),
     ),
   })
   .strict();

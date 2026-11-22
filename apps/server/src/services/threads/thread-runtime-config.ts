@@ -2,7 +2,12 @@ import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
 } from "../hosts/host-environment.js";
-import { getEnvironment, getHost, getProject } from "@bb/db";
+import {
+  getEnvironment,
+  getHost,
+  getProject,
+  listProjectFolderPathsForHost,
+} from "@bb/db";
 import { PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   DynamicTool,
@@ -37,6 +42,8 @@ import {
 } from "./workspace-agent-instructions.js";
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
 import { renderWorkspaceFolderInstructions } from "./workspace-folder-instructions.js";
+import { reportMissingWorkspaceFolders } from "./workspace-folder-notices.js";
+import { mergeWorkspaceFolderPaths } from "../projects/workspace-folder-paths.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
 import { sliceUtf16Head } from "@bb/text-utils";
@@ -136,17 +143,35 @@ export async function resolveThreadRuntimeCommandConfig(
     throw new ApiError(404, "host_not_found", "Host not found");
   }
 
-  const additionalWorkspaceFolders: string[] = [];
+  const candidateFolders = mergeWorkspaceFolderPaths({
+    mainPath: workspacePath,
+    paths: [
+      ...listProjectFolderPathsForHost(deps.db, {
+        projectId: project.id,
+        hostId: args.environment.hostId,
+      }),
+      ...environment.additionalPaths,
+    ],
+  });
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
     includeAgentInstructions: true,
     hostId: args.environment.hostId,
     workspacePath,
     folderPaths:
-      additionalWorkspaceFolders.length > 0
-        ? [workspacePath, ...additionalWorkspaceFolders]
-        : [],
+      candidateFolders.length > 0 ? [workspacePath, ...candidateFolders] : [],
   });
   markTurnTraceSpan("runtimeConfig.workspaceRead");
+  const [, ...additionalFolderStatuses] = workspaceAgentContext.folders;
+  const additionalWorkspaceFolders = additionalFolderStatuses
+    .filter((folder) => folder.exists)
+    .map((folder) => folder.path);
+  reportMissingWorkspaceFolders(deps, {
+    environmentId: environment.id,
+    missingPaths: additionalFolderStatuses
+      .filter((folder) => !folder.exists)
+      .map((folder) => folder.path),
+    threadId: args.thread.id,
+  });
   const pluginSkillRoots = getPluginSkillRootContributions();
   const skillIdsByPlugin = await discoverPluginSkillIds(deps.logger, {
     pluginSkillRoots,

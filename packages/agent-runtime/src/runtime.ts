@@ -1694,6 +1694,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               );
             }
             await runtime.runTurn({
+              additionalWorkspaceWriteRoots,
               threadId,
               input,
               clientRequestId,
@@ -2023,6 +2024,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async runTurn({
+      additionalWorkspaceWriteRoots,
       threadId,
       input,
       clientRequestId,
@@ -2076,8 +2078,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
-              additionalWorkspaceWriteRoots:
-                currentConfig.additionalWorkspaceWriteRoots,
+              additionalWorkspaceWriteRoots,
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
@@ -2139,6 +2140,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
           setThreadRuntimeConfig(threadId, {
             ...currentConfig,
+            additionalWorkspaceWriteRoots,
             contributedEnv: resolvedContributedEnv,
             envVars: resolvedEnvironment.envVars,
             options: execOpts,
@@ -2157,6 +2159,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async steerTurn({
+      additionalWorkspaceWriteRoots,
       threadId,
       expectedTurnId,
       input,
@@ -2223,8 +2226,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
-              additionalWorkspaceWriteRoots:
-                currentConfig.additionalWorkspaceWriteRoots,
+              additionalWorkspaceWriteRoots,
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
@@ -2251,6 +2253,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             }
             setThreadRuntimeConfig(threadId, {
               ...currentConfig,
+              additionalWorkspaceWriteRoots,
               contributedEnv: resolvedContributedEnv,
               envVars: resolvedEnvironment.envVars,
               options: execOpts,

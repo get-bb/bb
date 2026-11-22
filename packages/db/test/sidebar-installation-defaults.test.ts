@@ -21,6 +21,7 @@ import {
   dropEnvironmentHoldColumns,
   dropForkHistoryCopyIndex,
   dropQueuedMessageRecheckAtColumn,
+  dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
   dropThreadStatusChangedAtColumn,
@@ -109,6 +110,7 @@ describe.each(["project", "thread", "preference"] as const)(
           rewindMachineTeardownRecoveryColumns(db);
           dropPluginMarketplaceEnabledColumn(db);
           dropQueuedMessageRecheckAtColumn(db);
+          dropProjectFolderSchema(db);
           dropForkHistoryCopyIndex(db);
           dropEnvironmentHoldColumns(db);
           dropThreadSearchOrderIndex(db);

@@ -37,6 +37,7 @@ describe("runtime identity ordering", () => {
         });
       }
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId: "second",
         clientRequestId: "creq_222222222e",
         input: [promptTextInput({ text: "hello" })],
@@ -96,6 +97,7 @@ describe("runtime identity ordering", () => {
         });
         for (const threadId of ["source", "fork"]) {
           await runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             threadId,
             clientRequestId:
               threadId === "source" ? "creq_222222222a" : "creq_222222222b",
@@ -158,6 +160,7 @@ describe("runtime identity ordering", () => {
       await runtime.stopThread({ threadId: "retired" });
       const start = events.length;
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId: "remaining",
         clientRequestId: "creq_222222222c",
         input: [promptTextInput({ text: "hello" })],
@@ -196,6 +199,7 @@ describe("runtime identity ordering", () => {
         threadId: "source",
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId: "source",
         clientRequestId: "creq_222222222d",
         input: [promptTextInput({ text: "hello" })],

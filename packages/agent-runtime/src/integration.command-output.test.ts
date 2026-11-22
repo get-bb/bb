@@ -47,6 +47,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222222r",
           threadId,
           options,

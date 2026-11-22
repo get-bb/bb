@@ -1113,6 +1113,31 @@ resource (a provider that named a branch before failing must clean it up
 itself), and whether core should record the branch a provider owns; today
 the Worktree keeps it in its private resource and core has no reader.
 
+## Environment folders (`PluginEnvironmentProviderCreateResult.additionalPaths`, `Environment.additionalPaths`)
+
+A `created` result from `create` or `restore` may carry `additionalPaths`:
+absolute host paths of the environment's own extra folders, such as sibling
+checkouts the provider made next to `path`. Core canonicalizes them and fails
+the create when one is relative, equals `path`, is inside `path`, contains
+`path`, or repeats another entry (at most 64). They are stored on
+`environments.additional_paths` and returned as `Environment.additionalPaths`
+(`[]` when the provider sends none). Omitting the field on a reused
+environment keeps the recorded list. At every session start, turn and steer
+the server merges them after the project's folders for the thread's machine
+(`bb project folder`), drops duplicates and the main folder, and sends the
+list to the daemon, which grants the agent write access for that turn; the
+agent's instructions list the folders as of its session start. The field is a member of a result type, so it carries no
+nested `experimental_` prefix.
+
+Core path: `environment-engine.ts` records the field for every provider,
+including the built-in Worktree and Project checkout, which return none
+today; `thread-runtime-config.ts` is the only reader.
+
+Before stabilizing, decide whether a provider needs to change the list after
+create (today only a restore replaces it), whether removal should be told
+about the folders, and whether the Worktree should report worktrees it makes
+of a project's folders.
+
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
 The slot registers `{ environmentProviderId, component }`, the control the
