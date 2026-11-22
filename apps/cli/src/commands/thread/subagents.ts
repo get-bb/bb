@@ -1,12 +1,9 @@
 import { Command } from "commander";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { outputJson, reportCommandResult } from "../../command-result.js";
 import { printBorderlessTable } from "../../table.js";
-import {
-  outputJson,
-  prependErrorContext,
-  requireThreadIdOrSelf,
-} from "../helpers.js";
+import { prependErrorContext, requireThreadIdOrSelf } from "../helpers.js";
 
 interface ThreadSubagentOptions {
   self?: boolean;
@@ -38,7 +35,8 @@ export function registerSubagentCommands(
               error,
             );
           });
-        if (outputJson(opts, items)) {
+        if (opts.json) {
+          reportCommandResult(opts, items, { text: [], failure: null });
           return;
         }
         if (items.length === 0) {

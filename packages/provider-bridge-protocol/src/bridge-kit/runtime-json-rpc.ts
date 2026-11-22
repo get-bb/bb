@@ -322,14 +322,11 @@ export function sendJsonRpcRequest<TResult>(
     const timer = setTimeout(() => {
       if (args.cancelOnTimeout === true) {
         try {
-          writeJsonRpcLine(
-            args.child,
-            JSON.stringify({
-              jsonrpc: "2.0",
-              method: "notifications/cancelled",
-              params: { requestId: id },
-            }),
-          );
+          writeJsonRpcMessage(args.child, {
+            jsonrpc: "2.0",
+            method: "notifications/cancelled",
+            params: { requestId: id },
+          });
         } catch {}
       }
       if (args.afterTimeout === undefined) {

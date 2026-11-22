@@ -1584,6 +1584,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           childRef,
           clientRequestId,
           options: toProviderExecutionContext({
+            additionalWorkspaceWriteRoots:
+              currentConfig.additionalWorkspaceWriteRoots,
             envVars: currentConfig.envVars,
             execOpts,
             instructions: undefined,
