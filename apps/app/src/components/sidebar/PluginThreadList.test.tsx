@@ -101,8 +101,8 @@ describe("PluginThreadList", () => {
     expect("Original" in (seen[0] ?? {})).toBe(false);
   });
 
-  it("hands the list the sidebar element that scrolls it once that element mounts", () => {
-    const scrollElements: (HTMLElement | null)[] = [];
+  it("mounts the list only once the sidebar element that scrolls it exists", () => {
+    const scrollElements: HTMLElement[] = [];
     const { container } = renderList(
       pluginReplacement(({ experimental_scrollElement }) => {
         scrollElements.push(experimental_scrollElement);
@@ -113,9 +113,8 @@ describe("PluginThreadList", () => {
     const scroller = container.querySelector('[data-sidebar="content"]');
     expect(scroller).not.toBeNull();
     expect(scroller?.contains(screen.getByTestId("plugin-list"))).toBe(true);
-    expect(scrollElements[0]).toBeNull();
-    expect(scrollElements.at(-1)).toBe(scroller);
-    expect(new Set(scrollElements.slice(1))).toEqual(new Set([scroller]));
+    expect(scrollElements.length).toBeGreaterThan(0);
+    expect(new Set(scrollElements)).toEqual(new Set([scroller]));
   });
 
   it("replaces a crashed list with the crashed placeholder and remounts on reload", () => {

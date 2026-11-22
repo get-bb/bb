@@ -555,12 +555,12 @@ export interface PluginThreadListProps {
   /**
    * The sidebar element that scrolls this list. Window rows against it, use
    * it as an `IntersectionObserver` root, and scroll it for drag autoscroll
-   * instead of walking up the DOM. Null on the first render, before the host
-   * element mounts; the list re-renders once it is set. It changes only when
-   * the list itself remounts.
+   * instead of walking up the DOM. The host mounts the list only after this
+   * element exists, so it is set on the first render, and it changes only
+   * when the list itself remounts.
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_scrollElement: HTMLElement | null;
+  experimental_scrollElement: HTMLElement;
   /**
    * @internal Retired: the sidebar search field was removed and the quick
    * palette owns thread search. The host still passes "" so lists built

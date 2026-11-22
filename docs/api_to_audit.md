@@ -3190,9 +3190,9 @@ Docs: `frontend-thread-list.md`.
 The sidebar element that scrolls an `experimental_threadList` component:
 core's `SidebarContent`, owned by `SidebarThreadListContent`
 (`apps/app/src/components/sidebar/PluginThreadList.tsx`), which `AppSidebar`
-renders. It is null on the list's first render and set in the same commit,
-before the first paint; it changes only when the list remounts (desktop to
-compact viewport). Lists window rows, root an `IntersectionObserver`, and
+renders. Core mounts the list only after that element exists, so the prop is
+never null; it changes only when the list remounts (desktop to compact
+viewport). Lists window rows, root an `IntersectionObserver`, and
 drag-autoscroll against it instead of `closest('[data-sidebar="content"]')`
 or walking up to the nearest `overflow: auto` ancestor.
 

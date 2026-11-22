@@ -27,16 +27,16 @@ interface PluginThreadListProps {
   isCompactViewport: boolean;
   /** Closes the mobile drawer. Always call it after opening a thread. */
   onNavigate: () => void;
-  /** The sidebar element that scrolls your list; null on the first render. */
-  experimental_scrollElement: HTMLElement | null;
+  /** The sidebar element that scrolls your list. */
+  experimental_scrollElement: HTMLElement;
 }
 ```
 
 **Windowing and autoscroll.** Window rows, root an `IntersectionObserver`,
 and drag-autoscroll against `experimental_scrollElement` instead of walking
-up the DOM for an `overflow: auto` ancestor or querying bb's markup. It is
-null on the first render and set before the first paint; it changes only
-when your list remounts. bb's own list windows against it; with
+up the DOM for an `overflow: auto` ancestor or querying bb's markup. bb
+mounts your list only after the element exists, so it is set on the first
+render; it changes only when your list remounts. bb's own list windows against it; with
 `@tanstack/react-virtual`:
 
 ```tsx
@@ -48,8 +48,6 @@ function List({ experimental_scrollElement }: PluginThreadListProps) {
   });
 }
 ```
-
-Until it is set, keep rows windowed rather than mounting every row.
 
 **Reading and acting on threads.** One hook reads the list; writes go through
 the plugin SDK and navigation:
@@ -158,7 +156,7 @@ the sidebar.
 **bb's menu on your row.** Render `experimental_ThreadActionsMenu` and
 `experimental_ThreadActionsContextMenu` around your row for bb's own thread
 menu (archive and delete confirmation included) plus every plugin's thread
-actions; see "An action in every thread menu".
+actions; see "An action in every thread menu" in frontend-registration.md.
 For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigation.md.
 `experimental_useThreadRequests()` archives or deletes any threads with bb's confirmation and Undo.
 `experimental_useArchiveEnvironmentThreads()` archives a whole environment group (every live thread the server finds there, without a confirmation) with bb's pane cleanup and Undo toast.

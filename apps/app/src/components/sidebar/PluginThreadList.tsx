@@ -19,7 +19,7 @@ const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
-  scrollElement: HTMLElement | null;
+  scrollElement: HTMLElement;
   onNavigate: () => void;
 }
 
@@ -35,16 +35,18 @@ export function SidebarThreadListContent({
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   return (
     <SidebarContent ref={setScrollElement}>
-      <PluginThreadList
-        replacement={replacement}
-        scrollElement={scrollElement}
-        onNavigate={onNavigate}
-      />
+      {scrollElement === null ? null : (
+        <PluginThreadList
+          replacement={replacement}
+          scrollElement={scrollElement}
+          onNavigate={onNavigate}
+        />
+      )}
     </SidebarContent>
   );
 }
 
-export function PluginThreadList({
+function PluginThreadList({
   replacement,
   scrollElement,
   onNavigate,

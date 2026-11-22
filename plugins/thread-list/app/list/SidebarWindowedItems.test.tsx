@@ -56,7 +56,7 @@ function emitIntersections(
   );
 }
 
-function withScrollElement(element: HTMLElement | null, children: ReactNode) {
+function withScrollElement(element: HTMLElement, children: ReactNode) {
   return (
     <SidebarScrollAreaProvider scrollElement={element}>
       {children}
@@ -68,7 +68,7 @@ function HostScroller({ children }: { children: ReactNode }) {
   const [element, setElement] = useState<HTMLElement | null>(null);
   return (
     <div ref={setElement} data-testid="host-scroller">
-      {withScrollElement(element, children)}
+      {element === null ? null : withScrollElement(element, children)}
     </div>
   );
 }
@@ -88,7 +88,7 @@ function list() {
   );
 }
 
-function renderList(element: HTMLElement | null) {
+function renderList(element: HTMLElement) {
   return render(withScrollElement(element, list()));
 }
 
@@ -195,20 +195,7 @@ describe("SidebarWindowedItems", () => {
     ).toHaveLength(3);
   });
 
-  it("keeps rows windowed while the host scroll element is not set yet", () => {
-    renderList(null);
-
-    expect(screen.queryByTestId("real-item-0")).toBeNull();
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-item]"),
-    ).toHaveLength(3);
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(3);
-    expect(observerInstances).toHaveLength(0);
-  });
-
-  it("windows against the host scroll element that attaches after the list mounts", () => {
+  it("windows against the host scroll element the list mounts inside", () => {
     const ONSCREEN_ROW_RECT = new DOMRect(0, 0, 300, 30);
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
       function (this: HTMLElement) {

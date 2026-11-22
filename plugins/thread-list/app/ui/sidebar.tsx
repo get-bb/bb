@@ -6,7 +6,7 @@ const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0";
 
 export type SidebarScrollArea =
-  | { kind: "sidebar"; element: HTMLElement | null }
+  | { kind: "sidebar"; element: HTMLElement }
   | { kind: "overflow" };
 
 const OVERFLOW_SCROLL_AREA: SidebarScrollArea = { kind: "overflow" };
@@ -22,7 +22,7 @@ export function SidebarScrollAreaProvider({
   scrollElement,
   children,
 }: {
-  scrollElement: HTMLElement | null;
+  scrollElement: HTMLElement;
   children: React.ReactNode;
 }) {
   const area = React.useMemo<SidebarScrollArea>(
