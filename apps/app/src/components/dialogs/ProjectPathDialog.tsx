@@ -28,6 +28,7 @@ import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowse
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { selectHosts } from "@/hooks/queries/host-queries";
+import { projectPathDialogTargetHostId } from "./project-path-dialog-target";
 
 export type ProjectPathDialogTarget =
   | {
@@ -54,14 +55,6 @@ export type ProjectPathDialogTarget =
       hostId: string;
       hostName: string;
     };
-
-export function projectPathDialogTargetHostId(
-  target: ProjectPathDialogTarget,
-): string | null {
-  return target.kind === "update" || target.kind === "add-folder"
-    ? target.hostId
-    : null;
-}
 
 export type ProjectPathDialogSubmitHandler = (
   target: ProjectPathDialogTarget,

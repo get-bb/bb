@@ -9,11 +9,11 @@ import {
   usePrimaryHost,
 } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
-import {
-  projectPathDialogTargetHostId,
-  type ProjectPathDialogSubmitHandler,
-  type ProjectPathDialogTarget,
+import type {
+  ProjectPathDialogSubmitHandler,
+  ProjectPathDialogTarget,
 } from "@/components/dialogs/ProjectPathDialog";
+import { projectPathDialogTargetHostId } from "@/components/dialogs/project-path-dialog-target";
 
 export interface LocalPathSubmitParams {
   path: string;

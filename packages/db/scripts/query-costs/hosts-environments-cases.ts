@@ -107,6 +107,12 @@ import {
   updateProjectSource,
 } from "../../src/data/project-sources.js";
 import {
+  createProjectSourceFolder,
+  deleteProjectSourceFolder,
+  listProjectFolderPathsForHost,
+  listProjectSourceFolders,
+} from "../../src/data/project-source-folders.js";
+import {
   createProject,
   deleteProject,
   ensurePersonalProject,
@@ -163,6 +169,7 @@ const BACKFILL = "packages/db/src/data/project-attachment-backfill.ts";
 const ATTACHMENTS = "packages/db/src/data/project-attachments.ts";
 const DEFAULTS = "packages/db/src/data/project-execution-defaults.ts";
 const SOURCES = "packages/db/src/data/project-sources.ts";
+const FOLDERS = "packages/db/src/data/project-source-folders.ts";
 const PROJECTS = "packages/db/src/data/projects.ts";
 const SERVER_MOVE = "packages/db/src/data/server-move.ts";
 const SESSIONS = "packages/db/src/data/sessions.ts";
@@ -928,6 +935,40 @@ const SOURCE_CASES: readonly Case[] = [
   },
 ];
 
+const FOLDER_CASES: readonly Case[] = [
+  {
+    name: `${FOLDERS}#listProjectSourceFolders`,
+    run: (db, _fixture, seed) =>
+      listProjectSourceFolders(db, seed.busyDefaultSourceId),
+  },
+  {
+    name: `${FOLDERS}#listProjectFolderPathsForHost`,
+    run: (db, fixture, seed) =>
+      listProjectFolderPathsForHost(db, {
+        projectId: fixture.projectId,
+        hostId: seed.busyHostId,
+      }),
+  },
+  {
+    name: `${FOLDERS}#createProjectSourceFolder`,
+    run: (db, fixture, seed) =>
+      createProjectSourceFolder(db, noopNotifier, {
+        projectId: fixture.projectId,
+        projectSourceId: seed.busyDefaultSourceId,
+        path: "/Users/dev/code/new-folder",
+      }),
+  },
+  {
+    name: `${FOLDERS}#deleteProjectSourceFolder`,
+    run: (db, fixture, seed) =>
+      deleteProjectSourceFolder(db, noopNotifier, {
+        projectId: fixture.projectId,
+        projectSourceId: seed.busyDefaultSourceId,
+        folderId: seed.busyFolderId,
+      }),
+  },
+];
+
 const PROJECT_CASES: readonly Case[] = [
   {
     name: `${PROJECTS}#getPublicProjectByLocalPathSource`,
@@ -1202,6 +1243,7 @@ export const HOSTS_ENVIRONMENTS_COST_GROUP = registerCostGroup({
     ...ATTACHMENT_CASES,
     ...DEFAULTS_CASES,
     ...SOURCE_CASES,
+    ...FOLDER_CASES,
     ...PROJECT_CASES,
     ...SERVER_MOVE_CASES,
     ...SESSION_CASES,
