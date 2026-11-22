@@ -11,6 +11,9 @@ import {
   addTokenUsage,
   bashArgsSchema,
   errorEnvelopeSchema,
+  experimental_presentationDetail as presentationDetail,
+  experimental_presentationTitle as presentationTitle,
+  experimental_withTitle as withTitle,
   extractResultText,
   jsonRpcEnvelopeSchema,
   normalizeProviderCommandOutput,
@@ -121,6 +124,41 @@ const piCustomMessageBoundaryEventSchema = z
       .passthrough(),
   })
   .passthrough();
+
+const piSubagentLaunchResultSchema = z.object({
+  details: z.object({
+    asyncId: z.string().min(1),
+    workflow: z
+      .object({ resource: z.object({ name: z.string() }).optional() })
+      .optional(),
+  }),
+});
+
+const piParallelChildSchema = z.object({
+  workflowRunId: z.string().min(1),
+  key: z.string().min(1),
+  agent: z.string().min(1),
+});
+
+const piSubagentCompletionSchema = z.object({
+  customType: z.literal("subagent-notify"),
+  details: z.object({
+    runs: z.array(
+      z.object({
+        runId: z.string().min(1),
+        status: z.string(),
+        childOutputs: z
+          .array(
+            z.object({
+              workflowKey: z.string().optional(),
+              status: z.string(),
+            }),
+          )
+          .optional(),
+      }),
+    ),
+  }),
+});
 
 const piAssistantMessageBoundaryEventSchema = z
   .object({
@@ -338,10 +376,42 @@ function thinkingStreamChannel(contentIndex: number): string {
 }
 
 function classifyPiToolUse(
+  toolCallId: string,
   toolName: string,
   args: unknown,
   sessionCwd: string | undefined,
 ): DeltaItemShape {
+  if (toolName === "subagent") {
+    const parsed = z
+      .object({
+        description: z.string().nullish(),
+        task: z.string().nullish(),
+        action: z.unknown().optional(),
+        async: z.boolean().optional(),
+        workflow: z.union([z.string(), z.boolean()]).optional(),
+      })
+      .safeParse(args);
+    if (parsed.data?.action !== undefined) {
+      return { type: "tool", tool: toolName, args };
+    }
+    const workflow = parsed.data?.workflow;
+    if (workflow === "parallel" && parsed.data?.async !== false) {
+      return { type: "tool", tool: toolName, args };
+    }
+    const label =
+      parsed.data?.description ??
+      parsed.data?.task ??
+      (workflow
+        ? `Subagent workflow${typeof workflow === "string" ? `: ${workflow}` : ""}`
+        : "Subagent");
+    return {
+      type: "delegation",
+      childRef: toolCallId,
+      label: Array.from(label).slice(0, 120).join(""),
+      background: Boolean(workflow) && parsed.data?.async !== false,
+    };
+  }
+
   if (PI_COMMAND_TOOL_NAMES.has(toolName)) {
     const parsed = bashArgsSchema.safeParse(args);
     const command = parsed.success
@@ -398,6 +468,20 @@ function classifyPiToolUse(
   }
 
   return { type: "tool", tool: toolName, args };
+}
+
+function piDelegationPresentation(label: string, args: unknown) {
+  const agent = z.object({ agent: z.string() }).safeParse(args);
+  return withTitle(
+    {
+      label: { pending: "Running subagent", completed: "Subagent finished" },
+      icon: { glyph: "UserRound" },
+      ...(agent.success
+        ? { detail: presentationDetail(agent.data.agent) }
+        : {}),
+    },
+    presentationTitle(label),
+  );
 }
 
 function resolvePiImageReadPath(
@@ -508,7 +592,13 @@ interface CreatePiDeltaTranslatorOptions {
 
 const MAX_STARTED_TOOL_SHAPES = 1024;
 
+type PiBackgroundDelegation = {
+  key: Extract<ThreadDelta, { kind: "item.close" }>["key"];
+  item: Extract<DeltaItemShape, { type: "delegation" }>;
+};
+
 interface StartedPiTool {
+  parallelChild?: { runKey: string; childKey: string };
   shape: DeltaItemShape;
   deferredImageReadPath: string | null;
 }
@@ -519,6 +609,8 @@ export function createPiDeltaTranslator(
   const { resolveModelContextWindow } = options;
 
   const startedToolShapes = new Map<string, StartedPiTool>();
+  const backgroundWorkflows = new Map<string, PiBackgroundDelegation>();
+  const parallelRuns = new Map<string, Map<string, PiBackgroundDelegation>>();
   const cumulativeTokensByThreadId = new Map<
     string,
     ThreadEventTokenUsageBreakdown
@@ -532,6 +624,12 @@ export function createPiDeltaTranslator(
     promptCacheTtlMsByThreadId.delete(threadId);
     clearThreadToolShapes({ threadId });
     const prefix = `${threadId} `;
+    for (const key of parallelRuns.keys()) {
+      if (key.startsWith(prefix)) parallelRuns.delete(key);
+    }
+    for (const key of backgroundWorkflows.keys()) {
+      if (key.startsWith(prefix)) backgroundWorkflows.delete(key);
+    }
     for (const key of [...closedAssistantStreams]) {
       if (key.startsWith(prefix)) {
         closedAssistantStreams.delete(key);
@@ -814,13 +912,56 @@ export function createPiDeltaTranslator(
         if (!piEvent.success) {
           return [];
         }
-        if (
-          piEvent.data.type === "message_end" ||
-          !piEvent.data.message.display
-        ) {
+        if (piEvent.data.type === "message_end") {
           return [];
         }
         const text = extractCustomMessageText(piEvent.data.message.content);
+        const completion = piSubagentCompletionSchema.safeParse(
+          piEvent.data.message,
+        );
+        if (completion.success) {
+          const closed: ThreadDelta[] = [];
+          for (const run of completion.data.details.runs) {
+            const runKey = toolShapeKey(context, run.runId);
+            const children = parallelRuns.get(runKey);
+            if (children) {
+              parallelRuns.delete(runKey);
+              const statuses = new Map(
+                run.childOutputs?.map((child) => [
+                  child.workflowKey,
+                  child.status,
+                ]),
+              );
+              for (const [childKey, child] of children) {
+                const status = statuses.get(childKey) ?? "unknown";
+                closed.push({
+                  kind: "item.close",
+                  key: child.key,
+                  status: status === "completed" ? "completed" : "failed",
+                  item: { ...child.item, summary: `${childKey}: ${status}` },
+                });
+              }
+            }
+            const workflow = backgroundWorkflows.get(runKey);
+            if (!workflow) continue;
+            backgroundWorkflows.delete(runKey);
+            closed.push({
+              kind: "item.close",
+              key: workflow.key,
+              status: run.status === "completed" ? "completed" : "failed",
+              item: {
+                ...workflow.item,
+                ...(text === undefined
+                  ? {}
+                  : { summary: text.split("\n\nParent action:", 1)[0] }),
+              },
+            });
+          }
+          if (closed.length > 0) return closed;
+        }
+        if (!piEvent.data.message.display) {
+          return [];
+        }
         if (text === undefined) {
           return [];
         }
@@ -1099,7 +1240,8 @@ export function createPiDeltaTranslator(
         if (!piEvent.success) {
           return unexpectedSdkEventDeltas(event, context);
         }
-        const shape = classifyPiToolUse(
+        let shape = classifyPiToolUse(
+          piEvent.data.toolCallId,
           piEvent.data.toolName,
           piEvent.data.args,
           context?.cwd,
@@ -1109,13 +1251,46 @@ export function createPiDeltaTranslator(
           piEvent.data.args,
           context?.cwd,
         );
+        let parallelChild: StartedPiTool["parallelChild"];
+        if (piEvent.data.toolName === "subagent_launch") {
+          const child = piParallelChildSchema.safeParse(piEvent.data.args);
+          if (child.success) {
+            const runKey = toolShapeKey(context, child.data.workflowRunId);
+            const children = parallelRuns.get(runKey);
+            if (children) {
+              const item: PiBackgroundDelegation["item"] = {
+                type: "delegation",
+                childRef: piEvent.data.toolCallId,
+                label: child.data.key,
+                background: true,
+              };
+              shape = item;
+              parallelChild = { runKey, childKey: child.data.key };
+              children.set(child.data.key, {
+                key: {
+                  providerItemId: piEvent.data.toolCallId,
+                  ...parentRefField,
+                },
+                item,
+              });
+            }
+          }
+        }
         rememberStartedToolShape(
           toolShapeKey(context, piEvent.data.toolCallId),
-          { shape, deferredImageReadPath },
+          {
+            shape,
+            deferredImageReadPath,
+            ...(parallelChild ? { parallelChild } : {}),
+          },
         );
         if (deferredImageReadPath !== null) {
           return [];
         }
+        const presentation =
+          shape.type === "delegation"
+            ? piDelegationPresentation(shape.label, piEvent.data.args)
+            : undefined;
         return [
           {
             kind: "item.open",
@@ -1124,6 +1299,7 @@ export function createPiDeltaTranslator(
               ...parentRefField,
             },
             item: shape,
+            ...(presentation === undefined ? {} : { presentation }),
             noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
@@ -1143,6 +1319,30 @@ export function createPiDeltaTranslator(
         const shapeKey = toolShapeKey(context, piEvent.data.toolCallId);
         const started = startedToolShapes.get(shapeKey);
         startedToolShapes.delete(shapeKey);
+        if (started?.parallelChild) {
+          if (!piEvent.data.isError) return [];
+          parallelRuns
+            .get(started.parallelChild.runKey)
+            ?.delete(started.parallelChild.childKey);
+        }
+        if (piEvent.data.toolName === "subagent" && !piEvent.data.isError) {
+          const launch = piSubagentLaunchResultSchema.safeParse(
+            piEvent.data.result,
+          );
+          if (
+            launch.success &&
+            launch.data.details.workflow?.resource?.name === "parallel"
+          ) {
+            parallelRuns.set(
+              toolShapeKey(context, launch.data.details.asyncId),
+              new Map(),
+            );
+            if (parallelRuns.size > MAX_STARTED_TOOL_SHAPES) {
+              const oldest = parallelRuns.keys().next();
+              if (!oldest.done) parallelRuns.delete(oldest.value);
+            }
+          }
+        }
         const deferredImageReadPath = started?.deferredImageReadPath ?? null;
         const terminalShape: DeltaItemShape =
           deferredImageReadPath !== null &&
@@ -1155,6 +1355,29 @@ export function createPiDeltaTranslator(
           providerItemId: piEvent.data.toolCallId,
           ...parentRefField,
         };
+        if (
+          terminalShape.type === "delegation" &&
+          terminalShape.background &&
+          !piEvent.data.isError
+        ) {
+          const launch = piSubagentLaunchResultSchema.safeParse(
+            piEvent.data.result,
+          );
+          if (launch.success) {
+            backgroundWorkflows.set(
+              toolShapeKey(context, launch.data.details.asyncId),
+              {
+                key,
+                item: terminalShape,
+              },
+            );
+            if (backgroundWorkflows.size > MAX_STARTED_TOOL_SHAPES) {
+              const oldest = backgroundWorkflows.keys().next();
+              if (!oldest.done) backgroundWorkflows.delete(oldest.value);
+            }
+            return [];
+          }
+        }
         const noTurnFallback = noTurnFallbackFor(piEvent.data, context);
         const deferredOpen: ThreadDelta[] =
           deferredImageReadPath === null
@@ -1169,7 +1392,10 @@ export function createPiDeltaTranslator(
             resultText,
             exitCode: piEvent.data.isError ? 1 : 0,
             ...(aggregatedOutput === undefined ? {} : { aggregatedOutput }),
-            item: terminalShape,
+            item:
+              terminalShape.type === "delegation"
+                ? { ...terminalShape, summary: resultText }
+                : terminalShape,
             noTurnFallback,
           },
         ];

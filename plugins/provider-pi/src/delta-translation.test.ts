@@ -1068,6 +1068,232 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it.each([
+    [
+      { description: "Inspect the code", task: "Read app.ts" },
+      "Inspect the code",
+    ],
+    [{ task: "Read app.ts" }, "Read app.ts"],
+    [{ task: "a".repeat(121) }, "a".repeat(120)],
+    [{}, "Subagent"],
+  ])("opens and closes one delegation for subagent args %j", (args, label) => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const toolCallId = "subagent-call-1";
+    const started = harness.translate(
+      sdkMessage({
+        type: "tool_execution_start",
+        toolCallId,
+        toolName: "subagent",
+        args: { agent: "reviewer", async: true, ...args },
+      }),
+    );
+    expect(started).toMatchObject([
+      {
+        type: "item/started",
+        item: {
+          type: "delegation",
+          childRef: toolCallId,
+          label,
+          background: false,
+          presentation: { title: label, detail: "reviewer" },
+        },
+      },
+    ]);
+    const startedId =
+      started[0]?.type === "item/started" ? started[0].item.id : "";
+    const result =
+      "Run fan-out: 1/64 used, 63 remaining\n47\nMission: review (completed)";
+    const completed = harness.translate(
+      sdkMessage({
+        type: "tool_execution_end",
+        toolCallId,
+        toolName: "subagent",
+        result: { content: [{ type: "text", text: result }] },
+        isError: false,
+      }),
+    );
+    expect(completed).toMatchObject([
+      {
+        type: "item/completed",
+        item: {
+          type: "delegation",
+          id: startedId,
+          childRef: toolCallId,
+          status: "completed",
+          summary: result,
+        },
+      },
+    ]);
+  });
+
+  it("keeps a swarm pending across turns until Pi reports its results", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const toolCallId = "workflow-call";
+    const [started] = harness.translate(
+      sdkMessage({
+        type: "tool_execution_start",
+        toolName: "subagent",
+        toolCallId,
+        args: { workflow: "custom-workflow", async: true },
+      }),
+    );
+    expect(started).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "delegation",
+        childRef: toolCallId,
+        label: "Subagent workflow: custom-workflow",
+        status: "pending",
+        background: true,
+      },
+    });
+    expect(
+      harness.translate(
+        sdkMessage({
+          type: "tool_execution_end",
+          toolName: "subagent",
+          toolCallId,
+          isError: false,
+          result: { content: [], details: { asyncId: "workflow-run" } },
+        }),
+      ),
+    ).toEqual([]);
+    const turnEnd = harness.translate(
+      loadFixture("agent-end-with-message.json"),
+    );
+    expect(turnEnd).not.toContainEqual(
+      expect.objectContaining({
+        item: expect.objectContaining({ type: "delegation" }),
+      }),
+    );
+
+    const summary = "Workflow completed with 3 child run(s).";
+    const notify = sdkMessage({
+      type: "message_start",
+      message: {
+        role: "custom",
+        customType: "subagent-notify",
+        display: false,
+        content: summary + "\n\nParent action: report the results",
+        details: { runs: [{ runId: "workflow-run", status: "completed" }] },
+      },
+    });
+    expect(harness.translate(notify)).toMatchObject([
+      {
+        type: "item/delegation/completed",
+        item: {
+          type: "delegation",
+          id: started?.type === "item/started" ? started.item.id : "",
+          summary,
+          status: "completed",
+        },
+      },
+    ]);
+    expect(harness.translate(notify)).toEqual([]);
+  });
+
+  it("renders parallel workflow children as three separate delegations", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const send = (event: Record<string, unknown>) =>
+      harness.translate(sdkMessage(event));
+    send({
+      type: "tool_execution_start",
+      toolName: "subagent",
+      toolCallId: "workflow",
+      args: { workflow: "parallel", async: true },
+    });
+    send({
+      type: "tool_execution_end",
+      toolName: "subagent",
+      toolCallId: "workflow",
+      isError: false,
+      result: {
+        details: {
+          asyncId: "run",
+          workflow: { resource: { name: "parallel" } },
+        },
+      },
+    });
+    const keys = ["task-1", "task-2", "task-3"];
+    const startedIds = keys.map((key) => {
+      const [started] = send({
+        type: "tool_execution_start",
+        toolName: "subagent_launch",
+        toolCallId: key,
+        args: { workflowRunId: "run", key, agent: "scout" },
+      });
+      expect(started).toMatchObject({
+        type: "item/started",
+        item: { type: "delegation", label: key, status: "pending" },
+      });
+      expect(
+        send({
+          type: "tool_execution_end",
+          toolName: "subagent_launch",
+          toolCallId: key,
+          isError: false,
+          result: "Approved",
+        }),
+      ).toEqual([]);
+      return started?.type === "item/started" ? started.item.id : "";
+    });
+    harness.translate(loadFixture("agent-end-with-message.json"));
+    const results = send({
+      type: "message_start",
+      message: {
+        role: "custom",
+        customType: "subagent-notify",
+        display: false,
+        content: "Workflow ended",
+        details: {
+          runs: [
+            {
+              runId: "run",
+              status: "failed",
+              childOutputs: keys.map((workflowKey, index) => ({
+                workflowKey,
+                status: index === 1 ? "failed" : "completed",
+              })),
+            },
+          ],
+        },
+      },
+    });
+    expect(results).toMatchObject(
+      keys.map((label, index) => ({
+        type: "item/delegation/completed",
+        item: {
+          type: "delegation",
+          label,
+          id: startedIds[index],
+          status: index === 1 ? "failed" : "completed",
+        },
+      })),
+    );
+  });
+
+  it.each([
+    ["bash", { command: "ls", cwd: "/work" }, "commandExecution"],
+    ["read", { path: "src/app.ts" }, "toolCall"],
+  ])("preserves the %s tool's item type", (toolName, args, type) => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    expect(
+      harness.translate(
+        sdkMessage({
+          type: "tool_execution_start",
+          toolCallId: "ordinary-tool-call",
+          toolName,
+          args,
+        }),
+      ),
+    ).toMatchObject([{ type: "item/started", item: { type } }]);
+  });
+
   it("keeps the call's own cwd over the session's", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
