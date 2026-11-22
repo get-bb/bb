@@ -949,11 +949,19 @@ export function NewThreadComposer({
         : newThreadEnvironmentArgsToSeed(seedEnvironment),
     [seedEnvironment],
   );
+  const [requestedEnvironmentLookup, setRequestedEnvironmentLookup] = useState<{
+    signature: string;
+    selectionValue: string;
+  } | null>(null);
+  const lookupSelectionValue =
+    requestedEnvironmentLookup?.signature === seedSignature
+      ? requestedEnvironmentLookup.selectionValue
+      : environmentSeed?.selectionValue;
   const seededReuseEnvironmentId = useMemo(() => {
-    if (environmentSeed === null) return null;
-    const parsed = parseEnvironmentValue(environmentSeed.selectionValue);
+    if (lookupSelectionValue === undefined) return null;
+    const parsed = parseEnvironmentValue(lookupSelectionValue);
     return parsed?.type === "reuse" ? parsed.environmentId : null;
-  }, [environmentSeed]);
+  }, [lookupSelectionValue]);
   const seededReuseIsThreadDerived =
     seededReuseEnvironmentId !== null &&
     threadDerivedReuseOptions.some(
@@ -1193,7 +1201,7 @@ export function NewThreadComposer({
     serviceTier,
     serviceTierSupportByProvider,
     serviceTierOptions,
-    setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
+    setEnvironmentSelectionValue: setRawEnvironmentSelectionValue,
     setPermissionMode,
     setProviderModelReasoning,
     setReasoningLevel,
@@ -1207,6 +1215,24 @@ export function NewThreadComposer({
     sessionOptionSelections,
     setSessionOption,
   } = creationOptions;
+  const trackEnvironmentLookup = useCallback(
+    (selectionValue: string) => {
+      setRequestedEnvironmentLookup((current) =>
+        current?.signature === seedSignature &&
+        current.selectionValue === selectionValue
+          ? current
+          : { signature: seedSignature, selectionValue },
+      );
+    },
+    [seedSignature],
+  );
+  const setCreationEnvironmentSelectionValue = useCallback(
+    (value: string) => {
+      trackEnvironmentLookup(value);
+      setRawEnvironmentSelectionValue(value);
+    },
+    [setRawEnvironmentSelectionValue, trackEnvironmentLookup],
+  );
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const placedSessionOptions = useMemo(
     () =>
@@ -1261,6 +1287,7 @@ export function NewThreadComposer({
       value: string,
       providerTarget: string | EnvironmentMachineSelection | null = null,
     ) => {
+      trackEnvironmentLookup(value);
       const providerMachine =
         typeof providerTarget === "string"
           ? { type: "existing" as const, hostId: providerTarget }
@@ -1291,15 +1318,16 @@ export function NewThreadComposer({
           providerMachine?.type === "existing" ? providerMachine.hostId : "",
         );
       }
-      setCreationEnvironmentSelectionValue(value);
+      setRawEnvironmentSelectionValue(value);
     },
     [
       environmentSelectionValue,
       pickedProviderMachine,
-      setCreationEnvironmentSelectionValue,
+      setRawEnvironmentSelectionValue,
       selectionScope,
       setStoredMachineId,
       snapshotDraftBeforeOptionChange,
+      trackEnvironmentLookup,
     ],
   );
   const effectiveEnvironmentValue = useMemo(
@@ -2011,7 +2039,15 @@ export function NewThreadComposer({
   const selectionState =
     useCommittedComposerState<NewThreadComposerSelectionState>((version) => ({
       version,
-      isSettled: modelCatalogIsSettled && !environmentInputsPending,
+      isSettled:
+        modelCatalogIsSettled &&
+        !environmentInputsPending &&
+        !(
+          parsedEnvironment?.type === "reuse" &&
+          parsedEnvironment.environmentId ===
+            seededReuseEnvironment?.environmentId &&
+          seededReuseEnvironment.status === "pending"
+        ),
       requestedProjectId: requestedCandidate,
       projectId,
       selectedProviderId,

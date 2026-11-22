@@ -5272,8 +5272,8 @@ export interface NewThreadComposerProps {
    * - A `host` environment whose host no longer exists (or whose project has
    *   no source on it) falls back to the composer's default host, exactly as
    *   the primary compose surface would.
-   * - A `reuse` environment whose worktree no longer has unarchived threads
-   *   falls back the same way.
+   * - A `reuse` environment is looked up directly, even without unarchived
+   *   threads. A missing or destroyed environment falls back the same way.
    * - An `unmanaged` workspace's `path` has no composer control; the seeded
    *   selection submits `path: null` (the host's configured checkout). The
    *   composer itself never produces a non-null `path`, so real round trips
