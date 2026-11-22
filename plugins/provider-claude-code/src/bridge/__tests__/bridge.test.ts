@@ -10,7 +10,15 @@ import {
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { z } from "zod";
 import type {
   CanUseTool,
@@ -699,6 +707,18 @@ async function forwardAskUserQuestion({
     resultPromise,
   };
 }
+
+const sharedWorktreeRoot = mkdtempSync(
+  join(tmpdir(), "bb-claude-shared-worktree-"),
+);
+const otherWorktreeRoot = mkdtempSync(
+  join(tmpdir(), "bb-claude-other-worktree-"),
+);
+
+afterAll(() => {
+  rmSync(sharedWorktreeRoot, { recursive: true, force: true });
+  rmSync(otherWorktreeRoot, { recursive: true, force: true });
+});
 
 describe("bridge", () => {
   beforeEach(() => {
@@ -1821,6 +1841,7 @@ describe("bridge", () => {
   });
 
   it("leaves the Claude sandbox off when the sandbox setting is disabled", () => {
+    const worktreeGitDir = mkdtempSync(join(tmpdir(), "bb-claude-roots-"));
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
@@ -1829,7 +1850,7 @@ describe("bridge", () => {
         sandboxEnabled: false,
         serviceTier: "default",
         workflowsEnabled: false,
-        additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
+        additionalWorkspaceWriteRoots: [worktreeGitDir],
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1841,9 +1862,8 @@ describe("bridge", () => {
 
     expect(options.permissionMode).toBe("acceptEdits");
     expect(options).not.toHaveProperty("sandbox");
-    expect(options.additionalDirectories).toEqual([
-      "/repo/.git/worktrees/bb13",
-    ]);
+    expect(options.additionalDirectories).toEqual([worktreeGitDir]);
+    rmSync(worktreeGitDir, { recursive: true, force: true });
   });
 
   describe("Bash canUseTool policy", () => {
@@ -2711,7 +2731,7 @@ describe("bridge", () => {
           threadId,
           input: [{ type: "text", text: "change permission roots" }],
           providerOptions: {
-            additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+            additionalWorkspaceWriteRoots: [sharedWorktreeRoot],
           },
         }),
       );
@@ -2955,7 +2975,7 @@ describe("bridge", () => {
               workflowsEnabled: false,
               claudeCodePermissionMode: "plan",
               sandboxEnabled: true,
-              additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+              additionalWorkspaceWriteRoots: [sharedWorktreeRoot],
             },
           },
         });
@@ -2974,7 +2994,7 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: false,
             sandboxEnabled: true,
-            additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+            additionalWorkspaceWriteRoots: [sharedWorktreeRoot],
           },
         };
         bridge.sendRequest(10, "turn/start", {
@@ -3001,17 +3021,17 @@ describe("bridge", () => {
             expect(getLatestQueryOptions()).toMatchObject({
               sandbox: {
                 enabled: true,
-                filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+                filesystem: { allowWrite: [sharedWorktreeRoot] },
               },
-              additionalDirectories: ["/tmp/shared-worktree"],
+              additionalDirectories: [sharedWorktreeRoot],
             });
           } else
             expect(queries[0]?.applyFlagSettings).toHaveBeenLastCalledWith({
               sandbox: expect.objectContaining({
                 enabled: true,
-                filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+                filesystem: { allowWrite: [sharedWorktreeRoot] },
               }),
-              permissions: { additionalDirectories: ["/tmp/shared-worktree"] },
+              permissions: { additionalDirectories: [sharedWorktreeRoot] },
             });
           expect(queries[0]?.setPermissionMode).not.toHaveBeenCalled();
         }
@@ -3093,10 +3113,10 @@ describe("bridge", () => {
               sandbox: sandboxEnabled
                 ? expect.objectContaining({
                     enabled: true,
-                    filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+                    filesystem: { allowWrite: [sharedWorktreeRoot] },
                   })
                 : { enabled: false },
-              permissions: { additionalDirectories: ["/tmp/shared-worktree"] },
+              permissions: { additionalDirectories: [sharedWorktreeRoot] },
             });
             expect(queries).toHaveLength(1);
             await readNextPrompt(getLatestQueryCall());
@@ -4096,7 +4116,7 @@ describe("bridge", () => {
     }
   });
 
-  it("passes thread/start additional workspace-write roots to Claude SDK options", async () => {
+  it("passes thread/start write roots to the Claude sandbox and only directories to --add-dir", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4104,6 +4124,12 @@ describe("bridge", () => {
       queries.push(query);
       return query;
     });
+    const rootsDir = mkdtempSync(join(tmpdir(), "bb-claude-roots-"));
+    const worktreeGitDir = join(rootsDir, "worktrees", "bb13");
+    const objectsDir = join(rootsDir, "objects");
+    const packedRefsLock = join(rootsDir, "packed-refs.lock");
+    mkdirSync(worktreeGitDir, { recursive: true });
+    mkdirSync(objectsDir);
 
     try {
       bridge.sendRequest(1, "thread/start", {
@@ -4119,8 +4145,9 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: false,
             additionalWorkspaceWriteRoots: [
-              "/repo/.git/worktrees/bb13",
-              "/repo/.git/objects",
+              worktreeGitDir,
+              objectsDir,
+              packedRefsLock,
             ],
           },
         },
@@ -4131,13 +4158,10 @@ describe("bridge", () => {
         expect.objectContaining({
           options: expect.objectContaining({
             permissionMode: "acceptEdits",
-            additionalDirectories: [
-              "/repo/.git/worktrees/bb13",
-              "/repo/.git/objects",
-            ],
+            additionalDirectories: [worktreeGitDir, objectsDir],
             sandbox: expect.objectContaining({
               filesystem: {
-                allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
+                allowWrite: [worktreeGitDir, objectsDir, packedRefsLock],
               },
             }),
           }),
@@ -4155,6 +4179,7 @@ describe("bridge", () => {
       await bridge.waitForResponse(2);
     } finally {
       bridge.restore();
+      rmSync(rootsDir, { recursive: true, force: true });
     }
   });
 
@@ -4166,6 +4191,11 @@ describe("bridge", () => {
       queries.push(query);
       return query;
     });
+    const rootsDir = mkdtempSync(join(tmpdir(), "bb-claude-roots-"));
+    const worktreeGitDir = join(rootsDir, "worktrees", "bb13");
+    const objectsDir = join(rootsDir, "objects");
+    mkdirSync(worktreeGitDir, { recursive: true });
+    mkdirSync(objectsDir);
 
     try {
       bridge.sendRequest(1, "thread/resume", {
@@ -4180,10 +4210,7 @@ describe("bridge", () => {
           permissionEscalation: "deny",
           providerOptions: {
             workflowsEnabled: false,
-            additionalWorkspaceWriteRoots: [
-              "/repo/.git/worktrees/bb13",
-              "/repo/.git/objects",
-            ],
+            additionalWorkspaceWriteRoots: [worktreeGitDir, objectsDir],
           },
         },
       });
@@ -4193,13 +4220,10 @@ describe("bridge", () => {
         expect.objectContaining({
           options: expect.objectContaining({
             permissionMode: "auto",
-            additionalDirectories: [
-              "/repo/.git/worktrees/bb13",
-              "/repo/.git/objects",
-            ],
+            additionalDirectories: [worktreeGitDir, objectsDir],
             sandbox: expect.objectContaining({
               filesystem: {
-                allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
+                allowWrite: [worktreeGitDir, objectsDir],
               },
             }),
           }),
@@ -4217,6 +4241,7 @@ describe("bridge", () => {
       await bridge.waitForResponse(2);
     } finally {
       bridge.restore();
+      rmSync(rootsDir, { recursive: true, force: true });
     }
   });
 
@@ -4649,7 +4674,7 @@ describe("bridge", () => {
         providerOptions: {
           workflowsEnabled: false,
           sandboxEnabled: true,
-          additionalWorkspaceWriteRoots: ["/tmp/shared-worktree"],
+          additionalWorkspaceWriteRoots: [sharedWorktreeRoot],
         },
       });
 
@@ -4693,7 +4718,7 @@ describe("bridge", () => {
             providerOptions: {
               workflowsEnabled: false,
               sandboxEnabled: true,
-              additionalWorkspaceWriteRoots: ["/tmp/other-worktree"],
+              additionalWorkspaceWriteRoots: [otherWorktreeRoot],
             },
           },
         });
@@ -4742,10 +4767,10 @@ describe("bridge", () => {
                 ? { enabled: false }
                 : expect.objectContaining({
                     enabled: true,
-                    filesystem: { allowWrite: ["/tmp/shared-worktree"] },
+                    filesystem: { allowWrite: [sharedWorktreeRoot] },
                   }),
               permissions: {
-                additionalDirectories: full ? [] : ["/tmp/shared-worktree"],
+                additionalDirectories: full ? [] : [sharedWorktreeRoot],
               },
             });
           }

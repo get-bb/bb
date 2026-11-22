@@ -139,6 +139,7 @@ function registerRemoteRuntimeFileResponder(
             projectSkills,
             projectSkillsTruncated: false,
             sharedSkills: args.sharedSkills ?? [],
+            folders: [],
           },
         };
       }
@@ -981,8 +982,13 @@ describe("thread runtime config", () => {
         expect.objectContaining({
           type: "host.read_workspace_agent_context",
           rootPath: workspacePath,
+          folderPaths: [],
         }),
       ]);
+      expect(runtimeConfig.additionalWorkspaceFolders).toEqual([]);
+      expect(runtimeConfig.instructions).not.toContain(
+        "You are working across these folders:",
+      );
     });
   });
 

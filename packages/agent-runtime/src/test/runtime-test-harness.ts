@@ -132,11 +132,13 @@ export function scriptedEchoProcessEnv(
   return { SCRIPTED_ECHO_OPTIONS: JSON.stringify(script) };
 }
 
-type LaunchBearingMethod =
-  | "ensureProvider"
+type SessionStartMethod =
   | "startThread"
   | "prepareThreadRewind"
-  | "resumeThread"
+  | "resumeThread";
+
+type LaunchBearingMethod =
+  | "ensureProvider"
   | "archiveThread"
   | "unarchiveThread"
   | "listModels"
@@ -151,11 +153,25 @@ type WithDefaultBridgeLaunch<TMethod extends (args: never) => unknown> = (
   },
 ) => ReturnType<TMethod>;
 
+type WithDefaultSessionStart<TMethod extends (args: never) => unknown> = (
+  args: Omit<
+    Parameters<TMethod>[0],
+    "bridgeLaunch" | "additionalWorkspaceWriteRoots"
+  > & {
+    bridgeLaunch?: AgentRuntimeBridgeLaunch;
+    additionalWorkspaceWriteRoots?: readonly string[];
+  },
+) => ReturnType<TMethod>;
+
 export type LaunchBoundAgentRuntime = Omit<
   AgentRuntime,
-  LaunchBearingMethod
+  LaunchBearingMethod | SessionStartMethod
 > & {
   [TMethod in LaunchBearingMethod]: WithDefaultBridgeLaunch<
+    AgentRuntime[TMethod]
+  >;
+} & {
+  [TMethod in SessionStartMethod]: WithDefaultSessionStart<
     AgentRuntime[TMethod]
   >;
 };
@@ -167,10 +183,24 @@ export function withBridgeLaunch(
   return {
     ...runtime,
     ensureProvider: (args) => runtime.ensureProvider({ bridgeLaunch, ...args }),
-    startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
+    startThread: (args) =>
+      runtime.startThread({
+        bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
+        ...args,
+      }),
     prepareThreadRewind: (args) =>
-      runtime.prepareThreadRewind({ bridgeLaunch, ...args }),
-    resumeThread: (args) => runtime.resumeThread({ bridgeLaunch, ...args }),
+      runtime.prepareThreadRewind({
+        bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
+        ...args,
+      }),
+    resumeThread: (args) =>
+      runtime.resumeThread({
+        bridgeLaunch,
+        additionalWorkspaceWriteRoots: [],
+        ...args,
+      }),
     archiveThread: (args) => runtime.archiveThread({ bridgeLaunch, ...args }),
     unarchiveThread: (args) =>
       runtime.unarchiveThread({ bridgeLaunch, ...args }),

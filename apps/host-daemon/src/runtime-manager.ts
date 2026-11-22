@@ -125,8 +125,15 @@ export interface RuntimeEntry {
   skillRoots: readonly AgentRuntimeSkillRoot[];
   retainedSkillCatalogHashes: Set<string>;
   workspace: HostWorkspace;
+  workspaceWriteRoots: readonly string[];
   path: string;
   terminals: Set<string>;
+}
+
+export interface ResolveThreadWorkspaceWriteRootsArgs {
+  additionalWorkspaceFolders: readonly string[];
+  entry: RuntimeEntry;
+  threadId: string;
 }
 
 interface InjectedSkillsChangedNotification {
@@ -203,11 +210,6 @@ interface ReleaseThreadFromOtherEnvironmentsResult {
   activeTurnEnvironmentIds: string[];
   providerCheckpointId: string | null;
   releasedEnvironmentIds: string[];
-}
-
-interface RuntimeWorkspaceWriteRootsArgs {
-  threadStorageRootPath: string | null | undefined;
-  workspaceRoots: readonly string[];
 }
 
 interface PendingEnvironmentProvision {
@@ -312,14 +314,49 @@ export class RuntimeManager {
     this.ensureDataDirSkillsWatcher();
   }
 
-  private runtimeWorkspaceWriteRoots(
-    args: RuntimeWorkspaceWriteRootsArgs,
-  ): string[] {
-    const roots = [...args.workspaceRoots];
-    if (args.threadStorageRootPath) {
-      roots.push(args.threadStorageRootPath);
+  async resolveThreadWorkspaceWriteRoots(
+    args: ResolveThreadWorkspaceWriteRootsArgs,
+  ): Promise<string[]> {
+    for (const folderPath of args.additionalWorkspaceFolders) {
+      if (!path.isAbsolute(folderPath)) {
+        throw new WorkspaceError(
+          "invalid_path",
+          `Additional workspace folder must be an absolute path: ${folderPath}`,
+        );
+      }
     }
-    return [...new Set(roots)];
+    const folderGitRoots = await Promise.all(
+      args.additionalWorkspaceFolders.map((folderPath) =>
+        this.folderGitWriteRoots(folderPath),
+      ),
+    );
+    const threadStorageRootPath = this.options.threadStorageRootPath;
+    const threadStoragePath = threadStorageRootPath
+      ? path.join(threadStorageRootPath, args.threadId)
+      : null;
+    if (threadStoragePath) {
+      await mkdir(threadStoragePath, { recursive: true });
+    }
+    return [
+      ...new Set([
+        ...args.entry.workspaceWriteRoots,
+        ...args.additionalWorkspaceFolders,
+        ...folderGitRoots.flat(),
+        ...(threadStoragePath ? [threadStoragePath] : []),
+      ]),
+    ];
+  }
+
+  private async folderGitWriteRoots(folderPath: string): Promise<string[]> {
+    try {
+      const folder = await this.provisionHostWorkspace({ path: folderPath });
+      return await folder.getAdditionalWorkspaceWriteRoots();
+    } catch (error) {
+      if (error instanceof WorkspaceError && error.code === "path_not_found") {
+        return [];
+      }
+      throw error;
+    }
   }
 
   get(environmentId: string): RuntimeEntry | undefined {
@@ -1178,7 +1215,6 @@ export class RuntimeManager {
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: [],
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
@@ -1228,17 +1264,12 @@ export class RuntimeManager {
     });
     const workspaceWriteRoots =
       await workspace.getAdditionalWorkspaceWriteRoots();
-    const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
-      threadStorageRootPath: this.options.threadStorageRootPath,
-      workspaceRoots: workspaceWriteRoots,
-    });
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
     const shellEnvGeneration = this.shellEnvGeneration;
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
-      additionalWorkspaceWriteRoots,
       ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
@@ -1303,6 +1334,7 @@ export class RuntimeManager {
       ),
       terminals: new Set<string>(),
       workspace,
+      workspaceWriteRoots,
       path: workspace.path,
     };
   }

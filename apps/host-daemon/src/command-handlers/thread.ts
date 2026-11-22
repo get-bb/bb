@@ -215,6 +215,12 @@ async function resumeThreadRuntimeIfMissing(
     options,
   );
   await entry.runtime.resumeThread({
+    additionalWorkspaceWriteRoots:
+      await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+        additionalWorkspaceFolders: resumeContext.additionalWorkspaceFolders,
+        entry,
+        threadId: command.threadId,
+      }),
     bridgeLaunch,
     skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
@@ -255,6 +261,12 @@ export async function startThread(
       options,
     );
     const result = await entry.runtime.startThread({
+      additionalWorkspaceWriteRoots:
+        await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+          additionalWorkspaceFolders: command.additionalWorkspaceFolders,
+          entry,
+          threadId: command.threadId,
+        }),
       bridgeLaunch,
       skillRoots: entry.skillRoots,
       environmentId: command.environmentId,
@@ -287,6 +299,12 @@ export async function prepareThreadRewind(
     options,
   );
   return entry.runtime.prepareThreadRewind({
+    additionalWorkspaceWriteRoots:
+      await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+        additionalWorkspaceFolders: command.additionalWorkspaceFolders,
+        entry,
+        threadId: command.threadId,
+      }),
     bridgeLaunch,
     skillRoots: entry.skillRoots,
     environmentId: command.environmentId,

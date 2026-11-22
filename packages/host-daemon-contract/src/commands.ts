@@ -217,6 +217,7 @@ const hostDaemonThreadRuntimeContextSchema = z
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
+    additionalWorkspaceFolders: z.array(z.string().min(1)),
     dynamicTools: z.array(dynamicToolSchema),
     contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
@@ -763,6 +764,7 @@ const hostReadWorkspaceAgentContextCommandSchema = z
   .object({
     type: z.literal("host.read_workspace_agent_context"),
     includeAgentInstructions: z.boolean(),
+    folderPaths: z.array(z.string().min(1)),
     projectSkillRead: z
       .object({
         limit: z.number().int().positive(),
@@ -1090,6 +1092,9 @@ const hostReadWorkspaceAgentContextResultSchema = z
     projectSkills: z.array(workspaceProjectSkillFileSchema),
     projectSkillsTruncated: z.boolean(),
     sharedSkills: z.array(discoveredSkillSchema),
+    folders: z.array(
+      z.object({ path: z.string(), isGitRepo: z.boolean() }).strict(),
+    ),
   })
   .strict();
 
