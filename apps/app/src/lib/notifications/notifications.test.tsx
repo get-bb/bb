@@ -8,7 +8,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { toast as sonnerToast } from "sonner";
 import { AppToasterView } from "@/components/AppToasterView";
 import { AppToastContent, appToast } from "@/components/ui/app-toast";
 import { createPluginToast } from "./plugin-toast";
@@ -42,7 +41,7 @@ describe("toast history", () => {
 
   it("renders and records plugin toasts through core's toast", async () => {
     render(<AppToasterView />);
-    const toast = createPluginToast(sonnerToast);
+    const toast = createPluginToast();
 
     act(() => {
       toast.error("Sandbox boot failed", { description: "exit code 1" });

@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 it("delivers startup plugin notifications after the toaster mounts, including custom toasts and dismissals", async () => {
-  const toast = createPluginToast(sonnerToast);
+  const toast = createPluginToast();
   const normalId = toast.message("Plugin started");
   const rawId = toast.success("Custom action", {
     action: <button>Inspect startup</button>,
