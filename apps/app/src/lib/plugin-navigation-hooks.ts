@@ -180,9 +180,7 @@ function createBbNavigate(
         isAutomationEditRoutePath(pathname);
       onNavigate?.();
       openNewThread({
-        navigate: (route, navigateOptions) => {
-          void navigate(route, navigateOptions);
-        },
+        navigate,
         store,
         isCompact,
         ...(options?.projectId !== undefined

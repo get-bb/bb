@@ -68,13 +68,8 @@ export function openNewThread({
     alreadyOpen = placed.alreadyOpen;
   }
   const state = newThreadRouteState(options);
-  const navigateOptions = {
+  void navigate(getRootComposeRoutePath(), {
     ...(options.replace === true || alreadyOpen ? { replace: true } : {}),
     ...(Object.keys(state).length > 0 ? { state } : {}),
-  };
-  if (Object.keys(navigateOptions).length === 0) {
-    void navigate(getRootComposeRoutePath());
-    return;
-  }
-  void navigate(getRootComposeRoutePath(), navigateOptions);
+  });
 }

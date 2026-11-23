@@ -81,7 +81,7 @@ describe("openNewThread", () => {
     for (const options of [{ isCompact: true }, { split: false }]) {
       const { navigate, layout } = open(start, options);
       expect(layout).toBe(start);
-      expect(navigate).toHaveBeenCalledWith("/");
+      expect(navigate).toHaveBeenCalledWith("/", {});
     }
   });
 
