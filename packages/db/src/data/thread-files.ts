@@ -192,21 +192,6 @@ export function readThreadTableRowsPage(
   };
 }
 
-export function readThreadTableRows(
-  db: DbQueryConnection,
-  threadId: string,
-): ThreadFileTableRow[] {
-  return THREAD_FILE_TABLES.flatMap((table) => {
-    const rows: ThreadFileTableRow[] = [];
-    for (let afterRowid = 0; ; ) {
-      const page = readThreadTableRowsPage(db, { afterRowid, limit: 1000, table, threadId });
-      rows.push(...page.rows);
-      if (page.lastRowid === null) return rows;
-      afterRowid = page.lastRowid;
-    }
-  });
-}
-
 function existingId(
   db: DbQueryConnection,
   table: "environments" | "thread_sections" | "threads",

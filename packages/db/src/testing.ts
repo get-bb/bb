@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { and, eq, gt } from "drizzle-orm";
 import { createConnection } from "./connection.js";
 import type { CreateConnectionOptions, DbConnection } from "./connection.js";
+import {
+  readThreadTableRowsPage,
+  THREAD_FILE_TABLES,
+  type ThreadFileTableRow,
+} from "./data/thread-files.js";
 import { migrate } from "./migrate.js";
 import { events } from "./schema.js";
 
@@ -73,6 +78,26 @@ export function listEvents(
     )
     .orderBy(events.sequence)
     .all();
+}
+
+export function readThreadTableRows(
+  db: DbConnection,
+  threadId: string,
+): ThreadFileTableRow[] {
+  return THREAD_FILE_TABLES.flatMap((table) => {
+    const rows: ThreadFileTableRow[] = [];
+    for (let afterRowid = 0; ;) {
+      const page = readThreadTableRowsPage(db, {
+        afterRowid,
+        limit: 1000,
+        table,
+        threadId,
+      });
+      rows.push(...page.rows);
+      if (page.lastRowid === null) return rows;
+      afterRowid = page.lastRowid;
+    }
+  });
 }
 
 export { forgetThreadEventRewriteGenerations } from "./data/event-rewrite-generation.js";

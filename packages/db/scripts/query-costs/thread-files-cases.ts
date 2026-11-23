@@ -5,7 +5,6 @@ import {
   insertThreadTableRow,
   listThreadAttachments,
   readThreadEventWindow,
-  readThreadTableRows,
   readThreadTableRowsPage,
   restartThreadArchiveClock,
   unhideImportedThread,
@@ -74,14 +73,6 @@ const THREAD_FILE_CASES: readonly QueryCostCase<ThreadFilesSeed>[] = [
         table: "prompt_history_entries",
         threadId: fixture.threadId,
       }),
-  },
-  {
-    name: `${THREAD_FILES}#readThreadTableRows`,
-    growsWith: {
-      history:
-        "Reads every row the thread owns; export pages through readThreadTableRowsPage instead",
-    },
-    run: (db, fixture) => readThreadTableRows(db, fixture.threadId),
   },
   {
     name: `${THREAD_FILES}#insertHiddenThreadRow`,

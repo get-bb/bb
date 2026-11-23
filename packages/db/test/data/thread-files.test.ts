@@ -10,12 +10,14 @@ import {
   insertThreadHistoryRows,
   insertThreadTableRow,
   readThreadEventWindow,
-  readThreadTableRows,
   restartThreadArchiveClock,
 } from "../../src/data/thread-files.js";
 import { archiveThread, createThread, getThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
-import { createMigratedConnection } from "../../src/testing.js";
+import {
+  createMigratedConnection,
+  readThreadTableRows,
+} from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();

@@ -9,10 +9,10 @@ import {
   getThread,
   getThreadPurge,
   insertHiddenThreadRow,
-  readThreadTableRows,
   requestThreadPurge,
   threads,
 } from "@bb/db";
+import { readThreadTableRows } from "@bb/db/testing";
 import { turnScope } from "@bb/domain";
 import type {
   PluginHookName,
