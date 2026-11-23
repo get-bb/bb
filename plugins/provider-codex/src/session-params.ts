@@ -6,7 +6,6 @@ import {
   type ReasoningLevel,
   type RuntimePermissionPolicy,
   type ServiceTier,
-  buildShellEnvOverrides,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import fs from "node:fs";
 import path from "node:path";
@@ -618,31 +617,12 @@ export function toCodexUserInput(
   return [...chunks, ...selected.values()];
 }
 
-function buildShellEnvironmentPolicyConfig(
-  envVars?: Record<string, string>,
-): Record<string, string> | undefined {
-  if (!envVars) {
-    return undefined;
-  }
-  const config: Record<string, string> = {};
-  for (const [key, value] of Object.entries(buildShellEnvOverrides(envVars))) {
-    config[`shell_environment_policy.set.${key}`] = value;
-  }
-  return Object.keys(config).length > 0 ? config : undefined;
-}
-
 export function buildCodexConfig(
   args: BuildCodexConfigArgs,
 ): { [key in string]?: JsonValue } | undefined {
   const config: { [key in string]?: JsonValue } = {};
   if (args.threadId) {
     config["shell_environment_policy.set.BB_THREAD_ID"] = args.threadId;
-  }
-  const shellEnvironmentConfig = buildShellEnvironmentPolicyConfig(
-    args.options?.envVars,
-  );
-  if (shellEnvironmentConfig) {
-    Object.assign(config, shellEnvironmentConfig);
   }
   if (args.options?.reasoningLevel) {
     config["model_reasoning_effort"] = toCodexReasoningEffort(
