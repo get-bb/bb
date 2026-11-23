@@ -1,10 +1,5 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -22,8 +17,9 @@ function findDiffView() {
 
 function hasFullFileContents(): boolean {
   return (
-    screen.getByTestId("bb-diff").getAttribute("data-has-full-file-contents") ===
-    "true"
+    screen
+      .getByTestId("bb-diff")
+      .getAttribute("data-has-full-file-contents") === "true"
   );
 }
 
@@ -198,8 +194,14 @@ describe("DiffFileCard context expansion", () => {
     await waitFor(() => {
       expect(onRequestFileContents).toHaveBeenCalledTimes(2);
     });
-    expect(onRequestFileContents).toHaveBeenCalledWith("api/src/file.ts", "old");
-    expect(onRequestFileContents).toHaveBeenCalledWith("api/src/file.ts", "new");
+    expect(onRequestFileContents).toHaveBeenCalledWith(
+      "api/src/file.ts",
+      "old",
+    );
+    expect(onRequestFileContents).toHaveBeenCalledWith(
+      "api/src/file.ts",
+      "new",
+    );
     await waitFor(() => expect(hasFullFileContents()).toBe(true));
   });
   it("requests the contents during idle time on fine pointers without an explicit action", async () => {

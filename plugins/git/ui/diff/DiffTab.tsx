@@ -12,11 +12,7 @@ import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import type { DiffFileEntry } from "../../contract.js";
 import { GIT_DIFF_TAB_REFERENCE } from "../diff-tab-target.js";
 import { useMergeBase } from "../merge-base.js";
-import {
-  useGitRepoCount,
-  useGitStatus,
-  useWorkspacePath,
-} from "../queries.js";
+import { useGitRepoCount, useGitStatus, useWorkspacePath } from "../queries.js";
 import {
   DEFAULT_DIFF_FILE_FILTERS,
   diffExtensionCounts,
@@ -62,9 +58,7 @@ export function useDiffTabVisible({
   const status = useGitStatus(environment?.id ?? null);
   const notApplicable = status.result?.outcome === "not_applicable";
   const repoCount = useGitRepoCount(environment?.id ?? null, notApplicable);
-  return (
-    environment !== null && (!notApplicable || (repoCount ?? 0) > 0)
-  );
+  return environment !== null && (!notApplicable || (repoCount ?? 0) > 0);
 }
 
 const diffFiltersByEnvironment = new Map<string, DiffFileFilters>();
@@ -94,7 +88,10 @@ function EnvironmentDiffTabGate({ environmentId }: { environmentId: string }) {
     },
     [environmentId],
   );
-  if (status.workspace !== undefined || (notApplicable && (repoCount ?? 0) > 0)) {
+  if (
+    status.workspace !== undefined ||
+    (notApplicable && (repoCount ?? 0) > 0)
+  ) {
     return (
       <EnvironmentDiffTab
         environmentId={environmentId}
@@ -193,12 +190,11 @@ function EnvironmentDiffTab({
     pendingSequence: tabTarget?.sequence ?? null,
     onClearPendingIntent: clearPendingIntent,
   });
-  const {
-    gitDiffFileFilter,
-    onGitDiffSelectionChange,
-    setGitDiffFileFilter,
-  } = panelState;
-  const gitDiffTarget = reposOnly ? REPOS_ONLY_TARGET : panelState.gitDiffTarget;
+  const { gitDiffFileFilter, onGitDiffSelectionChange, setGitDiffFileFilter } =
+    panelState;
+  const gitDiffTarget = reposOnly
+    ? REPOS_ONLY_TARGET
+    : panelState.gitDiffTarget;
   const gitDiffSelectOptions = reposOnly
     ? REPOS_ONLY_SELECT_OPTIONS
     : panelState.gitDiffSelectOptions;

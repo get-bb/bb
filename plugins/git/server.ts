@@ -247,7 +247,9 @@ export default function gitPlugin(bb: BbPluginApi): void {
           environmentId,
           {
             kind: "explicit",
-            ...(mergeBaseBranch === undefined ? {} : { branch: mergeBaseBranch }),
+            ...(mergeBaseBranch === undefined
+              ? {}
+              : { branch: mergeBaseBranch }),
           },
           "bypass",
         ),
@@ -375,7 +377,8 @@ export default function gitPlugin(bb: BbPluginApi): void {
           method === "patches"
             ? parseGitPatchKey(read.key)?.environmentId
             : read.key;
-        if (environmentId !== undefined) watchEnvironment(environmentId, signal);
+        if (environmentId !== undefined)
+          watchEnvironment(environmentId, signal);
         return;
       }
       const input = read.input;

@@ -87,7 +87,11 @@ function requireWorkspacePath(environment: Environment): string {
   return environment.path;
 }
 
-const FILE_READ_FAILURE_CODES = ["ENOENT", "invalid_path", "file_too_large"] as const;
+const FILE_READ_FAILURE_CODES = [
+  "ENOENT",
+  "invalid_path",
+  "file_too_large",
+] as const;
 
 function fileReadFailure(error: unknown): {
   code: (typeof FILE_READ_FAILURE_CODES)[number];
@@ -258,9 +262,7 @@ export function createGitReads(
     const { repos } = await bb.sdk.environments.experimental_repos({
       environmentId,
     });
-    return repos.length === 0
-      ? null
-      : { hostId: environment.hostId, repos };
+    return repos.length === 0 ? null : { hostId: environment.hostId, repos };
   }
 
   function repoStatus(
@@ -384,10 +386,15 @@ export function createGitReads(
         return undefined;
       case "branch_committed":
       case "all": {
-        const mergeBaseRef = await repoMergeBaseRef(environmentId, ready, repo, {
-          type: query.target,
-          mergeBaseBranch: "HEAD",
-        });
+        const mergeBaseRef = await repoMergeBaseRef(
+          environmentId,
+          ready,
+          repo,
+          {
+            type: query.target,
+            mergeBaseBranch: "HEAD",
+          },
+        );
         if (mergeBaseRef === null) return undefined;
         return resolveFileSideRef({ ...query, mergeBaseRef });
       }
@@ -510,13 +517,13 @@ export function createGitReads(
           available.length === 1 && available[0]?.repo.label === ""
             ? available[0].files.shortstat
             : available
-          .filter(({ files }) => files.shortstat.trim().length > 0)
-          .map(({ repo, files }) =>
-            repo.label.length === 0
-              ? files.shortstat.trim()
-              : `${repo.label}: ${files.shortstat.trim()}`,
-          )
-          .join("; "),
+                .filter(({ files }) => files.shortstat.trim().length > 0)
+                .map(({ repo, files }) =>
+                  repo.label.length === 0
+                    ? files.shortstat.trim()
+                    : `${repo.label}: ${files.shortstat.trim()}`,
+                )
+                .join("; "),
         mergeBaseRef:
           available.find(({ repo }) => repo.source === "main")?.files
             .mergeBaseRef ?? null,

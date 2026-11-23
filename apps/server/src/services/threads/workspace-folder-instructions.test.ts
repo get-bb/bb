@@ -16,10 +16,10 @@ describe("renderWorkspaceFolderInstructions", () => {
     expect(
       renderWorkspaceFolderInstructions(
         [
-        { path: "/work/app", exists: true, isGitRepo: true },
-        { path: "/work/api", exists: true, isGitRepo: true },
-        { path: "/data/fixtures", exists: true, isGitRepo: false },
-        { path: "/work/gone", exists: false, isGitRepo: false },
+          { path: "/work/app", exists: true, isGitRepo: true },
+          { path: "/work/api", exists: true, isGitRepo: true },
+          { path: "/data/fixtures", exists: true, isGitRepo: false },
+          { path: "/work/gone", exists: false, isGitRepo: false },
         ],
         [],
       ),

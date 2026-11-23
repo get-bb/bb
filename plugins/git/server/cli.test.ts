@@ -39,10 +39,7 @@ function unexpectedHostCall(call: ExperimentalFakeHostRpcCall): never {
   throw new Error(`unexpected host call ${call.method}`);
 }
 
-function reposOf(environment: {
-  isGitRepo: boolean;
-  path: string | null;
-}) {
+function reposOf(environment: { isGitRepo: boolean; path: string | null }) {
   return {
     repos:
       environment.isGitRepo && environment.path !== null

@@ -50,9 +50,7 @@ function labelFor(mainPath: string, repoPath: string): string {
     candidatePath: repoPath,
   });
   if (inside !== null) return inside;
-  if (
-    splitHostPathRoot(mainPath)?.root !== splitHostPathRoot(repoPath)?.root
-  ) {
+  if (splitHostPathRoot(mainPath)?.root !== splitHostPathRoot(repoPath)?.root) {
     return repoPath;
   }
   const mainSegments = getHostPathSegments(mainPath) ?? [];
@@ -87,15 +85,16 @@ async function findEnvironmentRepos(
     },
   });
   const repos: EnvironmentRepo[] = [];
-  const add = (
-    candidate: Omit<EnvironmentRepo, "label">,
-  ): void => {
+  const add = (candidate: Omit<EnvironmentRepo, "label">): void => {
     if (
       repos.some((repo) => areHostPathsEqual(repo.rootPath, candidate.rootPath))
     ) {
       return;
     }
-    repos.push({ ...candidate, label: labelFor(environment.path, candidate.path) });
+    repos.push({
+      ...candidate,
+      label: labelFor(environment.path, candidate.path),
+    });
   };
   folders.forEach((folder, index) => {
     if (!folder.exists) return;

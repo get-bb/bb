@@ -1231,7 +1231,10 @@ describe("thread runtime config", () => {
         "  - Git repository inside it: /work/repos/api",
         "  - Git repository inside it: /work/repos/web",
       ].join("\n"),
-      expectedTypes: ["host.read_workspace_agent_context", "host.find_git_repos"],
+      expectedTypes: [
+        "host.read_workspace_agent_context",
+        "host.find_git_repos",
+      ],
     },
     {
       name: "leaves a single-repo thread's instructions alone without looking for repos",

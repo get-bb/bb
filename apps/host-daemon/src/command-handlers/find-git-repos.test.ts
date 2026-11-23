@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -95,8 +101,22 @@ describe("findGitRepos", () => {
     ]);
     const workspace = path.join(root, "workspace");
     mkdirSync(workspace);
-    execFileSync("git", ["-C", main, "worktree", "add", "-q", path.join(workspace, "one")]);
-    execFileSync("git", ["-C", main, "worktree", "add", "-q", path.join(workspace, "two")]);
+    execFileSync("git", [
+      "-C",
+      main,
+      "worktree",
+      "add",
+      "-q",
+      path.join(workspace, "one"),
+    ]);
+    execFileSync("git", [
+      "-C",
+      main,
+      "worktree",
+      "add",
+      "-q",
+      path.join(workspace, "two"),
+    ]);
 
     expect((await find([workspace])).folders[0]).toMatchObject({
       repos: [path.join(workspace, "one"), path.join(workspace, "two")],

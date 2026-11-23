@@ -74,10 +74,7 @@ function hostResult(call: ExperimentalFakeHostRpcCall): unknown {
   }
 }
 
-function reposOf(environment: {
-  isGitRepo: boolean;
-  path: string | null;
-}) {
+function reposOf(environment: { isGitRepo: boolean; path: string | null }) {
   return {
     repos:
       environment.isGitRepo && environment.path !== null
@@ -516,7 +513,10 @@ describe("Git plugin Viewed marks", () => {
       },
     });
     if (options.coreMarks !== undefined) {
-      await fake.bb.storage.kv.set(VIEWED_MARKS_FROM_CORE_KEY, options.coreMarks);
+      await fake.bb.storage.kv.set(
+        VIEWED_MARKS_FROM_CORE_KEY,
+        options.coreMarks,
+      );
     }
     plugin(fake.bb);
     const call = (method: string, input: Record<string, unknown>) =>
@@ -530,10 +530,22 @@ describe("Git plugin Viewed marks", () => {
 
   it("keeps marks per environment and diff target", async () => {
     const { call, list } = await viewedHost();
-    await call("markViewed", { target: uncommitted, path: "b.ts", revision: "rev-b" });
-    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-1" });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "b.ts",
+      revision: "rev-b",
+    });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "a.ts",
+      revision: "rev-1",
+    });
     await expect(
-      call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-2" }),
+      call("markViewed", {
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev-2",
+      }),
     ).resolves.toEqual({ ok: true });
     await call("markViewed", {
       target: { type: "commit", sha: "ABCDEF1" },
@@ -547,7 +559,9 @@ describe("Git plugin Viewed marks", () => {
         { path: "b.ts", revision: "rev-b" },
       ],
     });
-    await expect(list(uncommitted, ["b.ts", "missing.ts", "b.ts"])).resolves.toEqual({
+    await expect(
+      list(uncommitted, ["b.ts", "missing.ts", "b.ts"]),
+    ).resolves.toEqual({
       files: [{ path: "b.ts", revision: "rev-b" }],
     });
     await expect(list(uncommitted, [])).resolves.toEqual({ files: [] });
@@ -616,7 +630,11 @@ describe("Git plugin Viewed marks", () => {
     fake.harness.experimental_watchRpc("viewed", {
       input: { environmentId: "env-1", target: uncommitted },
     });
-    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev" });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "a.ts",
+      revision: "rev",
+    });
     await vi.waitFor(() =>
       expect(fake.harness.experimental_rpcInvalidations).toContainEqual([
         gitViewedTag("env-1"),
@@ -797,7 +815,10 @@ describe("Git plugin server across several repos", () => {
         .filter((call) => call.method === "patches")
         .map((call) => call.input),
     ).toEqual([
-      expect.objectContaining({ path: "/mono", paths: ["packages/app/file.txt"] }),
+      expect.objectContaining({
+        path: "/mono",
+        paths: ["packages/app/file.txt"],
+      }),
       expect.objectContaining({ path: "/work/api", paths: ["server.ts"] }),
     ]);
   });
@@ -807,7 +828,11 @@ describe("Git plugin server across several repos", () => {
 
     await fake.harness.callRpc("fileSide", {
       environmentId: "env-1",
-      query: { target: "uncommitted", path: "packages/app/file.txt", side: "new" },
+      query: {
+        target: "uncommitted",
+        path: "packages/app/file.txt",
+        side: "new",
+      },
     });
 
     expect(reads).toEqual([

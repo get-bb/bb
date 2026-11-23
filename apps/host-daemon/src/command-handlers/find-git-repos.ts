@@ -73,7 +73,9 @@ async function listChildDirectories(directoryPath: string): Promise<string[]> {
     throw error;
   }
   const candidates = names
-    .filter((name) => !name.startsWith(".") && !SKIPPED_DIRECTORY_NAMES.has(name))
+    .filter(
+      (name) => !name.startsWith(".") && !SKIPPED_DIRECTORY_NAMES.has(name),
+    )
     .sort()
     .map((name) => path.join(directoryPath, name));
   const directories: string[] = [];

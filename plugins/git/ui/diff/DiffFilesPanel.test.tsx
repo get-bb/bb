@@ -80,7 +80,10 @@ vi.mock("./DiffFileCard.js", () => ({
         disabled={isViewedDisabled}
         onChange={(event) => onViewedChange(event.target.checked)}
       />
-      <output aria-label={`Patch ${entry.path}`} data-status={patchState.status}>
+      <output
+        aria-label={`Patch ${entry.path}`}
+        data-status={patchState.status}
+      >
         {patchState.patch ?? patchState.error ?? ""}
       </output>
       <button aria-label={`Load ${entry.path}`} onClick={onLoadPatch} />
@@ -242,15 +245,13 @@ it("shows Viewed only for files whose stored revision matches and marks the curr
     { path: "a.ts", revision: "rev-a" },
     { path: "b.ts", revision: "rev-b-old" },
   ];
-  const markViewed = vi.fn(
-    (input: { path: string; revision: string }) => {
-      viewed = [
-        ...viewed.filter((file) => file.path !== input.path),
-        { path: input.path, revision: input.revision },
-      ];
-      return { ok: true as const };
-    },
-  );
+  const markViewed = vi.fn((input: { path: string; revision: string }) => {
+    viewed = [
+      ...viewed.filter((file) => file.path !== input.path),
+      { path: input.path, revision: input.revision },
+    ];
+    return { ok: true as const };
+  });
   const clearViewed = vi.fn((input: { path?: string }) => {
     viewed = viewed.filter((file) => file.path !== input.path);
     return { ok: true as const };
@@ -512,9 +513,7 @@ it("shows a file's patch failure and retries it", async () => {
 
   available = true;
   fireEvent.click(screen.getByRole("button", { name: "Retry a.ts" }));
-  await waitFor(() =>
-    expect(patchOf("a.ts").textContent).toBe("patch:a.ts"),
-  );
+  await waitFor(() => expect(patchOf("a.ts").textContent).toBe("patch:a.ts"));
 });
 
 it("retries only the patch that failed", async () => {

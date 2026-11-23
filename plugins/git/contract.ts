@@ -197,7 +197,10 @@ const unavailableSchema = z
 
 export const gitStatusResultSchema = z.discriminatedUnion("outcome", [
   z
-    .object({ outcome: z.literal("available"), workspace: workspaceStatusSchema })
+    .object({
+      outcome: z.literal("available"),
+      workspace: workspaceStatusSchema,
+    })
     .strict(),
   notApplicableSchema,
   unavailableSchema,
@@ -214,7 +217,10 @@ export type GitStatusRow = z.infer<typeof gitStatusRowSchema>;
 
 export const gitDiffResultSchema = z.discriminatedUnion("outcome", [
   z
-    .object({ outcome: z.literal("available"), diff: threadGitDiffResponseSchema })
+    .object({
+      outcome: z.literal("available"),
+      diff: threadGitDiffResponseSchema,
+    })
     .strict(),
   notApplicableSchema,
   unavailableSchema,
@@ -378,7 +384,11 @@ export const gitFileSideQuerySchema = z.discriminatedUnion("target", [
     })
     .strict(),
   z
-    .object({ target: z.literal("commit"), sha: gitObjectIdSchema, ...fileSideShape })
+    .object({
+      target: z.literal("commit"),
+      sha: gitObjectIdSchema,
+      ...fileSideShape,
+    })
     .strict(),
 ]);
 export type GitFileSideQuery = z.infer<typeof gitFileSideQuerySchema>;

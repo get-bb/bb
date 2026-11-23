@@ -9,9 +9,7 @@ import type { DiffFileFilters } from "./diff-file-filters.js";
 import { DiffFilesPanel } from "./DiffFilesPanel.js";
 import { clearDiffFileCardStates } from "./diffFilesStore.js";
 import { PANEL_SCROLL_SLOT_CLASS } from "./panel-chrome.js";
-import {
-  useDiffFileContentsRequester,
-} from "./useDiffFileContentsRequester.js";
+import { useDiffFileContentsRequester } from "./useDiffFileContentsRequester.js";
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 
@@ -71,7 +69,9 @@ function GitDiffNotApplicableNotice({ message }: { message: string }) {
 export function GitDiffEmptyNotice() {
   return (
     <GitDiffMessageSlot>
-      <EmptyStatePanel className="rounded-lg">No diff to display.</EmptyStatePanel>
+      <EmptyStatePanel className="rounded-lg">
+        No diff to display.
+      </EmptyStatePanel>
     </GitDiffMessageSlot>
   );
 }

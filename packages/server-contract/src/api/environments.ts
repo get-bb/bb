@@ -96,7 +96,6 @@ export type EnvironmentReposResponse = z.infer<
   typeof environmentReposResponseSchema
 >;
 
-
 export const environmentArchiveThreadsResponseSchema = z.object({
   ok: z.literal(true),
   archivedThreadIds: z.array(z.string().min(1)),
@@ -143,4 +142,3 @@ export const environmentActionApiErrorSchema = apiErrorSchema.extend({
 export type EnvironmentActionApiError = z.infer<
   typeof environmentActionApiErrorSchema
 >;
-
