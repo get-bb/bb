@@ -39,6 +39,26 @@ function unexpectedHostCall(call: ExperimentalFakeHostRpcCall): never {
   throw new Error(`unexpected host call ${call.method}`);
 }
 
+function reposOf(environment: {
+  isGitRepo: boolean;
+  path: string | null;
+}) {
+  return {
+    repos:
+      environment.isGitRepo && environment.path !== null
+        ? [
+            {
+              rootPath: environment.path,
+              path: environment.path,
+              label: "",
+              source: "main" as const,
+            },
+          ]
+        : [],
+    truncated: false,
+  };
+}
+
 function setup(
   host: (call: ExperimentalFakeHostRpcCall) => unknown,
   options: {
@@ -58,6 +78,8 @@ function setup(
     sdk: {
       environments: {
         get: async () => options.environment ?? ENVIRONMENT,
+        experimental_repos: async () =>
+          reposOf(options.environment ?? ENVIRONMENT),
       },
       files: {
         read: async (args: unknown) => {

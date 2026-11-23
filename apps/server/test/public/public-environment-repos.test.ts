@@ -82,19 +82,19 @@ describe("environment repos", () => {
           {
             rootPath: "/work/api",
             path: "/work/api",
-            label: "api",
+            label: "../../../work/api",
             source: "folder",
           },
           {
             rootPath: "/data/stack/infra",
             path: "/data/stack/infra",
-            label: "infra",
+            label: "../../../data/stack/infra",
             source: "discovered",
           },
           {
             rootPath: "/data/stack/api",
             path: "/data/stack/api",
-            label: "api (2)",
+            label: "../../../data/stack/api",
             source: "discovered",
           },
         ],

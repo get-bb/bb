@@ -11,10 +11,14 @@ import {
   type GitDiffResult,
   type GitFileSideResult,
   type GitFileSideQuery,
+  type GitDiffRepo,
   type GitFilesResult,
   type GitReadFreshness,
+  type GitRepoFilesResult,
   type GitStatusResult,
   type WorkspaceDiffTarget,
+  gitDiffRepoPath,
+  locateGitDiffRepoPath,
 } from "../contract.js";
 import {
   joinHostPath,
@@ -30,6 +34,15 @@ const HOST_CALL_TIMEOUT_MS = 30_000;
 type Environment = Awaited<
   ReturnType<BbPluginApi["sdk"]["environments"]["get"]>
 >;
+
+type EnvironmentRepo = Awaited<
+  ReturnType<BbPluginApi["sdk"]["environments"]["experimental_repos"]>
+>["repos"][number];
+
+interface GitEnvironmentRepos {
+  hostId: string;
+  repos: EnvironmentRepo[];
+}
 
 interface ReadyGitEnvironment {
   environment: Environment;
@@ -177,6 +190,9 @@ export interface GitReads {
     environmentId: string,
     query: GitFileSideQuery,
   ): Promise<GitFileSideResult>;
+  repos(
+    environmentId: string,
+  ): Promise<{ repos: Omit<GitDiffRepo, "error">[] }>;
   branches(args: {
     environmentId: string;
     query?: string;
@@ -223,7 +239,7 @@ export function createGitReads(
 ): GitReads {
   const host = createHostClient(bb);
   const statusCache = createReadMemo<GitStatusResult>();
-  const filesCache = createReadMemo<GitFilesResult>();
+  const filesCache = createReadMemo<GitRepoFilesResult>();
 
   async function requireReady(
     environmentId: string,
@@ -232,6 +248,150 @@ export function createGitReads(
     const path = requireWorkspacePath(environment);
     if (!environment.isGitRepo) return null;
     return { environment, hostId: environment.hostId, path };
+  }
+
+  async function requireRepos(
+    environmentId: string,
+  ): Promise<GitEnvironmentRepos | null> {
+    const environment = await requireGitEnvironment(bb, environmentId);
+    requireWorkspacePath(environment);
+    const { repos } = await bb.sdk.environments.experimental_repos({
+      environmentId,
+    });
+    return repos.length === 0
+      ? null
+      : { hostId: environment.hostId, repos };
+  }
+
+  function repoStatus(
+    environmentId: string,
+    hostId: string,
+    repo: EnvironmentRepo,
+    cache: ReadCacheUse,
+  ): Promise<GitStatusResult> {
+    return statusCache.read(
+      { environmentId, hostId },
+      [repo.rootPath, null],
+      cache,
+      async () => {
+        const result = await host.call(
+          "status",
+          {
+            path: repo.rootPath,
+            freshness: freshness(environmentId, cache === "shared"),
+          },
+          hostId,
+        );
+        return result.outcome === "available"
+          ? { outcome: "available", workspace: result.value }
+          : result;
+      },
+    );
+  }
+
+  async function targetForRepo(
+    environmentId: string,
+    hostId: string,
+    repo: EnvironmentRepo,
+    target: WorkspaceDiffTarget,
+    cache: ReadCacheUse,
+  ): Promise<WorkspaceDiffTarget | null> {
+    if (repo.source === "main") return target;
+    switch (target.type) {
+      case "uncommitted":
+        return target;
+      case "commit":
+        return null;
+      case "branch_committed":
+      case "all": {
+        const status = await repoStatus(environmentId, hostId, repo, cache);
+        return status.outcome === "available"
+          ? {
+              type: target.type,
+              mergeBaseBranch: status.workspace.branch.defaultBranch,
+            }
+          : { type: "uncommitted" };
+      }
+    }
+  }
+
+  function repoFiles(
+    environmentId: string,
+    hostId: string,
+    repo: EnvironmentRepo,
+    target: WorkspaceDiffTarget,
+    ignoreWhitespace: boolean,
+    cache: ReadCacheUse,
+  ): Promise<GitRepoFilesResult> {
+    return filesCache.read(
+      { environmentId, hostId },
+      [repo.rootPath, target, ignoreWhitespace],
+      cache,
+      async () => {
+        const result = await host.call(
+          "files",
+          {
+            path: repo.rootPath,
+            freshness: freshness(environmentId, cache === "shared"),
+            target,
+            ignoreWhitespace,
+          },
+          hostId,
+        );
+        return result.outcome === "available"
+          ? { outcome: "available", ...result.value }
+          : result;
+      },
+    );
+  }
+
+  async function repoMergeBaseRef(
+    environmentId: string,
+    ready: GitEnvironmentRepos,
+    repo: EnvironmentRepo,
+    target: WorkspaceDiffTarget,
+  ): Promise<string | null> {
+    const repoTarget = await targetForRepo(
+      environmentId,
+      ready.hostId,
+      repo,
+      target,
+      "shared",
+    );
+    if (repoTarget === null) return null;
+    const files = await repoFiles(
+      environmentId,
+      ready.hostId,
+      repo,
+      repoTarget,
+      false,
+      "shared",
+    );
+    return files.outcome === "available" ? files.mergeBaseRef : null;
+  }
+
+  async function fileSideRef(
+    environmentId: string,
+    ready: GitEnvironmentRepos,
+    repo: EnvironmentRepo,
+    query: GitFileSideQuery,
+  ): Promise<string | null | undefined> {
+    if (repo.source === "main") return resolveFileSideRef(query);
+    switch (query.target) {
+      case "uncommitted":
+        return resolveFileSideRef(query);
+      case "commit":
+        return undefined;
+      case "branch_committed":
+      case "all": {
+        const mergeBaseRef = await repoMergeBaseRef(environmentId, ready, repo, {
+          type: query.target,
+          mergeBaseBranch: "HEAD",
+        });
+        if (mergeBaseRef === null) return undefined;
+        return resolveFileSideRef({ ...query, mergeBaseRef });
+      }
+    }
   }
 
   return {
@@ -282,62 +442,183 @@ export function createGitReads(
         : result;
     },
     async files(environmentId, target, ignoreWhitespace, cache) {
-      const ready = await requireReady(environmentId);
+      const ready = await requireRepos(environmentId);
       if (ready === null) return notApplicable("diff");
-      return filesCache.read(
-        { environmentId, hostId: ready.hostId },
-        [ready.path, target, ignoreWhitespace],
-        cache,
-        async () => {
+      const perRepo = await Promise.all(
+        ready.repos.map(async (repo) => {
+          const repoTarget = await targetForRepo(
+            environmentId,
+            ready.hostId,
+            repo,
+            target,
+            cache,
+          );
+          const result =
+            repoTarget === null
+              ? null
+              : await repoFiles(
+                  environmentId,
+                  ready.hostId,
+                  repo,
+                  repoTarget,
+                  ignoreWhitespace,
+                  cache,
+                );
+          return { repo, result };
+        }),
+      );
+      const [only] = perRepo;
+      if (
+        perRepo.length === 1 &&
+        only !== undefined &&
+        only.result !== null &&
+        only.result.outcome !== "available"
+      ) {
+        return only.result;
+      }
+      const repos: GitDiffRepo[] = perRepo.map(({ repo, result }) => ({
+        label: repo.label,
+        rootPath: repo.rootPath,
+        source: repo.source,
+        error:
+          result === null || result.outcome === "available"
+            ? null
+            : result.outcome === "unavailable"
+              ? result.failure.message
+              : result.message,
+      }));
+      const available = perRepo.flatMap(({ repo, result }) =>
+        result !== null && result.outcome === "available"
+          ? [{ repo, files: result }]
+          : [],
+      );
+      return {
+        outcome: "available",
+        repos,
+        files: available.flatMap(({ repo, files }) =>
+          files.files.map((entry) => ({
+            ...entry,
+            path: gitDiffRepoPath(repo, entry.path),
+            previousPath:
+              entry.previousPath === null
+                ? null
+                : gitDiffRepoPath(repo, entry.previousPath),
+          })),
+        ),
+        truncated: available.some(({ files }) => files.truncated),
+        shortstat:
+          available.length === 1 && available[0]?.repo.label === ""
+            ? available[0].files.shortstat
+            : available
+          .filter(({ files }) => files.shortstat.trim().length > 0)
+          .map(({ repo, files }) =>
+            repo.label.length === 0
+              ? files.shortstat.trim()
+              : `${repo.label}: ${files.shortstat.trim()}`,
+          )
+          .join("; "),
+        mergeBaseRef:
+          available.find(({ repo }) => repo.source === "main")?.files
+            .mergeBaseRef ?? null,
+        initialPatches: available.flatMap(({ repo, files }) =>
+          files.initialPatches.map((patch) => ({
+            ...patch,
+            path: gitDiffRepoPath(repo, patch.path),
+          })),
+        ),
+      };
+    },
+    async patches(environmentId, target, ignoreWhitespace, paths, cache) {
+      const ready = await requireRepos(environmentId);
+      if (ready === null) return notApplicable("diff");
+      const readFreshness = freshness(environmentId, cache === "shared");
+      const pathsByRepo = new Map<EnvironmentRepo, string[]>();
+      for (const path of paths) {
+        const located = locateGitDiffRepoPath(ready.repos, path);
+        if (located === null) continue;
+        pathsByRepo.set(located.repo, [
+          ...(pathsByRepo.get(located.repo) ?? []),
+          located.relativePath,
+        ]);
+      }
+      const patches: DiffPatchEntry[] = [];
+      for (const [repo, repoPaths] of pathsByRepo) {
+        const repoTarget = await targetForRepo(
+          environmentId,
+          ready.hostId,
+          repo,
+          target,
+          cache,
+        );
+        if (repoTarget === null) continue;
+        let pending = repoPaths;
+        while (pending.length > 0) {
           const result = await host.call(
-            "files",
+            "patches",
             {
-              path: ready.path,
-              freshness: freshness(environmentId, cache === "shared"),
-              target,
+              path: repo.rootPath,
+              freshness: readFreshness,
+              target: repoTarget,
               ignoreWhitespace,
+              paths: pending,
             },
             ready.hostId,
           );
-          return result.outcome === "available"
-            ? { outcome: "available", ...result.value }
-            : result;
-        },
-      );
-    },
-    async patches(environmentId, target, ignoreWhitespace, paths, cache) {
-      const ready = await requireReady(environmentId);
-      if (ready === null) return notApplicable("diff");
-      const readFreshness = freshness(environmentId, cache === "shared");
-      const patches: DiffPatchEntry[] = [];
-      let pending = paths;
-      while (pending.length > 0) {
-        const result = await host.call(
-          "patches",
-          {
-            path: ready.path,
-            freshness: readFreshness,
-            target,
-            ignoreWhitespace,
-            paths: pending,
-          },
-          ready.hostId,
-        );
-        if (result.outcome !== "available") return result;
-        if (result.value.patches.length === 0) break;
-        patches.push(...result.value.patches);
-        pending = result.value.deferred;
+          if (result.outcome !== "available") {
+            if (pathsByRepo.size === 1) return result;
+            break;
+          }
+          if (result.value.patches.length === 0) break;
+          patches.push(
+            ...result.value.patches.map((patch) => ({
+              ...patch,
+              path: gitDiffRepoPath(repo, patch.path),
+            })),
+          );
+          pending = result.value.deferred;
+        }
       }
       return { outcome: "available", patches };
     },
+    async repos(environmentId) {
+      const environment = await requireGitEnvironment(bb, environmentId);
+      if (environment.status !== "ready" || environment.path === null) {
+        return { repos: [] };
+      }
+      const { repos } = await bb.sdk.environments.experimental_repos({
+        environmentId,
+      });
+      return {
+        repos: repos.map(({ label, rootPath, source }) => ({
+          label,
+          rootPath,
+          source,
+        })),
+      };
+    },
     async fileSide(environmentId, query) {
       const environment = await requireGitEnvironment(bb, environmentId);
-      const rootPath = requireWorkspacePath(environment);
-      const relativePath = query.path.replace(/^\/+/u, "");
-      const path =
-        relativePath.length === 0 || relativePath.split("/").includes("..")
+      requireWorkspacePath(environment);
+      const ready = await requireRepos(environmentId);
+      const located =
+        ready === null
           ? null
-          : joinHostPath({ rootPath, relativePath });
+          : locateGitDiffRepoPath(ready.repos, query.path.replace(/^\/+/u, ""));
+      const relativePath = located?.relativePath ?? "";
+      if (
+        ready === null ||
+        located === null ||
+        relativePath.length === 0 ||
+        relativePath.split("/").includes("..")
+      ) {
+        return {
+          outcome: "unavailable",
+          code: "invalid_path",
+          message: "Invalid path",
+        };
+      }
+      const rootPath = located.repo.rootPath;
+      const path = joinHostPath({ rootPath, relativePath });
       if (path === null) {
         return {
           outcome: "unavailable",
@@ -345,7 +626,14 @@ export function createGitReads(
           message: "Invalid path",
         };
       }
-      const ref = resolveFileSideRef(query);
+      const ref = await fileSideRef(environmentId, ready, located.repo, query);
+      if (ref === undefined) {
+        return {
+          outcome: "unavailable",
+          code: "ENOENT",
+          message: "This side of the file is not available",
+        };
+      }
       try {
         const file = await bb.sdk.files.read({
           hostId: environment.hostId,

@@ -5527,6 +5527,36 @@ report which folders are missing on the machine. The Worktree environment
 provider reads them to offer and validate the folders it can branch
 (`listBranchableFolders`, `validate`).
 
+## Environment repos (`sdk.environments.experimental_repos`, also on `PluginBbSdk`)
+
+`experimental_repos({ environmentId })` returns `{ repos, truncated }` for a
+ready environment. Each repo has `rootPath` (the git top level), `path` (the
+folder the thread works in, which differs from `rootPath` when the
+environment's folder is a subfolder of a repo), `label` (`""` for the main
+folder's repo; otherwise the repo's path relative to the main folder, with
+`..` segments for repos outside it, so it never collides with a path inside
+the main repo) and `source` (`main`, `folder` for a project or environment
+folder that is itself in a repo, `discovered` for a repo found inside a
+folder that is not). Discovery runs on the host (`host.find_git_repos`):
+two levels deep, skipping hidden and dependency folders, stopping at each
+repo (a `.git` directory or file, so linked worktrees count), deduplicating
+symlinked folders by real path, and at most 32 repos per folder (`truncated`
+then). The server keeps the result in memory for 10 seconds per environment;
+nothing is stored. Route: `GET /environments/:id/repos`; CLI:
+`bb environment repos <id>`.
+
+Core callers: the agent's instructions (`thread-runtime-config.ts`, which
+names the repos found inside each folder and skips discovery when the main
+folder is a repo and there are no extra folders), the git plugin's Changes
+panel (`plugins/git/server/reads.ts`, which groups changes by repo and runs
+git from each repo's top level), and `bb environment repos`. The GitHub PR
+status plugin is the next intended reader.
+
+Before stabilizing, decide whether the list should refresh on file-system
+events rather than a 10-second cache, whether repos found inside the main
+repo (nested clones) should ever be listed, and whether `label` should be a
+display name separate from the path prefix the git plugin uses.
+
 ## Global prompt history (`bb.sdk.experimental_promptHistory`)
 
 `list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`, every

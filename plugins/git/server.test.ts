@@ -74,6 +74,26 @@ function hostResult(call: ExperimentalFakeHostRpcCall): unknown {
   }
 }
 
+function reposOf(environment: {
+  isGitRepo: boolean;
+  path: string | null;
+}) {
+  return {
+    repos:
+      environment.isGitRepo && environment.path !== null
+        ? [
+            {
+              rootPath: environment.path,
+              path: environment.path,
+              label: "",
+              source: "main" as const,
+            },
+          ]
+        : [],
+    truncated: false,
+  };
+}
+
 async function setup(environments: Record<string, Environment>) {
   const updates: unknown[] = [];
   const fake = createFakePluginHost({
@@ -105,6 +125,15 @@ async function setup(environments: Record<string, Environment>) {
             });
           }
           return found;
+        },
+        experimental_repos: async ({
+          environmentId,
+        }: {
+          environmentId: string;
+        }) => {
+          const found = environments[environmentId];
+          if (found === undefined) throw new Error("unknown environment");
+          return reposOf(found);
         },
         update: async (args: unknown) => {
           updates.push(args);
@@ -157,7 +186,10 @@ describe("Git plugin server", () => {
     const fake = createFakePluginHost({
       pluginId: "bb--git",
       sdk: {
-        environments: { get: async () => environment() },
+        environments: {
+          get: async () => environment(),
+          experimental_repos: async () => reposOf(environment()),
+        },
         threads: {
           get: async () => {
             state.threadReads += 1;
@@ -334,7 +366,10 @@ describe("Git plugin server", () => {
       pluginId: "bb--git",
       sdk: {
         subscribe: () => () => {},
-        environments: { get: async () => environment() },
+        environments: {
+          get: async () => environment(),
+          experimental_repos: async () => reposOf(environment()),
+        },
       },
       experimental_callHostRpc: (call) => {
         if (call.method !== "patches") return hostResult(call);
@@ -587,5 +622,199 @@ describe("Git plugin Viewed marks", () => {
         gitViewedTag("env-1"),
       ]),
     );
+  });
+});
+
+describe("Git plugin server across several repos", () => {
+  const REPOS = [
+    {
+      rootPath: "/mono",
+      path: "/mono/packages/app",
+      label: "",
+      source: "main" as const,
+    },
+    {
+      rootPath: "/work/api",
+      path: "/work/api",
+      label: "../../../work/api",
+      source: "folder" as const,
+    },
+  ];
+
+  function changed(path: string) {
+    return {
+      path,
+      previousPath: null,
+      changeKind: "modified" as const,
+      additions: 1,
+      deletions: 0,
+      binary: false,
+      origin: "tracked" as const,
+      loadMode: "auto" as const,
+      revision: `rev-${path}`,
+    };
+  }
+
+  function multiRepoSetup() {
+    const reads: unknown[] = [];
+    const fake = createFakePluginHost({
+      pluginId: "bb--git",
+      sdk: {
+        subscribe: () => () => {},
+        environments: {
+          get: async () => environment({ path: "/mono/packages/app" }),
+          experimental_repos: async () => ({ repos: REPOS, truncated: false }),
+        },
+        files: {
+          read: async (args: unknown) => {
+            reads.push(args);
+            return {
+              path: "/mono/packages/app/file.txt",
+              content: "two",
+              contentEncoding: "utf8" as const,
+              sizeBytes: 3,
+            };
+          },
+        },
+      },
+      experimental_callHostRpc: (call) => {
+        const input = call.input as { path: string; paths?: string[] };
+        switch (call.method) {
+          case "status":
+            return {
+              outcome: "available",
+              value: makeWorkspaceStatus({
+                branch: { currentBranch: "feature", defaultBranch: "develop" },
+              }),
+            };
+          case "files":
+            return {
+              outcome: "available",
+              value: {
+                files: [
+                  changed(
+                    input.path === "/mono"
+                      ? "packages/app/file.txt"
+                      : "server.ts",
+                  ),
+                ],
+                truncated: false,
+                shortstat: " 1 file changed, 1 insertion(+)\n",
+                mergeBaseRef: input.path === "/mono" ? "a".repeat(40) : null,
+                initialPatches: [],
+              },
+            };
+          default:
+            return hostResult(call);
+        }
+      },
+    });
+    plugin(fake.bb);
+    return { fake, reads };
+  }
+
+  it("lists every repo's changes under its label and compares extra repos with their own default branch", async () => {
+    const { fake } = multiRepoSetup();
+
+    const result = await fake.harness.callRpc("files", {
+      environmentId: "env-1",
+      target: { type: "all", mergeBaseBranch: "main" },
+      ignoreWhitespace: false,
+    });
+
+    expect(result).toMatchObject({
+      outcome: "available",
+      repos: [
+        { label: "", rootPath: "/mono", error: null },
+        { label: "../../../work/api", rootPath: "/work/api", error: null },
+      ],
+      files: [
+        { path: "packages/app/file.txt" },
+        { path: "../../../work/api/server.ts" },
+      ],
+      mergeBaseRef: "a".repeat(40),
+    });
+    expect(
+      fake.harness.experimental_hostRpcCalls
+        .filter((call) => call.method === "files")
+        .map((call) => call.input),
+    ).toEqual([
+      expect.objectContaining({
+        path: "/mono",
+        target: { type: "all", mergeBaseBranch: "main" },
+      }),
+      expect.objectContaining({
+        path: "/work/api",
+        target: { type: "all", mergeBaseBranch: "develop" },
+      }),
+    ]);
+
+    const commit = await fake.harness.callRpc("files", {
+      environmentId: "env-1",
+      target: { type: "commit", sha: "abcdef1" },
+      ignoreWhitespace: false,
+    });
+    expect(commit).toMatchObject({
+      files: [{ path: "packages/app/file.txt" }],
+    });
+  });
+
+  it("reads each patch from its own repo and keeps the labelled path", async () => {
+    const { fake } = multiRepoSetup();
+    const key = (path: string) =>
+      gitPatchKey({
+        environmentId: "env-1",
+        target: { type: "uncommitted" },
+        ignoreWhitespace: false,
+        path,
+        revision: `rev-${path}`,
+      });
+
+    const results = (await fake.harness.callRpc("patches", {
+      keys: [key("packages/app/file.txt"), key("../../../work/api/server.ts")],
+    })) as Record<string, unknown>;
+
+    expect(Object.values(results)).toEqual([
+      {
+        outcome: "available",
+        patch: {
+          path: "packages/app/file.txt",
+          patch: "patch packages/app/file.txt",
+          truncated: false,
+        },
+      },
+      {
+        outcome: "available",
+        patch: {
+          path: "../../../work/api/server.ts",
+          patch: "patch server.ts",
+          truncated: false,
+        },
+      },
+    ]);
+    expect(
+      fake.harness.experimental_hostRpcCalls
+        .filter((call) => call.method === "patches")
+        .map((call) => call.input),
+    ).toEqual([
+      expect.objectContaining({ path: "/mono", paths: ["packages/app/file.txt"] }),
+      expect.objectContaining({ path: "/work/api", paths: ["server.ts"] }),
+    ]);
+  });
+
+  it("reads a file side from the repo root when the main folder is a subfolder of it", async () => {
+    const { fake, reads } = multiRepoSetup();
+
+    await fake.harness.callRpc("fileSide", {
+      environmentId: "env-1",
+      query: { target: "uncommitted", path: "packages/app/file.txt", side: "new" },
+    });
+
+    expect(reads).toEqual([
+      expect.objectContaining({
+        path: "/mono/packages/app/file.txt",
+        rootPath: "/mono",
+      }),
+    ]);
   });
 });

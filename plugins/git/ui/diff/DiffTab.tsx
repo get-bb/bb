@@ -12,7 +12,11 @@ import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import type { DiffFileEntry } from "../../contract.js";
 import { GIT_DIFF_TAB_REFERENCE } from "../diff-tab-target.js";
 import { useMergeBase } from "../merge-base.js";
-import { useGitStatus, useWorkspacePath } from "../queries.js";
+import {
+  useGitRepoCount,
+  useGitStatus,
+  useWorkspacePath,
+} from "../queries.js";
 import {
   DEFAULT_DIFF_FILE_FILTERS,
   diffExtensionCounts,
@@ -30,6 +34,7 @@ import {
 } from "./git-diff-view-preferences.js";
 import {
   ALL_GIT_DIFF_SELECTION,
+  UNCOMMITTED_GIT_DIFF_SELECTION,
   buildGitDiffIdentity,
 } from "./gitDiffPanelHelpers.js";
 import { GitDiffToolbar } from "./GitDiffToolbar.js";
@@ -42,6 +47,10 @@ import { useGitDiffPanelState } from "./useGitDiffPanelState.js";
 import { useResponsiveGitDiffPanelDisplay } from "./useResponsiveGitDiffPanelDisplay.js";
 
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
+const REPOS_ONLY_TARGET = { type: "uncommitted" } as const;
+const REPOS_ONLY_SELECT_OPTIONS = [
+  { value: UNCOMMITTED_GIT_DIFF_SELECTION, label: "Uncommitted changes" },
+];
 
 function readBorderBoxWidth(element: HTMLElement): number {
   return element.getBoundingClientRect().width;
@@ -51,7 +60,11 @@ export function useDiffTabVisible({
   environment,
 }: ExperimentalThreadTabProps): boolean {
   const status = useGitStatus(environment?.id ?? null);
-  return environment !== null && status.result?.outcome !== "not_applicable";
+  const notApplicable = status.result?.outcome === "not_applicable";
+  const repoCount = useGitRepoCount(environment?.id ?? null, notApplicable);
+  return (
+    environment !== null && (!notApplicable || (repoCount ?? 0) > 0)
+  );
 }
 
 const diffFiltersByEnvironment = new Map<string, DiffFileFilters>();
@@ -68,6 +81,8 @@ export function DiffTab({ environment }: ExperimentalThreadTabProps) {
 
 function EnvironmentDiffTabGate({ environmentId }: { environmentId: string }) {
   const status = useGitStatus(environmentId);
+  const notApplicable = status.result?.outcome === "not_applicable";
+  const repoCount = useGitRepoCount(environmentId, notApplicable);
   const [gitDiffFilters, setGitDiffFilters] = useState(
     () =>
       diffFiltersByEnvironment.get(environmentId) ?? DEFAULT_DIFF_FILE_FILTERS,
@@ -79,16 +94,19 @@ function EnvironmentDiffTabGate({ environmentId }: { environmentId: string }) {
     },
     [environmentId],
   );
-  if (status.workspace !== undefined) {
+  if (status.workspace !== undefined || (notApplicable && (repoCount ?? 0) > 0)) {
     return (
       <EnvironmentDiffTab
         environmentId={environmentId}
+        reposOnly={status.workspace === undefined}
         gitDiffFilters={gitDiffFilters}
         onGitDiffFiltersChange={changeGitDiffFilters}
       />
     );
   }
-  if (status.result?.outcome === "not_applicable") return null;
+  if (notApplicable) {
+    return repoCount === undefined ? <GitDiffLoadingSkeleton /> : null;
+  }
   const message =
     status.errorMessage ??
     (status.failure === undefined ? null : status.failure.message);
@@ -112,10 +130,12 @@ function EnvironmentDiffTabGate({ environmentId }: { environmentId: string }) {
 
 function EnvironmentDiffTab({
   environmentId,
+  reposOnly,
   gitDiffFilters,
   onGitDiffFiltersChange: setGitDiffFilters,
 }: {
   environmentId: string;
+  reposOnly: boolean;
   gitDiffFilters: DiffFileFilters;
   onGitDiffFiltersChange: (filters: DiffFileFilters) => void;
 }) {
@@ -164,14 +184,7 @@ function EnvironmentDiffTab({
     [environmentId, navigate],
   );
 
-  const {
-    gitDiffFileFilter,
-    gitDiffTarget,
-    gitDiffSelectOptions,
-    gitDiffSelectValue,
-    onGitDiffSelectionChange,
-    setGitDiffFileFilter,
-  } = useGitDiffPanelState({
+  const panelState = useGitDiffPanelState({
     environmentId,
     requestedMergeBaseBranch,
     workspaceStatus: status.workspace,
@@ -180,6 +193,18 @@ function EnvironmentDiffTab({
     pendingSequence: tabTarget?.sequence ?? null,
     onClearPendingIntent: clearPendingIntent,
   });
+  const {
+    gitDiffFileFilter,
+    onGitDiffSelectionChange,
+    setGitDiffFileFilter,
+  } = panelState;
+  const gitDiffTarget = reposOnly ? REPOS_ONLY_TARGET : panelState.gitDiffTarget;
+  const gitDiffSelectOptions = reposOnly
+    ? REPOS_ONLY_SELECT_OPTIONS
+    : panelState.gitDiffSelectOptions;
+  const gitDiffSelectValue = reposOnly
+    ? UNCOMMITTED_GIT_DIFF_SELECTION
+    : panelState.gitDiffSelectValue;
   const [gitDiffIgnoreWhitespace, setGitDiffIgnoreWhitespace] =
     useGitDiffIgnoreWhitespacePreference();
   const filesQuery = useDiffFiles({

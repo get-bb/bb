@@ -1,7 +1,8 @@
 import {
   areHostPathsEqual,
-  getHostPathBasename,
+  getHostPathSegments,
   getRelativeHostPath,
+  splitHostPathRoot,
 } from "@bb/domain";
 import type {
   EnvironmentRepo,
@@ -44,19 +45,30 @@ function cacheFor(deps: WorkSessionDeps): Map<string, CachedRepos> {
 
 function labelFor(mainPath: string, repoPath: string): string {
   if (areHostPathsEqual(mainPath, repoPath)) return "";
-  return (
-    getRelativeHostPath({ rootPath: mainPath, candidatePath: repoPath }) ??
-    getHostPathBasename(repoPath) ??
-    repoPath
-  );
-}
-
-function uniqueLabel(label: string, taken: Set<string>): string {
-  if (!taken.has(label)) return label;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${label} (${suffix})`;
-    if (!taken.has(candidate)) return candidate;
+  const inside = getRelativeHostPath({
+    rootPath: mainPath,
+    candidatePath: repoPath,
+  });
+  if (inside !== null) return inside;
+  if (
+    splitHostPathRoot(mainPath)?.root !== splitHostPathRoot(repoPath)?.root
+  ) {
+    return repoPath;
   }
+  const mainSegments = getHostPathSegments(mainPath) ?? [];
+  const repoSegments = getHostPathSegments(repoPath) ?? [];
+  let shared = 0;
+  while (
+    shared < mainSegments.length &&
+    shared < repoSegments.length &&
+    mainSegments[shared] === repoSegments[shared]
+  ) {
+    shared += 1;
+  }
+  return [
+    ...mainSegments.slice(shared).map(() => ".."),
+    ...repoSegments.slice(shared),
+  ].join("/");
 }
 
 async function findEnvironmentRepos(
@@ -75,7 +87,6 @@ async function findEnvironmentRepos(
     },
   });
   const repos: EnvironmentRepo[] = [];
-  const takenLabels = new Set<string>();
   const add = (
     candidate: Omit<EnvironmentRepo, "label">,
   ): void => {
@@ -84,12 +95,7 @@ async function findEnvironmentRepos(
     ) {
       return;
     }
-    const label = uniqueLabel(
-      labelFor(environment.path, candidate.path),
-      takenLabels,
-    );
-    takenLabels.add(label);
-    repos.push({ ...candidate, label });
+    repos.push({ ...candidate, label: labelFor(environment.path, candidate.path) });
   };
   folders.forEach((folder, index) => {
     if (!folder.exists) return;
