@@ -221,7 +221,7 @@ provides no retention or keep controls.
 `bb.experimental_serverAccess.register` declares a route by which machines
 and apps reach this server: `id`, `displayName`, `description`, `routeKind`
 (`"local-network" | "private-overlay" | "relay" | "custom"`; core treats a
-plugin built before SDK 0.6.177 that omits it as `"custom"`), `availability()`, `acquire({ key, hostId, signal })`
+plugin built before SDK 0.6.180 that omits it as `"custom"`), `availability()`, `acquire({ key, hostId, signal })`
 returning a `ServerAccessGrant` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. The ids `direct` and `local-network`
 are reserved for core.

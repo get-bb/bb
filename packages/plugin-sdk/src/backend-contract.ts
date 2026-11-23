@@ -546,7 +546,7 @@ export interface ServerAccessProviderDeclaration {
    * a tailnet, relay, then custom) until the user orders them in Settings.
    * New machines install on a `"relay"` or `"custom"` route before a
    * `"local-network"` or `"private-overlay"` one. Plugins built against an SDK
-   * before 0.6.177 may omit it; core treats those as `"custom"`.
+   * before 0.6.180 may omit it; core treats those as `"custom"`.
    */
   routeKind: ServerAccessRouteKind;
   availability():
