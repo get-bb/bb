@@ -8,22 +8,25 @@ const PLUGIN_RUNTIME_IMPORTERS =
 
 export function corePluginSdkApp(): Plugin {
   const appSourcePrefix = `${normalizePath(resolve(appDir, "src"))}/`;
+  const coreContributionPrefix = `${normalizePath(resolve(appDir, "src/core-contributions"))}/`;
   const binding = resolve(appDir, "src/lib/core-plugin-sdk-app.ts");
+  const sonnerBinding = resolve(appDir, "src/lib/plugin-sonner.ts");
   return {
     name: "bb:core-plugin-sdk-app",
     enforce: "pre",
     resolveId(source, importer) {
-      if (source !== "@get-bb/plugin-sdk/app" || importer === undefined) {
-        return null;
-      }
+      if (importer === undefined) return null;
       const normalizedImporter = normalizePath(importer);
-      if (
-        !normalizedImporter.startsWith(appSourcePrefix) ||
-        PLUGIN_RUNTIME_IMPORTERS.test(normalizedImporter)
-      ) {
-        return null;
+      if (PLUGIN_RUNTIME_IMPORTERS.test(normalizedImporter)) return null;
+      if (source === "@get-bb/plugin-sdk/app") {
+        return normalizedImporter.startsWith(appSourcePrefix) ? binding : null;
       }
-      return binding;
+      if (source === "sonner") {
+        return normalizedImporter.startsWith(coreContributionPrefix)
+          ? sonnerBinding
+          : null;
+      }
+      return null;
     },
   };
 }

@@ -6392,6 +6392,27 @@ export interface PluginSdkApp {
     content: ExperimentalClipboardContent,
   ): Promise<boolean>;
   /**
+   * Shows the error toast bb's own actions show when a request fails. A plain
+   * function, callable from components, action callbacks, and command
+   * callbacks. Nothing shows when `error` is an `AbortError`. When the server
+   * returned a lifecycle error, such as an environment that is not ready or
+   * a thread that cannot be changed, the toast shows bb's own title and body
+   * for it. Otherwise the title is
+   * `fallbackMessage` and the description is the failure's message: for an
+   * SDK error (`experimental_BbHttpError`), the message in the server's
+   * response body, else the error's message without its `HTTP <status>:`
+   * prefix; when the request never reached the server, "Could not reach the
+   * server. Check that it is running and try again."; for any other error,
+   * its message. The title and description drop a trailing period, the
+   * description is left out when it equals the title or there is no message,
+   * and a failure whose message is "Request failed" shows "Request failed"
+   * with "Please try again". Experimental: see docs/api_to_audit.md.
+   */
+  experimental_showErrorToast(options: {
+    error: unknown;
+    fallbackMessage: string;
+  }): void;
+  /**
    * Saves a file through bb's own download path, the one bb's file preview
    * and attachment downloads use. Browsers and bb Desktop start an ordinary
    * download. In the bb iOS app, where a download link would otherwise

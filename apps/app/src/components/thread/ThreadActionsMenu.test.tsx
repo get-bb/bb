@@ -760,7 +760,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       text: `${window.location.origin}/projects/proj_a/threads/thr_target`,
     });
     await waitFor(() =>
-      expect(copiedToast).toHaveBeenCalledWith("Thread link copied"),
+      expect(copiedToast).toHaveBeenCalledWith("Thread link copied", {}),
     );
   });
 

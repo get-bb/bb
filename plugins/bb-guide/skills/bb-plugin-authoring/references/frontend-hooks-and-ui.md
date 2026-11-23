@@ -23,8 +23,7 @@ Hooks:
   input, and result inference from a type-only backend contract import.
   Reach for it when the work needs your server: secrets, host files, or your
   plugin's own storage.
-- `useRealtime(channel, handler)` — fires for this plugin's
-  `bb.realtime.publish(channel, …)` signals while mounted.
+- `useRealtime(channel, handler)` — fires for this plugin's `bb.realtime.publish(channel, …)` signals while mounted.
 - `useRealtimeConnectionState()` — returns `"connecting"`, `"connected"`, or
   `"reconnecting"` for the same shared socket used by `useRealtime`. Reconcile
   durable server state on subsequent transitions to `connected` (not the first
@@ -178,6 +177,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   representation next to the plain text. Resolves true once the clipboard holds
   the content and false when every path failed; it never rejects. Show your own
   success or failure feedback. Never call `navigator.clipboard` directly.
+- `experimental_showErrorToast({ error, fallbackMessage })` — bb's own failed-request toast: title `fallbackMessage`, description the server's message for an SDK error (not `error.message`, which reads `HTTP 409: ...`), bb's own text for network failures and lifecycle errors, nothing for an `AbortError`.
 - `experimental_saveFile({ fileName, url } | { fileName, blob })` →
   `Promise<"started" | "failed">` — saves a file
   through bb's own download path. Browsers and bb Desktop start an ordinary
@@ -278,7 +278,7 @@ composer.
 - `toast`: `import { toast } from "sonner"` — runtime-shimmed to bb's own
   toast, so `toast.success("Saved")` looks like bb's toasts and lands in the
   notification center; `toast.custom` keeps your rendering. Never mount your
-  own `<Toaster>`.
+  own `<Toaster>`. For a failed SDK call use `experimental_showErrorToast`.
 - Never bundled (runtime-shimmed, import freely): react, the portaling
   radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
   `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,

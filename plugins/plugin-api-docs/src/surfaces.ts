@@ -1838,7 +1838,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own chat, prompt box, and pickers inside plugin pages. With this, a plugin can:",
         bullets: [
           "Embed a thread, a new-thread prompt box, or a textarea with editable voice input",
-          "Render Markdown, code, diffs, and file links, and copy text and save files, the way bb does",
+          "Render Markdown, code, diffs, and file links, copy text, save files, and toast errors as bb does",
           "Open app links with device approval, remember allowed apps, and revoke approvals in Settings",
           "Add or override app icons while matching bb's styling",
         ],
@@ -1876,6 +1876,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginCodeThemeState",
           "experimental_copyToClipboard",
           "ExperimentalClipboardContent",
+          "experimental_showErrorToast",
           "experimental_saveFile",
           "ExperimentalSaveFileRequest",
           "ExperimentalSaveFileOutcome",
