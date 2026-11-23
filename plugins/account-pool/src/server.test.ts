@@ -6944,29 +6944,60 @@ describe("sequential pool recovery", () => {
     ).toBe("exhausted");
   });
 
+  const emptyPlan = {
+    primary_window: { used_percent: 100, reset_at: 4102444800 },
+  };
+  const includedPlan = {
+    allowed: true,
+    primary_window: {
+      used_percent: 0,
+      reset_at: 4102444800,
+      limit_window_seconds: 604800,
+    },
+  };
+  const funded = { has_credits: true, unlimited: false };
+  const depleted = { has_credits: false, unlimited: false };
+  const cap = { reached: true };
   it.each([
-    ["funded", { has_credits: true, unlimited: false }, null, 200],
-    ["unlimited", { has_credits: false, unlimited: true }, null, 200],
-    ["depleted", { has_credits: false, unlimited: false }, null, 429],
-    ["unknown", null, null, 429],
+    ["funded", emptyPlan, funded, null, 200],
     [
-      "spending cap",
-      { has_credits: true, unlimited: true },
-      { reached: true },
-      429,
+      "unlimited",
+      emptyPlan,
+      { has_credits: false, unlimited: true },
+      null,
+      200,
     ],
+    ["depleted", emptyPlan, depleted, null, 429],
+    ["unknown", emptyPlan, null, null, 429],
+    ["workspace cap with included capacity", includedPlan, depleted, cap, 200],
     [
-      "individual cap",
-      { has_credits: true, unlimited: false },
+      "individual cap with included capacity",
+      includedPlan,
+      funded,
       {
         reached: false,
         individual_limit: { remaining_percent: 0, reset_at: 4102444800 },
       },
+      200,
+    ],
+    ["cap without windows", {}, funded, cap, 429],
+    [
+      "cap with exhausted secondary window",
+      { ...includedPlan, secondary_window: emptyPlan.primary_window },
+      funded,
+      cap,
+      429,
+    ],
+    [
+      "cap with refused plan",
+      { ...includedPlan, allowed: false },
+      funded,
+      cap,
       429,
     ],
   ])(
-    "routes Codex credit fallback with %s allowance",
-    async (_label, credits, spendControl, expected) => {
+    "routes Codex requests with %s",
+    async (_label, rateLimit, credits, spendControl, expected) => {
       let calls = 0;
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
@@ -6985,12 +7016,7 @@ describe("sequential pool recovery", () => {
           fetch: async (input) => {
             if (new URL(String(input)).pathname === "/usage")
               return Response.json({
-                rate_limit: {
-                  primary_window: {
-                    used_percent: spendControl === null ? 100 : 10,
-                    reset_at: 4102444800,
-                  },
-                },
+                rate_limit: rateLimit,
                 credits,
                 spend_control: spendControl,
               });
@@ -7010,8 +7036,15 @@ describe("sequential pool recovery", () => {
       const report = statusSchema.parse(
         await fixture.host.harness.behavior.callRpc("status.get", null),
       );
+      expect(report.accounts[0]?.status).toBe(
+        expected === 200 ? "ready" : "exhausted",
+      );
       expect(report.accounts[0]?.extraUsage?.status ?? null).toBe(
-        credits === null ? null : expected === 200 ? "allowed" : "rejected",
+        credits === null
+          ? null
+          : expected === 200 && spendControl === null
+            ? "allowed"
+            : "rejected",
       );
     },
   );
