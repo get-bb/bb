@@ -454,19 +454,7 @@ function RouteRow({
             <p className="text-sm text-foreground">{provider.displayName}</p>
             {availability.status !== "unavailable" &&
             provider.urls.length > 0 ? (
-              <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-subtle-foreground">
-                {provider.urls.map((url) => (
-                  <span key={url} className="flex min-w-0 items-center gap-1">
-                    <span className="truncate">{url}</span>
-                    <CopyButton
-                      text={url}
-                      label={`Copy ${url}`}
-                      successMessage="Address copied"
-                      className="shrink-0"
-                    />
-                  </span>
-                ))}
-              </div>
+              <RouteAddresses urls={provider.urls} />
             ) : (
               <p
                 className={cn(
@@ -548,6 +536,24 @@ function RouteRow({
         )}
       </div>
     </SettingsRow>
+  );
+}
+
+function RouteAddresses({ urls }: { urls: readonly string[] }) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-subtle-foreground">
+      {urls.map((url) => (
+        <span key={url} className="flex min-w-0 items-center gap-1">
+          <span className="truncate">{url}</span>
+          <CopyButton
+            text={url}
+            label={`Copy ${url}`}
+            successMessage="Address copied"
+            className="shrink-0"
+          />
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -720,11 +726,13 @@ export function MobileServerAccessContent({
                   <span className="shrink-0 text-foreground">
                     {provider.displayName}
                   </span>
-                  <span className="min-w-0 break-words text-xs text-subtle-foreground [overflow-wrap:anywhere]">
-                    {provider.urls.length > 0
-                      ? provider.urls.join(", ")
-                      : provider.description}
-                  </span>
+                  {provider.urls.length > 0 ? (
+                    <RouteAddresses urls={provider.urls} />
+                  ) : (
+                    <span className="min-w-0 break-words text-xs text-subtle-foreground [overflow-wrap:anywhere]">
+                      {provider.description}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
