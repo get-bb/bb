@@ -2,12 +2,14 @@ import { z } from "zod";
 import type {
   ComposerDraftReplacement,
   ComposerDraftSnapshot,
+  ComposerInsertPart,
   ComposerMention,
   ComposerSelection,
   PluginComposerApi,
 } from "@get-bb/plugin-sdk";
 import {
   appendComposerDraft,
+  composerDraftFromInsertParts,
   createComposerHandleBinding,
   createComposerDraftActions,
   OFF_SCREEN_EDITOR_STATE,
@@ -29,6 +31,7 @@ import {
   type PromptDraftState,
 } from "@bb/client-core";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import type { InitialPromptSeed } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { serializedTextForPromptMentionResource } from "@bb/client-core";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
@@ -98,6 +101,21 @@ function mentionText(mention: ComposerMention): string {
   return serializedTextForPromptMentionResource(
     promptMentionResourceFromComposerMention(mention),
   );
+}
+
+export function initialPromptSeedFromComposer(
+  initialPrompt: string | readonly ComposerInsertPart[],
+  pluginId: string | null,
+): InitialPromptSeed {
+  if (typeof initialPrompt === "string") return initialPrompt;
+  const draft = composerDraftFromInsertParts(initialPrompt, {
+    pluginId,
+    mentionText,
+  });
+  return {
+    text: draft.text,
+    mentions: draft.mentions.map(promptTextMentionFromComposerMention),
+  };
 }
 
 const composerDrafts = new WeakMap<PromptDraftState, ComposerDraftSnapshot>();

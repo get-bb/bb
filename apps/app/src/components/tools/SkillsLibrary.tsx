@@ -13,7 +13,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildSkillEditThreadPrompt } from "@/lib/resource-edit-prompt";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import {
@@ -441,11 +442,14 @@ export function SkillsLibrary() {
     (skill: SkillSummary) => {
       openNewThread({
         focusPrompt: true,
-        initialPrompt: buildSkillEditThreadPrompt({
-          id: skill.id,
-          name: skill.name,
-          path: skill.filePath,
-        }),
+        initialPrompt: initialPromptSeedFromComposer(
+          buildSkillEditThreadPrompt({
+            id: skill.id,
+            name: skill.name,
+            path: skill.filePath,
+          }),
+          null,
+        ),
         replaceInitialPrompt: true,
       });
     },

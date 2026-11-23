@@ -1,13 +1,14 @@
 import type { useStore } from "jotai";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { selectRootComposeProject } from "@/lib/root-compose-selection";
+import type { InitialPromptSeed } from "@/components/promptbox/mentions/initial-prompt-draft";
 import type { ThreadCreationPlacement } from "@/lib/thread-creation-placement";
 import { splitLayoutAtom } from "./atoms";
 import { placePaneContentInSplit } from "./openPaneContentInSplit";
 
 export interface NewThreadOptions {
   projectId?: string;
-  initialPrompt?: string;
+  initialPrompt?: InitialPromptSeed;
   replaceInitialPrompt?: boolean;
   focusPrompt?: boolean;
   placement?: ThreadCreationPlacement;

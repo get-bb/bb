@@ -573,6 +573,36 @@ describe("readInitialPromptFromLocationState", () => {
       readInitialPromptFromLocationState({ initialPrompt: 42 }),
     ).toBeNull();
   });
+
+  it("returns a structured seed and rejects one with a malformed mention", () => {
+    const seed = {
+      text: "Open @/repo/a.ts",
+      mentions: [
+        {
+          start: 5,
+          end: 16,
+          resource: {
+            kind: "path",
+            source: "workspace",
+            entryKind: "file",
+            path: "/repo/a.ts",
+            label: "a.ts",
+          },
+        },
+      ],
+    };
+    expect(readInitialPromptFromLocationState({ initialPrompt: seed })).toEqual(
+      seed,
+    );
+    expect(
+      readInitialPromptFromLocationState({
+        initialPrompt: {
+          ...seed,
+          mentions: [{ start: 5, end: 16, resource: { kind: "path" } }],
+        },
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("shouldReplaceInitialPromptFromLocationState", () => {

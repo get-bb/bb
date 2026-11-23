@@ -48,6 +48,7 @@ import {
   withRetiredPanelAlias,
 } from "@/lib/plugin-panel-controller";
 import { getActiveComposerHandle } from "@/lib/active-composer";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { bindThreadRequests } from "@/lib/thread-requests";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
@@ -187,7 +188,12 @@ function createBbNavigate(
           ? { projectId: options.projectId }
           : {}),
         ...(options?.initialPrompt !== undefined
-          ? { initialPrompt: options.initialPrompt }
+          ? {
+              initialPrompt: initialPromptSeedFromComposer(
+                options.initialPrompt,
+                pluginId,
+              ),
+            }
           : {}),
         ...(options?.focusPrompt === true ? { focusPrompt: true } : {}),
         ...(options?.placement !== undefined

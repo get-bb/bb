@@ -3,7 +3,10 @@ import {
   readPendingAttachmentUploads,
   usePendingAttachmentUploads,
 } from "./usePendingAttachmentUploads";
-import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
+import {
+  useInitialPromptDraft,
+  type InitialPromptSeed,
+} from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
@@ -157,7 +160,7 @@ export interface NewThreadComposerSeed {
   serviceTier?: ServiceTier;
   permissionMode?: PermissionMode;
   environment?: NewThreadRequest["environment"];
-  initialPrompt?: string;
+  initialPrompt?: InitialPromptSeed;
 }
 
 interface NewThreadComposerLocks {

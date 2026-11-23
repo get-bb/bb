@@ -81,6 +81,26 @@ export function serializedTextForPromptMentionResource(
   return `@${sourceQualifiedPath}${directorySuffix}`;
 }
 
+type PathMentionResource = Extract<PromptMentionResource, { kind: "path" }>;
+
+export function pathMentionResource({
+  path,
+  source,
+  entryKind,
+}: Pick<
+  PathMentionResource,
+  "path" | "source" | "entryKind"
+>): PathMentionResource {
+  const normalizedPath = path.replace(/\/+$/u, "") || path;
+  return {
+    kind: "path",
+    source,
+    entryKind,
+    path: normalizedPath,
+    label: normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1) || path,
+  };
+}
+
 function isSerializedPluginMentionText(
   resource: Extract<PromptMentionResource, { kind: "plugin" }>,
   serializedText: string,
