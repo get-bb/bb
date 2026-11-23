@@ -169,6 +169,7 @@ export interface ThreadTimelineRowsProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   timelineRows: TimelineRow[];
@@ -215,6 +216,7 @@ interface TimelineTurnStateContextValue {
 interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   navigationTargetRowId?: string | null;
   onLoadOlderRows?: () => Promise<void> | void;
@@ -2130,6 +2132,7 @@ function estimateTimelineWindowedRowHeight(
 function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
+  isCatchingUpTimeline,
   isLoadingOlderTimelineRows,
   navigationTargetRowId,
   onLoadOlderRows,
@@ -2155,6 +2158,7 @@ function TimelineRowsList({
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   const isInitialRevealPending = useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
+    isCatchingUpRows: isCatchingUpTimeline,
     isLoadingOlderRows: isLoadingOlderTimelineRows,
     onLoadOlderRows,
     reportsMissingTarget: spacing === "top-level",
@@ -2507,6 +2511,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     <div className="relative">
                       <TimelineRowsList
                         hasOlderTimelineRows={props.hasOlderTimelineRows}
+                        isCatchingUpTimeline={props.isCatchingUpTimeline}
                         isLoadingOlderTimelineRows={
                           props.isLoadingOlderTimelineRows
                         }

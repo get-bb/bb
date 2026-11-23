@@ -980,6 +980,7 @@ describe("useThreadTimelineController", () => {
       TIMELINE_QUERY_KEY,
       makeTimelineResponse({ rows: [newestLoadedRow], maxSeq: 1 }),
     );
+    markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
     const wrapper = ({ children }: { children: ReactNode }) =>
       queryWrapper({
         children: (
@@ -1001,7 +1002,10 @@ describe("useThreadTimelineController", () => {
         const pending = useScrollToSearchedMessage(
           timeline.timelineRows,
           "thread-1",
-          { reportsMissingTarget: true },
+          {
+            isCatchingUpRows: timeline.isCatchingUpTimeline,
+            reportsMissingTarget: true,
+          },
         );
         return { pending, rows: rowIds(timeline) };
       },
@@ -1009,6 +1013,8 @@ describe("useThreadTimelineController", () => {
     );
 
     await waitFor(() => expect(sdk.threads.timeline).toHaveBeenCalledOnce());
+    expect(result.current.pending).toBe(true);
+    expect(toastSpy).not.toHaveBeenCalled();
     document.body.appendChild(renderedTarget);
     await act(async () => {
       refresh.resolve(

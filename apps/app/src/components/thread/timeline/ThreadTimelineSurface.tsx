@@ -230,6 +230,7 @@ export function ThreadTimelineSurface({
             resolveMentionLink={resolveMentionLink}
             resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
             hasOlderTimelineRows={hasOlderTimelineRows}
+            isCatchingUpTimeline={isCatchingUpTimeline}
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}
             timelineRows={timelineRowsWithPendingStop}

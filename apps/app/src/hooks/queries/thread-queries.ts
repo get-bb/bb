@@ -65,10 +65,9 @@ import {
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
-import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline-unseen-events";
 import {
+  applyFetchedThreadTimeline,
   resolveThreadTimelineSegmentLimit,
-  syncThreadTimelineSubscriptionTag,
 } from "../cache-owners/thread-timeline-push-owner";
 import { markStreamTrace } from "@/lib/stream-trace";
 import { THREAD_OPEN_CACHE_GC_MS } from "../cache-owners/thread-open-cache-owner";
@@ -863,8 +862,7 @@ export async function fetchThreadTimeline({
   const pushed = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
   const timeline =
     pushed !== undefined && pushed.maxSeq > merged.maxSeq ? pushed : merged;
-  clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
-  syncThreadTimelineSubscriptionTag(queryClient, threadId, timeline.tag);
+  applyFetchedThreadTimeline(queryClient, threadId, timeline);
   markStreamTrace("bb:timeline-applied", {
     threadId,
     maxSeq: timeline.maxSeq,
