@@ -196,6 +196,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  rewindThreadPurgeStartedColumn(db);
   dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
   dropQueuedMessageRecheckAtColumn(db);

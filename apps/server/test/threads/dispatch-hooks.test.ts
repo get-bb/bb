@@ -1520,6 +1520,7 @@ describe("a scheduled send held by a plugin wait", () => {
         const pluginSendAt = testCase.pluginSendAt(scheduledAt);
         let atCapacity = true;
         installHooks({
+          "thread.delete_finalize": [],
           "message.dispatch": [
             {
               pluginId: "limiter",
@@ -1580,6 +1581,7 @@ describe("a scheduled send held by a plugin wait", () => {
       const scheduledAt = Date.now() + SCHEDULED_IN_MS;
       let atCapacity = true;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -1627,6 +1629,7 @@ describe("a scheduled send held by a plugin wait", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       let atCapacity = true;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -1684,6 +1687,7 @@ describe("a scheduled send held by a plugin wait", () => {
     await withTestHarness(async (harness) => {
       const scheduledAt = Date.now() + SCHEDULED_IN_MS;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -1730,6 +1734,7 @@ describe("a scheduled send held by a plugin wait", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const scheduledAt = Date.now() + SCHEDULED_IN_MS;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -1796,6 +1801,7 @@ describe("a wait decision's re-ask time", () => {
         const waitDecision = decision.wait(recheckAt);
         let windowOpen = false;
         installHooks({
+          "thread.delete_finalize": [],
           "message.dispatch": [
             {
               pluginId: "limiter",
@@ -1841,6 +1847,7 @@ describe("a wait decision's re-ask time", () => {
         sendAt: recheckAt,
       };
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [{ pluginId: "limiter", handler: () => ambiguous }],
       });
       const { thread } = seedRunnableThread(harness, {
