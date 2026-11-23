@@ -988,7 +988,7 @@ setup commands, and terminals.
 
 ## Sidebar preferences
 
-Core sidebar and Info panel layout preferences live in a server-side keyed registry shared by every
+Core sidebar, Info panel and plugin choice preferences live in a server-side keyed registry shared by every
 window, device, and the CLI. Each key has a typed schema, a default, and a
 revision; a write that names a stale revision gets `409
 ui_preference_conflict`. Read and write them with `bb settings ui
@@ -999,6 +999,13 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sidebar.threadListProvider`          | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one                                                        |
 | `sidebar.navigationProvider`          | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`                                                              |
+| `composer.provider`                   | Plugin key or `__automatic__` (default): the composer that draws the input box                                                                                                                                |
+| `diff.provider`                       | Plugin key, `__builtin__` (bb's diff), or `__automatic__` (default)                                                                                                                                           |
+| `sourceCode.provider`                 | Plugin key, `__builtin__` (bb's source viewer), or `__automatic__` (default)                                                                                                                                  |
+| `threadHeader.titleProvider`          | Plugin key, `__builtin__` (bb's thread title), or `__automatic__` (default)                                                                                                                                   |
+| `fileOpener.byExtension`              | JSON map of extension to plugin key or `__builtin__` (bb's preview), such as `{"md":"simple-notes/docs"}`; a missing extension is Automatic                                                                   |
+| `codeFence.byLanguage`                | JSON map of code fence language to plugin key or `__builtin__` (bb's code block); a missing language is Automatic                                                                                             |
+| `messageDirective.byName`             | JSON map of directive name to plugin key or `__builtin__` (show as text); a name several plugins claim shows a plugin picker in the message until it is listed                                                  |
 | `sidebar.pluginPanelOrder`            | Navigation destination order                                                                                                                                                                                  |
 | `sidebar.visiblePluginPanels`         | Navigation destinations shown, or `null` for every destination                                                                                                                                                |
 | `sidebar.footerOrder`                 | Footer action order                                                                                                                                                                                           |
@@ -1010,8 +1017,20 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
-A provider key whose plugin is disabled or uninstalled behaves as
-`__automatic__` until the plugin returns.
+
+The provider keys above pick which plugin draws a surface only one plugin can
+draw, with one rule for every slot and every map key, bb's bundled plugins
+included. A plugin key (`<pluginId>/<registrationId>`) wins while its plugin is
+installed and enabled; otherwise the pick behaves as `__automatic__` until the
+plugin returns. Automatic picks the first plugin you installed (by plugin id),
+then bb's own (bundled or from bb's official marketplace), then bb's built-in view. A message directive claimed by
+several plugins has no automatic winner. Each device remembers its last value
+of these keys so the first paint already uses your pick, and picks this device
+made before they were synced (diff and source renderers, file openers) move to
+the server once, if the server is still at the default. Change them in
+Settings → Appearance (Markdown for code blocks and directives), Settings
+→ Files → File openers, or with `bb settings ui set`,
+for example `bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and

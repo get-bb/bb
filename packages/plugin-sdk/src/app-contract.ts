@@ -2188,8 +2188,10 @@ export type ExperimentalThreadHeaderTitleProps =
  * right-panel toggle and the window drag region. While the user renames the
  * thread, bb shows its rename field instead. Double-click does not start a
  * rename on a plugin title, and dragging a split pane starts only from parts
- * that are not links, buttons or inputs. When several plugins register one,
- * the first in plugin order wins. A crash shows bb's title for that thread.
+ * that are not links, buttons or inputs. Exclusive (see "Exclusive slots" in
+ * the Plugin Guide); the user's pick is `threadHeader.titleProvider`, which can
+ * also choose bb's title (`__builtin__`). A crash shows bb's title for that
+ * thread.
  * The window title stays the thread title.
  */
 export interface ExperimentalThreadHeaderTitleRegistration {
@@ -2752,15 +2754,11 @@ export interface PluginSidebarThreadSplit {
 /**
  * Replace the sidebar's thread list with a plugin component.
  *
- * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. bb ships its own list as the bundled Thread list plugin
- * (`thread-list/thread-list`). Registering activates the replacement while the
- * plugin is enabled: by default the first registered list other than the
- * bundled one, in deterministic slot order, is active, falling back to the
- * bundled list; removing it reveals the next. The user can pin a specific
- * provider, including the bundled one, under Settings → Appearance → Sidebar.
- * A missing pinned provider or a crashing list shows a placeholder rather than
- * leaving the user with no sidebar.
+ * Exclusive (see "Exclusive slots" in the Plugin Guide): two lists cannot
+ * share one scroll area. bb ships its own list as the bundled Thread list
+ * plugin (`thread-list/thread-list`), an ordinary claimant. The user's pick is
+ * `sidebar.threadListProvider`. While another plugin's list is crashed, bb
+ * shows the bundled list and offers a Reload.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search action, the plugin nav rows, and the footer stay host-rendered in
@@ -2780,13 +2778,11 @@ export interface PluginThreadListRegistration {
 /**
  * Draw the sidebar's navigation: New thread, Plugins, Skills, Automations,
  * plugin panels, and More, plus optional controls in the sidebar header.
- * Exclusive: bb's bundled Navigation plugin registers Rail
- * (`navigation/rail`, the default) and Top list (`navigation/top-list`)
- * through this slot. By default the first provider from another plugin is
- * active, falling back to Rail; the user can pin one provider under Settings →
- * Appearance → Navigation. A pinned provider that is disabled or removed falls
- * back the same way, and a crashing provider is replaced by the Navigation
- * plugin's provider for the same placement.
+ * Exclusive (see "Exclusive slots" in the Plugin Guide): bb's bundled
+ * Navigation plugin registers Rail (`navigation/rail`, the default) and Top
+ * list (`navigation/top-list`) through this slot as ordinary claimants. The
+ * user's pick is `sidebar.navigationProvider`. A crashing provider is replaced
+ * by the Navigation plugin's provider for the same placement.
  *
  * `placement` decides the layout around the component, so bb can lay out the
  * sidebar before the plugin loads:
@@ -2823,10 +2819,10 @@ export interface ExperimentalSidebarNavigationRegistration {
 }
 
 /**
- * Register this plugin as a viewer/editor for file extensions. By default,
- * matching files render the first applicable opener in deterministic slot
- * order. The user can pin BB's preview or a specific opener per extension
- * under Settings → Files. The file tab's "Open with" menu can override that
+ * Register this plugin as a viewer/editor for file extensions. Exclusive per
+ * extension (see "Exclusive slots" in the Plugin Guide); the user's picks are
+ * `fileOpener.byExtension`, which can also choose BB's preview
+ * (`__builtin__`). The file tab's "Open with" menu can override that
  * choice for one open, and so can the plugin by passing the opener's id as
  * `experimental_openFilePreview`'s `opener`. A plugin can also use its own
  * setting and render `Original` conditionally. Applies to working-tree, host,
@@ -2851,11 +2847,9 @@ export interface PluginFileOpenerRegistration {
 /**
  * Replace BB's source-code renderer everywhere it renders supplied source
  * text — the native file preview and every plugin that calls
- * `experimental_SourceCode`. Like `experimental_threadList` this slot is
- * **exclusive**: one renderer at a time. Registering activates it while the
- * plugin is enabled; if several are registered, one from a plugin the user
- * installed wins over one bundled with bb, then the first in deterministic
- * slot order. A missing, disabled, or crashing replacement falls back to BB's
+ * `experimental_SourceCode`. Exclusive (see "Exclusive slots" in the Plugin
+ * Guide); the user's pick is `sourceCode.provider`, which can also choose BB's
+ * renderer (`__builtin__`). A crashing replacement falls back to BB's
  * renderer, and a replacement can render `Original` to delegate
  * per call (behind its own setting, by language, by size — whatever it needs).
  */
@@ -2872,9 +2866,10 @@ export interface PluginSourceCodeRendererRegistration {
 /**
  * Replace BB's diff renderer everywhere it renders supplied diff content — the
  * timeline file diffs, the environment diff panel's text bodies, and every
- * plugin that calls `experimental_Diff`. Exclusive, with the same activation,
- * fallback, and `Original` delegation rules as
- * {@link PluginSourceCodeRendererRegistration}.
+ * plugin that calls `experimental_Diff`. Exclusive, with the same fallback
+ * and `Original` delegation rules as
+ * {@link PluginSourceCodeRendererRegistration}; the user's pick is
+ * `diff.provider`.
  */
 export interface PluginDiffRendererRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2900,11 +2895,11 @@ export interface ExperimentalComposerProps {}
  * composer, the New thread screen, queued and sent message editors). The
  * banners, approval cards and queued messages above the box stay bb's.
  *
- * Exclusive, like `experimental_threadList`: a composer from a plugin the
- * user installed wins over the bundled one, then the first in slot order.
- * Users choose under Settings → Appearance → Composer (`composer.provider`).
- * bb ships its own composer as the bundled Composer plugin; with no composer
- * plugin enabled, no composer is shown.
+ * Exclusive (see "Exclusive slots" in the Plugin Guide); the user's pick is
+ * `composer.provider`. bb ships its own composer as the bundled Composer
+ * plugin, an ordinary claimant; with no composer plugin enabled, no composer
+ * is shown. While another plugin's composer is crashed, bb shows the bundled
+ * one with the same draft and offers a Reload.
  *
  * The host keeps the draft, uploads, history, pickers and submission; the
  * component draws over them with `experimental_useComposerRenderer()`.
@@ -3547,6 +3542,11 @@ export interface ExperimentalThreadTitleTextProps {
  * Register a leaf message directive rendered inside assistant (and nested
  * agent) message Markdown. `id` is the directive name: `inline-vis` matches
  * `::inline-vis{file="demo.html"}`.
+ *
+ * Exclusive per directive name (see "Exclusive slots" in the Plugin Guide),
+ * with no automatic winner: a name several plugins claim shows a plugin picker
+ * with its source text until the user picks one, which sets
+ * `messageDirective.byName`.
  */
 export interface PluginMessageDirectiveRegistration {
   /**
@@ -3562,8 +3562,9 @@ export interface PluginMessageDirectiveRegistration {
  * include `"ui"`. Fences elsewhere (user messages, file previews, plugin
  * Markdown) keep BB's code block.
  *
- * BB's code block also renders when two plugins claim the same language (BB
- * logs a warning naming them), when the plugin is disabled, and for a fence
+ * Exclusive per language (see "Exclusive slots" in the Plugin Guide); the
+ * user's picks are `codeFence.byLanguage`. BB's code block renders when the
+ * user picks it (`__builtin__`), when the plugin is disabled, and for a fence
  * whose component throws. A throw affects that fence only, and BB tries the
  * component again when the fence's `code` or `status` changes.
  *
@@ -5426,7 +5427,7 @@ export interface ExperimentalFilePreviewOptions extends ExperimentalFileOpenOpti
   /**
    * Id of one of the calling plugin's `fileOpener` registrations to show the
    * file with for this open, as the file tab's "Open with" menu does. Omit it
-   * to use the opener the user's Settings → Files choice selects. An opener
+   * to use the opener the user's `fileOpener.byExtension` pick selects. An opener
    * that is not registered falls back to BB's preview.
    */
   opener?: string;

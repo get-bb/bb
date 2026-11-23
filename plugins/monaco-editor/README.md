@@ -81,9 +81,9 @@ preview, which renders them properly. So are Markdown (`md`, `markdown`) and
 HTML (`html`, `htm`) files: they open in BB's rendered preview with its
 Preview/Raw toggle. Monaco still highlights them when opened from its file tree.
 
-To change any file type back, use **Settings → File openers**, which offers
-Automatic, BB's built-in preview, or Monaco per extension. Right-clicking a
-file link also offers a one-off "Open with…".
+To change any file type back, use **Settings → Files → File openers**,
+which offers Automatic, BB's built-in preview, or Monaco per extension.
+Right-clicking a file link also offers a one-off "Open with…".
 
 ## Roadmap
 

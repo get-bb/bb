@@ -20,12 +20,18 @@ export interface LastKnownPreferenceStore<Value> {
   write(value: Value): void;
 }
 
+export interface LegacyPreferenceStore<Value> {
+  read(): Value | null;
+  clear(): void;
+}
+
 export function createSyncedPreferenceAtom<Key extends UiPreferenceKey>(
   key: Key,
   lastKnown?: LastKnownPreferenceStore<UiPreferenceValue<Key>>,
+  legacy?: LegacyPreferenceStore<UiPreferenceValue<Key>>,
 ): SyncedPreferenceAtom<Key> {
   const storedAtom = atom<UiPreferenceValue<Key>>(
-    lastKnown?.read() ?? getUiPreferenceDefault(key),
+    lastKnown?.read() ?? legacy?.read() ?? getUiPreferenceDefault(key),
   );
   const valueAtom = lastKnown
     ? atom(
@@ -36,7 +42,10 @@ export function createSyncedPreferenceAtom<Key extends UiPreferenceKey>(
         },
       )
     : storedAtom;
-  registerSyncedUiPreference(key, { valueAtom });
+  registerSyncedUiPreference(key, {
+    valueAtom,
+    ...(legacy === undefined ? {} : { legacy }),
+  });
   return atom(
     (get) => get(valueAtom),
     (get, set, update: SetStateAction<UiPreferenceValue<Key>>) => {

@@ -329,8 +329,8 @@ bb settings ui set <key> <value> [--json]
 bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
-`set` takes plain strings for enum and provider keys and JSON for lists and
-`null`; it retries once if another writer changed the key. `reset` writes the
+`set` takes plain strings for enum and provider keys and JSON for lists, maps
+and `null`; it retries once if another writer changed the key. `reset` writes the
 default. The SDK offers `sdk.system.uiPreferences.list()`, `.set()`, and
 `.reset()`.
 
@@ -352,6 +352,21 @@ Composer plugin (`bb--composer/composer`) when there is none. Pick one with
 restore Automatic. A selected composer whose plugin is disabled or
 uninstalled behaves as Automatic until it returns. With no composer plugin
 enabled, no composer is shown.
+
+Every surface only one plugin can draw follows the same rule, bb's own
+plugins included: your pick wins while its plugin is enabled, otherwise
+Automatic uses the first plugin you installed (by plugin id), then bb's own
+(bundled or from bb's official marketplace), then bb's built-in view. Besides the thread list, navigation and composer
+keys, the picks are `diff.provider`, `sourceCode.provider` and
+`threadHeader.titleProvider` (each also takes `__builtin__` for bb's own), and
+the JSON maps `fileOpener.byExtension`, `codeFence.byLanguage` and
+`messageDirective.byName`, where a missing key means Automatic. A message
+directive several plugins claim has no automatic winner: it shows a plugin
+picker in the message until you pick one there or, for example, with
+`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Each
+choice sits with what it changes: Settings → Appearance for the composer,
+thread list, navigation, renderers and header title, Appearance → Markdown
+for code blocks and directives, and Settings → Files → File openers.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible

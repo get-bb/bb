@@ -9,6 +9,7 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
 import { pluginAuthorGithub } from "./plugin-marketplace-author";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
 
 export function PluginCardGrid({ children }: { children: ReactNode }) {
   return (
@@ -109,7 +110,7 @@ interface PluginCardAuthorProps {
 }
 
 function pluginCardAuthorName(entry: PluginCardAuthorProps["entry"]): string {
-  return entry.marketplace === "bb-official"
+  return isOfficialMarketplace(entry.marketplace)
     ? "BB Official"
     : (entry.author?.name ?? entry.publisherLabel);
 }
@@ -119,7 +120,7 @@ export function PluginCardAuthorAvatar({ entry }: PluginCardAuthorProps) {
     <PluginAuthorAvatar
       name={pluginCardAuthorName(entry)}
       github={pluginAuthorGithub(entry.author)}
-      official={entry.marketplace === "bb-official"}
+      official={isOfficialMarketplace(entry.marketplace)}
       size="detail"
     />
   );
@@ -144,7 +145,7 @@ export function PluginCardAuthor({ entry }: PluginCardAuthorProps) {
     <PluginAuthorByline
       name={pluginCardAuthorName(entry)}
       github={pluginAuthorGithub(entry.author)}
-      official={entry.marketplace === "bb-official"}
+      official={isOfficialMarketplace(entry.marketplace)}
     >
       <PluginCardAuthorName entry={entry} />
     </PluginAuthorByline>

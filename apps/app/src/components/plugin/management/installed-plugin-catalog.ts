@@ -7,6 +7,7 @@ import {
   parsePluginDetailKey,
   pluginDetailKey,
 } from "@/components/plugin/plugin-detail-key";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
 
 function catalogEntryListedBy(
   entry: Pick<PluginCatalogSearchEntry, "entryId" | "marketplace" | "listings">,
@@ -41,7 +42,7 @@ export function installedPluginCatalogEntry<
     return entries.find(
       (entry) =>
         entry.pluginId === plugin.id &&
-        entry.marketplace === "bb-official" &&
+        isOfficialMarketplace(entry.marketplace) &&
         entry.source === plugin.source &&
         (plugin.catalogEntryId === null ||
           entry.entryId === plugin.catalogEntryId),

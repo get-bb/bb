@@ -98,6 +98,7 @@ function mockPluginSlotSnapshot() {
 vi.mock("@/lib/plugin-slots", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/plugin-slots")>()),
   useBuiltinPluginIds: () => new Set<string>(),
+  useBbPluginIds: () => new Set<string>(),
   usePluginSlotKind: (kind: string) =>
     Reflect.get(mockPluginSlotSnapshot(), kind),
 }));

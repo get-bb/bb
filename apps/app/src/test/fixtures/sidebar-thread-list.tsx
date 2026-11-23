@@ -26,7 +26,7 @@ import {
 import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import { isPluginAppDefinition } from "@/lib/plugin-app-definition";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ExclusiveResolution } from "@/lib/plugin-replacement-preference";
 import {
   setPluginSlotRegistrations,
   type PluginThreadListSlot,
@@ -88,7 +88,7 @@ export async function loadPluginThreadListReplacement({
   withNotifications,
 }: {
   withNotifications: boolean;
-}): Promise<ResolvedReplacement<PluginThreadListSlot>> {
+}): Promise<ExclusiveResolution<PluginThreadListSlot>> {
   if (withNotifications) {
     await loadPluginAppThreadActions("push-notifications");
   }
@@ -100,6 +100,7 @@ export async function loadPluginThreadListReplacement({
   return {
     kind: "plugin",
     registration: { ...registration, pluginId: "thread-list", generation: 1 },
+    fallback: null,
   };
 }
 
