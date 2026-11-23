@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  experimental_matchesShortcutKey as matchesShortcutKey,
-  type PluginNavPanelProps,
-} from "@get-bb/plugin-sdk/app";
+import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useProjects } from "./data.js";
 import {
   parseTasksRoute,
@@ -12,6 +9,7 @@ import {
   type TasksRoute,
 } from "./routes.js";
 import { loadViewMode, storeViewMode } from "./view-preference.js";
+import { useNewTaskRequests } from "./new-task-requests.js";
 import { TasksTopbar } from "./topbar.js";
 import { ListView } from "../views/list/index.js";
 import { BoardView } from "../views/board/index.js";
@@ -155,25 +153,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   const noProjects = projects.data !== undefined && projects.data.length === 0;
   const newTaskProjectId = route.kind === "project" ? route.projectId : null;
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        !matchesShortcutKey(event, "c") ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey
-      )
-        return;
-      if (event.defaultPrevented || event.repeat) return;
-      if (isEditableTarget(event.target)) return;
-      if (hasOpenOverlay()) return;
-      event.preventDefault();
-      setNewTaskOpen(true);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  useNewTaskRequests(() => setNewTaskOpen(true));
 
   return (
     <div className="relative flex h-full min-h-0 bg-background text-foreground">

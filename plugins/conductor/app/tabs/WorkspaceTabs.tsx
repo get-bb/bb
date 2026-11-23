@@ -3,6 +3,7 @@ import {
   experimental_resolveThreadStatus as resolveThreadStatus,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_useAppPanel as useAppPanel,
+  experimental_useCommandShortcut as useCommandShortcut,
   experimental_usePanelTabs as usePanelTabs,
   experimental_useSidebarThreads as useSidebarThreads,
   experimental_useThreadActions as useThreadActions,
@@ -259,6 +260,7 @@ export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
     environmentId === null ? undefined : changes.get(environmentId);
   const diffTabKey = findDiffTabKey(panelTabs.tabs);
   const [running, setRunning] = useState(false);
+  const runShortcut = useCommandShortcut("run");
 
   if (environmentId === null || chats.length === 0) return null;
 
@@ -295,7 +297,7 @@ export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
           <ToolbarButton
             label={running ? "Starting…" : "Run"}
             icon="Play"
-            shortcut="⌥⌘R"
+            shortcut={runShortcut?.label}
             onClick={() => {
               if (running) return;
               setRunning(true);

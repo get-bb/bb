@@ -21,7 +21,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandFocusedPluginPage,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
@@ -558,6 +561,7 @@ export function PluginPanelRightPanelHost({
     revealPanel();
   }, [activeTab, isOpen, openTab, panelController, revealPanel]);
 
+  useAppCommandFocusedPluginPage(pluginId, isFocused && panel !== null);
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused || panel === null) return false;
     togglePanel();

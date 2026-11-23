@@ -284,6 +284,10 @@ on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 unbound and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
 
+`settings.search` (`/`) focuses the Settings search field. It works only on
+the Settings page, outside fields, editors and menus, so it can be rebound to
+another bare key; page commands on different pages never conflict.
+
 An open question card binds `question.select.1`–`9` (`1`–`9`),
 `question.submit` (`Mod+Enter`: Next, or Submit on the last question),
 `question.previous` / `question.next` (`ArrowLeft` / `ArrowRight` with focus

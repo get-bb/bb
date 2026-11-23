@@ -49,6 +49,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandHandler: (command: string, handler: () => boolean | void) => {
     appCommandHandlers.set(command, handler);
   },
+  useAppCommandFocusedPluginPage: () => undefined,
   useAppCommandShortcut: () => null,
 }));
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({

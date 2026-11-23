@@ -80,6 +80,7 @@ import {
   type ExperimentalVoiceRecordingBarProps,
   type ExperimentalFailedVoiceRecordingsProps,
   type ExperimentalShortcutHintProps,
+  type ExperimentalShortcutPresentation,
   type ExperimentalImageLightboxProps,
   type ExperimentalPromptMentionIconProps,
   type ExperimentalPromptMentionClipboardPill,
@@ -379,6 +380,7 @@ interface SlotEnv {
   navigateCalls: NavigateCall[];
   appPanel: ExperimentalPanelController;
   panelTabs: ExperimentalPanelTabs;
+  commandShortcuts: Readonly<Record<string, ExperimentalShortcutPresentation>>;
   fixedTabTarget: TestFixedTabTargetStore;
   composer: TestComposerStore;
   composerLog: ComposerLog;
@@ -1896,6 +1898,15 @@ const testPluginSdkApp = {
   experimental_VoiceRecordingBar: TestVoiceRecordingBar,
   experimental_FailedVoiceRecordings: TestFailedVoiceRecordings,
   experimental_ShortcutHint: TestShortcutHint,
+  experimental_useCommandShortcut(
+    commandId: string,
+  ): ExperimentalShortcutPresentation | null {
+    return (
+      useSlotEnv("experimental_useCommandShortcut").commandShortcuts[
+        commandId
+      ] ?? null
+    );
+  },
   experimental_matchesShortcutKey: matchesAppShortcutKey,
   experimental_sliceUtf16Head: sliceUtf16Head,
   experimental_ImageLightbox: TestImageLightbox,
@@ -2617,6 +2628,13 @@ export interface RenderSlotOptions<
    * no tabs.
    */
   experimental_panelTabs?: ExperimentalPanelTabs;
+  /**
+   * What `experimental_useCommandShortcut(id)` returns, by this plugin's
+   * command id. An omitted id → null, as for an unbound command.
+   */
+  experimental_commandShortcuts?: Readonly<
+    Record<string, ExperimentalShortcutPresentation>
+  >;
   /**
    * Initial session target visible to `experimental_useFixedTabTarget`.
    * Omit `panelId` for a thread fixed tab.
@@ -3533,6 +3551,7 @@ export function renderSlot<
     navigateCalls,
     appPanel,
     panelTabs: options.experimental_panelTabs ?? NO_PANEL_TABS,
+    commandShortcuts: options.experimental_commandShortcuts ?? {},
     fixedTabTarget,
     composer,
     composerLog,

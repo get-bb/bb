@@ -123,6 +123,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open server settings",
         "Open settings to add or manage bb servers.",
       ),
+      paletteHiddenCommand(
+        "settings.search",
+        "Search settings",
+        "Focus the search field on the Settings page.",
+      ),
       command(
         "sidebar.toggle",
         "Toggle sidebar",
