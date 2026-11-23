@@ -1781,6 +1781,16 @@ settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
 
+A remote server reached over several routes (the `serverRoutes` experiment)
+is saved in the same file under `routedServers` (server id, name, the address
+you added, the routes the server advertises, and a pinned route or `null` for
+Automatic), and `activeRoutedServerId` names the selected one. The saved
+custom and bb connect entries it folds stay in their existing fields, only
+hidden from the Server menu, and `target` keeps naming the entry the server
+was opened from, so an older build shows the same servers and opens the same
+one. The route is picked in Server menu → Route or the command palette; it is
+desktop-local, with no server settings CLI/SDK endpoint.
+
 ## App links
 
 Explicit Markdown links such as `[Review note](reflect://note/Project%20X)`

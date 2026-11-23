@@ -36,6 +36,7 @@
     "@bb/connect-client": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@bb/server-routes": "workspace:*",
     "bb-app": "workspace:*",
     "electron-updater": "^6.8.11",
     "semver": "^7.8.6",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   builtinServerName,
   BUILTIN_SERVER_NAME,
@@ -6,6 +7,7 @@ import {
   normalizeCustomServerUrl,
   type ServerTargetFs,
 } from "../src/server-target.js";
+import { buildDesktopServerChoices } from "../src/server-list.js";
 
 describe("builtinServerName", () => {
   it("uses the operating system's local server label", () => {
@@ -377,5 +379,206 @@ describe("server target store", () => {
     await invalidUrl.load();
     expect(invalidUrl.getTarget()).toEqual({ kind: "builtin" });
     expect(invalidUrl.getCustomServerUrl()).toBeNull();
+  });
+});
+
+describe("routed servers", () => {
+  const LAN = "http://192.168.1.5:38886";
+  const TAILNET = "https://studio.tail1234.ts.net";
+  const RELAY = "https://owner.getbb.app";
+  const advertised = [
+    {
+      url: `${LAN}/`,
+      kind: "local-network" as const,
+      providerId: "local-network",
+      label: "Local network",
+    },
+    {
+      url: TAILNET,
+      kind: "private-overlay" as const,
+      providerId: "tailscale",
+      label: "Tailscale",
+    },
+    {
+      url: RELAY,
+      kind: "relay" as const,
+      providerId: "connect",
+      label: "bb connect",
+    },
+  ];
+
+  it("folds saved custom and bb connect entries for the same server into one entry with the user's label", async () => {
+    const { fs } = createMemoryFs();
+    const path = "/tmp/routed.json";
+    const store = createServerTargetStore({ fs, storagePath: path });
+    await store.load();
+    await store.setConnectServer({
+      handle: "owner",
+      name: "owner",
+      url: RELAY,
+    });
+    await store.setCustomServerUrl(TAILNET, { name: null });
+    await store.setCustomServerUrl(LAN, { name: "Mac mini" });
+
+    const server = await store.adoptRoutedServer({
+      serverId: "srv_mini",
+      addedRoute: {
+        url: LAN,
+        kind: "custom",
+        providerId: null,
+        label: "192.168.1.5:38886",
+      },
+      advertisedRoutes: advertised,
+      select: true,
+    });
+
+    expect(server.name).toBe("Mac mini");
+    expect(store.getTarget()).toMatchObject({
+      kind: "server",
+      server: { serverId: "srv_mini" },
+    });
+    expect(
+      buildDesktopServerChoices(store, [], "http://127.0.0.1:38886").map(
+        (choice) => choice.id,
+      ),
+    ).toEqual(["builtin", "server:srv_mini"]);
+
+    const reloaded = createServerTargetStore({ fs, storagePath: path });
+    await reloaded.load();
+    expect(reloaded.getTarget().kind).toBe("server");
+    expect(
+      reloaded.getRoutedServer("srv_mini")?.userRoutes.map((r) => r.url),
+    ).toEqual([LAN, TAILNET, RELAY]);
+  });
+
+  it("leaves a file an older build reads as the same servers with the same one selected", async () => {
+    const legacyServerTargetSchema = z.looseObject({
+      showBuiltinServer: z.boolean().default(true),
+      connectServer: z
+        .object({
+          handle: z.string().min(1),
+          name: z.string().min(1),
+          url: z.string().min(1),
+        })
+        .nullable()
+        .optional(),
+      customServerUrl: z.string().min(1).nullable(),
+      customServerUrls: z.array(z.string().min(1)).default([]),
+      target: z.enum(["builtin", "connect", "custom"]),
+      customServerNames: z.record(z.string(), z.unknown()).default({}),
+      connectServerNames: z.record(z.string(), z.unknown()).default({}),
+    });
+    const path = "/tmp/rollback.json";
+    const beforeUpgrade = {
+      connectServer: { handle: "owner", name: "owner", url: RELAY },
+      connectServerNames: { owner: "Studio" },
+      customServerUrl: TAILNET,
+      customServerUrls: [TAILNET, "http://127.0.0.1:38886"],
+      customServerNames: { [TAILNET]: "Studio over Tailscale" },
+      target: "connect",
+    };
+    const { files, fs } = createMemoryFs({
+      [path]: JSON.stringify(beforeUpgrade),
+    });
+    const store = createServerTargetStore({ fs, storagePath: path });
+    await store.load();
+
+    await store.adoptRoutedServer({
+      serverId: "srv_studio",
+      addedRoute: {
+        url: RELAY,
+        kind: "relay",
+        providerId: "connect",
+        label: "bb connect",
+      },
+      advertisedRoutes: advertised,
+      select: true,
+    });
+    await store.adoptRoutedServer({
+      serverId: "srv_studio",
+      addedRoute: {
+        url: "http://127.0.0.1:38886",
+        kind: "custom",
+        providerId: null,
+        label: "127.0.0.1:38886",
+      },
+      advertisedRoutes: null,
+      select: false,
+    });
+    await store.setRoutedServerPinnedRoute("srv_studio", TAILNET);
+    expect(store.getTarget()).toMatchObject({
+      kind: "server",
+      server: { serverId: "srv_studio", name: "Studio over Tailscale" },
+    });
+
+    const olderBuildView = legacyServerTargetSchema.parse(
+      JSON.parse(files.get(path) ?? "{}"),
+    );
+    expect(olderBuildView).toMatchObject(beforeUpgrade);
+
+    await store.setTarget("builtin");
+    expect(store.getTarget().kind).toBe("builtin");
+    expect(await store.selectRoutedServer("srv_studio")).toBe(true);
+    expect(
+      legacyServerTargetSchema.parse(JSON.parse(files.get(path) ?? "{}")),
+    ).toMatchObject({ target: "connect", connectServer: { handle: "owner" } });
+  });
+
+  it("keeps the routes the user added when the server stops advertising them", async () => {
+    const { fs } = createMemoryFs();
+    const store = createServerTargetStore({ fs, storagePath: "/tmp/r.json" });
+    await store.load();
+    await store.adoptRoutedServer({
+      serverId: "srv_mini",
+      addedRoute: {
+        url: TAILNET,
+        kind: "custom",
+        providerId: null,
+        label: "studio.tail1234.ts.net",
+      },
+      advertisedRoutes: advertised,
+      select: true,
+    });
+    await store.setRoutedServerPinnedRoute("srv_mini", LAN);
+
+    const refreshed = await store.setRoutedServerRoutes("srv_mini", []);
+
+    expect(refreshed?.advertisedRoutes).toEqual([]);
+    expect(refreshed?.userRoutes.map((route) => route.url)).toEqual([TAILNET]);
+    expect(refreshed?.pinnedRouteUrl).toBeNull();
+  });
+
+  it("lists one entry per server and hides the account server it already reaches", async () => {
+    const { fs } = createMemoryFs();
+    const store = createServerTargetStore({ fs, storagePath: "/tmp/l.json" });
+    await store.load();
+    await store.adoptRoutedServer({
+      serverId: "srv_mini",
+      addedRoute: {
+        url: LAN,
+        kind: "custom",
+        providerId: null,
+        label: "192.168.1.5:38886",
+      },
+      advertisedRoutes: advertised,
+      select: true,
+    });
+
+    const choices = buildDesktopServerChoices(
+      store,
+      [
+        { handle: "owner", name: "owner", url: RELAY },
+        { handle: "other", name: "other", url: "https://other.getbb.app" },
+      ],
+      "http://127.0.0.1:38886",
+    );
+
+    expect(
+      choices.map(({ id, name, active }) => ({ id, name, active })),
+    ).toEqual([
+      { id: "builtin", name: BUILTIN_SERVER_NAME, active: false },
+      { id: "server:srv_mini", name: "192.168.1.5:38886", active: true },
+      { id: "connect:other", name: "other.getbb.app", active: false },
+    ]);
   });
 });

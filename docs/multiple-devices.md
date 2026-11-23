@@ -186,6 +186,42 @@ credential and asks the local server again.
 A remote server has no realtime link for keybindings and theme. The app re-reads
 them when it starts, when it becomes active, and every five minutes.
 
+### One entry per server, many routes
+
+With the `serverRoutes` experiment on for the server, the desktop app knows a
+remote server by its server id rather than one URL. Add it once, by any
+address it answers on (a local network URL, a Tailscale `ts.net` name, a
+Manual address, or a bb connect server from the account list). When the app
+opens that address it reads the server id and the server's routes from
+system config, and keeps one Server menu entry for it. Saved entries for the
+same server (another custom URL, the bb connect entry) fold into that entry,
+keeping the name you gave it. The address you added stays a route even if the
+server stops advertising it. With the experiment off the server advertises no
+routes and the app keeps each entry as it is.
+
+- **Opening.** The app checks every route's `/health` at once, with the
+  server id, and opens the first that answers, favoring routes higher in the
+  server's order (Settings → Machines → How devices reach this server). The bb
+  connect session is set up and sent only for the bb connect route; local
+  network and Tailscale addresses never receive it.
+- **Failing over.** While open, the app checks the route in use every ten
+  seconds, and right away when the computer wakes, the app becomes active, or
+  a page load fails. When it stops answering, the app picks again and loads
+  the same page (thread, query and hash) on the new route, with a toast. It
+  stays on a working route; it does not move back to a better one until the
+  route in use fails. If no route answers, the page stays open and the app
+  keeps checking.
+- **What a switch keeps.** A switch loads the page from a new address, which
+  is a different browser origin. The open thread and panel URL carry over;
+  scroll position, unsaved edits in open dialogs and unsent prompt drafts do
+  not. Drafts are kept per address, so a draft typed on one route reappears
+  when the app is back on that route.
+- **Choosing a route.** Server menu → Route lists Automatic and every route,
+  with the one in use shown as "<server> · via <route>". Picking a route uses
+  only that route until you pick Automatic again. The same choices are in the
+  command palette. Edit Server… renames the entry, or removes it when the URL
+  is cleared.
+
 ## Add an execution machine
 
 Open Settings → Machines and choose Add a machine. Run the generated one-line

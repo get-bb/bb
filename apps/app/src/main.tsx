@@ -7,6 +7,7 @@ import { App } from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { ApplicationUrlDialog } from "./components/ApplicationUrlDialog";
 import { AppToaster } from "./components/AppToaster";
+import { DesktopServerRouteToasts } from "./hooks/useDesktopServerRoute";
 import { registerProviderCliInstallQueryClient } from "./components/provider-cli/provider-cli-install-store";
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { initializeFavicon } from "./lib/favicon-color-preference";
@@ -56,6 +57,7 @@ createRoot(document.getElementById("root")!, {
             <App />
           </PluginActionContextProvider>
           <AppToaster />
+          <DesktopServerRouteToasts />
           <ApplicationUrlDialog />
         </BrowserRouter>
       </QueryClientProvider>

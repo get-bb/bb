@@ -14,6 +14,7 @@ import {
   BB_DESKTOP_ADD_SERVER_CHANNEL,
   BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
   BB_DESKTOP_SELECT_SERVER_CHANNEL,
+  BB_DESKTOP_SET_SERVER_ROUTE_CHANNEL,
   BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 
@@ -85,6 +86,8 @@ describe("server choice IPC", () => {
       select: async () => undefined,
       addServer: () => undefined,
       signInToConnect: () => undefined,
+      getRoute: () => null,
+      setRoute: async () => undefined,
       onError: () => undefined,
     });
     const list = ipc.handle.mock.calls.find(
@@ -174,6 +177,8 @@ describe("server choice IPC", () => {
       select,
       addServer: () => undefined,
       signInToConnect: () => undefined,
+      getRoute: () => null,
+      setRoute: async () => undefined,
       onError,
     });
     const request = ipc.on.mock.calls.find(
@@ -195,6 +200,50 @@ describe("server choice IPC", () => {
     );
   });
 
+  it("pins only a route of the open server, from the application main frame", async () => {
+    const setRoute = vi.fn(async () => undefined);
+    registerServerChoiceIpc({
+      applicationWindowWebContentsIds: new Set([7]),
+      onListRequested: () => undefined,
+      list: () => ({ servers: [], connectServersSkipReason: null }),
+      select: async () => undefined,
+      addServer: () => undefined,
+      signInToConnect: () => undefined,
+      getRoute: () => ({
+        serverId: "srv_dev",
+        serverName: "Dev server",
+        status: "connected",
+        activeUrl: "http://192.168.4.28:25837",
+        pinnedUrl: null,
+        routes: [
+          {
+            url: "http://192.168.4.28:25837",
+            kind: "local-network",
+            label: "Local network",
+            answering: true,
+            reason: null,
+          },
+        ],
+      }),
+      setRoute,
+      onError: () => undefined,
+    });
+    const request = ipc.on.mock.calls.find(
+      ([channel]) => channel === BB_DESKTOP_SET_SERVER_ROUTE_CHANNEL,
+    )?.[1];
+    if (!request) throw new Error("Missing set-route handler");
+    request(event, "https://injected.example");
+    request(event, 42);
+    request({ ...event, senderFrame: {} }, null);
+    expect(setRoute).not.toHaveBeenCalled();
+    request(event, "http://192.168.4.28:25837");
+    request(event, null);
+    expect(setRoute.mock.calls).toEqual([
+      ["http://192.168.4.28:25837"],
+      [null],
+    ]);
+  });
+
   it("opens Add Server only for the application main frame", () => {
     const addServer = vi.fn();
     registerServerChoiceIpc({
@@ -204,6 +253,8 @@ describe("server choice IPC", () => {
       select: async () => undefined,
       addServer,
       signInToConnect: () => undefined,
+      getRoute: () => null,
+      setRoute: async () => undefined,
       onError: () => undefined,
     });
     const request = ipc.on.mock.calls.find(
@@ -227,6 +278,8 @@ describe("server choice IPC", () => {
       select: async () => undefined,
       addServer: () => undefined,
       signInToConnect,
+      getRoute: () => null,
+      setRoute: async () => undefined,
       onError: () => undefined,
     });
     const request = ipc.on.mock.calls.find(
@@ -242,6 +295,8 @@ describe("server choice IPC", () => {
         connectServersSkipReason: reason,
         selectServer: () => undefined,
         servers: [],
+        serverRoute: null,
+        setServerRoute: () => undefined,
         setServerUrl: () => undefined,
         signInToConnect: () => undefined,
       }).some((item) => item.label?.startsWith("Sign in to bb Connect"));

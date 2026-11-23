@@ -144,12 +144,20 @@ import {
 } from "./server-moved.js";
 import {
   BUILTIN_SERVER_NAME,
+  connectHandleForRoute,
   createServerTargetStore,
+  normalizeCustomServerUrl,
   SERVER_TARGET_FILE_NAME,
   type ConnectServerRef,
+  type RoutedServer,
   type ServerTargetStore,
 } from "./server-target.js";
-import { buildDesktopServerChoices, customServerId } from "./server-list.js";
+import {
+  buildDesktopServerChoices,
+  customServerId,
+  ROUTED_SERVER_CHOICE_PREFIX,
+} from "./server-list.js";
+import { createRoutedServerController } from "./routed-server-controller.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
   createConnectServerSync,
@@ -222,6 +230,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+  BB_DESKTOP_SERVER_ROUTE_CHANGED_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
@@ -318,6 +327,7 @@ const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
 const WINDOWS_INSTALLER_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const ELECTRON_ABORTED_LOAD_ERROR_CODE = -3;
 const CONNECT_ACCOUNT_API_HANDLE = "connect";
 
 interface DesktopRuntime {
@@ -401,6 +411,7 @@ interface ResolveDesktopUpdateFeedUrlArgs {
 
 interface SystemConfigRequestArgs {
   fetchImpl: typeof fetch;
+  remote: boolean;
   serverUrl: string;
 }
 
@@ -826,6 +837,14 @@ function buildServerMenuArgs(): ServerMenuArgs {
       void setActiveServerTarget(serverId);
     },
     servers: buildMenuServerItems(connectServers),
+    serverRoute: routedServers.current(),
+    setServerRoute(url) {
+      void routedServers.setRoute(url).catch((error: unknown) => {
+        desktopLogger.warn(
+          `[routes] could not change the route: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    },
     setServerUrl() {
       void openSetServerUrlDialog();
     },
@@ -1025,7 +1044,11 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+        void refreshSystemConfig({
+          fetchImpl: fetch,
+          remote: false,
+          serverUrl,
+        });
       }
     } catch {
       return;
@@ -1039,7 +1062,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
-      void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+      void refreshSystemConfig({ fetchImpl: fetch, remote: false, serverUrl });
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -1071,6 +1094,15 @@ async function refreshSystemConfig(
       return;
     }
     currentAppKeybindings = config.keybindings;
+    if (args.remote) {
+      void routedServers
+        .learn(config.serverRoutes, args.serverUrl)
+        .catch((error: unknown) => {
+          desktopLogger.warn(
+            `[routes] could not learn server routes: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
       process.platform,
@@ -1093,6 +1125,7 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
           ...init,
           credentials: "include",
         }),
+      remote: true,
       serverUrl,
     });
   }
@@ -1118,7 +1151,7 @@ function stopSystemConfigSync(): void {
 function startSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
-  void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+  void refreshSystemConfig({ fetchImpl: fetch, remote: false, serverUrl });
 }
 
 function startRemoteSystemConfigSync(serverUrl: string): void {
@@ -1139,6 +1172,14 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
           splitNavigationEnabledWebContentsIds.delete(webContentsId);
           splitNavigationCommandsByWebContentsId.delete(webContentsId);
           desktopFindViewManager?.close(nativeWindow);
+        }
+      },
+    );
+    nativeWindow.webContents.on(
+      "did-fail-load",
+      (_event, errorCode, _description, _url, isMainFrame) => {
+        if (isMainFrame && errorCode !== ELECTRON_ABORTED_LOAD_ERROR_CODE) {
+          routedServers.check();
         }
       },
     );
@@ -1288,6 +1329,15 @@ async function authenticateConnectTarget(
       }
     );
   }
+  if (!isCurrent()) {
+    return (
+      cachedFailure ?? {
+        code: "network",
+        detail: "the app no longer targets this server",
+        ok: false,
+      }
+    );
+  }
   const localRuntimeReady = await ensureBuiltinRuntimeAttached();
   if (!localRuntimeReady || currentRuntime === null) {
     return (
@@ -1331,13 +1381,11 @@ async function readConnectAccountCookie(
 }
 
 function resolveConnectAccountUrl(): string {
-  const target = serverTargetStore?.getTarget();
   const serverUrl =
-    target?.kind === "connect"
-      ? target.server.url
-      : (listMenuConnectServers()[0]?.url ??
-        cachedConnectCredential?.serverUrl ??
-        null);
+    activeConnectTarget()?.url ??
+    listMenuConnectServers()[0]?.url ??
+    cachedConnectCredential?.serverUrl ??
+    null;
   if (serverUrl !== null) {
     return deriveConnectBaseUrl(serverUrl);
   }
@@ -1749,8 +1797,7 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
     connectSignInWindow.focus();
     return;
   }
-  const target = serverTargetStore?.getTarget();
-  const targetUrl = target?.kind === "connect" ? target.server.url : null;
+  const targetUrl = activeConnectTarget()?.url ?? null;
   const accountUrl = resolveConnectAccountUrl();
   const accountHost = new URL(accountUrl).hostname;
   const cookieName = connectAccountCookieName(accountUrl);
@@ -1789,12 +1836,8 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
     session.defaultSession.cookies.removeListener("changed", onCookieChanged);
     if (!signInWindow.isDestroyed()) signInWindow.close();
     connectServerSync?.syncNow().catch(() => {});
-    const currentTarget = serverTargetStore?.getTarget();
-    if (
-      targetUrl !== null &&
-      currentTarget?.kind === "connect" &&
-      currentTarget.server.url === targetUrl
-    ) {
+    if (targetUrl !== null && activeConnectTarget()?.url === targetUrl) {
+      routedServers.forgetConnectSession(targetUrl);
       void applyServerTarget();
     }
   };
@@ -1862,6 +1905,7 @@ async function applyServerTarget(): Promise<void> {
     return;
   }
   connectSessionRenewal?.stop();
+  routedServers.stop();
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;
@@ -1961,6 +2005,12 @@ async function applyServerTarget(): Promise<void> {
     if (!loaded) {
       connectSessionRenewal?.stop();
     }
+  } else if (target.kind === "server") {
+    stopServerMovedWatcher();
+    await routedServers.open(target.server, isCurrent);
+    if (!isCurrent()) {
+      return;
+    }
   } else {
     stopServerMovedWatcher();
     await loadRemoteServerTarget(target.url, isCurrent);
@@ -1992,6 +2042,65 @@ async function loadRemoteServerTarget(
   return true;
 }
 
+function activeConnectTarget(): { url: string; handle: string } | null {
+  const target = serverTargetStore?.getTarget();
+  if (target?.kind === "connect") {
+    return { url: target.server.url, handle: target.server.handle };
+  }
+  if (target?.kind !== "server") return null;
+  const route = routedServers.activeRoute(target.server.serverId);
+  const handle = route === null ? null : connectHandleForRoute(route);
+  return route === null || handle === null ? null : { url: route.url, handle };
+}
+
+const routedServers = createRoutedServerController({
+  getStore: () => serverTargetStore,
+  sessionFetch: (input, init) =>
+    net.fetch(input.toString(), { ...init, credentials: "include" }),
+  plainFetch: (input, init) => net.fetch(input.toString(), init),
+  authenticateConnect: authenticateConnectTarget,
+  startConnectRenewal(args) {
+    connectSessionRenewal?.start(args);
+  },
+  stopConnectRenewal() {
+    connectSessionRenewal?.stop();
+  },
+  onActiveRoute(url) {
+    startRemoteSystemConfigSync(url);
+    desktopBrowserBrokerClient?.reconnect();
+    currentWindowUrl = url;
+  },
+  async retargetWindows(resolveUrl) {
+    await desktopWindowFactory?.retargetWindows(resolveUrl);
+  },
+  loadServerPage: loadRemoteServerTarget,
+  async showUnreachable({ details }) {
+    await loadStartupError({
+      actions: [
+        { id: "retry", label: "Try again" },
+        { id: "choose-server", label: "Choose server…" },
+      ],
+      details,
+      logs: "",
+      title: "Could not reach this bb server",
+    });
+  },
+  onRouteChange(change) {
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
+        sendToApplicationRenderer(
+          browserWindow,
+          BB_DESKTOP_SERVER_ROUTE_CHANGED_CHANNEL,
+          change,
+        );
+      }
+    }
+  },
+  onMenuChange: () => refreshApplicationMenu(),
+  logInfo: (message) => desktopLogger.info(message),
+  logWarning: (message) => desktopLogger.warn(message),
+});
+
 async function setActiveServerTarget(serverId: string): Promise<void> {
   if (
     serverTargetStore === null ||
@@ -2014,6 +2123,16 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     await applyServerTarget();
     return;
   }
+  if (serverId.startsWith(ROUTED_SERVER_CHOICE_PREFIX)) {
+    if (
+      await serverTargetStore.selectRoutedServer(
+        serverId.slice(ROUTED_SERVER_CHOICE_PREFIX.length),
+      )
+    ) {
+      await applyServerTarget();
+    }
+    return;
+  }
   if (serverId.startsWith("custom:")) {
     const url = serverTargetStore
       .getCustomServerUrls()
@@ -2028,11 +2147,48 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
   if (serverId === "builtin") await selectBuiltinServer();
 }
 
+async function editRoutedServer(server: RoutedServer): Promise<void> {
+  if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
+    return;
+  }
+  const result = await openServerUrlDialog({
+    initialName: server.name,
+    initialUrl: server.addedUrl,
+    mode: "edit",
+    parentWindow: getFocusedApplicationWindow(),
+    preloadPath: serverUrlDialogPreloadPath,
+  });
+  if (result.kind === "cancelled") {
+    return;
+  }
+  if (
+    result.kind === "set" &&
+    normalizeCustomServerUrl(result.url) === server.addedUrl
+  ) {
+    await serverTargetStore.setRoutedServerName(server.serverId, result.name);
+    refreshApplicationMenu();
+    return;
+  }
+  await serverTargetStore.removeRoutedServer(server.serverId);
+  if (result.kind === "set") {
+    await serverTargetStore.setCustomServerUrl(result.url, {
+      availableConnectServers: listMenuConnectServers(),
+      name: result.name,
+    });
+    await serverTargetStore.adoptConnectServers(listMenuConnectServers());
+  }
+  await applyServerTarget();
+}
+
 async function openSetServerUrlDialog(add = false): Promise<void> {
   if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
     return;
   }
   const target = serverTargetStore.getTarget();
+  if (!add && target.kind === "server") {
+    await editRoutedServer(target.server);
+    return;
+  }
   if (!add && target.kind === "connect") {
     const result = await openServerUrlDialog({
       initialName: serverTargetStore.getConnectServerName(target.server.handle),
@@ -2072,6 +2228,14 @@ async function openSetServerUrlDialog(add = false): Promise<void> {
     result.kind === "clear" &&
     serverTargetStore.getCustomServerUrl() === null
   ) {
+    return;
+  }
+  if (
+    add &&
+    result.kind === "set" &&
+    (await routedServers.join(result.url, result.name))
+  ) {
+    await applyServerTarget();
     return;
   }
   if (result.kind === "set" && result.url === previousUrl) {
@@ -2506,6 +2670,8 @@ function registerDesktopUpdateIpc(): void {
     signInToConnect() {
       openConnectSignIn(getFocusedApplicationWindow());
     },
+    getRoute: () => routedServers.current(),
+    setRoute: (url) => routedServers.setRoute(url),
     onError: (error) =>
       desktopLogger.error(`Could not switch server: ${String(error)}`),
   });
@@ -3068,6 +3234,7 @@ async function runDesktopApp(): Promise<void> {
     void desktopAutoUpdateService?.checkAfterActive();
     refreshRemoteSystemConfig?.();
     connectSessionRenewal?.renewIfDue();
+    routedServers.checkAfterActivation();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     const webContentsId = browserWindow.webContents.id;
@@ -3124,6 +3291,9 @@ async function runDesktopApp(): Promise<void> {
   powerMonitor.on("shutdown", () => {
     quitController.bypassConfirmation();
     app.quit();
+  });
+  powerMonitor.on("resume", () => {
+    routedServers.check();
   });
   if (app.isPackaged) {
     await session.defaultSession.clearCache();
@@ -3264,6 +3434,9 @@ async function runDesktopApp(): Promise<void> {
         });
       }
       void adoptSavedConnectServers();
+      if (serverTargetStore?.getTarget().kind === "server") {
+        refreshRemoteSystemConfig?.();
+      }
     },
     log: (message) => {
       desktopLogger.info(`[desktop] ${message}`);
@@ -3272,15 +3445,18 @@ async function runDesktopApp(): Promise<void> {
   connectServerSync.start();
   connectSessionRenewal = createConnectSessionRenewal({
     async authenticate(remoteServerUrl, isCurrent) {
-      const target = serverTargetStore?.getTarget();
-      if (target?.kind !== "connect" || target.server.url !== remoteServerUrl) {
+      const target = activeConnectTarget();
+      if (target === null || target.url !== remoteServerUrl) {
         return { detail: "the app no longer targets this server", ok: false };
       }
       const result = await authenticateConnectTarget(
         remoteServerUrl,
-        target.server.handle,
+        target.handle,
         isCurrent,
       );
+      if (result.ok) {
+        routedServers.noteConnectSession(remoteServerUrl, result.expiresAt);
+      }
       return result.ok
         ? result
         : { detail: `${result.code}: ${result.detail}`, ok: false };
@@ -3503,6 +3679,12 @@ async function runDesktopApp(): Promise<void> {
       const target = serverTargetStore?.getTarget();
       if (target?.kind === "connect") return target.server.url;
       if (target?.kind === "custom") return target.url;
+      if (target?.kind === "server") {
+        return (
+          routedServers.activeRoute(target.server.serverId)?.url ??
+          target.server.addedUrl
+        );
+      }
       return currentRuntime?.serverUrl ?? builtinServerUrl;
     },
   });

@@ -7,6 +7,7 @@ import {
 } from "electron";
 import {
   bbDesktopConnectSignInLabel,
+  type BbDesktopServerRoute,
   type BbDesktopZoomCommand,
 } from "@bb/desktop-contract";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
@@ -67,6 +68,8 @@ export interface InstallApplicationMenuArgs {
   onServerMenuWillShow?: () => void;
   servers: ApplicationMenuServerItem[];
   connectServersSkipReason: ConnectServerSyncSkipReason | null;
+  serverRoute: BbDesktopServerRoute | null;
+  setServerRoute(url: string | null): void;
 }
 
 function createLocalLogsMenuItems(
@@ -92,9 +95,61 @@ export type ServerMenuArgs = Pick<
   | "connectServersSkipReason"
   | "selectServer"
   | "servers"
+  | "serverRoute"
+  | "setServerRoute"
   | "setServerUrl"
   | "signInToConnect"
 >;
+
+function serverRouteOptionLabel(
+  option: BbDesktopServerRoute["routes"][number],
+): string {
+  const host = new URL(option.url).host;
+  const label = option.label === host ? host : `${option.label} (${host})`;
+  return option.answering === false ? `${label} — not answering` : label;
+}
+
+export function serverRouteStatusLabel(route: BbDesktopServerRoute): string {
+  const active = route.routes.find((option) => option.url === route.activeUrl);
+  if (route.status === "selecting") return `${route.serverName} · connecting…`;
+  if (route.status === "unreachable" || active === undefined) {
+    return `${route.serverName} · not answering`;
+  }
+  return `${route.serverName} · via ${active.label}`;
+}
+
+function createServerRouteMenuItems(
+  args: ServerMenuArgs,
+): MenuItemConstructorOptions[] {
+  const route = args.serverRoute;
+  if (route === null) return [];
+  return [
+    { type: "separator" },
+    { enabled: false, label: serverRouteStatusLabel(route) },
+    {
+      label: "Route",
+      submenu: [
+        {
+          checked: route.pinnedUrl === null,
+          click() {
+            args.setServerRoute(null);
+          },
+          label: "Automatic",
+          type: "radio",
+        },
+        { type: "separator" },
+        ...route.routes.map((option): MenuItemConstructorOptions => ({
+          checked: route.pinnedUrl === option.url,
+          click() {
+            args.setServerRoute(option.url);
+          },
+          label: serverRouteOptionLabel(option),
+          type: "radio",
+        })),
+      ],
+    },
+  ];
+}
 
 export function createServerMenuItems(
   args: ServerMenuArgs,
@@ -114,6 +169,7 @@ export function createServerMenuItems(
   );
   return [
     ...serverItems,
+    ...createServerRouteMenuItems(args),
     { type: "separator" },
     ...(signInLabel === null
       ? []
@@ -135,7 +191,9 @@ export function createServerMenuItems(
       enabled: args.servers.some(
         (server) =>
           server.checked &&
-          (server.id.startsWith("custom:") || server.id.startsWith("connect:")),
+          (server.id.startsWith("custom:") ||
+            server.id.startsWith("connect:") ||
+            server.id.startsWith("server:")),
       ),
       label: SET_SERVER_URL_MENU_LABEL,
       click() {

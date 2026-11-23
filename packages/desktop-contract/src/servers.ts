@@ -46,3 +46,49 @@ export const bbDesktopServerListSchema = z
   })
   .strict();
 export type BbDesktopServerList = z.infer<typeof bbDesktopServerListSchema>;
+
+export const bbDesktopServerRouteOptionSchema = z
+  .object({
+    url: z.url(),
+    kind: z.enum(["local-network", "private-overlay", "relay", "custom"]),
+    label: z.string().min(1),
+    answering: z.boolean().nullable(),
+    reason: z.string().nullable(),
+  })
+  .strict();
+export type BbDesktopServerRouteOption = z.infer<
+  typeof bbDesktopServerRouteOptionSchema
+>;
+
+export const bbDesktopServerRouteSchema = z
+  .object({
+    serverId: z.string().min(1),
+    serverName: z.string().min(1),
+    status: z.enum(["selecting", "connected", "unreachable"]),
+    activeUrl: z.url().nullable(),
+    pinnedUrl: z.url().nullable(),
+    routes: z.array(bbDesktopServerRouteOptionSchema),
+  })
+  .strict();
+export type BbDesktopServerRoute = z.infer<typeof bbDesktopServerRouteSchema>;
+
+export const bbDesktopServerRouteSwitchSchema = z
+  .object({
+    fromLabel: z.string().min(1).nullable(),
+    toLabel: z.string().min(1),
+    reason: z.enum(["unreachable", "pinned", "automatic"]),
+  })
+  .strict();
+export type BbDesktopServerRouteSwitch = z.infer<
+  typeof bbDesktopServerRouteSwitchSchema
+>;
+
+export const bbDesktopServerRouteChangeSchema = z
+  .object({
+    route: bbDesktopServerRouteSchema.nullable(),
+    switched: bbDesktopServerRouteSwitchSchema.nullable(),
+  })
+  .strict();
+export type BbDesktopServerRouteChange = z.infer<
+  typeof bbDesktopServerRouteChangeSchema
+>;

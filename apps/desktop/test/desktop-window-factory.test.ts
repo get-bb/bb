@@ -53,6 +53,7 @@ afterEach(async () => {
 
 class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public devToolsOpenCount = 0;
+  public currentUrl = "";
   public id: number;
   public readonly addedDictionaryWords: string[] = [];
   public readonly spellCheckerEnabledValues: boolean[] = [];
@@ -130,6 +131,10 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 
   getZoomFactor(): number {
     return this.zoomFactor;
+  }
+
+  getURL(): string {
+    return this.currentUrl;
   }
 
   setZoomFactor(factor: number): void {
@@ -230,6 +235,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   async loadURL(url: string): Promise<void> {
     this.loadedUrls.push(url);
+    this.webContents.currentUrl = url;
     this.webContents.setZoomFactor(1);
     for (const listener of this.webContents.domReadyListeners) listener();
   }
