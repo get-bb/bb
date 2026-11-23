@@ -43,14 +43,14 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, actionShortcuts,
-registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
-  component: the host-owned answer shortcuts by zero-based option index, the
-  `submit`, `previous`, `next`, and `cancel` action shortcuts, and a way to act
-  when the person presses one. Action shortcuts also
-  fire from text fields inside an element marked `data-question-form`. The
-  registry's `question-form` item uses it. Empty outside a pending interaction
-  and in `renderSlot`.
+- `experimental_useQuestionFormHost()` → `{ density, promptShownAbove,
+closeInline, shortcuts, actionShortcuts, registerChoiceHandler,
+registerActionHandler }` in a `pendingInteraction` component. In a parent's
+  Active child threads card: `"compact"`, the question the card shows, and a
+  close function; elsewhere `"default"`, null, null. Then answer shortcuts by
+  option index, `submit`/`previous`/`next`/`cancel` action shortcuts (they also
+  fire in text fields inside `data-question-form`), and handlers for both.
+  bb's own and the registry's `question-form` use it.
 - `useBbNavigate()` → `{ toThread(id, options?), toProject(id), toPluginPanel(path, { subPath?, replace? }?),
 toCompose({ initialPrompt?, focusPrompt?, split? }?), openUrl(url), experimental_openFilePreview(options),
 experimental_openFileExternally(options), experimental_openTerminal({ terminalId }), experimental_toSettings(target?),

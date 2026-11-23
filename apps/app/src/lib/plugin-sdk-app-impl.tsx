@@ -58,7 +58,7 @@ import { usePluginId } from "@/components/plugin/plugin-context";
 import { useExperimentalCommandShortcut } from "@/lib/plugin-command-shortcut";
 import { CollapsibleStackCard } from "@/components/promptbox/banner/CollapsibleStackCard";
 import { usePluginThreadExtensionState } from "@/components/plugin/usePluginThreadExtensionState";
-import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
+import { useQuestionFormHost } from "@/components/thread/user-questions/question-form-host-context";
 import { definePluginApp } from "./plugin-app-definition";
 import { useBbContext } from "./plugin-bb-context";
 import {

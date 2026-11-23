@@ -205,9 +205,28 @@ export interface PluginPendingInteractionView {
   expiresAt: number | null;
 }
 
+/**
+ * Props of a `pendingInteraction` component. bb renders the component in two
+ * places: in the thread's own composer, and in a parent thread's Active child
+ * threads card when the request belongs to a child thread
+ * (`experimental_useQuestionFormHost().closeInline` tells them apart).
+ */
 export interface PluginPendingInteractionProps {
   interaction: PluginPendingInteractionView;
+  /**
+   * Answer the request with `value`. Resolves once bb records the answer and
+   * rejects when it cannot; bb shows the error under the form.
+   */
   submit(value: JsonValue): Promise<void>;
+  /**
+   * What Cancel on bb's own question form does. In the thread's own composer
+   * it ends the request: a request from a plugin backend
+   * (`bb.ui.requestInput`) is cancelled, and a request a provider made during
+   * a turn stops that thread's turn, the way Stop does. In a parent thread's
+   * Active child threads card it only closes the card, the same as
+   * `experimental_useQuestionFormHost().closeInline`: the request stays open in
+   * the child thread and its turn keeps waiting.
+   */
   cancel(): Promise<void>;
 }
 
@@ -230,11 +249,31 @@ export type ExperimentalQuestionFormAction =
   | "cancel";
 
 /**
- * The keyboard shortcuts bb binds while a pending interaction is open. The
- * host owns the bindings (users can remap them); a form shows them and decides
- * what choosing an option or an action means.
+ * What bb tells a pending interaction form about where it renders, and the
+ * keyboard shortcuts bb binds while it is open. bb's own question forms read
+ * the same host. The host owns the bindings (users can remap them); a form
+ * shows them and decides what choosing an option or an action means.
  */
 export interface ExperimentalQuestionFormHost {
+  /**
+   * `"compact"` in a parent thread's Active child threads card, where bb's
+   * own form uses tighter spacing and regular-weight buttons; `"default"`
+   * elsewhere.
+   */
+  density: "default" | "compact";
+  /**
+   * The question text the Active child threads card already shows above the
+   * form, so a single-question form can skip repeating it. Null outside that
+   * card.
+   */
+  promptShownAbove: string | null;
+  /**
+   * Closes the question in the Active child threads card without answering.
+   * The request stays open in the child thread. Null outside that card. bb's
+   * own form calls it from Cancel there so the person's draft answers survive;
+   * `cancel` closes the card the same way.
+   */
+  closeInline: (() => void) | null;
   /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.

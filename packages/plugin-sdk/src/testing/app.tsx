@@ -3634,6 +3634,9 @@ export function renderSlot<
     },
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
+      density: "default",
+      promptShownAbove: null,
+      closeInline: null,
       shortcuts: new Map(),
       actionShortcuts: new Map(),
       registerChoiceHandler: () => () => {},

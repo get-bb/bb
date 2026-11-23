@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
+import { experimental_useQuestionFormHost } from "@get-bb/plugin-sdk/app";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -362,6 +363,82 @@ describe("PluginPendingInteractionComposer", () => {
       await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(2));
       await act(async () => {});
       expect(send().matches(":disabled")).toBe(true);
+    },
+  );
+
+  it.each([
+    { origin: "plugin", inline: false, expected: "cancel request" },
+    { origin: "provider", inline: false, expected: "stop turn" },
+    { origin: "plugin", inline: true, expected: "close card" },
+    { origin: "provider", inline: true, expected: "close card" },
+  ] as const)(
+    "cancel from a $origin request (inline: $inline) does what core's Cancel does: $expected",
+    async ({ origin, inline, expected }) => {
+      installPluginRuntime();
+      function Renderer({ cancel }: PluginPendingInteractionProps) {
+        const host = experimental_useQuestionFormHost();
+        return (
+          <div>
+            <p>
+              {host.density} {host.promptShownAbove ?? "none"}
+            </p>
+            <button type="button" onClick={() => void cancel()}>
+              Dismiss
+            </button>
+          </div>
+        );
+      }
+      setPluginSlotRegistrations(
+        "secrets",
+        registrations([{ id: "secret-request", component: Renderer }]),
+      );
+      const stop = vi
+        .spyOn(sdk.threads, "stop")
+        .mockResolvedValue(undefined as never);
+      const cancelRequest = vi
+        .spyOn(sdk.threads.interactions, "cancel")
+        .mockResolvedValue(undefined as never);
+      const close = vi.fn();
+      const composer = (
+        <PluginPendingInteractionComposer
+          collapsedByDefault={false}
+          interaction={interaction}
+          request={secretsRequest}
+          origin={origin}
+        />
+      );
+      renderComposer(
+        inline ? (
+          <InlinePendingInteractionContext.Provider
+            value={{ promptShownAbove: "Pick a release name", close }}
+          >
+            {composer}
+          </InlinePendingInteractionContext.Provider>
+        ) : (
+          composer
+        ),
+      );
+      expect(
+        screen.getByText(
+          inline ? "compact Pick a release name" : "default none",
+        ),
+      ).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+      await act(async () => {});
+
+      expect({
+        closed: close.mock.calls.length,
+        stopped: stop.mock.calls,
+        cancelled: cancelRequest.mock.calls,
+      }).toEqual({
+        closed: expected === "close card" ? 1 : 0,
+        stopped: expected === "stop turn" ? [[{ threadId: "thr_test" }]] : [],
+        cancelled:
+          expected === "cancel request"
+            ? [[{ interactionId: "pint_23456789ab", threadId: "thr_test" }]]
+            : [],
+      });
     },
   );
 

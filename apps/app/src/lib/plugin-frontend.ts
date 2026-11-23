@@ -1,4 +1,3 @@
-import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as voiceInputTextarea from "@bb/shared-ui/voice-input-textarea";
 import * as react from "react";
 import * as reactDom from "react-dom";
@@ -224,7 +223,6 @@ export interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
-  questionFormHost: typeof questionFormHost;
   voiceInputTextarea: typeof voiceInputTextarea;
 }
 
@@ -258,7 +256,6 @@ export function installPluginRuntime(): BbPluginRuntime {
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
-    questionFormHost,
     voiceInputTextarea,
   };
   return host.__bbPluginRuntime;

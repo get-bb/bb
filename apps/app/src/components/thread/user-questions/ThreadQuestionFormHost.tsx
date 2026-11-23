@@ -5,11 +5,11 @@ import {
   QUESTION_ACTION_APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
 } from "@bb/domain";
-import {
-  QuestionFormHostProvider,
-  type QuestionFormAction,
-  type QuestionFormHost,
-} from "@bb/shared-ui/question-form-host";
+import type {
+  ExperimentalQuestionFormAction,
+  ExperimentalQuestionFormHost,
+} from "@get-bb/plugin-sdk";
+import { QuestionFormHostProvider } from "./question-form-host-context";
 import { VoiceInputTextareaProvider } from "@bb/shared-ui/voice-input-textarea";
 import {
   useAppCommandContext,
@@ -23,7 +23,7 @@ const QUESTION_FORM_ACTIONS = [
   "previous",
   "next",
   "cancel",
-] as const satisfies readonly QuestionFormAction[];
+] as const satisfies readonly ExperimentalQuestionFormAction[];
 
 export function ThreadQuestionFormHost({
   children,
@@ -32,13 +32,13 @@ export function ThreadQuestionFormHost({
   closeInline,
 }: {
   children: ReactNode;
-  density: QuestionFormHost["density"];
+  density: ExperimentalQuestionFormHost["density"];
   promptShownAbove: string | null;
   closeInline: (() => void) | null;
 }) {
   const handlerRef = useRef<((index: number) => boolean) | null>(null);
   const actionHandlerRef = useRef<
-    ((action: QuestionFormAction) => boolean) | null
+    ((action: ExperimentalQuestionFormAction) => boolean) | null
   >(null);
   const [hasHandler, setHasHandler] = useState(false);
   const [hasActionHandler, setHasActionHandler] = useState(false);
@@ -59,7 +59,7 @@ export function ThreadQuestionFormHost({
     [],
   );
   const registerActionHandler = useCallback(
-    (handler: (action: QuestionFormAction) => boolean) => {
+    (handler: (action: ExperimentalQuestionFormAction) => boolean) => {
       actionHandlerRef.current = handler;
       setHasActionHandler(true);
       return () => {
@@ -69,7 +69,7 @@ export function ThreadQuestionFormHost({
     },
     [],
   );
-  const value = useMemo(
+  const value = useMemo<ExperimentalQuestionFormHost>(
     () => ({
       density,
       promptShownAbove,
