@@ -212,12 +212,11 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
         .list()
         .then((hosts) => hosts.filter((host) => host.type !== "ephemeral")),
       bb.sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
+      // Display metadata and ordering come from every provider on the host:
+      // a resource may name a provider whose usage a plugin supplies, and such
+      // a provider need not declare the "usage" capability itself.
       bb.sdk.providers
-        .list(
-          hostId === undefined
-            ? { capability: "usage" }
-            : { capability: "usage", hostId },
-        )
+        .list(hostId === undefined ? {} : { hostId })
         .catch(() => []),
       bb.sdk.system.config().catch(() => null),
     ]);

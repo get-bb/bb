@@ -371,3 +371,89 @@ it("collapses known account observations per machine, preserves unknown identiti
     await harness.lifecycle.dispose();
   }
 });
+
+it("shows a provider's name and icon when a plugin supplies its usage", async () => {
+  const antigravity = {
+    id: "acp-antigravity-acp",
+    displayName: "Antigravity",
+    logoUrl: null,
+    icon: { glyph: "Antigravity" },
+  };
+  // Only the full provider list carries the custom ACP agent; the usage
+  // capability list does not, because its quota comes from a plugin.
+  const listProviders = vi.fn(
+    async (args: { capability?: string } = {}) =>
+      args.capability === "usage" ? [] : [antigravity],
+  );
+  const rpc = vi.fn(async ({ method }: { method: string }) => {
+    if (method === usageListMethod) {
+      return {
+        resources: [
+          {
+            id: "acp-antigravity-acp@host",
+            providerId: "acp-antigravity-acp",
+            label: "Antigravity",
+            scope: { kind: "host" as const, hostId: "host", hostName: "Machine" },
+          },
+        ],
+      };
+    }
+    return {
+      observedAt: 1,
+      usage: {
+        status: "ok" as const,
+        accountEmail: null,
+        planLabel: "Antigravity",
+        windows: [],
+      },
+    };
+  });
+  const host = createFakePluginHost({
+    pluginId: "provider-usage",
+    sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", name: "Machine", status: "connected" }),
+        ],
+      },
+      providers: { list: listProviders as never },
+      plugins: {
+        experimental_discoverRpc: async () => [
+          {
+            pluginId: "antigravity",
+            displayName: "Antigravity",
+            method: usageListMethod,
+          },
+        ],
+        callRpc: rpc,
+      },
+    },
+  });
+  plugin(host.bb);
+  try {
+    const listed = await host.harness.behavior.callRpc("getUsage", {
+      force: true,
+      machineIds: ["host"],
+      providerIds: [],
+      maxAgeMs: 0,
+    });
+    expect(listed).toMatchObject({
+      machines: [
+        {
+          id: "host",
+          providers: [
+            {
+              providerId: "acp-antigravity-acp",
+              displayName: "Antigravity",
+              icon: { glyph: "Antigravity" },
+            },
+          ],
+        },
+      ],
+    });
+    expect(listProviders).toHaveBeenCalledWith({ hostId: "host" });
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
