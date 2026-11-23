@@ -110,7 +110,10 @@ async function dialInChild(
     const dials = ${JSON.stringify(dials)};
     const results = {};
     for (const dial of dials) {
-      const WebSocket = createNodeWebSocketConstructor({ headers: dial.headers, onFrameWritten: () => {} });
+      const WebSocket = createNodeWebSocketConstructor({
+        headers: dial.headers === undefined ? undefined : () => dial.headers,
+        onFrameWritten: () => {},
+      });
       results[dial.name] = await new Promise((resolve) => {
         const socket = new WebSocket(dial.url);
         const timer = setTimeout(() => { socket.terminate(); resolve("timeout"); }, 5000);

@@ -502,7 +502,7 @@ export function connectAccessUrl(
   );
   if (provider === undefined) return { status: "unavailable" };
   if (
-    provider.availability?.status === "available" &&
+    provider.availability.status === "available" &&
     provider.availability.serverUrl !== undefined
   ) {
     return { status: "on", url: provider.availability.serverUrl };

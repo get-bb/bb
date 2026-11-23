@@ -112,7 +112,7 @@ export function requestHostProblem(
   return {
     status: 403,
     error:
-      'Host must be localhost, an IP address, the address of an available machine access provider such as Tailscale, or the hostname configured in BB_APP_URL. To allow your custom hostname, run "npx bb-app config set BB_APP_URL https://bb.example.com" on the machine running BB (including the desktop app), replacing https://bb.example.com with your app URL, then reload this page.',
+      'Host must be localhost, an IP address, the address of a route turned on in Settings → Machines, or the hostname configured in BB_APP_URL. To allow your custom hostname, run "npx bb-app config set BB_APP_URL https://bb.example.com" on the machine running BB (including the desktop app), replacing https://bb.example.com with your app URL, then reload this page.',
   };
 }
 

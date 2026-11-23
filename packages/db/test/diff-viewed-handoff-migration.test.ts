@@ -10,6 +10,7 @@ import {
   dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
+  dropServerAccessRouteTables,
   restoreDiffViewedFilesTable,
 } from "./helpers/rewind.js";
 
@@ -22,6 +23,7 @@ function databaseBeforeHandoff(
   migrate(db);
   restoreDiffViewedFilesTable(db);
   dropThreadRunStateTables(db);
+  dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
   dropPluginMarketplaceEnabledColumn(db);

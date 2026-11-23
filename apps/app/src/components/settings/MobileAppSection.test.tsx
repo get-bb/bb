@@ -170,16 +170,22 @@ it("places mobile plugin sections only on Mobile and removes them when unregiste
   vi.mocked(sdk.system.config).mockResolvedValue(
     makeSystemConfig({
       serverAccess: {
-        defaultProviderId: "relay",
         effectiveUrl: null,
         urlSource: null,
+        localNetwork: {
+          bindHost: "127.0.0.1",
+          addresses: [],
+          listenerError: null,
+        },
         providers: [
           {
             id: "relay",
             displayName: "Relay",
             description: "Relay",
             pluginId: "connection",
+            routeKind: "relay",
             availability: { status: "available" },
+            urls: [],
           },
         ],
       },

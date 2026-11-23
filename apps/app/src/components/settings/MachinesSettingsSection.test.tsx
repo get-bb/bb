@@ -506,7 +506,7 @@ describe("MachinesSettingsSection", () => {
     ).toBeDefined();
     expect(
       screen.getByText(
-        "A new machine has to reach this server over the network. Choose the address it should use.",
+        "A new machine has to reach this server over the network. Set up at least one route for it to get here.",
       ),
     ).toBeDefined();
   });

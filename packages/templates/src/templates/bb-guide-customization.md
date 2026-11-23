@@ -88,8 +88,9 @@ General keys: `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`; an unknown key or wrongly shaped value is rejected with the
 list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset. Most appear in Settings →
-General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
-`machineGitCredentialsEnabled`) are covered in `bb guide machines`.
+General. Machine-related keys (`machineServerUrl`, `serverAccessOrder`,
+`localNetworkEnabled`, `machineGitCredentialsEnabled`) are covered
+in `bb guide machines`; prefer `bb server access` for the route keys.
 
 - `showDiagnosticEvents` (default false) shows provider environment resolution
   and unhandled provider events in the timeline. Warnings, errors, and model
@@ -210,6 +211,9 @@ see `bb guide thread-messaging` for `--compact-first`.
 under 30 seconds: its daemon resumes the same server session, so terminals and
 running requests carry on, instead of opening a new one. It defaults on for
 early adopters and applies from the next disconnect.
+`serverRoutes` lets machines learn every available server access route and
+connect over the first one that answers; see Server access in
+`bb guide machines`. It defaults on for early adopters.
 `keyedPluginCss` loads plugin stylesheets so that style updates inside other
 plugins' UI, such as the sidebar and composer, skip them; it applies after a
 reload and defaults on for early adopters.
@@ -228,8 +232,8 @@ the server. It applies live and defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`, `pluginUpdates`,
-`resumeDaemonSessions`, `skipFocusedThreadNotifications`, `threadContextCard`,
-and `walCheckpointWorker`; an
+`resumeDaemonSessions`, `serverRoutes`, `skipFocusedThreadNotifications`,
+`threadContextCard`, and `walCheckpointWorker`; an
 experiment you set yourself keeps your value.
 
 Launcher settings
@@ -244,9 +248,11 @@ not close a previous `0.0.0.0` listener.
 
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
-port. BB accepts request hosts that are `localhost`, IP addresses (including
-LAN and Tailscale IPs), the address of an available machine access provider
-(such as the Tailscale plugin's Serve address), or the hostname in
+port. To reach bb from a trusted LAN without a restart, prefer
+`bb server access add local-network` (`bb guide machines`). BB accepts
+request hosts that are `localhost`, IP addresses (including LAN and Tailscale
+IPs), the hostname of an available server access route (such as the Tailscale
+plugin's Serve address), or the hostname in
 `BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`
 before connecting, including from the CLI or SDK; forwarded host headers cannot

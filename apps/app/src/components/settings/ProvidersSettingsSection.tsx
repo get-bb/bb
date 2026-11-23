@@ -204,7 +204,7 @@ function SortableProviderRow({
       style={style}
       className={cn(
         "group/provider-row",
-        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+        isDragging && "relative z-10 rounded-md bg-card shadow-lift",
       )}
     >
       {handle}

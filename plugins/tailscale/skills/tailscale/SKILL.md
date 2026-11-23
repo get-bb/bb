@@ -42,6 +42,7 @@ Install the plugin with `bb plugin install tailscale` (it is an official
 plugin bundled with bb but not installed by default).
 
 Once `status` is `served`, bb accepts the address as a request host without
-`BB_APP_URL`, and it is the server access provider `tailscale`. To enroll new
-machines over it, choose Tailscale as the connection method in Settings →
-Machines, or run `bb settings general defaultMachineAccess tailscale`.
+`BB_APP_URL`, and it is the server access route `tailscale` (a private overlay
+route). New machines install over the first working route in the Settings →
+Machines order; put it first with `bb server access order tailscale`.
+`bb server access list` shows every route.

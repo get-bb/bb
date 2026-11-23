@@ -688,13 +688,23 @@ function printMachineTable(hosts: Host[], serverHostId: string | null): void {
     host.id,
     host.type,
     host.status,
+    host.route?.displayName ?? "",
     host.machineProviderId ?? "user-enrolled",
     formatMachineLastSeen(host.lastSeenAt, now),
   ]);
   printBorderlessTable(
     {
-      head: ["Name", "Role", "ID", "Type", "Status", "Provider", "Last seen"],
-      colWidths: columnWidths(rows, [4, 4, 2, 4, 6, 8, 9]),
+      head: [
+        "Name",
+        "Role",
+        "ID",
+        "Type",
+        "Status",
+        "Route",
+        "Provider",
+        "Last seen",
+      ],
+      colWidths: columnWidths(rows, [4, 4, 2, 4, 6, 5, 8, 9]),
       trimTrailingWhitespace: true,
     },
     rows,

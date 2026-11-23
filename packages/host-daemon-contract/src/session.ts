@@ -22,6 +22,7 @@ import {
   jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
+  serverRouteKindSchema,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
@@ -118,6 +119,36 @@ const hostDaemonPluginHostGenerationSchema = z
   })
   .strict();
 
+export const hostDaemonServerRouteSchema = z
+  .object({
+    providerId: z.string().min(1),
+    kind: serverRouteKindSchema,
+    url: z.string().url(),
+    headers: z.record(z.string(), z.string()),
+  })
+  .strict();
+export type HostDaemonServerRoute = z.infer<typeof hostDaemonServerRouteSchema>;
+
+export const hostDaemonServerRoutesSchema = z
+  .object({
+    serverId: z.string().min(1),
+    routes: z.array(hostDaemonServerRouteSchema),
+  })
+  .strict();
+export type HostDaemonServerRoutes = z.infer<
+  typeof hostDaemonServerRoutesSchema
+>;
+
+export const hostDaemonSessionRouteSchema = z
+  .object({
+    providerId: z.string().min(1),
+    kind: serverRouteKindSchema,
+  })
+  .strict();
+export type HostDaemonSessionRoute = z.infer<
+  typeof hostDaemonSessionRouteSchema
+>;
+
 export const hostDaemonSessionOpenRequestSchema = z
   .object({
     hostId: z.string().min(1),
@@ -133,6 +164,7 @@ export const hostDaemonSessionOpenRequestSchema = z
     openThreadWork: z.array(hostDaemonOpenThreadWorkSchema),
     undeliveredEventThreadIds: z.array(z.string().min(1)).default([]),
     loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
+    route: hostDaemonSessionRouteSchema.nullable().default(null),
   })
   .strict();
 export type HostDaemonSessionOpenRequest = z.output<
@@ -207,6 +239,7 @@ export const hostDaemonSessionOpenResponseSchema = z
       .default([]),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
     endedInteractiveRequests: z.array(hostDaemonInteractiveRequestKeySchema),
+    serverRoutes: hostDaemonServerRoutesSchema,
   })
   .strict();
 export type HostDaemonSessionOpenResponse = z.infer<
@@ -653,6 +686,12 @@ const hostDaemonTerminalAckMessageSchema = z
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
+      type: z.literal("server-routes.replace"),
+      serverRoutes: hostDaemonServerRoutesSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("provider-session-policy.replace"),
       idleProviderSessionTimeoutMinutes:
         idleProviderSessionTimeoutMinutesSchema,
@@ -742,6 +781,13 @@ const hostDaemonConnectTunnelIdentityMessageSchema = z
   .object({
     type: z.literal("connect-tunnel.identity"),
     identity: hostDaemonConnectTunnelIdentitySchema,
+  })
+  .strict();
+
+const hostDaemonSessionRouteMessageSchema = z
+  .object({
+    type: z.literal("session.route"),
+    route: hostDaemonSessionRouteSchema.nullable(),
   })
   .strict();
 
@@ -854,6 +900,7 @@ export const hostDaemonDaemonWsMessageSchema = z.discriminatedUnion("type", [
   hostDaemonThreadStorageChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
+  hostDaemonSessionRouteMessageSchema,
   pluginHostWorkerExitedMessageSchema,
   pluginHostWorkerOutputMessageSchema,
   pluginHostSignalMessageSchema,

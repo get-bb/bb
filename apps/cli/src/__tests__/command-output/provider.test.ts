@@ -38,6 +38,7 @@ describe("bb provider command output", () => {
           name: "builder",
           status: "connected",
           lastSeenAt: 1,
+          route: null,
           lastRejectedProtocolVersion: null,
           createdAt: 1,
           updatedAt: 1,

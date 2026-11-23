@@ -50,12 +50,17 @@ const READY_SERVER_ACCESS: ServerAccessStatus = {
       displayName: "Manual",
       description: "Use your own domain or network address.",
       pluginId: null,
-      availability: null,
+      routeKind: "custom",
+      availability: {
+        status: "available",
+        serverUrl: "https://bb.example.com",
+      },
+      urls: ["https://bb.example.com"],
     },
   ],
-  defaultProviderId: "direct",
   effectiveUrl: "https://bb.example.com",
   urlSource: "setting",
+  localNetwork: { bindHost: "127.0.0.1", addresses: [], listenerError: null },
 };
 
 beforeEach(() => {
@@ -89,6 +94,7 @@ const reservedHost: Awaited<ReturnType<typeof sdk.hosts.experimental_create>> =
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
+    route: null,
     createdAt: 1,
     updatedAt: 1,
   };
@@ -377,7 +383,7 @@ it("shows the enrollment command inline", async () => {
   screen.getByText("On the other machine, run:");
   screen.getByText("Waiting for it to connect…");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByText("Connection method")).toBeNull();
+  expect(screen.queryByRole("list", { name: "Routes" })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Windows" }));
   screen.getByText("irm windows-command | iex");

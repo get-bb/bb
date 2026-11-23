@@ -6,7 +6,7 @@ Reach this bb privately at `https://<machine>.<tailnet>.ts.net` through Tailscal
 - **Adopts what you already have.** If you set up Tailscale Serve for bb by hand, the plugin finds that mapping and uses it as it is.
 - **Status** in Settings and `bb tailscale status`: the address, your tailnet, whether the address answers over HTTPS, and what to fix when it doesn't (install or sign in to Tailscale, turn on MagicDNS or HTTPS certificates).
 - **No `BB_APP_URL` needed.** Once Serve reaches bb, bb accepts the address as its own, so browsers on your tailnet can open it right away.
-- **A machine access route.** Choose Tailscale as the connection method in Settings → Machines, and new execution machines on the same tailnet enroll over this address.
+- **A machine access route.** Tailscale appears in Settings → Machines → How devices reach this server as a private route; new execution machines on the same tailnet enroll over it when it is the first working route in that order.
 - `bb tailscale status`, `bb tailscale setup`, and `bb tailscale teardown`. Add `--json` for machine-readable output.
 
 ## How it works

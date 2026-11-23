@@ -94,6 +94,7 @@ describe.skipIf(process.platform === "win32")("bb entrypoint errors", () => {
               },
               maxPermissionMode: "full",
               lastSeenAt: 1,
+              route: null,
               lastRejectedProtocolVersion: null,
               createdAt: 1,
               updatedAt: 1,

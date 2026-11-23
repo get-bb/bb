@@ -337,14 +337,21 @@ vi.mock("@/hooks/queries/system-queries", () => ({
             displayName: "bb connect",
             description: "Use a private getbb.app address.",
             pluginId: "connect",
+            routeKind: "relay",
+            enabled: true,
             availability: mocks.serverAccessReady
               ? { status: "available", serverUrl: "https://sawyer.getbb.app" }
               : { status: "setup-required", message: "Pair with bb connect" },
+            urls: mocks.serverAccessReady ? ["https://sawyer.getbb.app"] : [],
           },
         ],
-        defaultProviderId: "connect",
-        effectiveUrl: "https://sawyer.getbb.app",
+        effectiveUrl: null,
         urlSource: null,
+        localNetwork: {
+          bindHost: "127.0.0.1",
+          addresses: [],
+          listenerError: null,
+        },
       },
     },
   }),

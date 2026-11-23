@@ -164,8 +164,8 @@ export function MachineAccessGate({
       <DialogHeader>
         <DialogTitle>Set up machine access</DialogTitle>
         <DialogDescription>
-          A new machine has to reach this server over the network. Choose the
-          address it should use.
+          A new machine has to reach this server over the network. Set up at
+          least one route for it to get here.
         </DialogDescription>
       </DialogHeader>
       {children}

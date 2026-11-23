@@ -39,6 +39,7 @@ import {
   type HostDaemonApp,
 } from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
+import { ServerRouteResolver } from "./server-routes.js";
 import type {
   RuntimeManagerReapIdleProviderSessionsArgs,
   RuntimeManagerReapIdleProviderSessionsResult,
@@ -87,6 +88,15 @@ interface HostDaemonAppFixture {
 type StartIdleProviderSessionReaperArgsForTest = Parameters<
   typeof startIdleProviderSessionReaper
 >[0];
+
+function testRoutes(): ServerRouteResolver {
+  return new ServerRouteResolver({
+    anchorUrl: "http://127.0.0.1:3334",
+    anchorHeaders: {},
+    persisted: null,
+    logger: createLogger(),
+  });
+}
 
 function createLogger() {
   return {
@@ -155,6 +165,7 @@ function createFetchRecorder(
           leaseTimeoutMs: 90000,
           reconnectGraceMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
+          serverRoutes: { serverId: "srv_test", routes: [] },
           endedInteractiveRequests:
             sessionOpenCount > 1
               ? (args.endedInteractiveRequestsOnReconnect ?? [])
@@ -424,7 +435,7 @@ async function createAppFixture(
   const runtimeOptions: RuntimeOptionsRef = { current: null };
   const app = await createHostDaemonApp({
     dataDir,
-    serverUrl: "http://127.0.0.1:3334",
+    routes: testRoutes(),
     hostKey: "host-key-app-test",
     hostId: "host-app-test",
     hostName: "App Test Host",
@@ -656,7 +667,7 @@ describe("createHostDaemonApp", () => {
     }));
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -763,7 +774,7 @@ describe("createHostDaemonApp", () => {
     }));
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -926,7 +937,7 @@ describe("createHostDaemonApp", () => {
     };
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -1295,7 +1306,7 @@ describe("createHostDaemonApp", () => {
     } satisfies HostWatcher;
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-retired-env",
       hostId: "host-retired-env",
       hostName: "Retired Environment Host",

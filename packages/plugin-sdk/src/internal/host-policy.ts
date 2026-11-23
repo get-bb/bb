@@ -2953,17 +2953,30 @@ export function validatePluginMachineProviderDeclaration(
   };
 }
 
+type RegisteredServerAccessProviderDeclaration = Omit<
+  ServerAccessProviderDeclaration,
+  "routeKind"
+> & { routeKind?: ServerAccessProviderDeclaration["routeKind"] };
+
 export function validateServerAccessProviderDeclaration(
-  declaration: ServerAccessProviderDeclaration,
+  declaration: RegisteredServerAccessProviderDeclaration,
 ): ServerAccessProviderDeclaration {
   if (typeof declaration !== "object" || declaration === null)
     throw new Error("Invalid server access provider declaration");
   if (
     typeof declaration.id !== "string" ||
     !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
-    declaration.id === "direct"
+    declaration.id === "direct" ||
+    declaration.id === "local-network"
   )
     throw new Error("Invalid or reserved server access provider id");
+  if (
+    declaration.routeKind !== undefined &&
+    !["local-network", "private-overlay", "relay", "custom"].includes(
+      declaration.routeKind,
+    )
+  )
+    throw new Error("Invalid server access route kind");
   if (
     typeof declaration.displayName !== "string" ||
     !declaration.displayName.trim() ||
@@ -2974,7 +2987,15 @@ export function validateServerAccessProviderDeclaration(
     typeof declaration.release !== "function"
   )
     throw new Error("Invalid server access provider declaration");
-  return declaration;
+  return {
+    id: declaration.id,
+    displayName: declaration.displayName,
+    description: declaration.description,
+    routeKind: declaration.routeKind ?? "custom",
+    availability: () => declaration.availability(),
+    acquire: (context) => declaration.acquire(context),
+    release: (context) => declaration.release(context),
+  };
 }
 
 const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";

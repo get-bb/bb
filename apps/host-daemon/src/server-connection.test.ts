@@ -1,10 +1,14 @@
 import { Buffer } from "node:buffer";
-import type { HostDaemonSessionOpenResponse } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonServerRoutes,
+  HostDaemonSessionOpenResponse,
+} from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
 import { ServerResponseError, type ServerClient } from "./server-client.js";
 import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
 import { ServerConnection } from "./server-connection.js";
+import { ServerRouteResolver } from "./server-routes.js";
 import type {
   CreateReconnectingWebSocket,
   ReconnectingWebSocketLike,
@@ -18,6 +22,7 @@ interface CreateServerClientFixtureArgs {
   reconnectGraceMs?: number;
   sessionIds?: string[];
   openSessionError?: Error;
+  serverRoutes?: HostDaemonServerRoutes;
 }
 
 interface CreateWebSocketFixtureArgs {
@@ -31,6 +36,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   onAgentCpuPriority?: (enabled: boolean) => void;
   autoReconnect?: boolean;
   serverHeaders?: Record<string, string>;
+  routes?: ServerRouteResolver;
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
   onMachineShutdown?: () => void | Promise<void>;
@@ -44,6 +50,7 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
 }
 
 interface CreateSessionArgs {
+  serverRoutes?: HostDaemonServerRoutes;
   heartbeatIntervalMs: number;
   leaseTimeoutMs: number;
   reconnectGraceMs: number;
@@ -71,6 +78,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     endedInteractiveRequests: [],
     connectShares: { generation: 0, ports: [] },
     pluginHostGenerations: [],
+    serverRoutes: args.serverRoutes ?? { serverId: "srv_test", routes: [] },
     sessionId: args.sessionId,
     watchSet: {
       generation: 0,
@@ -97,6 +105,9 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
       leaseTimeoutMs: args.leaseTimeoutMs ?? 30_000,
       reconnectGraceMs: args.reconnectGraceMs ?? args.leaseTimeoutMs ?? 30_000,
       sessionId,
+      ...(args.serverRoutes === undefined
+        ? {}
+        : { serverRoutes: args.serverRoutes }),
     });
   });
   const unused = async () => {
@@ -144,7 +155,6 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
     urlProvider,
     options,
   ) => {
-    headers.push(options.headers);
     let readyState = 0;
     let serverSeq = 0;
     const socket: ReconnectingWebSocketLike = {
@@ -178,6 +188,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
     async function openSocket(): Promise<void> {
       const url = await urlProvider();
       urls.push(url);
+      headers.push(options.headers?.());
       const resuming = new URL(url).searchParams.has("resumeFrom");
       if (resuming && args.rejectResume) {
         queueMicrotask(() => {
@@ -262,11 +273,15 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     instanceId: "instance-server-connection-test",
     localApiPort: 38_887,
     logger,
-    ...(args.serverHeaders !== undefined
-      ? { serverHeaders: args.serverHeaders }
-      : {}),
+    routes:
+      args.routes ??
+      new ServerRouteResolver({
+        anchorUrl: "http://127.0.0.1:3334",
+        anchorHeaders: args.serverHeaders ?? {},
+        persisted: null,
+        logger,
+      }),
     serverClient: serverClient.serverClient,
-    serverUrl: "http://127.0.0.1:3334",
     protocolSelfUpdater: args.protocolSelfUpdater,
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
     onMachineShutdown: args.onMachineShutdown,
@@ -343,6 +358,105 @@ describe("ServerConnection", () => {
       }
     } finally {
       for (const fixture of fixtures) await fixture.connection.shutdown();
+    }
+  });
+
+  it("stays on its working route after learning better ones, then picks the best route that answers on each redial", async () => {
+    vi.useFakeTimers();
+    const lan = "http://192.168.1.5:38886";
+    const relay = "https://owner.getbb.app";
+    let lanAnswers = true;
+    const fetchFn = vi.fn(async (input: URL) => {
+      if (input.origin === lan && !lanAnswers) {
+        throw new Error("connect ECONNREFUSED");
+      }
+      return Response.json({ ok: true, serverId: "srv_test" });
+    });
+    const routes = new ServerRouteResolver({
+      anchorUrl: relay,
+      anchorHeaders: { "x-bb-connect-machine": "bbcm_old" },
+      persisted: null,
+      logger: createLogger(),
+      fetchFn,
+    });
+    const { connection, openSession, webSocket } = createConnectionFixture({
+      routes,
+      serverRoutes: {
+        serverId: "srv_test",
+        routes: [
+          {
+            providerId: "local-network",
+            kind: "local-network",
+            url: lan,
+            headers: {},
+          },
+          {
+            providerId: "connect",
+            kind: "relay",
+            url: relay,
+            headers: { "x-bb-connect-machine": "bbcm_machine" },
+          },
+        ],
+      },
+    });
+    const routeReports = (socket: NonNullable<(typeof webSocket.sockets)[0]>) =>
+      webSocket
+        .sentMessages(socket)
+        .filter(
+          (message) =>
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            message.type === "session.route",
+        );
+    try {
+      await connection.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+
+      expect(socket.reconnect).not.toHaveBeenCalled();
+      expect(webSocket.urls.map((url) => new URL(url).host)).toEqual([
+        "owner.getbb.app",
+      ]);
+      expect(routeReports(socket)).toEqual([
+        {
+          type: "session.route",
+          route: { providerId: "connect", kind: "relay" },
+        },
+      ]);
+
+      socket.reconnect(1006, "network-lost");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(new URL(webSocket.urls.at(-1) ?? "").host).toBe(
+        "192.168.1.5:38886",
+      );
+      expect(webSocket.urls.at(-1)).toContain("resumeFrom=");
+      expect(webSocket.headers.at(-1)).toEqual({
+        authorization: "Bearer host-key-server-connection-test",
+      });
+      expect(routeReports(socket).at(-1)).toEqual({
+        type: "session.route",
+        route: { providerId: "local-network", kind: "local-network" },
+      });
+
+      lanAnswers = false;
+      socket.reconnect(1006, "network-lost");
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(new URL(webSocket.urls.at(-1) ?? "").host).toBe("owner.getbb.app");
+      expect(webSocket.headers.at(-1)).toEqual({
+        authorization: "Bearer host-key-server-connection-test",
+        "x-bb-connect-machine": "bbcm_machine",
+      });
+      expect(routeReports(socket).at(-1)).toEqual({
+        type: "session.route",
+        route: { providerId: "connect", kind: "relay" },
+      });
+      expect(openSession).toHaveBeenCalledOnce();
+      expect(connection.sessionId).toBe("session-1");
+    } finally {
+      await connection.shutdown();
     }
   });
 

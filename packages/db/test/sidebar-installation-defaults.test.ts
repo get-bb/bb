@@ -24,6 +24,7 @@ import {
   dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
   dropThreadRunStateTables,
+  dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
@@ -106,6 +107,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropQueuedMessageDeliveryColumns(db);
           dropThreadStatusChangedAtColumn(db);
           dropThreadRunStateTables(db);
+          dropServerAccessRouteTables(db);
           dropPluginFailureLabelColumns(db);
           rewindMachineTeardownRecoveryColumns(db);
           dropPluginMarketplaceEnabledColumn(db);

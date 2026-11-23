@@ -142,7 +142,14 @@ import {
   listActiveSessionIdsForHost,
   listLatestClosedSessionsForHosts,
   openSession,
+  recordSessionRoute,
 } from "../../src/data/sessions.js";
+import {
+  deleteHostServerAccessGrant,
+  getHostServerAccessGrant,
+  listHostServerAccessGrants,
+  upsertHostServerAccessGrant,
+} from "../../src/data/host-server-access-grants.js";
 import {
   countTerminalSessions,
   createTerminalSession,
@@ -176,6 +183,7 @@ const FOLDERS = "packages/db/src/data/project-source-folders.ts";
 const PROJECTS = "packages/db/src/data/projects.ts";
 const SERVER_MOVE = "packages/db/src/data/server-move.ts";
 const SESSIONS = "packages/db/src/data/sessions.ts";
+const GRANTS = "packages/db/src/data/host-server-access-grants.ts";
 const TERMINALS = "packages/db/src/data/terminal-sessions.ts";
 const EXITED_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const TERMINAL_PRUNE_BATCH = 1_000;
@@ -1208,6 +1216,47 @@ const SESSION_CASES: readonly Case[] = [
     run: (db, _fixture, seed) =>
       listActiveSessionIdsForHost(db, seed.machineHostId),
   },
+  {
+    name: `${SESSIONS}#recordSessionRoute`,
+    run: (db, _fixture, seed) =>
+      recordSessionRoute(db, {
+        sessionId: seed.machineActiveSessionId,
+        route: { providerId: "connect", kind: "relay" },
+      }),
+  },
+];
+
+const GRANT_CASES: readonly Case[] = [
+  {
+    name: `${GRANTS}#upsertHostServerAccessGrant`,
+    run: (db, _fixture, seed) =>
+      upsertHostServerAccessGrant(db, {
+        hostId: seed.machineHostId,
+        providerId: "connect",
+        grantId: "grant-query-cost",
+      }),
+  },
+  {
+    name: `${GRANTS}#getHostServerAccessGrant`,
+    run: (db, _fixture, seed) =>
+      getHostServerAccessGrant(db, {
+        hostId: seed.machineHostId,
+        providerId: "connect",
+      }),
+  },
+  {
+    name: `${GRANTS}#listHostServerAccessGrants`,
+    run: (db, _fixture, seed) =>
+      listHostServerAccessGrants(db, seed.machineHostId),
+  },
+  {
+    name: `${GRANTS}#deleteHostServerAccessGrant`,
+    run: (db, _fixture, seed) =>
+      deleteHostServerAccessGrant(db, {
+        hostId: seed.machineHostId,
+        providerId: "retired-provider",
+      }),
+  },
 ];
 
 const TERMINAL_CASES: readonly Case[] = [
@@ -1306,6 +1355,7 @@ export const HOSTS_ENVIRONMENTS_COST_GROUP = registerCostGroup({
     ...PROJECT_CASES,
     ...SERVER_MOVE_CASES,
     ...SESSION_CASES,
+    ...GRANT_CASES,
     ...TERMINAL_CASES,
   ],
 });

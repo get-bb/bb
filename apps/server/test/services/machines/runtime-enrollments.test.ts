@@ -121,7 +121,7 @@ describe("production machine enrollment wiring", () => {
     await withTestHarness(async (h) => {
       setAppSettings(h.db, {
         ...defaultAppSettings,
-        defaultMachineAccess: "direct",
+        serverAccessOrder: ["direct"],
         machineServerUrl: "https://machine.example.test",
       });
       const api = await installPlugin(h, "enrollment-runtime");
@@ -248,13 +248,14 @@ describe("production machine enrollment wiring", () => {
         id: "runtime-access",
         displayName: "Runtime access",
         description: "Reach the server through the runtime test provider.",
+        routeKind: "custom",
         availability: () => ({ status: "available" }),
         acquire,
         release,
       });
       setAppSettings(h.db, {
         ...defaultAppSettings,
-        defaultMachineAccess: "runtime-access",
+        serverAccessOrder: ["runtime-access"],
       });
       launch(h, "failure-launch", "enrollment-runtime-machine");
       await expect(

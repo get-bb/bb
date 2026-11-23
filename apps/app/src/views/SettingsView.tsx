@@ -1171,6 +1171,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When a machine's connection to the server drops for under 30 seconds, it picks up where it left off instead of reconnecting from scratch, so its terminals and running requests carry on. Applies from the next drop.",
   },
+  serverRoutes: {
+    label: "Reach machines over several routes",
+    description:
+      "Machines learn every route in Settings → Machines (such as bb connect, Tailscale, the local network or your own address) and connect over the highest one in your order that answers, moving to the next when it stops working. Lets you add a Local network route. Applies when each machine next connects.",
+  },
 
   serverMove: {
     label: "Server move",

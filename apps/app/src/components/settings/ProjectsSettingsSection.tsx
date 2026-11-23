@@ -150,7 +150,7 @@ function SortableProjectRow({
       style={style}
       className={cn(
         "items-start",
-        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+        isDragging && "relative z-10 rounded-md bg-card shadow-lift",
       )}
     >
       {handle}
