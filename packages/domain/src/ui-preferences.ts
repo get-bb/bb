@@ -212,7 +212,7 @@ export const uiPreferenceDefinitions = {
   "messageDirective.byName": defineUiPreference(
     pickMapSchema,
     {},
-    `Message directive renderer per directive name, as JSON such as {"task":"tasks/task"}. A directive that one plugin claims needs no entry. A directive that several plugins claim has no automatic winner: it shows as text with a Choose link until it is listed here. ${EXCLUSIVE_PICK_RULE}`,
+    `Message directive renderer per directive name, as JSON such as {"task":"tasks/task"}. A directive that one plugin claims needs no entry. A directive that several plugins claim has no automatic winner: it shows a plugin picker in the message, with its text, until it is listed here. ${EXCLUSIVE_PICK_RULE}`,
   ),
   "threadContextCard.pinned": defineUiPreference(
     z.boolean(),

@@ -35,7 +35,7 @@ export function ReplacementProviderSetting({
   onSelect,
 }: {
   label: string;
-  description: string;
+  description: string | null;
   triggerAriaLabel: string;
   builtIn: BuiltInChoice | null;
   rule: ExclusiveRule;
@@ -57,7 +57,7 @@ export function ReplacementProviderSetting({
           key: AUTOMATIC_REPLACEMENT_PROVIDER,
           title: "Not chosen",
           description:
-            "Shows the directive as text with a Choose link until you pick a plugin.",
+            "Shows a plugin picker in the message, with the directive text, until you pick a plugin.",
         }
       : {
           key: AUTOMATIC_REPLACEMENT_PROVIDER,

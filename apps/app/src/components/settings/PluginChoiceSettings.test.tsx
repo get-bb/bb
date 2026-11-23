@@ -19,7 +19,11 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { PluginChoicesSection } from "./PluginChoicesSection";
+import {
+  MarkdownRendererChoicesSection,
+  FileOpenerChoicesSection,
+  PluginSlotChoiceRows,
+} from "./PluginChoiceSettings";
 
 const SHELLS = ["bash", "sh", "shell", "zsh", "console", "terminal"];
 
@@ -33,7 +37,9 @@ function renderChoices() {
   const store = createStore();
   render(
     <JotaiProvider store={store}>
-      <PluginChoicesSection />
+      <PluginSlotChoiceRows />
+      <FileOpenerChoicesSection />
+      <MarkdownRendererChoicesSection />
     </JotaiProvider>,
   );
   return store;
@@ -47,10 +53,12 @@ async function choose(trigger: HTMLElement, option: RegExp) {
   });
 }
 
-describe("PluginChoicesSection", () => {
+describe("plugin choice settings", () => {
   it("shows nothing when no slot or key has a choice to make", () => {
     renderChoices();
-    expect(screen.queryByText("Plugin choices")).toBeNull();
+    expect(screen.queryByText("File openers")).toBeNull();
+    expect(screen.queryByText("Markdown")).toBeNull();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
   it("switches every language two shell renderers share from one row", async () => {
@@ -103,6 +111,36 @@ describe("PluginChoicesSection", () => {
 
     expect(store.get(messageDirectivePicksAtom)).toEqual({
       task: "tasks/task",
+    });
+  });
+
+  it("offers a row for a code block or directive only one plugin draws, so the user can switch it back to bb's own", async () => {
+    setPluginSlotRegistrations(
+      "bang-shell",
+      makePluginRegistrationSet({
+        codeFenceRenderers: [
+          { id: "run", languages: ["bash"], component: () => null },
+        ],
+        messageDirectives: [{ id: "run", component: () => null }],
+      }),
+    );
+    const store = renderChoices();
+    expect(screen.getByText("Markdown")).toBeTruthy();
+    const fence = screen.getByRole("button", {
+      name: "Plugin for bash code blocks",
+    });
+    const directive = screen.getByRole("button", {
+      name: "Plugin for ::run directives",
+    });
+    expect(fence.textContent).toContain("Automatic");
+    expect(directive.textContent).toContain("Automatic");
+
+    await choose(fence, /^bb \(built-in\)/u);
+    await choose(directive, /^Show as text/u);
+
+    expect(store.get(codeFencePicksAtom)).toEqual({ bash: "__builtin__" });
+    expect(store.get(messageDirectivePicksAtom)).toEqual({
+      run: "__builtin__",
     });
   });
 });

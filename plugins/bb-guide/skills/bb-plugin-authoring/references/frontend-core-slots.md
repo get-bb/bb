@@ -255,7 +255,7 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Exclusive per extension (see exclusive-slots.md):
   users pick BB's preview or a specific opener per extension in
-  `fileOpener.byExtension` (Settings → Installed plugins → Plugin choices), and
+  `fileOpener.byExtension` (Settings → Files → File openers), and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —

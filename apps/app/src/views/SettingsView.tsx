@@ -55,6 +55,11 @@ import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { useAppThemePreview } from "@/hooks/useAppThemePreview";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
+import {
+  MarkdownRendererChoicesSection,
+  FileOpenerChoicesSection,
+  PluginSlotChoiceRows,
+} from "@/components/settings/PluginChoiceSettings";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { useRevealSettingsSearchTarget } from "@/components/settings/useRevealSettingsSearchTarget";
@@ -859,9 +864,11 @@ export function AppearanceSettingsSection({
       </SettingsSection>
       <SettingsSection title="Interface">
         <div className="space-y-5">
+          <PluginSlotChoiceRows />
           <SidebarFooterSettings />
         </div>
       </SettingsSection>
+      <MarkdownRendererChoicesSection />
     </div>
   );
 }
@@ -1396,16 +1403,19 @@ export function SettingsView() {
     content = <BrowserSettingsSection />;
   } else if (activeSection === "files") {
     content = (
-      <LocalOpenTargetSettingsSection
-        accessState={accessState}
-        directoryTargetId={directoryTargetId}
-        fileTargetId={fileTargetId}
-        hasDaemon={hasDaemon}
-        onDirectoryTargetChange={setDirectoryTargetId}
-        onFileTargetChange={setFileTargetId}
-        onRequestAccess={requestAccess}
-        targets={workspaceOpenTargets}
-      />
+      <>
+        <LocalOpenTargetSettingsSection
+          accessState={accessState}
+          directoryTargetId={directoryTargetId}
+          fileTargetId={fileTargetId}
+          hasDaemon={hasDaemon}
+          onDirectoryTargetChange={setDirectoryTargetId}
+          onFileTargetChange={setFileTargetId}
+          onRequestAccess={requestAccess}
+          targets={workspaceOpenTargets}
+        />
+        <FileOpenerChoicesSection />
+      </>
     );
   } else if (activeSection === "projects") {
     content = <ProjectsSettingsSection />;

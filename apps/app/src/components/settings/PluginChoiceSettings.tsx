@@ -13,7 +13,8 @@ import { fileOpenerPreferenceAtom } from "@/lib/file-opener-preference";
 import {
   codeFencePicksAtom,
   messageDirectivePicksAtom,
-  PLUGIN_CHOICES_TITLE,
+  MARKDOWN_SETTINGS_TITLE,
+  FILE_OPENERS_TITLE,
 } from "@/lib/plugin-choice-picks";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
@@ -57,9 +58,8 @@ interface SlotChoice {
 interface KeyedChoice {
   kind: "keyed";
   noun: (keys: readonly string[]) => string;
-  description: string;
+  description: string | null;
   claimantsByKey: ReadonlyMap<string, readonly ChoiceClaimant[]>;
-  minimumClaimants: number;
   atom: PickMapAtom;
   rule: ExclusiveRule;
   builtIn: BuiltInChoice | null;
@@ -83,17 +83,21 @@ function groupByKey<Registration extends { pluginId: string; id: string }>(
   return grouped;
 }
 
-export function usePluginChoices(): {
+export interface PluginChoices {
   slots: readonly SlotChoice[];
-  keyed: readonly KeyedChoice[];
-} {
+  fileOpeners: KeyedChoice;
+  codeFences: KeyedChoice;
+  directives: KeyedChoice;
+}
+
+export function usePluginChoices(): PluginChoices {
   const navigations = usePluginSlotKind("experimentalSidebarNavigations");
   const threadLists = usePluginSlotKind("threadLists");
   const composers = usePluginSlotKind("composers");
   const diffRenderers = usePluginSlotKind("diffRenderers");
   const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
   const threadHeaderTitles = usePluginSlotKind("threadHeaderTitles");
-  const fileOpeners = usePluginSlotKind("fileOpeners");
+  const fileOpenerSlots = usePluginSlotKind("fileOpeners");
   const codeFenceRenderers = usePluginSlotKind("codeFenceRenderers");
   const messageDirectives = usePluginSlotKind("messageDirectives");
 
@@ -116,6 +120,30 @@ export function usePluginChoices(): {
       atom: threadListProviderAtom,
       rule: PLUGIN_ONLY_RULE,
       builtIn: null,
+    },
+    {
+      kind: "slot",
+      label: "Source code",
+      description: "Source files in the file preview and plugin views.",
+      claimants: sourceCodeRenderers,
+      atom: sourceCodeRendererProviderAtom,
+      rule: REPLACEMENT_RULE,
+      builtIn: {
+        title: BB_BUILT_IN,
+        description: "Syntax highlighting and gutters from the bb code theme.",
+      },
+    },
+    {
+      kind: "slot",
+      label: "Diffs",
+      description: "File diffs in threads, the diff panel, and plugin views.",
+      claimants: diffRenderers,
+      atom: diffRendererProviderAtom,
+      rule: REPLACEMENT_RULE,
+      builtIn: {
+        title: BB_BUILT_IN,
+        description: "Unified and split diffs from the bb code theme.",
+      },
     },
     {
       kind: "slot",
@@ -143,126 +171,108 @@ export function usePluginChoices(): {
         description: "The thread's name, renamed in place.",
       },
     },
-    {
-      kind: "slot",
-      label: "Source code",
-      description: "Source files in the file preview and plugin views.",
-      claimants: sourceCodeRenderers,
-      atom: sourceCodeRendererProviderAtom,
-      rule: REPLACEMENT_RULE,
-      builtIn: {
-        title: BB_BUILT_IN,
-        description: "Syntax highlighting and gutters from the bb code theme.",
-      },
-    },
-    {
-      kind: "slot",
-      label: "Diffs",
-      description: "File diffs in threads, the diff panel, and plugin views.",
-      claimants: diffRenderers,
-      atom: diffRendererProviderAtom,
-      rule: REPLACEMENT_RULE,
-      builtIn: {
-        title: BB_BUILT_IN,
-        description: "Unified and split diffs from the bb code theme.",
-      },
-    },
   ];
 
-  const keyed: KeyedChoice[] = [
-    {
-      kind: "keyed",
-      noun: (keys) => `${keys.map((key) => `.${key}`).join(", ")} files`,
-      description:
-        "Opens these files from links and the file tree. Right-click a file link for a one-off choice.",
-      claimantsByKey: groupByKey(
-        fileOpeners,
-        (opener) => opener.extensions,
-        (opener) => opener,
-      ),
-      minimumClaimants: 1,
-      atom: fileOpenerPreferenceAtom,
-      rule: REPLACEMENT_RULE,
-      builtIn: { title: "Built-in preview", description: "bb's file preview." },
+  const fileOpeners: KeyedChoice = {
+    kind: "keyed",
+    noun: (keys) => `${keys.map((key) => `.${key}`).join(", ")} files`,
+    description: null,
+    claimantsByKey: groupByKey(
+      fileOpenerSlots,
+      (opener) => opener.extensions,
+      (opener) => opener,
+    ),
+    atom: fileOpenerPreferenceAtom,
+    rule: REPLACEMENT_RULE,
+    builtIn: { title: "Built-in preview", description: "bb's file preview." },
+  };
+  const codeFences: KeyedChoice = {
+    kind: "keyed",
+    noun: (keys) => `${keys.join(", ")} code blocks`,
+    description: null,
+    claimantsByKey: groupByKey(
+      codeFenceRenderers,
+      (renderer) => renderer.languages,
+      (renderer) => ({
+        pluginId: renderer.pluginId,
+        id: renderer.id,
+        title: getPluginDisplayName(renderer.pluginId),
+      }),
+    ),
+    atom: codeFencePicksAtom,
+    rule: REPLACEMENT_RULE,
+    builtIn: { title: BB_BUILT_IN, description: "bb's code block." },
+  };
+  const directives: KeyedChoice = {
+    kind: "keyed",
+    noun: (keys) => `${keys.map((key) => `::${key}`).join(", ")} directives`,
+    description: null,
+    claimantsByKey: groupByKey(
+      messageDirectives,
+      (directive) => [directive.id],
+      (directive) => ({
+        pluginId: directive.pluginId,
+        id: directive.id,
+        title: getPluginDisplayName(directive.pluginId),
+      }),
+    ),
+    atom: messageDirectivePicksAtom,
+    rule: NO_AUTOMATIC_RULE,
+    builtIn: {
+      title: "Show as text",
+      description: "Shows the directive's source text.",
     },
-    {
-      kind: "keyed",
-      noun: (keys) => `${keys.join(", ")} code blocks`,
-      description: "Draws these fenced code blocks in agent replies.",
-      claimantsByKey: groupByKey(
-        codeFenceRenderers,
-        (renderer) => renderer.languages,
-        (renderer) => ({
-          pluginId: renderer.pluginId,
-          id: renderer.id,
-          title: getPluginDisplayName(renderer.pluginId),
-        }),
-      ),
-      minimumClaimants: 2,
-      atom: codeFencePicksAtom,
-      rule: REPLACEMENT_RULE,
-      builtIn: { title: BB_BUILT_IN, description: "bb's code block." },
-    },
-    {
-      kind: "keyed",
-      noun: (keys) => `${keys.map((key) => `::${key}`).join(", ")} directives`,
-      description:
-        "Draws these directives in agent replies. Each plugin understands only its own data, so pick the one whose tools write them.",
-      claimantsByKey: groupByKey(
-        messageDirectives,
-        (directive) => [directive.id],
-        (directive) => ({
-          pluginId: directive.pluginId,
-          id: directive.id,
-          title: getPluginDisplayName(directive.pluginId),
-        }),
-      ),
-      minimumClaimants: 2,
-      atom: messageDirectivePicksAtom,
-      rule: NO_AUTOMATIC_RULE,
-      builtIn: {
-        title: "Show as text",
-        description: "Shows the directive's source text.",
-      },
-    },
-  ];
+  };
 
   return {
     slots: slots.filter(
       (slot) => slot.claimants.length + (slot.builtIn === null ? 0 : 1) >= 2,
     ),
-    keyed,
+    fileOpeners,
+    codeFences,
+    directives,
   };
 }
 
-export function hasPluginChoices(
-  choices: ReturnType<typeof usePluginChoices>,
-): boolean {
+export function hasKeyedChoices(choice: KeyedChoice): boolean {
+  return choice.claimantsByKey.size > 0;
+}
+
+export function PluginSlotChoiceRows() {
+  const { slots } = usePluginChoices();
+  return slots.map((choice) => (
+    <SlotChoiceRow key={choice.label} choice={choice} />
+  ));
+}
+
+export function FileOpenerChoicesSection() {
+  const { fileOpeners } = usePluginChoices();
+  if (!hasKeyedChoices(fileOpeners)) return null;
   return (
-    choices.slots.length > 0 ||
-    choices.keyed.some((choice) =>
-      [...choice.claimantsByKey.values()].some(
-        (claimants) => claimants.length >= choice.minimumClaimants,
-      ),
-    )
+    <SettingsSection
+      title={FILE_OPENERS_TITLE}
+      description="Automatically use matching plugins, or choose a viewer for each file type. Right-click a file link for a one-off choice."
+    >
+      <div className="space-y-5">
+        <KeyedChoiceRows choice={fileOpeners} />
+      </div>
+    </SettingsSection>
   );
 }
 
-export function PluginChoicesSection() {
-  const choices = usePluginChoices();
-  if (!hasPluginChoices(choices)) return null;
+export function MarkdownRendererChoicesSection() {
+  const { codeFences, directives } = usePluginChoices();
+  if (!hasKeyedChoices(codeFences) && !hasKeyedChoices(directives)) {
+    return null;
+  }
   return (
     <SettingsSection
-      title={PLUGIN_CHOICES_TITLE}
-      description="Where several plugins can draw the same thing, choose which one does. Automatic uses the first plugin you installed, then bb's own."
+      title={MARKDOWN_SETTINGS_TITLE}
+      description="Choose how code blocks and directives are rendered in Markdown."
     >
       <div className="space-y-5">
-        {choices.slots.map((choice) => (
-          <SlotChoiceRow key={choice.label} choice={choice} />
-        ))}
-        {choices.keyed.map((choice) => (
-          <KeyedChoiceRows key={choice.noun([])} choice={choice} />
-        ))}
+        <KeyedChoiceRows choice={codeFences} />
+        <KeyedChoiceRows choice={directives} />
       </div>
     </SettingsSection>
   );
@@ -297,7 +307,6 @@ function KeyedChoiceRows({ choice }: { choice: KeyedChoice }) {
   for (const [key, claimants] of [...choice.claimantsByKey].sort(
     ([left], [right]) => left.localeCompare(right),
   )) {
-    if (claimants.length < choice.minimumClaimants) continue;
     const pick = picks[key] ?? AUTOMATIC_REPLACEMENT_PROVIDER;
     const groupKey = `${claimantSetKey(claimants)}\n${pick}`;
     const group = groups.get(groupKey);
@@ -316,7 +325,11 @@ function KeyedChoiceRows({ choice }: { choice: KeyedChoice }) {
         description={choice.description}
         triggerAriaLabel={`Plugin for ${label}`}
         builtIn={choice.builtIn}
-        rule={choice.rule}
+        rule={
+          choice.rule.automatic === "none" && group.claimants.length === 1
+            ? { ...choice.rule, automatic: "ranked" }
+            : choice.rule
+        }
         slots={group.claimants}
         value={group.pick}
         onSelect={(selection) =>

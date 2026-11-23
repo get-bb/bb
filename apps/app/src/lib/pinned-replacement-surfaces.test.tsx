@@ -25,7 +25,11 @@ import {
   composerRendererProviderAtom,
   useComposerReplacement,
 } from "@/components/promptbox/composer-provider";
-import { PluginChoicesSection } from "@/components/settings/PluginChoicesSection";
+import {
+  MarkdownRendererChoicesSection,
+  FileOpenerChoicesSection,
+  PluginSlotChoiceRows,
+} from "@/components/settings/PluginChoiceSettings";
 import {
   sidebarNavigationProviderAtom,
   useResolvedSidebarNavigation,
@@ -222,7 +226,14 @@ function setUp(surface: PinnedSurface, pick: string = PINNED_KEY) {
   const resolved = renderHook(() => surface.useResolvedPluginId(), {
     wrapper,
   });
-  render(<PluginChoicesSection />, { wrapper });
+  render(
+    <>
+      <PluginSlotChoiceRows />
+      <FileOpenerChoicesSection />
+      <MarkdownRendererChoicesSection />
+    </>,
+    { wrapper },
+  );
   const settingText = () =>
     screen.getByRole("button", { name: surface.settingLabel }).textContent;
   return { resolved, settingText };
@@ -237,7 +248,7 @@ afterEach(async () => {
 });
 
 describe.each(SURFACES)("exclusive $name", (surface) => {
-  it("uses the pinned provider and names it in Settings → Plugin choices", () => {
+  it("uses the pinned provider and names it in its Settings row", () => {
     register(surface, PINNED);
     markPluginFrontendsSettled();
     const { resolved, settingText } = setUp(surface);

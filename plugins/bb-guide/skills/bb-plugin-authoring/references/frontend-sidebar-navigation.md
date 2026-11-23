@@ -7,7 +7,7 @@ It is exclusive. bb's own Rail (`navigation/rail`, the default) and Top list
 (`navigation/top-list`) come from the bundled Navigation plugin
 (`plugins/navigation` in the bb repository), which uses only this slot and the
 hooks below, so it is a working example and a forkable starting point. Users
-pick a provider under Settings → Installed plugins → Plugin choices
+pick a provider under Settings → Appearance → Navigation
 (`sidebar.navigationProvider`); Automatic uses the first provider from another
 plugin, or Rail when there is none (see frontend-registration.md, Exclusive
 slots).

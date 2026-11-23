@@ -361,11 +361,12 @@ keys, the picks are `diff.provider`, `sourceCode.provider` and
 `threadHeader.titleProvider` (each also takes `__builtin__` for bb's own), and
 the JSON maps `fileOpener.byExtension`, `codeFence.byLanguage` and
 `messageDirective.byName`, where a missing key means Automatic. A message
-directive several plugins claim has no automatic winner: it shows as text with
-a Choose link until you pick one, for example
-`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Settings
-→ Installed plugins → Plugin choices lists every slot and key with more than
-one choice.
+directive several plugins claim has no automatic winner: it shows a plugin
+picker in the message until you pick one there or, for example, with
+`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Each
+choice sits with what it changes: Settings → Appearance for the composer,
+thread list, navigation, renderers and header title, Appearance → Markdown
+for code blocks and directives, and Settings → Files → File openers.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
@@ -387,8 +388,7 @@ plugin, a built-in you can fork like the thread list.
 `navigation/rail` (the rail above), `navigation/top-list` (labeled rows above
 the thread list), another navigation plugin as `<plugin-id>/<slot-id>`, or
 `__automatic__` (the default: the first navigation from another plugin, else
-`navigation/rail`). Pick one in Settings → Installed plugins → Plugin
-choices, or:
+`navigation/rail`). Pick one in Settings → Appearance → Navigation, or:
 
 bb settings ui set sidebar.navigationProvider navigation/top-list
 bb settings ui reset sidebar.navigationProvider

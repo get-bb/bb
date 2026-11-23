@@ -8,11 +8,29 @@ import { directive as directiveSyntax } from "micromark-extension-directive";
 import type { Extension } from "micromark-util-types";
 import type { Processor } from "unified";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
-import { Link } from "react-router-dom";
-import { PLUGIN_CHOICES_TITLE } from "@/lib/plugin-choice-picks";
+import { useNavigate } from "react-router-dom";
+import { useSetAtom } from "jotai";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { getPluginDisplayName } from "@/lib/plugin-logos";
+import {
+  messageDirectivePicksAtom,
+  MARKDOWN_SETTINGS_TITLE,
+} from "@/lib/plugin-choice-picks";
 import { SETTINGS_SEARCH_ANCHOR_STATE_KEY } from "@/components/settings/settings-search";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
-import type { ExclusiveBootState } from "@/lib/plugin-replacement-preference";
+import {
+  replacementProviderKey,
+  type ExclusiveBootState,
+} from "@/lib/plugin-replacement-preference";
 import {
   resolveMessageDirectiveRegistry,
   type ResolvedMessageDirective,
@@ -419,20 +437,73 @@ function ContestedMessageDirective({
 }: {
   mount: Extract<MountedMessageDirective, { kind: "contested" }>;
 }) {
+  const setPicks = useSetAtom(messageDirectivePicksAtom);
+  const navigate = useNavigate();
+  const directive = `::${mount.name}`;
   return (
-    <div data-contested-message-directive={mount.name}>
-      <p>{mount.source}</p>
-      <p className="text-sm text-muted-foreground">
-        {mount.pluginIds.length} plugins claim <code>::{mount.name}</code>
-        {" · "}
-        <Link
-          to={getSettingsTargetPath({ section: "plugins" })}
-          state={{ [SETTINGS_SEARCH_ANCHOR_STATE_KEY]: PLUGIN_CHOICES_TITLE }}
-          className="underline underline-offset-2 hover:text-foreground"
-        >
-          Choose
-        </Link>
-      </p>
+    <div
+      data-contested-message-directive={mount.name}
+      className="my-2 flex items-start gap-2 overflow-hidden rounded-md border border-border bg-surface-recessed py-1.5 pl-3 pr-1.5"
+    >
+      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words py-px font-mono text-xs">
+        {mount.source}
+      </pre>
+      <div data-clipboard-ignore className="shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Choose a plugin to show ${directive}`}
+              className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            >
+              Choose plugin
+              <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            mobileTitle={`Show ${directive} with`}
+          >
+            <DropdownMenuLabel className="font-normal text-subtle-foreground">
+              Always show {directive} with
+            </DropdownMenuLabel>
+            {mount.pluginIds.map((pluginId) => (
+              <DropdownMenuItem
+                key={pluginId}
+                onSelect={() =>
+                  setPicks((previous) => ({
+                    ...previous,
+                    [mount.name]: replacementProviderKey({
+                      pluginId,
+                      id: mount.name,
+                    }),
+                  }))
+                }
+              >
+                <PluginIcon pluginId={pluginId} icon={null} />
+                {getPluginDisplayName(pluginId)}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigate(
+                  getSettingsTargetPath({ section: "appearance" }),
+                  {
+                    state: {
+                      [SETTINGS_SEARCH_ANCHOR_STATE_KEY]:
+                        MARKDOWN_SETTINGS_TITLE,
+                    },
+                  },
+                );
+              }}
+            >
+              <Icon name="Settings" aria-hidden="true" />
+              Settings…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }

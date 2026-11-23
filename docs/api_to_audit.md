@@ -159,9 +159,8 @@ popup-id uniqueness across customizations.
 composer input box everywhere bb shows a composer. It is exclusive, chosen by
 the synced `composer.provider` UI preference through the shared exclusive-slot
 resolver (`resolveExclusive` in
-`apps/app/src/lib/plugin-replacement-preference.ts`; Settings → Installed
-plugins → Plugin choices), and with no composer plugin enabled no composer is
-shown. While another plugin's composer is crashed, `ComposerBox` renders the
+`apps/app/src/lib/plugin-replacement-preference.ts`; Settings → Appearance →
+Composer), and with no composer plugin enabled no composer is shown. While another plugin's composer is crashed, `ComposerBox` renders the
 bundled one over the same host draft, with Reload in the toast. bb's own
 composer is the bundled `plugins/composer` plugin (`bb--composer`), built on
 this slot: core renders every composer through `ComposerBox`
@@ -2505,8 +2504,8 @@ sidebar the hook returns no items and inert actions.
 bb's glyphs and panel icons with plugin branding as fallback.
 
 **Core callers on the same path.** The bundled Navigation plugin's Rail, Top
-list, and header New thread button use these hooks; the Navigation row in
-Settings → Installed plugins → Plugin choices reads the same registrations.
+list, and header New thread button use these hooks; the Settings → Appearance →
+Navigation picker reads the same registrations.
 
 **Audit before stabilizing.**
 
@@ -3522,7 +3521,7 @@ Exclusive slots that replace bb's source or diff renderer everywhere it draws
 supplied content, including other plugins' calls to the public components.
 Selection follows the shared exclusive-slot rule (`resolveExclusive`); the
 picks are the synced `sourceCode.provider` and `diff.provider` UI preferences
-(Settings → Installed plugins → Plugin choices, `bb settings ui`), and
+(Settings → Appearance, `bb settings ui`), and
 `__builtin__` keeps bb's renderer. A crash falls back to bb's renderer.
 
 Docs: `frontend-renderer-slots.md`.
@@ -3555,8 +3554,8 @@ mounts once per fence, and survives streaming: the host owns the instance and
 portals it to a placeholder keyed by the fence's source offset, keeping
 iframes alive where `Element.moveBefore` exists. A language several plugins
 claim follows the shared exclusive-slot rule (`codeFence.byLanguage`, Settings
-→ Installed plugins → Plugin choices, one row per set of languages with the
-same claimants). A missing plugin and a throwing fence fall back to
+→ Appearance → Markdown, one row per set of languages with the same
+claimants). A missing plugin and a throwing fence fall back to
 `Original`. The harness
 exposes `loadPluginApp(...).codeFenceRenderers`.
 

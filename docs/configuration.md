@@ -1005,7 +1005,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `threadHeader.titleProvider`          | Plugin key, `__builtin__` (bb's thread title), or `__automatic__` (default)                                                                                                                                   |
 | `fileOpener.byExtension`              | JSON map of extension to plugin key or `__builtin__` (bb's preview), such as `{"md":"simple-notes/docs"}`; a missing extension is Automatic                                                                   |
 | `codeFence.byLanguage`                | JSON map of code fence language to plugin key or `__builtin__` (bb's code block); a missing language is Automatic                                                                                             |
-| `messageDirective.byName`             | JSON map of directive name to plugin key or `__builtin__` (show as text); a name several plugins claim shows as text with a Choose link until it is listed                                                    |
+| `messageDirective.byName`             | JSON map of directive name to plugin key or `__builtin__` (show as text); a name several plugins claim shows a plugin picker in the message until it is listed                                                  |
 | `sidebar.pluginPanelOrder`            | Navigation destination order                                                                                                                                                                                  |
 | `sidebar.visiblePluginPanels`         | Navigation destinations shown, or `null` for every destination                                                                                                                                                |
 | `sidebar.footerOrder`                 | Footer action order                                                                                                                                                                                           |
@@ -1028,7 +1028,8 @@ several plugins has no automatic winner. Each device remembers its last value
 of these keys so the first paint already uses your pick, and picks this device
 made before they were synced (diff and source renderers, file openers) move to
 the server once, if the server is still at the default. Change them in
-Settings → Installed plugins → Plugin choices or with `bb settings ui set`,
+Settings → Appearance (Markdown for code blocks and directives), Settings
+→ Files → File openers, or with `bb settings ui set`,
 for example `bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
@@ -1048,7 +1049,7 @@ drawer. In the macOS desktop app, wide windows add a title bar with the window
 controls, Back and Forward, and the sidebar toggle.
 
 With `sidebar.navigationProvider` set to `navigation/top-list` (Settings →
-Installed plugins → Plugin choices → Navigation), there is no rail. The visible destinations, New
+Appearance → Navigation), there is no rail. The visible destinations, New
 thread among them, and More (hidden destinations and Customize navigation) are
 labeled rows above the thread list, with plugin panel badges at the end of
 their row. New thread can be reordered and hidden like any other row.

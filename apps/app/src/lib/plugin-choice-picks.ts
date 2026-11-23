@@ -1,6 +1,8 @@
 import { createPickMapPreferenceAtom } from "@/lib/plugin-replacement-preference";
 
-export const PLUGIN_CHOICES_TITLE = "Plugin choices";
+export const FILE_OPENERS_TITLE = "File openers";
+
+export const MARKDOWN_SETTINGS_TITLE = "Markdown";
 
 export const codeFencePicksAtom = createPickMapPreferenceAtom(
   "codeFence.byLanguage",

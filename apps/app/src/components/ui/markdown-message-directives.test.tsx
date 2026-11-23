@@ -8,9 +8,20 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
+import { getDefaultStore } from "jotai";
+import { messageDirectivePicksAtom } from "@/lib/plugin-choice-picks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
 import { experimental_useAppPanel } from "@/lib/plugin-sdk-hooks";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
@@ -932,7 +943,7 @@ describe("ThreadTimelineRows message directive subscription", () => {
   });
 
   it.each(["", "Next"])(
-    "renders a directive several plugins claim as its source with a Choose link: %s",
+    "renders a directive several plugins claim as text with a plugin picker, and a pick renders that plugin: %s",
     (tail) => {
       setPluginSlotRegistrations(
         "alpha",
@@ -970,11 +981,32 @@ describe("ThreadTimelineRows message directive subscription", () => {
         screen.getByText('::inline-vis{file="collide.html"}'),
       ).toBeTruthy();
       if (tail !== "") expect(screen.getByText(tail)).toBeTruthy();
-      expect(screen.getByText(/2 plugins claim/u).textContent).toContain(
-        "::inline-vis",
+      onTestFinished(() => {
+        getDefaultStore().set(messageDirectivePicksAtom, {});
+      });
+      fireEvent.pointerDown(
+        screen.getByRole("button", {
+          name: "Choose a plugin to show ::inline-vis",
+        }),
+        { button: 0 },
       );
-      const choose = screen.getByRole("link", { name: "Choose" });
-      expect(choose.getAttribute("href")).toBe("/settings/plugins");
+      const menu = screen.getByRole("menu");
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["alpha", "zeta", "Settings…"]);
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "zeta" }));
+
+      expect(getDefaultStore().get(messageDirectivePicksAtom)).toEqual({
+        "inline-vis": "zeta/inline-vis",
+      });
+      expect(screen.getByTestId("inline-vis")).toBeTruthy();
+      expect(
+        screen.queryByRole("button", {
+          name: "Choose a plugin to show ::inline-vis",
+        }),
+      ).toBeNull();
     },
   );
 });

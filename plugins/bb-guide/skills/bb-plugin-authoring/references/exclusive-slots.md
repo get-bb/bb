@@ -28,10 +28,11 @@ A crashing composer or thread list is replaced by the bundled one, with a
 Reload in the toast; the pick does not change.
 
 A message directive claimed by more than one plugin has no automatic winner:
-it shows as text with a Choose link until the user picks, because each
-plugin understands only its own directive data.
+it shows a plugin picker in the message, with the directive text, until the
+user picks, because each plugin understands only its own directive data.
 
-Users change picks in Settings → Installed plugins → Plugin choices or with
+Users change picks in Settings → Appearance (its Markdown section for code
+blocks and directives), Settings → Files → File openers, or with
 `bb settings ui set <key> <value>` (maps take JSON). Your plugin may write a
 pick through `sdk.system.uiPreferences.set`, for example on install or when
 the user turns your view on (see backend-ui-lifecycle.md). The user can change

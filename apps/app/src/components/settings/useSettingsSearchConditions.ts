@@ -6,10 +6,7 @@ import {
 import { useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
-import {
-  hasPluginChoices as hasAnyPluginChoice,
-  usePluginChoices,
-} from "./PluginChoicesSection";
+import { hasKeyedChoices, usePluginChoices } from "./PluginChoiceSettings";
 import type { SettingsSearchCondition } from "./settings-search";
 
 export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchCondition> {
@@ -30,7 +27,10 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
         typeof window === "undefined" ? undefined : window.location.hostname,
       ) !== null,
   );
-  const hasPluginChoices = hasAnyPluginChoice(pluginChoices);
+  const hasFileOpeners = hasKeyedChoices(pluginChoices.fileOpeners);
+  const hasMarkdownRendererChoices =
+    hasKeyedChoices(pluginChoices.codeFences) ||
+    hasKeyedChoices(pluginChoices.directives);
   const hasComposers = choiceLabels.has("Composer");
   const hasDiffRenderers = choiceLabels.has("Diffs");
   const hasSourceCodeRenderers = choiceLabels.has("Source code");
@@ -41,14 +41,15 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
 
   return useMemo(() => {
     const conditions: [SettingsSearchCondition, boolean][] = [
+      ["markdownRendererChoices", hasMarkdownRendererChoices],
       ["cliCommand", cliCommandSupported],
       ["composers", hasComposers],
       ["desktopBrowser", desktopBrowserAvailable],
       ["diffRenderers", hasDiffRenderers],
+      ["fileOpeners", hasFileOpeners],
       ["filePreferences", hasFilePreferences],
       ["localhostLinkRewrite", rewritesLocalhostLinks],
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
-      ["pluginChoices", hasPluginChoices],
       ["pluginUpdates", pluginUpdatesEnabled],
       ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
@@ -60,11 +61,12 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     );
   }, [
     cliCommandSupported,
+    hasMarkdownRendererChoices,
+    hasFileOpeners,
     desktopBrowserAvailable,
     hasComposers,
     hasDiffRenderers,
     hasFilePreferences,
-    hasPluginChoices,
     hasSidebarNavigations,
     hasSourceCodeRenderers,
     hasThreadHeaderTitles,

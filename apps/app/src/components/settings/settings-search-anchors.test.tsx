@@ -61,6 +61,9 @@ function registerReplacementPlugin() {
             component: () => null,
           },
         ],
+        codeFenceRenderers: [
+          { id: "shell", languages: ["bash"], component: () => null },
+        ],
       }),
     );
   }

@@ -153,8 +153,8 @@ openWorkspaceFile }` — register a leaf
   literal until the closing syntax arrives. Unknown, disabled, malformed, or
   crashing directives fall back to rendering the original `source` (the
   component ErrorBoundary still isolates a throw). A name several plugins
-  claim shows its `source` with a "N plugins claim ::name · Choose" link until
-  the user picks one in `messageDirective.byName` (see
+  claim shows a plugin picker with its `source` until the user picks one,
+  which sets `messageDirective.byName` (see
   exclusive-slots.md). Treat
   attributes as attacker-controlled even though the model emitted them;
   load workspace data through `bb.sdk.files` with root/host confinement

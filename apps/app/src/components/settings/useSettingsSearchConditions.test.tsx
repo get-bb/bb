@@ -92,9 +92,9 @@ describe("useSettingsSearchConditions", () => {
     ).toEqual([
       "cliCommand",
       "diffRenderers",
+      "fileOpeners",
       "localhostLinkRewrite",
       "performanceDiagnostics",
-      "pluginChoices",
       "sourceCodeRenderers",
     ]);
   });

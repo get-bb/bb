@@ -2768,7 +2768,7 @@ export interface PluginSidebarThreadSplit {
 export interface PluginThreadListRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Label shown in Settings → Installed plugins → Plugin choices and capability details. */
+  /** Label shown in Settings → Appearance and capability details. */
   title: string;
   /** Optional one-line description shown with the provider choice. */
   description?: string;
@@ -2801,7 +2801,7 @@ export interface PluginThreadListRegistration {
 export interface ExperimentalSidebarNavigationRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Label shown in Settings → Installed plugins → Plugin choices and capability details. */
+  /** Label shown in Settings → Appearance and capability details. */
   title: string;
   /** Optional one-line description shown with the provider choice. */
   description?: string;
@@ -3544,8 +3544,8 @@ export interface ExperimentalThreadTitleTextProps {
  * `::inline-vis{file="demo.html"}`.
  *
  * Exclusive per directive name (see "Exclusive slots" in the Plugin Guide),
- * with no automatic winner: a name several plugins claim shows as its source
- * text with a Choose link until the user picks one in
+ * with no automatic winner: a name several plugins claim shows a plugin picker
+ * with its source text until the user picks one, which sets
  * `messageDirective.byName`.
  */
 export interface PluginMessageDirectiveRegistration {

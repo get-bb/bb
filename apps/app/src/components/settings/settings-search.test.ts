@@ -25,7 +25,7 @@ const linearSettings = [
 ];
 
 const allItems = buildSettingsSearchItems({
-  conditions: new Set(["pluginChoices"]),
+  conditions: new Set(["fileOpeners"]),
   pluginEntries: [linearPlugin],
   pluginSettings: linearSettings,
   sections: SETTINGS_NAV_SECTIONS,
@@ -134,18 +134,16 @@ describe("searchSettings", () => {
   });
 
   it("leaves out settings whose section is hidden", () => {
-    const withoutPlugins = buildSettingsSearchItems({
-      conditions: new Set(["pluginChoices"]),
+    const withoutFiles = buildSettingsSearchItems({
+      conditions: new Set(["fileOpeners"]),
       pluginEntries: [],
       pluginSettings: [],
       sections: SETTINGS_NAV_SECTIONS.filter(
-        (section) => section.id !== "plugins",
+        (section) => section.id !== "files",
       ),
     });
-    expect(searchTitles("file openers")).toEqual([
-      "Installed plugins › Plugin choices",
-    ]);
-    expect(searchTitles("file openers", withoutPlugins)).toEqual([]);
+    expect(searchTitles("file openers")).toEqual(["Files › File openers"]);
+    expect(searchTitles("file openers", withoutFiles)).toEqual([]);
   });
 });
 

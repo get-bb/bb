@@ -28,7 +28,7 @@ function AlphaThreadList({
           <dd className="truncate font-mono">{activeProjectId ?? "none"}</dd>
         </dl>
         <p className="text-muted-foreground">
-          Use Settings → Installed plugins → Plugin choices to switch to Beta or
+          Use Settings → Appearance → Sidebar thread list to switch to Beta or
           Automatic.
         </p>
       </div>
