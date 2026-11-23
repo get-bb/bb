@@ -36,7 +36,10 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { FollowUpPromptBox } from "@/components/promptbox/FollowUpPromptBox";
 import { NewThreadPromptBoxUI } from "@/components/promptbox/NewThreadPromptBox";
-import type { PromptBoxHandle } from "@/components/promptbox/ComposerBox";
+import type {
+  AttachmentsConfig,
+  PromptBoxHandle,
+} from "@/components/promptbox/ComposerBox";
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
 import { useComposers } from "@/lib/plugin-sdk-hooks";
 import {
@@ -119,6 +122,7 @@ interface SurfaceHarness {
   store: ComposerDraftStore;
   onSubmit: () => void;
   onModifierSubmit: () => void;
+  attachments: AttachmentsConfig;
 }
 
 interface Surface {
@@ -127,6 +131,7 @@ interface Surface {
   customizable: boolean;
   enter: EnterAction;
   pluginSubmit: EnterAction | "rejects";
+  running: boolean;
   render(harness: SurfaceHarness): ReactNode;
 }
 
@@ -216,7 +221,7 @@ function followUpSurface({
   customizable: boolean;
   enter: EnterAction;
   pluginSubmit?: EnterAction | "rejects";
-  submitMode: "ready" | "steer";
+  submitMode: "ready" | "steer" | "stopping";
   inline: boolean;
   primary?: boolean;
 }): Surface {
@@ -226,9 +231,10 @@ function followUpSurface({
     customizable,
     enter,
     pluginSubmit,
-    render: ({ host, store, onSubmit, onModifierSubmit }) => (
+    running: submitMode !== "ready",
+    render: ({ host, store, onSubmit, onModifierSubmit, attachments }) => (
       <FollowUpPromptBox
-        attachments={{ projectId: "proj_contract" }}
+        attachments={attachments}
         stack={null}
         composer={{
           history: {
@@ -246,9 +252,11 @@ function followUpSurface({
           submitMode:
             submitMode === "steer"
               ? { kind: "queue", onStop: () => {} }
-              : { kind: "ready" },
+              : submitMode === "stopping"
+                ? { kind: "queue-while-stopping" }
+                : { kind: "ready" },
           threadRuntimeDisplayStatus:
-            submitMode === "steer" ? "active" : "idle",
+            submitMode === "ready" ? "idle" : "active",
         }}
         environmentSummary={null}
         contextWindowUsage={null}
@@ -337,7 +345,8 @@ const SURFACES: readonly Surface[] = [
     customizable: true,
     enter: "submit",
     pluginSubmit: "submit",
-    render: ({ host, store, onSubmit }) => (
+    running: false,
+    render: ({ host, store, onSubmit, attachments }) => (
       <NewThreadPromptBoxUI
         draft={store}
         onSubmit={onSubmit}
@@ -349,7 +358,7 @@ const SURFACES: readonly Surface[] = [
           onSelectEntry: () => {},
         }}
         typeahead={typeahead}
-        attachments={{}}
+        attachments={attachments}
         mentionMenuPlacement="bottom"
         modeConfig={{
           environment: {
@@ -454,7 +463,12 @@ function contributionCustomization(
   };
 }
 
-function renderSurface(surface: Surface) {
+const CONTRACT_ATTACHMENTS: AttachmentsConfig = { projectId: "proj_contract" };
+
+function renderSurface(
+  surface: Surface,
+  attachments: AttachmentsConfig = CONTRACT_ATTACHMENTS,
+) {
   const store = createDraftStore(
     surface.scope,
     `contract:${surface.name}`,
@@ -462,33 +476,35 @@ function renderSurface(surface: Surface) {
   );
   const onSubmit = vi.fn();
   const onModifierSubmit = vi.fn();
-  function Harness() {
-    return (
-      <>
-        {surface.render({
-          host: store.host,
-          store: store.store,
-          onSubmit,
-          onModifierSubmit,
-        })}
-        <PluginContext.Provider value={PROBE_PLUGIN_ID}>
-          <ComposersProbe />
-        </PluginContext.Provider>
-      </>
-    );
-  }
-  const view = render(
+  const queryClient = new QueryClient();
+  const tree = (current: AttachmentsConfig) => (
     <MemoryRouter>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <div data-testid="pane">
-            <Harness />
+            {surface.render({
+              host: store.host,
+              store: store.store,
+              onSubmit,
+              onModifierSubmit,
+              attachments: current,
+            })}
+            <PluginContext.Provider value={PROBE_PLUGIN_ID}>
+              <ComposersProbe />
+            </PluginContext.Provider>
           </div>
         </TooltipProvider>
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { view, store, onSubmit, onModifierSubmit };
+  const view = render(tree(attachments));
+  return {
+    view,
+    store,
+    onSubmit,
+    onModifierSubmit,
+    setAttachments: (next: AttachmentsConfig) => view.rerender(tree(next)),
+  };
 }
 
 async function composerBox(): Promise<HTMLElement> {
@@ -662,6 +678,23 @@ describe.each(COMPOSERS)("$name", (composer) => {
       return;
     }
 
+    it("gives other plugins bb's run and submit state", async () => {
+      renderSurface(surface);
+      await composerBox();
+      const handle = await listedComposer();
+      expect({
+        isRunning: handle.isRunning,
+        isSubmitting: handle.isSubmitting,
+        isSubmittingBlocked: handle.isSubmittingBlocked,
+        submittingBlockedReason: handle.submittingBlockedReason,
+      }).toEqual({
+        isRunning: surface.running,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+      });
+    });
+
     it("puts another plugin's insert at the editor's caret", async () => {
       const { store } = renderSurface(surface);
       await composerBox();
@@ -822,3 +855,75 @@ describe.each(SURFACES)(
     );
   },
 );
+
+describe("a composer box that reports wrong run and upload state", () => {
+  const threadComposer = SURFACES[0]!;
+
+  beforeEach(() => {
+    registerMinimalComposer({
+      extraEditorState: {
+        isRunning: false,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+        isAttaching: false,
+        attachmentError: null,
+      },
+    });
+  });
+
+  it.each([
+    followUpSurface({
+      name: "running thread composer",
+      scope: THREAD_SCOPE,
+      customizable: true,
+      enter: "submit",
+      submitMode: "steer",
+      inline: false,
+    }),
+    followUpSurface({
+      name: "stopping thread composer",
+      scope: THREAD_SCOPE,
+      customizable: true,
+      enter: "submit",
+      submitMode: "stopping",
+      inline: false,
+    }),
+  ])("leaves useComposer().isRunning true in the $name", async (surface) => {
+    renderSurface(surface);
+    await composerBox();
+    const handle = await listedComposer();
+    expect(handle.isRunning).toBe(true);
+  });
+
+  it("makes submit() wait for bb's upload and reject with bb's upload error", async () => {
+    const { onSubmit, setAttachments } = renderSurface(threadComposer, {
+      ...CONTRACT_ATTACHMENTS,
+      isAttaching: true,
+    });
+    await composerBox();
+    const handle = await listedComposer();
+    expect(handle.isSubmittingBlocked).toBe(true);
+    expect(handle.submittingBlockedReason).toBe("Uploading attachments...");
+
+    const submitted = handle.submit();
+    const outcome = submitted.then(
+      () => "submitted",
+      (error: unknown) => (error instanceof Error ? error.message : "failed"),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    act(() =>
+      setAttachments({
+        ...CONTRACT_ATTACHMENTS,
+        isAttaching: false,
+        error: "Failed to attach big.bin",
+      }),
+    );
+    await expect(outcome).resolves.toBe("Failed to attach big.bin");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

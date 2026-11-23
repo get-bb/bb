@@ -268,7 +268,14 @@ that composer), send rows, banners and actions on every surface, filtered by
 but mounts no send rows, banners, actions or rich text.
 `experimental_ComposerRoot` publishes stable functions that call the latest
 editor and republishes only when the editor's state changes, so a composer
-can build its editor inline on every render.
+can build its editor inline on every render. The box reports only what it
+alone knows (`editor.state.layout`). bb owns run, submit and upload state:
+`useComposer().isRunning`, `isSubmitting`, `isSubmittingBlocked`,
+`submittingBlockedReason` and `submit()`'s upload wait come from what bb
+passes the box in `submission`, `attachments` and `voice`
+(`apps/app/src/components/promptbox/composer-host-state.ts`), so a box that
+mis-reports them cannot mislead other plugins. Already-built composers that
+still report the removed fields keep working; bb ignores them.
 
 Styling the composer needs lives in the plugin (`plugins/composer/src/composer.css`).
 bb keeps the pill surface its timeline shares and the highlight classes of

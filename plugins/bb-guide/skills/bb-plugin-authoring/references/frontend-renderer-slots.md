@@ -68,7 +68,9 @@ Original }`. `experimental_fullFileContents` is either
   `shortcut`, and `run()`; gate each on `requiresInput` and your own
   upload and voice state. `input.compact` (`when: "always" | "narrow"`,
   `placeholder`) says when to show a one-line form; report the form you
-  show in `editor.state.layout`. Pass your menu element and open state to
+  show in `editor.state.layout`, the only state a box reports; bb fills
+  `useComposer().isRunning`, `isSubmitting` and `isSubmittingBlocked` from
+  `submission`, `attachments` and `voice`. Pass your menu element and open state to
   `experimental_ComposerRoot` (`menuRef`, `menuOpen`). Mentions, attachments and history entries
   use the same `ComposerMention`, `ComposerAttachment` and
   `ComposerDraftSnapshot` shapes as `useComposer()`, and

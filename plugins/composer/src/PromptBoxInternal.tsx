@@ -134,7 +134,6 @@ import {
   ComposerEditorSlot,
 } from "./ComposerEditorSlot";
 import { isModifierSubmitKeyEvent } from "./modifier-submit-key";
-import { composerSubmittingBlockedReason } from "./composer-submit-gate";
 
 import { ComposerSendMenu } from "./ComposerSendMenu";
 import { isImeComposing, isNonImeKey } from "@/lib/ime-keyboard";
@@ -2832,33 +2831,9 @@ export function PromptBoxInternal({
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
-  const submittingBlockedReason = composerSubmittingBlockedReason({
-    canSubmit: canPrimarySubmit,
-    hasSubmittableInput,
-    isAttaching,
-    isSubmitting,
-    voiceActive: showVoiceActionGroup,
-    submitDisabledReason,
-  });
   const composerEditorState = useMemo<ExperimentalComposerEditorState>(
-    () => ({
-      layout: composerLayout,
-      isRunning,
-      isSubmitting,
-      isSubmittingBlocked: !canPrimarySubmit,
-      submittingBlockedReason,
-      isAttaching,
-      attachmentError,
-    }),
-    [
-      attachmentError,
-      canPrimarySubmit,
-      composerLayout,
-      isAttaching,
-      isRunning,
-      isSubmitting,
-      submittingBlockedReason,
-    ],
+    () => ({ layout: composerLayout }),
+    [composerLayout],
   );
   const insertAtCursorForPlugin = useCallback(
     (draft: ComposerDraft, block: boolean) => {

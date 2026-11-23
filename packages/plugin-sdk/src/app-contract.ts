@@ -2982,6 +2982,7 @@ export interface ExperimentalComposerSubmission {
   label?: string;
   icon?: BbIconName;
   title?: string;
+  /** The thread's agent is running or stopping; `useComposer().isRunning` reads this. */
   isRunning?: boolean;
   onStop?: () => void;
   /** What Enter (and the send button) does. */
@@ -3274,15 +3275,15 @@ export interface ExperimentalComposerDecorationSource {
   effects: readonly NonNullable<ComposerRichTextSpec["effects"]>[number][];
 }
 
-/** Editor state a composer box reports so other plugins' `useComposer()` sees it. */
+/**
+ * Editor state only the composer box knows, reported so other plugins'
+ * `useComposer()` sees it. Run, submit and upload state are bb's own: bb
+ * fills `useComposer().isRunning`, `isSubmitting`, `isSubmittingBlocked` and
+ * `submittingBlockedReason` from what it passes the box in `submission`,
+ * `attachments` and `voice`.
+ */
 export interface ExperimentalComposerEditorState {
   layout: "expanded" | "compact";
-  isRunning: boolean;
-  isSubmitting: boolean;
-  isSubmittingBlocked: boolean;
-  submittingBlockedReason: string | null;
-  isAttaching: boolean;
-  attachmentError: string | null;
 }
 
 /**
