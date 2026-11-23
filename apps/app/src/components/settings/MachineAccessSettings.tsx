@@ -24,6 +24,7 @@ import {
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { CopyButton } from "@/components/ui/copy-button";
 import { reorderStoredOrder } from "@/lib/stored-order";
 import {
   SortableSettingsRowList,
@@ -450,18 +451,36 @@ function RouteRow({
         <div className="flex min-h-8 min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-foreground">{provider.displayName}</p>
-            <p
-              className={cn(
-                "truncate text-xs",
-                broken ? "text-destructive-text" : "text-subtle-foreground",
-              )}
-            >
-              {availability.status === "unavailable"
-                ? availability.message
-                : provider.urls.length > 0
-                  ? provider.urls.join(", ")
+            {availability.status !== "unavailable" &&
+            provider.urls.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-subtle-foreground">
+                {provider.urls.map((url) => (
+                  <span
+                    key={url}
+                    className="group/url flex min-w-0 items-center gap-1"
+                  >
+                    <span className="truncate">{url}</span>
+                    <CopyButton
+                      text={url}
+                      label={`Copy ${url}`}
+                      successMessage="Address copied"
+                      className="shrink-0 opacity-0 group-hover/url:opacity-100 pointer-coarse:opacity-100"
+                    />
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p
+                className={cn(
+                  "truncate text-xs",
+                  broken ? "text-destructive-text" : "text-subtle-foreground",
+                )}
+              >
+                {availability.status === "unavailable"
+                  ? availability.message
                   : provider.description}
-            </p>
+              </p>
+            )}
           </div>
           {broken && provider.pluginId !== null && (
             <Link
