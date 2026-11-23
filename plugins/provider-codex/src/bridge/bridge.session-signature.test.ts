@@ -207,6 +207,63 @@ it("forks the session from its rollout when a writable folder is removed, and ad
   });
 }, 30_000);
 
+it.each([
+  {
+    name: "forks before the first turn when Codex restores a folder bb no longer grants",
+    restoredRoots: ["/work/api", "/data/storage"],
+    forkedRoots: [["/data/storage"]],
+  },
+  {
+    name: "keeps the resumed session when Codex restores only granted folders",
+    restoredRoots: ["/data/storage"],
+    forkedRoots: [],
+  },
+])("$name", async ({ restoredRoots, forkedRoots }) => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumedSandbox: { type: "workspaceWrite", writableRoots: restoredRoots },
+    }),
+  );
+  const storageOnly = {
+    ...autoAskSessionOptions,
+    providerOptions: { additionalWorkspaceWriteRoots: ["/data/storage"] },
+  };
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    clientRequestId: "creq_rstrdrts22",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+
+  const forks = recordedRequests().filter(
+    (request) => request.method === "thread/fork",
+  );
+  expect(
+    forks.map(
+      (fork) =>
+        z
+          .object({
+            excludeTurns: z.literal(true),
+            config: z.record(z.string(), z.unknown()),
+          })
+          .parse(fork.params).config["sandbox_workspace_write.writable_roots"],
+    ),
+  ).toEqual(forkedRoots);
+}, 30_000);
+
 it("keeps an auto-reviewed session when only escalation intent changes", async () => {
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,

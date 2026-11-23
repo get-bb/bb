@@ -189,6 +189,14 @@ function FolderRow({ host, source, pending, onAdd }: FolderRowProps) {
   });
   const removeFolder = useRemoveProjectSourceFolder();
   const folders = foldersQuery.data ?? [];
+  const folderPaths = useMemo(
+    () => (foldersQuery.data ?? []).map((folder) => folder.path),
+    [foldersQuery.data],
+  );
+  const folderExistence = useHostPathExistence(
+    connected ? host.id : null,
+    folderPaths,
+  );
   return (
     <SettingsRow className="items-start">
       <div className="min-w-0 flex-1 space-y-1">
@@ -220,9 +228,13 @@ function FolderRow({ host, source, pending, onAdd }: FolderRowProps) {
                   name="Folder"
                   className="size-3.5 shrink-0 text-muted-foreground"
                 />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-subtle-foreground/75">
+                <span className="min-w-0 truncate font-mono text-xs text-subtle-foreground/75">
                   {folder.path}
                 </span>
+                {isHostPathMissing(folderExistence, folder.path) ? (
+                  <Pill variant="destructive">Path not found</Pill>
+                ) : null}
+                <span className="flex-1" />
                 <Button
                   type="button"
                   variant="ghost"
