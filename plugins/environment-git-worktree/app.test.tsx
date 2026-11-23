@@ -38,10 +38,45 @@ const WORKTREES: JsonValue[] = [
   { path: "/code/app-hotfix", branch: "hotfix", locked: false, prunable: true },
 ];
 
+function warmPoolStatus(size: number, readyOnHostA: number): JsonValue {
+  return {
+    pools: [
+      {
+        projectId: "project-1",
+        projectName: "App",
+        size,
+        handedOff: 0,
+        missed: 0,
+        checkouts: [
+          {
+            hostId: "host-a",
+            hostName: "Laptop",
+            path: "/code/app",
+            ready: readyOnHostA,
+            preparing: 0,
+            base: "main",
+            lastError: null,
+          },
+          {
+            hostId: "host-b",
+            hostName: "Desktop",
+            path: "/code/app",
+            ready: 4,
+            preparing: 0,
+            base: "main",
+            lastError: null,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function render(
   value: JsonValue | null,
   onChange = vi.fn(),
   worktrees: JsonValue[] = WORKTREES,
+  warmPool: () => JsonValue = () => ({ pools: [] }),
 ) {
   const slot = renderSlot(
     inputsSlot(),
@@ -55,6 +90,7 @@ function render(
       rpc: {
         listExistingWorktrees: () => ({ worktrees }),
         defaultBaseBranch: () => ({ branch: "main" }),
+        warmPoolStatus: warmPool,
       },
       branchesState: {
         branches: ["main", "release"],
@@ -447,4 +483,81 @@ describe("default branch label scope", () => {
       expect(list).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("warm worktree hint", () => {
+  it("counts this machine's warm worktrees on the default branch", async () => {
+    const { slot } = render(
+      { branch: { kind: "default" } },
+      vi.fn(),
+      WORKTREES,
+      () => warmPoolStatus(2, 1),
+    );
+    await openPicker(slot);
+    const defaultRow = await slot.findByRole("button", {
+      name: "Default branch 1 warm",
+    });
+    expect(defaultRow.getAttribute("title")).toContain("1 warm worktree ready");
+  });
+
+  it("opens worktree settings from the picker", async () => {
+    const { slot, onChange } = render({ branch: { kind: "default" } });
+    await openPicker(slot);
+    fireEvent.click(slot.getByRole("button", { name: "Worktree settings" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_toSettings", target: undefined },
+    ]);
+    await waitFor(() => {
+      expect(slot.queryByText("Work in:")).toBeNull();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("shows no count while the project's pool is off", async () => {
+    const warmPool = vi.fn(() => warmPoolStatus(0, 3));
+    const { slot } = render(
+      { branch: { kind: "default" } },
+      vi.fn(),
+      WORKTREES,
+      warmPool,
+    );
+    await openPicker(slot);
+    await waitFor(() => expect(warmPool).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(slot.getByRole("button", { name: "Default branch" })).toBeTruthy();
+  });
+
+  it("updates the count while the picker is open", async () => {
+    let ready = 1;
+    const { slot } = render(
+      { branch: { kind: "default" } },
+      vi.fn(),
+      WORKTREES,
+      () => warmPoolStatus(2, ready),
+    );
+    await openPicker(slot);
+    await slot.findByRole("button", { name: "Default branch 1 warm" });
+    ready = 2;
+    await slot.emitRealtime("warm-pools-changed", null);
+    await slot.findByRole("button", { name: "Default branch 2 warm" });
+  });
+
+  it("leaves the default branch unmarked when warm pool status is unavailable", async () => {
+    const warmPool = vi.fn(() => {
+      throw new Error("plugin server unavailable");
+    });
+    const { slot } = render(
+      { branch: { kind: "default" } },
+      vi.fn(),
+      WORKTREES,
+      warmPool,
+    );
+    await openPicker(slot);
+    await waitFor(() => expect(warmPool).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(slot.getByRole("button", { name: "Default branch" })).toBeTruthy();
+    expect(
+      slot.getByRole("button", { name: "Worktree settings" }),
+    ).toBeTruthy();
+  });
 });
