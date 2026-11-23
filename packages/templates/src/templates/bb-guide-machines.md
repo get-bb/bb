@@ -279,7 +279,7 @@ Machines and apps reach this server over routes: every turned-on access
 provider, in order. Routes are advertised to machines only with the
 `serverRoutes` experiment (on for early adopters); while it is off,
 `routes` is empty, `local-network` is unavailable and each machine uses only
-the URL it was installed with. Settings → Machine access ("How devices reach this server")
+the URL it was installed with. Settings → Machines → How devices reach this server
 lists each route with a toggle, its status and address; the CLI is
 `bb server access list|enable <id>|disable <id>|order <id...>` (`--json` for
 `{serverId, routes, serverAccess}`). Routes:

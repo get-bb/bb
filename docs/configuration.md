@@ -918,7 +918,7 @@ off. `local-network` makes bb also listen on this computer's private LAN
 addresses without a restart (only with the `serverRoutes` experiment, which also
 controls whether routes are advertised); `tailscale` uses the Tailscale plugin's
 Serve address; `direct` (Manual) uses your own URL.
-Manage them in Settings → Machine access or with
+Manage them in Settings → Machines → How devices reach this server or with
 `bb server access list|enable|disable|order`, and set the URL with
 `bb settings general machineServerUrl <url-or-null>`.
 

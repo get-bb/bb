@@ -572,7 +572,7 @@ async function resolve(
   const candidates = anchorCandidates(deps, host);
   if (candidates.length === 0)
     throw new Error(
-      "Turn on a way for machines to reach this server in Settings → Machine access",
+      "Turn on a way for machines to reach this server in Settings → Machines → How devices reach this server",
     );
   let firstError: unknown = null;
   for (const entry of candidates) {

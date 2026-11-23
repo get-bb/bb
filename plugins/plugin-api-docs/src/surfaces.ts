@@ -1457,7 +1457,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Give new machines what they need to enroll, such as a tunnel URL",
           "Add a route, ranked by its kind, that machines switch to when it answers",
-          "Appear as a route in Machine access settings and `bb server access`",
+          "Appear as a route in Settings → Machines and `bb server access`",
         ],
         apiSymbols: [
           "PluginServerAccess",

@@ -226,12 +226,15 @@ returning a `ServerAccessGrant` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. The ids `direct` and `local-network`
 are reserved for core.
 
-Every provider the user leaves turned on is a route. Core ranks routes by
-`routeKind` (local network, private overlay such as a tailnet, relay, custom)
-until the user orders them in Settings → Machine access or with
-`bb server access order`. A new machine is installed with the first working
-`relay` or `custom` route, falling back to `local-network` and
-`private-overlay` only when nothing else is turned on; each connected machine then acquires a grant from every turned-on,
+Every provider the user leaves turned on is a route, ordered as the user
+sets in Settings → Machines → How devices reach this server or with
+`bb server access order`. With the `serverRoutes` experiment on, core then
+ranks routes by `routeKind` (local network, private overlay such as a tailnet,
+relay, custom) and installs a new machine with the first working `relay` or
+`custom` route, falling back to `local-network` and `private-overlay` only when
+nothing else is turned on. While it is off, the rest follow plugin install
+order with Manual last, and a new machine is installed with the first working
+route. With it on, each connected machine also acquires a grant from every turned-on,
 available provider when its session opens, and core sends the daemon all of
 them with their own headers. Only routes that are turned on and available are
 advertised, and their hostnames pass the server's host and origin checks.
@@ -261,7 +264,7 @@ configuration, which checks provider availability in parallel with a
 five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
-public `serverUrl` is validated and displayed in Machine access settings, and
+public `serverUrl` is validated and displayed in Settings → Machines, and
 while the provider is turned on and available core's Host and Origin guards
 admit its origin (also with the `serverRoutes` experiment off), so browsers and
 machines can use it without `BB_APP_URL`. Reading configuration

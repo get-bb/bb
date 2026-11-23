@@ -49,13 +49,13 @@ Existing remote host daemons that target a direct tailnet IP or
 upgraded server. Prefer pairing bb connect and re-adding the machine from
 Settings → Machines so its installer records the account-gated route. The
 private alternative is to set up the Tailscale plugin, turn off bb connect and
-Manual in Settings → Machine access (or leave them unset up), and re-run the
+Manual in Settings → Machines → How devices reach this server (or leave them unset up), and re-run the
 Add machine installer.
 
 ### Local network
 
 With the **Reach machines over several routes** experiment (`serverRoutes`,
-on for early adopters), turn on **Local network** in Settings → Machine access
+on for early adopters), turn on **Local network** in Settings → Machines → How devices reach this server
 (or run
 `bb server access enable local-network`) and bb also listens on this
 computer's private LAN addresses, without a restart. Devices and machines on

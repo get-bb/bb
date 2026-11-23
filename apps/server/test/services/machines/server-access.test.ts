@@ -128,7 +128,7 @@ describe("machine server access", () => {
       const other = upsertHost(deps.db, deps.hub, { name: "other" })!;
       await expect(
         serverAccess.resolve(deps, { key: "k", hostId: other.id, signal }),
-      ).rejects.toThrow("Machine access");
+      ).rejects.toThrow("How devices reach this server");
     });
   });
 
