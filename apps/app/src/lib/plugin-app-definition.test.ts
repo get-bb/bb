@@ -17,6 +17,24 @@ import {
 } from "./plugin-app-definition";
 import { resolveFileOpenerReplacement } from "./plugin-slot-resolvers";
 
+const SETTLED_BOOT = {
+  bbPluginIds: new Set<string>(),
+  settledOnce: true,
+};
+
+function openerFor(
+  args: Omit<
+    Parameters<typeof resolveFileOpenerReplacement>[0],
+    "boot" | "picks"
+  > & { picks?: Readonly<Record<string, string>> },
+) {
+  return resolveFileOpenerReplacement({
+    picks: {},
+    boot: SETTLED_BOOT,
+    ...args,
+  });
+}
+
 function Component() {
   return null;
 }
@@ -496,7 +514,7 @@ describe("collectPluginAppRegistrations", () => {
         },
       ]);
       expect(
-        resolveFileOpenerReplacement({
+        openerFor({
           registrations,
           path: `project/file.${extension.toUpperCase()}`,
         }),
@@ -521,11 +539,11 @@ describe("collectPluginAppRegistrations", () => {
       generation: 1,
     }));
 
+    expect(openerFor({ registrations, path: "report.html" })).toEqual({
+      kind: "owner",
+    });
     expect(
-      resolveFileOpenerReplacement({ registrations, path: "report.html" }),
-    ).toEqual({ kind: "owner" });
-    expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations,
         path: "report.html",
         override: { pluginId: "pages", openerId: "page" },

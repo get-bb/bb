@@ -1,11 +1,7 @@
 # Replacing the sidebar thread list
 
-`app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering activates the replacement
-while the plugin is enabled. If multiple plugins register one, the first in
-deterministic slot order is active by default; removing it reveals the next.
-The user can pin a specific provider under **Settings → Appearance →
-Sidebar**. The choice is per client. bb ships its own list as the bundled
+`app.slots.experimental_threadList` is exclusive (see exclusive-slots.md): only
+one list fills the sidebar's scroll area. bb ships its own list as the bundled
 `thread-list` plugin; there is no separate built-in list.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
@@ -14,9 +10,10 @@ other plugins live in two of those, so a replaced list must not remove them.
 Put your own controls at the top of your scroll area instead.
 
 If no thread list plugin is enabled, bb shows a placeholder that links to
-Plugins. If the active component throws, bb shows a "stopped working"
-placeholder with a Reload button plus one toast; nothing else in the sidebar
-is affected.
+Plugins. If the active component throws, bb shows the bundled list with a
+toast whose action is Reload; the pick does not change. If the bundled list
+itself throws, bb shows a "stopped working" placeholder with a Reload button.
+Nothing else in the sidebar is affected.
 
 The component receives:
 

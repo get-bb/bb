@@ -9,6 +9,13 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  applyAppKeybindingOverrides,
+  defaultAppSettings,
+  type AppDefaultKeybindings,
+  type AppKeybindingOverrides,
+} from "@bb/domain";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { readSettingsSearchAnchor } from "./settings-search";
 import { SETTINGS_NAV_SECTIONS } from "./settings-sections";
@@ -16,6 +23,48 @@ import {
   SettingsSidebarContent,
   type SettingsSidebarPluginSettingSearch,
 } from "./SettingsSidebar";
+
+const SETTINGS_SEARCH_BINDINGS: AppDefaultKeybindings = [
+  {
+    command: "settings.search",
+    desktopOnly: false,
+    shortcut: {
+      key: "/",
+      mod: false,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    },
+    when: {
+      all: ["mainSurface", "settingsPage"],
+      none: ["modalOpen", "editableFocus"],
+    },
+  },
+];
+
+const testState = vi.hoisted(() => ({
+  overrides: [] as AppKeybindingOverrides,
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: { ...defaultAppSettings, showKeyboardHints: false },
+      defaultKeybindings: SETTINGS_SEARCH_BINDINGS,
+      keybindings: applyAppKeybindingOverrides(
+        SETTINGS_SEARCH_BINDINGS,
+        testState.overrides,
+      ),
+      keybindingOverrides: testState.overrides,
+    },
+  }),
+}));
+
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
+  getBbDesktopInfo: () => null,
+}));
 
 const configurablePlugin = {
   hasSettingsForm: true,
@@ -55,26 +104,28 @@ function renderSidebar({
   return render(
     <MemoryRouter initialEntries={["/settings"]}>
       <LocationProbe />
-      <SidebarProvider>
-        <SettingsSidebarContent
-          backTo={null}
-          isResizing={false}
-          navigation={{
-            activePluginId,
-            activeSection: activePluginId === null ? "general" : null,
-            pluginEntries: [configurablePlugin],
-            sections: SETTINGS_NAV_SECTIONS,
-          }}
-          onResizeMouseDown={() => {}}
-          pluginSettingSearch={{
-            entries: [linearApiKeySetting],
-            isLoading: false,
-            onActivate: () => {},
-            ...pluginSettingSearch,
-          }}
-          searchConditions={new Set()}
-        />
-      </SidebarProvider>
+      <AppCommandProvider>
+        <SidebarProvider>
+          <SettingsSidebarContent
+            backTo={null}
+            isResizing={false}
+            navigation={{
+              activePluginId,
+              activeSection: activePluginId === null ? "general" : null,
+              pluginEntries: [configurablePlugin],
+              sections: SETTINGS_NAV_SECTIONS,
+            }}
+            onResizeMouseDown={() => {}}
+            pluginSettingSearch={{
+              entries: [linearApiKeySetting],
+              isLoading: false,
+              onActivate: () => {},
+              ...pluginSettingSearch,
+            }}
+            searchConditions={new Set()}
+          />
+        </SidebarProvider>
+      </AppCommandProvider>
     </MemoryRouter>,
   );
 }
@@ -209,25 +260,27 @@ describe("SettingsSidebarContent search", () => {
     rerender(
       <MemoryRouter initialEntries={["/settings"]}>
         <LocationProbe />
-        <SidebarProvider>
-          <SettingsSidebarContent
-            backTo={null}
-            isResizing={false}
-            navigation={{
-              activePluginId: null,
-              activeSection: "general",
-              pluginEntries: [configurablePlugin],
-              sections: SETTINGS_NAV_SECTIONS,
-            }}
-            onResizeMouseDown={() => {}}
-            pluginSettingSearch={{
-              entries: [],
-              isLoading: false,
-              onActivate: () => {},
-            }}
-            searchConditions={new Set()}
-          />
-        </SidebarProvider>
+        <AppCommandProvider>
+          <SidebarProvider>
+            <SettingsSidebarContent
+              backTo={null}
+              isResizing={false}
+              navigation={{
+                activePluginId: null,
+                activeSection: "general",
+                pluginEntries: [configurablePlugin],
+                sections: SETTINGS_NAV_SECTIONS,
+              }}
+              onResizeMouseDown={() => {}}
+              pluginSettingSearch={{
+                entries: [],
+                isLoading: false,
+                onActivate: () => {},
+              }}
+              searchConditions={new Set()}
+            />
+          </SidebarProvider>
+        </AppCommandProvider>
       </MemoryRouter>,
     );
     expect(screen.getByRole("status").textContent).toBe("No settings found");
@@ -274,6 +327,33 @@ describe("SettingsSidebarContent search", () => {
       expect(document.activeElement).toBe(searchInput());
     } finally {
       other.remove();
+    }
+  });
+
+  it("follows a rebind of the search shortcut in its key and its label", () => {
+    testState.overrides = [
+      {
+        command: "settings.search",
+        shortcut: {
+          key: "s",
+          mod: false,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: false,
+        },
+      },
+    ];
+    try {
+      renderSidebar();
+      expect(screen.getByText("S")).toBeDefined();
+
+      expect(pressKey(document.body, "/").defaultPrevented).toBe(false);
+      expect(document.activeElement).not.toBe(searchInput());
+      expect(pressKey(document.body, "s").defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(searchInput());
+    } finally {
+      testState.overrides = [];
     }
   });
 });

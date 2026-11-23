@@ -166,9 +166,8 @@ Codex credits use the same fallback policy and availability pill. The pool reads
 `credits.has_credits` and `credits.unlimited` from usage responses and the
 corresponding `x-codex-credits-*` headers. Credit-only updates are accepted;
 omitted fields preserve prior observations. Workspace hard stops (the
-`workspace_{owner,member}_{credits_depleted,usage_limit_reached}` limit types,
-or a reached spend control) block routing even below the subscription switch
-threshold and survive restarts. Other limit types, including unknown ones, do
+`workspace_{owner,member}_{credits_depleted,usage_limit_reached}` limit types) block routing even below the subscription switch
+threshold and survive restarts. A reached spend control blocks credit fallback. Included requests can still route when a current plan window shows capacity and no applicable window is exhausted. Other limit types, including unknown ones, do
 not restrict the account. A refreshed allowance or spending-control observation can
 clear the matching restriction. JSON account/status responses expose
 `usageRestriction` (reason and optional reset time); the pool does not change

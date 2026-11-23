@@ -7,9 +7,18 @@ bb.ui.registerMentionProvider({
   id: "issue",
   label: "Issues",
   triggers: ["@", "#"], // optional; defaults to ["@"]. Valid: @ # $ ! ~
-  search({ trigger, query, projectId, threadId }) {
+  async search({ trigger, query, projectId, threadId, experimental_signal }) {
     // 2s time box, failure = empty list
-    return [{ id: "42", title: "ENG-42 Fix flake", subtitle: "Todo" }];
+    const response = await fetch(issueSearchUrl(query), {
+      signal: experimental_signal, // typed past, timed out, or unloaded
+    });
+    const issues: Array<{ key: string; title: string; state: string }> =
+      await response.json();
+    return issues.map((issue) => ({
+      id: issue.key,
+      title: `${issue.key} ${issue.title}`,
+      subtitle: issue.state,
+    }));
   },
   resolve(itemId) {
     // once per unique item AT SEND TIME
@@ -28,6 +37,12 @@ bb.ui.registerMentionProvider({
 ```
 
 Mention items render under `label` in the menu for each registered trigger.
+A provider runs one search at a time. A query typed while a search is running
+waits, and only the newest waiting query runs. A search still running after
+its 2s time box keeps the provider out of results until it settles.
+`experimental_signal` aborts when the person types past the query, the time
+box runs out, or the plugin unloads; pass it to `fetch` or check it between
+steps so the next query starts sooner.
 `experimental_images` may add bounded agent-only `image` URL or `localImage`
 path inputs, each with optional `context`. Treat remote and page-derived image
 content as untrusted evidence. Invalid images block the send rather than being
@@ -50,15 +65,19 @@ retries the load.
 the plugin and its server entry has loaded. It does not run on update,
 reload, enable, or server restart, and not for bb's bundled plugins;
 reinstalling after removal runs it again. Use it for one-time setup the user
-would expect from installing, such as picking the plugin's thread list:
+would expect from installing, such as picking the plugin's thread list. Leave
+a pick the user already made alone (see frontend-registration.md, Exclusive
+slots):
 
 ```ts
 bb.onInstall(async () => {
   const { preferences } = await bb.sdk.system.uiPreferences.list();
+  const current = preferences["sidebar.threadListProvider"];
+  if (current === undefined || current.value !== "__automatic__") return;
   await bb.sdk.system.uiPreferences.set({
     key: "sidebar.threadListProvider",
     value: "my-plugin/inbox",
-    expectedRevision: preferences["sidebar.threadListProvider"].revision,
+    expectedRevision: current.revision,
   });
 });
 ```

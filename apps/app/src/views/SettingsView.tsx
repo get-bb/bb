@@ -54,10 +54,12 @@ import {
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { useAppThemePreview } from "@/hooks/useAppThemePreview";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
-import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
-import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
-import { SidebarNavigationProviderSetting } from "@/components/settings/SidebarNavigationProviderSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
+import {
+  MarkdownRendererChoicesSection,
+  FileOpenerChoicesSection,
+  PluginSlotChoiceRows,
+} from "@/components/settings/PluginChoiceSettings";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { useRevealSettingsSearchTarget } from "@/components/settings/useRevealSettingsSearchTarget";
@@ -65,7 +67,6 @@ import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginDetailPaneView } from "@/views/ToolsView";
 import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
-import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -863,12 +864,11 @@ export function AppearanceSettingsSection({
       </SettingsSection>
       <SettingsSection title="Interface">
         <div className="space-y-5">
-          <SidebarNavigationProviderSetting />
-          <SidebarThreadListSetting />
-          <CodeRendererSettings />
+          <PluginSlotChoiceRows />
           <SidebarFooterSettings />
         </div>
       </SettingsSection>
+      <MarkdownRendererChoicesSection />
     </div>
   );
 }
@@ -1414,7 +1414,7 @@ export function SettingsView() {
           onRequestAccess={requestAccess}
           targets={workspaceOpenTargets}
         />
-        <FileOpenersSettingsSection />
+        <FileOpenerChoicesSection />
       </>
     );
   } else if (activeSection === "projects") {

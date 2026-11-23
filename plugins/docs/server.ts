@@ -3195,11 +3195,13 @@ export default async function plugin(
   bb.ui.registerMentionProvider({
     id: "note",
     label: "Docs",
-    async search({ query }) {
+    async search({ query, experimental_signal }) {
       const needle = query.trim().toLowerCase();
       const matches = [];
       for (const vault of listVaults()) {
-        for (const note of await mentionNoteSummaries(vault)) {
+        const notes = await mentionNoteSummaries(vault);
+        experimental_signal.throwIfAborted();
+        for (const note of notes) {
           if (
             needle &&
             !`${vault.name} ${note.title} ${note.preview} ${note.path}`

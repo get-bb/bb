@@ -157,8 +157,11 @@ popup-id uniqueness across customizations.
 
 `experimental_composer({ id, title, description?, component })` draws bb's
 composer input box everywhere bb shows a composer. It is exclusive, chosen by
-the synced `composer.provider` UI preference (Settings → Appearance →
-Composer), and with no composer plugin enabled no composer is shown. bb's own
+the synced `composer.provider` UI preference through the shared exclusive-slot
+resolver (`resolveExclusive` in
+`apps/app/src/lib/plugin-replacement-preference.ts`; Settings → Appearance →
+Composer), and with no composer plugin enabled no composer is shown. While another plugin's composer is crashed, `ComposerBox` renders the
+bundled one over the same host draft, with Reload in the toast. bb's own
 composer is the bundled `plugins/composer` plugin (`bb--composer`), built on
 this slot: core renders every composer through `ComposerBox`
 (`apps/app/src/components/promptbox/ComposerBox.tsx`), which resolves the
@@ -534,6 +537,14 @@ Before stabilizing, decide whether plugins also need a full-chord matcher that
 resolves `mod` per platform, and whether settings should label shortcuts with
 the active layout's characters (`navigator.keyboard.getLayoutMap()`).
 
+## Plugin command shortcuts (`experimental_useCommandShortcut`, `PluginCommandRegistration.experimental_keyScope`)
+
+- **Surface:** `experimental_useCommandShortcut(commandId): ExperimentalShortcutPresentation | null` on `@get-bb/plugin-sdk/app` returns the shortcut currently bound to the calling plugin's command `commandId`, as `{ label, ariaKeyshortcuts }` for this platform. `PluginCommandRegistration.experimental_keyScope?: "pluginPage"` limits a command's keyboard binding to the plugin's own pages and is the only way to give a bare-key `defaultShortcut` (such as `{ key: "c" }`). The testing harness's `renderSlot` takes `experimental_commandShortcuts`, the presentation per command id (omitted ids return null).
+- **Behavior:** the hook follows rebinds, conflict demotion and platform: null when the command is unbound, its default was left unbound by a conflict, or the plugin registered no such command; it throws for an id that is not letters, digits, `-` and `_`. With `"pluginPage"`, the binding fires only while one of this plugin's nav panel pages is the focused surface (the focused pane in a split), never while focus is in a field or editor (including a split pane's composer) or a menu or listbox, or a modal is open; the desktop embedded browser never forwards plugin keys. Registration rejects a bare-key default without the scope. Keyboard settings list the command with its conflict check and let the user rebind a page-scoped command to another bare key. Two page-scoped bindings from different plugins never conflict, at load or in Keyboard settings, because their pages are never focused together; a page-scoped binding still conflicts with app-wide bindings, core question keys and the same plugin's other page commands. The palette still lists the command wherever `isAvailable` allows; omitting the scope keeps the app-wide, outside-modals rule.
+- **Core callers:** the hook is `useAppCommandShortcut(pluginCommandId(pluginId, id))` from `apps/app/src/components/commands/AppCommandProvider.tsx`, the hook bb's own buttons and tooltips use for their labels (sidebar, panels, composer, browser tab). The scope maps in `usePluginCommandBindings` to the private `when` `{ all: [mainSurface, pluginPage], none: [modalOpen, editableFocus] }`, beside the composer target's mapping; `pluginPage` is satisfied when the command's own plugin page is focused, which `PluginPanelRightPanelHost` (the host of every plugin page, routed or split) registers with `useAppCommandFocusedPluginPage`. The dispatcher evaluates it in `matchesAppCommandContext` (`apps/app/src/lib/app-keybindings.ts`), the same evaluator as core's bare question keys (focus in a menu or listbox counts as `editableFocus` for both, via `isTypeaheadKeyboardTarget`), and Keyboard settings allow bare keys through `allowsBareKeyShortcut`, the rule that already covers question keys. Core's Settings page uses the same page rule: `settings.search` (`/`) has `when` `{ all: [mainSurface, settingsPage], none: [modalOpen, editableFocus] }`, the Settings sidebar registers `settingsPage` with `useAppCommandContext`, and `isPageScopedAppKeybinding` / `canAppKeybindingsFireTogether` in `apps/app/src/lib/app-keybindings.ts` treat `settingsPage` and each plugin's `pluginPage` as separate pages for the bare-key rule and both conflict checks (`resolvePluginCommandDefaults`, `getShortcutConflicts`). Plugin callers: Conductor's Run button label (`run`) and Tasks' bare `c` (`new-task`), which replaced its own window listener.
+- **Other callers that can migrate:** `chug2k__bb-plugin-retitle` and `xkrsz__bb-model-presets` hardcode their own shortcut labels; `cristoslc__bb-plugin-focus-board` binds a bare key on `window`.
+- **Stabilization:** decide whether other scopes are needed. Then rename project-wide and remove this entry.
+
 ## Discoverable RPC
 
 `bb.rpc.register` accepts `experimental_discoverable` and
@@ -662,6 +673,28 @@ Docs: `backend-sdk.md`, `backend-ui-lifecycle.md`.
 Before stabilizing, audit whether HTTP route and thread event handlers need
 the same signal in a typed context, and whether a deadline (not only
 cancellation) belongs in the context.
+
+## Mention search cancellation (`PluginMentionSearchContext.experimental_signal`)
+
+Every `bb.ui.registerMentionProvider` search receives an `experimental_signal`
+that aborts when the search request disconnects (the composer cancels a query
+the person has typed past), when the 2s time box runs out, or when the plugin
+instance is reloaded, disabled or removed. Each provider runs one search at a
+time; only the newest query typed meanwhile waits, and a waiting query whose
+request disconnects never starts. Aborting a running search lets that waiting
+query start as soon as the provider settles. The host ignores whatever an
+aborted search returns.
+
+Core path: `GET /api/v1/plugins/mentions/search` forwards its request signal to
+the plugin service, which links it with the time box and the instance
+lifetime through the same `invokeWrapped` caller signal as RPC handlers. Docs
+checks the signal between vaults.
+
+Docs: `backend-ui-lifecycle.md`.
+
+Before stabilizing, audit it together with the RPC handler signal: whether
+every host-called handler should take one typed context with the signal, and
+whether a deadline belongs next to it.
 
 ## `bb.http.experimental_websocket`
 
@@ -2496,8 +2529,8 @@ sidebar the hook returns no items and inert actions.
 bb's glyphs and panel icons with plugin branding as fallback.
 
 **Core callers on the same path.** The bundled Navigation plugin's Rail, Top
-list, and header New thread button use these hooks; the app's Settings →
-Appearance → Navigation picker reads the same registrations.
+list, and header New thread button use these hooks; the Settings → Appearance →
+Navigation picker reads the same registrations.
 
 **Audit before stabilizing.**
 
@@ -3511,14 +3544,15 @@ shape.
 
 Exclusive slots that replace bb's source or diff renderer everywhere it draws
 supplied content, including other plugins' calls to the public components.
-Automatic selection prefers a registration from a plugin the user installed
-over one bundled with bb, then the first in slot order, and the user can pin
-bb's renderer or a provider per client in Settings → Appearance. A crash falls
-back to bb's renderer.
+Selection follows the shared exclusive-slot rule (`resolveExclusive`); the
+picks are the synced `sourceCode.provider` and `diff.provider` UI preferences
+(Settings → Appearance, `bb settings ui`), and
+`__builtin__` keeps bb's renderer. A crash falls back to bb's renderer.
 
 Docs: `frontend-renderer-slots.md`.
 
-Decided (Aug 2026): the pin stays per client; a crash swaps back to bb's
+Decided (Aug 2026, revised Nov 2026): the pin is a synced UI preference like
+every other exclusive slot (device-only picks migrate to it once); a crash swaps back to bb's
 renderer silently and disables the slot for the session; the replacement is
 global, other plugins' surfaces included; replacements receive
 `experimental_fullFileContents` like the public component.
@@ -3543,8 +3577,11 @@ nested-agent message Markdown, where `messageDirective` activates. The
 component receives `{ code, language, status, index, message, Original }`,
 mounts once per fence, and survives streaming: the host owns the instance and
 portals it to a placeholder keyed by the fence's source offset, keeping
-iframes alive where `Element.moveBefore` exists. Contested languages, a
-missing plugin, and a throwing fence fall back to `Original`. The harness
+iframes alive where `Element.moveBefore` exists. A language several plugins
+claim follows the shared exclusive-slot rule (`codeFence.byLanguage`, Settings
+→ Appearance → Markdown, one row per set of languages with the same
+claimants). A missing plugin and a throwing fence fall back to
+`Original`. The harness
 exposes `loadPluginApp(...).codeFenceRenderers`.
 
 **Core callers.** `MarkdownPreview`'s code renderer
@@ -3558,9 +3595,9 @@ Docs: `frontend-renderer-slots.md`, `testing.md`.
 
 **Audit before stabilizing.**
 
-1. **Collision model.** Confirm that a contested language falling back to
-   BB's code block is enough, or whether users need a per-language picker
-   like the source/diff renderer pin.
+1. **Collision model.** Confirm the per-language pick and the grouped
+   Settings row are enough for real clashes (bang-shell and inline-terminal
+   share six shell languages).
 2. **Streaming contract.** Confirm `code`/`status`/`index` cover real
    generative-UI renderers (partial JSON/DSL parsing), and whether the rest
    of the info string should be exposed as `meta`.
@@ -3932,9 +3969,10 @@ A registration is `{ id, component }`. The component receives
 `ExperimentalThreadHeaderTitleProps`, an alias of
 `ExperimentalThreadHeaderRowProps` (`{ threadId, projectId, environment }`),
 and renders in `ThreadDetailHeader` in place of the `ThreadTitle` text, in
-every thread page and split pane. Only one title renders: the first
-registration in slot order, which is plugin id in lexical order, then
-registration order within a plugin. Later registrations are ignored.
+every thread page and split pane. Only one title renders, chosen by the shared
+exclusive-slot rule from the synced `threadHeader.titleProvider` pick
+(`__builtin__` keeps core's title; Automatic is the first plugin the user
+installed by plugin id, then bb's own (bundled or from bb's official marketplace)).
 
 Core keeps the rest of the header: the Thread actions menu after the title,
 plugin header actions, the open-in button, pane maximize and close, the context

@@ -413,6 +413,7 @@ describe("github plugin RPC behavior", () => {
         trigger: "@",
         projectId: "project-1",
         threadId: "thread-1",
+        experimental_signal: new AbortController().signal,
       }),
     ).toEqual([
       {

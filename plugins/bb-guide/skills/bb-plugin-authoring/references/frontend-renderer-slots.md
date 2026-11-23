@@ -4,14 +4,11 @@
   replace bb's source or diff renderer everywhere it draws supplied content:
   the native file preview, timeline file diffs, the environment diff panel's
   file bodies, and every plugin calling the host components. Registration:
-  `{ id, title, description?, component }`. Like `experimental_threadList`
-  each slot is **exclusive** — one renderer at a time; a plugin the user
-  installed wins over one bundled with bb, then the first in slot order, and
-  a crashing replacement falls back to bb's renderer. Installing and enabling
-  the plugin activates it, and the user can pin bb's renderer or a specific
-  provider under **Settings → Appearance** ("Source code" / "Diffs"), per
-  client. A pinned provider whose plugin is disabled or uninstalled behaves as
-  Automatic until it returns. There are no
+  `{ id, title, description?, component }`. Each slot is **exclusive** (see
+  exclusive-slots.md); the picks are
+  `sourceCode.provider` and `diff.provider`, synced across the user's
+  devices, and `__builtin__` keeps bb's renderer. A crashing replacement
+  falls back to bb's renderer. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, Original }`;
@@ -44,12 +41,11 @@ Original }`. `experimental_fullFileContents` is either
   sent message editors): the editor, @-mention and slash-command menus,
   attachments, voice, the `+` and send menus and the send and stop controls.
   Banners, approval cards and queued messages above the box stay bb's.
-  Registration: `{ id, title, description?, component }`. Exclusive like
-  `experimental_threadList`: a composer from a plugin the user installed wins
-  over the bundled Composer plugin; users choose under **Settings → Appearance
-  → Composer** (`composer.provider`). A pinned composer whose plugin is
-  disabled or uninstalled behaves as Automatic until it returns. With no
-  composer plugin enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
+  Registration: `{ id, title, description?, component }`. Exclusive (see
+  exclusive-slots.md); the pick is `composer.provider`.
+  While your composer is crashed, bb shows the bundled one with the same draft
+  and attachments, and its toast offers Reload. With no composer plugin
+  enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
   plugin, built on this slot; copy it to make your own.
 
   Read and write the draft with `useComposer()` (`draft`, `replace`) and
@@ -154,9 +150,12 @@ openWorkspaceFile }` — register a leaf
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
   fenced code blocks stay literal. Incomplete streaming directives stay
-  literal until the closing syntax arrives. Unknown, disabled, malformed,
-  conflicting, or crashing directives fall back to rendering the original
-  `source` (the component ErrorBoundary still isolates a throw). Treat
+  literal until the closing syntax arrives. Unknown, disabled, malformed, or
+  crashing directives fall back to rendering the original `source` (the
+  component ErrorBoundary still isolates a throw). A name several plugins
+  claim shows a plugin picker with its `source` until the user picks one,
+  which sets `messageDirective.byName` (see
+  exclusive-slots.md). Treat
   attributes as attacker-controlled even though the model emitted them;
   load workspace data through `bb.sdk.files` with root/host confinement
   rather than trusting paths. Reference implementation:
@@ -187,9 +186,10 @@ message, Original }` — render fenced code blocks of chosen languages in
   works inside it as for `messageDirective`. **Host behavior / fallbacks:**
   activates only where `messageDirective` does (assistant and nested agent
   Markdown); user messages, file previews, and plugin Markdown keep BB's code
-  block. BB's code block also renders when two plugins claim the same
-  language (BB logs a console warning naming them), when the plugin is
-  missing or disabled, and for a fence whose component throws. A throw
+  block. A language several plugins claim follows the exclusive-slot rule
+  (`codeFence.byLanguage`; see exclusive-slots.md).
+  BB's code block renders when the user picks it, when the plugin is missing
+  or disabled, and for a fence whose component throws. A throw
   affects that fence only, and BB tries the component again when the fence's
   `code` or `status` changes, so a renderer that fails on a half-streamed
   body recovers on the next chunk. Treat `code` as attacker-controlled even
@@ -232,7 +232,7 @@ message, Original }` — render fenced code blocks of chosen languages in
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
+  component — registration: `{ id, title, defaultShortcut?, experimental_keyScope?, isAvailable?, run }`. Both callbacks
   receive `{ threadId, projectId }` plus the
   [callback context](frontend-hooks-and-ui.md#callback-context), where
   `threadId` and `projectId` are null on surfaces without one, and
@@ -257,6 +257,22 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  `experimental_keyScope: "pluginPage"` limits the binding to while one of
+  the plugin's own nav panel pages is the focused surface (the focused pane in
+  a split), and never while focus is in a field, an editor or a menu, or a
+  modal is open. Another plugin's page-scoped binding on the same key does not
+  collide with it; app-wide bindings and the plugin's own page commands do.
+  Only this scope accepts a bare-key default such as `{ key: "c" }`, and only
+  its commands can be rebound to bare keys; registering a bare default without
+  it rejects plugin setup. The palette still lists the command wherever
+  `isAvailable` allows, so a page command's `run` should work from other pages
+  too (Tasks' `new-task` opens the Tasks page first).
+  Show a command's current shortcut on the plugin's own buttons with
+  `experimental_useCommandShortcut(id)`, which returns
+  `{ label, ariaKeyshortcuts }` for the user's binding on this platform, or
+  null while the command is unbound; never hardcode a label such as "⌥⌘R".
+  In `renderSlot`, pass `experimental_commandShortcuts` (presentations by
+  command id) to set what it returns.
   A focused terminal keeps unmodified keys and plain Control+letter for the
   shell, so prefer a chord with Command, Alt or Shift, or a function key,
   when the command should also run from a terminal.
