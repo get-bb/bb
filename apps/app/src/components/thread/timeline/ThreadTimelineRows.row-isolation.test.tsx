@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import { formatShortMessageTime } from "./message-time";
+import { formatShortMessageTime } from "@bb/shared-ui/message-time";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,

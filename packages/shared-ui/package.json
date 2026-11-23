@@ -134,6 +134,11 @@
       "types": "./src/components/ui/menu-item-hover.tsx",
       "default": "./src/components/ui/menu-item-hover.tsx"
     },
+    "./message-time": {
+      "source": "./src/components/ui/message-time.tsx",
+      "types": "./src/components/ui/message-time.tsx",
+      "default": "./src/components/ui/message-time.tsx"
+    },
     "./motion": {
       "source": "./src/components/ui/motion.ts",
       "types": "./src/components/ui/motion.ts",

@@ -56,7 +56,10 @@ import { InlinePendingInteractionContext } from "@/components/thread/pending-int
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { CONTEXT_CARD_SEGMENT_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useThreadContextKind } from "@/components/plugin/thread-context-card-pane";
+import {
+  experimental_useThreadContextKind,
+  experimental_useThreadTitleDisplayText,
+} from "@get-bb/plugin-sdk/app";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
@@ -204,7 +207,7 @@ const PARENT_SECTION_ICON: Record<
 function useParentSectionAriaLabel(
   section: ThreadPromptParentThreadSection,
 ): string {
-  const parentThreadTitle = useThreadTitleDisplayText(
+  const parentThreadTitle = experimental_useThreadTitleDisplayText(
     section.parentThreadTitle,
   );
   return `${PARENT_SECTION_COPY[section.relationship].ariaPrefix} ${parentThreadTitle}`;
@@ -966,7 +969,7 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         details: ParentThreadDetails,
         useVisible: () => {
           const { parentThread } = useCoreThreadContext();
-          const kind = useThreadContextKind();
+          const kind = experimental_useThreadContextKind();
           return parentThread !== null && kind === "banner";
         },
       });

@@ -348,7 +348,7 @@ realized or the registration is removed. Plugin effects own their cleanup
 and time-based refreshes; BB adds no timer, text length limits, or server calls.
 
 Core caller: the inline message time in the hover action row
-(`apps/app/src/components/thread/timeline/core-message-metadata.tsx`) registers
+(`apps/app/src/core-contributions/message-time.tsx`) registers
 through this slot with `placement: "actionRow"` and renders through the same
 `MessageMetadata` host as plugin contributions.
 

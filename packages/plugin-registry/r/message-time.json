@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "message-time",
+  "type": "registry:ui",
+  "title": "message-time",
+  "description": "BB ui \"message-time\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/message-time.tsx",
+      "content": "function formatMessageDay(date: Date, now: Date): string {\n  if (date.toDateString() === now.toDateString()) {\n    return \"Today\";\n  }\n  return date.toLocaleDateString(undefined, {\n    month: \"short\",\n    day: \"numeric\",\n    ...(date.getFullYear() !== now.getFullYear() ? { year: \"numeric\" } : {}),\n  });\n}\n\nfunction formatClockTime(date: Date): string {\n  return date.toLocaleTimeString(undefined, {\n    hour: \"numeric\",\n    minute: \"2-digit\",\n  });\n}\n\nexport function formatShortMessageTime(timestamp: number, now: Date): string {\n  const date = new Date(timestamp);\n  const time = formatClockTime(date);\n  return date.toDateString() === now.toDateString()\n    ? time\n    : `${formatMessageDay(date, now)}, ${time}`;\n}\n\nexport function formatDayMessageTime(timestamp: number, now: Date): string {\n  const date = new Date(timestamp);\n  return `${formatMessageDay(date, now)}, ${formatClockTime(date)}`;\n}\n\nexport function MessageTime({\n  timestamp,\n  label,\n  className,\n}: {\n  timestamp: number;\n  label: string;\n  className?: string;\n}) {\n  const date = new Date(timestamp);\n  return (\n    <time\n      className={className}\n      dateTime={date.toISOString()}\n      title={date.toLocaleString(undefined, {\n        dateStyle: \"full\",\n        timeStyle: \"long\",\n      })}\n    >\n      {label}\n    </time>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/message-time.tsx"
+    }
+  ]
+}
