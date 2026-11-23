@@ -127,13 +127,21 @@ export function resolvePermissionEscalation(
   return "ask";
 }
 
+const REPO_DISCOVERY_WAIT_MS = 3_000;
+
 async function findReposInsideWorkspaceFolders(
   deps: LoggedWorkSessionDeps,
   environment: EnvironmentReposTarget,
 ): Promise<string[]> {
   try {
-    const { repos } = await resolveEnvironmentRepos(deps, environment);
-    return repos
+    const found = await Promise.race([
+      resolveEnvironmentRepos(deps, environment),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), REPO_DISCOVERY_WAIT_MS).unref();
+      }),
+    ]);
+    if (found === null) return [];
+    return found.repos
       .filter((repo) => repo.source === "discovered")
       .map((repo) => repo.path);
   } catch (error) {
