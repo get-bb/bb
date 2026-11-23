@@ -1542,6 +1542,13 @@ export interface PluginSidebarThread {
   updatedAt: number;
   lastReadAt: number | null;
   latestAttentionAt: number;
+  /**
+   * Epoch ms of the last durable status transition, or creation for a new
+   * thread (0 for legacy rows). Unlike updatedAt, reading or renaming a
+   * thread does not change it. Independent of unread attention: successful
+   * child completion advances this even when latestAttentionAt stays put.
+   */
+  experimental_statusChangedAt: number;
 }
 
 /** One project in the sidebar's live view. */

@@ -155,6 +155,7 @@ export const threadQueuedWorkSchema = z.enum(threadQueuedWorkValues);
 export type ThreadQueuedWork = z.infer<typeof threadQueuedWorkSchema>;
 
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
+  statusChangedAt: z.number(),
   activity: threadActivityStateSchema,
   queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),

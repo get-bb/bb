@@ -290,6 +290,7 @@ export const threadStatusChangeMetadataSchema = z
     runtime: threadRuntimeStateSchema,
     activity: threadActivityStateSchema,
     latestAttentionAt: z.number(),
+    statusChangedAt: z.number(),
     updatedAt: z.number(),
   })
   .strict();

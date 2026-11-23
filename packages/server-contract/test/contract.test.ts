@@ -1166,6 +1166,7 @@ describe("server-contract canonical schemas", () => {
           deletedAt: null,
           lastReadAt: null,
           latestAttentionAt: 2,
+          statusChangedAt: 2,
           createdAt: 1,
           updatedAt: 2,
           runtime: {

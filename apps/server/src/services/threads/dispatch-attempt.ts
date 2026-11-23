@@ -927,7 +927,10 @@ async function admitPendingThread(
     threadId: args.thread.id,
   });
   const claimedRow = args.claimed?.[0] ?? null;
-  let admitted: { messageSequence: number; startingThread: Thread };
+  let admitted: {
+    messageSequence: number;
+    startingThread: NonNullable<ReturnType<typeof getThread>>;
+  };
   try {
     admitted = deps.db.transaction(
       (tx) => {

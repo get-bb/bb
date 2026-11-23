@@ -67,5 +67,6 @@ export function testThread(
     updatedAt: 0,
     lastReadAt: null,
     latestAttentionAt: 0,
+    experimental_statusChangedAt: 0,
   };
 }

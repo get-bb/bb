@@ -86,6 +86,59 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it("updates child activity live and preserves it when read state arrives", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const child = makeThreadListEntry({
+      parentThreadId: "parent",
+      status: "active",
+      runtime: { displayStatus: "active" },
+      latestAttentionAt: 10,
+      statusChangedAt: 20,
+      updatedAt: 20,
+    });
+    const listKey = threadListQueryKey({
+      archived: false,
+      projectId: child.projectId,
+    });
+    queryClient.setQueryData(listKey, [child]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([child]),
+    );
+    updateCachedThreadListStatusState(queryClient, child.id, {
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+      activity: child.activity,
+      latestAttentionAt: 10,
+      statusChangedAt: 30,
+      updatedAt: 30,
+    });
+    applyThreadReadStateResult({
+      queryClient,
+      thread: makeThreadWithRuntime({
+        ...child,
+        status: "idle",
+        runtime: { displayStatus: "idle" },
+        lastReadAt: 40,
+        updatedAt: 40,
+      }),
+    });
+    const expected = {
+      status: "idle",
+      latestAttentionAt: 10,
+      statusChangedAt: 30,
+      lastReadAt: 40,
+    };
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(listKey)?.[0],
+    ).toMatchObject(expected);
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0],
+    ).toMatchObject(expected);
+  });
+
   it.each([null, 100])(
     "preserves a follow-up's active state when a delayed read acknowledgement arrives (%s)",
     async (lastReadAt) => {
@@ -606,6 +659,7 @@ it("preserves concurrent state when an older status event reaches detail and sid
     }),
   );
   const stale = {
+    statusChangedAt: 20,
     status: "idle" as const,
     runtime: { displayStatus: "idle" as const },
     latestAttentionAt: 20,

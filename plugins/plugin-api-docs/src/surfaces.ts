@@ -171,6 +171,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarThreadsState.experimental_hosts",
           "PluginSidebarThreadsState",
           "PluginSidebarThread",
+          "PluginSidebarThread.experimental_statusChangedAt",
           "PluginSidebarSection",
           "experimental_useArchiveEnvironmentThreads",
           "BbNavigate.toThread",

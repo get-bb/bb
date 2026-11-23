@@ -26,6 +26,31 @@ function rootIds(state: ReturnType<typeof buildPinnedSidebarState>): string[] {
 }
 
 describe("buildPinnedSidebarState", () => {
+  it("orders children of pinned roots by recent status activity", () => {
+    const state = buildPinnedSidebarState({
+      threads: [
+        createThread({ id: "parent", pinnedAt: 1_000 }),
+        createThread({
+          id: "older",
+          parentThreadId: "parent",
+          createdAt: 1,
+          experimental_statusChangedAt: 30,
+        }),
+        createThread({
+          id: "newer",
+          parentThreadId: "parent",
+          createdAt: 2,
+          experimental_statusChangedAt: 20,
+        }),
+      ],
+    });
+    expect(
+      state.rootNodes[0]?.children.map((item) =>
+        item.kind === "thread" ? item.node.thread.id : item.kind,
+      ),
+    ).toEqual(["older", "newer"]);
+  });
+
   it("sorts visible pinned roots by global pin sort key", () => {
     const state = buildPinnedSidebarState({
       threads: [

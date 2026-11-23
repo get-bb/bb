@@ -988,6 +988,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -2064,6 +2065,7 @@ describe("createRealtimeCacheEffects", () => {
     expect(threadListQueryFn).toHaveBeenCalledTimes(1);
 
     const statusChange = {
+      statusChangedAt: 200,
       activity: { ...NO_THREAD_ACTIVITY, activePlanModeCount: 1 },
       latestAttentionAt: 100,
       runtime: {
@@ -2210,11 +2212,12 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
+      statusChangedAt: 100,
       runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
-    const stoppedRow = { ...idleRow, updatedAt: 300 };
+    const stoppedRow = { ...idleRow, statusChangedAt: 300, updatedAt: 300 };
     let serverRow = idleRow;
     const sidebarQueryFn = vi.fn(async () => ({
       projects: [{ threads: [serverRow] }],
@@ -2236,6 +2239,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -2343,6 +2347,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -2421,6 +2426,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 100,
             runtime: { displayStatus: "active" },
@@ -2913,6 +2919,7 @@ describe("createRealtimeCacheEffects", () => {
         personalProject: { threads: [] },
       });
       const idleChange = {
+        statusChangedAt: 300,
         activity: NO_THREAD_ACTIVITY,
         latestAttentionAt: 300,
         runtime: { displayStatus: "idle" },
@@ -2951,6 +2958,7 @@ describe("createRealtimeCacheEffects", () => {
           projectId: "project-1",
           statusChange: {
             ...idleChange,
+            statusChangedAt: 200,
             runtime: { displayStatus: "active" },
             status: "active",
             updatedAt: 200,
@@ -2995,6 +3003,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 100,
             runtime: {
@@ -3062,6 +3071,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 200,
             runtime: {

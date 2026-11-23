@@ -272,6 +272,7 @@ async function runScenario(
             activePlanModeCount: 0,
           },
           latestAttentionAt: 5_000_000 + iteration,
+          statusChangedAt: 5_000_000 + iteration,
           updatedAt: 5_000_000 + iteration,
         });
       }),
