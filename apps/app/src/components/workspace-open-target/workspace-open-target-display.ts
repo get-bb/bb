@@ -29,6 +29,7 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
   textmate: "TextMate",
   "vscode-insiders": "VS Code Insiders",
   vscode: "VS Code",
+  vscodium: "VSCodium",
   warp: "Warp",
   webstorm: "WebStorm",
   xcode: "Xcode",

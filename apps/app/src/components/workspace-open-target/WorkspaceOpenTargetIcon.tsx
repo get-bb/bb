@@ -23,6 +23,7 @@ import terminalIcon from "@/assets/workspace-open-target-icons/terminal.png";
 import textmateIcon from "@/assets/workspace-open-target-icons/textmate.png";
 import vscodeInsidersIcon from "@/assets/workspace-open-target-icons/vscode-insiders.png";
 import vscodeIcon from "@/assets/workspace-open-target-icons/vscode.png";
+import vscodiumIcon from "@/assets/workspace-open-target-icons/vscodium.png";
 import warpIcon from "@/assets/workspace-open-target-icons/warp.png";
 import webstormIcon from "@/assets/workspace-open-target-icons/webstorm.svg";
 import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
@@ -53,6 +54,7 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   textmate: textmateIcon,
   "vscode-insiders": vscodeInsidersIcon,
   vscode: vscodeIcon,
+  vscodium: vscodiumIcon,
   warp: warpIcon,
   webstorm: webstormIcon,
   xcode: xcodeIcon,
