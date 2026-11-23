@@ -128,9 +128,14 @@ function validProviderId(provider: string): string | null {
   return trimmed.length === 0 || trimmed.includes(":") ? null : trimmed;
 }
 
-function insertValue(
+export interface ComposerInsertContext {
+  pluginId: string | null;
+  mentionText(mention: ComposerMention): string;
+}
+
+export function composerDraftFromInsertParts(
   parts: ComposerInsertPart | readonly ComposerInsertPart[],
-  controller: ComposerHandleController,
+  context: ComposerInsertContext,
 ): ComposerDraft {
   const list: readonly ComposerInsertPart[] = Array.isArray(parts)
     ? parts
@@ -146,22 +151,30 @@ function insertValue(
     if ("kind" in part) {
       mention = part;
     } else {
+      if (context.pluginId === null) {
+        throw new Error(
+          `Mention "${part.label}" has no kind and no plugin to resolve it.`,
+        );
+      }
       const provider = validProviderId(part.provider);
       if (provider === null) {
         throw new Error(`Invalid mention provider id "${part.provider}".`);
+      }
+      if (part.id.length === 0) {
+        throw new Error(`Mention "${part.label}" has an empty id.`);
       }
       mention = {
         from: 0,
         to: 0,
         label: part.label.trim() || part.id,
         kind: "plugin",
-        pluginId: controller.pluginId,
+        pluginId: context.pluginId,
         provider,
         id: part.id,
         icon: null,
       };
     }
-    const serialized = controller.mentionText(mention);
+    const serialized = context.mentionText(mention);
     mentions.push({
       ...mention,
       from: text.length,
@@ -294,7 +307,7 @@ export function createComposerHandleBinding(
     options: ComposerInsertOptions = {},
   ) => {
     requireAvailable();
-    const value = insertValue(parts, controller);
+    const value = composerDraftFromInsertParts(parts, controller);
     const block = options.block === true;
     if ((options.at ?? "cursor") === "cursor") {
       if (!target().insertAtCursor(value, block)) {

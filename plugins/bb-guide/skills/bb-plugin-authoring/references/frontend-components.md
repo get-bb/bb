@@ -254,7 +254,10 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   render; changing any of them after mount re-seeds every selection
   (including ones the user touched), so switching between two saved records
   in one mounted composer reloads that record's values. `initialPrompt`
-  seeds the draft only while it is still empty; `layout` is `"contained"`
+  seeds the draft only while it is still empty, as a string or as
+  `ComposerInsertPart[]` (the same parts `useComposer().insert()` takes, so
+  path, attachment, and your own mentions arrive as pills; parts `insert()`
+  would reject leave the draft empty and log a warning); `layout` is `"contained"`
   (default) or `"document"` like `ThreadChat`; `focusRequest` is a
   change-detected nonce that focuses the editor; `draftKey` picks where the
   draft persists (default: a key scoped to your plugin). The project selector

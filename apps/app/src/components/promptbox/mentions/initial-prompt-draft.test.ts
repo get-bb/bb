@@ -141,7 +141,7 @@ describe("initial prompt mentions", () => {
     );
     const options = (text: string, navigationPending: boolean) =>
       initialPromptDraftQueryOptions({
-        text,
+        seed: text,
         navigationPending,
         draft: draft(text, EMPTY_TITLE_MENTION_RESOURCES),
         resolveMentions: lookup,

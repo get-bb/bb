@@ -178,6 +178,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   appendComposerDraft,
+  composerDraftFromInsertParts,
   createComposerHandleBinding,
   reconcileComposerMentions,
   type ComposerHandleTarget,
@@ -1086,7 +1087,14 @@ function TestNewThreadComposer({
   draftKey,
   onSubmit,
 }: NewThreadComposerProps) {
-  const [text, setText] = useState(initialPrompt ?? "");
+  const [text, setText] = useState(() =>
+    typeof initialPrompt === "string" || initialPrompt === undefined
+      ? (initialPrompt ?? "")
+      : composerDraftFromInsertParts(initialPrompt, {
+          pluginId: "test-plugin",
+          mentionText: testComposerMentionText,
+        }).text,
+  );
   return (
     <div
       data-testid="bb-new-thread-composer"

@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { isRawThreadId } from "@bb/domain";
+import { z } from "zod";
+import {
+  isRawThreadId,
+  promptTextMentionSchema,
+  type PromptTextMention,
+} from "@bb/domain";
 import type { PromptDraftState } from "@bb/client-core";
 import {
   resolveSerializedPromptMentions,
@@ -9,6 +14,18 @@ import {
 import { sdk } from "@/lib/sdk";
 import { resolveThreadMentionsInBatches } from "@/lib/thread-links";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+
+export type InitialPromptSeed =
+  | string
+  | { text: string; mentions: PromptTextMention[] };
+
+export const initialPromptSeedSchema = z.union([
+  z.string().min(1),
+  z.object({
+    text: z.string().min(1),
+    mentions: z.array(promptTextMentionSchema),
+  }),
+]);
 
 export async function resolveInitialPromptDraft(
   draft: PromptDraftState,
@@ -63,43 +80,50 @@ export async function resolveInitialPromptDraft(
 }
 
 interface InitialPromptDraftQueryOptionsArgs {
-  text: string | null;
+  seed: InitialPromptSeed | null;
   navigationPending: boolean;
   draft: PromptDraftState;
   resolveMentions: typeof sdk.threads.resolveMentions;
 }
 
 export function initialPromptDraftQueryOptions({
-  text,
+  seed,
   navigationPending,
   draft,
   resolveMentions,
 }: InitialPromptDraftQueryOptionsArgs) {
+  const serialized = typeof seed === "string";
   return queryOptions({
-    queryKey: ["initial-prompt-draft", draft],
+    queryKey: ["initial-prompt-draft", serialized, draft],
     queryFn: ({ signal }) =>
-      resolveInitialPromptDraft(draft, resolveMentions, signal),
-    enabled: text !== null && !navigationPending,
+      serialized
+        ? resolveInitialPromptDraft(draft, resolveMentions, signal)
+        : draft,
+    enabled: seed !== null && (!serialized || !navigationPending),
     staleTime: Infinity,
   });
 }
 
 export function useInitialPromptDraft(
-  text: string | null,
+  seed: InitialPromptSeed | null,
 ): PromptDraftState | undefined {
+  const text = typeof seed === "string" ? seed : null;
   const navigation = useSidebarNavigation({ enabled: text !== null });
   const resources = useSidebarThreadTitleMentionResources(navigation.data);
   const draft = useMemo<PromptDraftState>(
-    () => ({
-      text: text ?? "",
-      mentions: resolveSerializedPromptMentions(text ?? "", resources),
-      attachments: [],
-    }),
-    [resources, text],
+    () =>
+      seed === null || typeof seed === "string"
+        ? {
+            text: seed ?? "",
+            mentions: resolveSerializedPromptMentions(seed ?? "", resources),
+            attachments: [],
+          }
+        : { text: seed.text, mentions: seed.mentions, attachments: [] },
+    [resources, seed],
   );
   return useQuery(
     initialPromptDraftQueryOptions({
-      text,
+      seed,
       navigationPending: navigation.isPending,
       draft,
       resolveMentions: (args) => sdk.threads.resolveMentions(args),
