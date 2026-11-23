@@ -45,7 +45,12 @@ function publishEditor(
     closePopup: () => false,
     isPopupOpen: () => false,
     host: {
-      scope: { kind: "thread", threadId: "thr_1" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: KEY,
       getCurrent: () => ({ text: "", mentions: [], attachments: [] }),
       subscribeDraft: () => () => {},
@@ -133,7 +138,12 @@ function makeTarget(
   let draft = initial;
   const target: ComposerSource = {
     textEffectKey: KEY,
-    scope: { kind: "thread", threadId: "thr_1" },
+    scope: {
+      kind: "thread",
+      threadId: "thr_1",
+      projectId: "proj_test",
+      environmentId: null,
+    },
     getCurrent: () => draft,
     setDraft: (next) => {
       draft = next;

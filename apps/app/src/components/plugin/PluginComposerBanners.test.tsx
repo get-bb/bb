@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { useEffect, type ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
+import { render } from "@/test/render-with-query-client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,7 +23,12 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function composerView(threadId: string): PluginComposerStaticView {
   return {
-    scope: { kind: "thread", threadId },
+    scope: {
+      kind: "thread",
+      threadId,
+      projectId: "proj_test",
+      environmentId: null,
+    },
     layout: "expanded",
     run: { isRunning: false, isSubmitting: false },
   };

@@ -32,7 +32,14 @@ export interface PluginComposerHost {
   setSelection?(selection: ComposerSelection): Promise<ComposerSelection>;
 }
 
-export function composerScopeIdentity(scope: PluginComposerScope): string {
+export type ComposerScopeIdentityInput =
+  | { kind: "thread"; threadId: string }
+  | { kind: "queued-message"; threadId: string; queuedMessageId: string }
+  | { kind: "new-thread"; projectId: string | null };
+
+export function composerScopeIdentity(
+  scope: ComposerScopeIdentityInput,
+): string {
   switch (scope.kind) {
     case "thread":
       return `thread/${scope.threadId}`;

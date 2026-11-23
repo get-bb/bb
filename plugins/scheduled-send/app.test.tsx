@@ -29,6 +29,8 @@ function openPicker(
   const scope: PluginComposerScope = options.scope ?? {
     kind: "thread",
     threadId: "thr_scope",
+    projectId: "proj_test",
+    environmentId: null,
   };
   const text = options.text ?? "ship the release notes";
   const slot = renderSlot(picker, {}, { composer: { scope, text } });
@@ -78,7 +80,16 @@ describe("picker visibility", () => {
     const opener = renderSlot(
       picker,
       {},
-      { composer: { scope: { kind: "thread", threadId: "thr_a" } } },
+      {
+        composer: {
+          scope: {
+            kind: "thread",
+            threadId: "thr_a",
+            projectId: "proj_test",
+            environmentId: null,
+          },
+        },
+      },
     );
     const openerKey = opener.composer.key;
     opener.unmount();
@@ -88,7 +99,12 @@ describe("picker visibility", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_b" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_b",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           text: "ship the release notes",
         },
       },

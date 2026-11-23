@@ -1,11 +1,13 @@
-import type { PluginComposerScope } from "@get-bb/plugin-sdk";
-import { composerScopeIdentity } from "@/components/plugin/plugin-composer-host";
+import {
+  composerScopeIdentity,
+  type ComposerScopeIdentityInput,
+} from "@/components/plugin/plugin-composer-host";
 import { createKeyedListeners } from "./keyed-listeners";
 
 const listeners = createKeyedListeners<string>();
 
 export function subscribeComposerSubmitted(
-  scope: PluginComposerScope,
+  scope: ComposerScopeIdentityInput,
   listener: () => void,
 ): () => void {
   return listeners.subscribe(composerScopeIdentity(scope), () => {
@@ -17,6 +19,8 @@ export function subscribeComposerSubmitted(
   });
 }
 
-export function notifyComposerSubmitted(scope: PluginComposerScope): void {
+export function notifyComposerSubmitted(
+  scope: ComposerScopeIdentityInput,
+): void {
   listeners.notify(composerScopeIdentity(scope));
 }

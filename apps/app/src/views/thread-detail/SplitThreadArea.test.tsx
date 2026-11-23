@@ -133,7 +133,12 @@ function ThreadComposerHostPublisher({
   });
   const host = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
@@ -458,7 +463,12 @@ function ThreadPaneFixture({
   const composerHost = useMemo<PluginComposerHost>(() => {
     const draft = { attachments: [], mentions: [], text: "" };
     return {
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `test-draft-${threadId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},

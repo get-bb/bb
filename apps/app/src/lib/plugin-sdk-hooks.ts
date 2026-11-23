@@ -65,6 +65,7 @@ import {
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
 import { useProviderDirectory } from "@/hooks/queries/system-queries";
+import { useThread } from "@/hooks/queries/thread-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -548,6 +549,23 @@ function useComposerDraftSource(
   );
 }
 
+function useFallbackComposerScope(
+  hostScope: PluginComposerScope | undefined,
+): PluginComposerScope {
+  const { projectId, threadId } = useRouteState();
+  const { data: routeThread } = useThread(threadId ?? "", {
+    enabled: hostScope === undefined,
+  });
+  const environmentId = routeThread?.environmentId ?? null;
+  return useMemo(() => {
+    if (hostScope !== undefined) return hostScope;
+    if (threadId === undefined || projectId === undefined) {
+      return { kind: "new-thread", projectId: projectId ?? null };
+    }
+    return { kind: "thread", threadId, projectId, environmentId };
+  }, [environmentId, hostScope, projectId, threadId]);
+}
+
 export function useComposerView(): ComposerView {
   const providedView = useOptionalPluginComposerView();
   const composerHost = usePluginComposerHost();
@@ -564,13 +582,12 @@ export function useComposerView(): ComposerView {
   const draft = usePromptDraftSnapshot(
     providedView === undefined ? draftSource : NO_COMPOSER_DRAFT_SOURCE,
   );
+  const scope = useFallbackComposerScope(
+    providedView?.scope ?? composerHost?.scope,
+  );
   const fallback = useMemo<ComposerView>(
     () => ({
-      scope:
-        composerHost?.scope ??
-        (threadId !== undefined
-          ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId: projectId ?? null }),
+      scope,
       layout: "expanded",
       draft: {
         text: draft.text,
@@ -579,7 +596,7 @@ export function useComposerView(): ComposerView {
       },
       run: { isRunning: false, isSubmitting: false },
     }),
-    [composerHost?.scope, draft, projectId, threadId],
+    [draft, scope],
   );
   return providedView ?? fallback;
 }
@@ -633,15 +650,7 @@ export function useComposer(): PluginComposerApi {
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   useComposerEditorBridge(textEffectKey);
 
-  const composerScope = composerHost?.scope;
-  const scope: PluginComposerScope = useMemo(
-    () =>
-      composerScope ??
-      (threadId !== undefined
-        ? { kind: "thread", threadId }
-        : { kind: "new-thread", projectId: projectId ?? null }),
-    [composerScope, projectId, threadId],
-  );
+  const scope = useFallbackComposerScope(composerHost?.scope);
   const scopeOwnershipKey = [
     pluginId,
     composerScopeIdentity(scope),

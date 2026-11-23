@@ -24,7 +24,14 @@ function renderGoal(state: unknown) {
     { component: CodexGoalBanner },
     {},
     {
-      composer: { scope: { kind: "thread", threadId: THREAD_ID } },
+      composer: {
+        scope: {
+          kind: "thread",
+          threadId: THREAD_ID,
+          projectId: "proj_test",
+          environmentId: null,
+        },
+      },
       threadExtensionStates: { [THREAD_ID]: { goal: state } },
       sdk: {
         threads: {
