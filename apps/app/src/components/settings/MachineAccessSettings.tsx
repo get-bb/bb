@@ -86,7 +86,11 @@ function useMachineAccess(): MachineAccessState {
   const value = settings?.machineServerUrl ?? "";
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const routes = machineAccessRoutes(access, settings);
+  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
+  const routes = machineAccessRoutes(
+    access,
+    pendingOrder === null ? settings : { serverAccessOrder: pendingOrder },
+  );
   return {
     access,
     routes,
@@ -118,7 +122,11 @@ function useMachineAccess(): MachineAccessState {
         overId,
       });
       if (next === null) return;
-      update.mutate({ serverAccessOrder: next });
+      setPendingOrder(next);
+      update.mutate(
+        { serverAccessOrder: next },
+        { onSettled: () => setPendingOrder(null) },
+      );
     },
     commitUrl: async () => {
       if (!settings || draft === null) return false;
@@ -434,7 +442,7 @@ function RouteRow({
       aria-label={provider.displayName}
       className={cn(
         "items-start",
-        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+        isDragging && "relative z-10 rounded-md bg-card shadow-lift",
       )}
     >
       {sortable && handle}
