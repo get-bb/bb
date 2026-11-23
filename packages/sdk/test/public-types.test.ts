@@ -237,6 +237,7 @@ type ExpectedRealtimeKey = "subscribe";
 type ExpectedEnvironmentsKey =
   | "experimental_cleanup"
   | "experimental_create"
+  | "experimental_repos"
   | "archiveThreads"
   | "commit"
   | "delete"

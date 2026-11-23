@@ -6,7 +6,6 @@ import {
   getEnvironment,
   getHost,
   getProject,
-  listProjectFolderPathsForHost,
 } from "@bb/db";
 import { PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
@@ -43,7 +42,11 @@ import {
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
 import { renderWorkspaceFolderInstructions } from "./workspace-folder-instructions.js";
 import { reportMissingWorkspaceFolders } from "./workspace-folder-notices.js";
-import { mergeWorkspaceFolderPaths } from "../projects/workspace-folder-paths.js";
+import { listEnvironmentExtraFolderPaths } from "../environments/environment-workspace-folders.js";
+import {
+  resolveEnvironmentRepos,
+  type EnvironmentReposTarget,
+} from "../environments/environment-repos.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
 import { sliceUtf16Head } from "@bb/text-utils";
@@ -124,6 +127,24 @@ export function resolvePermissionEscalation(
   return "ask";
 }
 
+async function findReposInsideWorkspaceFolders(
+  deps: LoggedWorkSessionDeps,
+  environment: EnvironmentReposTarget,
+): Promise<string[]> {
+  try {
+    const { repos } = await resolveEnvironmentRepos(deps, environment);
+    return repos
+      .filter((repo) => repo.source === "discovered")
+      .map((repo) => repo.path);
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, environmentId: environment.id },
+      "Could not find git repositories inside the workspace folders",
+    );
+    return [];
+  }
+}
+
 export async function resolveThreadRuntimeCommandConfig(
   deps: LoggedWorkSessionDeps,
   args: ResolveThreadRuntimeCommandConfigArgs,
@@ -143,13 +164,11 @@ export async function resolveThreadRuntimeCommandConfig(
     throw new ApiError(404, "host_not_found", "Host not found");
   }
 
-  const candidateFolders = mergeWorkspaceFolderPaths({
-    mainPath: workspacePath,
-    projectFolderPaths: listProjectFolderPathsForHost(deps.db, {
-      projectId: project.id,
-      hostId: args.environment.hostId,
-    }),
+  const candidateFolders = listEnvironmentExtraFolderPaths(deps.db, {
     additionalPaths: environment.additionalPaths,
+    hostId: args.environment.hostId,
+    mainPath: workspacePath,
+    projectId: project.id,
   });
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
     includeAgentInstructions: true,
@@ -249,8 +268,21 @@ export async function resolveThreadRuntimeCommandConfig(
     (contribution) => contribution.tool,
   );
   const instructionSections: string[] = [];
+  const reposInsideFolders =
+    candidateFolders.length > 0 || environment.isGitRepo !== true
+      ? await findReposInsideWorkspaceFolders(deps, {
+          additionalPaths: environment.additionalPaths,
+          hostId: args.environment.hostId,
+          id: environment.id,
+          path: workspacePath,
+          projectId: project.id,
+        })
+      : [];
   const workspaceFolderInstructions = renderWorkspaceFolderInstructions(
-    workspaceAgentContext.folders,
+    workspaceAgentContext.folders.length > 0
+      ? workspaceAgentContext.folders
+      : [{ path: workspacePath, exists: true, isGitRepo: false }],
+    reposInsideFolders,
   );
   if (workspaceFolderInstructions !== null) {
     instructionSections.push(workspaceFolderInstructions);

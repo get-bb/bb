@@ -58,6 +58,7 @@ import {
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
 import { discoverRepos } from "./command-handlers/discover-repos.js";
+import { findGitRepos } from "./command-handlers/find-git-repos.js";
 import {
   mkdirHostPath,
   moveHostPath,
@@ -619,6 +620,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  "host.find_git_repos": findGitRepos,
   "project.inspect": async (command, options) =>
     inspectProjectPath(
       command.path,
