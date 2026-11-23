@@ -224,7 +224,7 @@ export interface ProjectSourceFoldersArea {
 
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
-  folders: ProjectSourceFoldersArea;
+  experimental_folders: ProjectSourceFoldersArea;
   delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
   update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
@@ -503,7 +503,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
     },
   };
   const sources: ProjectSourcesArea = {
-    folders,
+    experimental_folders: folders,
     async add(input) {
       return transport.readJson(
         transport.api.v1.projects[":id"].sources.$post({

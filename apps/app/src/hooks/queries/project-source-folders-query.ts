@@ -17,7 +17,7 @@ export function useProjectSourceFolders({
   return useQuery<ProjectSourceFolder[]>({
     queryKey: projectSourceFoldersQueryKey(projectId, sourceId),
     queryFn: ({ signal }) =>
-      sdk.projects.sources.folders.list({ projectId, sourceId, signal }),
+      sdk.projects.sources.experimental_folders.list({ projectId, sourceId, signal }),
     staleTime: 10_000,
   });
 }

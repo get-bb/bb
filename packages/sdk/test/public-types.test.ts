@@ -350,7 +350,11 @@ type ExpectedProjectsKey =
   | "sources"
   | "update";
 
-type ExpectedProjectSourcesKey = "add" | "delete" | "folders" | "update";
+type ExpectedProjectSourcesKey =
+  | "add"
+  | "delete"
+  | "experimental_folders"
+  | "update";
 type ExpectedProjectSourceFoldersKey = "add" | "list" | "remove" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
@@ -596,7 +600,7 @@ describe("SDK public type entrypoints", () => {
       keyof RootBbSdk["projects"]["sources"]
     >().toEqualTypeOf<ExpectedProjectSourcesKey>();
     expectTypeOf<
-      keyof RootBbSdk["projects"]["sources"]["folders"]
+      keyof RootBbSdk["projects"]["sources"]["experimental_folders"]
     >().toEqualTypeOf<ExpectedProjectSourceFoldersKey>();
     expectTypeOf<
       keyof RootBbSdk["experimental_promptHistory"]

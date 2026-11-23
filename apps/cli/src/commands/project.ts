@@ -248,7 +248,7 @@ async function resolveProjectFolder(
   sdk: ReturnType<typeof createCliBbSdk>,
   args: { pathOrId: string; projectId: string; sourceId: string },
 ): Promise<ProjectSourceFolder> {
-  const folders = await sdk.projects.sources.folders.list({
+  const folders = await sdk.projects.sources.experimental_folders.list({
     projectId: args.projectId,
     sourceId: args.sourceId,
   });
@@ -785,7 +785,7 @@ export function registerProjectCommands(
           projectId,
           serverUrl,
         });
-        const folders = await sdk.projects.sources.folders.list({
+        const folders = await sdk.projects.sources.experimental_folders.list({
           projectId,
           sourceId: projectSource.id,
         });
@@ -826,7 +826,7 @@ export function registerProjectCommands(
             projectId,
             serverUrl,
           });
-          const added = await sdk.projects.sources.folders.add({
+          const added = await sdk.projects.sources.experimental_folders.add({
             projectId,
             sourceId: projectSource.id,
             path,
@@ -866,7 +866,7 @@ export function registerProjectCommands(
             projectId,
             sourceId: projectSource.id,
           });
-          const updated = await sdk.projects.sources.folders.update({
+          const updated = await sdk.projects.sources.experimental_folders.update({
             projectId,
             sourceId: projectSource.id,
             folderId: target.id,
@@ -908,7 +908,7 @@ export function registerProjectCommands(
             projectId,
             sourceId: projectSource.id,
           });
-          await sdk.projects.sources.folders.remove({
+          await sdk.projects.sources.experimental_folders.remove({
             projectId,
             sourceId: projectSource.id,
             folderId: target.id,

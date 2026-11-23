@@ -242,7 +242,7 @@ export function useAddProjectSourceFolder() {
       errorMessage: "Failed to add folder.",
     },
     mutationFn: (request: AddProjectSourceFolderRequest) =>
-      sdk.projects.sources.folders.add(request),
+      sdk.projects.sources.experimental_folders.add(request),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,
@@ -267,7 +267,7 @@ export function useUpdateProjectSourceFolder() {
       errorMessage: "Failed to change folder.",
     },
     mutationFn: (request: UpdateProjectSourceFolderRequest) =>
-      sdk.projects.sources.folders.update(request),
+      sdk.projects.sources.experimental_folders.update(request),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,
@@ -293,7 +293,7 @@ export function useRemoveProjectSourceFolder() {
     mutationFn: async (
       request: RemoveProjectSourceFolderRequest,
     ): Promise<void> => {
-      await sdk.projects.sources.folders.remove(request);
+      await sdk.projects.sources.experimental_folders.remove(request);
     },
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
