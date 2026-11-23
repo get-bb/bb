@@ -455,16 +455,13 @@ function RouteRow({
             provider.urls.length > 0 ? (
               <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-subtle-foreground">
                 {provider.urls.map((url) => (
-                  <span
-                    key={url}
-                    className="group/url flex min-w-0 items-center gap-1"
-                  >
+                  <span key={url} className="flex min-w-0 items-center gap-1">
                     <span className="truncate">{url}</span>
                     <CopyButton
                       text={url}
                       label={`Copy ${url}`}
                       successMessage="Address copied"
-                      className="shrink-0 opacity-0 group-hover/url:opacity-100 pointer-coarse:opacity-100"
+                      className="shrink-0"
                     />
                   </span>
                 ))}
