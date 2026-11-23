@@ -4,12 +4,20 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   findLocalPathProjectSourceForHost,
+  getHostPathBasename,
   type Host,
   type LocalPathProjectSource,
+  type ProjectSourceFolder,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -72,7 +80,7 @@ const CHECKOUTS_DESCRIPTION =
   "Where this project lives on each machine. A machine needs a checkout before it can run threads for this project.";
 
 const FOLDERS_DESCRIPTION =
-  "Extra folders every thread in this project can read and write on a machine, next to its checkout. Threads pick up changes before their next turn.";
+  "Folders outside the checkout that threads in this project can also read and write. Changes apply from each thread's next turn.";
 
 const DEFAULTS_DESCRIPTION =
   "What new threads in this project start with. bb remembers the last options you used here.";
@@ -174,100 +182,176 @@ function CheckoutRow({
   );
 }
 
-interface FolderRowProps {
+interface FolderCheckout {
   host: Host;
   source: LocalPathProjectSource;
-  pending: boolean;
-  onAdd: () => void;
 }
 
-function FolderRow({ host, source, pending, onAdd }: FolderRowProps) {
-  const connected = host.status === "connected";
-  const foldersQuery = useProjectSourceFolders({
-    projectId: source.projectId,
-    sourceId: source.id,
-  });
-  const removeFolder = useRemoveProjectSourceFolder();
-  const folders = foldersQuery.data ?? [];
-  const folderPaths = useMemo(
-    () => (foldersQuery.data ?? []).map((folder) => folder.path),
-    [foldersQuery.data],
-  );
-  const folderExistence = useHostPathExistence(
-    connected ? host.id : null,
-    folderPaths,
+interface FolderRowProps {
+  folder: ProjectSourceFolder;
+  host: Host;
+  showMachine: boolean;
+  removing: boolean;
+  onRemove: () => void;
+}
+
+function FolderRow({
+  folder,
+  host,
+  showMachine,
+  removing,
+  onRemove,
+}: FolderRowProps) {
+  const existence = useHostPathExistence(
+    host.status === "connected" ? host.id : null,
+    [folder.path],
   );
   return (
     <SettingsRow className="items-start">
-      <div className="min-w-0 flex-1 space-y-1">
+      <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex min-w-0 items-center gap-1.5">
           <Icon
-            name="Laptop"
-            className={cn(
-              "size-4 shrink-0 text-muted-foreground",
-              !connected && "opacity-60",
-            )}
+            name="Folder"
+            className="size-4 shrink-0 text-muted-foreground"
           />
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {host.name}
+            {getHostPathBasename(folder.path) ?? folder.path}
           </span>
+          {showMachine ? <SettingsBadge>{host.name}</SettingsBadge> : null}
+          {isHostPathMissing(existence, folder.path) ? (
+            <Pill variant="destructive">Path not found</Pill>
+          ) : null}
         </div>
-        {foldersQuery.isError ? (
-          <p className="text-xs text-destructive" role="alert">
-            Couldn't load folders.
-          </p>
-        ) : folders.length === 0 ? (
-          <p className="text-xs italic text-subtle-foreground/75">
-            {foldersQuery.isPending ? "Loading…" : "No extra folders"}
-          </p>
-        ) : (
-          <ul className="space-y-0.5">
-            {folders.map((folder) => (
-              <li key={folder.id} className="flex min-w-0 items-center gap-1.5">
-                <Icon
-                  name="Folder"
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <span className="min-w-0 truncate font-mono text-xs text-subtle-foreground/75">
-                  {folder.path}
-                </span>
-                {isHostPathMissing(folderExistence, folder.path) ? (
-                  <Pill variant="destructive">Path not found</Pill>
-                ) : null}
-                <span className="flex-1" />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 shrink-0"
-                  aria-label={`Remove ${folder.path}`}
-                  disabled={removeFolder.isPending}
-                  onClick={() =>
-                    removeFolder.mutate({
-                      projectId: source.projectId,
-                      sourceId: source.id,
-                      folderId: folder.id,
-                    })
-                  }
-                >
-                  <Icon name="X" className="size-3.5" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="min-w-0 truncate font-mono text-xs text-subtle-foreground/75">
+          {folder.path}
+        </div>
       </div>
+      <ResourceOverflowMenu
+        label={`${folder.path} actions`}
+        items={[
+          {
+            label: "Remove folder",
+            icon: "Trash2",
+            tone: "destructive",
+            disabled: removing,
+            onSelect: onRemove,
+          },
+        ]}
+      />
+    </SettingsRow>
+  );
+}
+
+interface AddFolderActionProps {
+  checkouts: readonly FolderCheckout[];
+  pending: boolean;
+  onAdd: (checkout: FolderCheckout) => void;
+}
+
+function AddFolderAction({ checkouts, pending, onAdd }: AddFolderActionProps) {
+  const [only] = checkouts;
+  if (checkouts.length === 1 && only !== undefined) {
+    const connected = only.host.status === "connected";
+    return (
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="shrink-0"
         disabled={pending || !connected}
-        onClick={onAdd}
+        onClick={() => onAdd(only)}
       >
-        {connected ? "Add folder" : "Offline"}
+        {connected ? "Add folder" : "Machine offline"}
       </Button>
-    </SettingsRow>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="sm" disabled={pending}>
+          Add folder
+          <Icon name="ChevronDown" className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {checkouts.map((checkout) => (
+          <DropdownMenuItem
+            key={checkout.source.id}
+            disabled={checkout.host.status !== "connected"}
+            onSelect={() => onAdd(checkout)}
+          >
+            <Icon name="Laptop" className="size-4" />
+            {checkout.host.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+interface ProjectFoldersSectionProps {
+  projectId: string;
+  checkouts: readonly FolderCheckout[];
+  pending: boolean;
+  onAdd: (checkout: FolderCheckout) => void;
+}
+
+function ProjectFoldersSection({
+  projectId,
+  checkouts,
+  pending,
+  onAdd,
+}: ProjectFoldersSectionProps) {
+  const folderQueries = useProjectSourceFolders({
+    projectId,
+    sourceIds: checkouts.map((checkout) => checkout.source.id),
+  });
+  const removeFolder = useRemoveProjectSourceFolder();
+  const rows = checkouts.flatMap((checkout, index) =>
+    (folderQueries[index]?.data ?? []).map((folder) => ({ checkout, folder })),
+  );
+  return (
+    <SettingsSection
+      title="Folders"
+      description={FOLDERS_DESCRIPTION}
+      action={
+        <AddFolderAction
+          checkouts={checkouts}
+          pending={pending}
+          onAdd={onAdd}
+        />
+      }
+    >
+      {folderQueries.some((query) => query.isError) ? (
+        <p className="text-sm text-destructive" role="alert">
+          Couldn't load folders.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {folderQueries.some((query) => query.isPending)
+            ? "Loading…"
+            : "No extra folders. Threads can only write inside the checkout."}
+        </p>
+      ) : (
+        <SettingsRowList>
+          {rows.map(({ checkout, folder }) => (
+            <FolderRow
+              key={folder.id}
+              folder={folder}
+              host={checkout.host}
+              showMachine={checkouts.length > 1}
+              removing={removeFolder.isPending}
+              onRemove={() =>
+                removeFolder.mutate({
+                  projectId,
+                  sourceId: checkout.source.id,
+                  folderId: folder.id,
+                })
+              }
+            />
+          ))}
+        </SettingsRowList>
+      )}
+    </SettingsSection>
   );
 }
 
@@ -577,28 +661,21 @@ export function ProjectDetailSettingsView() {
         </SettingsSection>
 
         {checkoutHosts.length > 0 ? (
-          <SettingsSection title="Folders" description={FOLDERS_DESCRIPTION}>
-            <SettingsRowList>
-              {checkoutHosts.map(({ host, source }) => (
-                <FolderRow
-                  key={source.id}
-                  host={host}
-                  source={source}
-                  pending={localSourcePending}
-                  onAdd={() =>
-                    localSourcePicker.openPicker({
-                      kind: "add-folder",
-                      projectId: project.id,
-                      projectName,
-                      sourceId: source.id,
-                      hostId: host.id,
-                      hostName: host.name,
-                    })
-                  }
-                />
-              ))}
-            </SettingsRowList>
-          </SettingsSection>
+          <ProjectFoldersSection
+            projectId={project.id}
+            checkouts={checkoutHosts}
+            pending={localSourcePending}
+            onAdd={({ host, source }) =>
+              localSourcePicker.openPicker({
+                kind: "add-folder",
+                projectId: project.id,
+                projectName,
+                sourceId: source.id,
+                hostId: host.id,
+                hostName: host.name,
+              })
+            }
+          />
         ) : null}
 
         <SettingsSection

@@ -1,23 +1,24 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ProjectSourceFolder } from "@bb/domain";
+import { useQueries } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { projectSourceFoldersQueryKey } from "./query-keys";
 
 interface UseProjectSourceFoldersArgs {
   projectId: string;
-  sourceId: string;
+  sourceIds: readonly string[];
 }
 
 export function useProjectSourceFolders({
   projectId,
-  sourceId,
+  sourceIds,
 }: UseProjectSourceFoldersArgs) {
   useProjectDetailRealtimeSubscription(projectId, { enabled: true });
-  return useQuery<ProjectSourceFolder[]>({
-    queryKey: projectSourceFoldersQueryKey(projectId, sourceId),
-    queryFn: ({ signal }) =>
-      sdk.projects.sources.folders.list({ projectId, sourceId, signal }),
-    staleTime: 10_000,
+  return useQueries({
+    queries: sourceIds.map((sourceId) => ({
+      queryKey: projectSourceFoldersQueryKey(projectId, sourceId),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.projects.sources.folders.list({ projectId, sourceId, signal }),
+      staleTime: 10_000,
+    })),
   });
 }
