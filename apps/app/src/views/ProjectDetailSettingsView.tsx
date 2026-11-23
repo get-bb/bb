@@ -63,7 +63,6 @@ import {
 } from "@/hooks/useLocalPathPicker";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
-import {} from "@/lib/route-paths";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const CHECKOUTS_DESCRIPTION =

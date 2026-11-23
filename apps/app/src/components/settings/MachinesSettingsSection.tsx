@@ -46,7 +46,6 @@ import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineAttentionIssue } from "@/hooks/useMachineAttention";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import {} from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";

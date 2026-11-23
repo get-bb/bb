@@ -40,6 +40,7 @@ interface SearchMessageLocation {
 }
 
 export interface MessageRevealRequest {
+  threadId: string;
   messageSeq: number;
   key: number;
 }
@@ -341,7 +342,11 @@ export function SearchMessageLocationProvider({
     `${location.pathname}${location.search}${location.hash}`,
   );
   const target: SearchMessageTarget | null = requestIsActive
-    ? { match: "message", seq: revealRequest.messageSeq, threadId: null }
+    ? {
+        match: "message",
+        seq: revealRequest.messageSeq,
+        threadId: revealRequest.threadId,
+      }
     : messageLinkTarget === null
       ? searchTarget
       : { ...messageLinkTarget, match: "message" as const };

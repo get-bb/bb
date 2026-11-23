@@ -49,12 +49,16 @@ export function openThread({
     void navigate(route, merged);
   };
   const layout = split?.store.get(splitLayoutAtom) ?? null;
-  if (split === undefined || split.isCompact || layout === null) {
+  if (split === undefined || layout === null) {
     go();
     return;
   }
   const alreadyOpen =
     findPaneByThread(layout.root, projectId, threadId) !== null;
+  if (split.isCompact) {
+    go(alreadyOpen ? { replace: true } : undefined);
+    return;
+  }
   const next = applyThreadOpenToLayout(
     layout,
     { projectId, threadId },

@@ -561,12 +561,16 @@ export function ThreadScreen({
   );
   const [messageRevealRequest, setMessageRevealRequest] =
     useState<MessageRevealRequest | null>(null);
-  const revealMessage = useCallback((messageSeq: number) => {
-    setMessageRevealRequest((previous) => ({
-      messageSeq,
-      key: (previous?.key ?? 0) + 1,
-    }));
-  }, []);
+  const revealMessage = useCallback(
+    (messageSeq: number) => {
+      setMessageRevealRequest((previous) => ({
+        threadId: thread.id,
+        messageSeq,
+        key: (previous?.key ?? 0) + 1,
+      }));
+    },
+    [thread.id],
+  );
   const { timelineLoading, timelineRows } = timeline;
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
 

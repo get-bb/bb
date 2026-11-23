@@ -1,5 +1,4 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import {} from "@/lib/route-paths";
 import type { PluginSettingsEntry } from "./plugin-settings-entries";
 import {
   type SettingsNavSection,

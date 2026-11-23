@@ -34,7 +34,6 @@ import {
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
-import {} from "@/lib/route-paths";
 import {
   SortableSettingsRowList,
   useSortableSettingsRow,

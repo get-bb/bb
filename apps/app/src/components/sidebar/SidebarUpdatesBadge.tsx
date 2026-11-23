@@ -29,7 +29,6 @@ import { useMachineAttention } from "@/hooks/useMachineAttention";
 import { useStartPluginUpdates } from "@/hooks/useStartPluginUpdates";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import {} from "@/lib/route-paths";
 import {
   buildSidebarUpdateModel,
   type SidebarBbUpdate,

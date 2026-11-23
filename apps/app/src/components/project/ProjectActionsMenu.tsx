@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
-import {} from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";

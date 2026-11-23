@@ -25,7 +25,6 @@ import {
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
-import {} from "@/lib/route-paths";
 import {
   pluginHasUpdateSurfaces,
   reviewableRangeUpgrade,

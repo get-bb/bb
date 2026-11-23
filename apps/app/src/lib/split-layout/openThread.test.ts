@@ -135,4 +135,25 @@ describe("openThread", () => {
       "/projects/project-1/threads/thread-9",
     );
   });
+
+  it("replaces the history entry on compact viewports when the thread is already open", () => {
+    const set = vi.fn();
+    const navigate = vi.fn();
+    openThread({
+      navigate,
+      projectId: "project-1",
+      threadId: "thread-1",
+      split: {
+        zone: "right",
+        store: { get: () => layout(), set },
+        isCompact: true,
+      },
+    });
+
+    expect(set).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      "/projects/project-1/threads/thread-1",
+      { replace: true },
+    );
+  });
 });

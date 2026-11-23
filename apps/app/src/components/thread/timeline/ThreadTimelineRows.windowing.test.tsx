@@ -414,7 +414,17 @@ describe("ThreadTimelineRows windowing", () => {
     const view = render(timeline(null));
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalled());
     scrollElementIntoView.mockClear();
-    view.rerender(timeline({ messageSeq: 41, key: 1 }));
+    view.rerender(timeline({ threadId: "thr_other", messageSeq: 41, key: 1 }));
+    expect(
+      view.container.querySelector(
+        '[data-timeline-row-id="search-message-40"]',
+      ),
+    ).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(scrollElementIntoView).not.toHaveBeenCalled();
+    view.rerender(
+      timeline({ threadId: "thr_large_search", messageSeq: 41, key: 2 }),
+    );
     const outlineTarget = view.container.querySelector<HTMLElement>(
       '[data-timeline-row-id="search-message-40"]',
     );
