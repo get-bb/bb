@@ -130,6 +130,46 @@ describe("server routes", () => {
     ]);
   });
 
+  it("offers only the address this computer routes through, leaving out virtual bridges, and every address when that is unknown", async () => {
+    const interfaces = () => ({
+      ...LAN_INTERFACES(),
+      bridge100: [
+        {
+          address: "192.168.139.3",
+          netmask: "255.255.254.0",
+          family: "IPv4" as const,
+          mac: "00:00:00:00:00:00",
+          internal: false,
+          cidr: "192.168.139.3/23",
+        },
+      ],
+    });
+    const urlsWith = async (primary: string | null) => {
+      const access = new LocalNetworkAccess({
+        bindHost: "0.0.0.0",
+        port: 38886,
+        logger: { info: () => {}, warn: () => {} },
+        isEnabled: () => true,
+        readInterfaces: interfaces,
+        findPrimaryAddress: async () => primary,
+      });
+      access.attach(createServer());
+      try {
+        await vi.waitFor(() =>
+          expect(access.state().urls.length).toBe(primary === null ? 2 : 1),
+        );
+        return access.state().urls;
+      } finally {
+        access.stop();
+      }
+    };
+    expect(await urlsWith("192.168.1.5")).toEqual(["http://192.168.1.5:38886"]);
+    expect(await urlsWith(null)).toEqual([
+      "http://192.168.1.5:38886",
+      "http://192.168.139.3:38886",
+    ]);
+  });
+
   const lanAddress = detectLocalNetworkAddresses()[0];
 
   it.skipIf(lanAddress === undefined)(

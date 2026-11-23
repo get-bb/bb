@@ -1,3 +1,4 @@
+import { createSocket } from "node:dgram";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
@@ -53,12 +54,42 @@ export function detectLocalNetworkAddresses(
   return [...addresses].sort();
 }
 
+const PRIMARY_ROUTE_PROBE_ADDRESS = "1.1.1.1";
+
+export function findPrimaryIpv4Address(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const socket = createSocket("udp4");
+    const finish = (address: string | null) => {
+      socket.close();
+      resolve(address);
+    };
+    socket.once("error", () => finish(null));
+    socket.connect(53, PRIMARY_ROUTE_PROBE_ADDRESS, () => {
+      try {
+        finish(socket.address().address);
+      } catch {
+        finish(null);
+      }
+    });
+  });
+}
+
+function reachableAddresses(
+  detected: readonly string[],
+  primary: string | null,
+): string[] {
+  return primary !== null && detected.includes(primary)
+    ? [primary]
+    : [...detected];
+}
+
 export interface LocalNetworkAccessOptions {
   bindHost: ServerBindHost;
   port: number;
   logger: Pick<ServerLogger, "info" | "warn">;
   isEnabled(): boolean;
   readInterfaces?: ReadInterfaces;
+  findPrimaryAddress?: () => Promise<string | null>;
 }
 
 interface LocalNetworkListener {
@@ -77,12 +108,29 @@ export class LocalNetworkAccess {
   private readonly failures = new Map<string, string>();
   private target: Server | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private primary: string | null = null;
 
   constructor(private readonly options: LocalNetworkAccessOptions) {}
 
+  private detect(): string[] {
+    return reachableAddresses(
+      detectLocalNetworkAddresses(this.options.readInterfaces),
+      this.primary,
+    );
+  }
+
+  private refreshPrimary(): void {
+    const find = this.options.findPrimaryAddress ?? findPrimaryIpv4Address;
+    void find().then((primary) => {
+      if (primary === this.primary) return;
+      this.primary = primary;
+      this.reconcile();
+    });
+  }
+
   state(): LocalNetworkState {
     const enabled = this.options.isEnabled();
-    const detected = detectLocalNetworkAddresses(this.options.readInterfaces);
+    const detected = this.detect();
     const addresses = !enabled
       ? []
       : !isLoopbackHostname(this.options.bindHost)
@@ -104,10 +152,11 @@ export class LocalNetworkAccess {
   attach(target: Server): void {
     this.target = target;
     this.reconcile();
-    this.timer = setInterval(
-      () => this.reconcile(),
-      LOCAL_NETWORK_RESCAN_INTERVAL_MS,
-    );
+    this.refreshPrimary();
+    this.timer = setInterval(() => {
+      this.reconcile();
+      this.refreshPrimary();
+    }, LOCAL_NETWORK_RESCAN_INTERVAL_MS);
     this.timer.unref();
   }
 
@@ -116,7 +165,7 @@ export class LocalNetworkAccess {
     if (target === null) return;
     const wanted = new Set(
       this.options.isEnabled() && isLoopbackHostname(this.options.bindHost)
-        ? detectLocalNetworkAddresses(this.options.readInterfaces)
+        ? this.detect()
         : [],
     );
     for (const [address, listener] of this.listeners) {

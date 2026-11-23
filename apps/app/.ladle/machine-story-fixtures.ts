@@ -6,7 +6,6 @@ import type { MachineAccessState } from "../src/components/settings/MachineAcces
 import modalLogoUrl from "../../../plugins/environment-modal-sandbox/modal-logo.svg";
 
 const noop = () => {};
-const noopAsync = async () => {};
 
 type ServerAccessProvider = ServerAccessStatus["providers"][number];
 
@@ -98,7 +97,7 @@ export function machineAccessState(
     saving: false,
     value: access.urlSource === "setting" ? (access.effectiveUrl ?? "") : "",
     editDraft: noop,
-    commitUrl: noopAsync,
+    commitUrl: async () => false,
     setLocalNetworkEnabled: noop,
     removeManualAddress: noop,
     reorderRoute: noop,

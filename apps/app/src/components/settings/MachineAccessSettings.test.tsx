@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   config: undefined as ReturnType<typeof makeSystemConfig> | undefined,
   listeners: new Set<() => void>(),
   mutate: vi.fn(),
+  mutateAsync: vi.fn(async () => undefined),
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -37,7 +38,11 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
-  useUpdateGeneralSettings: () => ({ isPending: false, mutate: state.mutate }),
+  useUpdateGeneralSettings: () => ({
+    isPending: false,
+    mutate: state.mutate,
+    mutateAsync: state.mutateAsync,
+  }),
 }));
 
 function publish(next: (config: SystemConfig) => SystemConfig) {
@@ -126,6 +131,7 @@ function ready(provider: ServerAccessProvider, url: string) {
 
 beforeEach(() => {
   state.mutate.mockReset();
+  state.mutateAsync.mockClear();
   state.config = makeSystemConfig();
   setProviders([LAN, RELAY, MANUAL]);
 });
@@ -186,6 +192,25 @@ it("opens a Manual address editor when Manual is added", async () => {
   expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
 });
 
+it("closes the Manual editor once the address saves, so removing Manual later leaves no editor behind", async () => {
+  renderSettings();
+  await addRoute("Manual");
+  fireEvent.change(screen.getByRole("textbox", { name: "Server address" }), {
+    target: { value: "https://bb.example.com" },
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  });
+  expect(state.mutateAsync).toHaveBeenLastCalledWith({
+    machineServerUrl: "https://bb.example.com",
+  });
+  setProviders([LAN, RELAY, ready(MANUAL, "https://bb.example.com")]);
+  expect(namesIn("Routes")).toEqual(["Manual"]);
+  setProviders([LAN, RELAY, MANUAL]);
+  expect(namesIn("Routes")).toEqual([]);
+  expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
+});
+
 it("edits or removes Manual's address from its options menu", async () => {
   setProviders([LAN, RELAY, ready(MANUAL, "https://bb.example.com")]);
   renderSettings();
@@ -209,10 +234,16 @@ it("follows a plugin route through setup, readiness, and failure, leaving remova
   expect(
     within(relayRow()).getByText("https://relay.example.com"),
   ).toBeTruthy();
-  expect(within(relayRow()).getByRole("link", { name: "Manage" })).toBeTruthy();
+  fireEvent.pointerDown(
+    within(relayRow()).getByRole("button", { name: "Relay options" }),
+    { button: 0 },
+  );
   expect(
-    within(relayRow()).queryByRole("button", { name: "Relay options" }),
-  ).toBeNull();
+    (await screen.findAllByRole("menuitem")).map((item) => item.textContent),
+  ).toEqual(["Manage"]);
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: "Escape",
+  });
 
   setProviders([
     LAN,

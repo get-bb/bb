@@ -53,7 +53,7 @@ export interface MachineAccessState {
   saving: boolean;
   value: string;
   editDraft: (next: string) => void;
-  commitUrl: () => Promise<void>;
+  commitUrl: () => Promise<boolean>;
   setLocalNetworkEnabled: (enabled: boolean) => void;
   removeManualAddress: () => void;
   reorderRoute: (activeId: string, overId: string) => void;
@@ -121,7 +121,7 @@ function useMachineAccess(): MachineAccessState {
       update.mutate({ serverAccessOrder: next });
     },
     commitUrl: async () => {
-      if (!settings || draft === null) return;
+      if (!settings || draft === null) return false;
       const url = draft.trim();
       if (url) {
         const parsed = parseUrl(url);
@@ -132,13 +132,13 @@ function useMachineAccess(): MachineAccessState {
           parsed.password
         ) {
           setError("Enter a valid HTTP or HTTPS URL without credentials");
-          return;
+          return false;
         }
         if (isLocalOnlyUrl(url)) {
           setError(
             "Other machines cannot reach localhost. Use a domain or shared-network address.",
           );
-          return;
+          return false;
         }
       }
       const machineServerUrl = url || null;
@@ -151,10 +151,11 @@ function useMachineAccess(): MachineAccessState {
             fallbackMessage: "Couldn't save the address.",
           }),
         );
-        return;
+        return false;
       }
       setDraft(null);
       setError(null);
+      return true;
     },
   };
 }
@@ -215,7 +216,10 @@ export function MachineAccessSettingsContent({
                   Cancel
                 </Button>
               </div>
-              <ManualAddressInput machineAccess={machineAccess} />
+              <ManualAddressInput
+                machineAccess={machineAccess}
+                onSaved={() => setAddingManual(false)}
+              />
             </div>
           )}
         </div>
@@ -451,24 +455,43 @@ function RouteRow({
                   : provider.description}
             </p>
           </div>
-          {manual || localNetwork ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={disabled}
-                  aria-label={`${provider.displayName} options`}
-                >
-                  <Icon name="MoreHorizontal" className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {manual && (
-                  <DropdownMenuItem onSelect={() => setEditing(true)}>
-                    Edit address
-                  </DropdownMenuItem>
-                )}
+          {broken && provider.pluginId !== null && (
+            <Link
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+              onClick={onNavigate}
+              to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+            >
+              Fix
+            </Link>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={disabled}
+                aria-label={`${provider.displayName} options`}
+              >
+                <Icon name="MoreHorizontal" className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {provider.pluginId !== null && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    onClick={onNavigate}
+                    to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+                  >
+                    Manage
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {manual && (
+                <DropdownMenuItem onSelect={() => setEditing(true)}>
+                  Edit address
+                </DropdownMenuItem>
+              )}
+              {(manual || localNetwork) && (
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={() =>
@@ -479,20 +502,9 @@ function RouteRow({
                 >
                   Remove
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : provider.pluginId !== null ? (
-            <Link
-              className={buttonVariants({
-                variant: broken ? "outline" : "ghost",
-                size: "sm",
-              })}
-              onClick={onNavigate}
-              to={getSettingsTargetPath({ pluginId: provider.pluginId })}
-            >
-              {broken ? "Fix" : "Manage"}
-            </Link>
-          ) : null}
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         {localNetwork && !broken && (
           <p className="text-xs text-warning-text">
@@ -501,7 +513,10 @@ function RouteRow({
         )}
         {manual && editing && (
           <div className="pb-1">
-            <ManualAddressInput machineAccess={machineAccess} />
+            <ManualAddressInput
+              machineAccess={machineAccess}
+              onSaved={() => setEditing(false)}
+            />
           </div>
         )}
       </div>
@@ -684,10 +699,15 @@ export function MobileServerAccessContent({
 
 function ManualAddressInput({
   machineAccess,
+  onSaved,
 }: {
   machineAccess: MachineAccessState;
+  onSaved?: () => void;
 }) {
   const { access, disabled, draft, error, saving, value } = machineAccess;
+  const commit = async () => {
+    if (await machineAccess.commitUrl()) onSaved?.();
+  };
   return (
     <div className="space-y-1.5 pt-1">
       <div className="flex flex-wrap items-center gap-2">
@@ -700,14 +720,14 @@ function ManualAddressInput({
           disabled={disabled}
           onChange={(event) => machineAccess.editDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (isNonImeKey(event, "Enter")) void machineAccess.commitUrl();
+            if (isNonImeKey(event, "Enter")) void commit();
           }}
         />
         <Button
           variant="outline"
           className={COARSE_POINTER_INPUT_HEIGHT_CLASS}
           disabled={disabled || draft === null || draft.trim() === value}
-          onClick={() => void machineAccess.commitUrl()}
+          onClick={() => void commit()}
         >
           {saving ? "Saving…" : "Save"}
         </Button>
