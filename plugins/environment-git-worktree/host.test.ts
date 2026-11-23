@@ -243,6 +243,7 @@ describe.concurrent("worktree host entry", () => {
         pathKey: "saved-state",
         path: created.path,
         ownedBranch,
+        folderBranches: [],
       });
       expect({
         status: result.status,
@@ -268,6 +269,7 @@ describe.concurrent("worktree host entry", () => {
           pathKey: "saved-state",
           path: created.path,
           ownedBranch,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(existsSync(created.path)).toBe(false);
@@ -321,6 +323,7 @@ describe.concurrent("worktree host entry", () => {
           repositoryPath: sourcePath,
           baseBranch: created.baseBranch,
         },
+        folderBranches: [],
       }),
     ).toEqual({ status: "removed" });
     expect(existsSync(created.path)).toBe(false);
@@ -796,6 +799,7 @@ describe.concurrent("worktree host entry", () => {
           pathKey,
           path: null,
           ownedBranch: null,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(existsSync(join(dataDir, "worktrees", pathKey))).toBe(false);
@@ -1224,6 +1228,7 @@ describe.concurrent("worktree host entry", () => {
       pathKey: "thr_6",
       path: created.path,
       ownedBranch: null,
+      folderBranches: [],
     });
     if (lingering.exitCode === null && lingering.signalCode === null) {
       await once(lingering, "exit");
@@ -1264,6 +1269,7 @@ describe.concurrent("worktree host entry", () => {
             repositoryPath: sourcePath,
             baseBranch: storedBaseBranch ?? created.baseBranch,
           },
+          folderBranches: [],
         });
       return { harness, path: created.path, remove };
     }
@@ -1453,6 +1459,7 @@ describe.concurrent("worktree host entry", () => {
           pathKey: "legacy",
           path: created.path,
           ownedBranch: null,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(await branchExists(sourcePath, "bb/legacy-thr_5")).toBe(true);
@@ -1475,6 +1482,7 @@ describe.concurrent("worktree host entry", () => {
             repositoryPath: join(root, "moved"),
             baseBranch: "main",
           },
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(await branchExists(sourcePath, "main")).toBe(true);
@@ -1559,6 +1567,176 @@ describe.concurrent("worktree host entry", () => {
       expect(restored.ownsBranch).toBe(false);
       await harness.experimental_dispose();
     });
+  });
+});
+
+describe.concurrent("folder worktrees", () => {
+  async function createProject(onTestFinished: TestContext["onTestFinished"]) {
+    const { root, sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "app",
+    );
+    const folder = async (name: string) => {
+      const folderPath = join(root, "folders", name);
+      await mkdir(folderPath, { recursive: true });
+      await cp(repositoryTemplate, folderPath, { recursive: true });
+      return folderPath;
+    };
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const main = await harness.experimental_call("create", {
+      ...createInput({
+        operationId: "create",
+        sourcePath,
+        pathKey: "thr_folders",
+        branchName: "unused",
+      }),
+      branchName: null,
+    });
+    if (main.status !== "created") throw new Error(main.message);
+    return { root, sourcePath, dataDir, harness, main, folder };
+  }
+
+  it("makes each folder's worktree next to the main one on the same branch, and removal deletes every worktree and branch", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const sameName = await project.folder("app");
+    const created = await project.harness.experimental_call("createFolders", {
+      operationId: "folders",
+      sourcePath: project.sourcePath,
+      path: project.main.path,
+      folders: [api, sameName],
+      branchName: null,
+      branchMode: "reset",
+    });
+    if (created.status !== "created") throw new Error(created.message);
+    const environmentRoot = join(project.dataDir, "worktrees", "thr_folders");
+    expect(created.folders.map((folder) => folder.path)).toEqual([
+      join(environmentRoot, "api"),
+      expect.stringMatching(/\/app-[0-9a-f]{16}$/u),
+    ]);
+    expect(
+      created.folders.map((folder) => folder.path.startsWith(environmentRoot)),
+    ).toEqual([true, true]);
+
+    const branchName = "bb/folders-thr_folders";
+    for (const [sourcePath, path] of [
+      [project.sourcePath, project.main.path],
+      ...created.folders.map((folder) => [folder.sourcePath, folder.path]),
+    ] as const) {
+      expect(
+        await project.harness.experimental_call("nameBranch", {
+          operationId: `name-${path}`,
+          sourcePath,
+          path,
+          branchName,
+        }),
+      ).toEqual({ status: "named" });
+    }
+    for (const folder of created.folders) {
+      expect(
+        (await git(folder.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+      ).toBe(branchName);
+      expect(await branchExists(folder.sourcePath, branchName)).toBe(true);
+    }
+
+    expect(
+      await project.harness.experimental_call("remove", {
+        operationId: "remove",
+        pathKey: "thr_folders",
+        path: project.main.path,
+        ownedBranch: {
+          name: branchName,
+          repositoryPath: project.sourcePath,
+          baseBranch: project.main.baseBranch,
+        },
+        folderBranches: created.folders.map((folder) => ({
+          name: branchName,
+          repositoryPath: folder.sourcePath,
+          baseBranch: folder.baseBranch,
+        })),
+      }),
+    ).toEqual({ status: "removed" });
+    expect(existsSync(environmentRoot)).toBe(false);
+    for (const repository of [project.sourcePath, api, sameName]) {
+      expect(await branchExists(repository, branchName)).toBe(false);
+      expect(
+        await git(repository, "worktree", "list", "--porcelain"),
+      ).not.toContain(environmentRoot);
+    }
+  });
+
+  it("refuses a folder that is not a repository's top folder or repeats a repository", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const plain = join(project.root, "folders", "notes");
+    await mkdir(join(api, "nested"), { recursive: true });
+    await mkdir(plain, { recursive: true });
+    expect(
+      await project.harness.experimental_call("listFolderRepositories", {
+        paths: [api, join(api, "nested"), plain],
+      }),
+    ).toEqual({ paths: [api] });
+    for (const [folders, message] of [
+      [[join(api, "nested")], "not the top folder of a Git repository"],
+      [[project.sourcePath], `same Git repository as ${project.sourcePath}`],
+    ] as const) {
+      expect(
+        await project.harness.experimental_call("createFolders", {
+          operationId: "folders",
+          sourcePath: project.sourcePath,
+          path: project.main.path,
+          folders: [...folders],
+          branchName: null,
+          branchMode: "reset",
+        }),
+      ).toEqual({
+        status: "failed",
+        message: expect.stringContaining(message),
+      });
+    }
+    expect(
+      await readdir(join(project.dataDir, "worktrees", "thr_folders")),
+    ).toEqual(["app", "app.completed"]);
+  });
+
+  it("removes the folder worktrees it made when another folder's worktree fails", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const web = await project.folder("web");
+    await writeFile(
+      join(web, ".git", "hooks", "post-checkout"),
+      "#!/bin/sh\nexit 1\n",
+      {
+        mode: 0o755,
+      },
+    );
+    const created = await project.harness.experimental_call("createFolders", {
+      operationId: "folders",
+      sourcePath: project.sourcePath,
+      path: project.main.path,
+      folders: [api, web],
+      branchName: "bb/failed-thr_folders",
+      branchMode: "reset",
+    });
+    expect(created).toEqual({
+      status: "failed",
+      message: expect.stringContaining(`Could not make a worktree of ${web}`),
+    });
+    expect(
+      await readdir(join(project.dataDir, "worktrees", "thr_folders")),
+    ).toEqual(["app", "app.completed"]);
+    for (const repository of [api, web]) {
+      expect(await branchExists(repository, "bb/failed-thr_folders")).toBe(
+        false,
+      );
+    }
   });
 });
 
@@ -1742,6 +1920,7 @@ describe("warm worktree handoff", () => {
         repositoryPath: clone,
         baseBranch: "origin/main",
       },
+      folderBranches: [],
     });
     expect(removed).toEqual({ status: "removed" });
     expect(await branchExists(clone, "bb/interrupted-thr_4")).toBe(false);

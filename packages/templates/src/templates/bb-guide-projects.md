@@ -151,4 +151,10 @@ Folders:
 
   An environment provider can add folders of its own environment
   (`Environment.additionalPaths`, the Folder lines of `bb environment show`);
-  they join the project's folders for threads in that environment.
+  they join the project's folders for threads in that environment. It can
+  also replace project folders (`Environment.replacedProjectFolders`, the
+  Replaces project folder lines): threads in that environment no longer get
+  those shared folders. A Worktree environment created with
+  `{"branch":{"kind":"default"},"folders":["/abs/folder"]}` makes a worktree
+  of each listed folder's git repository on the thread's branch, next to the
+  main worktree, and replaces that folder with it.

@@ -26,6 +26,16 @@ export const ownedBranchSchema = z
   })
   .strict();
 
+export const createdFolderWorktreeSchema = z
+  .object({
+    sourcePath: z.string().min(1),
+    path: z.string().min(1),
+    baseBranch: z.string().min(1).nullable(),
+    ownsBranch: z.boolean(),
+  })
+  .strict();
+export type CreatedFolderWorktree = z.infer<typeof createdFolderWorktreeSchema>;
+
 export const MAX_POOL_SIZE = 4;
 
 export const worktreeHostContract = defineRpcContract({
@@ -75,6 +85,33 @@ export const worktreeHostContract = defineRpcContract({
           path: z.string().min(1),
           baseBranch: z.string().min(1).nullable(),
           ownsBranch: z.boolean(),
+        })
+        .strict(),
+      z
+        .object({ status: z.literal("failed"), message: z.string().min(1) })
+        .strict(),
+    ]),
+  },
+  listFolderRepositories: {
+    input: z.object({ paths: z.array(z.string().min(1)) }).strict(),
+    output: z.object({ paths: z.array(z.string().min(1)) }).strict(),
+  },
+  createFolders: {
+    input: z
+      .object({
+        operationId: z.string().min(1),
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        folders: z.array(z.string().min(1)).min(1),
+        branchName: z.string().min(1).nullable(),
+        branchMode: z.enum(["reset", "reuse-existing"]),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("created"),
+          folders: z.array(createdFolderWorktreeSchema),
         })
         .strict(),
       z
@@ -199,6 +236,7 @@ export const worktreeHostContract = defineRpcContract({
         pathKey: z.string().min(1),
         path: z.string().min(1).nullable(),
         ownedBranch: ownedBranchSchema.nullable(),
+        folderBranches: z.array(ownedBranchSchema),
       })
       .strict(),
     output: z.discriminatedUnion("status", [

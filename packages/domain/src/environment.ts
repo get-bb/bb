@@ -121,6 +121,7 @@ export const environmentSchema = z.object({
   hostId: z.string(),
   path: z.string().nullable(),
   additionalPaths: z.array(z.string()),
+  replacedProjectFolders: z.array(z.string()),
   isGitRepo: z.boolean(),
   isWorktree: z.boolean(),
   branchName: z.string().nullable(),

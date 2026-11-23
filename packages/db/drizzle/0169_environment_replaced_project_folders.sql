@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `replaced_project_folders` text DEFAULT '[]' NOT NULL;

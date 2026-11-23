@@ -124,6 +124,18 @@ async function setup(args: {
           ownsBranch: true,
         };
       if (call.method === "nameBranch") return { status: "named" };
+      if (call.method === "createFolders")
+        return {
+          status: "created",
+          folders: [
+            {
+              sourcePath: "/code/api",
+              path: "/worktrees/env_warm-1/api",
+              baseBranch: "origin/main",
+              ownsBranch: false,
+            },
+          ],
+        };
       throw new Error(`Unexpected host call ${call.method}`);
     },
     sdk: {
@@ -172,6 +184,7 @@ async function setup(args: {
             name: "bb",
             sources: [
               {
+                id: "src_1",
                 type: "local_path",
                 hostId: HOST_ID,
                 path: SOURCE_PATH,
@@ -179,6 +192,18 @@ async function setup(args: {
               },
             ],
           };
+        },
+        sources: {
+          experimental_folders: {
+            list: () => [
+              {
+                id: "fld_1",
+                projectSourceId: "src_1",
+                path: "/code/api",
+                createdAt: 1,
+              },
+            ],
+          },
         },
         list: () => [
           {
@@ -228,7 +253,7 @@ async function setup(args: {
     host: makeHostResponse({ id: HOST_ID }),
     projectCheckout: { path: SOURCE_PATH, ownsPath: false },
     gitRemote: null,
-    inputs: { branch: { kind: "default" } },
+    inputs: { branch: { kind: "default" }, folders: [] },
     branchName: typeof branch === "string" ? async () => branch : branch,
     setup: async (path) => {
       setups.push(path);
@@ -322,6 +347,7 @@ describe("warm worktree handoff", () => {
       repositoryPath: SOURCE_PATH,
       baseBranch: "origin/main",
     },
+    folderBranches: [],
   });
 
   function pendingTitle() {
@@ -367,6 +393,45 @@ describe("warm worktree handoff", () => {
     expect(fixture.steps).toEqual([
       "Using a warm worktree at origin/main (base)",
     ]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("makes folder worktrees next to an adopted warm worktree and names them with it", async () => {
+    const fixture = await setup({ members: [READY] });
+    const result = await fixture.provider.create({
+      ...fixture.context("env_thread", "bb/fix-login-thr_1"),
+      inputs: { branch: { kind: "default" }, folders: ["/code/api"] },
+    });
+    expect(result).toEqual({
+      status: "created",
+      path: READY.path,
+      ownsPath: true,
+      mergeBaseBranch: "origin/main",
+      additionalPaths: ["/worktrees/env_warm-1/api"],
+      replacedProjectFolders: ["/code/api"],
+      resource: {
+        ...ownedBranch("bb/fix-login-thr_1"),
+        folderBranches: [
+          {
+            name: "bb/fix-login-thr_1",
+            repositoryPath: "/code/api",
+            baseBranch: "origin/main",
+          },
+        ],
+      },
+    });
+    expect(fixture.order).toEqual([
+      "host:checkPoolMember",
+      `adopt:${READY.id}`,
+      "host:createFolders",
+      "host:nameHandedOffBranch",
+      "host:nameBranch",
+    ]);
+    expect(fixture.hostCalls[1]?.input).toMatchObject({
+      path: READY.path,
+      folders: ["/code/api"],
+      branchName: null,
+    });
     await fixture.harness.lifecycle.dispose();
   });
 
@@ -619,7 +684,7 @@ describe("warm worktree handoff", () => {
     const fixture = await setup({ members: [READY] });
     await fixture.provider.create({
       ...fixture.context("env_thread", "bb/named-thr_3"),
-      inputs: { branch: { kind: "named", name: "release" } },
+      inputs: { branch: { kind: "named", name: "release" }, folders: [] },
     });
     expect(fixture.hostCalls.map((call) => call.method)).toEqual([
       "create",

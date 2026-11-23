@@ -46,7 +46,7 @@ import type { ResolvedWorktreeBaseBranch } from "./base-branch.js";
 
 export type BranchMode = "reset" | "reuse-existing";
 
-interface CreateWorktreeArgs {
+export interface CreateWorktreeArgs {
   sourcePath: string;
   targetPath: string;
   completionPath: string;
@@ -553,7 +553,7 @@ async function removeCreateTarget(args: CreateWorktreeArgs): Promise<void> {
   });
 }
 
-async function abandonCreateTarget(
+export async function abandonCreateTarget(
   args: CreateWorktreeArgs,
   ownsBranch: boolean,
 ): Promise<void> {

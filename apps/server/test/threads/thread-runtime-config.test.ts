@@ -1119,6 +1119,79 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("replaces a project folder the environment branched with its worktree, and keeps the others shared", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-replaced-folders",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const workspacePath = "/worktrees/thr-1/app";
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.read_workspace_agent_context") {
+            throw new Error(`Unexpected RPC ${command.type}`);
+          }
+          return {
+            ok: true,
+            result: {
+              agentInstructions: null,
+              projectSkills: [],
+              projectSkillsTruncated: false,
+              sharedSkills: [],
+              folders: command.folderPaths.map((folderPath) => ({
+                path: folderPath,
+                exists: true,
+                isGitRepo: true,
+              })),
+            },
+          };
+        },
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/work/app",
+      });
+      for (const folderPath of ["/work/api", "/work/web"]) {
+        createProjectSourceFolder(harness.db, harness.hub, {
+          projectId: project.id,
+          projectSourceId: source.id,
+          path: folderPath,
+        });
+      }
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      setEnvironmentColumns(harness.db, environment.id, {
+        additionalPaths: ["/worktrees/thr-1/api"],
+        replacedProjectFolders: ["/work/api"],
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        { thread, environment, model: "test-model" },
+      );
+
+      expect(responder.requests.map(({ command }) => command)).toEqual([
+        expect.objectContaining({
+          folderPaths: [workspacePath, "/work/web", "/worktrees/thr-1/api"],
+        }),
+      ]);
+      expect(runtimeConfig.additionalWorkspaceFolders).toEqual([
+        "/work/web",
+        "/worktrees/thr-1/api",
+      ]);
+      expect(runtimeConfig.instructions).not.toContain("/work/api ");
+    });
+  });
+
   it("treats a missing remote workspace .bb/AGENTS.md as null", async () => {
     await withTestHarness(async (harness) => {
       const { host: primary } = seedHostSession(harness.deps, {

@@ -74,12 +74,43 @@ export function validateWorkspaceFolderPaths(args: {
   return accepted;
 }
 
+export function validateReplacedProjectFolders(
+  paths: readonly string[],
+): string[] {
+  const accepted: string[] = [];
+  for (const raw of paths) {
+    const path = canonicalizeHostPath(raw);
+    if (!isAbsoluteHostPath(path) || path.includes("\0")) {
+      throw new Error(
+        `Replaced project folder ${path} must be an absolute path`,
+      );
+    }
+    if (!accepted.some((existing) => areHostPathsEqual(existing, path))) {
+      accepted.push(path);
+    }
+  }
+  return accepted;
+}
+
 export function mergeWorkspaceFolderPaths(args: {
   mainPath: string;
-  paths: readonly string[];
+  projectFolderPaths: readonly string[];
+  environment: {
+    additionalPaths: readonly string[];
+    replacedProjectFolders: readonly string[];
+  };
 }): string[] {
+  const projectFolderPaths = args.projectFolderPaths.filter(
+    (path) =>
+      !args.environment.replacedProjectFolders.some((replaced) =>
+        areHostPathsEqual(replaced, path),
+      ),
+  );
   const merged: string[] = [];
-  for (const path of args.paths) {
+  for (const path of [
+    ...projectFolderPaths,
+    ...args.environment.additionalPaths,
+  ]) {
     if (
       areHostPathsEqual(path, args.mainPath) ||
       merged.some((existing) => areHostPathsEqual(existing, path))

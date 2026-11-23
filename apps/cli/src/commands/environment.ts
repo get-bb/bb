@@ -460,6 +460,9 @@ export function registerEnvironmentCommands(
         for (const additionalPath of env.additionalPaths) {
           console.log(`  Folder: ${additionalPath}`);
         }
+        for (const replacedFolder of env.replacedProjectFolders) {
+          console.log(`  Replaces project folder: ${replacedFolder}`);
+        }
         if (env.name) {
           console.log(`  Name: ${env.name}`);
         }

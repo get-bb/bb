@@ -20,6 +20,7 @@ import {
   worktreeBaseBranchSchema,
   worktreeHostContract,
   worktreeHostSignals,
+  type CreatedFolderWorktree,
   type WorktreeBaseBranch,
 } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
@@ -31,6 +32,7 @@ import {
 } from "./warm-pools.js";
 
 const CREATE_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_FOLDERS = 64;
 const REMOVE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export const worktreeInputsSchema = z
@@ -44,10 +46,11 @@ export const worktreeInputsSchema = z
     z
       .object({
         branch: worktreeBaseBranchSchema.default({ kind: "default" }),
+        folders: z.array(z.string().min(1)).max(MAX_FOLDERS).default([]),
       })
       .strict(),
   ])
-  .default({ branch: { kind: "default" } });
+  .default({ branch: { kind: "default" }, folders: [] });
 export type WorktreeInputs = z.infer<typeof worktreeInputsSchema>;
 type WorktreeCreateContext = PluginEnvironmentProviderCreateContext<
   { gitCheckout: true },
@@ -56,6 +59,11 @@ type WorktreeCreateContext = PluginEnvironmentProviderCreateContext<
 type WorktreeOperation = Pick<
   WorktreeCreateContext,
   "attempt" | "host" | "pathKey" | "projectCheckout" | "report" | "signal"
+>;
+type OwnedBranch = z.infer<typeof ownedBranchSchema>;
+type CreatedResult = Extract<
+  PluginEnvironmentProviderCreateResult,
+  { status: "created" }
 >;
 
 export const worktreeRpcContract = defineRpcContract({
@@ -67,6 +75,15 @@ export const worktreeRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ branch: z.string().min(1).nullable() }).strict(),
+  },
+  listBranchableFolders: {
+    input: z
+      .object({
+        projectId: z.string().min(1),
+        hostId: z.string().min(1),
+      })
+      .strict(),
+    output: z.object({ folders: z.array(z.string().min(1)) }).strict(),
   },
   listExistingWorktrees: {
     input: z
@@ -135,7 +152,12 @@ const ADOPTED_RESOURCE = { adopted: true } as const;
 
 const worktreeResourceSchema = z.union([
   z.object({ adopted: z.literal(true) }).strict(),
-  z.object({ ownedBranch: ownedBranchSchema }).strict(),
+  z
+    .object({
+      ownedBranch: ownedBranchSchema.nullable(),
+      folderBranches: z.array(ownedBranchSchema).default([]),
+    })
+    .strict(),
 ]);
 type WorktreeResource = z.infer<typeof worktreeResourceSchema>;
 
@@ -148,6 +170,33 @@ function parseWorktreeResource(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function trimTrailingSeparators(folderPath: string): string {
+  return folderPath.replace(/(?<=.)[\\/]+$/u, "");
+}
+
+function folderBranchesOf(
+  folders: readonly CreatedFolderWorktree[],
+  branchName: string,
+): OwnedBranch[] {
+  return folders.map((folder) => ({
+    name: branchName,
+    repositoryPath: folder.sourcePath,
+    baseBranch: folder.baseBranch,
+  }));
+}
+
+function withFolders(
+  created: CreatedResult,
+  folders: readonly CreatedFolderWorktree[],
+): CreatedResult {
+  if (folders.length === 0) return created;
+  return {
+    ...created,
+    additionalPaths: folders.map((folder) => folder.path),
+    replacedProjectFolders: folders.map((folder) => folder.sourcePath),
+  };
 }
 
 export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
@@ -231,6 +280,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
                   repositoryPath: context.projectCheckout.path,
                   baseBranch: result.baseBranch,
                 },
+                folderBranches: [],
               },
             }
           : {}),
@@ -243,12 +293,84 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     }
   }
 
+  async function createFolderWorktrees(
+    context: WorktreeOperation,
+    args: {
+      path: string;
+      folders: readonly string[];
+      branchName: string | null;
+      branchMode: "reset" | "reuse-existing";
+    },
+  ): Promise<
+    | { status: "created"; folders: CreatedFolderWorktree[] }
+    | { status: "failed"; message: string }
+  > {
+    if (args.folders.length === 0) return { status: "created", folders: [] };
+    const operationId = `folders#${context.pathKey}#${context.attempt}`;
+    reports.set(operationId, context.report);
+    try {
+      return await host.call(
+        "createFolders",
+        {
+          operationId,
+          sourcePath: context.projectCheckout.path,
+          path: args.path,
+          folders: [...args.folders],
+          branchName: args.branchName,
+          branchMode: args.branchMode,
+        },
+        {
+          hostId: context.host.id,
+          signal: context.signal,
+          timeoutMs: CREATE_TIMEOUT_MS,
+        },
+      );
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      return { status: "failed", message: errorMessage(error) };
+    } finally {
+      reports.delete(operationId);
+    }
+  }
+
+  async function nameFolderBranches(
+    context: WorktreeCreateContext,
+    folders: readonly CreatedFolderWorktree[],
+    branchName: string,
+  ): Promise<void> {
+    for (const folder of folders) {
+      const operationId = `name#${context.pathKey}#${context.attempt}#${folder.path}`;
+      reports.set(operationId, context.report);
+      try {
+        const named = await host.call(
+          "nameBranch",
+          {
+            operationId,
+            sourcePath: folder.sourcePath,
+            path: folder.path,
+            branchName,
+          },
+          {
+            hostId: context.host.id,
+            signal: context.signal,
+            timeoutMs: CREATE_TIMEOUT_MS,
+          },
+        );
+        if (named.status === "failed") {
+          throw new Error(
+            `Could not name the branch of ${folder.path}: ${named.message}`,
+          );
+        }
+      } finally {
+        reports.delete(operationId);
+      }
+    }
+  }
+
   async function nameManagedWorktree(
     context: WorktreeCreateContext,
-    created: Extract<
-      PluginEnvironmentProviderCreateResult,
-      { status: "created" }
-    >,
+    created: CreatedResult,
+    folders: readonly CreatedFolderWorktree[],
   ): Promise<PluginEnvironmentProviderCreateResult> {
     const branchName = await context.branchName();
     const ownedBranch = {
@@ -256,6 +378,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       repositoryPath: context.projectCheckout.path,
       baseBranch: created.mergeBaseBranch ?? null,
     };
+    const folderBranches = folderBranchesOf(folders, branchName);
     const operationId = `name#${context.pathKey}#${context.attempt}`;
     reports.set(operationId, context.report);
     try {
@@ -274,23 +397,38 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         },
       );
       if (named.status === "failed") {
-        await removeNamedWorktree(context, created.path, ownedBranch);
+        await removeEnvironmentWorktrees(
+          context,
+          created.path,
+          ownedBranch,
+          folderBranches,
+        );
         return named;
       }
+      await nameFolderBranches(context, folders, branchName);
     } catch (error) {
-      await removeNamedWorktree(context, created.path, ownedBranch);
+      await removeEnvironmentWorktrees(
+        context,
+        created.path,
+        ownedBranch,
+        folderBranches,
+      );
       if (context.signal.aborted) throw error;
       return { status: "failed", message: errorMessage(error) };
     } finally {
       reports.delete(operationId);
     }
-    return { ...created, resource: { ownedBranch } };
+    return withFolders(
+      { ...created, resource: { ownedBranch, folderBranches } },
+      folders,
+    );
   }
 
-  async function removeNamedWorktree(
-    context: WorktreeCreateContext,
+  async function removeEnvironmentWorktrees(
+    context: WorktreeOperation,
     path: string,
-    ownedBranch: z.infer<typeof ownedBranchSchema>,
+    ownedBranch: OwnedBranch | null,
+    folderBranches: OwnedBranch[],
   ): Promise<void> {
     await host
       .call(
@@ -300,10 +438,63 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           pathKey: context.pathKey,
           path,
           ownedBranch,
+          folderBranches,
         },
         { hostId: context.host.id, timeoutMs: REMOVE_TIMEOUT_MS },
       )
       .catch(() => undefined);
+  }
+
+  async function resolveBranchedFolders(context: {
+    project: { id: string };
+    host: { id: string; name: string };
+    projectCheckout: { path: string };
+    inputs: WorktreeInputs;
+  }): Promise<
+    | { status: "accepted"; folders: string[] }
+    | { status: "refused"; message: string }
+  > {
+    if ("kind" in context.inputs || context.inputs.folders.length === 0) {
+      return { status: "accepted", folders: [] };
+    }
+    const project = await bb.sdk.projects.get({
+      projectId: context.project.id,
+    });
+    const source =
+      project.sources.find(
+        (candidate) =>
+          candidate.type === "local_path" &&
+          candidate.hostId === context.host.id &&
+          candidate.path === context.projectCheckout.path,
+      ) ??
+      project.sources.find(
+        (candidate) =>
+          candidate.type === "local_path" &&
+          candidate.hostId === context.host.id,
+      );
+    const projectFolders =
+      source === undefined
+        ? []
+        : await bb.sdk.projects.sources.experimental_folders.list({
+            projectId: context.project.id,
+            sourceId: source.id,
+          });
+    const folders: string[] = [];
+    for (const requested of context.inputs.folders) {
+      const match = projectFolders.find(
+        (folder) =>
+          trimTrailingSeparators(folder.path) ===
+          trimTrailingSeparators(requested),
+      );
+      if (match === undefined) {
+        return {
+          status: "refused",
+          message: `${requested} is not one of this project's folders on ${context.host.name}, so it can't be branched. List them with \`bb project folder list ${context.project.id}\`.`,
+        };
+      }
+      if (!folders.includes(match.path)) folders.push(match.path);
+    }
+    return { status: "accepted", folders };
   }
 
   bb.experimental_environments.register({
@@ -317,17 +508,25 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     policy: { pathKeys: "per-attempt" },
     locate: ({ inputs }) =>
       "kind" in inputs ? { path: inputs.path, reuse: true } : null,
+    async validate(context) {
+      const resolved = await resolveBranchedFolders(context);
+      return resolved.status === "refused"
+        ? { action: "refuse", message: resolved.message }
+        : { action: "accept" };
+    },
     async create(context) {
       if ("kind" in context.inputs) {
         return adoptExistingWorktree(context, context.inputs.path);
       }
+      const branched = await resolveBranchedFolders(context);
+      if (branched.status === "refused") {
+        return { status: "failed", message: branched.message };
+      }
       if (context.inputs.branch.kind === "default") {
         const ownedBranch = (name: string, baseBranch: string) => ({
-          ownedBranch: {
-            name,
-            repositoryPath: context.projectCheckout.path,
-            baseBranch,
-          },
+          name,
+          repositoryPath: context.projectCheckout.path,
+          baseBranch,
         });
         const warm = await pools.handOff({
           environmentId: context.environment.id,
@@ -335,52 +534,81 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           hostId: context.host.id,
           sourcePath: context.projectCheckout.path,
           adopt: (environmentId, handed) =>
-            context.adopt(
-              environmentId,
-              ownedBranch(handed.placeholder, handed.baseBranch),
-            ),
+            context.adopt(environmentId, {
+              ownedBranch: ownedBranch(handed.placeholder, handed.baseBranch),
+              folderBranches: [],
+            }),
           signal: context.signal,
         });
         if (warm !== null) {
+          const folders = await createFolderWorktrees(context, {
+            path: warm.path,
+            folders: branched.folders,
+            branchName: null,
+            branchMode: "reset",
+          });
+          if (folders.status === "failed") return folders;
           const commit = warm.baseCommit.slice(0, 7);
           const hostOptions = {
             hostId: context.host.id,
             signal: context.signal,
             timeoutMs: CREATE_TIMEOUT_MS,
           };
-          if (warm.memberCommit !== warm.baseCommit) {
+          let branchName: string | null = null;
+          try {
+            if (warm.memberCommit !== warm.baseCommit) {
+              await host.call(
+                "fastForward",
+                { path: warm.path, commit: warm.baseCommit },
+                hostOptions,
+              );
+              context.report.step(
+                `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
+              );
+              await context.setup(warm.path);
+            }
+            context.report.step(
+              warm.offline
+                ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
+                : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
+            );
+            branchName = await context.branchName();
             await host.call(
-              "fastForward",
-              { path: warm.path, commit: warm.baseCommit },
+              "nameHandedOffBranch",
+              {
+                path: warm.path,
+                fromBranch: warm.placeholder,
+                toBranch: branchName,
+              },
               hostOptions,
             );
-            context.report.step(
-              `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
-            );
-            await context.setup(warm.path);
+            await nameFolderBranches(context, folders.folders, branchName);
+          } catch (error) {
+            if (folders.folders.length > 0) {
+              await removeEnvironmentWorktrees(
+                context,
+                warm.path,
+                ownedBranch(branchName ?? warm.placeholder, warm.baseBranch),
+                branchName === null
+                  ? []
+                  : folderBranchesOf(folders.folders, branchName),
+              );
+            }
+            throw error;
           }
-          context.report.step(
-            warm.offline
-              ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
-              : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
-          );
-          const branchName = await context.branchName();
-          await host.call(
-            "nameHandedOffBranch",
+          return withFolders(
             {
+              status: "created",
               path: warm.path,
-              fromBranch: warm.placeholder,
-              toBranch: branchName,
+              ownsPath: true,
+              mergeBaseBranch: warm.baseBranch,
+              resource: {
+                ownedBranch: ownedBranch(branchName, warm.baseBranch),
+                folderBranches: folderBranchesOf(folders.folders, branchName),
+              },
             },
-            hostOptions,
+            folders.folders,
           );
-          return {
-            status: "created",
-            path: warm.path,
-            ownsPath: true,
-            mergeBaseBranch: warm.baseBranch,
-            resource: ownedBranch(branchName, warm.baseBranch),
-          };
         }
       }
       const created = await createManagedWorktree(context, {
@@ -389,8 +617,18 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         branchMode: "reset",
       });
       if (created.status === "failed") return created;
+      const folders = await createFolderWorktrees(context, {
+        path: created.path,
+        folders: branched.folders,
+        branchName: null,
+        branchMode: "reset",
+      });
+      if (folders.status === "failed") {
+        await removeEnvironmentWorktrees(context, created.path, null, []);
+        return folders;
+      }
       await context.setup(created.path);
-      return nameManagedWorktree(context, created);
+      return nameManagedWorktree(context, created, folders.folders);
     },
     async restore(context) {
       if ("kind" in context.inputs) {
@@ -404,11 +642,46 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             "The removed worktree had no branch checked out, so there is no branch to restore it on.",
         };
       }
-      return createManagedWorktree(context, {
+      const created = await createManagedWorktree(context, {
         branchName,
         baseBranch: context.inputs.branch,
         branchMode: "reuse-existing",
       });
+      if (created.status === "failed") return created;
+      const resource = parseWorktreeResource(created.resource ?? null);
+      const ownedBranch =
+        resource !== null && "ownedBranch" in resource
+          ? resource.ownedBranch
+          : null;
+      const folders = await createFolderWorktrees(context, {
+        path: created.path,
+        folders: context.inputs.folders,
+        branchName,
+        branchMode: "reuse-existing",
+      });
+      if (folders.status === "failed") {
+        await removeEnvironmentWorktrees(
+          context,
+          created.path,
+          ownedBranch,
+          [],
+        );
+        return folders;
+      }
+      if (folders.folders.length === 0) return created;
+      const folderBranches = folderBranchesOf(
+        folders.folders.filter((folder) => folder.ownsBranch),
+        branchName,
+      );
+      return withFolders(
+        {
+          ...created,
+          ...(ownedBranch === null && folderBranches.length === 0
+            ? {}
+            : { resource: { ownedBranch, folderBranches } }),
+        },
+        folders.folders,
+      );
     },
     async remove(context) {
       const resource = parseWorktreeResource(context.resource);
@@ -428,6 +701,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             pathKey: context.pathKey,
             path: context.path,
             ownedBranch: resource?.ownedBranch ?? null,
+            folderBranches: resource?.folderBranches ?? [],
           },
           {
             hostId: context.hostId,
@@ -446,6 +720,25 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
   });
 
   bb.rpc.register(worktreeRpcContract, {
+    async listBranchableFolders({ projectId, hostId }) {
+      const project = await bb.sdk.projects.get({ projectId });
+      const source = project.sources.find(
+        (candidate) =>
+          candidate.hostId === hostId && candidate.type === "local_path",
+      );
+      if (source === undefined) return { folders: [] };
+      const folders = await bb.sdk.projects.sources.experimental_folders.list({
+        projectId,
+        sourceId: source.id,
+      });
+      if (folders.length === 0) return { folders: [] };
+      const repositories = await host.call(
+        "listFolderRepositories",
+        { paths: folders.map((folder) => folder.path) },
+        { hostId },
+      );
+      return { folders: repositories.paths };
+    },
     async defaultBaseBranch({ projectId, hostId }) {
       const project = await bb.sdk.projects.get({ projectId });
       const sources = project.sources.filter(

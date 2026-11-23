@@ -26,6 +26,7 @@ function makeRow(overrides: Partial<EnvironmentRow> = {}): EnvironmentRow {
     hostId: "host_1",
     path: "/tmp/workspace",
     additionalPaths: [],
+    replacedProjectFolders: [],
     isGitRepo: true,
     isWorktree: false,
     branchName: "main",

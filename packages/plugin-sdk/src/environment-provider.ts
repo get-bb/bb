@@ -155,6 +155,14 @@ export type PluginEnvironmentProviderCreateResult =
        * See docs/api_to_audit.md.
        */
       additionalPaths?: string[];
+      /**
+       * Experimental: the project's folders (`sdk.projects.sources.experimental_folders`)
+       * this environment replaces, such as a folder it made a worktree of in
+       * `additionalPaths`. Threads in the environment no longer get those
+       * shared folders. Omit on a reused environment to keep the recorded
+       * list. See docs/api_to_audit.md.
+       */
+      replacedProjectFolders?: string[];
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };

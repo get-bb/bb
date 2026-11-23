@@ -222,8 +222,10 @@ export function dropProjectFolderSchema(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(environments)")
     .all();
-  if (columns.some((column) => column.name === "additional_paths")) {
-    db.$client.exec("ALTER TABLE environments DROP COLUMN additional_paths");
+  for (const column of ["additional_paths", "replaced_project_folders"]) {
+    if (columns.some((entry) => entry.name === column)) {
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column}`);
+    }
   }
 }
 

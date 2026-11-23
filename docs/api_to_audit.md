@@ -1204,14 +1204,26 @@ list to the daemon, which grants the agent write access for that turn; the
 agent's instructions list the folders as of its session start. The field is a member of a result type, so it carries no
 nested `experimental_` prefix.
 
-Core path: `environment-engine.ts` records the field for every provider,
-including the built-in Worktree and Project checkout, which return none
-today; `thread-runtime-config.ts` is the only reader.
+`replacedProjectFolders` on the same result lists project folders the
+environment stands in for. Core canonicalizes them and fails the create when
+one is relative (at most 64), stores them on
+`environments.replaced_project_folders`, returns them as
+`Environment.replacedProjectFolders`, and keeps the recorded list when a
+reused environment omits the field. `mergeWorkspaceFolderPaths` in
+`workspace-folder-paths.ts` is the one place that drops those project folders
+before adding the environment's own; a replaced folder stays out even when
+its replacement is missing.
 
-Before stabilizing, decide whether a provider needs to change the list after
-create (today only a restore replaces it), whether removal should be told
-about the folders, and whether the Worktree should report worktrees it makes
-of a project's folders.
+Core path: `environment-engine.ts` records both fields for every provider;
+`thread-runtime-config.ts` is the only reader. The built-in Worktree is the
+first caller: with `folders` in its inputs it returns a worktree of each
+chosen project folder in `additionalPaths` and the folder itself in
+`replacedProjectFolders`. Project checkout returns neither.
+
+Before stabilizing, decide whether a provider needs to change the lists after
+create (today only a restore replaces them), whether removal should be told
+about the folders, and whether a replaced folder should be tied to its
+replacement path (today the lists are independent).
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
@@ -4457,14 +4469,13 @@ Requires SDK 0.6.178.
    split layout, not the calling surface. Check plugin-hosted surfaces (nav
    panel pages, overlays) once they host threads.
 
-
 ## `experimental_makeActionContext` / `ExperimentalActionContextFixture` / `ExperimentalActionContextCall` (`@get-bb/plugin-sdk/testing`)
 
 Requires SDK 0.6.178.
 
 - **Surface:** `experimental_makeActionContext(overrides?: Partial<ExperimentalPluginActionContext>): ExperimentalActionContextFixture`,
   a complete `ExperimentalPluginActionContext` plus `calls:
-  ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
+ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
   false except `experimental_threadHref` and `experimental_settingsHref`,
   which return the test harness's paths (`/threads/<id>#msg=<seq>`,
@@ -4484,6 +4495,7 @@ Requires SDK 0.6.178.
   `NavigateCall` shape `renderSlot` uses, and whether composer and message
   contexts need their own builders once their fields grow. Then rename
   project-wide and remove this entry.
+
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
 Renders a plugin component beside the address bar in each Browser tab. It
@@ -5451,9 +5463,10 @@ Core callers: the project settings Folders section
 `bb project folder list|add|update|remove`.
 
 Before stabilizing, decide whether folders belong on the checkout (per
-machine) or on the project with per-machine paths, whether environment
-providers should read them (for example to make a worktree of each), and
-whether `list` should report which folders are missing on the machine.
+machine) or on the project with per-machine paths, and whether `list` should
+report which folders are missing on the machine. The Worktree environment
+provider reads them to offer and validate the folders it can branch
+(`listBranchableFolders`, `validate`).
 
 ## Global prompt history (`bb.sdk.experimental_promptHistory`)
 

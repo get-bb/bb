@@ -1,10 +1,17 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { readdir, rm } from "node:fs/promises";
+import path from "node:path";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { emitOutput } from "bb-environment-provider-host/transcript";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
 import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
 import {
+  createFolderWorktrees,
+  listFolderRepositories,
+} from "./host/folders.js";
+import {
+  resolveFolderWorktreePaths,
+  resolveManagedEnvironmentRoot,
   resolveWorktreeChildPath,
   resolveWorktreesRoot,
   resolveWorktreeAttemptRoot,
@@ -32,19 +39,14 @@ function completionPathForWorktree(worktreePath: string): string {
   return `${worktreePath}.completed`;
 }
 
-async function worktreePathsForPathKey(args: {
-  dataDir: string;
-  pathKey: string;
-}): Promise<string[]> {
-  const root = resolveWorktreeAttemptRoot(args);
+async function childWorktreePaths(root: string): Promise<string[]> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) =>
         resolveWorktreeChildPath({
-          dataDir: args.dataDir,
-          pathKey: args.pathKey,
+          environmentRoot: root,
           childName: entry.name,
         }),
       );
@@ -54,6 +56,26 @@ async function worktreePathsForPathKey(args: {
     }
     throw error;
   }
+}
+
+async function environmentWorktreePaths(args: {
+  dataDir: string;
+  pathKey: string;
+  path: string | null;
+}): Promise<string[]> {
+  if (args.path === null) {
+    return childWorktreePaths(resolveWorktreeAttemptRoot(args));
+  }
+  const root = resolveManagedEnvironmentRoot({
+    dataDir: args.dataDir,
+    worktreePath: args.path,
+  });
+  const mainPath = path.resolve(args.path);
+  if (root === null) return [mainPath];
+  return [
+    mainPath,
+    ...(await childWorktreePaths(root)).filter((child) => child !== mainPath),
+  ];
 }
 
 export function createWorktreeHostEntry() {
@@ -180,6 +202,54 @@ export function createWorktreeHostEntry() {
         }
       },
 
+      async listFolderRepositories(input, context) {
+        return {
+          paths: await listFolderRepositories({
+            paths: input.paths,
+            signal: context.signal,
+          }),
+        };
+      },
+
+      async createFolders(input, context) {
+        try {
+          const targetPaths = resolveFolderWorktreePaths({
+            dataDir: context.experimental_paths.dataDir,
+            mainPath: input.path,
+            sourcePaths: input.folders,
+          });
+          const folders = await createFolderWorktrees({
+            mainSourcePath: input.sourcePath,
+            ownWorktreesRoot: resolveWorktreesRoot(
+              context.experimental_paths.dataDir,
+            ),
+            folders: input.folders.map((sourcePath, index) => {
+              const targetPath = targetPaths[index] ?? input.path;
+              return {
+                sourcePath,
+                targetPath,
+                completionPath: completionPathForWorktree(targetPath),
+              };
+            }),
+            branchName: input.branchName,
+            branchMode: input.branchMode,
+            onProgress: createHostProgress({
+              operationId: input.operationId,
+              emit: (payload) =>
+                context.experimental_emitSignal("progress", payload),
+            }),
+            signal: context.signal,
+          });
+          return { status: "created", folders } as const;
+        } catch (error) {
+          if (context.signal.aborted) throw error;
+          return {
+            status: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          } as const;
+        }
+      },
+
       async nameBranch(input, context) {
         try {
           await nameWorktreeBranch({
@@ -215,13 +285,11 @@ export function createWorktreeHostEntry() {
         });
         const namedBranches: string[] = [];
         try {
-          const paths =
-            input.path === null
-              ? await worktreePathsForPathKey({
-                  dataDir: context.experimental_paths.dataDir,
-                  pathKey: input.pathKey,
-                })
-              : [input.path];
+          const paths = await environmentWorktreePaths({
+            dataDir: context.experimental_paths.dataDir,
+            pathKey: input.pathKey,
+            path: input.path,
+          });
           for (const path of paths) {
             const named = await readNamedWorktreeBranch(
               completionPathForWorktree(path),
@@ -243,26 +311,33 @@ export function createWorktreeHostEntry() {
           } as const;
         }
         const ownedBranch = input.ownedBranch;
-        if (ownedBranch !== null) {
-          for (const branchName of [ownedBranch.name, ...namedBranches]) {
-            try {
-              await deleteOwnedBranch({
-                repositoryPath: ownedBranch.repositoryPath,
-                branchName,
-                baseBranch: ownedBranch.baseBranch,
-                onProgress,
-                signal: context.signal,
-              });
-            } catch (error) {
-              if (context.signal.aborted) throw error;
-              emitOutput(
-                onProgress,
-                "branch-cleanup",
-                `Kept branch ${branchName}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
-            }
+        const ownedBranches = [
+          ...(ownedBranch === null
+            ? []
+            : [ownedBranch.name, ...namedBranches].map((name) => ({
+                ...ownedBranch,
+                name,
+              }))),
+          ...input.folderBranches,
+        ];
+        for (const branch of ownedBranches) {
+          try {
+            await deleteOwnedBranch({
+              repositoryPath: branch.repositoryPath,
+              branchName: branch.name,
+              baseBranch: branch.baseBranch,
+              onProgress,
+              signal: context.signal,
+            });
+          } catch (error) {
+            if (context.signal.aborted) throw error;
+            emitOutput(
+              onProgress,
+              "branch-cleanup",
+              `Kept branch ${branch.name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
           }
         }
         return { status: "removed" } as const;

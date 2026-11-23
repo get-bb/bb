@@ -33,6 +33,16 @@ before the thread starts, so the thread always starts on the current base with
 setup run against it. Named bases, existing worktrees and restores build a
 fresh worktree, and so does a thread that finds no usable warm worktree.
 
+A worktree thread can also branch the project's other git repositories
+(`bb project folder list <project-id>`). List them in the inputs:
+`bb thread spawn --environment-provider git-worktree --environment-inputs
+'{"branch":{"kind":"default"},"folders":["/abs/folder"]}'`. Each listed folder
+gets its own worktree next to the main one, on the thread's branch and from that
+repository's default branch, and the thread works in that worktree instead of
+the shared folder; folders not listed stay shared. Removing the environment
+removes every worktree and the branches bb made. A warm worktree still serves
+the main repository; the folder worktrees are made when the thread takes it.
+
 Warm worktrees are ordinary environments held by the Worktree plugin:
 `bb environment list --held-by plugin:environment-git-worktree` lists them, and
 `bb thread spawn --environment <id>` refuses them. A failed one is deleted and
