@@ -336,13 +336,14 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "thr_sidechat")).toBeNull();
   });
 
-  it("keeps orphaned children as project roots", () => {
+  it("orders orphaned children as project roots by attention", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
         id: "orphan-child",
         parentThreadId: "missing-parent",
         createdAt: 20,
-        latestAttentionAt: 20,
+        latestAttentionAt: 5,
+        experimental_statusChangedAt: 40,
       }),
       createThread({
         id: "root-thread",
@@ -351,7 +352,7 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual(["orphan-child", "root-thread"]);
+    expect(summarizeItems(rootItems)).toEqual(["root-thread", "orphan-child"]);
   });
 
   it("cuts cycles without duplicating or dropping every cycle member", () => {

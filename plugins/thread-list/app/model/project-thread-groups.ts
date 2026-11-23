@@ -56,6 +56,7 @@ type ThreadItemComparator = (
 export type ThreadComparator = ((
   left: SidebarThread,
   right: SidebarThread,
+  level?: "root" | "child",
 ) => number) & {
   compareItems?: ThreadItemComparator;
 };
@@ -89,28 +90,19 @@ export function compareByCreatedAtDescending(
   return compareCodepoint(left.id, right.id);
 }
 
-function latestSortActivityAt(thread: SidebarThread): number {
-  return thread.parentThreadId === null
-    ? thread.latestAttentionAt
-    : Math.max(thread.latestAttentionAt, thread.experimental_statusChangedAt);
-}
-
-function compareByLatestActivityAtDescending(
-  left: SidebarThread,
-  right: SidebarThread,
+function latestSortActivityAt(
+  thread: SidebarThread,
+  level: "root" | "child",
 ): number {
-  const latestActivityAtDelta =
-    latestSortActivityAt(right) - latestSortActivityAt(left);
-  if (latestActivityAtDelta !== 0) {
-    return latestActivityAtDelta;
-  }
-
-  return compareByCreatedAtDescending(left, right);
+  return level === "child"
+    ? Math.max(thread.latestAttentionAt, thread.experimental_statusChangedAt)
+    : thread.latestAttentionAt;
 }
 
 export function compareStandardThreads(
   left: SidebarThread,
   right: SidebarThread,
+  level: "root" | "child" = "root",
 ): number {
   const leftIsActive = left.status === "active";
   const rightIsActive = right.status === "active";
@@ -123,7 +115,9 @@ export function compareStandardThreads(
     return compareByCreatedAtDescending(left, right);
   }
 
-  return compareByLatestActivityAtDescending(left, right);
+  const activityDelta =
+    latestSortActivityAt(right, level) - latestSortActivityAt(left, level);
+  return activityDelta || compareByCreatedAtDescending(left, right);
 }
 
 function representativeThread(item: ProjectThreadItem): SidebarThread {
@@ -392,7 +386,7 @@ function buildThreadNode({
 
   const children = buildSortedItems(
     childNodes,
-    compareThreads,
+    (left, right) => compareThreads(left, right, "child"),
     groupEnvironmentThreads,
     false,
     thread.environment?.id ?? null,

@@ -320,8 +320,8 @@ export function getSidebarThreadComparator(
     normalizedSort === "created"
       ? compareByCreatedAtDescending
       : compareStandardThreads;
-  return (left, right) => {
-    const comparison = base(left, right);
+  return (left, right, level) => {
+    const comparison = base(left, right, level);
     if (
       normalizedSort === "updated" &&
       (left.status === "active") !== (right.status === "active")
