@@ -527,6 +527,7 @@ describe("machine retirement", () => {
           fingerprint: "fingerprint",
           modelsJson: "[]",
           selectedOnlyModelsJson: "[]",
+          emptyReasoningCheckedAtJson: "{}",
           fetchedAt: 1,
         },
         pruneWorkspaceRowsFetchedBefore: null,

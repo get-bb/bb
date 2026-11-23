@@ -26,6 +26,7 @@ function catalogRow(
     fingerprint: `${hostId}-${providerId}-${scopeKey}`,
     modelsJson: JSON.stringify([{ id: "gpt-5", model: "gpt-5" }]),
     selectedOnlyModelsJson: "[]",
+    emptyReasoningCheckedAtJson: "{}",
     fetchedAt,
   };
 }

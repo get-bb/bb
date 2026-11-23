@@ -850,6 +850,7 @@ describe("public host management", () => {
           fingerprint: "fingerprint",
           modelsJson: "[]",
           selectedOnlyModelsJson: "[]",
+          emptyReasoningCheckedAtJson: "{}",
           fetchedAt: 1,
         },
         pruneWorkspaceRowsFetchedBefore: null,

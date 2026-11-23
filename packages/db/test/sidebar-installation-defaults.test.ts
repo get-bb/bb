@@ -25,6 +25,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
@@ -119,6 +120,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropEnvironmentHoldColumns(db);
           dropThreadSearchOrderIndex(db);
           rewindThreadPurgeStartedColumn(db);
+          dropProviderModelCatalogEmptyReasoningColumn(db);
           dropQueuedMessageSourcesAndCompactFirstColumns(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")

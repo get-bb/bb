@@ -1205,6 +1205,13 @@
       "when": 1795550504908,
       "tag": "0171_environment_additional_path_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "6",
+      "when": 1795654018344,
+      "tag": "0172_provider_model_catalog_empty_reasoning_checked_at",
+      "breakpoints": true
     }
   ]
 }

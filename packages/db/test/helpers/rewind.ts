@@ -197,6 +197,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   dropThreadSearchOrderIndex(db);
   dropForkHistoryCopyIndex(db);
@@ -263,6 +264,21 @@ export function rewindThreadPurgeStartedColumn(db: DbConnection): void {
     .all();
   if (columns.some((existing) => existing.name === "started_at")) {
     db.$client.exec("ALTER TABLE thread_purges DROP COLUMN started_at");
+  }
+}
+
+export function dropProviderModelCatalogEmptyReasoningColumn(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(provider_model_catalogs)")
+    .all();
+  if (
+    columns.some((column) => column.name === "empty_reasoning_checked_at_json")
+  ) {
+    db.$client.exec(
+      "ALTER TABLE provider_model_catalogs DROP COLUMN empty_reasoning_checked_at_json",
+    );
   }
 }
 

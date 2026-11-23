@@ -44,6 +44,7 @@ const FAILURE_TTL_MS = 30_000;
 const FAILURE_DETAIL_MAX_LENGTH = 300;
 const PREWARM_MIN_AGE_MS = 4 * 60 * 60_000;
 const WORKSPACE_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const EMPTY_REASONING_RECHECK_MS = 24 * 60 * 60_000;
 
 type ProviderModelCatalogFailureCode = Exclude<
   SystemExecutionOptionsModelLoadErrorCode,
@@ -115,6 +116,7 @@ interface CatalogGood {
   selectedOnlyModels: AvailableModel[];
   modelsJson: string;
   selectedOnlyModelsJson: string;
+  emptyReasoningCheckedAt: Record<string, number>;
   fetchedAt: number;
 }
 
@@ -155,6 +157,7 @@ type CatalogDecision =
   | { kind: "wait" };
 
 const storedModelListSchema = z.array(availableModelSchema);
+const storedCheckTimesSchema = z.record(z.string(), z.number());
 
 export function toProviderModelCatalogFailureCode(
   error: ApiError,
@@ -217,9 +220,9 @@ async function resolveCatalogLaunch(args: {
   return { bridgeLaunch, contributedEnv, fingerprint };
 }
 
-function parseStoredModels(json: string): AvailableModel[] | null {
+function parseStoredJson<T>(schema: z.ZodType<T>, json: string): T | null {
   try {
-    const parsed = storedModelListSchema.safeParse(JSON.parse(json));
+    const parsed = schema.safeParse(JSON.parse(json));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -230,29 +233,36 @@ function entryMapKey(key: ProviderModelCatalogRowKey): string {
   return JSON.stringify([key.hostId, key.providerId, key.scopeKey]);
 }
 
-function keepDiscoveredReasoning(
-  discovered: readonly AvailableModel[],
-  models: AvailableModel[],
-): AvailableModel[] {
-  const known = new Map(
-    discovered
-      .filter((model) => model.reasoningDiscovery === "known")
-      .map((model) => [model.model, model] as const),
+function hasEmptyKnownReasoning(model: AvailableModel): boolean {
+  return (
+    model.reasoningDiscovery === "known" &&
+    model.supportedReasoningEfforts.length === 0
   );
-  return models.map((model) => {
-    const source =
-      model.reasoningDiscovery === "unknown"
-        ? known.get(model.model)
-        : undefined;
-    return source === undefined
-      ? model
-      : {
-          ...model,
-          reasoningDiscovery: source.reasoningDiscovery,
-          supportedReasoningEfforts: source.supportedReasoningEfforts,
-          defaultReasoningEffort: source.defaultReasoningEffort,
-        };
-  });
+}
+
+function needsReasoningCheck(
+  good: CatalogGood,
+  model: AvailableModel,
+  now: number,
+): boolean {
+  if (model.reasoningDiscovery === "unknown") return true;
+  if (!hasEmptyKnownReasoning(model)) return false;
+  const checkedAt = good.emptyReasoningCheckedAt[model.model];
+  return (
+    checkedAt !== undefined && now - checkedAt >= EMPTY_REASONING_RECHECK_MS
+  );
+}
+
+function withReasoningFrom(
+  model: AvailableModel,
+  source: AvailableModel,
+): AvailableModel {
+  return {
+    ...model,
+    reasoningDiscovery: source.reasoningDiscovery,
+    supportedReasoningEfforts: source.supportedReasoningEfforts,
+    defaultReasoningEffort: source.defaultReasoningEffort,
+  };
 }
 
 function nextGood(
@@ -262,23 +272,41 @@ function nextGood(
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
     fetchedAt: number;
+    now: number;
   },
 ): CatalogGood {
   const previous =
-    entry.good?.fingerprint === args.fingerprint
-      ? [...entry.good.models, ...entry.good.selectedOnlyModels]
-      : [];
-  const models = keepDiscoveredReasoning(previous, args.models);
-  const selectedOnlyModels = keepDiscoveredReasoning(
-    previous,
-    args.selectedOnlyModels,
+    entry.good?.fingerprint === args.fingerprint ? entry.good : null;
+  const discovered = new Map(
+    previous === null
+      ? []
+      : [...previous.models, ...previous.selectedOnlyModels]
+          .filter((model) => !needsReasoningCheck(previous, model, args.now))
+          .map((model) => [model.model, model] as const),
   );
+  const emptyReasoningCheckedAt: Record<string, number> = {};
+  const keepDiscovered = (model: AvailableModel): AvailableModel => {
+    const source =
+      model.reasoningDiscovery === "unknown"
+        ? discovered.get(model.model)
+        : undefined;
+    const next =
+      source === undefined ? model : withReasoningFrom(model, source);
+    if (source !== undefined && hasEmptyKnownReasoning(next)) {
+      emptyReasoningCheckedAt[model.model] =
+        previous?.emptyReasoningCheckedAt[model.model] ?? args.now;
+    }
+    return next;
+  };
+  const models = args.models.map(keepDiscovered);
+  const selectedOnlyModels = args.selectedOnlyModels.map(keepDiscovered);
   return {
     fingerprint: args.fingerprint,
     models,
     selectedOnlyModels,
     modelsJson: JSON.stringify(models),
     selectedOnlyModelsJson: JSON.stringify(selectedOnlyModels),
+    emptyReasoningCheckedAt,
     fetchedAt: args.fetchedAt,
   };
 }
@@ -395,9 +423,20 @@ export function createProviderModelCatalogStore(options: {
     if (row === null) {
       return null;
     }
-    const models = parseStoredModels(row.modelsJson);
-    const selectedOnlyModels = parseStoredModels(row.selectedOnlyModelsJson);
-    if (models === null || selectedOnlyModels === null) {
+    const models = parseStoredJson(storedModelListSchema, row.modelsJson);
+    const selectedOnlyModels = parseStoredJson(
+      storedModelListSchema,
+      row.selectedOnlyModelsJson,
+    );
+    const emptyReasoningCheckedAt = parseStoredJson(
+      storedCheckTimesSchema,
+      row.emptyReasoningCheckedAtJson,
+    );
+    if (
+      models === null ||
+      selectedOnlyModels === null ||
+      emptyReasoningCheckedAt === null
+    ) {
       return null;
     }
     return {
@@ -406,6 +445,7 @@ export function createProviderModelCatalogStore(options: {
       selectedOnlyModels,
       modelsJson: row.modelsJson,
       selectedOnlyModelsJson: row.selectedOnlyModelsJson,
+      emptyReasoningCheckedAt,
       fetchedAt: row.fetchedAt,
     };
   }
@@ -477,6 +517,9 @@ export function createProviderModelCatalogStore(options: {
           fingerprint: good.fingerprint,
           modelsJson: good.modelsJson,
           selectedOnlyModelsJson: good.selectedOnlyModelsJson,
+          emptyReasoningCheckedAtJson: JSON.stringify(
+            good.emptyReasoningCheckedAt,
+          ),
           fetchedAt: good.fetchedAt,
         },
         pruneWorkspaceRowsFetchedBefore:
@@ -533,6 +576,7 @@ export function createProviderModelCatalogStore(options: {
         models: settlement.models,
         selectedOnlyModels: settlement.selectedOnlyModels,
         fetchedAt: refresh.markedStale ? 0 : now,
+        now,
       });
       entry.failure = null;
       entry.unavailableDetail = null;
@@ -640,7 +684,12 @@ export function createProviderModelCatalogStore(options: {
       ...(good?.models ?? []),
       ...(good?.selectedOnlyModels ?? []),
     ].find((model) => model.model === selectedModel);
-    if (model === undefined || model.reasoningDiscovery === "known") return;
+    if (
+      good === null ||
+      model === undefined ||
+      !needsReasoningCheck(good, model, options.now())
+    )
+      return;
     const existing = entry.selectedModels.get(selectedModel);
     if (
       existing?.fingerprint === fingerprint &&
@@ -681,10 +730,11 @@ export function createProviderModelCatalogStore(options: {
         )
           return;
         answered = true;
+        const now = options.now();
         const discovered = [
           ...result.models,
           ...result.selectedOnlyModels,
-        ].filter(
+        ].find(
           (candidate) =>
             candidate.model === selectedModel &&
             candidate.reasoningDiscovery === "known",
@@ -694,21 +744,26 @@ export function createProviderModelCatalogStore(options: {
           ...entry.good.selectedOnlyModels,
         ].find((candidate) => candidate.model === selectedModel);
         if (
-          discovered.length === 0 ||
-          current?.reasoningDiscovery !== "unknown"
+          discovered === undefined ||
+          current === undefined ||
+          !needsReasoningCheck(entry.good, current, now)
         )
           return;
-        const models = keepDiscoveredReasoning(discovered, entry.good.models);
-        const selectedOnlyModels = keepDiscoveredReasoning(
-          discovered,
-          entry.good.selectedOnlyModels,
-        );
+        const apply = (model: AvailableModel) =>
+          model.model === selectedModel
+            ? withReasoningFrom(model, discovered)
+            : model;
+        const models = entry.good.models.map(apply);
+        const selectedOnlyModels = entry.good.selectedOnlyModels.map(apply);
         entry.good = {
           ...entry.good,
           models,
           selectedOnlyModels,
           modelsJson: JSON.stringify(models),
           selectedOnlyModelsJson: JSON.stringify(selectedOnlyModels),
+          emptyReasoningCheckedAt: hasEmptyKnownReasoning(discovered)
+            ? { ...entry.good.emptyReasoningCheckedAt, [selectedModel]: now }
+            : entry.good.emptyReasoningCheckedAt,
         };
         persistGood(deps, entry.key, entry.good);
         schedulePush(deps, entry.key.hostId);
@@ -722,9 +777,9 @@ export function createProviderModelCatalogStore(options: {
           "Selected model reasoning discovery failed",
         );
       } finally {
-        refresh.expiresAt = answered
-          ? Infinity
-          : options.now() + FAILURE_TTL_MS;
+        refresh.expiresAt =
+          options.now() +
+          (answered ? EMPTY_REASONING_RECHECK_MS : FAILURE_TTL_MS);
       }
     })();
     return refresh.promise;
@@ -782,6 +837,7 @@ export function createProviderModelCatalogStore(options: {
         models: args.models,
         selectedOnlyModels: args.selectedOnlyModels,
         fetchedAt: options.now(),
+        now: options.now(),
       });
       persistGood(deps, entry.key, entry.good);
       if (before !== pickerView(entry, launch.fingerprint)) {

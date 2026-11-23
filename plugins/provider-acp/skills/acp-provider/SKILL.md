@@ -130,10 +130,11 @@ selector. Sending never waits for discovery: when a model's catalog entry does
 not list the thread's reasoning level, BB leaves reasoning out of the request and
 the agent keeps its own setting. CLI and SDK reasoning preferences stay stored.
 Failed probes have a 30-second server retry cooldown; a probe the agent answers
-without levels is not repeated until the catalog is refreshed. Discovered levels
-survive later catalog refreshes. In `bb provider models
-<provider-id> --json`, `reasoningDiscovery: "unknown"` means BB has not
-discovered the model's levels yet; `"known"` with an empty
+without levels is repeated after a day. A probe result without levels is kept
+for a day, then the model shows `reasoningDiscovery: "unknown"` again and the
+next selection probes it again. Discovered levels survive later catalog refreshes.
+In `bb provider models <provider-id> --json`, `reasoningDiscovery: "unknown"`
+means BB has not discovered the model's levels yet; `"known"` with an empty
 `supportedReasoningEfforts` means the model has no selectable levels, not that
 it cannot reason. Use `bb provider models <provider-id> --selected-model <model-id>
 --json` (SDK: `providers.models({ providerId, selectedModel })`) to request

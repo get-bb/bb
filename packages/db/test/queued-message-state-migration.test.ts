@@ -20,6 +20,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
@@ -84,6 +85,7 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   return { db, threadId: thread.id };
 }
