@@ -56,7 +56,10 @@ import {
   type WorkflowRunRow,
 } from "./data.js";
 import { parseWorkflowSource } from "./parser.js";
-import { resolveWorkflowReasoning } from "./reasoning-selection.js";
+import {
+  findWorkflowModel,
+  resolveWorkflowReasoning,
+} from "./reasoning-selection.js";
 import { executeWorkflowScript } from "./runtime.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -757,19 +760,26 @@ export function createWorkflowService(
         `Provider ${JSON.stringify(requested.provider)} is not available on this workflow host`,
       );
     }
-    const catalog = await bb.sdk.providers.models({
-      environmentId: run.environmentId,
-      providerId: requested.provider,
-    });
-    throwIfCancelled(signal);
+    const loadModels = async (selectedModel?: string) => {
+      const catalog = await bb.sdk.providers.models({
+        environmentId: run.environmentId,
+        providerId: requested.provider,
+        selectedModel,
+        signal,
+      });
+      throwIfCancelled(signal);
+      return catalog;
+    };
+    const catalog = await loadModels();
     if (catalog.modelLoadError !== null) {
       throw new Error(
         `Could not load models for provider ${requested.provider}: ${catalog.modelLoadError.code}`,
       );
     }
-    const model = [...catalog.models, ...catalog.selectedOnlyModels].find(
-      (candidate) =>
-        candidate.id === requested.model || candidate.model === requested.model,
+    const { model } = await findWorkflowModel(
+      catalog,
+      requested.model,
+      loadModels,
     );
     if (model === undefined) {
       throw new Error(

@@ -1,5 +1,6 @@
 import { inspectWorkflowSource, type LiteralAgentSelection } from "./parser.js";
 import {
+  findWorkflowModel,
   resolveWorkflowReasoning,
   type WorkflowReasoningModel,
 } from "./reasoning-selection.js";
@@ -23,7 +24,11 @@ interface ModelCatalog {
 
 export interface WorkflowCatalogDependencies {
   listProviders(environmentId: string): Promise<CatalogProvider[]>;
-  loadModels(environmentId: string, providerId: string): Promise<ModelCatalog>;
+  loadModels(
+    environmentId: string,
+    providerId: string,
+    selectedModel?: string,
+  ): Promise<ModelCatalog>;
 }
 
 export interface WorkflowValidationSummary {
@@ -71,11 +76,14 @@ export async function validateWorkflowSource(
           `Model-load error for provider ${provider.id}: ${models.modelLoadError.code}`,
         );
       }
-      const model = [...models.models, ...models.selectedOnlyModels].find(
-        (candidate) =>
-          candidate.id === selection.model ||
-          candidate.model === selection.model,
+      const found = await findWorkflowModel(
+        models,
+        selection.model,
+        (selectedModel) =>
+          catalog.loadModels(environmentId, provider.id, selectedModel),
       );
+      catalogs.set(provider.id, found.catalog);
+      const model = found.model;
       if (model === undefined) {
         throw new Error(
           `Model mismatch for literal workflow selection ${tupleDescription(selection)}`,
