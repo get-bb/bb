@@ -119,7 +119,8 @@ Lifecycle:
   and only accepts a file whose project is on this server. A deleted thread
   can be exported until bb starts removing its rows, and imported again once
   they are gone; a recreated archived thread counts as archived from the
-  moment it came back. To move old archived threads out of the database
+  moment it came back. Its links to a parent, source or lifecycle owner that
+  is deleted or not on this server are dropped. To move old archived threads out of the database
   automatically, use the Storage & retention plugin's cold storage policy
   (`bb storage retention --cold-store-after 14 --save --yes`, then
   `bb storage cold-list` and `bb storage restore`).

@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { DbQueryConnection } from "../connection.js";
 import {
   environments,
@@ -324,7 +325,20 @@ export function insertThreadHistoryRows(
 }
 
 export function unhideImportedThread(db: DbQueryConnection, threadId: string): void {
-  db.update(threads).set({ deletedAt: null }).where(eq(threads.id, threadId)).run();
+  const keepIfLive = (column: SQLiteColumn) =>
+    sql`CASE WHEN EXISTS (
+      SELECT 1 FROM ${threads} AS live
+      WHERE live.id = ${column} AND live.deleted_at IS NULL
+    ) THEN ${column} END`;
+  db.update(threads)
+    .set({
+      deletedAt: null,
+      parentThreadId: keepIfLive(threads.parentThreadId),
+      sourceThreadId: keepIfLive(threads.sourceThreadId),
+      lifecycleOwnerThreadId: keepIfLive(threads.lifecycleOwnerThreadId),
+    })
+    .where(eq(threads.id, threadId))
+    .run();
   markThreadPruningWork(db, [threadId]);
 }
 

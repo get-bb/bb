@@ -32,6 +32,7 @@ import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
   seedThreadFixture,
+  seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -551,6 +552,43 @@ describe("thread files", () => {
       expect((await importThread(harness, bytes)).status).toBe(200);
       expect(allRows(harness, thread.id)).toEqual(before);
       expect(getThread(harness.db, thread.id)?.deletedAt).toBeNull();
+    });
+  });
+
+  it("drops links to threads still being deleted, so their purge can finish", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        project,
+        environment,
+        thread: owner,
+      } = seedThreadFixture(harness);
+      const owned = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      harness.db
+        .update(threads)
+        .set({
+          lifecycleOwnerThreadId: owner.id,
+          parentThreadId: owner.id,
+          sourceThreadId: owner.id,
+        })
+        .where(eq(threads.id, owned.id))
+        .run();
+      const bytes = await exportBytes(harness, owned.id);
+      hideAndRequestPurge(harness, owned.id);
+      await runThreadPurges(harness.deps);
+      hideAndRequestPurge(harness, owner.id);
+
+      expect((await importThread(harness, bytes)).status).toBe(200);
+      expect(getThread(harness.db, owned.id)).toMatchObject({
+        deletedAt: null,
+        lifecycleOwnerThreadId: null,
+        parentThreadId: null,
+        sourceThreadId: null,
+      });
+      await runThreadPurges(harness.deps);
+      expect(getThread(harness.db, owner.id)).toBeNull();
     });
   });
 

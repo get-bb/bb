@@ -1638,9 +1638,11 @@ A seek table sits in a zstd skippable frame.
   a purge queued,
   then its rows, attachments and events, and one transaction unhides it,
   cancels the purge and restarts an archived thread's archive clock. A
-  recreated thread's storage counts as not yet deleted, and its links to
-  threads that are not on this server (parent, source, lifecycle owner,
-  environment, section) are dropped. An import
+  recreated thread's storage counts as not yet deleted. Its links to
+  environments and sections that are not on this server are dropped, and so
+  are its links to threads (parent, source, lifecycle owner) that are not on
+  this server or are deleted when it unhides, so a deleted thread's purge never
+  waits on a restored one. An import
   that fails or is cut off leaves the hidden thread to that purge. It answers
   `{ threadId, rows }`: 404 when the project is not on this server, 400 for a
   file that is not a thread file, is damaged, has rows from another thread or
