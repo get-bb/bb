@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillDetailRoutePath,
@@ -10,7 +9,7 @@ import {
   getAutomationsRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
-  getThreadRoutePath,
+  getThreadLocationPath,
   isPluginsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
@@ -20,6 +19,7 @@ import {
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   resolveRouteHref,
 } from "./route-paths";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 describe("route path helpers", () => {
   it.each(["/projects/proj_one/settings", "/settings/projects/proj_one"])(
@@ -41,7 +41,7 @@ describe("route path helpers", () => {
 
   it("builds canonical projectless thread detail URLs", () => {
     expect(
-      getThreadRoutePath({
+      getThreadLocationPath({
         projectId: PERSONAL_PROJECT_ID,
         threadId: "thr_personal",
       }),
@@ -50,7 +50,7 @@ describe("route path helpers", () => {
 
   it("keeps standard project thread detail URLs project scoped", () => {
     expect(
-      getThreadRoutePath({
+      getThreadLocationPath({
         projectId: "proj_standard",
         threadId: "thr_standard",
       }),
@@ -94,7 +94,7 @@ describe("route path helpers", () => {
     expect(
       getPluginDetailRoutePath({ pluginId: "github", view: "installed" }),
     ).toBe("/settings/plugins/github?view=installed");
-    expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
+    expect(getSettingsTargetPath({ pluginId: "github" })).toBe(
       "/settings/plugins/github",
     );
     expect(isPluginsRoutePath("/plugins/github")).toBe(true);

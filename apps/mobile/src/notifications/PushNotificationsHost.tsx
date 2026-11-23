@@ -1,5 +1,5 @@
 import * as Notifications from "expo-notifications";
-import { getThreadRoutePath } from "@bb/client-core";
+import { getThreadLocationPath } from "@bb/client-core";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
@@ -85,13 +85,12 @@ export function PushNotificationsHost() {
       router.push(
         webViewShellHref({
           profileId: profile.id,
-          path:
-            target.projectId === null
-              ? `/threads/${target.threadId}`
-              : getThreadRoutePath({
-                  projectId: target.projectId,
-                  threadId: target.threadId,
-                }),
+          path: getThreadLocationPath({
+            threadId: target.threadId,
+            ...(target.projectId === null
+              ? {}
+              : { projectId: target.projectId }),
+          }),
         }),
       );
     },

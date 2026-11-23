@@ -55,7 +55,6 @@ interface RuntimeProviderDeferredEventsArgs {
 }
 
 interface RuntimeProviderProcessManagerArgs {
-  additionalWorkspaceWriteRoots: readonly string[];
   createAdapter?: (
     providerId: string,
     options: CreateBridgeAdapterOptions,
@@ -365,7 +364,6 @@ export class RuntimeProviderProcessManager {
     bridgeLaunch: AgentRuntimeBridgeLaunch,
   ): BridgeProtocolAdapter {
     const adapterOptions = {
-      additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       bridgeLaunch,
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined

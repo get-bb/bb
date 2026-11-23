@@ -9,13 +9,7 @@ import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 function buildPluginStaticProviderOptions(
   options: CreateBridgeAdapterOptions,
 ): { staticProviderOptions?: Record<string, unknown> } {
-  const additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
-  const staticProviderOptions = {
-    ...options.bridgeLaunch.providerOptions,
-    ...(additionalWorkspaceWriteRoots.length > 0
-      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
-      : {}),
-  };
+  const staticProviderOptions = options.bridgeLaunch.providerOptions;
   return Object.keys(staticProviderOptions).length > 0
     ? { staticProviderOptions }
     : {};

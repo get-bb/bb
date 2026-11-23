@@ -16,7 +16,6 @@ import type {
 } from "./types.js";
 
 export interface CreateBridgeAdapterOptions {
-  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
@@ -32,6 +31,7 @@ export type ProviderExecutionContext = {
   providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;
+  additionalWorkspaceWriteRoots: readonly string[];
 } & RuntimePermissionPolicy;
 
 export type AdapterCommand =

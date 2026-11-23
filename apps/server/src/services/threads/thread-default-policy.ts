@@ -480,12 +480,10 @@ export async function resolveCreateThreadEnvironment(
   if (
     hasLiveParent &&
     parentThread?.projectId === PERSONAL_PROJECT_ID &&
+    parentThread.environmentId !== null &&
     args.projectId === PERSONAL_PROJECT_ID &&
     isPersonalWorkspaceEnvironment(args.requestedEnvironment)
   ) {
-    if (!parentThread.environmentId) {
-      throw new Error("Personal parent thread is missing an environment");
-    }
     const requestedEnvironment = args.requestedEnvironment;
     const requestedMachine: ProviderEnvironmentArgs["machine"] =
       requestedEnvironment.type === "provider"

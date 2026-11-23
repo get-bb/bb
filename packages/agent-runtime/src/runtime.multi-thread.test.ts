@@ -259,6 +259,7 @@ describe("createAgentRuntime multi-thread routing", () => {
 
     await runtime.startThread({
       bridgeLaunch: launchA,
+      additionalWorkspaceWriteRoots: [],
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -267,6 +268,7 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
     await runtime.startThread({
       bridgeLaunch: launchB,
+      additionalWorkspaceWriteRoots: [],
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",

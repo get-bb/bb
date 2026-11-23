@@ -171,6 +171,7 @@ function readWorkspaceAgentContextFromDisk(
     projectSkills,
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [],
   };
 }
 

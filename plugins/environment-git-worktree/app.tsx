@@ -38,6 +38,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { DiscoveredWorktree } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
+import { WarmPoolSettings } from "./warm-pool-settings.js";
 import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
 
 const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
@@ -459,6 +460,10 @@ function WorktreeInputsControl({
 }
 
 export default definePluginApp((app) => {
+  app.slots.settingsSection({
+    id: "warm-worktrees",
+    component: WarmPoolSettings,
+  });
   app.slots.experimental_environmentProviderInputs({
     environmentProviderId: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
     component: WorktreeInputsControl,

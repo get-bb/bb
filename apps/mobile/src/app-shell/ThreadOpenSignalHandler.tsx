@@ -1,5 +1,6 @@
 import { usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
+import { getThreadLocationPath } from "@bb/client-core";
 import { webViewShellHref } from "@/screens/shell/hrefs";
 import { useProfiles } from "./ProfilesProvider";
 
@@ -12,7 +13,14 @@ export function ThreadOpenSignalHandler() {
     if (!realtime) return;
     return realtime.onThreadOpen((signal) => {
       if (pathnameIsThread(pathname, signal.threadId)) return;
-      router.push(webViewShellHref({ path: `/threads/${signal.threadId}` }));
+      router.push(
+        webViewShellHref({
+          path: getThreadLocationPath({
+            threadId: signal.threadId,
+            projectId: signal.projectId,
+          }),
+        }),
+      );
     });
   }, [realtime, router, pathname]);
   return null;

@@ -118,10 +118,14 @@ function toBridgeWireOptions(
     permissionScope,
     approvalReviewer,
     permissionEscalation,
+    additionalWorkspaceWriteRoots,
   } = options;
   const providerOptions = {
     ...staticProviderOptions,
     ...options.providerOptions,
+    ...(additionalWorkspaceWriteRoots.length > 0
+      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
+      : {}),
   };
   return {
     ...(model !== undefined ? { model } : {}),

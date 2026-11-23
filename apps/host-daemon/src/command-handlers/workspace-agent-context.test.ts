@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,11 +7,15 @@ import {
   normalizeProviderNativeRoots,
 } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
+import { promisify } from "node:util";
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
+
+const execFileAsync = promisify(execFile);
 
 const tempDirs: string[] = [];
 const readOptions = {
   includeAgentInstructions: true,
+  folderPaths: [],
   projectSkillRead: {
     limit: 1_000,
     maxFileBytes: 10 * 1024 * 1024,
@@ -43,6 +48,30 @@ function skillMarkdown(name: string): string {
 }
 
 describe("readWorkspaceAgentContext", () => {
+  it("reports whether each requested folder is a git repository", async () => {
+    const root = await makeWorkspace();
+    const repo = await makeWorkspace();
+    await execFileAsync("git", ["init", "-q"], { cwd: repo });
+    const nested = path.join(repo, "packages", "app");
+    await fs.mkdir(nested, { recursive: true });
+    const missing = path.join(root, "missing");
+
+    const context = await readWorkspaceAgentContext({
+      type: "host.read_workspace_agent_context",
+      ...readOptions,
+      folderPaths: [root, repo, nested, missing],
+      rootPath: root,
+      sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
+    });
+
+    expect(context.folders).toEqual([
+      { path: root, isGitRepo: false },
+      { path: repo, isGitRepo: true },
+      { path: nested, isGitRepo: true },
+      { path: missing, isGitRepo: false },
+    ]);
+  });
+
   it("reads the instructions and each direct project skill the way the server listed them", async () => {
     const root = await makeWorkspace();
     const skillsRoot = path.join(root, ".bb", "skills");
@@ -102,6 +131,7 @@ describe("readWorkspaceAgentContext", () => {
       ],
       projectSkillsTruncated: false,
       sharedSkills: [],
+      folders: [],
     });
   });
 
@@ -121,6 +151,7 @@ describe("readWorkspaceAgentContext", () => {
       projectSkills: [],
       projectSkillsTruncated: false,
       sharedSkills: [],
+      folders: [],
     });
   });
 

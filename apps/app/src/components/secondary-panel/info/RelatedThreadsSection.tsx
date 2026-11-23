@@ -3,7 +3,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ThreadListEntryStatusGlyph } from "@/components/thread/ThreadListEntryStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useChildThreads, useThreads } from "@/hooks/queries/thread-queries";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { InfoListRow, InfoRowTime } from "@bb/shared-ui/info-list-row";
 import { Link } from "react-router-dom";
@@ -48,7 +48,7 @@ export function RelatedThreadsSection({
                 kind: "custom",
                 render: (primary) => (
                   <Link
-                    to={getThreadRoutePath({
+                    to={getThreadLocationPath({
                       projectId: relatedThread.projectId,
                       threadId: relatedThread.id,
                     })}

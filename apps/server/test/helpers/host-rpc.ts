@@ -20,6 +20,7 @@ export const EMPTY_WORKSPACE_AGENT_CONTEXT: HostDaemonOnlineRpcResult<"host.read
     projectSkills: [],
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [],
   };
 
 interface ProviderModelResponse {

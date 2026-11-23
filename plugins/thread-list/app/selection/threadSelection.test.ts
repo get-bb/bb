@@ -12,7 +12,6 @@ function renderSidebar(
   rows: readonly (string | readonly string[])[],
 ): HTMLDivElement {
   const content = document.createElement("div");
-  content.setAttribute("data-sidebar", "content");
   for (const row of rows) {
     if (typeof row === "string") {
       const link = document.createElement("a");
@@ -86,12 +85,12 @@ describe("ThreadSelectionStore", () => {
     (portaled) => {
       const sidebar = renderSidebar(["main-a", "main-b"]);
       const overflow = renderSidebar(["a", ["b", "c"], "d"]);
-      overflow.removeAttribute("data-sidebar");
       overflow.setAttribute("data-sidebar-overflow", "true");
       if (!portaled) sidebar.append(overflow);
       const other = renderSidebar(["other"]);
       other.setAttribute("data-sidebar-overflow", "true");
       const store = new ThreadSelectionStore();
+      store.setScrollElement(sidebar);
       store.handleClick("a", NONE, row("a"));
       store.handleClick("d", SHIFT, row("d"));
       expect(store.getSelected()).toEqual(["a", "b", "c", "d"]);
@@ -100,6 +99,19 @@ describe("ThreadSelectionStore", () => {
       expect(store.getSelected()).toEqual(["main-a", "main-b"]);
     },
   );
+
+  it("keeps a shift-click range inside the sidebar's scroll element", () => {
+    renderSidebar(["outside"]);
+    const sidebar = renderSidebar(["a", ["b"], "c"]);
+    const store = new ThreadSelectionStore();
+    store.setScrollElement(sidebar);
+    store.handleClick("outside", NONE, row("outside"));
+    store.handleClick("c", SHIFT, row("c"));
+    expect(store.getSelected()).toEqual(["c"]);
+    store.handleClick("a", NONE, row("a"));
+    store.handleClick("c", SHIFT, row("c"));
+    expect(store.getSelected()).toEqual(["a", "b", "c"]);
+  });
 
   it("re-anchors on a plain click, which clears the selection and lets the row open", () => {
     renderSidebar(["a", "b", "c", "d"]);

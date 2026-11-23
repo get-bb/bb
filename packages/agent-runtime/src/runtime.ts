@@ -203,6 +203,7 @@ const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
 
 interface ThreadRuntimeConfig {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
@@ -255,8 +256,6 @@ function resolveThreadStoragePath(
 }
 
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
-  const additionalWorkspaceWriteRoots =
-    options.additionalWorkspaceWriteRoots ?? [];
   const skillRoots = options.skillRoots ?? [];
   for (const skillRoot of skillRoots) {
     if (!path.isAbsolute(skillRoot.path)) {
@@ -317,7 +316,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const bridgeNodeEnv = defaultBridgeNodeEnv();
 
   const providerProcesses = new RuntimeProviderProcessManager({
-    additionalWorkspaceWriteRoots,
     bridgeBundleDir: options.bridgeBundleDir,
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath: process.execPath,
@@ -1106,6 +1104,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const { currentConfig } = args;
     const resumeInstructions = args.instructions ?? currentConfig.instructions;
     await runtime.resumeThread({
+      additionalWorkspaceWriteRoots:
+        currentConfig.additionalWorkspaceWriteRoots,
       bridgeLaunch: currentConfig.bridgeLaunch,
       skillRoots: currentConfig.skillRoots,
       environmentId: currentConfig.environmentId,
@@ -1550,6 +1550,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async startThread({
+      additionalWorkspaceWriteRoots,
       environmentId,
       threadId,
       projectId,
@@ -1600,6 +1601,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            additionalWorkspaceWriteRoots,
             bridgeLaunch,
             skillRoots: sessionSkillRoots,
             contributedEnv,
@@ -1616,6 +1618,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           });
 
           const providerExecutionContext = toProviderExecutionContext({
+            additionalWorkspaceWriteRoots,
             envVars: resolvedEnvironment.envVars,
             execOpts,
             instructions,
@@ -1707,6 +1710,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async prepareThreadRewind({
+      additionalWorkspaceWriteRoots,
       environmentId,
       threadId,
       leaseId,
@@ -1780,6 +1784,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               sourceProviderThreadId,
               sourceProviderCheckpointId: retainThroughProviderCheckpoint,
               options: toProviderExecutionContext({
+                additionalWorkspaceWriteRoots,
                 envVars: resolvedEnvironment.envVars,
                 execOpts,
                 instructions,
@@ -1879,6 +1884,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async resumeThread({
+      additionalWorkspaceWriteRoots,
       environmentId,
       threadId,
       projectId,
@@ -1937,6 +1943,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            additionalWorkspaceWriteRoots,
             bridgeLaunch,
             skillRoots: sessionSkillRoots,
             contributedEnv,
@@ -1960,6 +1967,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             cwd: options.workspacePath,
             providerThreadId,
             options: toProviderExecutionContext({
+              additionalWorkspaceWriteRoots,
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
@@ -2068,6 +2076,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
+              additionalWorkspaceWriteRoots:
+                currentConfig.additionalWorkspaceWriteRoots,
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,
@@ -2213,6 +2223,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             input,
             clientRequestId,
             options: toProviderExecutionContext({
+              additionalWorkspaceWriteRoots:
+                currentConfig.additionalWorkspaceWriteRoots,
               envVars: resolvedEnvironment.envVars,
               execOpts,
               instructions,

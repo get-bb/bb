@@ -3,7 +3,7 @@ import {
   PluginSlotMount,
   resetCrashedPluginSlots,
 } from "@/components/plugin/PluginSlotMount";
-import { useSidebar } from "@/components/ui/sidebar.js";
+import { SidebarContent, useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
@@ -19,11 +19,36 @@ const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
+  scrollElement: HTMLElement;
   onNavigate: () => void;
 }
 
-export function PluginThreadList({
+interface SidebarThreadListContentProps {
+  replacement: ResolvedReplacement<PluginThreadListSlot>;
+  onNavigate: () => void;
+}
+
+export function SidebarThreadListContent({
   replacement,
+  onNavigate,
+}: SidebarThreadListContentProps) {
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  return (
+    <SidebarContent ref={setScrollElement}>
+      {scrollElement === null ? null : (
+        <PluginThreadList
+          replacement={replacement}
+          scrollElement={scrollElement}
+          onNavigate={onNavigate}
+        />
+      )}
+    </SidebarContent>
+  );
+}
+
+function PluginThreadList({
+  replacement,
+  scrollElement,
   onNavigate,
 }: PluginThreadListProps) {
   const { projectId, threadId } = useRouteState();
@@ -85,6 +110,7 @@ export function PluginThreadList({
         activeProjectId={projectId ?? null}
         isCompactViewport={isCompactViewport}
         onNavigate={onNavigate}
+        experimental_scrollElement={scrollElement}
         searchQuery=""
       />
     </PluginSlotMount>

@@ -36,6 +36,7 @@ import {
   readDataDirAgentInstructions,
 } from "./workspace-agent-instructions.js";
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
+import { renderWorkspaceFolderInstructions } from "./workspace-folder-instructions.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
 import { sliceUtf16Head } from "@bb/text-utils";
@@ -61,6 +62,7 @@ interface ResolvePermissionEscalationArgs {
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {
+  additionalWorkspaceFolders: string[];
   contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
   injectedSkillSources: HostDaemonInjectedSkillSource[];
@@ -134,10 +136,15 @@ export async function resolveThreadRuntimeCommandConfig(
     throw new ApiError(404, "host_not_found", "Host not found");
   }
 
+  const additionalWorkspaceFolders: string[] = [];
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
     includeAgentInstructions: true,
     hostId: args.environment.hostId,
     workspacePath,
+    folderPaths:
+      additionalWorkspaceFolders.length > 0
+        ? [workspacePath, ...additionalWorkspaceFolders]
+        : [],
   });
   markTurnTraceSpan("runtimeConfig.workspaceRead");
   const pluginSkillRoots = getPluginSkillRootContributions();
@@ -219,6 +226,12 @@ export async function resolveThreadRuntimeCommandConfig(
     (contribution) => contribution.tool,
   );
   const instructionSections: string[] = [];
+  const workspaceFolderInstructions = renderWorkspaceFolderInstructions(
+    workspaceAgentContext.folders,
+  );
+  if (workspaceFolderInstructions !== null) {
+    instructionSections.push(workspaceFolderInstructions);
+  }
   for (const contribution of dynamicToolContributions) {
     if (!contribution.instructions) continue;
     if (contribution.pluginId === null) {
@@ -267,6 +280,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
   markTurnTraceSpan("runtimeConfig.built");
   return {
+    additionalWorkspaceFolders,
     contributedEnv,
     dynamicTools,
     injectedSkillSources,

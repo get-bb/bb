@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -16,7 +8,6 @@ import type {
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
-import { revealTimelineRow } from "@/components/thread/timeline/reveal-timeline-row.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-panel-queries";
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
@@ -29,6 +20,7 @@ import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentio
 
 export interface TocItem {
   id: string;
+  messageSeq: number;
   label: string;
   role: "user" | "assistant";
 }
@@ -44,9 +36,7 @@ interface ThreadTableOfContentsProps {
   contextBoundarySeq: number | null;
   threadId: string;
   timelineRows: readonly TimelineRow[];
-  hasOlderTimelineRows: boolean;
-  loadOlderTimelineRows: () => void | Promise<void>;
-  onNavigateToRow?: (rowId: string) => void;
+  onRevealMessage: (messageSeq: number) => void;
 }
 
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
@@ -54,8 +44,6 @@ const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 const TOC_MIN_USER_MESSAGES = 3;
 const TOC_MAX_RAIL_TICKS = 20;
 const TOC_ACTIVE_UPDATE_IDLE_MS = 120;
-const TOC_JUMP_MAX_PAGE_LOADS = 1000;
-const TOC_JUMP_RENDER_FRAMES = 6;
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -95,6 +83,7 @@ function getTimelineTocItem(row: TimelineConversationRow): TocItem {
   if (cachedItem !== undefined) return cachedItem;
   const item: TocItem = {
     id: row.id,
+    messageSeq: row.messageSeq,
     label: toTocLabel({ attachments: row.attachments, text: row.text }),
     role: row.role,
   };
@@ -106,6 +95,7 @@ function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
   const summary = item.attachmentSummary;
   return {
     id: item.id,
+    messageSeq: item.messageSeq,
     label:
       item.preview ||
       (summary
@@ -345,82 +335,6 @@ function findTimelineRowElements(
     : [];
 }
 
-function findTimelineRowElement(
-  scrollElement: HTMLElement | null,
-  rowId: string,
-): HTMLElement | null {
-  return (
-    findTimelineRowElements(scrollElement).find(
-      (row) => row.dataset.timelineRowId === rowId,
-    ) ?? null
-  );
-}
-
-async function jumpToUnrenderedTimelineRow({
-  getScrollElement,
-  hasOlderRef,
-  id,
-  jumpInProgressRef,
-  loadOlderRef,
-  mountedRef,
-  rowIsLoaded,
-  scrollToRow,
-  setPendingJumpId,
-}: {
-  getScrollElement: () => HTMLElement | null;
-  hasOlderRef: RefObject<boolean>;
-  id: string;
-  jumpInProgressRef: RefObject<boolean>;
-  loadOlderRef: RefObject<() => Promise<void> | void>;
-  mountedRef: RefObject<boolean>;
-  rowIsLoaded: boolean;
-  scrollToRow: (element: HTMLElement) => void;
-  setPendingJumpId: (id: string | null) => void;
-}): Promise<void> {
-  const waitForRenderedRow = async () => {
-    for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES; frame++) {
-      await waitForAnimationFrame();
-      if (!mountedRef.current) return null;
-      const renderedRow = findTimelineRowElement(getScrollElement(), id);
-      if (renderedRow) return renderedRow;
-    }
-    return null;
-  };
-  let row: HTMLElement | null = null;
-  try {
-    if (rowIsLoaded) {
-      row = await waitForRenderedRow();
-      if (!mountedRef.current) return;
-    }
-    let loads = 0;
-    while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
-      loads += 1;
-      try {
-        await Promise.resolve(loadOlderRef.current());
-      } catch {
-        break;
-      }
-      if (!mountedRef.current) return;
-      row = await waitForRenderedRow();
-      if (!mountedRef.current) return;
-    }
-    if (!row) row = findTimelineRowElement(getScrollElement(), id);
-    if (row) scrollToRow(row);
-  } finally {
-    jumpInProgressRef.current = false;
-    setPendingJumpId(null);
-  }
-}
-function waitForAnimationFrame(): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined") {
-      resolve();
-      return;
-    }
-    window.requestAnimationFrame(() => resolve());
-  });
-}
-
 function isScrollElementNearBottom(scrollElement: HTMLElement): boolean {
   return (
     scrollElement.scrollHeight -
@@ -564,9 +478,7 @@ export function ThreadTableOfContents({
   contextBoundarySeq,
   threadId,
   timelineRows,
-  hasOlderTimelineRows,
-  loadOlderTimelineRows,
-  onNavigateToRow,
+  onRevealMessage,
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
@@ -596,7 +508,6 @@ export function ThreadTableOfContents({
   });
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
   const {
     aboveOverflow,
     belowOverflow,
@@ -617,21 +528,6 @@ export function ThreadTableOfContents({
     () => selectTocRailItems({ activeId: activeUserId, items: userItems }),
     [activeUserId, userItems],
   );
-
-  const hasOlderRef = useRef(hasOlderTimelineRows);
-  const loadOlderRef = useRef(loadOlderTimelineRows);
-  useLayoutEffect(() => {
-    hasOlderRef.current = hasOlderTimelineRows;
-    loadOlderRef.current = loadOlderTimelineRows;
-  });
-  const jumpInProgressRef = useRef(false);
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!tocVisible) return;
@@ -702,37 +598,6 @@ export function ThreadTableOfContents({
       });
     }
   }, [activeId, items, open, scrollRef, tocVisible]);
-
-  const handleSelect = useCallback(
-    async (id: string) => {
-      const getScrollElement = () => bottomAnchor?.getScrollElement() ?? null;
-      const scrollToRow = (element: HTMLElement) => {
-        revealTimelineRow(element, bottomAnchor);
-      };
-      onNavigateToRow?.(id);
-
-      const row = findTimelineRowElement(getScrollElement(), id);
-      if (row) {
-        scrollToRow(row);
-        return;
-      }
-      if (jumpInProgressRef.current) return;
-      jumpInProgressRef.current = true;
-      setPendingJumpId(id);
-      await jumpToUnrenderedTimelineRow({
-        getScrollElement,
-        hasOlderRef,
-        id,
-        jumpInProgressRef,
-        loadOlderRef,
-        mountedRef,
-        rowIsLoaded: timelineRows.some((timelineRow) => timelineRow.id === id),
-        scrollToRow,
-        setPendingJumpId,
-      });
-    },
-    [bottomAnchor, onNavigateToRow, timelineRows],
-  );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {
     return <span ref={setRootElement} aria-hidden className="hidden" />;
@@ -815,7 +680,6 @@ export function ThreadTableOfContents({
                   <ul className="flex flex-col">
                     {items.map((item) => {
                       const active = item.id === activeId;
-                      const pending = item.id === pendingJumpId;
                       return (
                         <li key={item.id}>
                           <button
@@ -824,10 +688,7 @@ export function ThreadTableOfContents({
                               else itemEls.current.delete(item.id);
                             }}
                             type="button"
-                            aria-busy={pending}
-                            onClick={() => {
-                              void handleSelect(item.id);
-                            }}
+                            onClick={() => onRevealMessage(item.messageSeq)}
                             className={cn(
                               "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
                               active
@@ -841,7 +702,6 @@ export function ThreadTableOfContents({
                                 active
                                   ? "text-foreground"
                                   : "text-muted-foreground",
-                                pending && "animate-pulse",
                               )}
                             >
                               <TocItemPreview

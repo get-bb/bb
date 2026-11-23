@@ -15,11 +15,16 @@ import { isFsErrorWithCode } from "../fs-errors.js";
 import { readFileForTransport } from "./file-read.js";
 import { listSharedSkills } from "./list-skills.js";
 import { findSkillFiles, resolveSkillPath } from "@bb/skill-index";
+import { provisionWorkspace } from "@bb/host-workspace";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 const PROJECT_SKILLS_RELATIVE_SEGMENTS = [".bb", "skills"] as const;
 const AGENT_INSTRUCTIONS_RELATIVE_SEGMENTS = [".bb", "AGENTS.md"] as const;
 type SkillReadPolicy =
   CommandOf<"host.read_workspace_agent_context">["projectSkillRead"];
+
+type WorkspaceFolder =
+  HostDaemonOnlineRpcResult<"host.read_workspace_agent_context">["folders"][number];
 
 interface ProjectSkillFiles {
   skills: WorkspaceProjectSkillFile[];
@@ -186,26 +191,49 @@ async function readAgentInstructions(rootPath: string): Promise<string | null> {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function inspectWorkspaceFolder(
+  folderPath: string,
+): Promise<WorkspaceFolder> {
+  if (!path.isAbsolute(folderPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "folderPaths entries must be absolute",
+    );
+  }
+  try {
+    const folder = await provisionWorkspace({ path: folderPath });
+    return { path: folderPath, isGitRepo: folder.isGitRepo };
+  } catch (error) {
+    if (error instanceof WorkspaceError && error.code === "path_not_found") {
+      return { path: folderPath, isGitRepo: false };
+    }
+    throw error;
+  }
+}
+
 export async function readWorkspaceAgentContext(
   command: CommandOf<"host.read_workspace_agent_context">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_workspace_agent_context">> {
   if (!path.isAbsolute(command.rootPath)) {
     throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
   }
-  const [projectSkills, agentInstructions, sharedSkills] = await Promise.all([
-    readProjectSkillFiles(command.rootPath, command.projectSkillRead),
-    command.includeAgentInstructions
-      ? readAgentInstructions(command.rootPath)
-      : Promise.resolve(null),
-    listSharedSkills({
-      cwd: command.rootPath,
-      roots: command.sharedSkillRoots,
-    }),
-  ]);
+  const [projectSkills, agentInstructions, sharedSkills, folders] =
+    await Promise.all([
+      readProjectSkillFiles(command.rootPath, command.projectSkillRead),
+      command.includeAgentInstructions
+        ? readAgentInstructions(command.rootPath)
+        : Promise.resolve(null),
+      listSharedSkills({
+        cwd: command.rootPath,
+        roots: command.sharedSkillRoots,
+      }),
+      Promise.all(command.folderPaths.map(inspectWorkspaceFolder)),
+    ]);
   return {
     agentInstructions,
     projectSkills: projectSkills.skills,
     projectSkillsTruncated: projectSkills.truncated,
     sharedSkills,
+    folders,
   };
 }

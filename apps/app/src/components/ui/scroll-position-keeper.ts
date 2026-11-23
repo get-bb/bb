@@ -1,4 +1,5 @@
 import { WINDOW_FIND_OPEN_EVENT } from "@/lib/window-find";
+import { hasTextSelectionWithin } from "./gesture-dom.js";
 
 export type ScrollHoldEdge = "top" | "bottom";
 
@@ -863,10 +864,17 @@ export class ScrollPositionKeeper {
   }
 
   private followsUnexplainedScroll(): boolean {
-    return (
+    if (
       this.windowFindOpen ||
-      (this.position.kind !== "bottom" && this.pendingRestore === null) ||
-      this.options.getScrollElement()?.querySelector("iframe:hover") != null
+      (this.position.kind !== "bottom" && this.pendingRestore === null)
+    ) {
+      return true;
+    }
+    const scrollElement = this.options.getScrollElement();
+    return (
+      scrollElement !== null &&
+      (scrollElement.querySelector("iframe:hover") !== null ||
+        hasTextSelectionWithin(scrollElement))
     );
   }
 

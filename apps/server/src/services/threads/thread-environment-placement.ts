@@ -455,6 +455,7 @@ function reuseEnvironmentPlacement(
   deps: PlacementDeps,
   environment: EnvironmentRow,
 ): ThreadEnvironmentPlacement {
+  refusePluginHeldEnvironment(environment);
   if (
     environment.teardownStatus !== null ||
     (environment.status !== "ready" && environment.status !== "provisioning")
@@ -471,6 +472,15 @@ function reuseEnvironmentPlacement(
     environmentId: environment.id,
     environmentIntent: { type: "reuse", environmentId: environment.id },
   };
+}
+
+function refusePluginHeldEnvironment(environment: EnvironmentRow): void {
+  if (environment.heldBy === null || environment.heldBy === "user") return;
+  throw new ApiError(
+    409,
+    "environment_held",
+    `Environment ${environment.id} is held by ${environment.heldBy.slice("plugin:".length)}`,
+  );
 }
 
 export async function resolveThreadEnvironmentPlacement(

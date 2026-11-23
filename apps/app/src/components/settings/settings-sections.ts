@@ -1,5 +1,6 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import { SETTINGS_ROUTE_PATH, getSettingsRoutePath } from "@/lib/route-paths";
+import type { ExperimentalSettingsSection } from "@get-bb/plugin-sdk";
+import { SETTINGS_ROUTE_PATH } from "@/lib/route-paths";
 
 export const SETTINGS_NAV_SECTIONS = [
   { icon: "Settings", id: "general", label: "General" },
@@ -25,7 +26,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {
   icon: IconName;
-  id: string;
+  id: ExperimentalSettingsSection;
   label: string;
 }[];
 
@@ -37,10 +38,23 @@ export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 
-export function getSettingsSectionRoutePath(
-  sectionId: SettingsSectionId,
-): string {
-  return sectionId === "general"
-    ? SETTINGS_ROUTE_PATH
-    : getSettingsRoutePath(sectionId);
+export type SettingsTarget =
+  | { section: SettingsSectionId }
+  | { pluginId: string }
+  | { machineId: string }
+  | { projectId: string };
+
+export function getSettingsTargetPath(target: SettingsTarget): string {
+  if ("section" in target) {
+    return target.section === "general"
+      ? SETTINGS_ROUTE_PATH
+      : `${SETTINGS_ROUTE_PATH}/${encodeURIComponent(target.section)}`;
+  }
+  if ("pluginId" in target) {
+    return `${SETTINGS_ROUTE_PATH}/plugins/${encodeURIComponent(target.pluginId)}`;
+  }
+  if ("machineId" in target) {
+    return `${SETTINGS_ROUTE_PATH}/machines/${encodeURIComponent(target.machineId)}`;
+  }
+  return `${SETTINGS_ROUTE_PATH}/projects/${encodeURIComponent(target.projectId)}`;
 }

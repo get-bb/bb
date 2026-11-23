@@ -82,7 +82,6 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
-  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
@@ -99,6 +98,7 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 function ResourceBodyFallback() {
   return (
@@ -184,7 +184,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     (location.pathname ===
       getPluginDetailRoutePath({ pluginId: detailPluginId }) ||
       location.pathname ===
-        getPluginConfigurationRoutePath({ pluginId: detailPluginId }));
+        getSettingsTargetPath({ pluginId: detailPluginId }));
   const [locallyConfiguredDetailKey, setLocallyConfiguredDetailKey] = useState<
     string | null
   >(null);

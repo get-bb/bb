@@ -1897,7 +1897,7 @@ interface LoadThreadConversationOutlineOptions extends BuildThreadConversationOu
 }
 
 const CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH = 200;
-const CONVERSATION_OUTLINE_PROJECTION_VERSION = 2;
+const CONVERSATION_OUTLINE_PROJECTION_VERSION = 3;
 const conversationOutlineItemsSchema =
   threadConversationOutlineItemSchema.array();
 
@@ -2095,6 +2095,7 @@ function selectThreadConversationOutline(
           sourceSeqEnd: row.sourceSeqEnd,
           item: {
             id: row.id,
+            messageSeq: row.messageSeq,
             role: row.role,
             preview: toConversationOutlinePreview(row.text),
             attachmentSummary: toConversationOutlineAttachmentSummary(

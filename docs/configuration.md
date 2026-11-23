@@ -1359,6 +1359,15 @@ processor), a blank host field restores Auto, and `0` pauses new work for that
 scope. Configure it on its autosaving plugin page or with
 `bb concurrency-limit status|global|host`; see the `concurrency-limit` skill.
 
+### Worktree warm pools
+
+The builtin Worktree plugin can keep warm worktrees for a project so new
+worktree threads on the default base skip `git worktree add` and the setup
+script. It is off for every project; set a project's size from 0 to 4 on the
+plugin's settings page or with `bb worktree pool set <project-id> <size>`, and
+list them with `bb worktree pool status`. See
+[Warm worktrees](worktrees.md#warm-worktrees) and the `worktree` skill.
+
 ### GitHub Star
 
 The builtin GitHub Star plugin (`bb--github-star`) asks once for a star on

@@ -337,6 +337,7 @@ export async function buildThreadStartCommand(
       threadId: args.thread.id,
     }),
     instructions: runtimeContext.instructions,
+    additionalWorkspaceFolders: runtimeContext.additionalWorkspaceFolders,
     dynamicTools: runtimeContext.dynamicTools,
     contributedEnv: runtimeContext.contributedEnv,
     injectedSkillSources: runtimeContext.injectedSkillSources,
@@ -379,6 +380,8 @@ function buildPreparedTurnSubmitCommandPayload(
       bridgeLaunch,
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
+      additionalWorkspaceFolders:
+        args.runtimeContext.additionalWorkspaceFolders,
       dynamicTools: args.runtimeContext.dynamicTools,
       contributedEnv: args.runtimeContext.contributedEnv,
       injectedSkillSources: args.runtimeContext.injectedSkillSources,
