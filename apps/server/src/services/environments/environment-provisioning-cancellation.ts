@@ -58,12 +58,13 @@ export function discardPendingCreateForThreadStopInTransaction(
   if (
     environment === null ||
     !environment.createPending ||
-    environment.heldBy !== null ||
+    environment.heldBy === "user" ||
     environment.teardownStatus !== null ||
     hasOtherLiveThreadDependingOnEnvironmentProvision(deps, args)
   )
     return false;
   setEnvironmentColumns(deps.db, environment.id, {
+    heldBy: null,
     teardownStatus: "running",
     retireAt: Date.now(),
   });

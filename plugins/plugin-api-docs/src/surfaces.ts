@@ -1345,7 +1345,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create a workspace for each thread, such as a worktree or a cloud checkout",
           "Ask for inputs, such as a branch, on the new-thread screen",
           "Stream setup progress, and clean up when the thread is done",
-          "Restore a thread's workspace after it was removed",
+          "Restore a workspace, or keep ready ones to hand to new threads",
         ],
         apiSymbols: [
           "PluginEnvironments",
@@ -1379,6 +1379,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginEnvironmentProviderSteps",
           "PluginEnvironmentProviderLocation",
           "PluginEnvironmentProviderLocateContext",
+          "PluginBbSdk.environments.experimental_create",
         ],
         firstParty: [
           "Modal Sandbox [Experimental]",

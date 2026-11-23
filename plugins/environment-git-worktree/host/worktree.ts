@@ -226,7 +226,7 @@ async function waitForProvisionRetry(
   }
 }
 
-async function resolveRemoteBaseBranch(
+export async function resolveRemoteBaseBranch(
   sourcePath: string,
   baseBranch: string,
   signal: AbortSignal | undefined,
@@ -262,7 +262,7 @@ async function resolveRemoteBaseBranch(
   };
 }
 
-function isFetchFailureWithFallback(error: unknown): boolean {
+export function isFetchFailureWithFallback(error: unknown): boolean {
   return (
     error instanceof WorkspaceError &&
     (error.code === "git_command_failed" ||
@@ -501,6 +501,13 @@ async function readCompletedBranch(
   } catch {
     return null;
   }
+}
+
+export async function readNamedWorktreeBranch(
+  completionPath: string,
+): Promise<string | null> {
+  const completed = await readCompletedBranch(completionPath);
+  return completed === DETACHED_COMPLETION ? null : completed;
 }
 
 async function refreshWorktreeIndex(

@@ -127,6 +127,43 @@ Contract:
   that Git for Windows installs and fails with a message naming Git for Windows
   when there is none.
 
+## Warm worktrees
+
+A project can keep up to four warm worktrees per checkout: worktrees already
+created at the project's default base with `.worktreeinclude` copied and
+`.bb-env-setup.sh` finished. A new worktree thread on the default base takes
+one instead of waiting for git and the setup script, in the same order as a
+fresh worktree: bb asks the remote for its current default base
+(`git ls-remote`), hands the warm worktree to the thread, brings it up to date
+while the thread's title is generated, and names the branch from the title
+last. A warm worktree at the remote's commit starts the thread without running
+setup again. A warm worktree behind it is fast-forwarded to that commit and
+`.bb-env-setup.sh` runs again before the thread starts, so a thread never
+starts on older code than a fresh worktree would. If bb restarts before the
+handover finishes, that warm worktree is deleted and the thread gets another
+one, or a fresh worktree. A setup script that skips work whose inputs did not
+change (this repository's skips `pnpm install` when the lockfile is unchanged)
+makes that second run short. If the remote can't be reached, bb uses the last
+fetched default base instead, as a fresh worktree would, and the thread's
+provisioning log says it may be out of date. The log names the commit the
+thread starts on. Named bases, existing worktrees and restores always build a
+fresh worktree, and so does a thread that finds no usable warm worktree.
+
+Turn it on per project in the Worktree plugin's settings, or with
+`bb worktree pool set <project-id> <size>` (`0` turns it off and deletes the
+idle ones); `bb worktree pool status` lists them. While a project keeps warm
+worktrees, bb fetches its default base every two minutes and replaces warm
+worktrees that are no longer on it (the default branch was rewritten); a warm
+worktree that is only behind is kept and moved forward when a thread takes it.
+Refills run one at a time per machine
+after a handoff, idle worktrees are replaced after eight hours, and a failed
+one is deleted and retried after ten minutes. Warm worktrees are environments
+held by the Worktree plugin (`bb environment list --held-by
+plugin:environment-git-worktree`); threads cannot join them, and deleting the
+project or removing the machine removes them. Disabling or uninstalling the
+Worktree plugin releases them, and they are then removed like any unused
+worktree once the plugin is enabled again.
+
 ## Cleanup
 
 You don't need to clean up worktrees by hand. The Worktree plugin watches every
