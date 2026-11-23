@@ -32,7 +32,6 @@ function resolve(
     pick: AUTOMATIC_REPLACEMENT_PROVIDER,
     bbPluginIds: new Set(["thread-list"]),
     settledOnce: true,
-    settled: true,
     rememberedAutomatic: null,
     rule: REPLACEMENT_RULE,
     ...overrides,
@@ -78,20 +77,21 @@ describe("resolveExclusive", () => {
     });
   });
 
-  it("waits for the remembered Automatic winner during boot instead of painting another claimant", () => {
+  it("waits for the remembered Automatic winner only during boot, not when a later plugin reload runs after the winner changed", () => {
+    const rememberedAutomatic = replacementProviderKey(COMMUNITY);
     expect(
       resolve({
         claimants: [BUNDLED],
-        settled: false,
-        rememberedAutomatic: replacementProviderKey(COMMUNITY),
+        settledOnce: false,
+        rememberedAutomatic,
       }),
     ).toEqual({ kind: "loading" });
+    expect(resolve({ settledOnce: false, rememberedAutomatic })).toMatchObject({
+      registration: COMMUNITY,
+    });
     expect(
-      resolve({
-        settled: false,
-        rememberedAutomatic: replacementProviderKey(COMMUNITY),
-      }),
-    ).toMatchObject({ registration: COMMUNITY });
+      resolve({ claimants: [BUNDLED], rememberedAutomatic }),
+    ).toMatchObject({ kind: "plugin", registration: BUNDLED });
   });
 
   it("names no Automatic winner when several claim a no-automatic key", () => {

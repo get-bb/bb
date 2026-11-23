@@ -75,7 +75,6 @@ export function resolveSidebarNavigation({
     pick: preference,
     bbPluginIds,
     settledOnce,
-    settled,
     rememberedAutomatic: lastResolved?.key ?? null,
     rule: PLUGIN_ONLY_RULE,
   });

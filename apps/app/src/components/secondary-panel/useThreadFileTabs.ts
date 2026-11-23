@@ -476,7 +476,7 @@ export function useThreadFileTabs({
 
   const fileOpeners = usePluginSlotKind("fileOpeners");
   const fileOpenerPreference = useFileOpenerPreferenceValue();
-  const { bbPluginIds, settled, settledOnce } = useExclusiveBootState();
+  const { bbPluginIds, settledOnce } = useExclusiveBootState();
 
   const openResolvedTab = useCallback(
     (
@@ -485,7 +485,7 @@ export function useThreadFileTabs({
       viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
       const openerTab = createFileOpenerTabForRequest({
-        boot: { bbPluginIds, settled, settledOnce },
+        boot: { bbPluginIds, settledOnce },
         fileOpeners,
         preference: fileOpenerPreference,
         projectHostId,
@@ -531,7 +531,6 @@ export function useThreadFileTabs({
       bbPluginIds,
       fileOpenerPreference,
       fileOpeners,
-      settled,
       settledOnce,
       projectHostId,
       recordRecentItem,

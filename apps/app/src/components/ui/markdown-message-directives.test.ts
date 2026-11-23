@@ -29,7 +29,6 @@ afterEach(() => {
 describe("buildMessageDirectiveRegistry", () => {
   const settled = {
     bbPluginIds: new Set(["tasks"]),
-    settled: true,
     settledOnce: true,
   };
   const claimants = [
@@ -72,7 +71,7 @@ describe("buildMessageDirectiveRegistry", () => {
       buildMessageDirectiveRegistry(claimants, {
         unclaimed: "hold",
         picks: { task: "scott-tasks/task" },
-        boot: { ...settled, settled: false, settledOnce: false },
+        boot: { ...settled, settledOnce: false },
       }).directives.get("task"),
     ).toEqual({ status: "loading" });
   });

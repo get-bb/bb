@@ -32,7 +32,6 @@ import { MarkdownPreview } from "./markdown-preview";
 
 const SETTLED_BOOT = {
   bbPluginIds: new Set<string>(),
-  settled: true,
   settledOnce: true,
 };
 
@@ -545,7 +544,6 @@ describe("buildCodeFenceRendererRegistry", () => {
     });
     const boot = {
       bbPluginIds: new Set(["aaa-bundled"]),
-      settled: true,
       settledOnce: true,
     };
 

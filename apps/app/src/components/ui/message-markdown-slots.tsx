@@ -6,6 +6,7 @@ import {
   messageDirectivePicksAtom,
 } from "@/lib/plugin-choice-picks";
 import { useExclusiveBootState } from "@/lib/plugin-replacement-preference";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import {
   buildCodeFenceRendererRegistry,
@@ -29,13 +30,14 @@ export function MessageSlotRegistriesProvider({
   const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
   const directivePicks = useAtomValue(messageDirectivePicksAtom);
   const codeFencePicks = useAtomValue(codeFencePicksAtom);
-  const { bbPluginIds, settled, settledOnce } = useExclusiveBootState();
+  const { bbPluginIds, settledOnce } = useExclusiveBootState();
+  const settled = usePluginFrontendsSettled();
   const messageDirectiveRegistry = useMemo(
     () =>
       buildMessageDirectiveRegistry(messageDirectiveSlots, {
         unclaimed: settled ? "literal" : "hold",
         picks: directivePicks,
-        boot: { bbPluginIds, settled, settledOnce },
+        boot: { bbPluginIds, settledOnce },
       }),
     [bbPluginIds, directivePicks, messageDirectiveSlots, settled, settledOnce],
   );
@@ -43,7 +45,6 @@ export function MessageSlotRegistriesProvider({
     () =>
       buildCodeFenceRendererRegistry(codeFenceRendererSlots, codeFencePicks, {
         bbPluginIds,
-        settled: settledOnce,
         settledOnce,
       }),
     [bbPluginIds, codeFencePicks, codeFenceRendererSlots, settledOnce],

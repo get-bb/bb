@@ -19,7 +19,6 @@ import { resolveFileOpenerReplacement } from "./plugin-slot-resolvers";
 
 const SETTLED_BOOT = {
   bbPluginIds: new Set<string>(),
-  settled: true,
   settledOnce: true,
 };
 

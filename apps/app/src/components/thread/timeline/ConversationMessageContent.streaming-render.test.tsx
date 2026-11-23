@@ -41,7 +41,7 @@ const registry = buildMessageDirectiveRegistry(
   {
     unclaimed: "literal",
     picks: {},
-    boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
+    boot: { bbPluginIds: new Set(), settledOnce: true },
   },
 );
 

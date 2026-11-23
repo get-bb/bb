@@ -99,7 +99,7 @@ function legMessageDirectives(leg: PreviewLeg) {
       {
         unclaimed: "literal",
         picks: {},
-        boot: { bbPluginIds: new Set(), settled: true, settledOnce: true },
+        boot: { bbPluginIds: new Set(), settledOnce: true },
       },
     ),
     message: {

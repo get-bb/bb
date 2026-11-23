@@ -23,7 +23,6 @@ import {
 
 const SETTLED_BOOT = {
   bbPluginIds: new Set<string>(),
-  settled: true,
   settledOnce: true,
 };
 

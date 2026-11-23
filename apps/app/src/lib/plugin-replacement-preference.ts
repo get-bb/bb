@@ -6,10 +6,7 @@ import {
   type UiPreferenceValue,
 } from "@bb/domain";
 import { createLastKnownCache } from "@/lib/last-known-cache";
-import {
-  usePluginFrontendsSettled,
-  usePluginFrontendsSettledOnce,
-} from "@/lib/plugin-frontend-boot-state";
+import { usePluginFrontendsSettledOnce } from "@/lib/plugin-frontend-boot-state";
 import { useBbPluginIds } from "@/lib/plugin-slots";
 import {
   createSyncedPreferenceAtom,
@@ -87,7 +84,6 @@ export interface ExclusiveResolveInput<Slot> {
   pick: string;
   bbPluginIds: ReadonlySet<string>;
   settledOnce: boolean;
-  settled: boolean;
   rememberedAutomatic: string | null;
   rule: ExclusiveRule;
 }
@@ -97,7 +93,6 @@ export function resolveExclusive<Slot extends ReplacementProviderIdentity>({
   pick,
   bbPluginIds,
   settledOnce,
-  settled,
   rememberedAutomatic,
   rule,
 }: ExclusiveResolveInput<Slot>): ExclusiveResolution<Slot> {
@@ -125,7 +120,7 @@ export function resolveExclusive<Slot extends ReplacementProviderIdentity>({
   }
   const automatic = findAutomaticReplacement(claimants, bbPluginIds);
   if (
-    !settled &&
+    !settledOnce &&
     pick === AUTOMATIC_REPLACEMENT_PROVIDER &&
     rememberedAutomatic !== null &&
     (automatic === undefined ||
@@ -141,14 +136,12 @@ export function resolveExclusive<Slot extends ReplacementProviderIdentity>({
 export interface ExclusiveBootState {
   bbPluginIds: ReadonlySet<string>;
   settledOnce: boolean;
-  settled: boolean;
 }
 
 export function useExclusiveBootState(): ExclusiveBootState {
   return {
     bbPluginIds: useBbPluginIds(),
     settledOnce: usePluginFrontendsSettledOnce(),
-    settled: usePluginFrontendsSettled(),
   };
 }
 

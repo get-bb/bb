@@ -47,7 +47,6 @@ import { makePluginRegistrationSet as emptyRegistrationSet } from "@/test/fixtur
 
 const SETTLED_BOOT = {
   bbPluginIds: new Set<string>(),
-  settled: true,
   settledOnce: true,
 };
 const LITERAL_OPTIONS = {
@@ -58,7 +57,7 @@ const LITERAL_OPTIONS = {
 const HOLD_OPTIONS = {
   unclaimed: "hold",
   picks: {},
-  boot: { ...SETTLED_BOOT, settled: false },
+  boot: SETTLED_BOOT,
 } as const;
 
 function InlineVis(props: PluginMessageDirectiveProps) {
