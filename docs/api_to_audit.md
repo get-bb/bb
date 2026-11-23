@@ -5157,7 +5157,8 @@ superseded sidebar actions' `openNewThread`, the sidebar New thread button and
 its Open in split, the `thread.new` command, New thread in environment,
 Create plugin/skill and Edit via chat entry points, Create custom palette, and
 the screen after quick-creating a project. The bundled thread-list plugin's
-project, section, machine and Threads `+` buttons pass `split: true`.
+`+` buttons pass `split: true` on Cmd/Ctrl-click, like the sidebar New thread
+button.
 Redirects after a deletion or a disabled plugin and route repair only build the
 path. Requested in #8011 (a nav panel opening the composer beside a note) and
 #2795.
