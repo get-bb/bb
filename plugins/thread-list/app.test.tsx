@@ -319,6 +319,7 @@ describe("thread-list plugin", () => {
         hostId: "host_laptop",
         placement: { sectionId: null, pinned: false },
         focusPrompt: true,
+        split: true,
       },
     });
   });

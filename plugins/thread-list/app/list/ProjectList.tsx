@@ -1371,6 +1371,7 @@ function ProjectListComponent({
         placement: { sectionId: sectionId ?? null, pinned },
         ...(hostId ? { hostId } : {}),
         focusPrompt: true,
+        split: true,
       });
     },
     [],

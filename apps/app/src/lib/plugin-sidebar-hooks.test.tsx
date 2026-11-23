@@ -28,6 +28,7 @@ import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarTh
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import { useRootComposeProjectId } from "./root-compose-selection";
 
 const renderHook: typeof renderHookBase = (callback, options) => {
   const queryClient = new QueryClient();
@@ -44,8 +45,11 @@ const renderHook: typeof renderHookBase = (callback, options) => {
 
 const actions = vi.hoisted(() => ({
   navigate: vi.fn(),
-  setRootComposeProjectId: vi.fn(),
 }));
+
+function composeProjectId(): string {
+  return renderHook(() => useRootComposeProjectId()).result.current[0];
+}
 
 const mutations = vi.hoisted(() => ({
   pinThreadAsync: vi.fn(),
@@ -120,10 +124,6 @@ vi.mock("@/components/ui/app-route-anchor", () => ({
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
-}));
-
-vi.mock("./root-compose-selection", () => ({
-  useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
 }));
 
 const environmentProviders = vi.hoisted(() => ({
@@ -369,7 +369,7 @@ describe("useSidebarThreadActions", () => {
       });
     });
 
-    expect(actions.setRootComposeProjectId).toHaveBeenCalledWith("proj_target");
+    expect(composeProjectId()).toBe("proj_target");
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: {
         focusPrompt: true,
@@ -381,6 +381,7 @@ describe("useSidebarThreadActions", () => {
   it("opens a section without changing the selected project", () => {
     state.data = payload([]);
     const { result } = renderHook(() => useSidebarThreadActions());
+    const before = composeProjectId();
 
     act(() => {
       result.current.openNewThread({
@@ -389,11 +390,10 @@ describe("useSidebarThreadActions", () => {
       });
     });
 
-    expect(actions.setRootComposeProjectId).not.toHaveBeenCalled();
+    expect(composeProjectId()).toBe(before);
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: {
         focusPrompt: true,
-        sectionId: "sec_later",
         placement: { sectionId: "sec_later", pinned: false },
       },
     });
@@ -450,7 +450,6 @@ describe("useSidebarThreadActions", () => {
     );
     expect(actions.navigate).toHaveBeenCalledWith("/", {
       state: {
-        sectionId: "sec_old",
         placement: { sectionId: "sec_managers", pinned: true },
       },
     });

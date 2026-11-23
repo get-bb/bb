@@ -109,6 +109,7 @@ describe("creating a sidebar section", () => {
       options: {
         focusPrompt: true,
         placement: { sectionId: null, pinned: true },
+        split: true,
       },
     });
   });
@@ -126,6 +127,7 @@ describe("creating a sidebar section", () => {
       options: {
         placement: { sectionId: "sec_a", pinned: false },
         focusPrompt: true,
+        split: true,
       },
     });
   });

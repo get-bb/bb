@@ -103,7 +103,7 @@ the same change.
 - Read references/frontend-hooks-and-ui.md for hooks, composer customization,
   vendored components, runtime shims, crash isolation, and styling.
 - Read references/frontend-navigation.md to open or link a thread, a message
-  in it, or settings.
+  in it, the New thread screen, or settings.
 
 ### Testing
 

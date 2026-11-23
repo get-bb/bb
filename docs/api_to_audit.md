@@ -5146,6 +5146,22 @@ Audit pinned groups, custom sections, project/machine groups, route
 transitions, draft recovery, and third-party sidebar compatibility before
 stabilizing this option.
 
+**Opening the New thread screen.** `toCompose`'s `split: true` is stable and
+unprefixed, matching `toThread`'s `split`: bb opens the screen in a right split
+beside the caller, replaces the focused pane at the pane cap, and navigates
+plainly on compact viewports or without a split layout. The screen is a single
+pane, so when it is already open bb focuses it and applies the other options
+there. `openNewThread` (`split-layout/openNewThread.ts`) is the only way to
+open the screen for the user, with or without a split: `toCompose`, the
+superseded sidebar actions' `openNewThread`, the sidebar New thread button and
+its Open in split, the `thread.new` command, New thread in environment,
+Create plugin/skill and Edit via chat entry points, Create custom palette, and
+the screen after quick-creating a project. The bundled thread-list plugin's
+project, section, machine and Threads `+` buttons pass `split: true`.
+Redirects after a deletion or a disabled plugin and route repair only build the
+path. Requested in #8011 (a nav panel opening the composer beside a note) and
+#2795.
+
 ## Provider discovery metadata
 
 `package.json` → `bb.experimental_providers` statically declares

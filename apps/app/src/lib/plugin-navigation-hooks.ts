@@ -19,7 +19,6 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
-  getRootComposeRoutePath,
   getThreadLocationPath,
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -28,8 +27,8 @@ import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { lookupCachedThread } from "@/lib/cached-thread";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openThread, type OpenThreadArgs } from "@/lib/split-layout/openThread";
+import { openNewThread } from "@/lib/split-layout/openNewThread";
 import {
   getSettingsTargetPath,
   isSettingsSectionId,
@@ -76,7 +75,6 @@ interface BbNavigateDeps {
   store: ReturnType<typeof useStore>;
   queryClient: QueryClient;
   isCompact: boolean;
-  setRootComposeProjectId: (projectId: string) => void;
 }
 
 function assertMessageSeq(messageSeq: number): void {
@@ -176,32 +174,35 @@ function createBbNavigate(
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
     toCompose(options) {
-      const { navigate, onNavigate, pathname, setRootComposeProjectId } =
-        latest();
+      const { isCompact, navigate, onNavigate, pathname, store } = latest();
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         isAutomationEditRoutePath(pathname);
-      if (options?.projectId !== undefined) {
-        setRootComposeProjectId(options.projectId);
-      }
-      const hostId = options?.hostId?.trim() ?? "";
       onNavigate?.();
-      void navigate(getRootComposeRoutePath(), {
-        ...(replacesAutomationEditRoute ? { replace: true } : {}),
-        state: {
-          focusPrompt: options?.focusPrompt ?? false,
-          initialPrompt: options?.initialPrompt ?? "",
-          ...(options?.placement !== undefined
-            ? { placement: options.placement }
-            : {}),
-          ...(options?.environmentId !== undefined
-            ? { reuseEnvironmentId: options.environmentId }
-            : {}),
-          ...(hostId.length > 0 ? { newEnvironmentHostId: hostId } : {}),
-          ...(replacesAutomationEditRoute
-            ? { replaceInitialPrompt: true }
-            : {}),
+      openNewThread({
+        navigate: (route, navigateOptions) => {
+          void navigate(route, navigateOptions);
         },
+        store,
+        isCompact,
+        ...(options?.projectId !== undefined
+          ? { projectId: options.projectId }
+          : {}),
+        ...(options?.initialPrompt !== undefined
+          ? { initialPrompt: options.initialPrompt }
+          : {}),
+        ...(options?.focusPrompt === true ? { focusPrompt: true } : {}),
+        ...(options?.placement !== undefined
+          ? { placement: options.placement }
+          : {}),
+        ...(options?.environmentId !== undefined
+          ? { environmentId: options.environmentId }
+          : {}),
+        ...(options?.hostId !== undefined ? { hostId: options.hostId } : {}),
+        ...(options?.split === true ? { split: true } : {}),
+        ...(replacesAutomationEditRoute
+          ? { replace: true, replaceInitialPrompt: true }
+          : {}),
       });
     },
     openThreadPanel: createRetiredOpenPanel(
@@ -262,7 +263,6 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
     store: useStore(),
     queryClient: useQueryClient(),
     isCompact: useIsCompactViewport(),
-    setRootComposeProjectId: useSetRootComposeProjectId(),
   };
   const latest = useRef(deps);
   useLayoutEffect(() => {

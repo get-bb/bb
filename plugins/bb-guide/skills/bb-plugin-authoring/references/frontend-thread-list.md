@@ -120,6 +120,7 @@ navigate.toThread(id, { split: true }); // bb's split placement rules
 navigate.toCompose({ projectId, focusPrompt: true });
 navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
 navigate.toCompose({ projectId, environmentId }); // reuse an environment
+navigate.toCompose({ projectId, focusPrompt: true, split: true }); // beside the open panes
 await sdk.threads.pin({ threadId: id }); // optimistic in bb's surfaces
 await sdk.threads.markUnread({ threadId: id });
 await sdk.threads.update({ threadId: id, title: "New title" }); // silent; for inline editing

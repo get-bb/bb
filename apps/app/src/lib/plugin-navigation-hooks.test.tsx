@@ -21,6 +21,7 @@ import type { SettingsSectionId } from "@/components/settings/settings-sections"
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { useBbNavigate } from "./plugin-navigation-hooks";
@@ -34,6 +35,7 @@ interface Harness {
   navigate: () => BbNavigate;
   locations: Location[];
   store: ReturnType<typeof createStore>;
+  composeProjectId: () => string | null;
 }
 
 function renderNavigate({
@@ -66,6 +68,11 @@ function renderNavigate({
     if (locations.at(-1)?.key !== location.key) locations.push(location);
     return null;
   }
+  let composeProjectId: string | null = null;
+  function ComposeProjectProbe() {
+    composeProjectId = useRootComposeProjectId()[0];
+    return null;
+  }
   render(
     <QueryClientProvider client={queryClient}>
       <JotaiProvider store={store}>
@@ -75,6 +82,7 @@ function renderNavigate({
               <Probe />
             </PluginSlotMount>
             <LocationProbe />
+            <ComposeProjectProbe />
           </RouteNavigationProvider>
         </MemoryRouter>
       </JotaiProvider>
@@ -87,6 +95,7 @@ function renderNavigate({
     },
     locations,
     store,
+    composeProjectId: () => composeProjectId,
   };
 }
 
@@ -224,5 +233,60 @@ describe("useBbNavigate thread and settings locations", () => {
 
   it("names exactly the sections bb's settings has", () => {
     expectTypeOf<ExperimentalSettingsSection>().toEqualTypeOf<SettingsSectionId>();
+  });
+});
+
+const PLUGIN_PANEL_PANE = {
+  type: "pane",
+  paneId: "pane-1",
+  content: {
+    kind: "plugin-panel",
+    pluginId: "demo",
+    panelPath: "home",
+    subPath: "",
+  },
+} as const;
+
+describe("useBbNavigate New thread screen", () => {
+  it("opens the New thread screen beside the calling panel with the compose options", () => {
+    const { navigate, locations, store, composeProjectId } = renderNavigate({
+      layout: { root: PLUGIN_PANEL_PANE, focusedPaneId: "pane-1" },
+    });
+    act(() => {
+      navigate().toCompose({
+        projectId: "proj_vault",
+        initialPrompt: "Chat about this note",
+        focusPrompt: true,
+        environmentId: "env_1",
+        split: true,
+      });
+    });
+    const layout = store.get(splitLayoutAtom);
+    expect(layout?.root).toMatchObject({
+      type: "split",
+      dir: "row",
+      children: [PLUGIN_PANEL_PANE, { content: { kind: "new-thread" } }],
+    });
+    expect(layout?.focusedPaneId).not.toBe("pane-1");
+    expect(locations.at(-1)?.pathname).toBe("/");
+    expect(locations.at(-1)?.state).toEqual({
+      focusPrompt: true,
+      initialPrompt: "Chat about this note",
+      reuseEnvironmentId: "env_1",
+    });
+    expect(composeProjectId()).toBe("proj_vault");
+  });
+
+  it("leaves the panes alone without split", () => {
+    const layout: SplitLayout = {
+      root: PLUGIN_PANEL_PANE,
+      focusedPaneId: "pane-1",
+    };
+    const { navigate, locations, store } = renderNavigate({ layout });
+    act(() => {
+      navigate().toCompose({ focusPrompt: true });
+    });
+    expect(store.get(splitLayoutAtom)).toBe(layout);
+    expect(locations.at(-1)?.pathname).toBe("/");
   });
 });

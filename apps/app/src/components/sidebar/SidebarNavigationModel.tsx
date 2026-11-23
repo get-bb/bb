@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useStore } from "jotai";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type {
@@ -197,6 +198,7 @@ export function SidebarNavigationModelProvider({
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
   const splitActions = usePaneContentSplitActions();
+  const openNewThread = useOpenNewThread();
   const setPluginEnabled = useSetPluginEnabled();
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
@@ -264,6 +266,7 @@ export function SidebarNavigationModelProvider({
     isHomeActive,
     items,
     navigate,
+    openNewThread,
     rowsById,
     setPluginEnabled,
     splitActions,
@@ -276,6 +279,7 @@ export function SidebarNavigationModelProvider({
       isHomeActive,
       items,
       navigate,
+      openNewThread,
       rowsById,
       setPluginEnabled,
       splitActions,
@@ -323,7 +327,8 @@ export function SidebarNavigationModelProvider({
         switch (row.action.kind) {
           case "new-thread":
             if (target === "split") {
-              if (content) openInSplit(current, content, item.label);
+              current.host.onNavigate?.();
+              current.openNewThread({ split: true });
               return;
             }
             if (target === "tab") {

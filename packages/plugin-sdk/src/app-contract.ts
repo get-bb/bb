@@ -5641,7 +5641,11 @@ export interface BbNavigate {
    * and outside sections. `environmentId` reuses that environment (falling
    * back to the composer's default when it is missing or destroyed) and
    * `hostId` picks a machine for a new one (`environmentId` wins when both
-   * are set).
+   * are set). `split: true` opens the screen beside the caller with
+   * `toThread`'s split rules: a right split by default, replace at the pane
+   * cap, plain navigation where splits are off. bb has one new-thread screen,
+   * so when it is already open in a pane, bb focuses that pane and applies the
+   * other options to it.
    */
   toCompose(options?: {
     projectId?: string;
@@ -5650,6 +5654,7 @@ export interface BbNavigate {
     placement?: { sectionId: string | null; pinned: boolean };
     environmentId?: string;
     hostId?: string;
+    split?: boolean;
   }): void;
   /**
    * Open an HTTP(S) URL using this client's BB browser preference, or request
