@@ -6,7 +6,6 @@ import {
 } from "@get-bb/plugin-sdk";
 import { Icon } from "@bb/shared-ui/icon";
 import { InfoRowTime } from "@bb/shared-ui/info-list-row";
-import type { ThreadResponse } from "@bb/server-contract";
 import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
 import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection";
 import type {
@@ -16,19 +15,14 @@ import type {
 import { InfoList } from "@/components/secondary-panel/info/info-list";
 import { ThreadListEntryStatusGlyph } from "@/components/thread/ThreadListEntryStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import { useChildThreads, useThread } from "@/hooks/queries/thread-queries";
+import { useChildThreads } from "@/hooks/queries/thread-queries";
 import { getThreadLocationPath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
 
 function ParentRow({ threadId }: ExperimentalThreadContextCardProps) {
-  const { data: thread } = useThread(threadId);
-  return thread === undefined ? null : <ParentThreadRow thread={thread} />;
-}
-
-function ParentThreadRow({ thread }: { thread: ThreadResponse }) {
   const navigate = useNavigate();
-  const parent = useParentThreadSection(thread, true);
+  const parent = useParentThreadSection(threadId);
   if (parent === null) return null;
   return (
     <ThreadContextCardRow

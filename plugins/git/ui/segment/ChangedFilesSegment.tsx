@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   experimental_useThreadContextKind,
   type ExperimentalThreadContextSegmentInput,
@@ -31,25 +31,7 @@ import type { WorkspaceFileStatus, WorkspaceStatus } from "../../contract.js";
 const TOGGLE_ID = "thread-prompt-banner-git-toggle";
 const BODY_ID = "thread-prompt-banner-git-body";
 
-type FocusTarget = "trigger" | "collapse";
-
-const pendingFocus = new Map<string, FocusTarget>();
-
 type SegmentPart = "summary" | "action" | "details";
-
-function useFocusHandoff(
-  threadId: string,
-  target: FocusTarget,
-  isExpanded: boolean,
-) {
-  const ref = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (pendingFocus.get(threadId) !== target) return;
-    pendingFocus.delete(threadId);
-    ref.current?.focus();
-  }, [isExpanded, target, threadId]);
-  return ref;
-}
 
 export function useChangedFilesSegmentVisible({
   environment,
@@ -122,31 +104,30 @@ function MergeBaseAction({
 }
 
 export function ChangedFilesSegmentView({
-  threadId,
   part,
   segments,
   isExpanded,
   onToggle,
+  toggleRef,
+  collapseRef,
   section,
   action,
   onFileClick,
 }: Pick<
   ExperimentalThreadContextSegmentProps,
-  "threadId" | "segments" | "isExpanded" | "onToggle"
+  "segments" | "isExpanded" | "onToggle" | "toggleRef" | "collapseRef"
 > & {
   part: SegmentPart;
   section: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
   action: ReactNode;
   onFileClick: (file: WorkspaceFileStatus) => void;
 }) {
-  const focusTarget = part === "summary" ? "trigger" : "collapse";
-  const focusRef = useFocusHandoff(threadId, focusTarget, isExpanded);
   if (part === "summary") {
     const tally = toChangeTally(section.stats);
     const prefix = CHANGED_FILES_KIND_PREFIX[section.kind];
     return (
       <SectionToggleButton
-        buttonRef={focusRef}
+        buttonRef={toggleRef}
         fillRow
         id={TOGGLE_ID}
         controlsId={BODY_ID}
@@ -166,10 +147,7 @@ export function ChangedFilesSegmentView({
         hideLabelInCompact={segments.length > 2}
         ariaLabel={`Changed files: ${prefix}, ${formatChangeSummary(tally)}`}
         isExpanded={isExpanded}
-        onToggle={() => {
-          if (!isExpanded) pendingFocus.set(threadId, "collapse");
-          onToggle();
-        }}
+        onToggle={onToggle}
       />
     );
   }
@@ -181,11 +159,8 @@ export function ChangedFilesSegmentView({
       labelledBy={TOGGLE_ID}
       isExpanded={isExpanded}
       collapseLabel="Collapse changed files"
-      collapseRef={focusRef}
-      onCollapse={() => {
-        pendingFocus.set(threadId, "trigger");
-        onToggle();
-      }}
+      collapseRef={collapseRef}
+      onCollapse={onToggle}
     >
       <WorkspaceChangesList
         files={section.files}

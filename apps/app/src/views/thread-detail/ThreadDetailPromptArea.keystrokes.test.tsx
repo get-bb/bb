@@ -144,7 +144,6 @@ function buildPromptArea({
         providerCommands={null}
         sessionOptions={null}
         modelFallback={null}
-        parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={0}
         pendingTodos={null}

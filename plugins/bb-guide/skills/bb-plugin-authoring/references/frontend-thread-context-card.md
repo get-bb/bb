@@ -76,3 +76,36 @@ app.slots.experimental_threadContextSegment({
   useVisible: () => experimental_useThreadContextKind() === "banner",
 });
 ```
+
+## Segment focus and related threads
+
+bb owns keyboard focus for a segment's disclosure. Attach `toggleRef` to the
+expand control and `collapseRef` to the collapse control in `details`; when
+`onToggle` runs while focus is on one of them, bb focuses the other once the
+row re-renders. Focus elsewhere (the composer, another segment) stays put, and
+a segment that attaches neither ref keeps the browser's behavior. Don't write
+your own handoff:
+
+```tsx
+function Summary({ isExpanded, onToggle, toggleRef }: ExperimentalThreadContextSegmentProps) {
+  return <button ref={toggleRef} aria-expanded={isExpanded} onClick={onToggle}>Deploy</button>;
+}
+function Details({ isExpanded, onToggle, collapseRef }: ExperimentalThreadContextSegmentProps) {
+  return isExpanded ? <button ref={collapseRef} onClick={onToggle}>Collapse deploy</button> : null;
+}
+```
+
+For the segment's thread or a related one (its parent, a fork source), read
+`experimental_useThread(id)`, not `experimental_useSidebarThreads()` plus
+`find`. It returns `{ status, thread }`: `ready` with the thread, `loading`,
+`notFound` (unknown or deleted), or `error`. A thread the sidebar holds is
+ready at once and re-renders the component only when it changes; any other,
+such as an archived parent, is fetched and kept current. `thread` has the
+fields `useSdk().threads.get` returns except the five that only that request
+computes (`canEditMessages` and the like). bb's parent-thread segment reads
+the thread and its parent this way:
+
+```tsx
+const { thread } = experimental_useThread(threadId);
+const { thread: parent } = experimental_useThread(thread?.parentThreadId ?? "");
+```

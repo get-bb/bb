@@ -62,7 +62,6 @@ import {
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { useParentThreadSection } from "./useParentThreadSection";
 import { getThreadLocationPath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
@@ -539,7 +538,6 @@ export function ThreadScreen({
     }),
     [sendMessageMutation.isPending, sendMessageMutation.mutateAsync],
   );
-  const parentThreadSection = useParentThreadSection(thread, composer !== null);
   const childThreadsSection = useChildThreadsSection(
     thread.id,
     composer !== null,
@@ -687,7 +685,6 @@ export function ThreadScreen({
       modelFallback={timeline.modelFallback}
       activeWorkflows={timeline.activeWorkflows}
       activeBackgroundCommands={timeline.activeBackgroundCommands}
-      parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       contextEnvironmentId={composer.contextEnvironmentId}
       thread={thread}

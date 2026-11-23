@@ -208,13 +208,12 @@ groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, and any other string
 sorts in place (GitHub PR Status uses `"2_pullRequest"`). Each component mounts
 in its own crash boundary: `summary` in the row, `action` at its end, `details`
 below it. Props carry `threadId`, `projectId`, `environment` (null without a
-usable environment), the visible `segments`
-as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
-`bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
-`useVisible(input)` false leaves it out. A segment whose content is also a
-thread context card row or section hides itself while
-`experimental_useThreadContextKind()` is `card`; see
-frontend-thread-context-card.md.
+usable environment), the visible `segments` as `{ key, pluginId }` in row
+order (`key` is `<pluginId>/<id>`; bb's own use `bb--core`), `isExpanded`/
+`onToggle` (one segment is expanded at a time) and `toggleRef`/`collapseRef`
+(bb moves focus between them). `useVisible(input)` false leaves it out. Focus
+handoff, related-thread data, and hiding while the pane shows the context card
+(`experimental_useThreadContextKind()`): frontend-thread-context-card.md.
 
 ### An action in every thread menu
 

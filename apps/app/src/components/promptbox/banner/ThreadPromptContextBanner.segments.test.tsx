@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ExperimentalThreadContextSegmentProps } from "@get-bb/plugin-sdk";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
@@ -22,10 +23,8 @@ import {
   gitSegmentFixtureMergeBase,
   type GitSegmentFixture,
 } from "@/test/fixtures/git-segment-plugin";
-import {
-  ThreadPromptContextBanner,
-  type CoreThreadContext,
-} from "./ThreadPromptContextBanner";
+import { seedRelatedThread } from "@/test/fixtures/related-threads";
+import { ThreadPromptContextBanner } from "./ThreadPromptContextBanner";
 
 const changedFile = {
   path: "apps/app/src/main.ts",
@@ -51,15 +50,23 @@ const git: GitSegmentFixture = {
   mergeBase: gitSegmentFixtureMergeBase({ options: ["main"] }),
 };
 
-const parentThread = {
-  parentThreadTitle: "Plan the release",
-  href: "/threads/thr_parent",
-  relationship: "parent" as const,
-};
-
-const EMPTY_CORE: CoreThreadContext = {
-  parentThread: null,
-};
+function createQueryClient(parent: boolean): QueryClient {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  });
+  if (parent) {
+    seedRelatedThread(queryClient, {
+      threadId: "thr_1",
+      projectId: "proj_1",
+      related: {
+        id: "thr_parent",
+        title: "Plan the release",
+        relationship: "parent",
+      },
+    });
+  }
+  return queryClient;
+}
 
 const seenProps: ExperimentalThreadContextSegmentProps[] = [];
 
@@ -111,52 +118,153 @@ const CARD_ROWS: CoreThreadContextCardRow[] = [
   { id: "row", group: "thread", order: 10, component: () => null },
 ];
 
-function renderBanner({
-  core = EMPTY_CORE,
-  git = null,
-  archived = false,
-  threadContextKind = "banner",
-  expandedSegment = null,
-  onToggleSegment = () => {},
-}: {
-  core?: CoreThreadContext;
+interface BannerOptions {
+  parent?: boolean;
   git?: GitSegmentFixture | null;
   archived?: boolean;
   threadContextKind?: "banner" | "card";
+}
+
+function renderBanner({
+  expandedSegment = null,
+  onToggleSegment = () => {},
+  ...options
+}: BannerOptions & {
   expandedSegment?: string | null;
   onToggleSegment?: (key: string) => void;
 } = {}) {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1600);
   return render(
-    <MemoryRouter>
-      <GitSegmentFixtureProvider value={git}>
-        <ThreadContextCardProvider
-          enabled={threadContextKind === "card"}
-          coreRows={CARD_ROWS}
-          coreSections={[]}
-          threadId="thr_1"
-          projectId="proj_1"
-          environment={{ id: "env_1" }}
-        >
-          <div data-scroll-overlay="">
-            <ThreadContextCard />
-          </div>
-          <ThreadPromptContextBanner
-            input={{
-              threadId: "thr_1",
-              projectId: "proj_1",
-              environment: { id: "env_1" },
-            }}
-            core={core}
-            archivedSection={archived ? { archivedAt: 1 } : null}
-            environmentGoneSection={null}
-            expandedSegment={expandedSegment}
-            onToggleSegment={onToggleSegment}
-          />
-        </ThreadContextCardProvider>
-      </GitSegmentFixtureProvider>
-    </MemoryRouter>,
+    <BannerTree
+      {...options}
+      queryClient={createQueryClient(options.parent ?? false)}
+      expandedSegment={expandedSegment}
+      onToggleSegment={onToggleSegment}
+    />,
   );
+}
+
+function StatefulBanner(props: BannerOptions & { queryClient: QueryClient }) {
+  const [expandedSegment, setExpandedSegment] = useState<string | null>(null);
+  return (
+    <>
+      <textarea aria-label="Composer" />
+      <BannerTree
+        {...props}
+        expandedSegment={expandedSegment}
+        onToggleSegment={(key) =>
+          setExpandedSegment((current) => (current === key ? null : key))
+        }
+      />
+    </>
+  );
+}
+
+function renderStatefulBanner(options: BannerOptions) {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1600);
+  return render(
+    <StatefulBanner
+      {...options}
+      queryClient={createQueryClient(options.parent ?? false)}
+    />,
+  );
+}
+
+function BannerTree({
+  queryClient,
+  git = null,
+  archived = false,
+  threadContextKind = "banner",
+  expandedSegment,
+  onToggleSegment,
+}: BannerOptions & {
+  queryClient: QueryClient;
+  expandedSegment: string | null;
+  onToggleSegment: (key: string) => void;
+}) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <GitSegmentFixtureProvider value={git}>
+          <ThreadContextCardProvider
+            enabled={threadContextKind === "card"}
+            coreRows={CARD_ROWS}
+            coreSections={[]}
+            threadId="thr_1"
+            projectId="proj_1"
+            environment={{ id: "env_1" }}
+          >
+            <div data-scroll-overlay="">
+              <ThreadContextCard />
+            </div>
+            <ThreadPromptContextBanner
+              input={{
+                threadId: "thr_1",
+                projectId: "proj_1",
+                environment: { id: "env_1" },
+              }}
+              archivedSection={archived ? { archivedAt: 1 } : null}
+              environmentGoneSection={null}
+              expandedSegment={expandedSegment}
+              onToggleSegment={onToggleSegment}
+            />
+          </ThreadContextCardProvider>
+        </GitSegmentFixtureProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+function FocusSummary({
+  isExpanded,
+  onToggle,
+  toggleRef,
+}: ExperimentalThreadContextSegmentProps) {
+  return (
+    <button
+      ref={toggleRef}
+      type="button"
+      aria-expanded={isExpanded}
+      onClick={onToggle}
+    >
+      Demo toggle
+    </button>
+  );
+}
+
+function FocusDetails({
+  isExpanded,
+  onToggle,
+  collapseRef,
+}: ExperimentalThreadContextSegmentProps) {
+  return isExpanded ? (
+    <button ref={collapseRef} type="button" onClick={onToggle}>
+      Collapse demo
+    </button>
+  ) : null;
+}
+
+function registerFocusSegment() {
+  setPluginSlotRegistrations(
+    "demo",
+    makePluginRegistrationSet({
+      threadContextSegments: [
+        {
+          id: "status",
+          title: "Demo status",
+          group: "2_pullRequest",
+          summary: FocusSummary,
+          details: FocusDetails,
+        },
+      ],
+    }),
+  );
+}
+
+async function press(button: HTMLElement) {
+  await act(async () => {
+    button.click();
+  });
 }
 
 function rowText(): string {
@@ -179,7 +287,7 @@ describe("thread context segments", () => {
   it("leaves the parent thread to the thread context card when the view shows one", () => {
     registerPluginSegment();
     renderBanner({
-      core: { ...EMPTY_CORE, parentThread },
+      parent: true,
       threadContextKind: "card",
     });
 
@@ -191,7 +299,7 @@ describe("thread context segments", () => {
 
   it("orders core and plugin segments together and shares the visible list", () => {
     registerPluginSegment();
-    renderBanner({ core: { ...EMPTY_CORE, parentThread }, git });
+    renderBanner({ parent: true, git });
 
     const row = rowText();
     expect(row.indexOf("Plugin summary")).toBeGreaterThan(-1);
@@ -220,7 +328,7 @@ describe("thread context segments", () => {
 
   it("places a segment in a group of its own where that group sorts", () => {
     registerPluginSegment({ group: "9_custom" });
-    renderBanner({ core: { ...EMPTY_CORE, parentThread }, git });
+    renderBanner({ parent: true, git });
 
     expect(
       screen.getByText(
@@ -299,9 +407,80 @@ describe("thread context segments", () => {
     expect(screen.getByText("Merge base")).toBeTruthy();
   });
 
+  describe.each([
+    {
+      segment: "core's parent thread",
+      options: { parent: true, git },
+      register: () => {},
+      toggle: "Parent Plan the release",
+      collapse: "Collapse parent thread",
+    },
+    {
+      segment: "read-only history's parent thread",
+      options: { parent: true, archived: true },
+      register: () => {},
+      toggle: "Parent Plan the release",
+      collapse: "Collapse parent thread",
+    },
+    {
+      segment: "the Git plugin's changed files",
+      options: { git },
+      register: () => {},
+      toggle: /Changed files/,
+      collapse: "Collapse changed files",
+    },
+    {
+      segment: "a plugin segment that attaches both refs",
+      options: {},
+      register: registerFocusSegment,
+      toggle: "Demo toggle",
+      collapse: "Collapse demo",
+    },
+  ])(
+    "focus handoff for $segment",
+    ({ options, register, toggle, collapse }) => {
+      it("moves focus to the collapse control on expand and back on collapse", async () => {
+        register();
+        renderStatefulBanner(options);
+        const toggleButton = screen.getByRole("button", { name: toggle });
+        toggleButton.focus();
+        await press(toggleButton);
+        const collapseButton = screen.getByRole("button", { name: collapse });
+        expect(document.activeElement).toBe(collapseButton);
+
+        await press(collapseButton);
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: toggle }),
+        );
+      });
+
+      it("leaves focus outside the segment where it is", async () => {
+        register();
+        renderStatefulBanner(options);
+        const composer = screen.getByRole("textbox", { name: "Composer" });
+        composer.focus();
+        await press(screen.getByRole("button", { name: toggle }));
+        expect(
+          screen.getByRole("button", { name: collapse }).closest("[inert]"),
+        ).toBeNull();
+        expect(document.activeElement).toBe(composer);
+      });
+    },
+  );
+
+  it("keeps focus on a plugin's own toggle when it attaches no refs", async () => {
+    registerPluginSegment();
+    renderStatefulBanner({ git });
+    const summary = screen.getByRole("button", { name: /Plugin summary/ });
+    summary.focus();
+    await press(summary);
+    expect(screen.getByText("Plugin details")).toBeTruthy();
+    expect(document.activeElement).toBe(summary);
+  });
+
   it("keeps plugin segments off read-only history", () => {
     registerPluginSegment();
-    renderBanner({ core: { ...EMPTY_CORE, parentThread }, archived: true });
+    renderBanner({ parent: true, archived: true });
 
     expect(screen.getByText("Thread is archived")).toBeTruthy();
     expect(screen.queryByText(/Plugin summary/)).toBeNull();

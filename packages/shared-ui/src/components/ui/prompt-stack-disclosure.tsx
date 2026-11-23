@@ -3,7 +3,7 @@ import {
   useRef,
   useState,
   type ReactNode,
-  type RefObject,
+  type Ref,
 } from "react";
 import {
   CONTEXT_CARD_CLASS,
@@ -63,7 +63,7 @@ export function PromptStackCollapseRow({
   label,
   onCollapse,
 }: {
-  buttonRef: RefObject<HTMLButtonElement | null>;
+  buttonRef: Ref<HTMLButtonElement>;
   className?: string;
   controlsId: string;
   label: string;
@@ -165,7 +165,7 @@ export function PromptStackCountSlot({
 const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
 
 interface SectionToggleButtonProps {
-  buttonRef: RefObject<HTMLButtonElement | null>;
+  buttonRef: Ref<HTMLButtonElement>;
   fillRow: boolean;
   id: string;
   controlsId: string;
@@ -278,7 +278,7 @@ export function AnimatedBody({
 
 interface AnimatedDisclosureBodyProps extends AnimatedBodyProps {
   collapseLabel: string;
-  collapseRef: RefObject<HTMLButtonElement | null>;
+  collapseRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 }
 
