@@ -68,7 +68,10 @@ async function setup(args: {
   heldBy?: Record<string, string>;
   projectLookups?: (call: number) => void;
   refuseAdopt?: string[];
-  refresh?: () => { status: "no-repository" } | undefined;
+  refresh?: () =>
+    | { status: "no-repository" }
+    | Promise<{ status: "no-repository" }>
+    | undefined;
 }) {
   const hostCalls: ExperimentalFakeHostRpcCall[] = [];
   const order: string[] = [];
@@ -248,8 +251,24 @@ async function setup(args: {
     },
     signal: new AbortController().signal,
   });
+  const resize = async (size: number) => {
+    const before = harness.realtimeSignals.length;
+    const status = await harness.callRpc("setWarmPoolSize", {
+      projectId: PROJECT_ID,
+      size,
+    });
+    await expect
+      .poll(() =>
+        harness.realtimeSignals
+          .slice(before)
+          .some((signal) => signal.channel === "warm-pools-changed"),
+      )
+      .toBe(true);
+    return status;
+  };
   return {
     harness,
+    resize,
     provider,
     context,
     hostCalls,
@@ -588,6 +607,27 @@ describe("warm worktree handoff", () => {
 });
 
 describe("warm worktree reconcile", () => {
+  it("saves a new size without waiting for the pool to check its remote", async () => {
+    let finishRefresh: () => void = () => {};
+    const fixture = await setup({
+      members: [READY],
+      refresh: () =>
+        new Promise((resolve) => {
+          finishRefresh = () => resolve({ status: "no-repository" });
+        }),
+    });
+    const status = (await fixture.harness.callRpc("setWarmPoolSize", {
+      projectId: PROJECT_ID,
+      size: 3,
+    })) as { pools: { size: number }[] };
+    expect(status.pools[0]?.size).toBe(3);
+    expect(
+      fixture.hostCalls.some((call) => call.method === "refreshPoolBase"),
+    ).toBe(true);
+    finishRefresh();
+    await fixture.harness.lifecycle.dispose();
+  });
+
   it("keeps a project's members when its lookup fails for a reason other than 404", async () => {
     const fixture = await setup({
       members: [READY],
@@ -598,10 +638,7 @@ describe("warm worktree reconcile", () => {
           });
       },
     });
-    await fixture.harness.callRpc("setWarmPoolSize", {
-      projectId: PROJECT_ID,
-      size: 1,
-    });
+    await fixture.resize(1);
     expect(fixture.deleted).toEqual([]);
     await fixture.harness.lifecycle.dispose();
   });
@@ -622,10 +659,7 @@ describe("warm worktree reconcile", () => {
           ? { status: "used", branch: "bb/orphan-thr_1" }
           : { status: "restored" },
     });
-    await fixture.harness.callRpc("setWarmPoolSize", {
-      projectId: PROJECT_ID,
-      size: 1,
-    });
+    await fixture.resize(1);
     expect(
       fixture.hostCalls.find((call) => call.method === "restorePoolMember")
         ?.input,
@@ -651,10 +685,7 @@ describe("warm worktree reconcile", () => {
       size: 2,
       offBase: [second.path!],
     });
-    await fixture.harness.callRpc("setWarmPoolSize", {
-      projectId: PROJECT_ID,
-      size: 2,
-    });
+    await fixture.resize(2);
     expect(fixture.deleted).toEqual(["env_stale"]);
     await expect
       .poll(() => fixture.created)
@@ -703,11 +734,7 @@ describe("warm worktree reconcile", () => {
           pools: { checkouts: { lastError: string | null }[] }[];
         }
       ).pools[0]?.checkouts[0]?.lastError;
-    const resize = () =>
-      fixture.harness.callRpc("setWarmPoolSize", {
-        projectId: PROJECT_ID,
-        size: 1,
-      });
+    const resize = () => fixture.resize(1);
     await resize();
     expect(await lastError()).toBe(
       `The project folder ${SOURCE_PATH} is missing or is not a git repository.`,
@@ -733,10 +760,7 @@ describe("warm worktree reconcile", () => {
       statusMessage: ".bb-env-setup.sh failed",
     };
     const fixture = await setup({ members: [READY, failed], size: 2 });
-    await fixture.harness.callRpc("setWarmPoolSize", {
-      projectId: PROJECT_ID,
-      size: 2,
-    });
+    await fixture.resize(2);
     expect(fixture.deleted).toEqual(["env_failed"]);
     const status = (await fixture.harness.callRpc("warmPoolStatus", {})) as {
       pools: { checkouts: { lastError: string | null }[] }[];
@@ -744,10 +768,7 @@ describe("warm worktree reconcile", () => {
     expect(status.pools[0]?.checkouts[0]?.lastError).toBe(
       "Setup failed in a warm worktree, trying again in 10 minutes: .bb-env-setup.sh failed",
     );
-    await fixture.harness.callRpc("setWarmPoolSize", {
-      projectId: PROJECT_ID,
-      size: 0,
-    });
+    await fixture.resize(0);
     expect(fixture.deleted).toEqual(["env_failed", READY.id]);
     await fixture.harness.lifecycle.dispose();
   });

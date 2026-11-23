@@ -696,7 +696,7 @@ export async function createWarmPools(args: {
       else sizes.set(projectId, parsed);
       for (const state of checkouts.values()) state.retryAt = 0;
       await saveConfiguration();
-      await reconcile();
+      void reconcile();
     },
     async handOff(request) {
       if ((sizes.get(request.projectId) ?? 0) === 0) return null;
