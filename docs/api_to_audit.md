@@ -2044,6 +2044,63 @@ Docs: `frontend-hooks-and-ui.md`.
 4. Decide whether a nav panel should also declare a default terminal scope so
    the native "+ Terminal" button follows the page's worktree.
 
+## Thread, message and settings locations (`BbNavigate.experimental_toSettings`, `BbNavigate.experimental_threadHref`, `BbNavigate.experimental_settingsHref`, and `ExperimentalMessageMetadataContext.messageSeq`)
+
+`toThread(threadId, { messageSeq })` opens the thread's message link,
+`…/threads/<id>#msg=<seq>`, through the same placement as `split`, so bb
+loads older history, scrolls to and highlights the message, or toasts
+"Message not found"; a repeated call reveals it again. That option is stable
+and unprefixed, so it matches the href option below; this entry covers the
+experimental members around it.
+`experimental_toSettings()` opens the calling plugin's settings page, and
+`experimental_toSettings({ section })` a bb section
+(`ExperimentalSettingsSection`). Settings replaces the whole window, panes
+included. `experimental_threadHref(threadId, { messageSeq? })` and
+`experimental_settingsHref(target?)` take the same arguments as the call
+they mirror and return the app-relative location it opens. The thread href
+resolves the project from bb's loaded threads, as `toThread` does; otherwise
+it is `/threads/<id>`, which bb redirects to the project route and keeps
+`#msg=`. bb's plugin slot root
+routes plain clicks on those hrefs in place (Cmd/Ctrl-click opens a split,
+middle-click a new tab). A seq that is not a non-negative integer, or an
+unknown section, throws `RangeError`. Message metadata components receive
+the same seq as `message.messageSeq`. Requested by the API
+audit: 6 community plugins rebuilt the reveal from the DOM, 13 forged
+history state to reach settings, and about 50 built `/threads/` or
+`/settings/` paths by hand.
+
+**Core callers.** `getThreadLocationPath` (`@bb/client-core`) is the only
+thread path builder in the web and mobile apps: every thread link, Copy link,
+Copy message link, mention, pane route and notification target, plus
+`toThread` and `experimental_threadHref`. `openThread`
+(`split-layout/openThread.ts`) is the only way to open a thread for the user,
+with or without a split: `toThread`, `experimental_useSidebarThreadActions`'
+`open`, the search palette, sidebar Open in split and keyboard navigation,
+`bb thread open`, mention links, the archived-thread toast, and new threads
+after creation. Pane bookkeeping (closing, replacing or reconciling panes)
+uses only the path builder. The palette keeps its `searchMessageSeq` state
+because its hits can be non-message events. Every reveal of a message in the
+timeline, whether from a message link, the palette or the thread outline,
+runs through `useScrollToSearchedMessage`: it loads older pages, keeps the
+target rendered, waits for its position to settle, highlights it, and toasts
+when it is missing. The outline sends an in-place request with the
+message's seq instead of a URL, so it adds no history entry. `getSettingsTargetPath`
+(`settings-sections.ts`) is the only settings path builder: sections, plugin,
+machine and project pages, including `experimental_toSettings` and
+`experimental_settingsHref`. The sidebar footer's `openSettings` /
+`openPluginDetails` call `navigate.experimental_toSettings()`. The generic
+Settings button, nav rail button and "Open settings" command reopen the last
+settings page visited, which is a stored location, not a target.
+
+Docs: `frontend-navigation.md`.
+
+**Audit before stabilizing.**
+
+1. Decide whether plugins need other plugins' settings pages or project and
+   machine settings pages; each had one community caller.
+2. Confirm copied absolute URLs from desktop, which point at the local
+   server origin like core's Copy link does.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `ExperimentalHostRpcContext.experimental_paths`, `ExperimentalHostRpcContext.experimental_emitSignal`, `ExperimentalHostRpcContext.experimental_watch`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** At that date, signals and watches had no
@@ -4165,7 +4222,9 @@ Requires SDK 0.6.178.
   a complete `ExperimentalPluginActionContext` plus `calls:
   ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
-  false, `panel` is `experimental_makePanelController()`, and `sdk` methods
+  false except `experimental_threadHref` and `experimental_settingsHref`,
+  which return the test harness's paths (`/threads/<id>#msg=<seq>`,
+  `/settings/<section>`), `panel` is `experimental_makePanelController()`, and `sdk` methods
   reject with `sdk.<area>.<method> is not stubbed`. Overrides replace members;
   tests spread the result and add the callback's own fields.
 - **Why:** every member added to `ExperimentalPluginActionContext` broke every

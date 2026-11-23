@@ -50,7 +50,10 @@ import { defineSplit } from "@/lib/define-split";
 import { ArchivedThreadToastDescription } from "@/components/thread/ArchivedThreadToastDescription";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getRootComposeRoutePath,
+  getThreadLocationPath,
+} from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { lookupCachedThread, resolveThread } from "@/lib/cached-thread";
@@ -59,6 +62,7 @@ import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-regis
 import { planThreadSelection } from "@/lib/thread-selection-plan";
 import type { ThreadCascadeAction } from "@bb/server-contract";
 import { threadRequestsAtom } from "@/lib/thread-requests";
+import { openThread } from "@/lib/split-layout/openThread";
 
 export interface ThreadActionsContextValue {
   archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
@@ -292,7 +296,9 @@ export function ThreadActionsProvider({
     (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
       if (result.removedAny && result.focusedRoute !== null) {
         if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
-          navigate(getThreadRoutePath(result.focusedRoute), { replace: true });
+          navigate(getThreadLocationPath(result.focusedRoute), {
+            replace: true,
+          });
         }
         return;
       }
@@ -465,7 +471,7 @@ export function ThreadActionsProvider({
       });
       const destination = displaced
         ? closeResult.focusedRoute !== null
-          ? getThreadRoutePath(closeResult.focusedRoute)
+          ? getThreadLocationPath(closeResult.focusedRoute)
           : getRootComposeRoutePath()
         : null;
       const previousRoute = viewedRouteRef.current;
@@ -480,12 +486,11 @@ export function ThreadActionsProvider({
               archivedThreadCount={archivedThreadIds.length}
               threadTitle={getThreadDisplayTitle(singleThread)}
               onOpenThread={() => {
-                navigate(
-                  getThreadRoutePath({
-                    projectId: singleThread.projectId,
-                    threadId: singleThread.id,
-                  }),
-                );
+                openThread({
+                  navigate,
+                  projectId: singleThread.projectId,
+                  threadId: singleThread.id,
+                });
                 appToast.dismiss(toastId);
               }}
             />

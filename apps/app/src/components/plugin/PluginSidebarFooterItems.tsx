@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -24,7 +24,6 @@ import {
   usePluginSlotKind,
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
   bindFocusedSurfaceActionContext,
@@ -216,7 +215,6 @@ export function PluginSidebarFooterItems({
   onCustomize: () => void;
   builtInActions?: readonly BuiltinFooterAction[];
 }) {
-  const navigate = useNavigate();
   const actionContext = bindFocusedSurfaceActionContext(
     useBindPluginActionContext(),
     useAppNavigationHost(),
@@ -285,15 +283,13 @@ export function PluginSidebarFooterItems({
       slot.source === "sidebarFooterAction"
         ? `sidebarFooterAction "${slot.id}"`
         : `experimental_sidebarFooter item "${slot.id}"`,
-      () =>
-        slot.onActivate({
-          ...actionContext(slot.pluginId),
-          openPluginDetails: () => {
-            void navigate(
-              getPluginConfigurationRoutePath({ pluginId: slot.pluginId }),
-            );
-          },
-        }),
+      () => {
+        const context = actionContext(slot.pluginId);
+        return slot.onActivate({
+          ...context,
+          openPluginDetails: () => context.navigate.experimental_toSettings(),
+        });
+      },
     );
   }
   return (

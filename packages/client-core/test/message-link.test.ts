@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { getMessageLinkPath, parseMessageLink } from "../src/index.js";
+import { getThreadLocationPath, parseMessageLink } from "../src/index.js";
 
 describe("message links", () => {
   it("round-trips project and projectless thread links", () => {
     for (const projectId of ["proj_abc", PERSONAL_PROJECT_ID]) {
-      const path = getMessageLinkPath({
+      const path = getThreadLocationPath({
         projectId,
         threadId: "thr_abc",
-        seq: 42,
+        messageSeq: 42,
       });
       expect(path).toBe(
         projectId === PERSONAL_PROJECT_ID

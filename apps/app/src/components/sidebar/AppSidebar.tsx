@@ -31,7 +31,7 @@ import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -71,6 +71,8 @@ import {
 } from "./sidebarNavigationProvider";
 
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
+import { openThread } from "@/lib/split-layout/openThread";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
@@ -190,12 +192,11 @@ export function AppSidebar({
       }
       if (!target.projectId) return false;
       closeOnMobile();
-      void navigate(
-        getThreadRoutePath({
-          projectId: target.projectId,
-          threadId: target.threadId,
-        }),
-      );
+      openThread({
+        navigate,
+        projectId: target.projectId,
+        threadId: target.threadId,
+      });
       return true;
     },
     [activeThreadId, closeOnMobile, navigate],
@@ -313,10 +314,10 @@ export function AppSidebar({
               : []),
             {
               id: "mobile",
-              href: "/settings/mobile",
+              href: getSettingsTargetPath({ section: "mobile" }),
               onActivate: () => {
                 closeOnMobile();
-                void navigate("/settings/mobile");
+                void navigate(getSettingsTargetPath({ section: "mobile" }));
               },
             },
             {

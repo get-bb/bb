@@ -1544,6 +1544,12 @@ describe("loadPluginApp", () => {
     await context.threadRequests.requestArchive(["thr_a", "thr_b"]);
     await context.threadRequests.requestDelete(["thr_c"]);
     expect(context.navigate.openUrl("https://example.com")).toBe(false);
+    expect(
+      context.navigate.experimental_threadHref("thr_a", { messageSeq: 4 }),
+    ).toBe("/threads/thr_a#msg=4");
+    expect(
+      context.navigate.experimental_settingsHref({ section: "appearance" }),
+    ).toBe("/settings/appearance");
     await expect(
       context.sdk.threads.get({ threadId: "thr_a" }),
     ).rejects.toThrow("sdk.threads.get is not stubbed");
@@ -1552,6 +1558,14 @@ describe("loadPluginApp", () => {
       { member: "threadRequests.requestArchive", args: [["thr_a", "thr_b"]] },
       { member: "threadRequests.requestDelete", args: [["thr_c"]] },
       { member: "navigate.openUrl", args: ["https://example.com"] },
+      {
+        member: "navigate.experimental_threadHref",
+        args: ["thr_a", { messageSeq: 4 }],
+      },
+      {
+        member: "navigate.experimental_settingsHref",
+        args: [{ section: "appearance" }],
+      },
       { member: "sdk.threads.get", args: [{ threadId: "thr_a" }] },
     ]);
   });
@@ -1750,6 +1764,49 @@ describe("renderSlot", () => {
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_openFilePreview", options: fileIntent },
       { method: "experimental_openFileExternally", options: fileIntent },
+    ]);
+  });
+
+  it("rejects the message seqs and settings sections bb rejects, and records only valid opens", () => {
+    let navigate: ReturnType<typeof useBbNavigate> | null = null;
+    const slot = renderSlot(
+      {
+        component: () => {
+          navigate = useBbNavigate();
+          return null;
+        },
+      },
+      {},
+    );
+    const nav = (): ReturnType<typeof useBbNavigate> => {
+      if (navigate === null) throw new Error("navigate probe did not render");
+      return navigate;
+    };
+    const section = JSON.parse('"billing"') as "general";
+    expect(() => nav().toThread("thr_1", { messageSeq: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      nav().experimental_threadHref("thr_1", { messageSeq: 1.5 }),
+    ).toThrow(RangeError);
+    expect(() => nav().experimental_toSettings({ section })).toThrow(
+      RangeError,
+    );
+    expect(() => nav().experimental_settingsHref({ section })).toThrow(
+      RangeError,
+    );
+    nav().toThread("thr_1", { messageSeq: 3 });
+    nav().experimental_toSettings({ section: "appearance" });
+    expect(nav().experimental_threadHref("thr_1", { messageSeq: 3 })).toBe(
+      "/threads/thr_1#msg=3",
+    );
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "toThread",
+        threadId: "thr_1",
+        options: { messageSeq: 3 },
+      },
+      { method: "experimental_toSettings", target: { section: "appearance" } },
     ]);
   });
 

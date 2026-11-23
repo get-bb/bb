@@ -23,7 +23,7 @@ import {
 } from "react";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
-  getThreadRoutePath,
+  getThreadLocationPath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useIsMutating } from "@tanstack/react-query";
@@ -486,7 +486,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       if (next === null) return;
       store.set(splitLayoutAtom, next);
       if (workspaceMountedRef.current && next.focusedPaneId === paneId) {
-        navigate(getThreadRoutePath(thread));
+        navigate(getThreadLocationPath(thread));
       }
     },
     [navigate, store],

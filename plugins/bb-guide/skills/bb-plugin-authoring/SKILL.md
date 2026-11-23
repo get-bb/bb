@@ -102,6 +102,8 @@ the same change.
   icons.
 - Read references/frontend-hooks-and-ui.md for hooks, composer customization,
   vendored components, runtime shims, crash isolation, and styling.
+- Read references/frontend-navigation.md to open or link a thread, a message
+  in it, or settings.
 
 ### Testing
 

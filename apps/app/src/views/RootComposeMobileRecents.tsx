@@ -21,7 +21,10 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
-import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
+import {
+  getThreadLocationPath,
+  isProjectlessProjectId,
+} from "@/lib/route-paths";
 import {
   buildChronologicalThreadList,
   getProjectThreadItemDescendants,
@@ -347,7 +350,7 @@ function MobileRecentThreadRow({
           providerTile
         )}
         <RouteAnchor
-          href={getThreadRoutePath({
+          href={getThreadLocationPath({
             projectId: thread.projectId,
             threadId: thread.id,
           })}
