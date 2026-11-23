@@ -3166,7 +3166,7 @@ An exclusive slot that replaces the sidebar's scrolling thread list. bb's own
 list is the bundled `thread-list` plugin. Automatic selection prefers another
 registered list, and the user can pin one with `sidebar.threadListProvider`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3184,6 +3184,39 @@ Docs: `frontend-registration.md`.
 4. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup;
    `onNavigate` is currently the plugin's responsibility to call.
+
+## `PluginThreadListProps.experimental_scrollElement` (`@get-bb/plugin-sdk/app`)
+
+The sidebar element that scrolls an `experimental_threadList` component:
+core's `SidebarContent`, owned by `SidebarThreadListContent`
+(`apps/app/src/components/sidebar/PluginThreadList.tsx`), which `AppSidebar`
+renders. Core mounts the list only after that element exists, so the prop is
+never null; it changes only when the list remounts (desktop to compact
+viewport). Lists window rows, root an `IntersectionObserver`, and
+drag-autoscroll against it instead of `closest('[data-sidebar="content"]')`
+or walking up to the nearest `overflow: auto` ancestor.
+
+Core caller on the same path: the bundled `thread-list` plugin reads only this
+prop, through `SidebarScrollAreaProvider` (`plugins/thread-list/app/ui/sidebar.tsx`),
+for windowing (`SidebarWindowedItems`), "is the list shown"
+(`useSidebarListShown`), and visible-row order for Shift-click selection
+(`ThreadSelectionStore`). Community callers that can migrate: the
+`closest()` forks (bb-tinted-threads, oxi-thread-list) and the drag
+autoscroll walkers (thread-tree, switchboard, chat-sidebar, recent,
+bb-sidebar, cursor-suite project-sort).
+
+Docs: `frontend-thread-list.md`.
+
+**Audit before stabilizing.**
+
+1. **Migrated callers.** At least two community lists window or autoscroll
+   against the prop, with no remaining DOM walk for the sidebar scroller.
+2. **Scroller opt-out.** nested-sidebar and cursor-sidebar override the host
+   scroller with CSS to run their own. Decide whether a list may declare its
+   own scroller, or whether the host element stays the only one.
+3. **Identity.** Confirm the element still changes only together with a list
+   remount if the sidebar layout changes (placement, framed sidebar, split
+   panes).
 
 ## AI services (`bb.experimental_aiServices.register`)
 
@@ -3484,7 +3517,7 @@ doc covers three September 2026 additions:
 - `openNewThread({ hostId })`, unprefixed by request, preselects a machine for
   a new environment. `environmentId` takes priority.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3565,7 +3598,7 @@ from `PluginSidebarThread`:
   order. The hook returns null when the modifier is up and for rows without
   the attribute.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 Core callers: the bundled Thread list plugin (`plugins/thread-list`) renders
 bb's sidebar through all five. `ThreadRow` reads the draft, row status and
@@ -3982,7 +4015,7 @@ thread list's multi-selection is the only caller of
 `experimental_bulkThreads`, and its Move to section and push-notifications'
 Notifications carry bulk items.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-registration.md`, `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4025,7 +4058,7 @@ deprecated sidebar-actions shim also calls. Its callers are the bundled
 thread-list plugin's environment group menu (`ProjectRow.tsx`) and the
 Conductor plugin's workspace sidebar (`WorkspaceSidebar.tsx`).
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4887,7 +4920,7 @@ the rule for when `rowStatus` replaces the indicator come from
 `packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
 `experimental_resolveThreadStatus`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 

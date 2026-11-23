@@ -28,7 +28,7 @@ import {
   SidebarThreadListHarness,
   stubPluginRpcFetch,
 } from "@/test/fixtures/sidebar-thread-list";
-import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadListContent } from "./PluginThreadList";
 
 const renderedRows = vi.hoisted(() => new Set<string>());
 
@@ -81,7 +81,10 @@ function ThreadList() {
         coreRegistrations={CORE_THREAD_ACTIONS}
         requestRename={() => {}}
       />
-      <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+      <SidebarThreadListContent
+        replacement={replacement}
+        onNavigate={() => {}}
+      />
     </AppTitleMentionResources>
   );
 }
