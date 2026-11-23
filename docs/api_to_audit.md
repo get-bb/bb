@@ -4741,7 +4741,7 @@ enrollment and runtime traffic. The required `routeKind`
 (`"local-network" | "private-overlay" | "relay" | "custom"`) sets the
 provider's default rank among the server's routes. It is required in the types
 only: registration still accepts a declaration without it, from a plugin built
-against an SDK before 0.6.184, and fills in `"custom"` once there;
+against an SDK before 0.6.188, and fills in `"custom"` once there;
 providers of one kind rank by the earliest-installed plugin, not load order.
 Every available provider is a route; there is no separate on/off, so a plugin
 stops offering its route by reporting it unavailable or needing setup. Each
