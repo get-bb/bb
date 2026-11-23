@@ -418,7 +418,6 @@ function ThreadRowComponent({
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
   const childCount = parentOptions?.childCount ?? 0;
   const hasChildren = childCount > 0;
-  const reserveActionSpace = isParentRow && hasChildren;
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const hiddenThreads =
     hasHiddenChildren && parentOptions
@@ -539,7 +538,7 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
-            (reserveActionSpace
+            (hasHiddenChildren
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
@@ -673,6 +672,7 @@ function ThreadRowComponent({
               collapseLabel={`Collapse ${labelTitle} threads`}
               onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
               revealOnHover={!isParentCollapsed}
+              collapseAtRest={!isParentCollapsed}
             />
           ) : null}
         </span>
