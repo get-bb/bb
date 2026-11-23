@@ -104,6 +104,8 @@ function renderPart(
       segments={segments}
       isExpanded={false}
       onToggle={() => {}}
+      toggleRef={() => {}}
+      collapseRef={() => {}}
     />,
   );
 }

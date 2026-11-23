@@ -288,6 +288,9 @@ export const useComposerView = runtimeFunction("useComposerView");
 export const experimental_useSidebarThreads = runtimeFunction(
   "experimental_useSidebarThreads",
 );
+export const experimental_useThread = runtimeFunction(
+  "experimental_useThread",
+);
 /** @internal Superseded by the thread action registry, `experimental_useThreadRequests()`, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",

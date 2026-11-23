@@ -443,9 +443,6 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
         projectId: "proj_story",
         environment: null,
       }}
-      core={{
-        parentThread: null,
-      }}
       archivedSection={null}
       environmentGoneSection={null}
       expandedSegment={null}
@@ -461,9 +458,6 @@ const archivedContextBannerElement: ReactNode = (
       projectId: "proj_story",
       environment: null,
     }}
-    core={{
-      parentThread: null,
-    }}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
     environmentGoneSection={null}
     expandedSegment={null}
@@ -477,9 +471,6 @@ const environmentGoneContextBannerElement: ReactNode = (
       threadId: "thr_story",
       projectId: "proj_story",
       environment: null,
-    }}
-    core={{
-      parentThread: null,
     }}
     archivedSection={null}
     environmentGoneSection={{ status: "destroyed" }}

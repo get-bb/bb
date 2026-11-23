@@ -7,6 +7,7 @@ import {
   ThreadContextSegmentMount,
   threadContextSegmentKey,
   threadContextSegmentMountKey,
+  useThreadContextSegmentDisclosure,
   useThreadContextSegments,
   type CoreThreadContextSegment,
   type ThreadContextSegmentEntry,
@@ -20,15 +21,14 @@ import {
   type MachineRemovalStatus,
 } from "@/lib/machine-removal-display";
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from "react";
 import { NavLink } from "react-router-dom";
@@ -79,6 +79,7 @@ import {
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
+import { useParentThreadSection } from "@/views/thread-detail/useParentThreadSection";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
@@ -128,13 +129,8 @@ export function isThreadDisplayStatusBannerActive(
   return THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES.has(status);
 }
 
-export interface CoreThreadContext {
-  parentThread: ThreadPromptParentThreadSection | null;
-}
-
 interface ThreadPromptContextBannerProps {
   input: ExperimentalThreadContextSegmentInput;
-  core: CoreThreadContext;
   archivedSection: ThreadPromptArchivedSection | null;
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   expandedSegment: string | null;
@@ -256,7 +252,7 @@ function ParentThreadSectionToggle({
   onToggle,
 }: {
   section: ThreadPromptParentThreadSection;
-  buttonRef: RefObject<HTMLButtonElement | null>;
+  buttonRef: Ref<HTMLButtonElement>;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -290,7 +286,7 @@ function ParentThreadSectionBody({
 }: {
   section: ThreadPromptParentThreadSection;
   isExpanded: boolean;
-  collapseRef: RefObject<HTMLButtonElement | null>;
+  collapseRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 }) {
   return (
@@ -882,54 +878,42 @@ function ActiveChildThreadsCard({
   );
 }
 
-type DisclosureFocusHandoff = ReturnType<typeof useDisclosureFocusHandoff>;
-
-interface CoreThreadContextValue extends CoreThreadContext {
-  parentFocus: DisclosureFocusHandoff;
-}
-
-const CoreThreadContextContext = createContext<CoreThreadContextValue | null>(
-  null,
-);
-
-function useCoreThreadContext(): CoreThreadContextValue {
-  const value = useContext(CoreThreadContextContext);
-  if (value === null) {
-    throw new Error("Core thread context segments render inside the banner");
-  }
-  return value;
-}
-
 function ParentThreadSummary({
+  threadId,
   segments,
   isExpanded,
+  onToggle,
+  toggleRef,
 }: ExperimentalThreadContextSegmentProps) {
-  const { parentThread, parentFocus } = useCoreThreadContext();
+  const parentThread = useParentThreadSection(threadId);
   if (parentThread === null) return null;
   return segments.length === 1 ? (
     <ParentThreadInlineSegment section={parentThread} />
   ) : (
     <ParentThreadSectionToggle
       section={parentThread}
-      buttonRef={parentFocus.triggerRef}
+      buttonRef={toggleRef}
       isExpanded={isExpanded}
-      onToggle={parentFocus.onTriggerClick}
+      onToggle={onToggle}
     />
   );
 }
 
 function ParentThreadDetails({
+  threadId,
   segments,
   isExpanded,
+  onToggle,
+  collapseRef,
 }: ExperimentalThreadContextSegmentProps) {
-  const { parentThread, parentFocus } = useCoreThreadContext();
+  const parentThread = useParentThreadSection(threadId);
   if (parentThread === null || segments.length === 1) return null;
   return (
     <ParentThreadSectionBody
       section={parentThread}
       isExpanded={isExpanded}
-      collapseRef={parentFocus.collapseRef}
-      onCollapse={parentFocus.onCollapseClick}
+      collapseRef={collapseRef}
+      onCollapse={onToggle}
     />
   );
 }
@@ -967,8 +951,8 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         order: 10,
         summary: ParentThreadSummary,
         details: ParentThreadDetails,
-        useVisible: () => {
-          const { parentThread } = useCoreThreadContext();
+        useVisible: ({ threadId }) => {
+          const parentThread = useParentThreadSection(threadId);
           const kind = experimental_useThreadContextKind();
           return parentThread !== null && kind === "banner";
         },
@@ -1002,7 +986,6 @@ interface ReadOnlyContextBannerProps {
   iconName: IconName;
   statusLabel: string;
   description: string | null;
-  hasParentThread: boolean;
   statusAction: ReactNode;
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
@@ -1013,11 +996,15 @@ function ReadOnlyContextBanner({
   iconName,
   statusLabel,
   description,
-  hasParentThread,
   statusAction,
   expandedSegment,
   onToggleSegment,
 }: ReadOnlyContextBannerProps) {
+  const hasParentThread = useParentThreadSection(input.threadId) !== null;
+  const disclosure = useThreadContextSegmentDisclosure(
+    expandedSegment,
+    onToggleSegment,
+  );
   const isStatusExpanded =
     expandedSegment === STATUS_KEY && description !== null;
   const statusFocus = useDisclosureFocusHandoff(isStatusExpanded, () =>
@@ -1034,8 +1021,7 @@ function ReadOnlyContextBanner({
         {...input}
         part={part}
         segments={READ_ONLY_SEGMENTS}
-        isExpanded={expandedSegment === PARENT_THREAD_KEY}
-        onToggle={() => onToggleSegment(PARENT_THREAD_KEY)}
+        {...disclosure(PARENT_THREAD_KEY)}
       />
     ) : null;
   return (
@@ -1115,6 +1101,10 @@ function WritableContextBanner({
     input,
     coreThreadContextSegments,
   );
+  const disclosure = useThreadContextSegmentDisclosure(
+    expandedSegment,
+    onToggleSegment,
+  );
   const segments = entries.map(({ slot }) => ({
     key: threadContextSegmentKey(slot),
     pluginId: slot.pluginId,
@@ -1131,8 +1121,7 @@ function WritableContextBanner({
         part={part}
         {...input}
         segments={segments}
-        isExpanded={expandedSegment === key}
-        onToggle={() => onToggleSegment(key)}
+        {...disclosure(key)}
       />
     );
   };
@@ -1163,7 +1152,6 @@ function WritableContextBanner({
 
 export function ThreadPromptContextBanner({
   input,
-  core,
   archivedSection,
   environmentGoneSection,
   expandedSegment,
@@ -1171,18 +1159,12 @@ export function ThreadPromptContextBanner({
 }: ThreadPromptContextBannerProps) {
   const isReadOnly =
     archivedSection !== null || environmentGoneSection !== null;
-  const parentFocus = useDisclosureFocusHandoff(
-    expandedSegment === PARENT_THREAD_KEY,
-    () => onToggleSegment(PARENT_THREAD_KEY),
-  );
-  const context: CoreThreadContextValue = { ...core, parentFocus };
   if (isReadOnly) {
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
       : null;
     return (
-      <CoreThreadContextContext.Provider value={context}>
-        <ReadOnlyContextBanner
+      <ReadOnlyContextBanner
           input={input}
           iconName={environmentGoneSection ? "CircleX" : "Archive"}
           statusLabel={
@@ -1206,20 +1188,16 @@ export function ThreadPromptContextBanner({
               />
             ) : null
           }
-          hasParentThread={core.parentThread !== null}
           expandedSegment={expandedSegment}
           onToggleSegment={onToggleSegment}
         />
-      </CoreThreadContextContext.Provider>
     );
   }
   return (
-    <CoreThreadContextContext.Provider value={context}>
-      <WritableContextBanner
-        input={input}
-        expandedSegment={expandedSegment}
-        onToggleSegment={onToggleSegment}
-      />
-    </CoreThreadContextContext.Provider>
+    <WritableContextBanner
+      input={input}
+      expandedSegment={expandedSegment}
+      onToggleSegment={onToggleSegment}
+    />
   );
 }
