@@ -666,16 +666,13 @@ function ThreadRowComponent({
           {parentOptions && hasChildren ? (
             <SidebarChildToggleChevron
               disabled={isEditing}
-              className={cn(
-                isEditing && "hidden",
-                !isParentCollapsed &&
-                  "[@media(hover:hover)]:not-group-hover/thread-row:not-group-has-focus-visible/thread-row:not-group-has-[[data-sidebar-hover-actions-open=true]]/thread-row:absolute",
-              )}
+              className={isEditing ? "hidden" : undefined}
               isCollapsed={isParentCollapsed}
               expandLabel={`Expand ${labelTitle} threads`}
               collapseLabel={`Collapse ${labelTitle} threads`}
               onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
               revealOnHover={!isParentCollapsed}
+              collapseAtRest={!isParentCollapsed}
             />
           ) : null}
         </span>
