@@ -2883,6 +2883,66 @@ Docs: `frontend-hooks-and-ui.md`.
 4. **Feedback.** Every caller pairs the result with a toast or a manual-copy
    fallback. Decide whether a shared toast helper belongs in the SDK.
 
+## `app.experimental_showErrorToast` (`@get-bb/plugin-sdk/app`)
+
+A plain function, `({ error, fallbackMessage }) => void`, that shows the error
+toast bb's own actions show when a request fails. The parameter names are
+those of core's `showMutationErrorToast`, which it is. What it shows:
+
+- An `AbortError` (`error.name === "AbortError"`) shows nothing.
+- A lifecycle error from the server (`environment_not_ready`,
+  `thread_environment_unavailable`, `thread_not_writable` and the other codes
+  `apps/app/src/lib/lifecycle-errors.ts` parses) shows bb's own title and body
+  for that code.
+- Otherwise the title is `fallbackMessage` and the description is the
+  failure's message. For an SDK error (`experimental_BbHttpError`) that is the
+  message in the server's response body, else the error's message without its
+  `HTTP <status>:` prefix. A request that never reached the server ("Failed to
+  fetch", "Load failed", "NetworkError") gets "Could not reach the server.
+  Check that it is running and try again." Any other error gives its
+  message, or `fallbackMessage` when it has none.
+- The title and description drop a trailing period. The description is left
+  out when it equals the title. A message of "Request failed" shows the title
+  "Request failed" with "Please try again".
+
+The toast is an ordinary bb toast with no plugin attribution and lands in the
+notification center. The test harness shows nothing and records each call in
+`inspection.experimental_errorToasts` of the most recently rendered slot or
+mounted content scripts.
+
+**Core callers.** The export is `showMutationErrorToast` from
+`apps/app/src/lib/mutation-errors.ts`, which core's mutation hooks and error
+paths call directly. bb's thread actions
+(`apps/app/src/core-contributions/thread-actions.ts`: Mark read/unread, Pin,
+Notify parent, Regenerate title, Unarchive and the bulk forms) reach it
+through this export.
+
+**Callers that can migrate.** Each shows an SDK error today with a hand-written
+message, and migrating changes the visible toast (the fallback becomes the
+title, the server's message the description):
+
+- thread-list: `plugins/thread-list/app/ui/mutation-errors.ts` is a hand copy
+  of core's `getMutationErrorMessage`, used as `toast.error(message)` in
+  `app/list/ProjectList.tsx` and `app/list/ProjectRow.tsx`;
+  `app/rows/moveThreadAction.ts` and `app/dnd/useSectionThreadDnd.ts` drop the
+  server's message.
+- side-chat (`app.tsx`), push-notifications (`notificationsAction.ts`) and
+  drafts (`app.tsx`) show `error.message`, which for an SDK error reads
+  `HTTP <status>: ...`.
+
+Docs: `frontend-hooks-and-ui.md`.
+
+**Audit before stabilizing.**
+
+1. **Lifecycle codes.** The list of codes with their own title and body is
+   core's. Decide whether it is part of the contract or may change freely.
+2. **Toast options.** There is no id, action or duration. Decide whether a
+   caller needs to replace a loading toast or offer Retry, as some core
+   mutation paths do.
+3. **Message without a toast.** Plugins that show errors inline (memory,
+   scheduled-send, concurrency-limit) hand-write `error.message` too. Decide
+   whether the message alone belongs in the SDK.
+
 ## `app.experimental_saveFile` (`@get-bb/plugin-sdk/app`)
 
 `experimental_saveFile({ fileName, url } | { fileName, blob })` starts a
@@ -4113,9 +4173,10 @@ thread menu, then `inline`, with every selected id retained in `useData`'s
 a row joining or leaving a selection does not remount. The SDK test fake
 takes `threadBulkActions` for the entries it lists.
 
-**Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
-(`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
-the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
+**Core callers.** bb's own actions are the core contribution
+`apps/app/src/core-contributions/thread-actions.ts`, built only from the
+public SDK and registry items (`bb/core-contribution-imports`) and collected
+as `CORE_THREAD_ACTIONS` under the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
 `ThreadDetailHeader`), `RootComposeMobileRecents`, and
 `PaneThreadActionCommandHandler` read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
@@ -4243,7 +4304,7 @@ Requires SDK 0.6.178.
   `usePluginActionContextBinder` binds every callback context's
   `threadRequests` to it and `useThreadRequests` binds the hook, so core and
   plugins share one path. Core's Archive and Delete thread actions
-  (`core-thread-actions.ts`, `item` and `experimental_bulkItem`) call
+  (`core-contributions/thread-actions.ts`, `item` and `experimental_bulkItem`) call
   `context.threadRequests.requestArchive` / `requestDelete`, which covers every thread
   menu, the thread list's selection menu, row quick actions and the
   `thread.archive` keyboard command. The superseded

@@ -381,6 +381,9 @@ export const experimental_useCodeTheme = runtimeFunction(
 export const experimental_copyToClipboard = runtimeFunction(
   "experimental_copyToClipboard",
 );
+export const experimental_showErrorToast = runtimeFunction(
+  "experimental_showErrorToast",
+);
 export const experimental_saveFile = runtimeFunction("experimental_saveFile");
 
 export const experimental_getApplicationLinkApprovals = runtimeFunction(

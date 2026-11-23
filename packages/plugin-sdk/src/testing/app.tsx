@@ -1716,7 +1716,12 @@ type TestClipboard = (
   content: ExperimentalClipboardContent,
 ) => Promise<boolean>;
 
+type TestErrorToast = Parameters<
+  PluginSdkApp["experimental_showErrorToast"]
+>[0];
+
 let activeClipboard: TestClipboard | null = null;
+let activeErrorToasts: TestErrorToast[] | null = null;
 let loadingWithServers = false;
 
 function captureClipboardWrites(
@@ -1728,6 +1733,12 @@ function captureClipboardWrites(
     return result?.(content) ?? Promise.resolve(true);
   };
   return writes;
+}
+
+function captureErrorToasts(): TestErrorToast[] {
+  const toasts: TestErrorToast[] = [];
+  activeErrorToasts = toasts;
+  return toasts;
 }
 
 const testPluginSdkApp = {
@@ -1984,6 +1995,9 @@ const testPluginSdkApp = {
     content: ExperimentalClipboardContent,
   ): Promise<boolean> {
     return activeClipboard?.(content) ?? Promise.resolve(true);
+  },
+  experimental_showErrorToast(options: TestErrorToast): void {
+    activeErrorToasts?.push({ ...options });
   },
   experimental_saveFile(): Promise<ExperimentalSaveFileOutcome> {
     return Promise.resolve("started");
@@ -2321,6 +2335,8 @@ export interface MountedPluginContentScripts {
     getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
     /** Every `experimental_copyToClipboard()` write, in order. */
     readonly experimental_clipboardWrites: readonly ExperimentalClipboardContent[];
+    /** Every `experimental_showErrorToast()` call, in order. */
+    readonly experimental_errorToasts: readonly TestErrorToast[];
   };
   lifecycle: {
     /** Abort, then run returned cleanup functions once in reverse order. */
@@ -2348,6 +2364,7 @@ export async function mountPluginContentScripts(
   const experimental_clipboardWrites = captureClipboardWrites(
     options.experimental_copyToClipboard,
   );
+  const experimental_errorToasts = captureErrorToasts();
   let disposed = false;
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
@@ -2434,6 +2451,7 @@ export async function mountPluginContentScripts(
         return status === undefined ? null : { ...status };
       },
       experimental_clipboardWrites,
+      experimental_errorToasts,
     },
     lifecycle: { dispose },
   };
@@ -2714,6 +2732,8 @@ export interface RenderedSlotInspectionState {
   readonly sdkCalls: SdkCall[];
   /** Every `experimental_copyToClipboard()` write, in order. */
   readonly experimental_clipboardWrites: ExperimentalClipboardContent[];
+  /** Every `experimental_showErrorToast()` call, in order. */
+  readonly experimental_errorToasts: TestErrorToast[];
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -3153,6 +3173,7 @@ export function renderSlot<
   const experimental_clipboardWrites = captureClipboardWrites(
     options.experimental_copyToClipboard,
   );
+  const experimental_errorToasts = captureErrorToasts();
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
       sidebarActionCalls.push({
@@ -3725,6 +3746,7 @@ export function renderSlot<
     experimental_threadRequestCalls: threadRequestCalls,
     sdkCalls,
     experimental_clipboardWrites,
+    experimental_errorToasts,
     composer: composerLog,
     behavior: {
       experimental_invalidateRpc,
@@ -3747,6 +3769,7 @@ export function renderSlot<
       experimental_threadRequestCalls: threadRequestCalls,
       sdkCalls,
       experimental_clipboardWrites,
+      experimental_errorToasts,
       composer: composerLog,
     },
     get experimental_pageTitle() {
