@@ -29,7 +29,6 @@ import { useMachineAttention } from "@/hooks/useMachineAttention";
 import { useStartPluginUpdates } from "@/hooks/useStartPluginUpdates";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { getSettingsRoutePath } from "@/lib/route-paths";
 import {
   buildSidebarUpdateModel,
   type SidebarBbUpdate,
@@ -40,6 +39,7 @@ import {
   showProviderCliUpdatesAtom,
   skippedSidebarUpdatesAtom,
 } from "./sidebar-update-preferences";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
@@ -149,7 +149,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
             )}
           >
             <Link
-              to={getSettingsRoutePath("machines")}
+              to={getSettingsTargetPath({ section: "machines" })}
               onClick={() => {
                 machineAttention.acknowledge();
                 onNavigate?.();
@@ -268,7 +268,7 @@ export function SidebarUpdateButton({
       <HoverCardTrigger asChild>
         <SidebarMenuButton asChild className={UPDATE_BUTTON_CLASS}>
           <Link
-            to={getSettingsRoutePath("updates")}
+            to={getSettingsTargetPath({ section: "updates" })}
             onClick={onNavigate}
             aria-label={label}
             data-testid="sidebar-update-button"
@@ -356,7 +356,7 @@ function SidebarUpdateCardBody({
           {sidebarUpdateButtonLabel(model)}
         </span>
         <Link
-          to={getSettingsRoutePath("updates")}
+          to={getSettingsTargetPath({ section: "updates" })}
           onClick={onDetails}
           className={UPDATE_CARD_LINK_CLASS}
         >

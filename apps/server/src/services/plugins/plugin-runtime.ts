@@ -1711,6 +1711,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `service ${[...hung].join(", ")} did not stop`;
   }
 
+  async function runDisposeHooks(plugin: LoadedPlugin): Promise<void> {
+    for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+      try {
+        await hook();
+      } catch (error) {
+        pluginLog.warn(
+          plugin.pluginId,
+          `dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   async function discardCandidate(candidate: LoadedPlugin): Promise<void> {
     candidate.stopping.abort();
     try {
@@ -1720,6 +1733,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         `plugin ${candidate.pluginId} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    await runDisposeHooks(candidate);
     const detached = candidate.handle.databaseHandles
       .splice(0)
       .map((database) => {
@@ -2268,16 +2282,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       await stopServices(id, plugin);
       await waitForWebSocketsClosed(plugin);
-      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
-          pluginLog.warn(
-            id,
-            `dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+      await runDisposeHooks(plugin);
       await drainInvocations(plugin);
       for (const database of plugin.handle.databaseHandles.splice(0)) {
         try {

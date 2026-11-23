@@ -20,7 +20,7 @@ import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
-  getThreadRoutePath,
+  getThreadLocationPath,
   PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -59,7 +59,7 @@ function createSinglePaneContentLayout(content: PaneContent): SplitLayout {
 
 export function paneContentRoute(content: PaneContent): string {
   if (content.kind === "thread") {
-    return getThreadRoutePath(content);
+    return getThreadLocationPath(content);
   }
   if (content.kind === "new-thread") {
     return getRootComposeRoutePath();

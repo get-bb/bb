@@ -13,11 +13,11 @@ import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { appToast } from "@/components/ui/app-toast";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 
 export function getThreadUrl(thread: PluginThreadActionTarget): string {
   return new URL(
-    getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
+    getThreadLocationPath({ projectId: thread.projectId, threadId: thread.id }),
     window.location.origin,
   ).toString();
 }

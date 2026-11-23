@@ -63,10 +63,7 @@ import {
 } from "@/hooks/useLocalPathPicker";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
-import {
-  getSettingsMachineRoutePath,
-  getSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const CHECKOUTS_DESCRIPTION =
   "Where this project lives on each machine. A machine needs a checkout before it can run threads for this project.";
@@ -111,7 +108,7 @@ function CheckoutRow({
           />
           <MachineStatusDot connected={connected} />
           <Link
-            to={getSettingsMachineRoutePath(host.id)}
+            to={getSettingsTargetPath({ machineId: host.id })}
             className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
           >
             {host.name}
@@ -176,7 +173,7 @@ function LoadingShell({ children }: { children: ReactNode }) {
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-3">
         <Link
-          to={getSettingsRoutePath("projects")}
+          to={getSettingsTargetPath({ section: "projects" })}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <Icon name="ChevronLeft" className="size-3.5" />
@@ -343,7 +340,7 @@ export function ProjectDetailSettingsView() {
       <div className="mx-auto w-full max-w-3xl space-y-6 pb-10">
         <div className="space-y-3">
           <Link
-            to={getSettingsRoutePath("projects")}
+            to={getSettingsTargetPath({ section: "projects" })}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <Icon name="ChevronLeft" className="size-3.5" />
@@ -599,7 +596,7 @@ export function ProjectDetailSettingsView() {
           deleteProject.mutate(id, {
             onSuccess: () => {
               setDeleteTarget(null);
-              void navigate(getSettingsRoutePath("projects"), {
+              void navigate(getSettingsTargetPath({ section: "projects" }), {
                 replace: true,
               });
             },

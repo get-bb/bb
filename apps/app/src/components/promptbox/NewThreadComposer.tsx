@@ -8,10 +8,7 @@ import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { operationFailureReason } from "@/components/onboarding/onboarding-model";
-import {
-  getPluginConfigurationRoutePath,
-  getSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import {
   useCallback,
   useEffect,
@@ -133,7 +130,6 @@ import {
 } from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
-  getThreadRoutePath,
   isProjectlessProjectId,
 } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
@@ -150,6 +146,7 @@ import {
   MACHINE_SERVER_ACCESS_TITLE,
   machineServerAccessBlockedReason,
 } from "@/components/machines/machine-server-access";
+import { openThread } from "@/lib/split-layout/openThread";
 
 type NewThreadComposerSelectionScope = "new-thread" | "component-local";
 
@@ -1810,12 +1807,11 @@ export function NewThreadComposer({
       if (resource.kind === "thread") {
         const targetProjectId = resource.projectId ?? projectId;
         return () =>
-          void navigate(
-            getThreadRoutePath({
-              projectId: targetProjectId,
-              threadId: resource.threadId,
-            }),
-          );
+          openThread({
+            navigate,
+            projectId: targetProjectId,
+            threadId: resource.threadId,
+          });
       }
       if (resource.kind === "project") {
         return () =>
@@ -2250,7 +2246,9 @@ export function NewThreadComposer({
                       size="sm"
                       className="h-8 shrink-0 px-3"
                       onClick={() =>
-                        void navigate(getSettingsRoutePath("machines"))
+                        void navigate(
+                          getSettingsTargetPath({ section: "machines" }),
+                        )
                       }
                     >
                       Set up machine access
@@ -2268,7 +2266,7 @@ export function NewThreadComposer({
                       className="h-8 shrink-0 px-3"
                       onClick={() =>
                         void navigate(
-                          getPluginConfigurationRoutePath({
+                          getSettingsTargetPath({
                             pluginId: setupRequiredProvider.pluginId,
                           }),
                         )

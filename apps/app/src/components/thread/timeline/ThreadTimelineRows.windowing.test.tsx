@@ -15,7 +15,11 @@ import {
   delegationRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import { collectSearchedMessageAncestorRowIds } from "./useScrollToSearchedMessage";
+import {
+  collectSearchedMessageAncestorRowIds,
+  type MessageRevealRequest,
+} from "./useScrollToSearchedMessage";
+import type { ReactElement } from "react";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 function rect(top: number, height: number): DOMRect {
@@ -283,7 +287,7 @@ describe("ThreadTimelineRows windowing", () => {
     );
   });
 
-  it("keeps offscreen search and outline targets realized", async () => {
+  it("keeps an offscreen search target realized", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");
     Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
@@ -333,7 +337,6 @@ describe("ThreadTimelineRows windowing", () => {
               <ThreadTimelineRows
                 threadId="thr_large_search"
                 timelineRows={rows}
-                timelineNavigationTargetRowId="search-message-40"
                 threadRuntimeDisplayStatus="idle"
               />
             </CompactViewportOverrideProvider>
@@ -347,6 +350,81 @@ describe("ThreadTimelineRows windowing", () => {
 
     expect(target).not.toBeNull();
     expect(target?.textContent).toContain("Search message 20");
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith({
+        element: target,
+        options: { block: "start", inline: "nearest" },
+      }),
+    );
+  });
+
+  it("keeps an offscreen in-place reveal target realized and reveals it after an older URL target", async () => {
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-test-main-scroll", "");
+    Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
+    Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
+    const scrollElementIntoView = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      positionKeeper: createInertScrollPositionKeeper(),
+      holdContentPosition: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView,
+      scrollToBottom: vi.fn(),
+    };
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `search-message-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        sourceSeqEnd: index === 20 ? 22 : index + 1,
+        sourceSeqStart: index + 1,
+        text: `Search message ${index}`,
+        threadId: "thr_large_search",
+      }),
+    );
+    const queryClient = new QueryClient();
+    const timeline = (
+      messageRevealRequest: MessageRevealRequest | null,
+    ): ReactElement => (
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/thread",
+            state: {
+              searchMessageSeq: 21,
+              searchThreadId: "thr_large_search",
+            },
+          },
+        ]}
+      >
+        <QueryClientProvider client={queryClient}>
+          <BottomAnchorContext.Provider value={bottomAnchor}>
+            <CompactViewportOverrideProvider isCompactViewport>
+              <ThreadTimelineRows
+                threadId="thr_large_search"
+                timelineRows={rows}
+                messageRevealRequest={messageRevealRequest}
+                threadRuntimeDisplayStatus="idle"
+              />
+            </CompactViewportOverrideProvider>
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    const view = render(timeline(null));
+    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalled());
+    scrollElementIntoView.mockClear();
+    view.rerender(timeline({ threadId: "thr_other", messageSeq: 41, key: 1 }));
+    expect(
+      view.container.querySelector(
+        '[data-timeline-row-id="search-message-40"]',
+      ),
+    ).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(scrollElementIntoView).not.toHaveBeenCalled();
+    view.rerender(
+      timeline({ threadId: "thr_large_search", messageSeq: 41, key: 2 }),
+    );
     const outlineTarget = view.container.querySelector<HTMLElement>(
       '[data-timeline-row-id="search-message-40"]',
     );
@@ -354,7 +432,7 @@ describe("ThreadTimelineRows windowing", () => {
     expect(outlineTarget?.textContent).toContain("Search message 40");
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
-        element: target,
+        element: outlineTarget,
         options: { block: "start", inline: "nearest" },
       }),
     );

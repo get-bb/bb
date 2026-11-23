@@ -285,9 +285,24 @@ environments without a thread.
 asked for. Its project, machine, provider selection, name and holder are
 stored on the environment, and core runs it, setup included, on the same
 create path threads use; restart resumes it on the same setup operation. A
-user hold keeps the environment until the user deletes it and lets threads
-join it; it is never retired for having no threads. Environment responses
-carry `heldBy` (`"user"` or null) and `statusMessage`, and
-`sdk.environments.list({ heldBy })` filters by holder. Environment responses
+held environment is never retired for having no threads. `hold: "user"` keeps
+it until the user deletes it and lets threads join it. `hold: "plugin"` holds
+it for the calling plugin, and threads cannot join it ("held by <plugin>").
+Disabling or uninstalling that plugin releases its holds, and the environments
+retire like any other.
+That plugin's version-2 provider hands one to a new thread by calling
+`adopt(environmentId, resource)` in `create` and returning its path: core
+moves the thread onto it and records `resource` at once; the hold stays until
+create returns. Setup does not run again unless the provider then calls
+`setup(path)` with the adopted path, which starts setup at once (do this after
+changing the checkout). The resource create returns replaces the recorded one.
+If bb restarts before create returns, core discards the environment, removing
+it with the recorded resource, and provisions the thread again. A refused
+adopt changes nothing. After an adopt, a
+create that does not return `created` at that path fails the environment and
+its thread, and `remove()` later receives the recorded resource. Environment responses carry `heldBy`
+(`"user"`, `"plugin:<id>"` or null) and `statusMessage`, and
+`sdk.environments.list({ heldBy })` filters by holder. The Worktree plugin's
+warm pool is built on this. Environment responses
 expose only the read-only lifecycle projection: phase, retireAt, and
 teardown status/attempt/message.

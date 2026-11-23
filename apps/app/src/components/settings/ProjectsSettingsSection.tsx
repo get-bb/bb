@@ -34,11 +34,11 @@ import {
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
-import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import {
   SortableSettingsRowList,
   useSortableSettingsRow,
 } from "./sortable-settings-rows";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const PROJECTS_SECTION_DESCRIPTION =
   "Repositories bb can work in. Drag to change the order projects appear in the sidebar.";
@@ -135,7 +135,7 @@ function SortableProjectRow({
     label: project.name,
   });
   const navigate = useNavigate();
-  const detailPath = getSettingsProjectRoutePath(project.id);
+  const detailPath = getSettingsTargetPath({ projectId: project.id });
   const remoteLabel =
     project.gitRemoteUrl === null
       ? null

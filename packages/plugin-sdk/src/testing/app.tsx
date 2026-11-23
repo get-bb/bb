@@ -143,6 +143,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalSettingsTarget,
   type ExperimentalFilePreviewFile,
   type ExperimentalFilePreviewOptions,
   type ExperimentalFilePreviewProps,
@@ -166,6 +167,12 @@ import {
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { matchesAppShortcutKey } from "@bb/domain";
+import {
+  assertTestMessageSeq,
+  assertTestSettingsTarget,
+  testSettingsHref,
+  testThreadHref,
+} from "./navigation-hrefs.js";
 import { sliceUtf16Head } from "@bb/text-utils";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
@@ -268,6 +275,10 @@ export type NavigateCall =
   | {
       method: "experimental_openTerminal";
       options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
+    }
+  | {
+      method: "experimental_toSettings";
+      target?: ExperimentalSettingsTarget;
     };
 
 interface RetiredActionTabOpenOptions {
@@ -3151,6 +3162,7 @@ export function renderSlot<
     openThreadPanel(options: RetiredActionTabOpenOptions): boolean;
   } = {
     toThread(threadId, threadOptions) {
+      assertTestMessageSeq(threadOptions?.messageSeq);
       navigateCalls.push({
         method: "toThread",
         threadId,
@@ -3212,6 +3224,19 @@ export function renderSlot<
         options: terminalOptions,
       });
       return options.openTerminal?.(terminalOptions) ?? false;
+    },
+    experimental_toSettings(target) {
+      assertTestSettingsTarget(target);
+      navigateCalls.push({
+        method: "experimental_toSettings",
+        ...(target !== undefined ? { target } : {}),
+      });
+    },
+    experimental_threadHref(threadId, hrefOptions) {
+      return testThreadHref(threadId, hrefOptions);
+    },
+    experimental_settingsHref(target) {
+      return testSettingsHref(target, options.pluginId ?? "test-plugin");
     },
   };
 
