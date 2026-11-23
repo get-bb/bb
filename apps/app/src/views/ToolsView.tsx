@@ -40,7 +40,8 @@ import {
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
-import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -298,10 +299,13 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
       void navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
-          initialPrompt: buildPluginEditThreadPrompt({
-            name: plugin.name ?? plugin.id,
-            path: plugin.rootDir,
-          }),
+          initialPrompt: initialPromptSeedFromComposer(
+            buildPluginEditThreadPrompt({
+              name: plugin.name ?? plugin.id,
+              path: plugin.rootDir,
+            }),
+            null,
+          ),
           replaceInitialPrompt: true,
         },
       });

@@ -8,7 +8,11 @@ import {
   DEFAULT_THREAD_CREATION_PLACEMENT,
 } from "@/lib/thread-creation-placement";
 import { useRootComposePlacement } from "@/lib/root-compose-selection";
-import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
+import {
+  initialPromptSeedSchema,
+  useInitialPromptDraft,
+  type InitialPromptSeed,
+} from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useProviderDirectory } from "@/hooks/queries/system-queries";
@@ -313,11 +317,12 @@ export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
 
 export function readInitialPromptFromLocationState(
   state: unknown,
-): string | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as { initialPrompt?: unknown }).initialPrompt;
-  if (typeof candidate === "string" && candidate.length > 0) return candidate;
-  return null;
+): InitialPromptSeed | null {
+  if (!state || typeof state !== "object" || !("initialPrompt" in state)) {
+    return null;
+  }
+  const parsed = initialPromptSeedSchema.safeParse(state.initialPrompt);
+  return parsed.success ? parsed.data : null;
 }
 
 export function shouldReplaceInitialPromptFromLocationState(
@@ -538,7 +543,10 @@ function RootComposeSurface({
   );
 
   const searchInitialPrompt = readInitialPromptFromSearch(location.search);
-  const stateInitialPrompt = readInitialPromptFromLocationState(location.state);
+  const stateInitialPrompt = useMemo(
+    () => readInitialPromptFromLocationState(location.state),
+    [location.state],
+  );
   const searchInitialDraft = useInitialPromptDraft(searchInitialPrompt);
   const stateInitialDraft = useInitialPromptDraft(stateInitialPrompt);
   const setPromptDraft = composerActions.restoreDraft;
@@ -611,8 +619,7 @@ function RootComposeSurface({
     stateInitialDraft,
   ]);
   useEffect(() => {
-    const initialPrompt = readInitialPromptFromLocationState(location.state);
-    if (initialPrompt === null || stateInitialDraft === undefined) return;
+    if (stateInitialPrompt === null || stateInitialDraft === undefined) return;
     const nextDraft = stateInitialDraft;
     if (shouldReplaceInitialPromptFromLocationState(location.state)) {
       setPromptDraft(nextDraft);
@@ -630,6 +637,7 @@ function RootComposeSurface({
     seedPromptDraftIfEmpty,
     setPromptDraft,
     stateInitialDraft,
+    stateInitialPrompt,
   ]);
   const shouldFocusPrompt =
     typeof location.state === "object" &&

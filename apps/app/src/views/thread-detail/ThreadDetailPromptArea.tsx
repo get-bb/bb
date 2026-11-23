@@ -41,7 +41,10 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalComposerSelection,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   readExecutionSelection,
@@ -1238,9 +1241,18 @@ export function ThreadDetailPromptArea({
     },
     [applySelection],
   );
+  const threadComposerScope = useMemo<PluginComposerScope>(
+    () => ({
+      kind: "thread",
+      threadId: thread.id,
+      projectId: thread.projectId,
+      environmentId: thread.environmentId,
+    }),
+    [thread.environmentId, thread.id, thread.projectId],
+  );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId: thread.id },
+      scope: threadComposerScope,
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
@@ -1260,7 +1272,7 @@ export function ThreadDetailPromptArea({
       promptDraft.subscribe,
       setSelection,
       subscribeSelection,
-      thread.id,
+      threadComposerScope,
     ],
   );
 
@@ -1965,6 +1977,8 @@ export function ThreadDetailPromptArea({
           kind: "queued-message",
           threadId: thread.id,
           queuedMessageId: inlineEditQueuedMessageId,
+          projectId: thread.projectId,
+          environmentId: thread.environmentId,
         },
         textEffectKey: `queued-message:${thread.id}:${inlineEditQueuedMessageId}:${inlineEditSessionId}`,
         getCurrent: () =>
@@ -1998,7 +2012,9 @@ export function ThreadDetailPromptArea({
       inlineEditingQueuedMessageRef,
       queuedMessageComposerSelection,
       subscribeInlineQueuedDraft,
+      thread.environmentId,
       thread.id,
+      thread.projectId,
     ]);
   const queuedMessageEditor = useMemo(() => {
     if (
@@ -2114,7 +2130,7 @@ export function ThreadDetailPromptArea({
       }
       const operationId = sentMessageEditOperationId;
       return {
-        scope: { kind: "thread", threadId: thread.id },
+        scope: threadComposerScope,
         textEffectKey: `sent-message:${thread.id}:${operationId}`,
         getCurrent: () =>
           readSentMessageEditDraft(
@@ -2138,6 +2154,7 @@ export function ThreadDetailPromptArea({
       sentMessageEditRef,
       subscribeSentMessageEditDraft,
       thread.id,
+      threadComposerScope,
     ]);
   const sentMessageEditorPortal = useMemo(() => {
     if (!sentMessageEdit?.hostElement || !sentMessagePluginComposerHost) {

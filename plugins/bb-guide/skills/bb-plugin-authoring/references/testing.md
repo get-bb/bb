@@ -219,6 +219,8 @@ await slot.behavior.setComposerScope({
   kind: "queued-message",
   threadId: "t1",
   queuedMessageId: "q1",
+  projectId: "p1",
+  environmentId: null,
 });
 await slot.behavior.setComposerText("queued draft");
 slot.inspection.rpcCalls;

@@ -10,7 +10,12 @@ import {
 } from "./composer-decorations";
 
 const threadView: ComposerView = {
-  scope: { kind: "thread", threadId: "thr_1" },
+  scope: {
+    kind: "thread",
+    threadId: "thr_1",
+    projectId: "proj_test",
+    environmentId: null,
+  },
   layout: "expanded",
   draft: { text: "", isEmpty: true, attachmentCount: 0 },
   run: { isRunning: false, isSubmitting: false },
@@ -129,12 +134,29 @@ describe("createDraftObserverRunner", () => {
     update({ ...threadView, layout: "compact" });
     expect(onDraftChange).toHaveBeenCalledTimes(1);
 
-    update({ ...threadView, scope: { kind: "thread", threadId: "thr_2" } });
+    update({
+      ...threadView,
+      scope: {
+        kind: "thread",
+        threadId: "thr_2",
+        projectId: "proj_test",
+        environmentId: null,
+      },
+    });
     expect(onDraftChange).toHaveBeenCalledTimes(2);
 
-    update({ ...threadView, scope: { kind: "thread", threadId: "thr_2" } }, [
-      ...observers,
-    ]);
+    update(
+      {
+        ...threadView,
+        scope: {
+          kind: "thread",
+          threadId: "thr_2",
+          projectId: "proj_test",
+          environmentId: null,
+        },
+      },
+      [...observers],
+    );
     expect(onDraftChange).toHaveBeenCalledTimes(3);
     runner.dispose();
   });

@@ -4428,11 +4428,22 @@ export type PluginRealtimeConnectionState =
 
 /** Where `useComposer()` writes. */
 export type PluginComposerScope =
-  | { kind: "thread"; threadId: string }
+  | {
+      kind: "thread";
+      threadId: string;
+      /** The thread's project. */
+      projectId: string;
+      /** The thread's environment; null while the thread has none. */
+      environmentId: string | null;
+    }
   | {
       kind: "queued-message";
       threadId: string;
       queuedMessageId: string;
+      /** The queued message's thread's project. */
+      projectId: string;
+      /** The queued message's thread's environment; null while it has none. */
+      environmentId: string | null;
     }
   | {
       kind: "new-thread";
@@ -4800,8 +4811,9 @@ export interface PluginComposerApi {
    * Insert text and mentions. See {@link ComposerInsertOptions} for placement.
    * Mentions read from `draft` are recreated exactly; the calling plugin's
    * own `{ provider, id, label }` resolves through its mention provider.
-   * Throws for another plugin's mention without `kind`, and for
-   * `at: "cursor"` when the composer is not on screen.
+   * Throws for another plugin's mention without `kind`, for an empty provider
+   * id, one containing `:`, or an empty item id, and for `at: "cursor"` when
+   * the composer is not on screen.
    */
   insert(
     parts: ComposerInsertPart | readonly ComposerInsertPart[],
@@ -5325,13 +5337,22 @@ export interface NewThreadComposerProps {
    */
   defaultEnvironment?: CreateThreadEnvironmentArgs;
   /**
-   * Seeds the draft, only while the draft is still empty. Serialized
-   * `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens become mention
-   * pills with host-resolved titles/names. Missing projects/sections use their
-   * IDs; unavailable generated thread IDs use "Unavailable thread" ("Thread"
-   * if lookup fails). Other unknown thread IDs use the ID as their label.
+   * Seeds the draft, only while the draft is still empty. In a string,
+   * serialized `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens
+   * become mention pills with host-resolved titles/names. Missing
+   * projects/sections use their IDs; unavailable generated thread IDs use
+   * "Unavailable thread" ("Thread" if lookup fails). Other unknown thread IDs
+   * use the ID as their label.
+   *
+   * Pass {@link ComposerInsertPart}s instead to seed any mention kind,
+   * exactly as `useComposer().insert()` would: string parts stay plain text,
+   * mentions with a `kind` are recreated as given, and this plugin's own
+   * `{ provider, id, label }` resolves through its mention provider at send
+   * time. Parts that `insert()` would reject (an empty provider id, one
+   * containing `:`, or an empty item id) leave the draft empty and log a
+   * console warning instead of throwing.
    */
-  initialPrompt?: string;
+  initialPrompt?: string | readonly ComposerInsertPart[];
   placeholder?: string;
   /**
    * "contained" (default) fills and scrolls inside a bounded parent;
@@ -5645,8 +5666,10 @@ export interface BbNavigate {
   ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
-   * `initialPrompt` to seed the composer draft when it is empty (serialized
-   * thread, project, and section mention tokens become pills) and
+   * `initialPrompt` to seed the composer draft when it is empty, as a string
+   * (serialized thread, project, and section mention tokens become pills) or
+   * as {@link ComposerInsertPart}s with the same meaning as
+   * `useComposer().insert()` (throws for an invalid provider or item id), and
    * `focusPrompt` to focus the composer on arrival — the pairing behind
    * "Create via chat" style entry points that drop the user into chat with a
    * prefilled prompt. `projectId` makes that project the composer's
@@ -5660,7 +5683,7 @@ export interface BbNavigate {
    */
   toCompose(options?: {
     projectId?: string;
-    initialPrompt?: string;
+    initialPrompt?: string | readonly ComposerInsertPart[];
     focusPrompt?: boolean;
     placement?: { sectionId: string | null; pinned: boolean };
     environmentId?: string;

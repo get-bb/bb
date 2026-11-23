@@ -100,7 +100,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: {
           workflowActiveRuns: (input) => {
@@ -139,7 +144,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: { workflowActiveRuns: () => ({ runs }) },
       },
@@ -183,7 +193,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: { workflowActiveRuns: () => ({ runs: current }) },
       },
@@ -221,7 +236,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: { workflowActiveRuns: () => ({ runs: [run] }) },
       },
@@ -266,7 +286,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: {
           workflowActiveRuns: () => {
@@ -299,7 +324,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_idle" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_idle",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: { workflowActiveRuns: () => ({ runs: [] }) },
       },
@@ -317,7 +347,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_idle" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_idle",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         rpc: {
           workflowActiveRuns: () => {
@@ -357,7 +392,12 @@ describe("workflow composer banner", () => {
       {},
       {
         composer: {
-          scope: { kind: "thread", threadId: "thr_scope" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_scope",
+            projectId: "proj_test",
+            environmentId: null,
+          },
         },
         experimental_panel: { openTab },
         rpc: {

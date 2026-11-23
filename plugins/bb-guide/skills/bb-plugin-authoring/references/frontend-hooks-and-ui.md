@@ -56,8 +56,8 @@ registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
 toCompose({ initialPrompt?, focusPrompt? }?), openUrl(url), experimental_openFilePreview(options),
 experimental_openFileExternally(options), experimental_openTerminal({ terminalId }), experimental_toSettings(target?),
 experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; see [frontend-navigation.md](frontend-navigation.md).
-  `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
+  `toCompose` opens the root compose screen; pass `initialPrompt` (a string or
+  `ComposerInsertPart[]`, as `insert()` takes) to seed the composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
   with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
@@ -79,7 +79,7 @@ experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; se
   when they change; depend on those fields, not on the handle, in memo
   dependency lists.
   - State: `scope` (`thread`, `queued-message`, or `new-thread`, with that
-    surface's identifiers), `key` (stable identity for the composer's draft:
+    surface's ids and project; thread scopes add `environmentId`), `key` (stable identity for the composer's draft:
     the same across remounts and reloads, per editing session for queued and
     sent-message editors), `layout`
     (`"expanded" | "compact"`), `isRunning`, `isSubmitting`,

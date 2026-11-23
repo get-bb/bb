@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
+import { render } from "@/test/render-with-query-client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -18,7 +19,12 @@ import {
   type ComposerDraftStore,
 } from "./plugin-composer-host";
 
-const SCOPE = { kind: "thread", threadId: "thr_host" } as const;
+const SCOPE = {
+  kind: "thread",
+  threadId: "thr_host",
+  projectId: "proj_test",
+  environmentId: null,
+} as const;
 
 function ComposerHost({ draft }: { draft: ComposerDraftStore }) {
   const view = usePluginComposerStaticViewModel({
