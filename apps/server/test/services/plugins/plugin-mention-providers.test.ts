@@ -120,6 +120,30 @@ async function writePlugin(
   return rootDir;
 }
 
+function createTimeBoxedPluginService(
+  db: DbConnection,
+  workDir: string,
+  limits: { mentionSearchTimeoutMs?: number; mentionResolveTimeoutMs?: number },
+): PluginService {
+  return createPluginService({
+    aiServices: createAiServiceRegistry(),
+    telemetry: createNoopTelemetryService(),
+    db,
+    hub: {
+      getDaemonSessionIdForHost: () => null,
+      notifyPluginChanged: () => {},
+      onWatchedTargets: () => () => {},
+      notifyPluginSignal: () => 0,
+      notifySystem: () => {},
+    },
+    logger,
+    dataDir: join(workDir, "data"),
+    appVersion: "0.9.0",
+    loadTimeoutMs: 2000,
+    ...limits,
+  });
+}
+
 function pluginMentionInput(args: {
   text: string;
   mentions: Array<{ label: string; itemId: string; pluginId?: string }>;
@@ -675,21 +699,7 @@ describe("mention search time box", () => {
   beforeEach(async () => {
     db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-mention-timeout-"));
-    service = createPluginService({
-      aiServices: createAiServiceRegistry(),
-      telemetry: createNoopTelemetryService(),
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginChanged: () => {},
-        onWatchedTargets: () => () => {},
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
+    service = createTimeBoxedPluginService(db, workDir, {
       mentionSearchTimeoutMs: 100,
     });
   });
@@ -698,6 +708,76 @@ describe("mention search time box", () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
   });
+
+  it.each(["fulfill", "reject"])(
+    "keeps one pending search per registration through timeout and %s",
+    async (settlement) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-pending-search",
+        serverSource: `
+          export default function plugin(bb: any) {
+            let searches = 0;
+            let blocked = true;
+            let fulfill: () => void;
+            let reject: (error: Error) => void;
+            const gate = new Promise<void>((resolve, fail) => {
+              fulfill = resolve;
+              reject = fail;
+            });
+            bb.ui.registerMentionProvider({
+              id: "waiting",
+              label: "Waiting",
+              async search() {
+                searches += 1;
+                if (blocked) await gate;
+                return [{ id: "ready", title: "Ready" }];
+              },
+              resolve(action: string) {
+                blocked = false;
+                if (action === "reject") reject(new Error("released failure"));
+                else fulfill();
+                return { context: "released" };
+              },
+            });
+            bb.ui.registerMentionProvider({
+              id: "healthy",
+              label: "Healthy",
+              search: () => [{ id: "count", title: String(searches) }],
+              resolve: () => ({ context: "healthy" }),
+            });
+          }
+        `,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("running");
+      const search = () =>
+        service.searchMentions({
+          trigger: "@",
+          query: "ready",
+          projectId: null,
+          threadId: null,
+        });
+      await Promise.all([search(), search()]);
+      const repeated = [];
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        repeated.push(await search());
+      }
+      const release = await service.resolveMention({
+        pluginId: "pending-search",
+        itemId: `waiting:${settlement}`,
+      });
+      expect(release).toEqual({ ok: true, context: "released", images: [] });
+      const recovered = await search();
+      for (const groups of repeated) {
+        expect(groups.map((group) => group.providerId)).toEqual(["healthy"]);
+      }
+      expect(repeated.at(-1)?.[0]?.items[0]?.title).toBe("1");
+      expect(recovered.map((group) => group.providerId)).toEqual([
+        "waiting",
+        "healthy",
+      ]);
+      expect(recovered[1]?.items[0]?.title).toBe("2");
+    },
+  );
 
   it("drops a slow provider after the time box and keeps fast providers", async () => {
     const rootDir = await writePlugin(workDir, {
@@ -747,6 +827,79 @@ describe("mention search time box", () => {
   });
 });
 
+describe("mention search queueing", () => {
+  let db: DbConnection;
+  let workDir: string;
+  let service: PluginService;
+
+  beforeEach(async () => {
+    db = createMigratedConnection();
+    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-mention-queue-"));
+    service = createTimeBoxedPluginService(db, workDir, {
+      mentionSearchTimeoutMs: 10_000,
+    });
+  });
+
+  afterEach(async () => {
+    await service.stop();
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("runs only the latest query typed while a provider is still searching", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-typing-search",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const started: string[] = [];
+          let release = () => {};
+          const gate = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          bb.ui.registerMentionProvider({
+            id: "files",
+            label: "Files",
+            async search({ query }: { query: string }) {
+              started.push(query);
+              if (query === "r") await gate;
+              return [{ id: query, title: query }];
+            },
+            resolve(itemId: string) {
+              if (itemId === "release") release();
+              return { context: started.join(",") };
+            },
+          });
+        }
+      `,
+    });
+    expect((await service.installPath(rootDir)).status).toBe("running");
+    const search = (query: string) =>
+      service.searchMentions({
+        trigger: "@",
+        query,
+        projectId: null,
+        threadId: null,
+      });
+    const startedQueries = async (itemId: string) => {
+      const resolved = await service.resolveMention({
+        pluginId: "typing-search",
+        itemId,
+      });
+      return resolved.ok ? resolved.context : resolved.error;
+    };
+    const titles = (groups: Awaited<ReturnType<typeof search>>) =>
+      groups.flatMap((group) => group.items.map((item) => item.title));
+
+    const first = search("r");
+    const superseded = search("re");
+    const latest = search("readme");
+    expect(await superseded).toEqual([]);
+    expect(await startedQueries("files:release")).toBe("r");
+    expect(titles(await first)).toEqual(["r"]);
+    expect(titles(await latest)).toEqual(["readme"]);
+    expect(await startedQueries("files:started")).toBe("r,readme");
+  });
+});
+
 describe("mention resolve time box", () => {
   let db: DbConnection;
   let workDir: string;
@@ -755,21 +908,7 @@ describe("mention resolve time box", () => {
   beforeEach(async () => {
     db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-resolve-timeout-"));
-    service = createPluginService({
-      aiServices: createAiServiceRegistry(),
-      telemetry: createNoopTelemetryService(),
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginChanged: () => {},
-        onWatchedTargets: () => () => {},
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
+    service = createTimeBoxedPluginService(db, workDir, {
       mentionResolveTimeoutMs: 100,
     });
   });
