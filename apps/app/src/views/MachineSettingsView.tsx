@@ -70,10 +70,7 @@ import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import {
-  getSettingsProjectRoutePath,
-  getSettingsRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const PERMISSION_LIMIT_DESCRIPTION =
   "Highest permission mode any thread on the selected machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
@@ -208,7 +205,7 @@ export function MachineSettingsHeader({
   return (
     <div className="space-y-3">
       <Link
-        to={getSettingsRoutePath("machines")}
+        to={getSettingsTargetPath({ section: "machines" })}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <Icon name="ChevronLeft" className="size-3.5" />
@@ -367,7 +364,7 @@ export function MachineSettingsView() {
       <PageShell contentClassName="pt-4 md:pt-5">
         <div className="mx-auto w-full max-w-3xl space-y-3">
           <Link
-            to={getSettingsRoutePath("machines")}
+            to={getSettingsTargetPath({ section: "machines" })}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <Icon name="ChevronLeft" className="size-3.5" />
@@ -491,7 +488,7 @@ export function MachineSettingsView() {
                   )}
                   {updateIssueCount > 0 ? (
                     <Link
-                      to={getSettingsRoutePath("updates")}
+                      to={getSettingsTargetPath({ section: "updates" })}
                       className="shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                       <Pill
@@ -520,7 +517,7 @@ export function MachineSettingsView() {
                     <span key={project.id}>
                       {index > 0 ? " · " : ""}
                       <Link
-                        to={getSettingsProjectRoutePath(project.id)}
+                        to={getSettingsTargetPath({ projectId: project.id })}
                         className="hover:text-foreground"
                       >
                         {project.name}
@@ -609,7 +606,9 @@ export function MachineSettingsView() {
       <MachineRemoveDialog
         target={removeOpen ? host : null}
         onOpenChange={setRemoveOpen}
-        onRemoved={() => void navigate(getSettingsRoutePath("machines"))}
+        onRemoved={() =>
+          void navigate(getSettingsTargetPath({ section: "machines" }))
+        }
       />
 
       <MachineReconnectDialog

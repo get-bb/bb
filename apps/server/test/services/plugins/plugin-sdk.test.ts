@@ -1161,6 +1161,60 @@ describe("plugin bb.sdk against a running server", () => {
     }
   });
 
+  it('holds environments a plugin creates with hold "plugin" for that plugin, whatever plugin id it passes', async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-hold-"));
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-holder",
+        serverSource: `export default function plugin() {}`,
+      });
+      expect((await server.pluginService.installPath(rootDir)).status).toBe(
+        "running",
+      );
+      const heldBy: string[] = [];
+      const realFetch = globalThis.fetch;
+      vi.stubGlobal(
+        "fetch",
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (
+            !String(input).endsWith("/api/v1/environments") ||
+            init?.method !== "POST"
+          )
+            return realFetch(input, init);
+          heldBy.push(
+            z
+              .object({ heldBy: z.string() })
+              .parse(JSON.parse(String(init.body))).heldBy,
+          );
+          return Response.json({ message: "refused" }, { status: 409 });
+        },
+      );
+      const { sdk } = requireApi(server.pluginService, "holder");
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+          // @ts-expect-error a plugin cannot name another plugin as the holder
+          pluginId: "other",
+        }),
+      ).rejects.toThrow();
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+        }),
+      ).rejects.toThrow();
+      expect(heldBy).toEqual(["plugin:holder", "plugin:holder"]);
+    } finally {
+      vi.unstubAllGlobals();
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));

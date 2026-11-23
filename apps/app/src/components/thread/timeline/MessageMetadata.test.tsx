@@ -37,6 +37,7 @@ function slot(
 const message = {
   id: "msg_1",
   threadId: "thr_1",
+  messageSeq: 42,
   role: "user" as const,
   initiator: "agent" as const,
   turnId: "turn_1",
@@ -63,7 +64,7 @@ describe("MessageMetadata", () => {
       const pluginId = usePluginId();
       return (
         <span title={String(message.createdAt)}>
-          {pluginId}/{message.id}/{message.turnId}/
+          {pluginId}/{message.id}/{message.messageSeq}/{message.turnId}/
           {message.role === "user" ? message.initiator : "assistant"}
         </span>
       );
@@ -76,10 +77,10 @@ describe("MessageMetadata", () => {
       ]),
     );
     expect(screen.queryByText("Assistant metadata")).toBeNull();
-    const identity = screen.getByText("fixture/msg_1/turn_1/agent");
+    const identity = screen.getByText("fixture/msg_1/42/turn_1/agent");
     expect(identity.title).toBe("1700000000123");
     expect(screen.getByLabelText("Message metadata").textContent).toBe(
-      "Firstfixture/msg_1/turn_1/agent",
+      "Firstfixture/msg_1/42/turn_1/agent",
     );
   });
 

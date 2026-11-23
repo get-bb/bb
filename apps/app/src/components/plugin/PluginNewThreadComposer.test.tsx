@@ -13,6 +13,7 @@ import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   defaultAppSettings,
+  type Environment,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
   type ThreadSessionOption,
@@ -61,7 +62,10 @@ import {
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@bb/test-helpers";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
@@ -126,6 +130,10 @@ const mocks = vi.hoisted(() => ({
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
   openCreateDialogThen: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.mocked(sdk.environments.get).mockReset();
+});
 
 function subscribeToModelsLoading(onChange: () => void) {
   mocks.modelsLoadingListeners.add(onChange);
@@ -209,6 +217,7 @@ vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    environments: { get: vi.fn() },
     projects: { attachments: { copy: mocks.copyAttachments } },
     system: {
       experimental_recordTelemetryEvent: vi
@@ -1917,6 +1926,87 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("reuses an explicitly targeted environment without sidebar threads", async () => {
+    vi.mocked(sdk.environments.get).mockResolvedValue(
+      makeEnvironment({
+        id: "env_existing",
+        projectId: "proj_1",
+        hostId: "host_1",
+      }),
+    );
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <PanedRootComposeView /> }],
+      {
+        initialEntries: [
+          { pathname: "/", state: { reuseEnvironmentId: "env_existing" } },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        encodeReuseValue("env_existing"),
+      );
+    });
+    expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ environmentId: "env_existing" }),
+      ]),
+    );
+  });
+
+  it.each([
+    { status: "ready" as const, expected: encodeReuseValue("env_existing") },
+    {
+      status: "destroyed" as const,
+      expected: "provider:project-checkout",
+    },
+  ])(
+    "restores a tab-stored reuse without sidebar threads ($status)",
+    async ({ status, expected }) => {
+      vi.mocked(sdk.environments.get).mockResolvedValue(
+        makeEnvironment({
+          id: "env_existing",
+          projectId: "proj_1",
+          hostId: "host_1",
+          status,
+        }),
+      );
+      window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+      window.sessionStorage.setItem(
+        "bb.root-compose.reuse-environment",
+        encodeReuseValue("env_existing"),
+      );
+      const router = createMemoryRouter(
+        [{ path: "/", element: <PanedRootComposeView /> }],
+        { initialEntries: ["/"] },
+      );
+      render(
+        <Provider>
+          <RouterProvider router={router} />
+        </Provider>,
+      );
+
+      await waitFor(() =>
+        expect(sdk.environments.get).toHaveBeenCalledWith(
+          expect.objectContaining({ environmentId: "env_existing" }),
+        ),
+      );
+      await waitFor(() =>
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          expected,
+        ),
+      );
+    },
+  );
+
   it("closes visible plugin details before an underlying terminal", async () => {
     const terminal = createTerminalFixedPanelTab({
       terminalId: "terminal-under-details",
@@ -3167,6 +3257,70 @@ describe("NewThreadComposer setSelection", () => {
     if (failure !== null) throw failure;
     return result as unknown as ExperimentalComposerSelection;
   }
+
+  it.each(
+    ["root", "component-local"].flatMap((surface) =>
+      ["ready", "destroyed", "missing"].map((status) => ({ surface, status })),
+    ),
+  )(
+    "settles an explicit reuse selection without sidebar threads ($surface, $status)",
+    async ({ surface, status }) => {
+      const response = createDeferredPromise<Environment>();
+      vi.mocked(sdk.environments.get).mockReturnValue(response.promise);
+      if (surface === "root") {
+        render(rootLikeElement("proj_1"));
+      } else {
+        renderComposer(STORED_REQUEST, () => undefined, "explicit-reuse");
+      }
+      const host = currentHost();
+      const environment = {
+        type: "reuse" as const,
+        environmentId: "env_existing",
+      };
+      const selection = host.setSelection!({ environment });
+      let selectionSettled = false;
+      void selection.then(() => {
+        selectionSettled = true;
+      });
+      await waitFor(() =>
+        expect(sdk.environments.get).toHaveBeenCalledWith(
+          expect.objectContaining({ environmentId: "env_existing" }),
+        ),
+      );
+      expect(selectionSettled).toBe(false);
+      await act(async () => {
+        if (status === "missing") {
+          response.reject(
+            new BbHttpError({
+              body: null,
+              code: "not_found",
+              status: 404,
+              message: "Not found",
+            }),
+          );
+        } else {
+          response.resolve(
+            makeEnvironment({
+              id: "env_existing",
+              projectId: "proj_1",
+              hostId: "host_1",
+              status: status === "destroyed" ? "destroyed" : "ready",
+            }),
+          );
+        }
+      });
+      const result = await settled(selection);
+      if (status === "ready") {
+        expect(result.environment).toEqual(environment);
+      } else {
+        expect(result.environment).toMatchObject({
+          type: "provider",
+          environmentProviderId: "project-checkout",
+        });
+      }
+      expect(host.getSelection?.()?.environment).toEqual(result.environment);
+    },
+  );
 
   it("switches the project first and remembers the environment and machine for the new project", async () => {
     render(rootLikeElement("proj_2"));

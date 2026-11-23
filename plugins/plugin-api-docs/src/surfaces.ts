@@ -165,6 +165,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginThreadListRegistration",
           "PluginThreadListProps",
+          "PluginThreadListProps.experimental_scrollElement",
           "experimental_useSidebarThreads",
           "PluginSidebarThreadsState.experimental_archived",
           "PluginSidebarThreadsState.experimental_hosts",
@@ -174,6 +175,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarSection",
           "experimental_useArchiveEnvironmentThreads",
           "BbNavigate.toThread",
+          "BbNavigate.experimental_threadHref",
           "BbNavigate.toCompose",
           "experimental_useSidebarThreadSplit",
           "PluginSidebarThreadSplit",
@@ -410,13 +412,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear under messages on hover, or on text selected in a reply",
           "Show in bb's thread view, in embedded ThreadChat, or in only one of them",
           "Receive the message with the sequence its link uses, or the selected text",
-          "Open a [side-panel tab](thread-panel), fill the composer, or call bb's SDK and navigation",
+          "Open a [side-panel tab](thread-panel), fill the composer, call bb's SDK, or reveal any message",
         ],
         apiSymbols: [
           "PluginMessageActionRegistration",
           "PluginMessageActionContext",
           "ExperimentalPluginActionContext",
           "ThreadChatMessageReference",
+          "BbNavigate.toThread",
+          "BbNavigate.experimental_threadHref",
           "PluginMessageActionRegistration.experimental_surfaces",
           "ExperimentalMessageActionSurface",
         ],
@@ -429,7 +433,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add React metadata above conversation messages or in their hover action row. With this, a plugin can:",
         bullets: [
           "Show timestamps, status, or statistics beside chosen user and assistant messages",
-          "Read message identity, creation time, and turn details without receiving streaming text",
+          "Read message identity, link sequence, time, and turn without receiving streaming text",
           "Use React state and shared queries; mounted effects clean up when messages leave view",
           "Rely on bb for placement, styling, ordering, plugin context, and isolated loading and errors",
         ],
@@ -982,8 +986,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Show anything that isn't a form field, such as a connect-account button",
           "Sit below the [generated fields](declarative-settings) under a heading bb renders",
+          "Open this page, or a bb settings section, from a command or a link",
         ],
         apiSymbols: [
+          "BbNavigate.experimental_toSettings",
+          "BbNavigate.experimental_settingsHref",
+          "ExperimentalSettingsTarget",
+          "ExperimentalSettingsSection",
           "PluginSettingsSectionRegistration.experimental_page",
           "PluginSettingsSectionRegistration",
           "PluginSettingsSectionProps",
@@ -1345,7 +1354,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create a workspace for each thread, such as a worktree or a cloud checkout",
           "Ask for inputs, such as a branch, on the new-thread screen",
           "Stream setup progress, and clean up when the thread is done",
-          "Restore a thread's workspace after it was removed",
+          "Restore a workspace, or keep ready ones to hand to new threads",
         ],
         apiSymbols: [
           "PluginEnvironments",
@@ -1379,6 +1388,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginEnvironmentProviderSteps",
           "PluginEnvironmentProviderLocation",
           "PluginEnvironmentProviderLocateContext",
+          "PluginBbSdk.environments.experimental_create",
         ],
         firstParty: [
           "Modal Sandbox [Experimental]",

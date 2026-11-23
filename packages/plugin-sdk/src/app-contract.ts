@@ -553,6 +553,15 @@ export interface PluginThreadListProps {
    */
   onNavigate: () => void;
   /**
+   * The sidebar element that scrolls this list. Window rows against it, use
+   * it as an `IntersectionObserver` root, and scroll it for drag autoscroll
+   * instead of walking up the DOM. The host mounts the list only after this
+   * element exists, so it is set on the first render, and it changes only
+   * when the list itself remounts.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_scrollElement: HTMLElement;
+  /**
    * @internal Retired: the sidebar search field was removed and the quick
    * palette owns thread search. The host still passes "" so lists built
    * against older SDKs keep rendering.
@@ -1276,8 +1285,9 @@ export interface PluginPendingInteractionRegistration {
  */
 export interface PluginSidebarFooterActionContext extends ExperimentalPluginActionContext {
   /**
-   * Navigate to this plugin's detail page in Tools, where declarative settings
-   * and `settingsSection` slots render.
+   * Open this plugin's settings page, where declarative settings and
+   * `settingsSection` slots render; the same as
+   * `navigate.experimental_toSettings()`.
    */
   openSettings(): void;
 }
@@ -1307,7 +1317,7 @@ export interface PluginSidebarFooterActionRegistration {
  * `panel` act on the focused surface, as for commands.
  */
 export interface ExperimentalSidebarFooterActionContext extends ExperimentalPluginActionContext {
-  /** Navigate to this plugin's detail page in Tools. */
+  /** Open this plugin's settings page; the same as `navigate.experimental_toSettings()`. */
   openPluginDetails(): void;
 }
 
@@ -1884,7 +1894,8 @@ export interface PluginSidebarThreadActions {
    * the composer's selection, so the thread is created where you asked.
    * `sectionId` files the new thread under that section, and
    * `environmentId` reuses that environment (the "New thread in
-   * environment" affordance), both exactly as bb's own list does.
+   * environment" affordance), both exactly as bb's own list does. A missing
+   * or destroyed environment falls back to the composer's default.
    * `experimental_placement` explicitly selects the section and pin state,
    * overriding `sectionId`. Omitting placement starts unpinned, outside sections
    * unless `sectionId` is supplied; previous composer placement is cleared.
@@ -3596,6 +3607,12 @@ export type ExperimentalMessageMetadataContext = Pick<
   ThreadChatMessageReference,
   "id" | "threadId"
 > & {
+  /**
+   * The message's link sequence, the same value as
+   * `ThreadChatMessageReference.experimental_messageSeq`; pass it to
+   * `navigate.toThread` or `navigate.experimental_threadHref`.
+   */
+  messageSeq: number;
   /** Unix time in milliseconds, supplied by BB's timeline. */
   createdAt: number;
   /** The containing turn, or null for a message outside a turn. */
@@ -4875,7 +4892,8 @@ export interface PluginComposerApi {
    * has, so a missing key means "no such picker here" and a value that
    * differs from the one passed was reconciled (a reasoning level the model
    * does not support, a service tier the model does not offer, a permission
-   * mode above the machine's ceiling, a model the provider does not list). A provider the composer does not list is
+   * mode above the machine's ceiling, a model the provider does not list, a
+   * `reuse` of a missing or destroyed environment). A provider the composer does not list is
    * ignored together with the model and reasoning level meant for it, so the
    * stored provider preference never names something the picker could not
    * have chosen. `environment` is absent while the composer
@@ -5279,8 +5297,8 @@ export interface NewThreadComposerProps {
    * - A `host` environment whose host no longer exists (or whose project has
    *   no source on it) falls back to the composer's default host, exactly as
    *   the primary compose surface would.
-   * - A `reuse` environment whose worktree no longer has unarchived threads
-   *   falls back the same way.
+   * - A `reuse` environment is looked up directly, even without unarchived
+   *   threads. A missing or destroyed environment falls back the same way.
    * - An `unmanaged` workspace's `path` has no composer control; the seeded
    *   selection submits `path: null` (the host's configured checkout). The
    *   composer itself never produces a non-null `path`, so real round trips
@@ -5558,14 +5576,46 @@ export interface BbContext {
   experimental_pluginPanel: ExperimentalPluginPanelPage | null;
 }
 
+/** A bb settings section, as `/settings/<section>` names it. */
+export type ExperimentalSettingsSection =
+  | "general"
+  | "providers"
+  | "ai-services"
+  | "appearance"
+  | "keyboard"
+  | "browser"
+  | "files"
+  | "projects"
+  | "machines"
+  | "mobile"
+  | "environment-variables"
+  | "updates"
+  | "plugins"
+  | "marketplaces"
+  | "experiments"
+  | "community"
+  | "archived";
+
+/** A bb settings page; omit it to mean the calling plugin's own settings page. */
+export interface ExperimentalSettingsTarget {
+  section: ExperimentalSettingsSection;
+}
+
 export interface BbNavigate {
   /**
    * Open a thread. `split: true` applies bb's split placement rules (a right
    * split by default, focus when already open, replace at the pane cap) and
    * falls back to plain navigation where splits are off. Opening also expands
    * the thread's conversation if the side panel had collapsed it.
+   * `messageSeq` opens the thread at that message, as a message
+   * link does: bb loads older history as needed, scrolls to the message and
+   * highlights it, or shows a "Message not found" toast. Repeating the call
+   * reveals the message again.
    */
-  toThread(threadId: string, options?: { split?: boolean }): void;
+  toThread(
+    threadId: string,
+    options?: { split?: boolean; messageSeq?: number },
+  ): void;
   toProject(projectId: string): void;
   /**
    * Navigate to one of this plugin's own nav panels by its `path`.
@@ -5588,7 +5638,8 @@ export interface BbNavigate {
    * selection; `placement` files the new thread in a section and pin state.
    * Without `placement`, the screen keeps the placement it already shows,
    * unless `environmentId` or `hostId` is set, which resets it to unpinned
-   * and outside sections. `environmentId` reuses that environment and
+   * and outside sections. `environmentId` reuses that environment (falling
+   * back to the composer's default when it is missing or destroyed) and
    * `hostId` picks a machine for a new one (`environmentId` wins when both
    * are set).
    */
@@ -5628,6 +5679,31 @@ export interface BbNavigate {
    * docs/api_to_audit.md.
    */
   experimental_openTerminal(options: { terminalId: string }): Promise<boolean>;
+  /**
+   * Open bb settings: this plugin's own settings page, or `target.section`.
+   * Settings replaces the whole window, including any split panes; Back
+   * returns to them. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_toSettings(target?: ExperimentalSettingsTarget): void;
+  /**
+   * The app-relative href of the location `toThread(threadId, options)`
+   * opens: the thread, or its message at `messageSeq`. When bb
+   * has not loaded the thread's project, the href is `/threads/<id>`, which bb
+   * redirects to the project route, keeping the message. Use it on an `<a>`:
+   * bb routes a plain click in place, Cmd/Ctrl-click opens a split, and
+   * middle-click a new tab. For a URL to copy, use
+   * `new URL(href, location.origin)`, as bb's Copy link does. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadHref(
+    threadId: string,
+    options?: { messageSeq?: number },
+  ): string;
+  /**
+   * The app-relative href of the settings page `experimental_toSettings(target)`
+   * opens. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_settingsHref(target?: ExperimentalSettingsTarget): string;
 }
 
 // ---------------------------------------------------------------------------
@@ -5989,8 +6065,9 @@ export interface PluginSdkApp {
    * objects keep their identity across updates while the underlying entry is
    * unchanged, so a memoized row re-renders only when its own thread changed;
    * the array itself is new on every update. Window your rows (render only
-   * what is on screen) as the built-in sidebar does — a list that mounts one
-   * row per thread is slow on phones with many threads.
+   * what is on screen) against `PluginThreadListProps.experimental_scrollElement`,
+   * as the built-in sidebar does — a list that mounts one row per thread is
+   * slow on phones with many threads.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useSidebarThreads(options?: {

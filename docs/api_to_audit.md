@@ -2044,6 +2044,63 @@ Docs: `frontend-hooks-and-ui.md`.
 4. Decide whether a nav panel should also declare a default terminal scope so
    the native "+ Terminal" button follows the page's worktree.
 
+## Thread, message and settings locations (`BbNavigate.experimental_toSettings`, `BbNavigate.experimental_threadHref`, `BbNavigate.experimental_settingsHref`, and `ExperimentalMessageMetadataContext.messageSeq`)
+
+`toThread(threadId, { messageSeq })` opens the thread's message link,
+`…/threads/<id>#msg=<seq>`, through the same placement as `split`, so bb
+loads older history, scrolls to and highlights the message, or toasts
+"Message not found"; a repeated call reveals it again. That option is stable
+and unprefixed, so it matches the href option below; this entry covers the
+experimental members around it.
+`experimental_toSettings()` opens the calling plugin's settings page, and
+`experimental_toSettings({ section })` a bb section
+(`ExperimentalSettingsSection`). Settings replaces the whole window, panes
+included. `experimental_threadHref(threadId, { messageSeq? })` and
+`experimental_settingsHref(target?)` take the same arguments as the call
+they mirror and return the app-relative location it opens. The thread href
+resolves the project from bb's loaded threads, as `toThread` does; otherwise
+it is `/threads/<id>`, which bb redirects to the project route and keeps
+`#msg=`. bb's plugin slot root
+routes plain clicks on those hrefs in place (Cmd/Ctrl-click opens a split,
+middle-click a new tab). A seq that is not a non-negative integer, or an
+unknown section, throws `RangeError`. Message metadata components receive
+the same seq as `message.messageSeq`. Requested by the API
+audit: 6 community plugins rebuilt the reveal from the DOM, 13 forged
+history state to reach settings, and about 50 built `/threads/` or
+`/settings/` paths by hand.
+
+**Core callers.** `getThreadLocationPath` (`@bb/client-core`) is the only
+thread path builder in the web and mobile apps: every thread link, Copy link,
+Copy message link, mention, pane route and notification target, plus
+`toThread` and `experimental_threadHref`. `openThread`
+(`split-layout/openThread.ts`) is the only way to open a thread for the user,
+with or without a split: `toThread`, `experimental_useSidebarThreadActions`'
+`open`, the search palette, sidebar Open in split and keyboard navigation,
+`bb thread open`, mention links, the archived-thread toast, and new threads
+after creation. Pane bookkeeping (closing, replacing or reconciling panes)
+uses only the path builder. The palette keeps its `searchMessageSeq` state
+because its hits can be non-message events. Every reveal of a message in the
+timeline, whether from a message link, the palette or the thread outline,
+runs through `useScrollToSearchedMessage`: it loads older pages, keeps the
+target rendered, waits for its position to settle, highlights it, and toasts
+when it is missing. The outline sends an in-place request with the
+message's seq instead of a URL, so it adds no history entry. `getSettingsTargetPath`
+(`settings-sections.ts`) is the only settings path builder: sections, plugin,
+machine and project pages, including `experimental_toSettings` and
+`experimental_settingsHref`. The sidebar footer's `openSettings` /
+`openPluginDetails` call `navigate.experimental_toSettings()`. The generic
+Settings button, nav rail button and "Open settings" command reopen the last
+settings page visited, which is a stored location, not a target.
+
+Docs: `frontend-navigation.md`.
+
+**Audit before stabilizing.**
+
+1. Decide whether plugins need other plugins' settings pages or project and
+   machine settings pages; each had one community caller.
+2. Confirm copied absolute URLs from desktop, which point at the local
+   server origin like core's Copy link does.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `ExperimentalHostRpcContext.experimental_paths`, `ExperimentalHostRpcContext.experimental_emitSignal`, `ExperimentalHostRpcContext.experimental_watch`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** At that date, signals and watches had no
@@ -3166,7 +3223,7 @@ An exclusive slot that replaces the sidebar's scrolling thread list. bb's own
 list is the bundled `thread-list` plugin. Automatic selection prefers another
 registered list, and the user can pin one with `sidebar.threadListProvider`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3184,6 +3241,39 @@ Docs: `frontend-registration.md`.
 4. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup;
    `onNavigate` is currently the plugin's responsibility to call.
+
+## `PluginThreadListProps.experimental_scrollElement` (`@get-bb/plugin-sdk/app`)
+
+The sidebar element that scrolls an `experimental_threadList` component:
+core's `SidebarContent`, owned by `SidebarThreadListContent`
+(`apps/app/src/components/sidebar/PluginThreadList.tsx`), which `AppSidebar`
+renders. Core mounts the list only after that element exists, so the prop is
+never null; it changes only when the list remounts (desktop to compact
+viewport). Lists window rows, root an `IntersectionObserver`, and
+drag-autoscroll against it instead of `closest('[data-sidebar="content"]')`
+or walking up to the nearest `overflow: auto` ancestor.
+
+Core caller on the same path: the bundled `thread-list` plugin reads only this
+prop, through `SidebarScrollAreaProvider` (`plugins/thread-list/app/ui/sidebar.tsx`),
+for windowing (`SidebarWindowedItems`), "is the list shown"
+(`useSidebarListShown`), and visible-row order for Shift-click selection
+(`ThreadSelectionStore`). Community callers that can migrate: the
+`closest()` forks (bb-tinted-threads, oxi-thread-list) and the drag
+autoscroll walkers (thread-tree, switchboard, chat-sidebar, recent,
+bb-sidebar, cursor-suite project-sort).
+
+Docs: `frontend-thread-list.md`.
+
+**Audit before stabilizing.**
+
+1. **Migrated callers.** At least two community lists window or autoscroll
+   against the prop, with no remaining DOM walk for the sidebar scroller.
+2. **Scroller opt-out.** nested-sidebar and cursor-sidebar override the host
+   scroller with CSS to run their own. Decide whether a list may declare its
+   own scroller, or whether the host element stays the only one.
+3. **Identity.** Confirm the element still changes only together with a list
+   remount if the sidebar layout changes (placement, framed sidebar, split
+   panes).
 
 ## AI services (`bb.experimental_aiServices.register`)
 
@@ -3484,7 +3574,7 @@ doc covers three September 2026 additions:
 - `openNewThread({ hostId })`, unprefixed by request, preselects a machine for
   a new environment. `environmentId` takes priority.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -3565,7 +3655,7 @@ from `PluginSidebarThread`:
   order. The hook returns null when the modifier is up and for rows without
   the attribute.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 Core callers: the bundled Thread list plugin (`plugins/thread-list`) renders
 bb's sidebar through all five. `ThreadRow` reads the draft, row status and
@@ -3982,7 +4072,7 @@ thread list's multi-selection is the only caller of
 `experimental_bulkThreads`, and its Move to section and push-notifications'
 Notifications carry bulk items.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-registration.md`, `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4025,7 +4115,7 @@ deprecated sidebar-actions shim also calls. Its callers are the bundled
 thread-list plugin's environment group menu (`ProjectRow.tsx`) and the
 Conductor plugin's workspace sidebar (`WorkspaceSidebar.tsx`).
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
@@ -4132,7 +4222,9 @@ Requires SDK 0.6.178.
   a complete `ExperimentalPluginActionContext` plus `calls:
   ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
-  false, `panel` is `experimental_makePanelController()`, and `sdk` methods
+  false except `experimental_threadHref` and `experimental_settingsHref`,
+  which return the test harness's paths (`/threads/<id>#msg=<seq>`,
+  `/settings/<section>`), `panel` is `experimental_makePanelController()`, and `sdk` methods
   reject with `sdk.<area>.<method> is not stubbed`. Overrides replace members;
   tests spread the result and add the callback's own fields.
 - **Why:** every member added to `ExperimentalPluginActionContext` broke every
@@ -4385,10 +4477,10 @@ generations, expiry and cancellation races, bounded screenshot bytes, and
 cross-platform desktop startup. Cloud browsers and external provider
 registration are outside this surface.
 
-## Environments before threads and user holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`)
+## Environments before threads and holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`, provider `adopt`)
 
 `experimental_create({ projectId, hostId?, provider?: { id, inputs? }, name?,
-hold: "user" })` creates an environment before any thread. The creation
+hold })` creates an environment before any thread. The creation
 intent (project, machine, provider selection, name, holder) is stored on the
 environment row (`environments.held_by` plus the existing provider columns),
 and the engine runs create and setup from it on the same path thread
@@ -4401,11 +4493,45 @@ environments. Environment responses carry `heldBy` and `statusMessage`;
 version-1 providers and a located path that already has an environment are
 refused. Core's caller is `bb environment create`.
 
+`hold: "plugin"` holds it for the calling plugin (`pluginId` outside a
+plugin; a plugin's `bb.sdk` always sends its own id): threads cannot join it
+("held by <plugin>"), and a create that returns its path without adopting it
+fails. A version-2 provider of that plugin hands one to a new thread with
+`adopt(environmentId, resource)` (`adoptHeldEnvironment` in
+`packages/db/src/data/environments.ts`), which in one transaction moves the
+thread's reservation onto the held environment, records `resource`, and drops
+the reservation. The hold stays until create returns, so other threads still
+cannot join and a restart can tell the handover was unfinished. Setup does not
+run again unless the provider then calls `setup(path)` with the adopted path,
+which starts setup at once, as for a fresh create. The create must return the
+held environment's path; the resource it returns replaces the one adopt
+recorded, and the hold is cleared. A refused adopt changes nothing. The thread
+starts only once create returns `created`. Any other outcome after an adopt (a
+failed or aborted create, or a path other than the adopted one) fails the
+environment and its thread, releases the hold, and the environment is retired
+and removed with the recorded resource. Stopping the thread before create
+returns discards the environment, as for a fresh create. After a restart
+between adopt and create returning, core discards the environment (removed
+with the resource adopt recorded) and puts the thread back on its provider
+request, so it is provisioned again (`restartInterruptedHandOff`). Its only
+caller is the Worktree plugin's warm pool, which checks a member under the git
+ref lock, adopts it with a resource naming its placeholder branch,
+fast-forwards it and calls `setup(path)` when it is behind the remote's default
+base, waits for the thread's branch name, and renames the placeholder last.
+Its removal also deletes the branch named in the worktree's completion file,
+which the rename writes first, so a restart after the rename leaks nothing.
+Disabling or uninstalling a plugin releases its holds on environments no
+thread is taking (`releasePluginEnvironmentHolds`, on the plugin service's
+`onPluginUnregistered`, the same signal that clears its queue waits), so the
+environments retire like any other. Steps a provider reports after `adopt`
+land on the adopted environment and the thread's provisioning transcript.
+
 Docs: `backend-events.md`; CLI: `bb-guide-environments` guide chapter.
 
 Before stabilizing, decide whether a hold needs release or re-hold (reuse
-after the last thread, or a UI "New workspace" flow), and whether `hold`
-should be optional.
+after the last thread, or a UI "New workspace" flow), whether `pluginId`
+outside a plugin should be authenticated like RPC caller
+identity, and whether `hold` should be optional for user creates.
 
 ## Machine paths and environment cleanup
 
@@ -4887,7 +5013,7 @@ the rule for when `rowStatus` replaces the indicator come from
 `packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
 `experimental_resolveThreadStatus`.
 
-Docs: `frontend-registration.md`.
+Docs: `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 

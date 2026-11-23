@@ -17,7 +17,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { sdk } from "@/lib/sdk";
 import { SettingsSection } from "@/components/ui/settings-section";
-import { getSettingsSectionRoutePath } from "@/components/settings/settings-sections";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import { MachineEnvironmentImportDialog } from "@/components/settings/MachineEnvironmentImportDialog";
 import type { ParsedEnvEntry } from "@/lib/parse-env-file";
 import {
@@ -419,7 +419,7 @@ const ROW_CAPTION_CLASS_NAME = "text-xs leading-snug text-subtle-foreground";
 function GlobalSettingsLink() {
   return (
     <Link
-      to={getSettingsSectionRoutePath("environment-variables")}
+      to={getSettingsTargetPath({ section: "environment-variables" })}
       className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       global settings

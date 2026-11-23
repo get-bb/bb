@@ -23,7 +23,7 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
@@ -256,7 +256,7 @@ export function ArchivedThreadsSettingsSection() {
                   >
                     <Link
                       className="min-w-0 flex-1"
-                      to={getThreadRoutePath({
+                      to={getThreadLocationPath({
                         projectId: thread.projectId,
                         threadId: thread.id,
                       })}

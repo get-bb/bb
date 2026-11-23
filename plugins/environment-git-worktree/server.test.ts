@@ -93,6 +93,9 @@ async function setup(
     setup: async (path) => {
       order.push(`setup ${path}`);
     },
+    adopt: async (id) => {
+      order.push(`adopt ${id}`);
+    },
     attempt: 1,
     pathKey: THREAD_ID,
     report,

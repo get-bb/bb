@@ -229,7 +229,7 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-interface PluginMentionProviderRecord {
+export interface PluginMentionProviderRecord {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
@@ -372,6 +372,11 @@ function wrapSdkForPlugin(
     environments: {
       ...sdk.environments,
       ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
+      experimental_create(args) {
+        return sdk.environments.experimental_create(
+          args.hold === "user" ? args : { ...args, pluginId },
+        );
+      },
     },
     threads: {
       ...sdk.threads,

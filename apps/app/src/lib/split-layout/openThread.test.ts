@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { openThreadInSplit } from "./openThreadInSplit";
+import { openThread } from "./openThread";
 import { countPanes, findPaneByThread, type SplitLayout } from "./index";
 
 function layout(threadId = "thread-1"): SplitLayout {
@@ -33,21 +33,24 @@ function eightPanes(): SplitLayout {
   };
 }
 
-describe("openThreadInSplit", () => {
+describe("openThread", () => {
   it("preserves search deep-link state when creating a split", () => {
     let current = layout();
     const navigate = vi.fn();
-    openThreadInSplit({
-      store: {
-        get: () => current,
-        set: (_atom, value) => {
-          current = value;
-        },
-      },
+    openThread({
       navigate,
       projectId: "project-1",
       threadId: "thread-2",
-      isCompact: false,
+      split: {
+        zone: "right",
+        store: {
+          get: () => current,
+          set: (_atom, value) => {
+            current = value;
+          },
+        },
+        isCompact: false,
+      },
       state: { searchMessageSeq: 42, searchThreadId: "thread-2" },
     });
 
@@ -63,12 +66,15 @@ describe("openThreadInSplit", () => {
   it("keeps replace semantics and state when the result is already open", () => {
     const current = layout("thread-2");
     const navigate = vi.fn();
-    openThreadInSplit({
-      store: { get: () => current, set: vi.fn() },
+    openThread({
       navigate,
       projectId: "project-1",
       threadId: "thread-2",
-      isCompact: false,
+      split: {
+        zone: "right",
+        store: { get: () => current, set: vi.fn() },
+        isCompact: false,
+      },
       state: { searchMessageSeq: 7, searchThreadId: "thread-2" },
     });
 
@@ -84,17 +90,20 @@ describe("openThreadInSplit", () => {
   it("coerces to a replace of the focused pane at the eight-pane cap", () => {
     let current = eightPanes();
     const navigate = vi.fn();
-    openThreadInSplit({
-      store: {
-        get: () => current,
-        set: (_atom, value) => {
-          current = value;
-        },
-      },
+    openThread({
       navigate,
       projectId: "project-1",
       threadId: "thread-9",
-      isCompact: false,
+      split: {
+        zone: "right",
+        store: {
+          get: () => current,
+          set: (_atom, value) => {
+            current = value;
+          },
+        },
+        isCompact: false,
+      },
     });
 
     expect(countPanes(current.root)).toBe(8);
@@ -104,25 +113,47 @@ describe("openThreadInSplit", () => {
     expect(findPaneByThread(current.root, "project-1", "thread-1")).toBeNull();
     expect(navigate).toHaveBeenCalledWith(
       "/projects/project-1/threads/thread-9",
-      undefined,
     );
   });
 
   it("plain-navigates without touching the layout on compact viewports", () => {
     const set = vi.fn();
     const navigate = vi.fn();
-    openThreadInSplit({
-      store: { get: () => layout(), set },
+    openThread({
       navigate,
       projectId: "project-1",
       threadId: "thread-9",
-      isCompact: true,
+      split: {
+        zone: "right",
+        store: { get: () => layout(), set },
+        isCompact: true,
+      },
     });
 
     expect(set).not.toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith(
       "/projects/project-1/threads/thread-9",
-      undefined,
+    );
+  });
+
+  it("replaces the history entry on compact viewports when the thread is already open", () => {
+    const set = vi.fn();
+    const navigate = vi.fn();
+    openThread({
+      navigate,
+      projectId: "project-1",
+      threadId: "thread-1",
+      split: {
+        zone: "right",
+        store: { get: () => layout(), set },
+        isCompact: true,
+      },
+    });
+
+    expect(set).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      "/projects/project-1/threads/thread-1",
+      { replace: true },
     );
   });
 });

@@ -31,7 +31,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 
 vi.mock("./PluginThreadList", () => ({
-  PluginThreadList: () => <div data-testid="thread-list" />,
+  SidebarThreadListContent: () => <div data-testid="thread-list" />,
 }));
 
 vi.mock("@/components/plugin/PluginSidebarFooterItems", () => ({

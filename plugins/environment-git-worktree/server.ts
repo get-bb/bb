@@ -1,4 +1,7 @@
 import {
+  PluginCliError,
+  cliCommand,
+  defineCli,
   defineRpcContract,
   type BbPluginApi,
   type JsonValue,
@@ -11,6 +14,7 @@ import type {
 import { reportHostProgress } from "bb-environment-provider-host/progress";
 import { z } from "zod";
 import {
+  MAX_POOL_SIZE,
   discoveredWorktreeSchema,
   ownedBranchSchema,
   worktreeBaseBranchSchema,
@@ -19,6 +23,12 @@ import {
   type WorktreeBaseBranch,
 } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
+import {
+  createWarmPools,
+  warmPoolStatusSchema,
+  type WarmHandOff,
+  type WarmPoolStatus,
+} from "./warm-pools.js";
 
 const CREATE_TIMEOUT_MS = 15 * 60 * 1000;
 const REMOVE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -67,7 +77,45 @@ export const worktreeRpcContract = defineRpcContract({
       .strict(),
     output: z.object({ worktrees: z.array(discoveredWorktreeSchema) }).strict(),
   },
+  warmPoolStatus: {
+    input: z.object({}).strict(),
+    output: warmPoolStatusSchema,
+  },
+  setWarmPoolSize: {
+    input: z
+      .object({
+        projectId: z.string().min(1),
+        size: z.number().int().min(0).max(MAX_POOL_SIZE),
+      })
+      .strict(),
+    output: warmPoolStatusSchema,
+  },
 });
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+function formatWarmPoolStatus(status: WarmPoolStatus): string {
+  const enabled = status.pools.filter((pool) => pool.size > 0);
+  if (enabled.length === 0) {
+    return "No project keeps warm worktrees. Enable one with `bb worktree pool set <project-id> <size>`.";
+  }
+  return enabled
+    .flatMap((pool) => [
+      `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"}, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
+      ...pool.checkouts.flatMap((checkout) => [
+        `  ${checkout.hostName} ${checkout.path}: ${checkout.ready} ready, ${checkout.preparing} being set up${
+          checkout.base === null ? "" : ` on ${checkout.base}`
+        }`,
+        ...(checkout.lastError === null
+          ? []
+          : [`    Problem: ${checkout.lastError}`]),
+      ]),
+    ])
+    .join("\n");
+}
 
 const ADOPTED_RESOURCE = { adopted: true } as const;
 
@@ -94,6 +142,8 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     experimental_signals: worktreeHostSignals,
   });
   const reports = new Map<string, PluginEnvironmentProviderProgress>();
+  const pools = await createWarmPools({ bb, host });
+  bb.onDispose(() => pools.dispose());
 
   host.experimental_onSignal("progress", (event) => {
     const report = reports.get(event.payload.operationId);
@@ -257,6 +307,68 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       if ("kind" in context.inputs) {
         return adoptExistingWorktree(context, context.inputs.path);
       }
+      if (context.inputs.branch.kind === "default") {
+        const ownedBranch = (name: string, baseBranch: string) => ({
+          ownedBranch: {
+            name,
+            repositoryPath: context.projectCheckout.path,
+            baseBranch,
+          },
+        });
+        const warm = await pools.handOff({
+          environmentId: context.environment.id,
+          projectId: context.project.id,
+          hostId: context.host.id,
+          sourcePath: context.projectCheckout.path,
+          adopt: (environmentId, handed) =>
+            context.adopt(
+              environmentId,
+              ownedBranch(handed.placeholder, handed.baseBranch),
+            ),
+          signal: context.signal,
+        });
+        if (warm !== null) {
+          const commit = warm.baseCommit.slice(0, 7);
+          const hostOptions = {
+            hostId: context.host.id,
+            signal: context.signal,
+            timeoutMs: CREATE_TIMEOUT_MS,
+          };
+          if (warm.memberCommit !== warm.baseCommit) {
+            await host.call(
+              "fastForward",
+              { path: warm.path, commit: warm.baseCommit },
+              hostOptions,
+            );
+            context.report.step(
+              `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
+            );
+            await context.setup(warm.path);
+          }
+          context.report.step(
+            warm.offline
+              ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
+              : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
+          );
+          const branchName = await context.branchName();
+          await host.call(
+            "nameHandedOffBranch",
+            {
+              path: warm.path,
+              fromBranch: warm.placeholder,
+              toBranch: branchName,
+            },
+            hostOptions,
+          );
+          return {
+            status: "created",
+            path: warm.path,
+            ownsPath: true,
+            mergeBaseBranch: warm.baseBranch,
+            resource: ownedBranch(branchName, warm.baseBranch),
+          };
+        }
+      }
       const created = await createManagedWorktree(context, {
         branchName: null,
         baseBranch: context.inputs.branch,
@@ -349,5 +461,67 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         { hostId },
       );
     },
+    warmPoolStatus: () => pools.status(),
+    async setWarmPoolSize({ projectId, size }) {
+      await pools.setSize(projectId, size);
+      return pools.status();
+    },
   });
+
+  bb.cli.register(
+    defineCli({
+      name: "worktree",
+      summary: "Keep warm worktrees ready for new threads",
+      description:
+        "A project with warm worktrees keeps that many worktrees checked out at its default base with setup finished, so a new worktree thread on the default base starts without waiting for git or the setup script.",
+      commands: {
+        "pool status": cliCommand({
+          summary: "Show projects that keep warm worktrees",
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const status = await pools.status();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(status)
+                : formatWarmPoolStatus(status),
+            };
+          },
+        }),
+        "pool set": cliCommand({
+          summary: "Set how many warm worktrees a project keeps",
+          positionals: [
+            {
+              name: "project-id",
+              description: "Project id, as `bb project list` prints it",
+              required: true,
+            },
+            {
+              name: "size",
+              description: `A whole number from 0 to ${MAX_POOL_SIZE}; 0 turns warm worktrees off and removes the project's idle ones`,
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          async run(input) {
+            const size = Number(input.positionals.size);
+            if (!Number.isInteger(size) || size < 0 || size > MAX_POOL_SIZE) {
+              throw new PluginCliError(
+                `Size must be a whole number from 0 to ${MAX_POOL_SIZE}`,
+                { code: "invalid_size" },
+              );
+            }
+            await pools.setSize(input.positionals["project-id"], size);
+            const status = await pools.status();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(status)
+                : formatWarmPoolStatus(status),
+            };
+          },
+        }),
+      },
+    }),
+  );
 }
