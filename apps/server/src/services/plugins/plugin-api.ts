@@ -229,7 +229,7 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-interface PluginMentionProviderRecord {
+export interface PluginMentionProviderRecord {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];

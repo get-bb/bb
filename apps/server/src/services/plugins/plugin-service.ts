@@ -144,10 +144,12 @@ import {
   type PluginAgentToolRecord,
   type PluginCliContext,
   type PluginHttpRouteRecord,
+  type PluginMentionProviderRecord,
   type PluginMentionTrigger,
   type PluginRpcHandler,
   type PluginWebSocketRouteRecord,
 } from "./plugin-api.js";
+import { createMentionSearchSlots } from "./plugin-mention-search-slots.js";
 import type { PluginRpcCallerResolution } from "./plugin-rpc-caller.js";
 import {
   syncPluginCommandsSkill,
@@ -670,11 +672,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       !bundledPlugins.some((bundled) => bundled.name === row.sourceBuiltinName)
     );
   }
-  const pendingMentionSearches = new WeakSet<
-    LoadedPlugin["handle"]["mentionProviders"][number]
-  >();
   const mentionSearchTimeoutMs =
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
+  const mentionSearches = createMentionSearchSlots<
+    PluginMentionProviderRecord,
+    Awaited<ReturnType<PluginMentionProviderRecord["search"]>>
+  >(mentionSearchTimeoutMs);
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
   const providerEnvResolveTimeoutMs =
@@ -2736,33 +2739,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const [id, plugin] of entries) {
         for (const record of [...plugin.handle.mentionProviders]) {
           if (!record.triggers.includes(args.trigger)) continue;
-          if (pendingMentionSearches.has(record)) continue;
           tasks.push(
             (async () => {
               const outcome = await invokeWrapped(
                 plugin,
                 `mention search ${record.id}`,
                 async () => {
-                  pendingMentionSearches.add(record);
-                  const searchPromise = (async () => {
-                    try {
-                      return await record.search({
-                        trigger: args.trigger,
-                        query: args.query,
-                        projectId: args.projectId,
-                        threadId: args.threadId,
-                      });
-                    } finally {
-                      pendingMentionSearches.delete(record);
-                    }
-                  })();
-                  searchPromise.catch(() => {});
-                  const result = await raceTimeout(
-                    searchPromise,
-                    mentionSearchTimeoutMs,
-                    `timed out after ${mentionSearchTimeoutMs}ms`,
+                  const result = await mentionSearches.search(record, () =>
+                    record.search({
+                      trigger: args.trigger,
+                      query: args.query,
+                      projectId: args.projectId,
+                      threadId: args.threadId,
+                    }),
                   );
-                  return normalizeMentionSearchItems(record.id, result);
+                  return result === null
+                    ? []
+                    : normalizeMentionSearchItems(record.id, result);
                 },
               );
               if (!outcome.ok || outcome.value.length === 0) return null;
