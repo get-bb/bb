@@ -1261,6 +1261,55 @@ describe("acp bridge", () => {
   });
 
   it.each([
+    { roots: ["/tmp/bb-extra-root-a"], restores: 1 },
+    { roots: [], restores: 2 },
+    { roots: ["/tmp/bb-extra-root-a", "/tmp/bb-extra-root-b"], restores: 2 },
+  ])(
+    "rebuilds a restorable session only when its writable folders change to $roots",
+    async ({ roots, restores }) => {
+      chmodSync(FAKE_AGENT_PATH, 0o755);
+      const requestLog = join(
+        workspaceDir,
+        `roots-only-${roots.length}-${restores}.jsonl`,
+      );
+      const launch = {
+        agent: { command: FAKE_AGENT_PATH, args: [] },
+        envVars: {
+          FAKE_ACP_LOAD_SESSION: "1",
+          FAKE_ACP_ADDITIONAL_DIRECTORIES: "1",
+          FAKE_ACP_REQUEST_LOG: requestLog,
+        },
+      };
+      const { providerThreadId } = await startThread({
+        ...launch,
+        additionalWorkspaceWriteRoots: ["/tmp/bb-extra-root-a"],
+      });
+
+      await completeTurnWith(
+        providerThreadId,
+        "echo-argv",
+        executionOptions({
+          providerOptions: {
+            ...launchProviderOptions(launch),
+            additionalWorkspaceWriteRoots: roots,
+          },
+        }),
+      );
+
+      const sessionRequests = loggedAcpRequests(requestLog).filter(
+        (request) =>
+          request.method === "session/load" || request.method === "session/new",
+      );
+      expect(sessionRequests).toHaveLength(restores);
+      expect(
+        z
+          .object({ additionalDirectories: z.array(z.string()).optional() })
+          .parse(sessionRequests.at(-1)?.params).additionalDirectories ?? [],
+      ).toEqual(roots);
+    },
+  );
+
+  it.each([
     ["thread/start", "cursor-grok-4.6-medium", "grok-4.6"],
     ["thread/resume", "claude-4.6-sonnet-medium-thinking", "claude-sonnet-4-6"],
     ["thread/fork", "auto", "default"],

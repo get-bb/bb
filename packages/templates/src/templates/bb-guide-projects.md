@@ -119,7 +119,9 @@ Folders:
   every thread of the project on that machine can read and write: sibling
   repositories, shared data, or a docs checkout.
 
-  bb project folder list <projectId>      List a checkout's folders
+  bb project folder list <projectId>      List the main folder, then the
+                                          extra folders (--json: extra
+                                          folders only)
   bb project folder add <projectId> <path>
                                           Add an absolute folder path
   bb project folder update <projectId> <path-or-id> <new-path>
@@ -138,6 +140,14 @@ Folders:
   session may still name a folder added or removed since. A
   folder missing on the machine is marked missing in the instructions, left
   out of the writable folders, and reported once in the thread's timeline.
+
+  Write access is enforced by each provider's own controls. Claude Code and
+  Codex grant the folders in their sandboxes. ACP agents receive them as
+  additional directories when the agent supports it; agents that can
+  restore their session are rebuilt before the next turn when the list
+  changes, and bb refuses ACP file writes outside the list in accept-edits.
+  An ACP agent's own tools are otherwise governed by that agent's
+  permissions. Pi runs with full access, so the list only informs it.
 
   An environment provider can add folders of its own environment
   (`Environment.additionalPaths`, the Folder lines of `bb environment show`);

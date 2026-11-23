@@ -767,7 +767,9 @@ export function registerProjectCommands(
 
   folder
     .command("list <projectId>")
-    .description("List a project's extra folders on a machine")
+    .description(
+      "List a project's folders on a machine: the main folder first, then the extra folders (--json lists the extra folders only)",
+    )
     .option(
       "--machine <id-or-name>",
       "Machine whose checkout to read (default: this machine)",
@@ -788,12 +790,13 @@ export function registerProjectCommands(
           sourceId: projectSource.id,
         });
         if (outputJson(opts, folders)) return;
-        if (folders.length === 0) {
-          console.log(`No extra folders. Main folder: ${projectSource.path}`);
-          return;
-        }
+        const labelWidth = Math.max(
+          "main".length,
+          ...folders.map((entry) => entry.id.length),
+        );
+        console.log(`${"main".padEnd(labelWidth)}  ${projectSource.path}`);
         for (const entry of folders) {
-          console.log(`${entry.id}  ${entry.path}`);
+          console.log(`${entry.id.padEnd(labelWidth)}  ${entry.path}`);
         }
       }),
     );
