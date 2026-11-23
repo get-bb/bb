@@ -1,7 +1,7 @@
 import type { ServerAccessStatus } from "@bb/server-contract";
 import { MANUAL_SERVER_ACCESS_PROVIDER_ID, type AppSettings } from "@bb/domain";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, buttonVariants } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -251,9 +251,7 @@ function AddRouteMenu({
     if (provider.availability.status !== "setup-required") return;
     if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID) onAddManual();
     else if (provider.pluginId !== null)
-      void navigate(
-        getSettingsTargetPath({ pluginId: provider.pluginId }),
-      );
+      void navigate(getSettingsTargetPath({ pluginId: provider.pluginId }));
   };
   return (
     <DropdownMenu>
@@ -640,7 +638,7 @@ export function MobileServerAccessContent({
         </p>
       </div>
       <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="space-y-3 px-4 py-3">
+        <div className="px-4 py-3">
           {machineAccess.access === undefined ? (
             <MachineAccessLoading />
           ) : readyRoutes.length === 0 ? (
@@ -676,9 +674,9 @@ export function MobileServerAccessContent({
           )}
           {onRoutes.map(({ provider }) =>
             provider.pluginId === null ? null : (
-              <div key={provider.id}>
+              <Fragment key={provider.id}>
                 {renderPluginSettings(provider.pluginId)}
-              </div>
+              </Fragment>
             ),
           )}
         </div>
