@@ -429,7 +429,6 @@ describe("connectAccessUrl", () => {
     description: "",
     pluginId: "connect",
     routeKind: "relay" as const,
-    enabled: true,
     urls: [],
   };
 
@@ -447,20 +446,6 @@ describe("connectAccessUrl", () => {
         ]),
       ),
     ).toEqual({ status: "on", url: "https://sawyer.getbb.app" });
-    expect(
-      connectAccessUrl(
-        access([
-          {
-            ...connect,
-            enabled: false,
-            availability: {
-              status: "available",
-              serverUrl: "https://sawyer.getbb.app",
-            },
-          },
-        ]),
-      ),
-    ).toEqual({ status: "off" });
     expect(
       connectAccessUrl(
         access([{ ...connect, availability: { status: "available" } }]),
@@ -488,7 +473,6 @@ describe("connectAccessUrl", () => {
             description: "",
             pluginId: null,
             routeKind: "custom",
-            enabled: true,
             urls: ["https://bb.example.com"],
             availability: {
               status: "available",

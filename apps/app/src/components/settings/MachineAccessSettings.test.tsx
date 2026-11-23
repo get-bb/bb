@@ -67,10 +67,9 @@ const LAN: ServerAccessProvider = {
   description: "Devices on this network reach bb directly.",
   pluginId: null,
   routeKind: "local-network",
-  enabled: false,
   availability: {
     status: "setup-required",
-    message: "Turn on to let devices on this network reach bb",
+    message: "Add it to let devices on this network reach bb",
   },
   urls: [],
 };
@@ -80,7 +79,6 @@ const RELAY: ServerAccessProvider = {
   description: "A relay",
   pluginId: "relay-plugin",
   routeKind: "relay",
-  enabled: true,
   availability: { status: "setup-required", message: "Pair the relay" },
   urls: [],
 };
@@ -90,7 +88,6 @@ const MANUAL: ServerAccessProvider = {
   description: "Use your own domain or network address.",
   pluginId: null,
   routeKind: "custom",
-  enabled: true,
   availability: {
     status: "setup-required",
     message: "Set a server URL reachable by machines",
@@ -135,13 +132,15 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-async function addRoute(name: string) {
-  fireEvent.pointerDown(screen.getByRole("button", { name: "Add a route" }), {
+async function chooseMenuItem(trigger: string, item: string | RegExp) {
+  fireEvent.pointerDown(screen.getByRole("button", { name: trigger }), {
     button: 0,
   });
-  fireEvent.click(
-    await screen.findByRole("menuitem", { name: new RegExp(name) }),
-  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
+}
+
+async function addRoute(name: string) {
+  await chooseMenuItem("Add a route", new RegExp(name));
 }
 
 it("lists routes that are on and offers the rest from Add a route", async () => {
@@ -150,11 +149,8 @@ it("lists routes that are on and offers the rest from Add a route", async () => 
   expect(screen.getByText(/Only this computer can reach bb/)).toBeTruthy();
 
   await addRoute("Local network");
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    disabledServerAccessProviderIds: [],
-  });
+  expect(state.mutate).toHaveBeenLastCalledWith({ localNetworkEnabled: true });
 
-  setSettings({ disabledServerAccessProviderIds: [] });
   setProviders([
     ready(LAN, "http://10.0.0.5:1"),
     ready(RELAY, "https://r.example"),
@@ -167,17 +163,14 @@ it("lists routes that are on and offers the rest from Add a route", async () => 
       .map((handle) => handle.getAttribute("aria-label")),
   ).toEqual(["Reorder Local network", "Reorder Relay"]);
 
-  fireEvent.click(screen.getByRole("button", { name: "Turn off Relay" }));
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    disabledServerAccessProviderIds: ["relay"],
-  });
+  await chooseMenuItem("Local network options", "Remove");
+  expect(state.mutate).toHaveBeenLastCalledWith({ localNetworkEnabled: false });
 
   setSettings({ serverAccessOrder: ["relay", "direct", "local-network"] });
   expect(namesIn("Routes")).toEqual(["Relay", "Local network"]);
 });
 
 it("offers reordering only once two routes are on", () => {
-  setSettings({ disabledServerAccessProviderIds: [] });
   setProviders([ready(LAN, "http://10.0.0.5:1"), RELAY, MANUAL]);
   renderSettings();
   expect(namesIn("Routes")).toEqual(["Local network"]);
@@ -193,7 +186,17 @@ it("opens a Manual address editor when Manual is added", async () => {
   expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
 });
 
-it("follows a plugin route through setup, readiness, failure, and being turned off", async () => {
+it("edits or removes Manual's address from its options menu", async () => {
+  setProviders([LAN, RELAY, ready(MANUAL, "https://bb.example.com")]);
+  renderSettings();
+  expect(namesIn("Routes")).toEqual(["Manual"]);
+  await chooseMenuItem("Manual options", "Edit address");
+  expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
+  await chooseMenuItem("Manual options", "Remove");
+  expect(state.mutate).toHaveBeenLastCalledWith({ machineServerUrl: null });
+});
+
+it("follows a plugin route through setup, readiness, and failure, leaving removal to its plugin", async () => {
   renderSettings();
   await addRoute("Relay");
   expect(screen.getByTestId("path").textContent).toBe(
@@ -207,6 +210,9 @@ it("follows a plugin route through setup, readiness, failure, and being turned o
     within(relayRow()).getByText("https://relay.example.com"),
   ).toBeTruthy();
   expect(within(relayRow()).getByRole("link", { name: "Manage" })).toBeTruthy();
+  expect(
+    within(relayRow()).queryByRole("button", { name: "Relay options" }),
+  ).toBeNull();
 
   setProviders([
     LAN,
@@ -219,16 +225,9 @@ it("follows a plugin route through setup, readiness, failure, and being turned o
   expect(namesIn("Routes")).toEqual(["Relay"]);
   expect(within(relayRow()).getByText("Credential revoked")).toBeTruthy();
   expect(within(relayRow()).getByRole("link", { name: "Fix" })).toBeTruthy();
-
-  setSettings({ disabledServerAccessProviderIds: ["local-network", "relay"] });
-  expect(namesIn("Routes")).toEqual([]);
-  await addRoute("Relay");
-  expect(state.mutate).toHaveBeenLastCalledWith({
-    disabledServerAccessProviderIds: ["local-network"],
-  });
 });
 
-it("shows the phone only ready routes, and plugin sections for routes that are on", () => {
+it("shows the phone only ready routes, and every plugin route's section", () => {
   render(
     <MemoryRouter>
       <MobileServerAccess
@@ -252,19 +251,11 @@ it("shows the phone only ready routes, and plugin sections for routes that are o
     },
     MANUAL,
   ]);
-  setSettings({ disabledServerAccessProviderIds: [] });
   const ready = screen.getByRole("list", { name: "Ready routes" });
   expect(
     within(ready)
       .getAllByRole("listitem")
       .map((item) => item.textContent),
   ).toEqual(["Local networkhttp://10.0.0.5:1", "Relayhttps://r.example"]);
-
-  setSettings({ disabledServerAccessProviderIds: ["relay"] });
-  expect(screen.queryByText("relay-plugin pairing")).toBeNull();
-  expect(
-    within(screen.getByRole("list", { name: "Ready routes" }))
-      .getAllByRole("listitem")
-      .map((item) => item.getAttribute("aria-label")),
-  ).toEqual(["Local network"]);
+  expect(screen.getByText("relay-plugin pairing")).toBeTruthy();
 });

@@ -27,12 +27,10 @@ function withProvider(
 }
 
 const LAN_ON = withProvider(CONNECT_PAIRED, "local-network", {
-  enabled: true,
   availability: { status: "available", serverUrl: "http://192.168.1.5:38886" },
   urls: ["http://192.168.1.5:38886", "http://10.0.0.12:38886"],
 });
 const LAN_NO_ADDRESS = withProvider(CONNECT_UNPAIRED, "local-network", {
-  enabled: true,
   availability: {
     status: "unavailable",
     message: "This computer has no private local network address",

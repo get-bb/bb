@@ -36,9 +36,6 @@ const VALUE_SETTING_CHANGES: {
     machineServerUrl: "https://machine.example.test",
   }),
   serverAccessOrder: () => ({ serverAccessOrder: ["direct"] }),
-  disabledServerAccessProviderIds: () => ({
-    disabledServerAccessProviderIds: [],
-  }),
   onboardingCompletedAt: () => ({
     onboardingCompletedAt: "2026-11-17T00:00:00.000Z",
   }),

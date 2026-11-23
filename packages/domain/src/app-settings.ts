@@ -59,7 +59,7 @@ export const appSettingsSchema = z
       .nullable(),
     machineGitCredentialsEnabled: z.boolean(),
     serverAccessOrder: z.array(z.string().min(1)),
-    disabledServerAccessProviderIds: z.array(z.string().min(1)),
+    localNetworkEnabled: z.boolean(),
     onboardingCompletedAt: z.string().min(1).nullable(),
     earlyAdopter: z.boolean(),
   })
@@ -85,7 +85,7 @@ export const defaultAppSettings: AppSettings = {
   idleProviderSessionTimeoutMinutes: 30,
   machineServerUrl: null,
   serverAccessOrder: [],
-  disabledServerAccessProviderIds: [LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID],
+  localNetworkEnabled: false,
   machineGitCredentialsEnabled: true,
   onboardingCompletedAt: null,
   earlyAdopter: false,

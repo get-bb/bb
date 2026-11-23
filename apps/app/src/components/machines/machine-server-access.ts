@@ -6,8 +6,7 @@ export const MACHINE_SERVER_ACCESS_TITLE = "Machines cannot reach this bb yet";
 type ServerAccessProvider = ServerAccessStatus["providers"][number];
 
 function providerReachable(provider: ServerAccessProvider): boolean {
-  if (!provider.enabled || provider.availability.status !== "available")
-    return false;
+  if (provider.availability.status !== "available") return false;
   if (provider.urls.length === 0) return provider.pluginId !== null;
   return provider.urls.some((url) => !isLocalOnlyUrl(url));
 }
@@ -27,7 +26,12 @@ export function machineServerAccessBlockedReason(
   if (access === undefined) return MACHINE_SERVER_ACCESS_UNSET_REASON;
   if (machineServerAccessReady(access)) return null;
   for (const provider of access.providers) {
-    if (provider.enabled && provider.availability.status !== "available")
+    if (
+      provider.routeKind === "local-network" &&
+      provider.availability.status === "setup-required"
+    )
+      continue;
+    if (provider.availability.status !== "available")
       return provider.availability.message;
   }
   return MACHINE_SERVER_ACCESS_UNSET_REASON;

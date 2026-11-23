@@ -112,8 +112,8 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb server`
 - `bb server access`
 - `bb server access list`
-- `bb server access enable`
-- `bb server access disable`
+- `bb server access add`
+- `bb server access remove`
 - `bb server access order`
 - `bb server move`
 - `bb server move status`

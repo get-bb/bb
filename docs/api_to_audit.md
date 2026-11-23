@@ -4743,17 +4743,17 @@ provider's default rank among the server's routes. It is required in the types
 only: registration still accepts a declaration without it, from a plugin built
 against an SDK before 0.6.183, and fills in `"custom"` once there;
 providers of one kind rank by the earliest-installed plugin, not load order.
-Every turned-on provider is a route, each host holds a grant per provider, and
-the daemon session-open response and system configuration advertise the routes
-in the user's order (advertisement is behind the `serverRoutes` experiment;
-while it is off, routes are empty). Core's own Local network and Manual
-providers use the same ordering, enablement and advertisement path. With
-`serverRoutes` on, providers rank by route kind after the user's order and new
-machines install on the first working `relay` or `custom` route;
-`local-network` and `private-overlay` serve as the install route only when
-nothing else is on. While it is off, providers rank by the user's order, then
-the earliest-installed plugin, then Manual, and new machines install on the
-first working one, as the single default route did before. While a turned-on provider reports `available` with a
+Every available provider is a route; there is no separate on/off, so a plugin
+stops offering its route by reporting it unavailable or needing setup. Each
+host holds a grant per provider, and the daemon session-open response and
+system configuration advertise the routes in the user's order (advertisement is
+behind the `serverRoutes` experiment; while it is off, routes are empty). Core's
+own Local network and Manual providers use the same ordering and advertisement
+path; Local network is added with `localNetworkEnabled` and Manual by setting
+`machineServerUrl`. With `serverRoutes` on, providers rank by route kind after
+the user's order; while it is off, they rank by the user's order, then the
+earliest-installed plugin, then Manual. New machines install on the first
+working route in that order, with `local-network` last. While a provider reports `available` with a
 `serverUrl`, core's Host and Origin guards admit that URL's origin, as they do
 for `BB_APP_URL` (plugin providers always; core's Local network and Manual
 routes only with `serverRoutes` on); core refreshes the set when configuration

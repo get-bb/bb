@@ -184,7 +184,6 @@ it("places mobile plugin sections only on Mobile and removes them when unregiste
             description: "Relay",
             pluginId: "connection",
             routeKind: "relay",
-            enabled: true,
             availability: { status: "available" },
             urls: [],
           },

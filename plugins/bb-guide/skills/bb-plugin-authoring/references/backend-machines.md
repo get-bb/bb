@@ -226,18 +226,19 @@ returning a `ServerAccessGrant` or `{ status: "failed", message }`, and
 `release({ key, hostId, grantId })`. The ids `direct` and `local-network`
 are reserved for core.
 
-Every provider the user leaves turned on is a route, ordered as the user
-sets in Settings → Machines → How devices reach this server or with
-`bb server access order`. With the `serverRoutes` experiment on, core then
-ranks routes by `routeKind` (local network, private overlay such as a tailnet,
-relay, custom) and installs a new machine with the first working `relay` or
-`custom` route, falling back to `local-network` and `private-overlay` only when
-nothing else is turned on. While it is off, the rest follow plugin install
-order with Manual last, and a new machine is installed with the first working
-route. With it on, each connected machine also acquires a grant from every turned-on,
-available provider when its session opens, and core sends the daemon all of
-them with their own headers. Only routes that are turned on and available are
-advertised, and their hostnames pass the server's host and origin checks.
+Every available provider is a route; core has no separate on/off for plugin
+routes, so a plugin stops offering its route by reporting it unavailable or
+needing setup (for example when the user turns the feature off in the plugin's
+own settings). Routes follow the user's order from Settings → Machines → How
+devices reach this server or `bb server access order`. After that, with the
+`serverRoutes` experiment on, core ranks them by `routeKind` (local network,
+private overlay such as a tailnet, relay, custom); with it off, by plugin
+install order with Manual last. A new machine is installed with the first
+working route in that order, and with `local-network` only when nothing else
+works. With the experiment on, each connected machine also acquires a grant
+from every available provider when its session opens, and core sends the daemon
+all of them with their own headers. Only available routes are advertised, and
+their hostnames pass the server's host and origin checks.
 Core stores the admitted addresses so they work from the first request after a
 restart; an address survives a failed or timed-out `availability()` and is
 dropped on a definite `unavailable`/`setup-required` answer or when the plugin
@@ -265,7 +266,7 @@ five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
 public `serverUrl` is validated and displayed in Settings → Machines, and
-while the provider is turned on and available core's Host and Origin guards
+while the provider is available core's Host and Origin guards
 admit its origin (also with the `serverRoutes` experiment off), so browsers and
 machines can use it without `BB_APP_URL`. Reading configuration
 never acquires access; the grant's URL is the one machines use.

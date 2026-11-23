@@ -51,7 +51,6 @@ const READY_SERVER_ACCESS: ServerAccessStatus = {
       description: "Use your own domain or network address.",
       pluginId: null,
       routeKind: "custom",
-      enabled: true,
       availability: {
         status: "available",
         serverUrl: "https://bb.example.com",

@@ -89,7 +89,7 @@ General keys: `bb settings general` accepts any key from `generalSettings` in
 list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset. Most appear in Settings →
 General. Machine-related keys (`machineServerUrl`, `serverAccessOrder`,
-`disabledServerAccessProviderIds`, `machineGitCredentialsEnabled`) are covered
+`localNetworkEnabled`, `machineGitCredentialsEnabled`) are covered
 in `bb guide machines`; prefer `bb server access` for the route keys.
 
 - `showDiagnosticEvents` (default false) shows provider environment resolution
@@ -211,7 +211,7 @@ see `bb guide thread-messaging` for `--compact-first`.
 under 30 seconds: its daemon resumes the same server session, so terminals and
 running requests carry on, instead of opening a new one. It defaults on for
 early adopters and applies from the next disconnect.
-`serverRoutes` lets machines learn every turned-on server access route and
+`serverRoutes` lets machines learn every available server access route and
 connect over the first one that answers; see Server access in
 `bb guide machines`. It defaults on for early adopters.
 `keyedPluginCss` loads plugin stylesheets so that style updates inside other
@@ -249,9 +249,9 @@ not close a previous `0.0.0.0` listener.
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
 port. To reach bb from a trusted LAN without a restart, prefer
-`bb server access enable local-network` (`bb guide machines`). BB accepts
+`bb server access add local-network` (`bb guide machines`). BB accepts
 request hosts that are `localhost`, IP addresses (including LAN and Tailscale
-IPs), the hostname of a turned-on server access route (such as the Tailscale
+IPs), the hostname of an available server access route (such as the Tailscale
 plugin's Serve address), or the hostname in
 `BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`

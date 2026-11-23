@@ -79,13 +79,12 @@ import {
   repairLastServerMoveHostName,
 } from "./services/server-move/pending-boot.js";
 import { Server as HttpServer } from "node:http";
-import { LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID } from "@bb/domain";
 import {
   LocalNetworkAccess,
   setLocalNetworkAccess,
 } from "./services/server-routes/local-network.js";
 import {
-  isServerAccessProviderEnabled,
+  isLocalNetworkOn,
   refreshServerAccessOrigins,
 } from "./services/machines/server-access.js";
 import { createConnectHold } from "./services/server-move/connect-hold.js";
@@ -527,11 +526,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     bindHost: serverConfig.BB_SERVER_BIND_HOST,
     port: serverConfig.BB_SERVER_PORT,
     logger,
-    isEnabled: () =>
-      isServerAccessProviderEnabled(
-        { db },
-        LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID,
-      ),
+    isEnabled: () => isLocalNetworkOn({ db }),
   });
   setLocalNetworkAccess(localNetwork);
   if (pendingServerMove === null) localNetwork.attach(server);

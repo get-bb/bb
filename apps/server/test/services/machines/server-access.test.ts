@@ -89,7 +89,7 @@ describe("machine server access", () => {
     });
   });
 
-  it("orders providers by the user's order, then route kind, and skips disabled ones for the anchor", async () => {
+  it("orders providers by the user's order, then route kind, and installs on the first one while serverRoutes is on", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
       setExperiments(deps.db, { serverRoutes: true });
@@ -104,7 +104,6 @@ describe("machine server access", () => {
       ).toMatchObject({
         pluginId: "access-plugin",
         routeKind: "relay",
-        enabled: true,
       });
       setAppSettings(deps.db, {
         ...defaultAppSettings,
@@ -121,18 +120,10 @@ describe("machine server access", () => {
           })
         ).serverUrl,
       ).toBe("https://direct.example.com");
-      setAppSettings(deps.db, {
-        ...defaultAppSettings,
-        disabledServerAccessProviderIds: ["local-network", "direct", "relay"],
-      });
-      const other = upsertHost(deps.db, deps.hub, { name: "other" })!;
-      await expect(
-        serverAccess.resolve(deps, { key: "k", hostId: other.id, signal }),
-      ).rejects.toThrow("How devices reach this server");
     });
   });
 
-  it("installs a new machine on a route it can reach from anywhere before a tailnet or local network route", async () => {
+  it("installs a new machine on a tailnet route the user put first, ahead of a relay, while serverRoutes is on", async () => {
     await withTestHarness(async ({ deps }) => {
       setExperiments(deps.db, { serverRoutes: true });
       const overlay: ServerAccessProviderDeclaration = {
@@ -161,8 +152,7 @@ describe("machine server access", () => {
       });
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        serverAccessOrder: ["local-network", "overlay", "relay"],
-        disabledServerAccessProviderIds: ["direct"],
+        serverAccessOrder: ["overlay", "relay"],
       });
       const resolveFor = async (name: string) => {
         const host = upsertHost(deps.db, deps.hub, { name })!;
@@ -173,13 +163,12 @@ describe("machine server access", () => {
         });
         return getHost(deps.db, host.id)?.serverAccessProviderId;
       };
-      expect(await resolveFor("cloud")).toBe("relay");
+      expect(await resolveFor("tailnet")).toBe("overlay");
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        serverAccessOrder: ["local-network", "overlay", "relay"],
-        disabledServerAccessProviderIds: ["direct", "relay"],
+        serverAccessOrder: ["relay", "overlay"],
       });
-      expect(await resolveFor("tailnet")).toBe("overlay");
+      expect(await resolveFor("cloud")).toBe("relay");
     });
   });
 
@@ -237,7 +226,7 @@ describe("machine server access", () => {
     });
   });
 
-  it("falls back to the next enabled route when the first needs setup", async () => {
+  it("falls back to the next route when the first needs setup, and reports the first failure when none works", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
       const availability = vi.fn(() => ({
@@ -258,10 +247,7 @@ describe("machine server access", () => {
           })
         ).serverUrl,
       ).toBe("https://direct.example.com");
-      setAppSettings(deps.db, {
-        ...defaultAppSettings,
-        disabledServerAccessProviderIds: ["local-network", "direct"],
-      });
+      vi.stubEnv("BB_EXTERNAL_URL", "");
       const other = upsertHost(deps.db, deps.hub, { name: "other" })!;
       await expect(
         serverAccess.resolve(deps, { key: "k", hostId: other.id, signal }),

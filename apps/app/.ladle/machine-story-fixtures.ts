@@ -17,10 +17,9 @@ const LOCAL_NETWORK_OFF: ServerAccessProvider = {
     "Devices on this network reach bb directly. Anyone on the network can use bb, so only turn this on for a network you trust.",
   pluginId: null,
   routeKind: "local-network",
-  enabled: false,
   availability: {
     status: "setup-required",
-    message: "Turn on to let devices on this network reach bb",
+    message: "Add it to let devices on this network reach bb",
   },
   urls: [],
 };
@@ -31,7 +30,6 @@ const MANUAL_UNSET: ServerAccessProvider = {
   description: "Use your own domain or network address.",
   pluginId: null,
   routeKind: "custom",
-  enabled: true,
   availability: {
     status: "setup-required",
     message: "Set a server URL reachable by machines",
@@ -51,7 +49,6 @@ function withConnect(
         description: "Use a private getbb.app address.",
         pluginId: "connect",
         routeKind: "relay",
-        enabled: true,
         ...connect,
       },
       MANUAL_UNSET,
@@ -83,8 +80,8 @@ export const CONNECT_UNAVAILABLE = withConnect({
 
 export const MANUAL_WITHOUT_URL: ServerAccessStatus = {
   ...CONNECT_UNPAIRED,
-  providers: CONNECT_UNPAIRED.providers.map((provider) =>
-    provider.id === "connect" ? { ...provider, enabled: false } : provider,
+  providers: CONNECT_UNPAIRED.providers.filter(
+    (provider) => provider.id !== "connect",
   ),
 };
 
@@ -94,10 +91,7 @@ export function machineAccessState(
 ): MachineAccessState {
   return {
     access,
-    routes: access.providers.map((provider) => ({
-      provider,
-      enabled: provider.enabled,
-    })),
+    routes: access.providers.map((provider) => ({ provider })),
     disabled: false,
     draft: null,
     error: null,
@@ -105,7 +99,8 @@ export function machineAccessState(
     value: access.urlSource === "setting" ? (access.effectiveUrl ?? "") : "",
     editDraft: noop,
     commitUrl: noopAsync,
-    setRouteEnabled: noop,
+    setLocalNetworkEnabled: noop,
+    removeManualAddress: noop,
     reorderRoute: noop,
     ...overrides,
   };

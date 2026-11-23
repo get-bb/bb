@@ -42,7 +42,6 @@ type ServerAccessProvider = ServerAccessStatus["providers"][number];
 
 export interface MachineAccessRoute {
   provider: ServerAccessProvider;
-  enabled: boolean;
 }
 
 export interface MachineAccessState {
@@ -55,36 +54,28 @@ export interface MachineAccessState {
   value: string;
   editDraft: (next: string) => void;
   commitUrl: () => Promise<void>;
-  setRouteEnabled: (providerId: string, enabled: boolean) => void;
+  setLocalNetworkEnabled: (enabled: boolean) => void;
+  removeManualAddress: () => void;
   reorderRoute: (activeId: string, overId: string) => void;
 }
 
 const LOCAL_NETWORK_TRUST_WARNING =
-  "Anyone on this network can use bb; only enable on a network you trust.";
+  "Anyone on this network can use bb; only add it on a network you trust.";
 
 function machineAccessRoutes(
   access: ServerAccessStatus | undefined,
-  settings:
-    | Pick<AppSettings, "serverAccessOrder" | "disabledServerAccessProviderIds">
-    | undefined,
+  settings: Pick<AppSettings, "serverAccessOrder"> | undefined,
 ): MachineAccessRoute[] {
-  const providers = access?.providers ?? [];
-  if (settings === undefined)
-    return providers.map((provider) => ({
-      provider,
-      enabled: provider.enabled,
-    }));
+  const routes = (access?.providers ?? []).map((provider) => ({ provider }));
+  if (settings === undefined) return routes;
   const order = settings.serverAccessOrder;
   const rank = (id: string) => {
     const index = order.indexOf(id);
     return index === -1 ? order.length : index;
   };
-  return providers
-    .map((provider) => ({
-      provider,
-      enabled: !settings.disabledServerAccessProviderIds.includes(provider.id),
-    }))
-    .sort((left, right) => rank(left.provider.id) - rank(right.provider.id));
+  return routes.sort(
+    (left, right) => rank(left.provider.id) - rank(right.provider.id),
+  );
 }
 
 function useMachineAccess(): MachineAccessState {
@@ -108,24 +99,21 @@ function useMachineAccess(): MachineAccessState {
       setDraft(next);
       setError(null);
     },
-    setRouteEnabled: (providerId, enabled) => {
+    setLocalNetworkEnabled: (enabled) => {
       if (!settings) return;
-      const others = settings.disabledServerAccessProviderIds.filter(
-        (id) => id !== providerId,
-      );
-      update.mutate({
-        disabledServerAccessProviderIds: enabled
-          ? others
-          : [...others, providerId],
-      });
+      update.mutate({ localNetworkEnabled: enabled });
+    },
+    removeManualAddress: () => {
+      if (!settings) return;
+      setDraft(null);
+      setError(null);
+      update.mutate({ machineServerUrl: null });
     },
     reorderRoute: (activeId, overId) => {
       if (!settings) return;
       const next = reorderStoredOrder({
         order: routes.map((route) => route.provider.id),
-        visibleIds: routes
-          .filter((route) => route.enabled)
-          .map((route) => route.provider.id),
+        visibleIds: routes.filter(isRouteOn).map((route) => route.provider.id),
         activeId,
         overId,
       });
@@ -246,10 +234,10 @@ function AddRouteMenu({
   onAddManual: () => void;
 }) {
   const navigate = useNavigate();
-  const add = ({ provider, enabled }: MachineAccessRoute) => {
-    if (!enabled) machineAccess.setRouteEnabled(provider.id, true);
-    if (provider.availability.status !== "setup-required") return;
-    if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID) onAddManual();
+  const add = ({ provider }: MachineAccessRoute) => {
+    if (provider.routeKind === "local-network")
+      machineAccess.setLocalNetworkEnabled(true);
+    else if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID) onAddManual();
     else if (provider.pluginId !== null)
       void navigate(getSettingsTargetPath({ pluginId: provider.pluginId }));
   };
@@ -359,9 +347,7 @@ function MachineAccessLoading() {
 }
 
 function isRouteOn(route: MachineAccessRoute): boolean {
-  return (
-    route.enabled && route.provider.availability.status !== "setup-required"
-  );
+  return route.provider.availability.status !== "setup-required";
 }
 
 function hasManualEdit(machineAccess: MachineAccessState): boolean {
@@ -426,6 +412,7 @@ function RouteRow({
   const { availability } = provider;
   const { disabled } = machineAccess;
   const manual = provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID;
+  const localNetwork = provider.routeKind === "local-network";
   const broken = availability.status === "unavailable";
   const [editing, setEditing] = useState(
     manual && hasManualEdit(machineAccess),
@@ -464,16 +451,36 @@ function RouteRow({
                   : provider.description}
             </p>
           </div>
-          {manual ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              aria-expanded={editing}
-              onClick={() => setEditing((open) => !open)}
-            >
-              Edit address
-            </Button>
+          {manual || localNetwork ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={disabled}
+                  aria-label={`${provider.displayName} options`}
+                >
+                  <Icon name="MoreHorizontal" className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {manual && (
+                  <DropdownMenuItem onSelect={() => setEditing(true)}>
+                    Edit address
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() =>
+                    manual
+                      ? machineAccess.removeManualAddress()
+                      : machineAccess.setLocalNetworkEnabled(false)
+                  }
+                >
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : provider.pluginId !== null ? (
             <Link
               className={buttonVariants({
@@ -486,17 +493,8 @@ function RouteRow({
               {broken ? "Fix" : "Manage"}
             </Link>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            aria-label={`Turn off ${provider.displayName}`}
-            onClick={() => machineAccess.setRouteEnabled(provider.id, false)}
-          >
-            Turn off
-          </Button>
         </div>
-        {provider.routeKind === "local-network" && !broken && (
+        {localNetwork && !broken && (
           <p className="text-xs text-warning-text">
             {LOCAL_NETWORK_TRUST_WARNING}
           </p>
@@ -520,7 +518,7 @@ function AddRouteRow({
   route: MachineAccessRoute;
   onNavigate?: (() => void) | undefined;
 }) {
-  const { provider, enabled } = route;
+  const { provider } = route;
   const { disabled } = machineAccess;
   const manual = provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID;
   const localNetwork = provider.routeKind === "local-network";
@@ -529,15 +527,15 @@ function AddRouteRow({
   );
   const alreadyListening =
     localNetwork && machineAccess.access?.localNetwork.bindHost === "0.0.0.0";
-  const action = !enabled ? (
+  const action = localNetwork ? (
     <Button
       variant="outline"
       size="sm"
       disabled={disabled}
-      aria-label={`Turn on ${provider.displayName}`}
-      onClick={() => machineAccess.setRouteEnabled(provider.id, true)}
+      aria-label={`Add ${provider.displayName}`}
+      onClick={() => machineAccess.setLocalNetworkEnabled(true)}
     >
-      Turn on
+      Add
     </Button>
   ) : manual ? (
     <Button
@@ -619,8 +617,7 @@ export function MobileServerAccessContent({
   renderPluginSettings: (pluginId: string) => ReactNode;
 }) {
   const title = "Connect your phone";
-  const onRoutes = machineAccess.routes.filter((route) => route.enabled);
-  const readyRoutes = onRoutes.filter(
+  const readyRoutes = machineAccess.routes.filter(
     (route) => route.provider.availability.status === "available",
   );
   return (
@@ -672,7 +669,7 @@ export function MobileServerAccessContent({
               ))}
             </ul>
           )}
-          {onRoutes.map(({ provider }) =>
+          {machineAccess.routes.map(({ provider }) =>
             provider.pluginId === null ? null : (
               <Fragment key={provider.id}>
                 {renderPluginSettings(provider.pluginId)}

@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { connect, type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getHost,
   getLatestSessionForHost,
   getOrCreateServerId,
   listHostServerAccessGrants,
@@ -14,6 +15,7 @@ import type { ServerAccessProviderDeclaration } from "@get-bb/plugin-sdk";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   routesForHost,
+  serverAccess,
   serverAccessOverview,
 } from "../../../src/services/machines/server-access.js";
 import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
@@ -131,7 +133,7 @@ describe("server routes", () => {
   const lanAddress = detectLocalNetworkAddresses()[0];
 
   it.skipIf(lanAddress === undefined)(
-    "drops connections already upgraded over the local network when the route is turned off",
+    "drops connections already upgraded over the local network when the route is removed",
     async () => {
       const address = lanAddress ?? "";
       const probe = createServer();
@@ -199,7 +201,7 @@ describe("server routes", () => {
       installProviders();
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        disabledServerAccessProviderIds: ["direct"],
+        localNetworkEnabled: true,
       });
       let enabled = false;
       const access = new LocalNetworkAccess({
@@ -244,7 +246,7 @@ describe("server routes", () => {
       installLan(() => true);
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        disabledServerAccessProviderIds: [],
+        localNetworkEnabled: true,
       });
       const overview = await serverAccessOverview(deps);
       expect(overview.routes).toEqual([]);
@@ -263,7 +265,7 @@ describe("server routes", () => {
     });
   });
 
-  it("advertises enabled, available routes in order with LAN off by default", async () => {
+  it("advertises available routes in order with Local network off until it is added", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
       setExperiments(deps.db, { serverRoutes: true });
@@ -285,12 +287,13 @@ describe("server routes", () => {
       ]);
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        disabledServerAccessProviderIds: ["relay"],
+        localNetworkEnabled: true,
       });
       installLan(() => true);
       const overview = await serverAccessOverview(deps);
       expect(overview.routes.map((route) => route.url)).toEqual([
         "http://192.168.1.5:38886",
+        "https://relay.example.com",
         "https://bb.example.com",
       ]);
       expect(overview.status.localNetwork).toEqual({
@@ -301,7 +304,7 @@ describe("server routes", () => {
     });
   });
 
-  it("gives each machine every enabled route with its own headers and records lazy grants", async () => {
+  it("gives each machine every available route with its own headers and records lazy grants", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
       setExperiments(deps.db, { serverRoutes: true });
@@ -310,7 +313,7 @@ describe("server routes", () => {
       installLan(() => true);
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        disabledServerAccessProviderIds: [],
+        localNetworkEnabled: true,
       });
       const host = upsertHost(deps.db, deps.hub, { name: "laptop" })!;
       const routes = await routesForHost(deps, {
@@ -349,7 +352,6 @@ describe("server routes", () => {
       setAppSettings(deps.db, {
         ...defaultAppSettings,
         serverAccessOrder: ["direct"],
-        disabledServerAccessProviderIds: ["local-network", "relay"],
       });
       expect(
         (
@@ -358,8 +360,8 @@ describe("server routes", () => {
             signal: AbortSignal.timeout(5_000),
           })
         ).routes.map((route) => route.providerId),
-      ).toEqual(["direct"]);
-      expect(acquire).toHaveBeenCalledOnce();
+      ).toEqual(["direct", "relay"]);
+      expect(acquire).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -491,25 +493,55 @@ describe("server routes", () => {
     });
   });
 
-  it("admits an enabled route's hostname without BB_APP_URL and refuses it once disabled", async () => {
+  it("admits route hostnames without BB_APP_URL and refuses Manual's once its URL is cleared", async () => {
     await withTestHarness(async (h) => {
       setExperiments(h.db, { serverRoutes: true });
-      installProviders(relay());
-      await serverAccessOverview(h.deps);
-      const request = () =>
-        h.app.request("/api/v1/system/attention", {
-          headers: {
-            host: "relay.example.com",
-            origin: "https://relay.example.com",
-          },
-        });
-      expect((await request()).status).toBe(200);
       setAppSettings(h.db, {
         ...defaultAppSettings,
-        disabledServerAccessProviderIds: ["relay"],
+        machineServerUrl: "https://bb.custom.example:8443",
       });
+      installProviders(relay());
       await serverAccessOverview(h.deps);
-      expect((await request()).status).toBe(403);
+      const request = (origin: string) =>
+        h.app.request("/api/v1/system/attention", {
+          headers: { host: new URL(origin).host, origin },
+        });
+      expect((await request("https://relay.example.com")).status).toBe(200);
+      expect((await request("https://bb.custom.example:8443")).status).toBe(
+        200,
+      );
+      setAppSettings(h.db, defaultAppSettings);
+      await serverAccessOverview(h.deps);
+      expect((await request("https://bb.custom.example:8443")).status).toBe(
+        403,
+      );
+      expect((await request("https://relay.example.com")).status).toBe(200);
+    });
+  });
+
+  it("installs a new machine on Local network only when no other route works", async () => {
+    await withTestHarness(async ({ deps }) => {
+      vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
+      setExperiments(deps.db, { serverRoutes: true });
+      installProviders();
+      installLan(() => true);
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        localNetworkEnabled: true,
+        serverAccessOrder: ["local-network", "direct"],
+      });
+      const installRoute = async (name: string) => {
+        const host = upsertHost(deps.db, deps.hub, { name })!;
+        await serverAccess.resolve(deps, {
+          key: name,
+          hostId: host.id,
+          signal: AbortSignal.timeout(5_000),
+        });
+        return getHost(deps.db, host.id)?.serverAccessProviderId;
+      };
+      expect(await installRoute("travels")).toBe("direct");
+      vi.stubEnv("BB_EXTERNAL_URL", "");
+      expect(await installRoute("stays-home")).toBe("local-network");
     });
   });
 
@@ -544,8 +576,12 @@ describe("server routes", () => {
           for (const request of [relayRequest, manualRequest]) {
             for (const path of ["/health", "/api/v1/system/attention"]) {
               expect(
-                (await restarted.app.request(`http://localhost${path}`, request))
-                  .status,
+                (
+                  await restarted.app.request(
+                    `http://localhost${path}`,
+                    request,
+                  )
+                ).status,
               ).toBe(200);
             }
           }
@@ -562,7 +598,7 @@ describe("server routes", () => {
       });
     });
 
-    it("keeps a route's address through a failed check and drops it on a definite answer, when turned off, or for core routes with the experiment off", async () => {
+    it("keeps a route's address through a failed check and drops it on a definite answer, or for core routes with the experiment off", async () => {
       await withTestHarness(async (h) => {
         setExperiments(h.db, { serverRoutes: true });
         const routeSettings = {
@@ -601,16 +637,6 @@ describe("server routes", () => {
           status: "available",
           serverUrl: "https://relay.example.com",
         });
-        await serverAccessOverview(h.deps);
-        expect(await status()).toBe(200);
-        setAppSettings(h.db, {
-          ...routeSettings,
-          disabledServerAccessProviderIds: ["relay"],
-        });
-        await serverAccessOverview(h.deps);
-        expect(await status()).toBe(403);
-
-        setAppSettings(h.db, routeSettings);
         await serverAccessOverview(h.deps);
         expect(await status()).toBe(200);
         expect(await manualStatus()).toBe(200);

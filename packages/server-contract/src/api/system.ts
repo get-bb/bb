@@ -531,7 +531,6 @@ export const serverAccessStatusSchema = z.object({
       description: z.string(),
       pluginId: z.string().min(1).nullable(),
       routeKind: serverRouteKindSchema,
-      enabled: z.boolean(),
       availability: serverAccessAvailabilitySchema,
       urls: z.array(z.string().url()),
     }),

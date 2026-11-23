@@ -275,34 +275,38 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
-Machines and apps reach this server over routes: every turned-on access
-provider, in order. Routes are advertised to machines only with the
+Machines and apps reach this server over routes: every access provider that is
+set up, in order. Routes are advertised to machines only with the
 `serverRoutes` experiment (on for early adopters); while it is off,
 `routes` is empty, `local-network` is unavailable and each machine uses only
 the URL it was installed with. Settings → Machines → How devices reach this server
-lists each route with a toggle, its status and address; the CLI is
-`bb server access list|enable <id>|disable <id>|order <id...>` (`--json` for
+lists each route with its status and address, and offers the others from
+**Add a route**; the CLI is
+`bb server access list|add <id> [url]|remove <id>|order <id...>` (`--json` for
 `{serverId, routes, serverAccess}`). Routes:
 
-- `local-network` (Local network, off by default): bb also listens on this
-  computer's private LAN addresses (`http://192.168.x.y:<port>`); no restart.
-  Anyone on that network can use bb, so turn it on only for a trusted network.
-  Starting bb with `--server-bind-host 0.0.0.0` already listens everywhere.
+- `local-network` (Local network, not added by default): bb also listens on
+  this computer's private LAN addresses (`http://192.168.x.y:<port>`); no
+  restart. Anyone on that network can use bb, so add it only for a trusted
+  network; remove it from its ⋯ menu or with
+  `bb server access remove local-network`. Starting bb with
+  `--server-bind-host 0.0.0.0` already listens everywhere.
 - Plugin providers, such as `connect` (bb connect, `<handle>.getbb.app`) and
   `tailscale` (the Tailscale plugin's Serve address,
   `https://<machine>.<tailnet>.ts.net`; machines must be on the same tailnet).
-- `direct` (Manual): your own URL from Machines → Server URL reachable by
-  machines, or `bb settings general machineServerUrl https://bb.example.com`;
-  an unset value uses BB_EXTERNAL_URL.
+  Each is a route while its plugin reports it available; set it up or turn it
+  off in the plugin's settings (Manage).
+- `direct` (Manual): your own URL, from **Add a route** or
+  `bb server access add direct https://bb.example.com`; an unset value uses
+  BB_EXTERNAL_URL. Remove it from its ⋯ menu or with
+  `bb server access remove direct`.
 
 `bb server access order` puts the listed ids first. A route that needs setup
 or is unavailable is skipped. While `serverRoutes` is off, the rest follow
-plugin install order with Manual last, and a new machine is installed with the
-first working route. With it on, the default order is local network, private
-overlay (for example Tailscale), relay (bb connect), then custom, and a new
-machine is installed with the first working route it can reach from anywhere
-(relay or custom), and with a local network or private overlay route only when
-nothing else is turned on; each
+plugin install order with Manual last. With it on, the default order is local
+network, private overlay (for example Tailscale), relay (bb connect), then
+custom. A new machine is installed with the first working route in that order,
+and with Local network only when nothing else works; each
 connected machine then receives every route with its own credentials when its
 session opens, and is shown "via <route>" in Settings → Machines and the Route
 column of `bb machine list`. Each time a machine connects it probes every route
@@ -316,12 +320,13 @@ one. Attachments and daemon updates always use an encrypted route (HTTPS, such
 as bb connect) unless the server offers only
 its local network. The server has a
 stable id (`serverId` in `bb status --json`, `bb server access list --json`
-and `/health`) that moves with `bb server move`. An enabled route's hostname is
+and `/health`) that moves with `bb server move`. An available route's hostname is
 accepted by the server's host and origin checks without BB_APP_URL (a plugin
 route's, such as Tailscale's, even with the experiment off). The server
 remembers the admitted addresses across restarts, keeps one through a failed or
 timed-out availability check, and drops it when the provider answers that it is
-unavailable, the route is turned off, or its plugin is disabled or removed.
+unavailable or needs setup, the route is removed, or its plugin is disabled or
+removed.
 `bb settings show --json` includes fresh provider availability; failed or
 timed-out checks report unavailable. Machines use these routes for ongoing
 runtime requests, including account-pool endpoints. A machine on bb connect access holds

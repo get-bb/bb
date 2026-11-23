@@ -44,12 +44,6 @@ import { localNetworkState } from "../server-routes/local-network.js";
 type Dependencies = Pick<WorkSessionDeps, "db" | "hub" | "logger">;
 
 const AVAILABILITY_TIMEOUT_MS = 5_000;
-const REACHABLE_FROM_ANYWHERE: Record<ServerRouteKind, boolean> = {
-  "local-network": false,
-  "private-overlay": false,
-  relay: true,
-  custom: true,
-};
 const ROUTE_KIND_RANK: Record<ServerRouteKind, number> = {
   "local-network": 0,
   "private-overlay": 1,
@@ -177,18 +171,9 @@ export function orderedServerAccessProviders(
     .map(({ entry }) => entry);
 }
 
-export function isServerAccessProviderEnabled(
-  deps: Pick<Dependencies, "db">,
-  providerId: string,
-): boolean {
-  if (
-    providerId === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID &&
-    !serverRoutesEnabled(deps)
-  ) {
-    return false;
-  }
-  return !getAppSettings(deps.db).disabledServerAccessProviderIds.includes(
-    providerId,
+export function isLocalNetworkOn(deps: Pick<Dependencies, "db">): boolean {
+  return (
+    serverRoutesEnabled(deps) && getAppSettings(deps.db).localNetworkEnabled
   );
 }
 
@@ -198,11 +183,11 @@ async function providerAvailability(
 ): Promise<ProviderAvailability> {
   if (entry.id === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID) {
     const state = localNetworkState();
-    if (!isServerAccessProviderEnabled(deps, entry.id)) {
+    if (!isLocalNetworkOn(deps)) {
       return {
         availability: {
           status: "setup-required",
-          message: "Turn on to let devices on this network reach bb",
+          message: "Add it to let devices on this network reach bb",
         },
         urls: [],
         answered: true,
@@ -293,13 +278,12 @@ export async function serverAccessOverview(
   const checked = await Promise.all(
     entries.map(async (entry) => ({
       entry,
-      enabled: isServerAccessProviderEnabled(deps, entry.id),
       ...(await providerAvailability(deps, entry)),
     })),
   );
   const advertising = serverRoutesEnabled(deps);
-  const routes = checked.flatMap(({ entry, enabled, availability, urls }) =>
-    advertising && enabled && availability.status === "available"
+  const routes = checked.flatMap(({ entry, availability, urls }) =>
+    advertising && availability.status === "available"
       ? urls.map((url) => ({
           providerId: entry.id,
           kind: entry.routeKind,
@@ -318,13 +302,12 @@ export async function serverAccessOverview(
     serverId: getOrCreateServerId(deps.db),
     routes,
     status: {
-      providers: checked.map(({ entry, enabled, availability, urls }) => ({
+      providers: checked.map(({ entry, availability, urls }) => ({
         id: entry.id,
         displayName: entry.displayName,
         description: entry.description,
         pluginId: entry.pluginId,
         routeKind: entry.routeKind,
-        enabled,
         availability,
         urls,
       })),
@@ -345,14 +328,13 @@ function admitRouteOrigins(
   checked: ReadonlyArray<
     ProviderAvailability & {
       entry: ServerAccessProviderEntry;
-      enabled: boolean;
     }
   >,
 ): void {
   const previous = admittedServerAccessOrigins();
   const next: ServerAccessOrigin[] = [];
-  for (const { entry, enabled, availability, urls, answered } of checked) {
-    if (!enabled || (!advertising && entry.record === null)) continue;
+  for (const { entry, availability, urls, answered } of checked) {
+    if (!advertising && entry.record === null) continue;
     if (!answered) {
       next.push(...previous.filter((origin) => origin.providerId === entry.id));
       continue;
@@ -370,8 +352,7 @@ function admitRouteOrigins(
     }
     if (
       admitted.pluginId !== null &&
-      getInstalledPlugin(deps.db, admitted.pluginId)?.enabled === true &&
-      isServerAccessProviderEnabled(deps, admitted.providerId)
+      getInstalledPlugin(deps.db, admitted.pluginId)?.enabled === true
     ) {
       next.push(admitted);
     }
@@ -547,13 +528,9 @@ function anchorCandidates(
       ? undefined
       : entries.find((entry) => entry.id === host.serverAccessProviderId);
   if (pinned !== undefined) return [pinned];
-  const enabled = entries.filter((entry) =>
-    isServerAccessProviderEnabled(deps, entry.id),
-  );
-  if (!serverRoutesEnabled(deps)) return enabled;
   return [
-    ...enabled.filter((entry) => REACHABLE_FROM_ANYWHERE[entry.routeKind]),
-    ...enabled.filter((entry) => !REACHABLE_FROM_ANYWHERE[entry.routeKind]),
+    ...entries.filter((entry) => entry.routeKind !== "local-network"),
+    ...entries.filter((entry) => entry.routeKind === "local-network"),
   ];
 }
 
@@ -570,10 +547,6 @@ async function resolve(
   if (!host || host.destroyedAt !== null)
     throw new Error("Machine identity is unavailable");
   const candidates = anchorCandidates(deps, host);
-  if (candidates.length === 0)
-    throw new Error(
-      "Turn on a way for machines to reach this server in Settings → Machines → How devices reach this server",
-    );
   let firstError: unknown = null;
   for (const entry of candidates) {
     try {
@@ -691,9 +664,7 @@ export async function routesForHost(
 ): Promise<HostDaemonServerRoutes> {
   const serverId = getOrCreateServerId(deps.db);
   if (!serverRoutesEnabled(deps)) return { serverId, routes: [] };
-  const entries = orderedServerAccessProviders(deps).filter((entry) =>
-    isServerAccessProviderEnabled(deps, entry.id),
-  );
+  const entries = orderedServerAccessProviders(deps);
   const perProvider = entries.map(async (entry) => {
     if (entry.record === null) {
       const { availability, urls } = await providerAvailability(deps, entry);
@@ -780,7 +751,8 @@ export function serverAccessProviderForKind(
   const entry = orderedServerAccessProviders(deps).find(
     (candidate) =>
       candidate.routeKind === kind &&
-      isServerAccessProviderEnabled(deps, candidate.id),
+      (candidate.id !== LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID ||
+        isLocalNetworkOn(deps)),
   );
   return entry === undefined ? null : { providerId: entry.id, kind };
 }

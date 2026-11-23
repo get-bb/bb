@@ -302,7 +302,7 @@ for the command surface.
 | `defaultProviderId`                                                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
 | `telemetryEnabled`                                                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `earlyAdopter`                                                                                             | `false`                             | Settings → Experiments → Become an early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                     |
-| `machineServerUrl`, `serverAccessOrder`, `disabledServerAccessProviderIds`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `machineServerUrl`, `serverAccessOrder`, `localNetworkEnabled`, `machineGitCredentialsEnabled`             | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 **Terminal clipboard.** Settings → General → Terminals → Copy on select
 (`terminalCopyOnSelect`, default `true`) copies completed terminal selections
@@ -909,18 +909,19 @@ the SDK and CLI, and machine credentials cannot change it. Read it with
 **Machine server access.** `machineServerUrl` (Settings → Machines → Server URL
 reachable by machines; HTTP or HTTPS without embedded credentials) falls back
 to `BB_EXTERNAL_URL` when unset. Machines and apps reach the server over every
-turned-on access provider ("route"), in order: `serverAccessOrder` lists ids to
-put first (others follow by kind: local network, private overlay such as the
-Tailscale plugin's Serve address, relay such as bb connect, custom; providers of
-one kind follow the earliest-installed plugin), and
-`disabledServerAccessProviderIds` (default `["local-network"]`) turns routes
-off. `local-network` makes bb also listen on this computer's private LAN
-addresses without a restart (only with the `serverRoutes` experiment, which also
-controls whether routes are advertised); `tailscale` uses the Tailscale plugin's
-Serve address; `direct` (Manual) uses your own URL.
-Manage them in Settings → Machines → How devices reach this server or with
-`bb server access list|enable|disable|order`, and set the URL with
-`bb settings general machineServerUrl <url-or-null>`.
+set-up access provider ("route"), in order: `serverAccessOrder` lists ids to
+put first (with the `serverRoutes` experiment, others follow by kind: local
+network, private overlay such as the Tailscale plugin's Serve address, relay
+such as bb connect, custom; otherwise by install order with Manual last;
+providers of one kind follow the earliest-installed plugin). Plugin routes are
+set up and turned off in their plugin's settings. `localNetworkEnabled`
+(default `false`) adds `local-network`, which makes bb also listen on this
+computer's private LAN addresses without a restart (only with the
+`serverRoutes` experiment, which also controls whether routes are advertised);
+`tailscale` uses the Tailscale plugin's Serve address; `direct` (Manual) uses
+your own URL. Manage them in Settings → Machines → How devices reach this
+server or with `bb server access list|add|remove|order`; `add direct <url>`
+sets the URL.
 
 **Daemon updates.** Machines install the host package from the owning server
 (falling back to npm only when the server has no package route) under the
@@ -1202,7 +1203,7 @@ either way.
   server ends the session as soon as the socket closes, and session open
   returns `reconnectGraceMs: 0`, so the daemon opens a new session after every
   drop. It applies from the next disconnect.
-- `serverRoutes` (on for early adopters) advertises every turned-on server
+- `serverRoutes` (on for early adopters) advertises every available server
   access route (see [Multi-machine](#multi-machine)) to machines in daemon
   session open and to apps in `/system/config` `routes`, and adds the
   `local-network` route. A machine dials the first route that answers and stays

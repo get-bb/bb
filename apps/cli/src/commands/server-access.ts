@@ -1,4 +1,8 @@
 import type { Command } from "commander";
+import {
+  LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID,
+  MANUAL_SERVER_ACCESS_PROVIDER_ID,
+} from "@bb/domain";
 import type { ServerAccessStatus } from "@bb/server-contract";
 import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -12,7 +16,6 @@ interface JsonCommandOptions {
 type ServerAccessProvider = ServerAccessStatus["providers"][number];
 
 function providerStatus(provider: ServerAccessProvider): string {
-  if (!provider.enabled) return "off";
   return provider.availability.status === "available"
     ? "ready"
     : provider.availability.message;
@@ -51,6 +54,21 @@ function requireKnownProviders(
   }
 }
 
+function requireCoreRoute(
+  access: ServerAccessStatus,
+  providerId: string,
+): ServerAccessProvider {
+  requireKnownProviders(access, [providerId]);
+  const provider = access.providers.find((entry) => entry.id === providerId);
+  if (provider === undefined || provider.pluginId !== null) {
+    throw new CliExitError(
+      `${provider?.displayName ?? providerId} comes from a plugin. Set it up or turn it off in that plugin's settings.`,
+      1,
+    );
+  }
+  return provider;
+}
+
 export function registerServerAccessCommands(
   server: Command,
   getUrl: () => string,
@@ -58,7 +76,7 @@ export function registerServerAccessCommands(
   const access = server
     .command("access")
     .description(
-      "List, turn on or off, and order the routes devices use to reach this server",
+      "List, add or remove, and order the routes devices use to reach this server",
     );
 
   access
@@ -81,35 +99,63 @@ export function registerServerAccessCommands(
       }),
     );
 
-  for (const enabled of [true, false]) {
-    access
-      .command(`${enabled ? "enable" : "disable"} <route-id>`)
-      .description(
-        enabled
-          ? "Turn a route on (local-network starts listening on this computer's LAN addresses)"
-          : "Turn a route off so machines and apps stop using it",
-      )
-      .option("--json", "Print machine-readable JSON output")
-      .action(
-        action(async (providerId: string, opts: JsonCommandOptions) => {
+  access
+    .command("add <route-id> [url]")
+    .description(
+      "Add local-network (listens on this computer's LAN addresses) or direct with your own URL",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string,
+          url: string | undefined,
+          opts: JsonCommandOptions,
+        ) => {
           const sdk = createCliBbSdk(getUrl());
           const config = await sdk.system.config();
-          requireKnownProviders(config.serverAccess, [providerId]);
-          const disabled = new Set(
-            config.generalSettings.disabledServerAccessProviderIds,
-          );
-          if (enabled) disabled.delete(providerId);
-          else disabled.add(providerId);
+          const provider = requireCoreRoute(config.serverAccess, providerId);
+          if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID && !url) {
+            throw new CliExitError(
+              "Give the URL machines should use, for example: bb server access add direct https://bb.example.com",
+              1,
+            );
+          }
           await sdk.system.updateGeneralSettings({
             ...config.generalSettings,
-            disabledServerAccessProviderIds: [...disabled],
+            ...(provider.id === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID
+              ? { localNetworkEnabled: true }
+              : { machineServerUrl: url ?? null }),
           });
           const updated = await sdk.system.config();
           if (outputJson(opts, updated.serverAccess)) return;
           printServerAccess(updated.serverAccess);
-        }),
-      );
-  }
+        },
+      ),
+    );
+
+  access
+    .command("remove <route-id>")
+    .description(
+      "Remove local-network (stops listening on LAN addresses) or direct (clears its URL)",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (providerId: string, opts: JsonCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        const provider = requireCoreRoute(config.serverAccess, providerId);
+        await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          ...(provider.id === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID
+            ? { localNetworkEnabled: false }
+            : { machineServerUrl: null }),
+        });
+        const updated = await sdk.system.config();
+        if (outputJson(opts, updated.serverAccess)) return;
+        printServerAccess(updated.serverAccess);
+      }),
+    );
 
   access
     .command("order <route-ids...>")

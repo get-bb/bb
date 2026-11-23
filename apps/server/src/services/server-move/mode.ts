@@ -32,8 +32,7 @@ export async function resolveServerMoveMode(
   const access = await serverAccessStatus(deps);
   if (
     !access.providers.some(
-      (provider) =>
-        provider.id === CONNECT_SERVER_ACCESS_PROVIDER_ID && provider.enabled,
+      (provider) => provider.id === CONNECT_SERVER_ACCESS_PROVIDER_ID,
     )
   ) {
     return { mode: "direct" };

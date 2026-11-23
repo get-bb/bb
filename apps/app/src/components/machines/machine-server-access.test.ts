@@ -16,7 +16,6 @@ function provider(
     description: "",
     pluginId: null,
     routeKind: "custom",
-    enabled: true,
     availability: { status: "available" },
     urls: [],
     ...overrides,
@@ -35,10 +34,9 @@ function status(providers: Provider[]): ServerAccessStatus {
 const LAN_OFF = provider({
   id: "local-network",
   routeKind: "local-network",
-  enabled: false,
   availability: {
     status: "setup-required",
-    message: "Turn on to let devices on this network reach bb",
+    message: "Add it to let devices on this network reach bb",
   },
 });
 const RELAY_UNPAIRED = provider({
@@ -56,7 +54,7 @@ const MANUAL_UNSET = provider({
 });
 
 describe("machine server access readiness", () => {
-  it("is ready once any enabled route is reachable, wherever it sits in the order", () => {
+  it("is ready once any route is reachable, wherever it sits in the order", () => {
     expect(
       machineServerAccessReady(status([LAN_OFF, RELAY_UNPAIRED, MANUAL_UNSET])),
     ).toBe(false);
@@ -67,20 +65,6 @@ describe("machine server access readiness", () => {
     const access = status([LAN_OFF, RELAY_UNPAIRED, manual]);
     expect(machineServerAccessReady(access)).toBe(true);
     expect(machineServerAccessBlockedReason(access)).toBeNull();
-  });
-
-  it("ignores available routes that are turned off", () => {
-    const relay = provider({
-      id: "connect",
-      pluginId: "connect",
-      enabled: false,
-      urls: ["https://me.getbb.app"],
-    });
-    const access = status([relay, MANUAL_UNSET]);
-    expect(machineServerAccessReady(access)).toBe(false);
-    expect(machineServerAccessBlockedReason(access)).toBe(
-      "Set a server URL reachable by machines",
-    );
   });
 
   it("does not count an address only this computer can reach", () => {
@@ -102,7 +86,7 @@ describe("machine server access readiness", () => {
     );
   });
 
-  it("explains the first enabled route that is not working", () => {
+  it("explains the first route that is not working, skipping Local network until it is added", () => {
     const lanBroken = provider({
       id: "local-network",
       routeKind: "local-network",
@@ -121,7 +105,7 @@ describe("machine server access readiness", () => {
     ).toBe("This computer has no private local network address");
   });
 
-  it("falls back to the generic reason when nothing is enabled or loaded", () => {
+  it("falls back to the generic reason when nothing is set up or loaded", () => {
     expect(machineServerAccessBlockedReason(status([LAN_OFF]))).toBe(
       MACHINE_SERVER_ACCESS_UNSET_REASON,
     );

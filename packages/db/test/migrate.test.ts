@@ -1936,7 +1936,7 @@ describe("migrate", () => {
         providerCompletedTurnDisplay: {},
         machineServerUrl: null,
         serverAccessOrder: [],
-        disabledServerAccessProviderIds: ["local-network"],
+        localNetworkEnabled: false,
         machineGitCredentialsEnabled: true,
         streamerMode: false,
         allowFastServiceTier: true,
