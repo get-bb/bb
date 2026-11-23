@@ -1615,7 +1615,7 @@ describe.concurrent("folder worktrees", () => {
     const environmentRoot = join(project.dataDir, "worktrees", "thr_folders");
     expect(created.folders.map((folder) => folder.path)).toEqual([
       join(environmentRoot, "api"),
-      expect.stringMatching(/\/app-[0-9a-f]{16}$/u),
+      expect.stringMatching(/[\\/]app-[0-9a-f]{16}$/u),
     ]);
     expect(
       created.folders.map((folder) => folder.path.startsWith(environmentRoot)),
