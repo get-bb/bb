@@ -1206,7 +1206,13 @@ describe("ComposerBox controlled value sync", () => {
   it("unregisters the previous composer when the prompt box switches drafts", () => {
     const draft = emptyPromptDraftState();
     const host = (queuedMessageId: string): PluginComposerHost => ({
-      scope: { kind: "queued-message", threadId: "thread-1", queuedMessageId },
+      scope: {
+        kind: "queued-message",
+        threadId: "thread-1",
+        queuedMessageId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `queued-message:${queuedMessageId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -1254,6 +1260,8 @@ describe("ComposerBox controlled value sync", () => {
         kind: "queued-message",
         threadId: "thread-1",
         queuedMessageId,
+        projectId: "proj_test",
+        environmentId: null,
       },
       textEffectKey: `queued-message:${queuedMessageId}`,
       getCurrent: () => draft,
@@ -1817,7 +1825,12 @@ describe("ComposerBox programmatic submit", () => {
     );
     const draft = { ...emptyPromptDraftState(), text };
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thread-1" },
+      scope: {
+        kind: "thread",
+        threadId: "thread-1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "promptbox-submit-test",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2226,7 +2239,12 @@ describe("ComposerBox submit shortcuts", () => {
         );
         const draft = { ...emptyPromptDraftState(), text: "Follow up" };
         const host: PluginComposerHost = {
-          scope: { kind: "thread", threadId: "thread-1" },
+          scope: {
+            kind: "thread",
+            threadId: "thread-1",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "send-menu-test",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -2824,7 +2842,12 @@ describe("ComposerBox plugin composer actions", () => {
 
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "crashing-action-thread" },
+      scope: {
+        kind: "thread",
+        threadId: "crashing-action-thread",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "crashing-action-composer",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2909,7 +2932,12 @@ describe("ComposerBox plugin composer actions", () => {
     );
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thread-1" },
+      scope: {
+        kind: "thread",
+        threadId: "thread-1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "promptbox-lock-test",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2996,7 +3024,12 @@ describe("ComposerBox plugin composer actions", () => {
     );
     const draft = emptyPromptDraftState();
     const host = (threadId: string): PluginComposerHost => ({
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `scope-action:${threadId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},

@@ -431,6 +431,15 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     },
   ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
+  binding(
+    "settings.search",
+    "/",
+    {},
+    {
+      all: ["mainSurface", "settingsPage"],
+      none: ["modalOpen", "editableFocus"],
+    },
+  ),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(
       command,

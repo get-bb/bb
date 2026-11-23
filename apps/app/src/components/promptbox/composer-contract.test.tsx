@@ -269,7 +269,12 @@ function followUpSurface({
   };
 }
 
-const THREAD_SCOPE = { kind: "thread", threadId: "thr_contract" } as const;
+const THREAD_SCOPE = {
+  kind: "thread",
+  threadId: "thr_contract",
+  projectId: "proj_test",
+  environmentId: null,
+} as const;
 
 const SURFACES: readonly Surface[] = [
   followUpSurface({
@@ -290,7 +295,12 @@ const SURFACES: readonly Surface[] = [
   }),
   followUpSurface({
     name: "embedded thread chat",
-    scope: { kind: "thread", threadId: "thr_embedded" },
+    scope: {
+      kind: "thread",
+      threadId: "thr_embedded",
+      projectId: "proj_test",
+      environmentId: null,
+    },
     customizable: true,
     enter: "submit",
     submitMode: "ready",
@@ -303,6 +313,8 @@ const SURFACES: readonly Surface[] = [
       kind: "queued-message",
       threadId: "thr_contract",
       queuedMessageId: "qm_contract",
+      projectId: "proj_test",
+      environmentId: null,
     },
     customizable: true,
     enter: "submit",
@@ -505,6 +517,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   renderRecorder.reset();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();

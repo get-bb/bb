@@ -92,8 +92,7 @@ function windowFromHeaders(
   const status = headers.get(`${PREFIX}${header}-status`);
   const prior =
     previous.limitWindows.find((window) => window.slot === slot) ?? null;
-  if (utilization === null && resetAt === null && status === null)
-    return prior;
+  if (utilization === null && resetAt === null && status === null) return prior;
   return {
     slot,
     windowMinutes: minutes,
@@ -242,10 +241,20 @@ export function isUsageRestricted(
   quota: AccountQuota | AccountSummary,
   now: number,
 ): boolean {
-  return (
-    quota.usageRestriction !== null &&
-    (quota.usageRestriction.resetAt === null ||
-      quota.usageRestriction.resetAt > now)
+  const restriction = quota.usageRestriction;
+  if (
+    restriction === null ||
+    (restriction.resetAt !== null && restriction.resetAt <= now)
+  )
+    return false;
+  if (restriction.reason !== "spend_control_reached") return true;
+  return !quota.limitWindows.some(
+    (window) =>
+      (window.resetAt === null || window.resetAt > now) &&
+      (window.status === "allowed" ||
+        (window.status === null &&
+          window.utilization !== null &&
+          window.utilization < 1)),
   );
 }
 

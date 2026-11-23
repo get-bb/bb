@@ -198,6 +198,87 @@ describe("ui preferences sync", () => {
     expect(remembered).toEqual(["navigation/rail"]);
   });
 
+  it("moves a device-only pick to the server when the server is still at its default, and drops it otherwise", async () => {
+    const queryClient = new QueryClient();
+    const store = createStore();
+    startUiPreferencesSync({ queryClient, store });
+    let deviceA: string | null = "image-diff/lfs-images";
+    const diffAtom = createSyncedPreferenceAtom("diff.provider", undefined, {
+      read: () => deviceA,
+      clear: () => {
+        deviceA = null;
+      },
+    });
+    expect(store.get(diffAtom)).toBe("image-diff/lfs-images");
+
+    const atDefault = serverResponse();
+    setCachedUiPreferences(queryClient, atDefault);
+    reconcileUiPreferences(atDefault);
+    await waitForUiPreferenceWrites();
+
+    expect(mocks.set).toHaveBeenCalledWith({
+      expectedRevision: 0,
+      key: "diff.provider",
+      value: "image-diff/lfs-images",
+    });
+    expect(deviceA).toBeNull();
+    expect(store.get(diffAtom)).toBe("image-diff/lfs-images");
+
+    resetUiPreferencesSyncForTest();
+    mocks.set.mockClear();
+    const otherClient = new QueryClient();
+    const otherStore = createStore();
+    startUiPreferencesSync({ queryClient: otherClient, store: otherStore });
+    let deviceB: string | null = "__builtin__";
+    const diffAtomB = createSyncedPreferenceAtom("diff.provider", undefined, {
+      read: () => deviceB,
+      clear: () => {
+        deviceB = null;
+      },
+    });
+    const picked = serverResponse({
+      "diff.provider": { revision: 1, value: "image-diff/lfs-images" },
+    });
+    setCachedUiPreferences(otherClient, picked);
+    reconcileUiPreferences(picked);
+    await waitForUiPreferenceWrites();
+
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(deviceB).toBeNull();
+    expect(otherStore.get(diffAtomB)).toBe("image-diff/lfs-images");
+  });
+
+  it("keeps another device's pick when it lands between this device's read and its migration write", async () => {
+    const queryClient = new QueryClient();
+    const store = createStore();
+    startUiPreferencesSync({ queryClient, store });
+    let legacy: Record<string, string> | null = { md: "wikilinks/editor" };
+    const openerAtom = createSyncedPreferenceAtom(
+      "fileOpener.byExtension",
+      undefined,
+      {
+        read: () => legacy,
+        clear: () => {
+          legacy = null;
+        },
+      },
+    );
+    const otherDevice = { pdf: "__builtin__" };
+    mocks.set.mockRejectedValueOnce(conflict(1));
+    mocks.list.mockResolvedValue(
+      serverResponse({
+        "fileOpener.byExtension": { revision: 1, value: otherDevice },
+      }),
+    );
+    const atDefault = serverResponse();
+    setCachedUiPreferences(queryClient, atDefault);
+    reconcileUiPreferences(atDefault);
+    await waitForUiPreferenceWrites();
+
+    expect(mocks.set).toHaveBeenCalledTimes(1);
+    expect(store.get(openerAtom)).toEqual(otherDevice);
+  });
+
   it("retains a local section order when the initial cache lacks its entry", () => {
     const { orderAtom, queryClient, store } = createHarness();
     const localOrder = ["threads", "projects", "pinned"];

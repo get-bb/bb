@@ -79,7 +79,7 @@ experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; se
   when they change; depend on those fields, not on the handle, in memo
   dependency lists.
   - State: `scope` (`thread`, `queued-message`, or `new-thread`, with that
-    surface's identifiers), `key` (stable identity for the composer's draft:
+    surface's ids and project; thread scopes add `environmentId`), `key` (stable identity for the composer's draft:
     the same across remounts and reloads, per editing session for queued and
     sent-message editors), `layout`
     (`"expanded" | "compact"`), `isRunning`, `isSubmitting`,

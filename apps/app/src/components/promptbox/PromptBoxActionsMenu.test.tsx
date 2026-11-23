@@ -9,10 +9,10 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import { render } from "@/test/render-with-query-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectPluginAppRegistrations,
@@ -115,8 +115,19 @@ describe("PromptBoxActionsMenu", () => {
 
   it.each<PluginComposerScope>([
     { kind: "new-thread", projectId: null },
-    { kind: "thread", threadId: "thread-1" },
-    { kind: "queued-message", threadId: "thread-1", queuedMessageId: "q-1" },
+    {
+      kind: "thread",
+      threadId: "thread-1",
+      projectId: "proj_test",
+      environmentId: null,
+    },
+    {
+      kind: "queued-message",
+      threadId: "thread-1",
+      queuedMessageId: "q-1",
+      projectId: "proj_test",
+      environmentId: null,
+    },
   ])(
     "lists provider actions before the Automation and Plugin rows in a $kind composer",
     async (scope) => {

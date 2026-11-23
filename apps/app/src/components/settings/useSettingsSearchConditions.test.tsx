@@ -96,7 +96,6 @@ describe("useSettingsSearchConditions", () => {
       "localhostLinkRewrite",
       "performanceDiagnostics",
       "sourceCodeRenderers",
-      "threadLists",
     ]);
   });
 });

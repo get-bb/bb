@@ -7,6 +7,7 @@ import {
 } from "./settings-sections";
 
 export type SettingsSearchCondition =
+  | "markdownRendererChoices"
   | "cliCommand"
   | "composers"
   | "desktopBrowser"
@@ -18,6 +19,7 @@ export type SettingsSearchCondition =
   | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
+  | "threadHeaderTitles"
   | "threadLists";
 
 interface SettingsSearchSetting {
@@ -177,8 +179,24 @@ export const SETTINGS_SEARCH_INDEX: Record<
         when: "composers",
       },
       {
+        title: "Thread header title",
+        keywords: ["thread title", "header", "plugin"],
+        when: "threadHeaderTitles",
+      },
+      {
         title: "Sidebar footer",
         keywords: ["reorder", "buttons", "navigation"],
+      },
+      {
+        title: "Markdown",
+        keywords: [
+          "code blocks",
+          "code fences",
+          "directives",
+          "renderer",
+          "plugin",
+        ],
+        when: "markdownRendererChoices",
       },
     ],
   },

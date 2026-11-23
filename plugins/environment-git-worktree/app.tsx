@@ -28,18 +28,23 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
+import { Pill } from "@bb/shared-ui/pill";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
   experimental_useBranches,
+  useBbNavigate,
+  useRealtime,
   useRpc,
   type JsonValue,
   type PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
+import { WARM_POOLS_CHANGED_CHANNEL } from "./channels.js";
 import type { DiscoveredWorktree } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import { WarmPoolSettings } from "./warm-pool-settings.js";
 import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
+import type { WarmPoolStatus } from "./warm-pools.js";
 
 const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
 const NEW_WORKTREE_LABEL = "New worktree";
@@ -49,6 +54,7 @@ const EXISTING_WORKTREE_LABEL = "Existing worktree";
 const NEW_WORKTREE_ROW_VALUE = "intent:new";
 const EXISTING_WORKTREE_ROW_VALUE = "intent:existing";
 const DEFAULT_BRANCH_ROW_VALUE = "default-branch";
+const WORKTREE_SETTINGS_ROW_VALUE = "worktree-settings";
 
 type WorktreeIntent = "new" | "existing";
 
@@ -92,6 +98,22 @@ function filterBranches(branches: readonly string[], query: string): string[] {
   return branches.filter((branch) => branch.toLowerCase().includes(normalized));
 }
 
+function warmReadyCount(
+  status: WarmPoolStatus,
+  projectId: string,
+  hostId: string,
+): number {
+  const pool = status.pools.find((entry) => entry.projectId === projectId);
+  if (pool === undefined || pool.size === 0) return 0;
+  return pool.checkouts
+    .filter((checkout) => checkout.hostId === hostId)
+    .reduce((total, checkout) => total + checkout.ready, 0);
+}
+
+function warmWorktreesLabel(count: number): string {
+  return count === 1 ? "1 warm worktree" : `${count} warm worktrees`;
+}
+
 function WorktreeInputsControl({
   projectId,
   target,
@@ -100,6 +122,7 @@ function WorktreeInputsControl({
 }: PluginEnvironmentProviderInputsProps) {
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const rpc = useRpc<typeof worktreeRpcContract>();
+  const navigate = useBbNavigate();
   const [worktreeResult, setWorktreeResult] = useState<{
     projectId: string;
     hostId: string;
@@ -120,6 +143,12 @@ function WorktreeInputsControl({
   } | null>(null);
   const [baseRefresh, setBaseRefresh] = useState(0);
   const [open, setOpen] = useState(false);
+  const [warmResult, setWarmResult] = useState<{
+    projectId: string;
+    hostId: string;
+    ready: number;
+  } | null>(null);
+  const warmRequest = useRef(0);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +215,33 @@ function WorktreeInputsControl({
     };
   }, [refreshWorktrees]);
 
+  const refreshWarmPool = useCallback(() => {
+    const request = ++warmRequest.current;
+    if (!open || projectId === null || hostId === null) return;
+    rpc.call("warmPoolStatus", {}).then(
+      (status) => {
+        if (request === warmRequest.current)
+          setWarmResult({
+            projectId,
+            hostId,
+            ready: warmReadyCount(status, projectId, hostId),
+          });
+      },
+      () => {
+        if (request === warmRequest.current)
+          setWarmResult({ projectId, hostId, ready: 0 });
+      },
+    );
+  }, [open, projectId, hostId, rpc]);
+
+  useEffect(() => {
+    refreshWarmPool();
+    return () => {
+      warmRequest.current += 1;
+    };
+  }, [refreshWarmPool]);
+  useRealtime(WARM_POOLS_CHANGED_CHANNEL, refreshWarmPool);
+
   useEffect(() => {
     if (projectId === null || branchName !== null || existingPath !== null)
       return;
@@ -243,6 +299,10 @@ function WorktreeInputsControl({
       ? baseResult.branch
       : null;
   const baseBranchLabel = branchName ?? defaultBase ?? "default";
+  const warmReady =
+    warmResult?.projectId === projectId && warmResult?.hostId === hostId
+      ? warmResult.ready
+      : 0;
   const triggerPrefix =
     existingPath === null ? BRANCH_FROM_PREFIX : REUSE_PREFIX;
   const triggerValue =
@@ -265,6 +325,10 @@ function WorktreeInputsControl({
   const submit = (next: WorktreeInputs) => {
     onChange({ status: "ready", value: next });
     updateOpen(false);
+  };
+  const openWorktreeSettings = () => {
+    updateOpen(false);
+    navigate.experimental_toSettings();
   };
 
   return (
@@ -381,12 +445,24 @@ function WorktreeInputsControl({
                   value={DEFAULT_BRANCH_ROW_VALUE}
                   icon="GitMerge"
                   selected={existingPath === null && branchName === null}
-                  title="Use the repository's default branch"
+                  title={
+                    warmReady > 0
+                      ? `Use the repository's default branch. ${warmWorktreesLabel(warmReady)} ready, so the thread starts right away.`
+                      : "Use the repository's default branch"
+                  }
                   onSelect={() => submit(DEFAULT_INPUTS)}
                 >
                   <span className="min-w-0 flex-1 truncate">
                     Default branch
                   </span>
+                  {warmReady > 0 ? (
+                    <>
+                      {" "}
+                      <Pill variant="secondary" size="sm" className="shrink-0">
+                        {warmReady} warm
+                      </Pill>
+                    </>
+                  ) : null}
                 </BranchPickerRow>
                 {branchOptions.map((branch) => (
                   <BranchPickerRow
@@ -452,6 +528,19 @@ function WorktreeInputsControl({
                 ))}
               </>
             )}
+          </div>
+          <div className="border-t border-border/60 p-1">
+            <BranchPickerRow
+              value={WORKTREE_SETTINGS_ROW_VALUE}
+              icon="Settings"
+              selected={false}
+              title="Open worktree settings, such as warm worktrees"
+              onSelect={openWorktreeSettings}
+            >
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                Worktree settings
+              </span>
+            </BranchPickerRow>
           </div>
         </BranchPickerNavigation>
       </PopoverContent>

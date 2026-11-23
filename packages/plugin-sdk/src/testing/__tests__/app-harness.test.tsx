@@ -2011,10 +2011,14 @@ describe("renderSlot", () => {
       kind: "queued-message",
       threadId: "thr_1",
       queuedMessageId: "qmsg_1",
+      projectId: "proj_test",
+      environmentId: null,
     } satisfies PluginComposerScope;
     const nextScope = {
       kind: "thread",
       threadId: "thr_2",
+      projectId: "proj_test",
+      environmentId: null,
     } satisfies PluginComposerScope;
     const slot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
@@ -2160,6 +2164,8 @@ describe("renderSlot", () => {
             kind: "queued-message",
             threadId: "thr_1",
             queuedMessageId: "qmsg_1",
+            projectId: "proj_test",
+            environmentId: null,
           },
         },
       },
