@@ -6,6 +6,7 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
+import type { ProjectSourceFolder } from "@bb/domain";
 import type {
   CreateProjectSourceRequest,
   HostDiscoveredRepo,
@@ -241,6 +242,27 @@ async function resolveProjectFolderSource(
     );
   }
   return source;
+}
+
+async function resolveProjectFolder(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  args: { pathOrId: string; projectId: string; sourceId: string },
+): Promise<ProjectSourceFolder> {
+  const folders = await sdk.projects.sources.folders.list({
+    projectId: args.projectId,
+    sourceId: args.sourceId,
+  });
+  const target = folders.find(
+    (entry) =>
+      entry.id === args.pathOrId ||
+      entry.path === args.pathOrId.replace(/(?<=.)[\\/]+$/u, ""),
+  );
+  if (!target) {
+    throw new Error(
+      `Folder ${args.pathOrId} is not one of project ${args.projectId}'s folders on that machine.`,
+    );
+  }
+  return target;
 }
 
 function getProjectDisplaySource(
@@ -813,6 +835,49 @@ export function registerProjectCommands(
     );
 
   folder
+    .command("update <projectId> <pathOrId> <newPath>")
+    .description("Point one of a project's extra folders at another path")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout has the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          pathOrId: string,
+          newPath: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const target = await resolveProjectFolder(sdk, {
+            pathOrId,
+            projectId,
+            sourceId: projectSource.id,
+          });
+          const updated = await sdk.projects.sources.folders.update({
+            projectId,
+            sourceId: projectSource.id,
+            folderId: target.id,
+            path: newPath,
+          });
+          if (outputJson(opts, updated)) return;
+          console.log(
+            `Project folder updated: ${updated.id}  ${target.path} -> ${updated.path}`,
+          );
+        },
+      ),
+    );
+
+  folder
     .command("remove <projectId> <pathOrId>")
     .description("Remove an extra folder from a project")
     .option(
@@ -835,20 +900,11 @@ export function registerProjectCommands(
             projectId,
             serverUrl,
           });
-          const folders = await sdk.projects.sources.folders.list({
+          const target = await resolveProjectFolder(sdk, {
+            pathOrId,
             projectId,
             sourceId: projectSource.id,
           });
-          const target = folders.find(
-            (entry) =>
-              entry.id === pathOrId ||
-              entry.path === pathOrId.replace(/(?<=.)[\\/]+$/u, ""),
-          );
-          if (!target) {
-            throw new Error(
-              `Folder ${pathOrId} is not one of project ${projectId}'s folders on that machine.`,
-            );
-          }
           await sdk.projects.sources.folders.remove({
             projectId,
             sourceId: projectSource.id,

@@ -2,6 +2,7 @@ import {
   createProjectSourceFolder,
   isSqliteUniqueConstraintOnColumns,
   listProjectSourceFolders,
+  updateProjectSourceFolderPath,
 } from "@bb/db";
 import type { ProjectSource, ProjectSourceFolder } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -21,20 +22,27 @@ function duplicateFolder(path: string): ApiError {
   );
 }
 
-export async function addProjectSourceFolder(
+function isDuplicateFolderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    isSqliteUniqueConstraintOnColumns(error, {
+      columnNames: ["project_source_id", "path"],
+      indexName: "project_source_folders_source_path_idx",
+      tableName: "project_source_folders",
+    })
+  );
+}
+
+async function assertUsableFolderPath(
   deps: WorkSessionDeps,
-  args: { path: string; source: ProjectSource },
-): Promise<ProjectSourceFolder> {
-  const existing = listProjectSourceFolders(deps.db, args.source.id);
-  if (existing.length >= MAX_WORKSPACE_FOLDERS) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      `A project checkout can have at most ${MAX_WORKSPACE_FOLDERS} folders`,
-    );
-  }
+  args: {
+    existingPaths: readonly string[];
+    path: string;
+    source: ProjectSource;
+  },
+): Promise<void> {
   const problem = workspaceFolderPathProblem({
-    existingPaths: existing.map((folder) => folder.path),
+    existingPaths: args.existingPaths,
     mainPath: args.source.path,
     path: args.path,
   });
@@ -56,6 +64,25 @@ export async function addProjectSourceFolder(
       `Folder ${args.path} does not exist on this machine`,
     );
   }
+}
+
+export async function addProjectSourceFolder(
+  deps: WorkSessionDeps,
+  args: { path: string; source: ProjectSource },
+): Promise<ProjectSourceFolder> {
+  const existing = listProjectSourceFolders(deps.db, args.source.id);
+  if (existing.length >= MAX_WORKSPACE_FOLDERS) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `A project checkout can have at most ${MAX_WORKSPACE_FOLDERS} folders`,
+    );
+  }
+  await assertUsableFolderPath(deps, {
+    existingPaths: existing.map((folder) => folder.path),
+    path: args.path,
+    source: args.source,
+  });
   try {
     return createProjectSourceFolder(deps.db, deps.hub, {
       projectId: args.source.projectId,
@@ -63,14 +90,49 @@ export async function addProjectSourceFolder(
       path: args.path,
     });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      isSqliteUniqueConstraintOnColumns(error, {
-        columnNames: ["project_source_id", "path"],
-        indexName: "project_source_folders_source_path_idx",
-        tableName: "project_source_folders",
-      })
-    ) {
+    if (isDuplicateFolderError(error)) {
+      throw duplicateFolder(args.path);
+    }
+    throw error;
+  }
+}
+
+export async function updateProjectSourceFolder(
+  deps: WorkSessionDeps,
+  args: { folderId: string; path: string; source: ProjectSource },
+): Promise<ProjectSourceFolder> {
+  const existing = listProjectSourceFolders(deps.db, args.source.id);
+  const current = existing.find((folder) => folder.id === args.folderId);
+  if (current === undefined) {
+    throw new ApiError(404, "invalid_request", "Project source folder not found");
+  }
+  if (current.path === args.path) {
+    return current;
+  }
+  await assertUsableFolderPath(deps, {
+    existingPaths: existing
+      .filter((folder) => folder.id !== args.folderId)
+      .map((folder) => folder.path),
+    path: args.path,
+    source: args.source,
+  });
+  try {
+    const updated = updateProjectSourceFolderPath(deps.db, deps.hub, {
+      projectId: args.source.projectId,
+      projectSourceId: args.source.id,
+      folderId: args.folderId,
+      path: args.path,
+    });
+    if (updated === null) {
+      throw new ApiError(
+        404,
+        "invalid_request",
+        "Project source folder not found",
+      );
+    }
+    return updated;
+  } catch (error) {
+    if (isDuplicateFolderError(error)) {
       throw duplicateFolder(args.path);
     }
     throw error;

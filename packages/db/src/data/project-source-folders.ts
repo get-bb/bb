@@ -99,6 +99,36 @@ export function createProjectSourceFolder(
   return toProjectSourceFolder(row);
 }
 
+export interface UpdateProjectSourceFolderPathInput {
+  projectId: string;
+  projectSourceId: string;
+  folderId: string;
+  path: string;
+}
+
+export function updateProjectSourceFolderPath(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: UpdateProjectSourceFolderPathInput,
+): ProjectSourceFolder | null {
+  const row = db
+    .update(projectSourceFolders)
+    .set({ path: input.path })
+    .where(
+      and(
+        eq(projectSourceFolders.id, input.folderId),
+        eq(projectSourceFolders.projectSourceId, input.projectSourceId),
+      ),
+    )
+    .returning()
+    .get();
+  if (row === undefined) {
+    return null;
+  }
+  notifier.notifyProject(input.projectId, ["project-sources-changed"]);
+  return toProjectSourceFolder(row);
+}
+
 export interface DeleteProjectSourceFolderInput {
   projectId: string;
   projectSourceId: string;

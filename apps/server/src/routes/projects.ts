@@ -68,7 +68,10 @@ import {
   registerProjectSourceOnHost,
   projectSourceHostConflict,
 } from "../services/projects/project-source-setup.js";
-import { addProjectSourceFolder } from "../services/projects/project-source-folders.js";
+import {
+  addProjectSourceFolder,
+  updateProjectSourceFolder,
+} from "../services/projects/project-source-folders.js";
 import {
   deleteProjectSkill,
   listProjectSkillFiles,
@@ -699,6 +702,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       await addProjectSourceFolder(deps, { path: payload.path, source }),
       201,
+    );
+  });
+
+  patch(routes.updateSourceFolder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await updateProjectSourceFolder(deps, {
+        folderId: context.req.param("folderId"),
+        path: payload.path,
+        source,
+      }),
     );
   });
 

@@ -104,6 +104,7 @@ const ARGUMENTS_BY_COMMAND: Record<string, readonly string[]> = {
   "project folder add": [IDS.project, "/tmp/x", "--host", IDS.host],
   "project folder list": [IDS.project, "--host", IDS.host],
   "project folder remove": [IDS.project, "/tmp/x", "--host", IDS.host],
+  "project folder update": [IDS.project, "/tmp/x", "/tmp/y", "--host", IDS.host],
   "project update": [IDS.project, "--name", "x"],
   "settings experiment": ["agentCpuPriority", "on"],
   "settings keyboard set": ["thread.jump.1", "mod+1"],

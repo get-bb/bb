@@ -8,6 +8,7 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateProjectSourceFolderRequest,
+  UpdateProjectSourceFolderRequest,
   ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
@@ -171,6 +172,12 @@ export interface ProjectSourceFolderAddArgs extends CreateProjectSourceFolderReq
   sourceId: string;
 }
 
+export interface ProjectSourceFolderUpdateArgs extends UpdateProjectSourceFolderRequest {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
 export interface ProjectSourceFolderRemoveArgs {
   folderId: string;
   projectId: string;
@@ -212,6 +219,7 @@ export interface ProjectSourceFoldersArea {
   add(args: ProjectSourceFolderAddArgs): Promise<ProjectSourceFolder>;
   list(args: ProjectSourceFolderListArgs): Promise<ProjectSourceFolder[]>;
   remove(args: ProjectSourceFolderRemoveArgs): Promise<OperationResponse>;
+  update(args: ProjectSourceFolderUpdateArgs): Promise<ProjectSourceFolder>;
 }
 
 export interface ProjectSourcesArea {
@@ -464,6 +472,20 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           { param: { id: input.projectId, sourceId: input.sourceId } },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async update(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders[
+          ":folderId"
+        ].$patch({
+          param: {
+            id: input.projectId,
+            sourceId: input.sourceId,
+            folderId: input.folderId,
+          },
+          json: { path: input.path },
+        }),
       );
     },
     async remove(input) {

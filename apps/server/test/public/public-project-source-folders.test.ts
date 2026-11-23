@@ -18,7 +18,12 @@ function seedFolderProject(harness: TestAppHarness) {
     id: "host-project-folders",
   });
   seedPrimaryHost(harness.deps, host.id);
-  const existingPaths = new Set(["/work/api", "/work/docs", "/work"]);
+  const existingPaths = new Set([
+    "/work/api",
+    "/work/api-v2",
+    "/work/docs",
+    "/work",
+  ]);
   const responder = registerHostRpcResponder(harness, {
     hostId: host.id,
     sessionId: session.id,
@@ -117,6 +122,50 @@ describe("project source folders", () => {
       expect(await readJson(missing)).toMatchObject({
         code: "path_not_found",
       });
+    });
+  });
+
+  it("changes a folder's path in place and applies the add rules to the new path", async () => {
+    await withTestHarness(async (harness) => {
+      const { addFolder, foldersUrl, host, project } =
+        seedFolderProject(harness);
+      const api = (await readJson(await addFolder("/work/api"))) as {
+        id: string;
+      };
+      expect((await addFolder("/work/docs")).status).toBe(201);
+      const updateFolder = (folderId: string, path: string) =>
+        harness.app.request(`${foldersUrl}/${folderId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+
+      for (const [path, status, message] of [
+        ["/work/app/packages/ui", 400, "is inside the main folder"],
+        ["/work/docs", 409, "already listed"],
+        ["/work/gone", 400, "does not exist on this machine"],
+      ] as const) {
+        const response = await updateFolder(api.id, path);
+        expect(response.status).toBe(status);
+        expect(JSON.stringify(await readJson(response))).toContain(message);
+      }
+      expect((await updateFolder("psf_missing", "/work")).status).toBe(404);
+
+      const updated = await updateFolder(api.id, "/work/api/");
+      expect(updated.status).toBe(200);
+      expect(await readJson(updated)).toMatchObject({
+        id: api.id,
+        path: "/work/api",
+      });
+      expect(
+        await readJson(await updateFolder(api.id, "/work/api-v2")),
+      ).toMatchObject({ id: api.id, path: "/work/api-v2" });
+      expect(
+        listProjectFolderPathsForHost(harness.db, {
+          projectId: project.id,
+          hostId: host.id,
+        }),
+      ).toEqual(["/work/api-v2", "/work/docs"]);
     });
   });
 

@@ -252,6 +252,31 @@ export function useAddProjectSourceFolder() {
   });
 }
 
+interface UpdateProjectSourceFolderRequest {
+  folderId: string;
+  path: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useUpdateProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to change folder.",
+    },
+    mutationFn: (request: UpdateProjectSourceFolderRequest) =>
+      sdk.projects.sources.folders.update(request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
 interface RemoveProjectSourceFolderRequest {
   folderId: string;
   projectId: string;

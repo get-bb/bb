@@ -69,6 +69,15 @@ export type CreateProjectSourceFolderRequest = z.infer<
   typeof createProjectSourceFolderRequestSchema
 >;
 
+export const updateProjectSourceFolderRequestSchema = z
+  .object({
+    path: localProjectPathRequestSchema,
+  })
+  .strict();
+export type UpdateProjectSourceFolderRequest = z.infer<
+  typeof updateProjectSourceFolderRequestSchema
+>;
+
 export const createProjectRequestSchema = z.object({
   name: z.string().min(1),
   source: createLocalPathProjectSourceRequestSchema,

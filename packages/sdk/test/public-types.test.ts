@@ -351,7 +351,7 @@ type ExpectedProjectsKey =
   | "update";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "folders" | "update";
-type ExpectedProjectSourceFoldersKey = "add" | "list" | "remove";
+type ExpectedProjectSourceFoldersKey = "add" | "list" | "remove" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
 type ExpectedProvidersKey = "catalog" | "list" | "models" | "setEnabled";

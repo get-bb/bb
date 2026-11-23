@@ -122,6 +122,8 @@ Folders:
   bb project folder list <projectId>      List a checkout's folders
   bb project folder add <projectId> <path>
                                           Add an absolute folder path
+  bb project folder update <projectId> <path-or-id> <new-path>
+                                          Point a folder at another path
   bb project folder remove <projectId> <path-or-id>
                                           Remove a folder
     --machine <id-or-name>                Machine whose checkout to change
@@ -129,9 +131,9 @@ Folders:
                                           local CLI machine)
 
   A folder must exist on the machine, and must not be the checkout, inside
-  it, or contain it. bb reads the list before every turn, so adding or
-  removing a folder changes a running thread's write access at its next turn.
-  The agent's instructions list each folder and whether it is a git
+  it, or contain it. bb reads the list before every turn, so adding,
+  changing, or removing a folder changes a running thread's write access at
+  its next turn. The agent's instructions list each folder and whether it is a git
   repository; they are written when the agent session starts, so a running
   session may still name a folder added or removed since. A
   folder missing on the machine is marked missing in the instructions, left
