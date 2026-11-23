@@ -138,7 +138,7 @@ import {
   resolveHostEnvironmentProvider,
   resolveNewThreadHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
-  type SeededReuseEnvironment,
+  type SelectedReuseEnvironment,
 } from "@/views/root-compose-environment-selection";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
@@ -946,71 +946,65 @@ export function NewThreadComposer({
         : newThreadEnvironmentArgsToSeed(seedEnvironment),
     [seedEnvironment],
   );
-  const [requestedEnvironmentLookup, setRequestedEnvironmentLookup] = useState<{
-    signature: string;
-    selectionValue: string;
-  } | null>(null);
-  const lookupSelectionValue =
-    requestedEnvironmentLookup?.signature === seedSignature
-      ? requestedEnvironmentLookup.selectionValue
-      : environmentSeed?.selectionValue;
-  const seededReuseEnvironmentId = useMemo(() => {
-    if (lookupSelectionValue === undefined) return null;
-    const parsed = parseEnvironmentValue(lookupSelectionValue);
-    return parsed?.type === "reuse" ? parsed.environmentId : null;
-  }, [lookupSelectionValue]);
-  const seededReuseIsThreadDerived =
-    seededReuseEnvironmentId !== null &&
+  const [selectedReuseEnvironmentId, setSelectedReuseEnvironmentId] = useState<
+    string | null
+  >(null);
+  const selectedReuseIsThreadDerived =
+    selectedReuseEnvironmentId !== null &&
     threadDerivedReuseOptions.some(
-      (option) => option.environmentId === seededReuseEnvironmentId,
+      (option) => option.environmentId === selectedReuseEnvironmentId,
     );
-  const seededReuseLookupId =
-    seededReuseEnvironmentId !== null && !seededReuseIsThreadDerived
-      ? seededReuseEnvironmentId
+  const selectedReuseLookupId =
+    selectedReuseEnvironmentId !== null && !selectedReuseIsThreadDerived
+      ? selectedReuseEnvironmentId
       : null;
-  const seededReuseEnvironmentQuery = useEnvironment(seededReuseLookupId);
-  const seededReuseEnvironmentRow =
-    seededReuseLookupId !== null &&
-    seededReuseEnvironmentQuery.data?.id === seededReuseLookupId &&
-    seededReuseEnvironmentQuery.data.status !== "destroyed"
-      ? seededReuseEnvironmentQuery.data
+  const selectedReuseEnvironmentQuery = useEnvironment(selectedReuseLookupId);
+  const selectedReuseEnvironmentRow =
+    selectedReuseLookupId !== null &&
+    selectedReuseEnvironmentQuery.data?.id === selectedReuseLookupId &&
+    selectedReuseEnvironmentQuery.data.status !== "destroyed"
+      ? selectedReuseEnvironmentQuery.data
       : null;
-  const seededReuseEnvironment = useMemo<SeededReuseEnvironment | null>(() => {
-    if (seededReuseEnvironmentId === null) return null;
-    if (seededReuseIsThreadDerived) {
-      return { environmentId: seededReuseEnvironmentId, status: "available" };
-    }
-    if (seededReuseEnvironmentQuery.isPending) {
-      return { environmentId: seededReuseEnvironmentId, status: "pending" };
-    }
-    return {
-      environmentId: seededReuseEnvironmentId,
-      status: seededReuseEnvironmentRow === null ? "missing" : "available",
-    };
-  }, [
-    seededReuseEnvironmentId,
-    seededReuseEnvironmentQuery.isPending,
-    seededReuseEnvironmentRow,
-    seededReuseIsThreadDerived,
-  ]);
+  const selectedReuseEnvironment =
+    useMemo<SelectedReuseEnvironment | null>(() => {
+      if (selectedReuseEnvironmentId === null) return null;
+      if (selectedReuseIsThreadDerived) {
+        return {
+          environmentId: selectedReuseEnvironmentId,
+          status: "available",
+        };
+      }
+      if (selectedReuseEnvironmentQuery.isPending) {
+        return { environmentId: selectedReuseEnvironmentId, status: "pending" };
+      }
+      return {
+        environmentId: selectedReuseEnvironmentId,
+        status: selectedReuseEnvironmentRow === null ? "missing" : "available",
+      };
+    }, [
+      selectedReuseEnvironmentId,
+      selectedReuseEnvironmentQuery.isPending,
+      selectedReuseEnvironmentRow,
+      selectedReuseIsThreadDerived,
+    ]);
   const reuseThreadOptions = useMemo(() => {
-    if (seededReuseEnvironmentRow === null) return threadDerivedReuseOptions;
+    if (selectedReuseEnvironmentRow === null) return threadDerivedReuseOptions;
     return [
       ...threadDerivedReuseOptions,
       {
-        environmentId: seededReuseEnvironmentRow.id,
-        branchName: seededReuseEnvironmentRow.branchName,
-        name: seededReuseEnvironmentRow.name,
-        path: seededReuseEnvironmentRow.path,
+        environmentId: selectedReuseEnvironmentRow.id,
+        branchName: selectedReuseEnvironmentRow.branchName,
+        name: selectedReuseEnvironmentRow.name,
+        path: selectedReuseEnvironmentRow.path,
         environmentProviderId:
-          seededReuseEnvironmentRow.environmentProviderId ?? null,
+          selectedReuseEnvironmentRow.environmentProviderId ?? null,
         hostName:
-          worktreeHostNameById?.get(seededReuseEnvironmentRow.hostId) ?? null,
+          worktreeHostNameById?.get(selectedReuseEnvironmentRow.hostId) ?? null,
         threads: [],
       },
     ];
   }, [
-    seededReuseEnvironmentRow,
+    selectedReuseEnvironmentRow,
     threadDerivedReuseOptions,
     worktreeHostNameById,
   ]);
@@ -1105,7 +1099,7 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
-        seededReuseEnvironment,
+        selectedReuseEnvironment,
       });
       const providerSelection = resolveProviderSelection(effectiveValue);
       if (providerSelection !== null) {
@@ -1127,7 +1121,7 @@ export function NewThreadComposer({
       resolveProviderSelection,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
-      seededReuseEnvironment,
+      selectedReuseEnvironment,
     ],
   );
   const projectDefaultsQuery = useProjectDefaultExecutionOptions(
@@ -1198,7 +1192,7 @@ export function NewThreadComposer({
     serviceTier,
     serviceTierSupportByProvider,
     serviceTierOptions,
-    setEnvironmentSelectionValue: setRawEnvironmentSelectionValue,
+    setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
     setProviderModelReasoning,
     setReasoningLevel,
@@ -1212,24 +1206,16 @@ export function NewThreadComposer({
     sessionOptionSelections,
     setSessionOption,
   } = creationOptions;
-  const trackEnvironmentLookup = useCallback(
-    (selectionValue: string) => {
-      setRequestedEnvironmentLookup((current) =>
-        current?.signature === seedSignature &&
-        current.selectionValue === selectionValue
-          ? current
-          : { signature: seedSignature, selectionValue },
-      );
-    },
-    [seedSignature],
+  const parsedEnvironmentSelection = parseEnvironmentValue(
+    environmentSelectionValue,
   );
-  const setCreationEnvironmentSelectionValue = useCallback(
-    (value: string) => {
-      trackEnvironmentLookup(value);
-      setRawEnvironmentSelectionValue(value);
-    },
-    [setRawEnvironmentSelectionValue, trackEnvironmentLookup],
-  );
+  const currentReuseEnvironmentId =
+    parsedEnvironmentSelection?.type === "reuse"
+      ? parsedEnvironmentSelection.environmentId
+      : null;
+  if (currentReuseEnvironmentId !== selectedReuseEnvironmentId) {
+    setSelectedReuseEnvironmentId(currentReuseEnvironmentId);
+  }
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const placedSessionOptions = useMemo(
     () =>
@@ -1284,7 +1270,6 @@ export function NewThreadComposer({
       value: string,
       providerTarget: string | EnvironmentMachineSelection | null = null,
     ) => {
-      trackEnvironmentLookup(value);
       const providerMachine =
         typeof providerTarget === "string"
           ? { type: "existing" as const, hostId: providerTarget }
@@ -1315,16 +1300,15 @@ export function NewThreadComposer({
           providerMachine?.type === "existing" ? providerMachine.hostId : "",
         );
       }
-      setRawEnvironmentSelectionValue(value);
+      setCreationEnvironmentSelectionValue(value);
     },
     [
       environmentSelectionValue,
       pickedProviderMachine,
-      setRawEnvironmentSelectionValue,
+      setCreationEnvironmentSelectionValue,
       selectionScope,
       setStoredMachineId,
       snapshotDraftBeforeOptionChange,
-      trackEnvironmentLookup,
     ],
   );
   const effectiveEnvironmentValue = useMemo(
@@ -1338,7 +1322,7 @@ export function NewThreadComposer({
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
-        seededReuseEnvironment,
+        selectedReuseEnvironment,
       }),
     [
       environmentSelectionValue,
@@ -1349,7 +1333,7 @@ export function NewThreadComposer({
       projectSources,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
-      seededReuseEnvironment,
+      selectedReuseEnvironment,
     ],
   );
   const parsedEnvironment = useMemo(
@@ -2038,12 +2022,7 @@ export function NewThreadComposer({
       isSettled:
         modelCatalogIsSettled &&
         !environmentInputsPending &&
-        !(
-          parsedEnvironment?.type === "reuse" &&
-          parsedEnvironment.environmentId ===
-            seededReuseEnvironment?.environmentId &&
-          seededReuseEnvironment.status === "pending"
-        ),
+        selectedReuseEnvironment?.status !== "pending",
       requestedProjectId: requestedCandidate,
       projectId,
       selectedProviderId,

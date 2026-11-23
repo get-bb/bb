@@ -1887,7 +1887,8 @@ export interface PluginSidebarThreadActions {
    * the composer's selection, so the thread is created where you asked.
    * `sectionId` files the new thread under that section, and
    * `environmentId` reuses that environment (the "New thread in
-   * environment" affordance), both exactly as bb's own list does.
+   * environment" affordance), both exactly as bb's own list does. A missing
+   * or destroyed environment falls back to the composer's default.
    * `experimental_placement` explicitly selects the section and pin state,
    * overriding `sectionId`. Omitting placement starts unpinned, outside sections
    * unless `sectionId` is supplied; previous composer placement is cleared.
@@ -4884,7 +4885,8 @@ export interface PluginComposerApi {
    * has, so a missing key means "no such picker here" and a value that
    * differs from the one passed was reconciled (a reasoning level the model
    * does not support, a service tier the model does not offer, a permission
-   * mode above the machine's ceiling, a model the provider does not list). A provider the composer does not list is
+   * mode above the machine's ceiling, a model the provider does not list, a
+   * `reuse` of a missing or destroyed environment). A provider the composer does not list is
    * ignored together with the model and reasoning level meant for it, so the
    * stored provider preference never names something the picker could not
    * have chosen. `environment` is absent while the composer
@@ -5629,7 +5631,8 @@ export interface BbNavigate {
    * selection; `placement` files the new thread in a section and pin state.
    * Without `placement`, the screen keeps the placement it already shows,
    * unless `environmentId` or `hostId` is set, which resets it to unpinned
-   * and outside sections. `environmentId` reuses that environment and
+   * and outside sections. `environmentId` reuses that environment (falling
+   * back to the composer's default when it is missing or destroyed) and
    * `hostId` picks a machine for a new one (`environmentId` wins when both
    * are set).
    */

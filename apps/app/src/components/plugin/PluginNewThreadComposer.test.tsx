@@ -1962,6 +1962,51 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   });
 
+  it.each([
+    { status: "ready" as const, expected: encodeReuseValue("env_existing") },
+    {
+      status: "destroyed" as const,
+      expected: "provider:project-checkout",
+    },
+  ])(
+    "restores a tab-stored reuse without sidebar threads ($status)",
+    async ({ status, expected }) => {
+      vi.mocked(sdk.environments.get).mockResolvedValue(
+        makeEnvironment({
+          id: "env_existing",
+          projectId: "proj_1",
+          hostId: "host_1",
+          status,
+        }),
+      );
+      window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+      window.sessionStorage.setItem(
+        "bb.root-compose.reuse-environment",
+        encodeReuseValue("env_existing"),
+      );
+      const router = createMemoryRouter(
+        [{ path: "/", element: <PanedRootComposeView /> }],
+        { initialEntries: ["/"] },
+      );
+      render(
+        <Provider>
+          <RouterProvider router={router} />
+        </Provider>,
+      );
+
+      await waitFor(() =>
+        expect(sdk.environments.get).toHaveBeenCalledWith(
+          expect.objectContaining({ environmentId: "env_existing" }),
+        ),
+      );
+      await waitFor(() =>
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          expected,
+        ),
+      );
+    },
+  );
+
   it("closes visible plugin details before an underlying terminal", async () => {
     const terminal = createTerminalFixedPanelTab({
       terminalId: "terminal-under-details",
