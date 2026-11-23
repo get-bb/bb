@@ -154,13 +154,54 @@ function dedupeRoots(roots: readonly string[]): string[] {
   return [...new Set(roots)];
 }
 
+const SANDBOX_CONTROL = {
+  kind: "sandbox",
+  workspaceNetworkAccess: true,
+} as const;
+
 describe("codex workspace-write git-root staging", () => {
+  it("adds a linked worktree's git roots to the selected Codex permission profile", () => {
+    const fixture = createLinkedWorktreeFixture();
+    const translator = createTranslator();
+    try {
+      const prepared = translator.prepareWorkspaceWriteGitRoots({
+        supportsAgentsEnabled: true,
+        sandboxControl: {
+          kind: "profile",
+          workspaceProfile: "sandboxed",
+          fullAccessAllowed: false,
+        },
+        command: {
+          threadId: "bb-thread-1",
+          cwd: fixture.workspacePath,
+          options: WORKSPACE_ASK_OPTIONS,
+        },
+      });
+
+      expect(prepared.permissionSettings).toMatchObject({
+        permissions: "sandboxed",
+      });
+      expect(prepared.permissionSettings).not.toHaveProperty("sandbox");
+      expect(prepared.config).toMatchObject({
+        "permissions.sandboxed.filesystem": Object.fromEntries(
+          fixture.expectedWritableRoots.map((root) => [root, "write"]),
+        ),
+      });
+      expect(prepared.config).not.toHaveProperty(
+        "sandbox_workspace_write.writable_roots",
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
   it("hands staged roots to the thread only once the construction is accepted", () => {
     const fixture = createLinkedWorktreeFixture();
     const translator = createTranslator();
     try {
       const prepared = translator.prepareWorkspaceWriteGitRoots({
         supportsAgentsEnabled: true,
+        sandboxControl: SANDBOX_CONTROL,
         command: {
           threadId: "bb-thread-1",
           cwd: fixture.workspacePath,
@@ -199,6 +240,7 @@ describe("codex workspace-write git-root staging", () => {
     try {
       const prepared = translator.prepareWorkspaceWriteGitRoots({
         supportsAgentsEnabled: true,
+        sandboxControl: SANDBOX_CONTROL,
         command: {
           threadId: "bb-thread-1",
           cwd: fixture.workspacePath,
@@ -236,6 +278,7 @@ describe("codex workspace-write git-root staging", () => {
       ] as const) {
         translator.prepareWorkspaceWriteGitRoots({
           supportsAgentsEnabled: true,
+          sandboxControl: SANDBOX_CONTROL,
           command: {
             threadId,
             cwd: fixture.workspacePath,

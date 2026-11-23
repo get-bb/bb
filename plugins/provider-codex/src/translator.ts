@@ -35,6 +35,7 @@ import {
   gitWritableRootsForWorkspace,
   shouldCaptureWorkspaceWriteGitRoots,
   toCodexThreadPermissionSettings,
+  type CodexSandboxControl,
   type CodexSessionOptions,
   type CodexThreadPermissionSettings,
 } from "./session-params.js";
@@ -376,6 +377,7 @@ interface PreparedWorkspaceWriteGitRoots {
 
 interface PrepareWorkspaceWriteGitRootsArgs {
   supportsAgentsEnabled: boolean;
+  sandboxControl: CodexSandboxControl;
   command: CodexSessionConstructionInput;
 }
 
@@ -497,12 +499,16 @@ export function createCodexEventTranslator(
     return {
       config: buildCodexConfig({
         supportsAgentsEnabled: args.supportsAgentsEnabled,
+        sandboxControl: args.sandboxControl,
         additionalWorkspaceWriteRoots,
         gitWritableRoots: writableRoots,
         options: command.options,
         threadId: command.threadId,
       }),
-      permissionSettings: toCodexThreadPermissionSettings(command.options),
+      permissionSettings: toCodexThreadPermissionSettings(
+        command.options,
+        args.sandboxControl,
+      ),
     };
   }
 

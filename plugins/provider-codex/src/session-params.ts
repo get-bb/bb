@@ -31,20 +31,25 @@ export type CodexSessionOptions = {
   envVars?: Record<string, string>;
 } & RuntimePermissionPolicy;
 
-interface CodexPermissionSettings {
+export type CodexSandboxControl =
+  | { kind: "sandbox"; workspaceNetworkAccess: boolean }
+  | { kind: "profile"; workspaceProfile: string; fullAccessAllowed: boolean };
+
+interface CodexApprovalSettings {
   approvalPolicy: AskForApproval;
   approvalsReviewer: ApprovalsReviewer;
-  sandbox: CodexSandboxMode;
-  sandboxPolicy: SandboxPolicy;
 }
 
-export interface CodexThreadPermissionSettings {
-  approvalPolicy: AskForApproval;
-  approvalsReviewer: ApprovalsReviewer;
-  sandbox: CodexSandboxMode;
-}
+type CodexPermissionSettings = CodexApprovalSettings &
+  ({ sandboxPolicy: SandboxPolicy } | { permissions: string });
+
+export type CodexThreadPermissionSettings = CodexApprovalSettings &
+  ({ sandbox: CodexSandboxMode } | { permissions: string });
+
+const CODEX_FULL_ACCESS_PROFILE = ":danger-full-access";
 
 export type BbThreadStartParams = ThreadStartParams & {
+  permissions?: string | null;
   experimentalRawEvents?: boolean;
   dynamicTools?: DynamicToolSpec[];
   daybreakEnabled?: boolean;
@@ -60,6 +65,7 @@ export type BbThreadForkParams = {
   approvalPolicy?: AskForApproval | null;
   approvalsReviewer?: ApprovalsReviewer | null;
   sandbox?: CodexSandboxMode | null;
+  permissions?: string | null;
   config?: { [key in string]?: JsonValue } | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
@@ -70,14 +76,15 @@ interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options: CodexSessionOptions;
-  workspaceNetworkAccess: boolean;
+  sandboxControl: CodexSandboxControl;
 }
 
 const CODEX_WORKSPACE_NETWORK_CONFIG_KEY =
   "sandbox_workspace_write.network_access";
 
-export const codexWorkspaceNetworkConfigSchema = z.object({
+export const codexSandboxConfigSchema = z.object({
   config: z.object({
+    default_permissions: z.string().nullish(),
     sandbox_workspace_write: z
       .object({ network_access: z.boolean().nullish() })
       .nullish(),
@@ -85,7 +92,7 @@ export const codexWorkspaceNetworkConfigSchema = z.object({
   origins: z.record(z.string(), z.unknown()),
 });
 
-export const codexWorkspaceNetworkRequirementsSchema = z.object({
+export const codexSandboxRequirementsSchema = z.object({
   requirements: z
     .object({
       allowedPermissionProfiles: z.record(z.string(), z.unknown()).nullish(),
@@ -95,10 +102,48 @@ export const codexWorkspaceNetworkRequirementsSchema = z.object({
     .nullable(),
 });
 
-export function resolveCodexWorkspaceNetworkAccess(args: {
-  config: z.infer<typeof codexWorkspaceNetworkConfigSchema>;
-  requirements: z.infer<typeof codexWorkspaceNetworkRequirementsSchema>;
-}): boolean {
+export const codexPermissionProfileListSchema = z.object({
+  data: z.array(z.object({ id: z.string(), allowed: z.boolean() })),
+});
+
+interface CodexSandboxSettings {
+  config: z.infer<typeof codexSandboxConfigSchema>;
+  requirements: z.infer<typeof codexSandboxRequirementsSchema>;
+}
+
+export function codexCustomWorkspaceProfile(
+  args: CodexSandboxSettings,
+): string | null {
+  const profile =
+    args.requirements.requirements?.defaultPermissions ??
+    args.config.config.default_permissions;
+  return profile != null && !profile.startsWith(":") ? profile : null;
+}
+
+export function resolveCodexSandboxControl(
+  args: CodexSandboxSettings & {
+    profiles: z.infer<typeof codexPermissionProfileListSchema> | null;
+  },
+): CodexSandboxControl {
+  const workspaceProfile = codexCustomWorkspaceProfile(args);
+  if (workspaceProfile === null || args.profiles === null) {
+    return {
+      kind: "sandbox",
+      workspaceNetworkAccess: resolveCodexWorkspaceNetworkAccess(args),
+    };
+  }
+  return {
+    kind: "profile",
+    workspaceProfile,
+    fullAccessAllowed: args.profiles.data.some(
+      (profile) => profile.id === CODEX_FULL_ACCESS_PROFILE && profile.allowed,
+    ),
+  };
+}
+
+function resolveCodexWorkspaceNetworkAccess(
+  args: CodexSandboxSettings,
+): boolean {
   const configured = args.config.config.sandbox_workspace_write?.network_access;
   const requirements = args.requirements.requirements;
   const managedPermissions =
@@ -117,6 +162,7 @@ export function resolveCodexWorkspaceNetworkAccess(args: {
 
 interface BuildCodexConfigArgs {
   supportsAgentsEnabled: boolean;
+  sandboxControl: CodexSandboxControl;
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options?: CodexSessionOptions;
@@ -553,31 +599,71 @@ function toCodexApprovalsReviewer(
   return options.approvalReviewer === "automatic" ? "auto_review" : "user";
 }
 
-export function toCodexThreadPermissionSettings(
+function toCodexApprovalSettings(
   options: CodexSessionOptions,
-): CodexThreadPermissionSettings {
-  const permissionPolicy = options;
-  switch (permissionPolicy.permissionScope) {
+): CodexApprovalSettings {
+  switch (options.permissionScope) {
     case "workspace":
       return {
-        approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
+        approvalPolicy: toWorkspaceApprovalPolicy(options),
         approvalsReviewer: toCodexApprovalsReviewer(options),
-        sandbox: "workspace-write",
       };
     case "full":
       return {
         approvalPolicy: "never",
         approvalsReviewer: toCodexApprovalsReviewer(options),
-        sandbox: "danger-full-access",
       };
   }
+}
+
+function toCodexPermissionProfile(
+  options: CodexSessionOptions,
+  control: Extract<CodexSandboxControl, { kind: "profile" }>,
+): string {
+  if (options.permissionScope === "workspace") {
+    return control.workspaceProfile;
+  }
+  if (!control.fullAccessAllowed) {
+    throw new Error(
+      `Codex requirements on this machine do not allow full access (${CODEX_FULL_ACCESS_PROFILE}). Switch this thread to workspace permissions, which use the Codex permission profile "${control.workspaceProfile}".`,
+    );
+  }
+  return CODEX_FULL_ACCESS_PROFILE;
+}
+
+export function toCodexThreadPermissionSettings(
+  options: CodexSessionOptions,
+  control: CodexSandboxControl,
+): CodexThreadPermissionSettings {
+  const approvals = toCodexApprovalSettings(options);
+  if (control.kind === "profile") {
+    return {
+      ...approvals,
+      permissions: toCodexPermissionProfile(options, control),
+    };
+  }
+  return {
+    ...approvals,
+    sandbox:
+      options.permissionScope === "workspace"
+        ? "workspace-write"
+        : "danger-full-access",
+  };
 }
 
 export function toCodexPermissionSettings(
   args: ToCodexPermissionSettingsArgs,
 ): CodexPermissionSettings {
+  const approvals = toCodexApprovalSettings(args.options);
+  const control = args.sandboxControl;
+  if (control.kind === "profile") {
+    return {
+      ...approvals,
+      permissions: toCodexPermissionProfile(args.options, control),
+    };
+  }
   return {
-    ...toCodexThreadPermissionSettings(args.options),
+    ...approvals,
     sandboxPolicy:
       args.options.permissionScope === "workspace"
         ? toWorkspaceWriteCodexSandboxPolicy(
@@ -585,7 +671,7 @@ export function toCodexPermissionSettings(
               args.gitWritableRoots,
               args.additionalWorkspaceWriteRoots,
             ),
-            args.workspaceNetworkAccess,
+            control.workspaceNetworkAccess,
           )
         : { type: "dangerFullAccess" },
   };
@@ -707,7 +793,13 @@ export function buildCodexConfig(
       args.additionalWorkspaceWriteRoots,
     );
     if (writableRoots.length > 0) {
-      config["sandbox_workspace_write.writable_roots"] = [...writableRoots];
+      if (args.sandboxControl.kind === "profile") {
+        config[
+          `permissions.${args.sandboxControl.workspaceProfile}.filesystem`
+        ] = Object.fromEntries(writableRoots.map((root) => [root, "write"]));
+      } else {
+        config["sandbox_workspace_write.writable_roots"] = [...writableRoots];
+      }
     }
   }
   return Object.keys(config).length > 0 ? config : undefined;

@@ -530,6 +530,9 @@ async function handleRequest(message) {
     case "configRequirements/read":
       respond(id, script?.configRequirementsRead ?? { requirements: null });
       return;
+    case "permissionProfile/list":
+      respond(id, script?.permissionProfileList ?? { data: [] });
+      return;
     case "skills/list":
       respond(id, script?.skillsList ?? { data: [] });
       return;

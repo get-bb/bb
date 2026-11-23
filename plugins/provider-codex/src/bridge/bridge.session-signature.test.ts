@@ -898,11 +898,9 @@ const workspaceNetworkCases = [
     networkAccess: false,
   },
   {
-    name: "admin requirements managing permission profiles",
+    name: "admin requirements managing only the network",
     script: {
-      configRequirementsRead: {
-        requirements: { defaultPermissions: "sandboxed" },
-      },
+      configRequirementsRead: { requirements: { network: { enabled: false } } },
     },
     networkAccess: false,
   },
@@ -950,3 +948,86 @@ it.each(workspaceNetworkCases)(
   },
   30_000,
 );
+
+function writeProfileScript(fullAccessAllowed: boolean): void {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      configRequirementsRead: {
+        requirements: {
+          defaultPermissions: "sandboxed",
+          allowedPermissionProfiles: {
+            sandboxed: true,
+            ":danger-full-access": fullAccessAllowed,
+          },
+        },
+      },
+      permissionProfileList: {
+        data: [
+          { id: ":workspace", allowed: false },
+          { id: ":danger-full-access", allowed: fullAccessAllowed },
+          { id: "sandboxed", allowed: true },
+        ],
+      },
+    }),
+  );
+}
+
+it("runs workspace and full-access turns under Codex permission profiles required by the admin", async () => {
+  writeProfileScript(true);
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const started = await harness.waitForResponse(1);
+  expect(started.error).toBeUndefined();
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  for (const [id, options] of [
+    [2, autoAskSessionOptions],
+    [3, FULL_ACCESS_SESSION_OPTIONS],
+  ] as const) {
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: `creq_prfwrkxxx${id}`,
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options,
+    });
+    expect((await harness.waitForResponse(id)).error).toBeUndefined();
+  }
+
+  const requests = recordedRequests();
+  const threadStart = requests.find((entry) => entry.method === "thread/start");
+  expect(threadStart?.params).toMatchObject({ permissions: "sandboxed" });
+  expect(threadStart?.params).not.toHaveProperty("sandbox");
+  const turns = requests.filter((entry) => entry.method === "turn/start");
+  expect(turns.map((entry) => entry.params.permissions)).toEqual([
+    "sandboxed",
+    ":danger-full-access",
+  ]);
+  expect(turns.some((entry) => "sandboxPolicy" in entry.params)).toBe(false);
+}, 30_000);
+
+it("rejects a full-access thread when Codex requirements disallow full access", async () => {
+  writeProfileScript(false);
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  const started = await harness.waitForResponse(1);
+
+  expect(started.error?.message).toContain(
+    "Codex requirements on this machine do not allow full access",
+  );
+  expect(
+    recordedRequests().filter((entry) => entry.method === "thread/start"),
+  ).toEqual([]);
+}, 30_000);
