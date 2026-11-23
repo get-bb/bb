@@ -1,7 +1,5 @@
 import { useCallback } from "react";
-import { useRouteNavigate } from "@/components/ui/app-route-anchor";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 
 interface UseCreateThreadInEnvironmentArgs {
   projectId: string;
@@ -10,41 +8,19 @@ interface UseCreateThreadInEnvironmentArgs {
   pinned: boolean;
 }
 
-export function buildCreateThreadInEnvironmentState({
-  environmentId,
-  sectionId,
-  pinned,
-}: Omit<UseCreateThreadInEnvironmentArgs, "projectId">) {
-  return {
-    focusPrompt: true,
-    reuseEnvironmentId: environmentId,
-    placement: { sectionId, pinned },
-  };
-}
-
 export function useCreateThreadInEnvironment({
   projectId,
   environmentId,
   sectionId,
   pinned,
 }: UseCreateThreadInEnvironmentArgs): () => void {
-  const navigate = useRouteNavigate();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
+  const openNewThread = useOpenNewThread();
   return useCallback(() => {
-    setRootComposeProjectId(projectId);
-    navigate(getRootComposeRoutePath(), {
-      state: buildCreateThreadInEnvironmentState({
-        environmentId,
-        sectionId,
-        pinned,
-      }),
+    openNewThread({
+      projectId,
+      environmentId,
+      placement: { sectionId, pinned },
+      focusPrompt: true,
     });
-  }, [
-    environmentId,
-    navigate,
-    projectId,
-    sectionId,
-    pinned,
-    setRootComposeProjectId,
-  ]);
+  }, [environmentId, openNewThread, projectId, sectionId, pinned]);
 }

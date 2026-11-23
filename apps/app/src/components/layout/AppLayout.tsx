@@ -126,7 +126,7 @@ import { wsManager } from "@/lib/ws";
 import { openThread } from "@/lib/split-layout/openThread";
 import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
 import { HistoryCommandHandlers } from "./HistoryCommandHandlers";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
@@ -513,7 +513,6 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       : isGlobalSettingsView
         ? appRoutePath
         : sectionBackRoutePath;
-  const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
@@ -528,12 +527,11 @@ function AppLayoutContent({ children }: AppLayoutProps) {
       }),
     [isCompactViewport, navigate, store],
   );
+  const openNewThread = useOpenNewThread();
   useAppCommandHandler("thread.new", () => {
-    if (projectId !== undefined) {
-      setRootComposeProjectId(projectId);
-    }
-    void navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true },
+    openNewThread({
+      ...(projectId !== undefined ? { projectId } : {}),
+      focusPrompt: true,
     });
     return true;
   });

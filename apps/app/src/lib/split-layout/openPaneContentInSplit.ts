@@ -38,15 +38,32 @@ export function openPaneContentInSplit({
     void navigate(route);
     return;
   }
+  const placed = placePaneContentInSplit(layout, content);
+  if (placed.layout !== layout) store.set(splitLayoutAtom, placed.layout);
+  void navigate(route, placed.alreadyOpen ? { replace: true } : undefined);
+}
+
+export function placePaneContentInSplit(
+  layout: SplitLayout,
+  content: PaneContent,
+): { layout: SplitLayout; alreadyOpen: boolean } {
   const existing = findPaneByContent(layout.root, content);
-  const next =
-    existing !== null
-      ? setFocus(layout, existing.paneId)
-      : countPanes(layout.root) >= MAX_PANES
+  if (existing !== null) {
+    return {
+      layout:
+        layout.focusedPaneId === existing.paneId
+          ? layout
+          : setFocus(layout, existing.paneId),
+      alreadyOpen: true,
+    };
+  }
+  return {
+    layout:
+      countPanes(layout.root) >= MAX_PANES
         ? replacePaneContent(layout, layout.focusedPaneId, content)
-        : splitPane(layout, layout.focusedPaneId, "right", content);
-  if (next !== layout) store.set(splitLayoutAtom, next);
-  void navigate(route, existing !== null ? { replace: true } : undefined);
+        : splitPane(layout, layout.focusedPaneId, "right", content),
+    alreadyOpen: false,
+  };
 }
 
 export function holdsPluginDetailPane(

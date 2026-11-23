@@ -1,4 +1,4 @@
-# Opening and linking threads, messages and settings
+# Opening and linking threads, messages, the New thread screen and settings
 
 `useBbNavigate()` in components and `context.navigate` in callbacks have the
 same members. Never push history state, dispatch `popstate`, or build
@@ -19,6 +19,18 @@ message metadata component's `message.messageSeq`, or the
 `messageSeq` of `useSdk().threads.timeline()` conversation rows. Do not page
 or scroll the timeline DOM yourself. A seq that is not a non-negative integer
 throws `RangeError`.
+
+## The New thread screen
+
+```ts
+navigate.toCompose({ projectId, initialPrompt, focusPrompt: true });
+navigate.toCompose({ projectId, focusPrompt: true, split: true }); // beside the caller
+```
+
+`split: true` follows `toThread`'s split rules: a right split by default,
+replace at the pane cap, plain navigation where splits are off. bb has one New
+thread screen, so if it is already open in a pane, bb focuses that pane and
+applies the other options there.
 
 ## Settings
 

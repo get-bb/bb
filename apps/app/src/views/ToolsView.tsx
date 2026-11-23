@@ -1,4 +1,5 @@
 import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   useAppPanelController,
@@ -85,7 +86,6 @@ import {
   SKILLS_ROUTE_PATH,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
-  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -178,6 +178,7 @@ function PluginsToolView({
 
 function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   const navigate = useNavigate();
+  const openNewThread = useOpenNewThread();
   const location = useLocation();
   const { pluginId: detailPluginId } = parsePluginDetailKey(detailKey);
   const routeOwnsDetail =
@@ -296,21 +297,19 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         : null;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
-      void navigate(getRootComposeRoutePath(), {
-        state: {
-          focusPrompt: true,
-          initialPrompt: initialPromptSeedFromComposer(
-            buildPluginEditThreadPrompt({
-              name: plugin.name ?? plugin.id,
-              path: plugin.rootDir,
-            }),
-            null,
-          ),
-          replaceInitialPrompt: true,
-        },
+      openNewThread({
+        focusPrompt: true,
+        initialPrompt: initialPromptSeedFromComposer(
+          buildPluginEditThreadPrompt({
+            name: plugin.name ?? plugin.id,
+            path: plugin.rootDir,
+          }),
+          null,
+        ),
+        replaceInitialPrompt: true,
       });
     },
-    [navigate],
+    [openNewThread],
   );
   const handleOpenPluginSource = useCallback(
     (plugin: PluginListItem) => {

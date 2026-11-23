@@ -53,12 +53,12 @@ registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id, options?), toProject(id), toPluginPanel(path, { subPath?, replace? }?),
-toCompose({ initialPrompt?, focusPrompt? }?), openUrl(url), experimental_openFilePreview(options),
+toCompose({ initialPrompt?, focusPrompt?, split? }?), openUrl(url), experimental_openFilePreview(options),
 experimental_openFileExternally(options), experimental_openTerminal({ terminalId }), experimental_toSettings(target?),
 experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; see [frontend-navigation.md](frontend-navigation.md).
-  `toCompose` opens the root compose screen; pass `initialPrompt` (a string or
-  `ComposerInsertPart[]`, as `insert()` takes) to seed the composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
-  with the [panel controller](#panel-controller).
+  `toCompose` opens the root compose screen; pass `initialPrompt` (a string or `ComposerInsertPart[]`, as `insert()` takes)
+  to seed the composer draft, `focusPrompt: true` to focus it, and `split: true` to open it beside the caller.
+  Open side-panel tabs with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target; the preview also accepts

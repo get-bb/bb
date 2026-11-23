@@ -114,6 +114,13 @@ export function useRootComposeProjectId() {
   return useAtom(rootComposeProjectIdAtom);
 }
 
+export function selectRootComposeProject(
+  store: ReturnType<typeof useStore>,
+  projectId: string,
+): void {
+  store.set(rootComposeProjectIdAtom, projectId);
+}
+
 export function useSetRootComposeProjectId() {
   return useSetAtom(rootComposeProjectIdAtom);
 }

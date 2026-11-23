@@ -46,7 +46,7 @@ export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
   threads: readonly SidebarThread[];
   renderContent: (close: () => void) => ReactNode;
-  onNewThread?: () => void;
+  onNewThread?: (split: boolean) => void;
 }
 
 interface ThreadListVisibilityState {
