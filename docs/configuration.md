@@ -1092,6 +1092,12 @@ notification they are showing for it. Phones need a mobile app version with
 the background task; an older Android app in the foreground would list the
 silent push as a blank notification.
 
+bb skips the push-notifications plugin's web and desktop system notification
+for a thread that is open in a visible, focused bb window or browser tab of the
+same origin. Each such window holds a shared Web Lock for its thread, so the
+window that claims a notification also sees threads focused in other windows.
+Other threads, notifications without a thread, and mobile push are unaffected.
+
 Thread row metadata adds Metadata to the built-in
 thread list's Organize → Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
 GitHub PR Status's pull request number on a line under each thread title.
@@ -1123,6 +1129,52 @@ instead of starting turns the restart would cut. bb sends them when it starts
 again, after any resume `resumeThreadsAfterRestart` queues, in order; if the
 update is deferred, cancelled, or fails, it sends them at once. See `bb guide machines`.
 
+## Thread context card
+
+A running thread's details sit in the thread context card at the upper-right
+of its pane: bb's parent thread and child threads, the Git plugin's changes,
+which open the Diff tab, and GitHub PR Status's pull request. The context row
+above the composer drops those segments and keeps other plugins' segments; the
+project, environment, and branch stay below the composer, side chats keep
+their context row, and a new thread's composer is unchanged.
+A header button opens the card or pins it: a pinned card sits beside the
+transcript in a wide pane and moves the transcript aside in a medium one,
+and a narrow pane or window keeps the context row above the composer and
+opens the card over the transcript. Phones keep the context row above the
+composer and show no card. Plugins read how a pane
+shows thread context with `experimental_useThreadContextKind()`.
+
+## CPU priority, plugin styles, and database checkpoints
+
+bb keeps itself responsive when agents saturate the CPU. The host daemon
+starts provider processes and environment setup and teardown scripts at nice
+10 (below-normal on Windows), inherited by the builds and tests they run;
+terminals keep normal priority. On macOS the launcher also starts the server
+and daemon with application scheduling (`taskpolicy -a`). See
+[slow database operations](debugging-and-qa.md#slow-database-operations).
+
+The app requests each plugin's stylesheet with
+`css-scope=plugin-attribute-v1`. bb then keys the plugin's utilities on an
+attribute named after the plugin, `data-bb-plugin-scope-<id>`, so style
+updates inside other plugins' UI, such as the sidebar and composer, skip that
+plugin's rules. The app adds the attribute to every element labeled
+`data-bb-plugin`, including ones a plugin creates itself. See
+[Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
+
+SQLite WAL checkpoints for `bb.db` and plugin `data.db` files run off the
+server's main thread. A background worker thread opens its own connection to
+each database and runs `wal_checkpoint(PASSIVE)` every 100 ms, and right away again while the WAL holds 4,096 frames or more
+and is still growing; the server's own connections set
+`wal_autocheckpoint=0`, so a commit no longer copies the WAL into the
+database file and fsyncs it. If sustained writes grow the WAL past 16,384
+frames across two worker passes, the server checkpoints the small remaining
+tail itself between tasks and logs "Sustained writes outpaced the WAL
+checkpoint worker". The hourly incremental vacuum waits for a worker pass
+around each chunk instead of checkpointing inline. If the worker exits or
+cannot open a database, those connections go back to checkpointing on
+commit and bb logs a warning; a worker that had started restarts after
+10 seconds.
+
 ## Experiments
 
 Experimental surfaces are changed in Settings → Experiments or with
@@ -1132,23 +1184,12 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`,
-`pluginUpdates`, `resumeDaemonSessions`, `serverRoutes`,
-`skipFocusedThreadNotifications`, `threadContextCard`, and
-`walCheckpointWorker`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+(currently `compactExpiredCache`, `pluginUpdates`, `resumeDaemonSessions`, and
+`serverRoutes`) turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
-- `agentCpuPriority` (on for early adopters) keeps bb responsive when agents saturate the CPU. The
-  host daemon starts provider processes and environment setup and teardown
-  scripts at nice 10 (below-normal on Windows), inherited by
-  the builds and tests they run; terminals keep normal priority. On macOS the
-  launcher also starts the server and daemon with application scheduling
-  (`taskpolicy -a`). Turning it on or off takes effect after restarting bb,
-  including the restart an update performs: running provider processes serve
-  new threads too, and a lowered process cannot be raised again. See
-  [slow database operations](debugging-and-qa.md#slow-database-operations).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -1157,16 +1198,6 @@ either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
-
-- `keyedPluginCss` (on for early adopters) makes the app request each plugin's
-  stylesheet with `css-scope=plugin-attribute-v1`. bb then keys the plugin's
-  utilities on an attribute named after the plugin,
-  `data-bb-plugin-scope-<id>`, so style updates inside other plugins' UI, such
-  as the sidebar and composer, skip that plugin's rules. The app adds the
-  attribute to every element labeled `data-bb-plugin`, including ones a plugin
-  creates itself. The app reads the experiment when it loads a plugin's
-  stylesheet, so a toggle applies after a reload. See
-  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel
@@ -1211,46 +1242,6 @@ either way.
   `routes: []`, `local-network` is unavailable, and machines use only the URL
   they were installed with. It applies when each machine next opens a session
   or receives `server-routes.replace`.
-
-- `threadContextCard` (on for early adopters) moves a running thread's
-  details into the thread context card at the upper-right of its pane: bb's parent
-  thread and child threads, the Git plugin's changes, which open the Diff tab,
-  and GitHub PR Status's pull request. The context row above the
-  composer drops those segments and keeps other plugins' segments; the
-  project, environment, and branch stay below the composer, side chats keep
-  their context row, and a new thread's composer is unchanged.
-  A header button opens the card or pins it: a pinned card sits beside the
-  transcript in a wide pane and moves the transcript aside in a medium one,
-  and a narrow pane or window keeps the context row above the composer and
-  opens the card over the transcript. Phones keep the context row above the
-  composer and show no card. Plugins read how a pane
-  shows thread context with `experimental_useThreadContextKind()`.
-
-- `skipFocusedThreadNotifications` (on for early adopters) makes the
-  push-notifications plugin skip the web and desktop system notification for a
-  thread that is open in a visible, focused bb window or browser tab of the same
-  origin. Each such window holds a shared Web Lock for its thread, so the window
-  that claims a notification also sees threads focused in other windows. Other
-  threads, notifications without a thread, and mobile push are unaffected. The
-  plugin reads it with
-  `experimental_useExperiment("skipFocusedThreadNotifications")` and follows a
-  toggle live.
-
-- `walCheckpointWorker` (on for early adopters) moves SQLite WAL checkpoints for `bb.db` and plugin
-  `data.db` files off the server's main thread. A background worker thread
-  opens its own connection to each database and runs `wal_checkpoint(PASSIVE)`
-  every 100 ms, and right away again while the WAL holds 4,096 frames or more
-  and is still growing; the server's own connections set
-  `wal_autocheckpoint=0`, so a commit no longer copies the WAL into the
-  database file and fsyncs it. If sustained writes grow the WAL past 16,384
-  frames across two worker passes, the server checkpoints the small remaining
-  tail itself between tasks and logs "Sustained writes outpaced the WAL
-  checkpoint worker". The hourly incremental vacuum waits for a worker pass
-  around each chunk instead of checkpointing inline. If the worker exits or
-  cannot open a database, those connections go back to checkpointing on
-  commit and bb logs a warning; a worker that had started restarts after
-  10 seconds. The experiment applies live: turning it off stops the worker
-  after a final checkpoint and restores `wal_autocheckpoint=1000`.
 
 ## Thread Timeline Window
 

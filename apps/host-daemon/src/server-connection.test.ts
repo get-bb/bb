@@ -33,7 +33,6 @@ interface CreateWebSocketFixtureArgs {
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   rejectResume?: boolean;
   onIdleProviderSessionTimeout?: (minutes: number) => void;
-  onAgentCpuPriority?: (enabled: boolean) => void;
   autoReconnect?: boolean;
   serverHeaders?: Record<string, string>;
   routes?: ServerRouteResolver;
@@ -71,7 +70,6 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     heartbeatIntervalMs: args.heartbeatIntervalMs,
     machineEnvironment: { revision: 0, entries: [] },
     idleProviderSessionTimeoutMinutes: 30,
-    agentCpuPriority: true,
     leaseTimeoutMs: args.leaseTimeoutMs,
     reconnectGraceMs: args.reconnectGraceMs,
     retiredEnvironmentIds: [],
@@ -289,7 +287,6 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     onServerMoved: args.onServerMoved,
     onMachineEnvironment: args.onMachineEnvironment,
     onIdleProviderSessionTimeout: args.onIdleProviderSessionTimeout,
-    onAgentCpuPriority: args.onAgentCpuPriority,
     onHostRpcCancel: args.onHostRpcCancel,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
@@ -588,45 +585,12 @@ describe("ServerConnection", () => {
         webSocket.deliver(socket, {
           type: "provider-session-policy.replace",
           idleProviderSessionTimeoutMinutes: minutes,
-          agentCpuPriority: true,
         });
         expect(onIdleProviderSessionTimeout).toHaveBeenLastCalledWith(minutes);
       }
       socket.reconnect();
       await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
       expect(onIdleProviderSessionTimeout).toHaveBeenLastCalledWith(30);
-    } finally {
-      await connection.shutdown();
-    }
-  });
-
-  it("applies the agent CPU priority from the handshake, live changes and reconnect, and ignores policies without it", async () => {
-    const onAgentCpuPriority = vi.fn();
-    const { connection, webSocket } = createConnectionFixture({
-      onAgentCpuPriority,
-      sessionIds: ["first", "second"],
-      rejectResume: true,
-    });
-    try {
-      await connection.start();
-      expect(onAgentCpuPriority).toHaveBeenLastCalledWith(true);
-      const socket = webSocket.sockets[0];
-      if (!socket) throw new Error("Expected test socket");
-      webSocket.deliver(socket, {
-        type: "provider-session-policy.replace",
-        idleProviderSessionTimeoutMinutes: 30,
-        agentCpuPriority: false,
-      });
-      expect(onAgentCpuPriority).toHaveBeenLastCalledWith(false);
-      onAgentCpuPriority.mockClear();
-      webSocket.deliver(socket, {
-        type: "provider-session-policy.replace",
-        idleProviderSessionTimeoutMinutes: 30,
-      });
-      expect(onAgentCpuPriority).not.toHaveBeenCalled();
-      socket.reconnect();
-      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
-      expect(onAgentCpuPriority).toHaveBeenLastCalledWith(true);
     } finally {
       await connection.shutdown();
     }
