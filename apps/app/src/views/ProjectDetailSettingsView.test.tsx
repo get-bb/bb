@@ -466,7 +466,7 @@ describe("ProjectDetailSettingsView", () => {
       saved: { environmentProviderId: "configurable", inputs: {} },
     },
   ])(
-    "saves $label as the default environment with the inputs it accepts",
+    "saves $label as the default environment with the inputs it accepts as soon as it is picked",
     async ({ label, saved }) => {
       stubSidebarBootstrapFetch([
         { hostId: "host_primary", path: "/Users/me/bb" },
@@ -484,7 +484,6 @@ describe("ProjectDetailSettingsView", () => {
 
       renderView();
       await pickDefaultEnvironment(label);
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
       await waitFor(() =>
         expect(sdk.projects.update).toHaveBeenCalledWith({
@@ -521,9 +520,8 @@ describe("ProjectDetailSettingsView", () => {
       name: /Default environment/u,
     });
     await waitFor(() => expect(trigger.textContent).toContain("Sandbox"));
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(sdk.projects.update).not.toHaveBeenCalled();
     await pickDefaultEnvironment(/^Not set/u);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(sdk.projects.update).toHaveBeenCalledWith({
@@ -531,6 +529,22 @@ describe("ProjectDetailSettingsView", () => {
         defaultEnvironment: null,
       }),
     );
+  });
+
+  it("puts the picker back on the saved default when saving fails", async () => {
+    stubSidebarBootstrapFetch([
+      { hostId: "host_primary", path: "/Users/me/bb" },
+    ]);
+    vi.mocked(sdk.projects.update).mockRejectedValue(new Error("boom"));
+
+    renderView();
+    await pickDefaultEnvironment("Sandbox");
+
+    const trigger = screen.getByRole("button", {
+      name: /Default environment/u,
+    });
+    await waitFor(() => expect(sdk.projects.update).toHaveBeenCalled());
+    await waitFor(() => expect(trigger.textContent).toContain("Not set"));
   });
 
   it("deletes the project and returns to the list", async () => {

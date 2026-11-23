@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import type { JsonValue, ProjectEnvironmentDefault } from "@bb/domain";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import type { PluginEnvironmentProviderInputsChange } from "@get-bb/plugin-sdk";
-import { Button } from "@bb/shared-ui/button";
 import {
   OptionPicker,
   type PickerOption,
@@ -151,153 +150,136 @@ export function ProjectDefaultEnvironmentSettings({
       ? undefined
       : inputsSlotFor(selectedProvider);
 
-  const selectProvider = useCallback(
-    (value: string) => {
-      if (value === BUILT_IN_VALUE) {
-        setDraft(() => null);
-        return;
-      }
-      const provider = providers.find((candidate) => candidate.id === value);
-      if (provider === undefined) return;
-      setDraft(() => {
-        if (saved?.environmentProviderId === provider.id) {
-          return draftFromSaved(saved);
-        }
-        const inputs =
-          provider.inputs === null
-            ? null
-            : inputsSlotFor(provider) === undefined
-              ? {}
-              : null;
-        return {
-          environmentProviderId: provider.id,
-          inputs,
-          blockedReason: null,
-        };
-      });
-    },
-    [inputsSlotFor, providers, saved, setDraft],
-  );
+  const inputsPending = (
+    next: DraftEnvironment,
+    provider: SystemEnvironmentProvider | undefined,
+  ): boolean =>
+    next.blockedReason !== null ||
+    (provider !== undefined && provider.inputs !== null && next.inputs === null);
 
-  const changeInputs = useCallback(
-    (next: PluginEnvironmentProviderInputsChange) => {
-      setDraft((current) => {
-        if (current === null) return current;
-        if (next.status === "blocked") {
-          return current.blockedReason === next.reason
-            ? current
-            : { ...current, blockedReason: next.reason };
-        }
-        if (
-          current.blockedReason === null &&
-          JSON.stringify(current.inputs) === JSON.stringify(next.value)
-        ) {
-          return current;
-        }
-        return { ...current, inputs: next.value, blockedReason: null };
-      });
-    },
-    [setDraft],
-  );
-
-  const dirty = !sameEnvironment(draft, saved);
-  const saveBlockedReason =
-    draft === null
-      ? null
-      : draft.blockedReason !== null
-        ? draft.blockedReason
-        : selectedProvider !== undefined &&
-            selectedProvider.inputs !== null &&
-            draft.inputs === null
-          ? `Configure ${selectedProvider.displayName}`
-          : null;
-  const save = () => {
-    const defaultEnvironment: ProjectEnvironmentDefault | null =
-      draft === null
-        ? null
-        : {
-            environmentProviderId: draft.environmentProviderId,
-            inputs: draft.inputs,
-          };
+  const commit = (next: DraftEnvironment | null) => {
+    setDraft(() => next);
+    if (sameEnvironment(next, saved)) return;
+    if (
+      next !== null &&
+      inputsPending(
+        next,
+        providers.find(
+          (provider) => provider.id === next.environmentProviderId,
+        ),
+      )
+    ) {
+      return;
+    }
     updateProject.mutate(
-      { id: projectId, defaultEnvironment },
-      { onSuccess: () => setRememberedComposerEnvironment("") },
+      {
+        id: projectId,
+        defaultEnvironment:
+          next === null
+            ? null
+            : {
+                environmentProviderId: next.environmentProviderId,
+                inputs: next.inputs,
+              },
+      },
+      {
+        onSuccess: () => setRememberedComposerEnvironment(""),
+        onError: () => setDraft(() => draftFromSaved(saved)),
+      },
     );
+  };
+
+  const selectProvider = (value: string) => {
+    if (value === BUILT_IN_VALUE) {
+      commit(null);
+      return;
+    }
+    const provider = providers.find((candidate) => candidate.id === value);
+    if (provider === undefined) return;
+    if (saved?.environmentProviderId === provider.id) {
+      commit(draftFromSaved(saved));
+      return;
+    }
+    commit({
+      environmentProviderId: provider.id,
+      inputs:
+        provider.inputs === null
+          ? null
+          : inputsSlotFor(provider) === undefined
+            ? {}
+            : null,
+      blockedReason: null,
+    });
+  };
+
+  const changeInputs = (next: PluginEnvironmentProviderInputsChange) => {
+    if (draft === null) return;
+    if (next.status === "blocked") {
+      if (draft.blockedReason !== next.reason) {
+        setDraft(() => ({ ...draft, blockedReason: next.reason }));
+      }
+      return;
+    }
+    if (
+      draft.blockedReason === null &&
+      JSON.stringify(draft.inputs) === JSON.stringify(next.value)
+    ) {
+      return;
+    }
+    commit({ ...draft, inputs: next.value, blockedReason: null });
   };
 
   const savedProviderMissing =
     saved !== null &&
     registeredProviders !== undefined &&
     !providers.some((provider) => provider.id === saved.environmentProviderId);
+  const rowDescription = savedProviderMissing
+    ? `"${saved.environmentProviderId}" is not available, so new threads without a chosen environment fail. Enable its plugin or pick another default.`
+    : draft === null
+      ? BUILT_IN_DESCRIPTION
+      : draft.blockedReason !== null
+        ? draft.blockedReason
+        : selectedProvider !== undefined &&
+            inputsPending(draft, selectedProvider)
+          ? `Choose ${selectedProvider.displayName} options to save it as the default.`
+          : undefined;
 
   return (
     <SettingsSection title="Default environment" description={DESCRIPTION}>
       <SettingsRowList>
-        <SettingsWithControl
-          label="New threads"
-          description={
-            savedProviderMissing
-              ? `"${saved.environmentProviderId}" is not available, so new threads without a chosen environment fail. Enable its plugin or pick another default.`
-              : undefined
-          }
-        >
-          <OptionPicker
-            label="Default environment"
-            value={draft?.environmentProviderId ?? BUILT_IN_VALUE}
-            options={options}
-            onChange={selectProvider}
-            disabled={registeredProviders === undefined}
-            align="end"
-            {...(draft !== null && selectedProvider === undefined
-              ? { displayOverride: { label: draft.environmentProviderId } }
-              : {})}
-          />
-        </SettingsWithControl>
-        {selectedProvider !== undefined && selectedSlot !== undefined ? (
-          <div className="flex justify-end">
-            <PluginSlotMount
-              pluginId={selectedSlot.pluginId}
-              slotKind="environmentProviderInputs"
-              slotId={selectedSlot.environmentProviderId}
-            >
-              <selectedSlot.component
-                projectId={projectId}
-                target={
-                  inputsHostId === null
-                    ? { kind: "new-host" }
-                    : { kind: "existing-host", hostId: inputsHostId }
-                }
-                value={draft?.inputs ?? null}
-                onChange={changeInputs}
-              />
-            </PluginSlotMount>
-          </div>
-        ) : null}
-        {dirty ? (
-          <div className="flex items-center justify-end gap-2">
-            {saveBlockedReason !== null ? (
-              <p className="mr-auto text-xs text-muted-foreground">
-                {saveBlockedReason}
-              </p>
+        <SettingsWithControl label="New threads" description={rowDescription}>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <OptionPicker
+              label="Default environment"
+              value={draft?.environmentProviderId ?? BUILT_IN_VALUE}
+              options={options}
+              onChange={selectProvider}
+              disabled={registeredProviders === undefined}
+              align="end"
+              {...(draft !== null && selectedProvider === undefined
+                ? { displayOverride: { label: draft.environmentProviderId } }
+                : {})}
+            />
+            {selectedProvider !== undefined && selectedSlot !== undefined ? (
+              <PluginSlotMount
+                pluginId={selectedSlot.pluginId}
+                slotKind="environmentProviderInputs"
+                slotId={selectedSlot.environmentProviderId}
+              >
+                <selectedSlot.component
+                  projectId={projectId}
+                  target={
+                    inputsHostId === null
+                      ? { kind: "new-host" }
+                      : { kind: "existing-host", hostId: inputsHostId }
+                  }
+                  value={draft?.inputs ?? null}
+                  onChange={changeInputs}
+                />
+              </PluginSlotMount>
             ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setDraft(() => draftFromSaved(saved))}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={saveBlockedReason !== null}
-              onClick={save}
-            >
-              Save
-            </Button>
           </div>
-        ) : null}
+        </SettingsWithControl>
       </SettingsRowList>
     </SettingsSection>
   );
