@@ -707,12 +707,15 @@ export function MobileServerAccessContent({
               .
             </p>
           ) : (
-            <ul aria-label="Ready routes" className="space-y-2">
+            <ul
+              aria-label="Ready routes"
+              className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2"
+            >
               {readyRoutes.map(({ provider }) => (
                 <li
                   key={provider.id}
                   aria-label={provider.displayName}
-                  className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm"
+                  className="col-span-2 grid grid-cols-subgrid items-baseline text-sm"
                 >
                   <span className="shrink-0 text-foreground">
                     {provider.displayName}
