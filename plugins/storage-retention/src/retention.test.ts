@@ -499,7 +499,7 @@ describe("retention plugin", () => {
         "cold-storage",
       );
       const moveAndWrite = async () => {
-        const threads = await host.bb.sdk.threads.list();
+        const threads = await host.bb.sdk.threads.list({ limit: 100 });
         const [thread] = threads;
         if (thread === undefined) throw new Error("no thread");
         await coldStorage.store(thread, threads);
