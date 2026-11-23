@@ -52,6 +52,7 @@ afterEach(() => {
 function recordDispatchHookCalls(): string[][] {
   const calls: string[][] = [];
   const registry: HookRegistry = {
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "send-time-test",
@@ -66,6 +67,7 @@ function recordDispatchHookCalls(): string[][] {
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
   return calls;
 }

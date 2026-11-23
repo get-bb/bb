@@ -64,12 +64,14 @@ function installDispatchHook(
     | Promise<{ action: "proceed" }>,
 ): void {
   const registry: HookRegistry = {
+    "thread.delete_finalize": [],
     "message.dispatch": [{ pluginId: "dispatcher-paths-test", handler }],
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 

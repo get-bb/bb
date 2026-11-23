@@ -411,3 +411,32 @@ Every `bb.sdk` call rejects a non-2xx response with that error. Import it as
 by the host's copy of the SDK; then read `status`, `code` (the server's error
 code, such as `thread_not_found`, or null) and `body`. See `backend-events.md` for
 the refusal codes, optional validation issues and mutation rollback behavior.
+
+### Thread files and the delete_finalize hook
+
+`threads.experimental_export({ threadId })` returns the thread as a
+self-contained `.jsonl.zst` file: its rows, every event and its attachments.
+`threads.experimental_import({ file })` recreates a deleted thread in its
+project, and refuses a thread that still exists.
+
+A deleted thread stays in bb's database, hidden and unchanging, until core
+finishes the delete by removing its rows.
+`bb.experimental_hooks.on("thread.delete_finalize", handler)` runs before that
+starts, so a plugin can keep a copy first:
+
+```ts
+bb.experimental_hooks.on("thread.delete_finalize", ({ threadId }) => {
+  if (!wantsCopy(threadId) || hasCopy(threadId)) return { action: "proceed" };
+  void bb.sdk.threads
+    .experimental_export({ threadId })
+    .then((file) => storeCopy(threadId, file));
+  return { action: "wait" };
+});
+```
+
+`wait` keeps the rows; core asks again about every 10 seconds and after every
+restart, until every plugin answers `proceed`. Decide in milliseconds and
+export in the background, as above. A throw, a timeout or any other answer
+counts as `wait`. A disabled or uninstalled plugin is not asked, so its threads
+are removed without a copy. Core removes nothing while plugins are still
+loading and never asks again once the removal has started.

@@ -167,7 +167,7 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
   const environmentIntents: PluginDispatchEnvironmentIntent[] = [];
   const registry: {
     [K in PluginHookName]: PluginHookRegistration<K>[];
-  } = { "message.dispatch": [] };
+  } = { "message.dispatch": [], "thread.delete_finalize": [] };
   registry["message.dispatch"].push({
     pluginId: "observer",
     handler: (context) => {
@@ -183,6 +183,7 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
       value: await run(),
     }),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
   return environmentIntents;
 }

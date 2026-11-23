@@ -432,6 +432,28 @@ export function pendingAttachmentPath(
   return join(projectAttachmentDir(dataDir, projectId), ".pending", id);
 }
 
+export async function restoreProjectAttachment(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  attachment: {
+    content: Buffer;
+    mimeType: string | null;
+    originalName: string;
+    storedPath: string;
+  },
+): Promise<void> {
+  await writeInventoriedAttachment(
+    db,
+    dataDir,
+    projectId,
+    attachment.storedPath,
+    attachment.content,
+    attachment.originalName,
+    attachment.mimeType,
+  );
+}
+
 async function writeInventoriedAttachment(
   db: DbConnection,
   dataDir: string,
@@ -446,6 +468,10 @@ async function writeInventoriedAttachment(
     await ensureAttachmentReferenceExists(db, dataDir, projectId, storedPath);
     return;
   }
+  const outputPath = resolveAttachmentPath(
+    projectAttachmentDir(dataDir, projectId),
+    storedPath,
+  );
   const now = Date.now();
   const row = recordProjectAttachment(db, {
     projectId,
@@ -457,10 +483,6 @@ async function writeInventoriedAttachment(
     readyAt: null,
   });
   const pendingPath = pendingAttachmentPath(dataDir, projectId, row.id);
-  const outputPath = resolveAttachmentPath(
-    projectAttachmentDir(dataDir, projectId),
-    storedPath,
-  );
   try {
     await mkdir(dirname(pendingPath), { recursive: true });
     await mkdir(dirname(outputPath), { recursive: true });

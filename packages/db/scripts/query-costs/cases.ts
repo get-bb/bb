@@ -9,6 +9,7 @@ import {
   WORKFLOWS_COST_GROUP,
 } from "./plugin-databases-cases.js";
 import { QUEUED_THREAD_MESSAGES_COST_CASES } from "./queued-thread-messages-cases.js";
+import { THREAD_FILES_COST_GROUP } from "./thread-files-cases.js";
 import { SETTINGS_MAINTENANCE_COST_GROUP } from "./settings-maintenance-cases.js";
 import { THREADS_COST_GROUP } from "./threads-cases.js";
 
@@ -31,6 +32,7 @@ const ALL_GROUPS: readonly RegisteredCostGroup[] = [
   WORKFLOWS_COST_GROUP,
   SETTINGS_MAINTENANCE_COST_GROUP,
   CREDENTIALS_ATTACHMENTS_COST_GROUP,
+  THREAD_FILES_COST_GROUP,
 ];
 
 function selectedGroupNames(): ReadonlySet<string> | null {

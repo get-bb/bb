@@ -63,6 +63,7 @@ function installHooks(registry: HookRegistry): void {
       value: await run(),
     }),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 
@@ -361,6 +362,7 @@ describe("runPeriodicSweeps", () => {
       });
       let attempts = 0;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "slow-idle-recovery",

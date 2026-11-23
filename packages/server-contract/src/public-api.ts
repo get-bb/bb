@@ -237,6 +237,8 @@ import {
   type TerminalOutputResponse,
   type TerminalResizeRequest,
   type ThreadArchiveAllResponse,
+  type ThreadImportForm,
+  type ThreadImportResponse,
   type ThreadChildSummaryResponse,
   type ThreadEventWaitQuery,
   type ThreadEventsQuery,
@@ -1794,6 +1796,31 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<OperationResponse>(),
+    }),
+    /**
+     * Download the thread as a self-contained thread file: zstd-compressed JSONL
+     * with a header line naming the thread, then the thread's rows, every event
+     * in sequence order, and its attachments. A deleted thread can still be
+     * exported until its purge starts; 409 after that.
+     */
+    exportThread: defineRoute({
+      path: "/threads/:id/export",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    /**
+     * Import a thread file, recreating a deleted thread in its project. A
+     * recreated archived thread counts as archived now. 404 when the project
+     * is not on this server; 400 when the file is not a thread file or uses an
+     * unknown format version; 409 when the thread still exists, is still being
+     * deleted, or another import or export of it is running.
+     */
+    importThread: defineRoute({
+      path: "/threads/import",
+      method: "post",
+      request: formRequest<EmptyInput, ThreadImportForm>(),
+      response: jsonResponse<ThreadImportResponse>(),
     }),
     /**
      * Ask the environment provider to restore a thread's destroyed environment

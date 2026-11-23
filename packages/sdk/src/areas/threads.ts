@@ -15,6 +15,7 @@ import {
 } from "@bb/domain";
 import {
   DEFAULT_TURN_RETRY_REASON,
+  threadImportResponseSchema,
   threadTabsResponseSchema,
 } from "@bb/server-contract";
 import type {
@@ -30,6 +31,7 @@ import type {
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadImportResponse,
   ThreadConversationOutlineResponse,
   ThreadCountGroupBy,
   ThreadCountQuery,
@@ -219,6 +221,7 @@ export type ThreadCompactResult = OperationResponse;
 export type ThreadBannerActionResult = OperationResponse;
 export type ThreadUnarchiveResult = OperationResponse;
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
+export type ThreadImportResult = ThreadImportResponse;
 export type ThreadReadStateResult = ThreadResponse;
 export type ThreadRestoreEnvironmentResult = ThreadResponse;
 export type ThreadPinOrderResult = ThreadListResponse;
@@ -343,6 +346,11 @@ export interface ThreadRetryArgs {
 export interface ThreadActionArgs {
   signal?: AbortSignal;
   threadId: string;
+}
+
+export interface ThreadImportArgs {
+  file: ArrayBuffer | Blob | Uint8Array;
+  signal?: AbortSignal;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -693,6 +701,21 @@ export interface ThreadsArea {
   experimental_regenerateTitle(
     args: ThreadActionArgs,
   ): Promise<ThreadMutationResult>;
+  /**
+   * Download the thread as a thread file: zstd-compressed JSONL with a header
+   * line, then the thread's rows, every event in sequence order and its
+   * attachments. A deleted thread can still be exported until its purge
+   * starts. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_export(args: ThreadActionArgs): Promise<Uint8Array>;
+  /**
+   * Import a thread file: recreates a deleted thread in its project. A
+   * recreated archived thread counts as archived now. Rejects a thread that
+   * still exists or is still being deleted, and a file whose project is not on
+   * this server.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_import(args: ThreadImportArgs): Promise<ThreadImportResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1419,6 +1442,40 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           param: { id: input.threadId },
         }),
       );
+    },
+    async experimental_export(input) {
+      const response = await transport.resolve(
+        transport.api.v1.threads[":id"].export.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async experimental_import(input) {
+      const form = new FormData();
+      form.set(
+        "file",
+        input.file instanceof Blob
+          ? input.file
+          : new Blob([
+              Uint8Array.from(
+                input.file instanceof Uint8Array
+                  ? input.file
+                  : new Uint8Array(input.file),
+              ),
+            ]),
+        "thread.jsonl.zst",
+      );
+      const baseUrl = transport.baseUrl.replace(/\/$/u, "");
+      const response = await transport.resolve(
+        transport.fetch(`${baseUrl}/api/v1/threads/import`, {
+          body: form,
+          method: "POST",
+          signal: input.signal,
+        }),
+      );
+      return threadImportResponseSchema.parse(await response.json());
     },
     async experimental_listPluginMetadata(input) {
       return transport.readJson(

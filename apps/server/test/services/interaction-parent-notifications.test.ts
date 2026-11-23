@@ -58,6 +58,7 @@ afterEach(() => {
 
 function holdParentDeliveries(): void {
   const registry: HookRegistry = {
+    "thread.delete_finalize": [],
     "message.dispatch": [
       {
         pluginId: "hold-parent",
@@ -69,6 +70,7 @@ function holdParentDeliveries(): void {
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 
