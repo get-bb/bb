@@ -1883,10 +1883,12 @@ Internal to bb's bundled `mcp` plugin: the `internal_DO_NOT_USE_` prefix marks m
 `internal_DO_NOT_USE_requestAccess(context)` returns who core decided sent the
 request a plugin HTTP route is handling: `server-machine` (the local token, a
 plugin's caller token, or an in-process request), `signed-in-device`,
-`connect-session`, `machine`, `oauth` or `anonymous`. It reads the same
+`connect-session`, `machine`, `oauth`, `open` (no sign-in, and the server
+doesn't require one) or `anonymous`. It reads the same
 resolution core's own routes use (`apps/server/src/request-access.ts`). Only
-caller: `plugins/mcp/src/server.ts`, which serves the server machine and
-signed-in devices directly and gate OAuth clients through bb connect, and
+caller: `plugins/mcp/src/server.ts`, which serves the server machine,
+signed-in devices and open callers directly and gate OAuth clients through
+bb connect, and
 refuses everything else on its `auth: "none"` route.
 
 ## `app.slots.internal_DO_NOT_USE_setupGuideSection` (`@get-bb/plugin-sdk/app`)

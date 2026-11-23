@@ -6,7 +6,7 @@ function problem(access: McpRequestAccess, headers: Record<string, string>) {
 }
 
 describe("mcpAccessProblem", () => {
-  it.each(["server-machine", "signed-in-device"] as const)(
+  it.each(["server-machine", "signed-in-device", "open"] as const)(
     "lets a %s caller that is not a web page through",
     (access) => {
       expect(problem(access, {})).toBeNull();

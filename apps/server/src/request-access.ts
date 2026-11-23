@@ -23,7 +23,10 @@ export const CREDENTIAL_REQUIRES_HTTPS_MESSAGE =
   "This sign-in was made over HTTPS and is not accepted over plain HTTP. Use the HTTPS address, or sign in again on this address.";
 
 export type RequestAccess =
-  | { kind: "owner"; via: "local" | "in-process" | "plugin" | "connect" }
+  | {
+      kind: "owner";
+      via: "local" | "in-process" | "plugin" | "connect" | "open";
+    }
   | { kind: "owner"; via: "credential"; credential: AccessCredential }
   | { kind: "machine"; via: "connect" | "host-key" }
   | { kind: "oauth" }
@@ -62,6 +65,7 @@ export interface RequestAccessDeps {
   config: { serverPort: number };
   machineAuth: Pick<MachineAuthService, "verifyDaemonHostKey">;
   isPluginCallerToken: (token: string) => boolean;
+  requireSignIn: () => boolean;
 }
 
 export interface RequestAccessReader {
@@ -262,6 +266,15 @@ async function directAccess(
   return rejected(null);
 }
 
+function openWhenSignInIsOptional(
+  access: RequestAccess,
+  deps: RequestAccessDeps,
+): RequestAccess {
+  return access.kind === "anonymous" && !deps.requireSignIn()
+    ? { kind: "owner", via: "open" }
+    : access;
+}
+
 export async function resolveRequestAccess(
   context: Context,
   deps: RequestAccessDeps,
@@ -273,7 +286,10 @@ export async function resolveRequestAccess(
   sanitizeGateHeaders(context, viaTunnel);
   const access = viaTunnel
     ? connectAccess(context.req.header(`${GATE_HEADER_PREFIX}auth`))
-    : await directAccess(context, deps, remoteAddress);
+    : openWhenSignInIsOptional(
+        await directAccess(context, deps, remoteAddress),
+        deps,
+      );
   context.set(REQUEST_ACCESS_CONTEXT_KEY, access);
   return access;
 }

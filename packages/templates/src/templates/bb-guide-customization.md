@@ -223,6 +223,10 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`requireSignIn` makes every device other than the server machine sign in with
+a pairing code; see Sign in other devices in `bb guide machines`. It is not part
+of the early adopter set; change it with `bb access require-sign-in on|off` or
+Settings → Devices, which sign the caller in so it is not locked out.
 `serverRoutes` lets machines learn every available server access route and
 connect over the first one that answers; see Server access in
 `bb guide machines`. It defaults on for early adopters.

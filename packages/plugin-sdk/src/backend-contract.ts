@@ -999,6 +999,7 @@ export interface PluginHttp {
    * server machine; "signed-in-device": a device holding a bb sign-in;
    * "connect-session": a browser the bb connect gate signed in; "machine": an
    * enrolled machine; "oauth": an OAuth client the bb connect gate admitted;
+   * "open": a caller with no sign-in on a server that doesn't require one;
    * "anonymous": anyone else.
    */
   internal_DO_NOT_USE_requestAccess(
@@ -1009,6 +1010,7 @@ export interface PluginHttp {
     | "connect-session"
     | "machine"
     | "oauth"
+    | "open"
     | "anonymous";
 }
 

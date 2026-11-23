@@ -1,5 +1,6 @@
 import http from "node:http";
 import net from "node:net";
+import { setExperiments } from "@bb/db";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   startTestServer,
@@ -83,9 +84,15 @@ function get(
   });
 }
 
-describe("nothing on the server machine is trusted for its address", () => {
+async function startSignInRequiredServer(): Promise<RunningTestServer> {
+  const started = await startTestServer();
+  setExperiments(started.db, { requireSignIn: true });
+  return started;
+}
+
+describe("with sign-in required, nothing on the server machine is trusted for its address", () => {
   it("refuses a remote client that nginx's default proxy_pass hides behind loopback", async () => {
-    server = await startTestServer();
+    server = await startSignInRequiredServer();
     const serverPort = Number(new URL(server.baseUrl).port);
     const proxyPort = await startNginxDefaultProxy(serverPort);
     expect(
@@ -94,7 +101,7 @@ describe("nothing on the server machine is trusted for its address", () => {
   });
 
   it("refuses a remote client that a TCP forwarder relays with its own loopback Host", async () => {
-    server = await startTestServer();
+    server = await startSignInRequiredServer();
     const serverPort = Number(new URL(server.baseUrl).port);
     const forwarderPort = await startSocatForwarder(serverPort);
     expect(
@@ -105,7 +112,7 @@ describe("nothing on the server machine is trusted for its address", () => {
   });
 
   it("refuses a bare loopback request with no credential", async () => {
-    server = await startTestServer();
+    server = await startSignInRequiredServer();
     const serverPort = Number(new URL(server.baseUrl).port);
     expect(
       await get(serverPort, "/api/v1/projects", {

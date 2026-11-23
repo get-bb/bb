@@ -55,6 +55,7 @@ describe("request context", () => {
             config: { serverPort: 3334 },
             machineAuth: { verifyDaemonHostKey: async () => null },
             isPluginCallerToken: () => false,
+            requireSignIn: () => true,
           },
           getTrustedRemoteAddress(context),
         );

@@ -1,6 +1,7 @@
 import type { AccessCredential, AccessPairing } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Pill } from "@bb/shared-ui/pill";
+import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import {
   accessCredentialsQueryKey,
   invalidateAccessCredentials,
 } from "@/hooks/cache-owners/access-credentials-cache-owner";
+import { invalidateSystemConfig } from "@/hooks/cache-owners/system-cache-effects";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
 
@@ -208,6 +210,71 @@ function CredentialRow({
   );
 }
 
+function RequireSignInSection() {
+  const queryClient = useQueryClient();
+  const requireSignIn =
+    useSystemConfig().data?.experiments.requireSignIn ?? false;
+  const change = useMutation({
+    mutationFn: (enabled: boolean) =>
+      sdk.experimental_access.setRequireSignIn({ enabled }),
+    meta: { errorMessage: "Could not change whether bb requires sign-in." },
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
+      invalidateAccessCredentials(queryClient);
+    },
+  });
+  const checked = change.isPending ? change.variables : requireSignIn;
+  return (
+    <SettingsSection
+      title="Require sign-in"
+      description={
+        checked
+          ? "Every browser, phone and computer other than this one signs in with a pairing code before it can use bb."
+          : "Anyone who can reach this bb, on this computer or over the network, can use it without signing in."
+      }
+      action={
+        <Switch
+          checked={checked}
+          aria-label="Require sign-in"
+          onCheckedChange={(enabled) => change.mutate(enabled)}
+        />
+      }
+    >
+      <div className="space-y-2 text-sm text-subtle-foreground">
+        <p>
+          Turn this on before you open bb to a network: it is required for the
+          Local network route, and it stops a proxy or forwarder on this
+          computer from handing strangers full access. Turning it on signs this
+          browser in, so you stay in.
+        </p>
+        <p>While it is on:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Other browsers, the bb mobile app and other computers&apos; CLIs
+            sign in once with a code from below or <code>bb access pair</code>.
+          </li>
+          <li>
+            bb mobile app versions without device sign-in can&apos;t add this
+            server, and their notifications on iPhone stop until the app is
+            updated.
+          </li>
+          <li>
+            Marketplace plugins that call bb&apos;s API directly instead of
+            through the plugin SDK get refused until they are updated.
+          </li>
+          <li>
+            The bb CLI, agents and the desktop app on this computer keep working
+            without signing in.
+          </li>
+        </ul>
+        {!checked && (
+          <p>Revoking a device below takes effect once this is on.</p>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
 export function DevicesSettingsSection() {
   const queryClient = useQueryClient();
   const now = useNow(60_000);
@@ -246,6 +313,7 @@ export function DevicesSettingsSection() {
           sign in once with a pairing code.
         </p>
       </div>
+      <RequireSignInSection />
       <SettingsSection
         title="Sign in another device"
         description="Make a one-time code, valid for 10 minutes."

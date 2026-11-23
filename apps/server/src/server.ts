@@ -1,4 +1,4 @@
-import { getOrCreateServerId } from "@bb/db";
+import { getExperiments, getOrCreateServerId } from "@bb/db";
 import {
   refreshServerAccessOrigins,
   restoreServerAccessOrigins,
@@ -519,6 +519,7 @@ export function createApp(
       context,
       {
         ...deps,
+        requireSignIn: () => getExperiments(deps.db).requireSignIn,
         isPluginCallerToken: (token) => {
           const resolution = pluginService.resolveRpcCaller(token);
           return resolution.ok && resolution.caller.kind === "plugin";

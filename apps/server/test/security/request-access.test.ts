@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { setExperiments } from "@bb/db";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { resolveRequestAccess } from "../../src/request-access.js";
@@ -36,6 +37,7 @@ async function createHarness(appUrl?: string): Promise<Harness> {
   const harness = await createTestAppHarness(
     appUrl === undefined ? {} : { appUrl },
   );
+  setExperiments(harness.deps.db, { requireSignIn: true });
   const staticDir = await mkdtemp(join(tmpdir(), "bb-access-shell-"));
   await writeFile(
     join(staticDir, "index.html"),
@@ -395,6 +397,7 @@ describe("revoking", () => {
 
   it("cuts a signed-in browser off, including its open realtime socket", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const port = new URL(server.baseUrl).port;
     const mint = await fetch(`${server.baseUrl}/api/v1/access/pairings`, {
       method: "POST",
@@ -445,6 +448,7 @@ describe("revoking", () => {
 
   it("refuses an unauthenticated realtime socket from off the machine", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const port = new URL(server.baseUrl).port;
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
       headers: { "x-forwarded-for": LAN_PEER },
@@ -474,6 +478,7 @@ describe("header sanitising on a real listener", () => {
           config: { serverPort: 1 },
           machineAuth: { verifyDaemonHostKey: async () => null },
           isPluginCallerToken: () => false,
+          requireSignIn: () => true,
         },
         "127.0.0.1",
       );

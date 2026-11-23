@@ -4,6 +4,7 @@ import {
   generateDpopPrivateJwk,
   type DpopSigner,
 } from "@bb/sdk/node";
+import { setExperiments } from "@bb/db";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import {
@@ -81,6 +82,7 @@ async function deviceGet(
 describe("device-bound tokens", () => {
   it("refuses a device sign-in without a proof and binds the token to the proving key", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const url = `${server.baseUrl}/api/v1/access/pairings/redeem`;
     const unproven = await fetch(url, {
       method: "POST",
@@ -108,6 +110,7 @@ describe("device-bound tokens", () => {
 
   it("makes a captured token useless without the device's key", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const signer = createNodeDpopSigner(generateDpopPrivateJwk());
     const attacker = createNodeDpopSigner(generateDpopPrivateJwk());
     const { accessToken } = await pairDevice(server, signer);
@@ -132,6 +135,7 @@ describe("device-bound tokens", () => {
 
   it("refuses a replayed proof", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const signer = createNodeDpopSigner(generateDpopPrivateJwk());
     const { accessToken } = await pairDevice(server, signer);
     const proof = await createDpopProof({
@@ -156,6 +160,7 @@ describe("device-bound tokens", () => {
 
   it("renews only with a proof from the same key", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const signer = createNodeDpopSigner(generateDpopPrivateJwk());
     const attacker = createNodeDpopSigner(generateDpopPrivateJwk());
     const { accessToken } = await pairDevice(server, signer);
@@ -191,6 +196,7 @@ describe("device-bound tokens", () => {
 
   it("opens /ws with a short ticket and a fresh proof, never with the ticket alone", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const signer = createNodeDpopSigner(generateDpopPrivateJwk());
     const { accessToken } = await pairDevice(server, signer);
     const ticketUrl = `${server.baseUrl}/api/v1/access/websocket-tickets`;
@@ -237,6 +243,7 @@ describe("device-bound tokens", () => {
 
   it("gives the device's WebView a short cookie that dies with the device", async () => {
     server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const signer = createNodeDpopSigner(generateDpopPrivateJwk());
     const { accessToken, credentialId } = await pairDevice(server, signer);
     const url = `${server.baseUrl}/api/v1/access/device-browser-sessions`;

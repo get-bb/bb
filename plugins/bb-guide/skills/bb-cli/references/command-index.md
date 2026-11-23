@@ -13,6 +13,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb access login`
 - `bb access logout`
 - `bb access status`
+- `bb access require-sign-in`
 - `bb access list`
 - `bb access revoke`
 

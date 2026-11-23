@@ -23,6 +23,7 @@ export function mcpAccessProblem(
   switch (access) {
     case "server-machine":
     case "signed-in-device":
+    case "open":
       return headers.get("origin") === null
         ? null
         : refuse(

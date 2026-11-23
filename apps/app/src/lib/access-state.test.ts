@@ -37,6 +37,7 @@ describe("watchSessionOnSocketLoss", () => {
         via: "credential",
         credentialId: "acc_1",
         problem: null,
+        requireSignIn: true,
       })
       .mockReturnValueOnce(signedOut.promise);
     watchSessionOnSocketLoss({
@@ -68,6 +69,7 @@ describe("watchSessionOnSocketLoss", () => {
       via: null,
       credentialId: null,
       problem: null,
+      requireSignIn: true,
     });
     await vi.waitFor(() =>
       expect(getAccessState()).toEqual({

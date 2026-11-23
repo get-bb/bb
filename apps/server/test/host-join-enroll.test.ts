@@ -36,7 +36,11 @@ function createInternalHostRouteApp(args: CreateHostRouteAppArgs): Hono {
     context.set(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY, args.trustedRemoteAddress);
     await resolveRequestAccess(
       context,
-      { ...args.deps, isPluginCallerToken: () => false },
+      {
+        ...args.deps,
+        isPluginCallerToken: () => false,
+        requireSignIn: () => true,
+      },
       args.trustedRemoteAddress,
     );
     await next();

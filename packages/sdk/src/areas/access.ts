@@ -5,6 +5,7 @@ import {
   accessSignOutResponseSchema,
   redeemAccessPairingResponseSchema,
   revokeAccessCredentialResponseSchema,
+  setRequireSignInResponseSchema,
   type AccessCredentialListResponse,
   type AccessPairing,
   type AccessSessionResponse,
@@ -12,6 +13,7 @@ import {
   type RedeemAccessPairingRequest,
   type RedeemAccessPairingResponse,
   type RevokeAccessCredentialResponse,
+  type SetRequireSignInResponse,
 } from "@bb/server-contract";
 import { createDpopProof, type DpopSigner } from "../dpop.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -25,6 +27,7 @@ export type {
   RedeemAccessPairingRequest,
   RedeemAccessPairingResponse,
   RevokeAccessCredentialResponse,
+  SetRequireSignInResponse,
 } from "@bb/server-contract";
 
 export interface AccessReadArgs {
@@ -54,6 +57,9 @@ export interface ExperimentalAccessArea {
     id: string;
   }): Promise<RevokeAccessCredentialResponse>;
   signOut(): Promise<AccessSignOutResponse>;
+  setRequireSignIn(args: {
+    enabled: boolean;
+  }): Promise<SetRequireSignInResponse>;
 }
 
 export function createAccessArea(
@@ -124,6 +130,15 @@ export function createAccessArea(
     async signOut() {
       return accessSignOutResponseSchema.parse(
         await transport.readJson(access()["sign-out"].$post()),
+      );
+    },
+    async setRequireSignIn(input) {
+      return setRequireSignInResponseSchema.parse(
+        await transport.readJson(
+          access()["require-sign-in"].$put({
+            json: { enabled: input.enabled },
+          }),
+        ),
       );
     },
   };

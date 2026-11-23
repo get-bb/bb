@@ -25,10 +25,11 @@ export const accessSessionResponseSchema = z
   .object({
     authenticated: z.boolean(),
     via: z
-      .enum(["local", "plugin", "connect", "credential", "machine"])
+      .enum(["local", "plugin", "connect", "credential", "machine", "open"])
       .nullable(),
     credentialId: z.string().nullable(),
     problem: accessProblemSchema.nullable(),
+    requireSignIn: z.boolean(),
   })
   .strict();
 export type AccessSessionResponse = z.infer<typeof accessSessionResponseSchema>;
@@ -149,3 +150,23 @@ export const accessSignOutResponseSchema = z
   .object({ signedOut: z.boolean() })
   .strict();
 export type AccessSignOutResponse = z.infer<typeof accessSignOutResponseSchema>;
+
+export const ACCESS_SIGN_IN_THIS_DEVICE_FIRST_ERROR_CODE =
+  "sign_in_this_device_first";
+
+export const setRequireSignInRequestSchema = z
+  .object({ enabled: z.boolean() })
+  .strict();
+export type SetRequireSignInRequest = z.infer<
+  typeof setRequireSignInRequestSchema
+>;
+
+export const setRequireSignInResponseSchema = z
+  .object({
+    requireSignIn: z.boolean(),
+    signedInThisBrowser: accessCredentialSchema.nullable(),
+  })
+  .strict();
+export type SetRequireSignInResponse = z.infer<
+  typeof setRequireSignInResponseSchema
+>;

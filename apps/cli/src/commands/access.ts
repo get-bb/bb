@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { BbHttpError } from "@bb/sdk";
+import { BbHttpError, type AccessCredential } from "@bb/sdk";
 import { createNodeDpopSigner, generateDpopPrivateJwk } from "@bb/sdk/node";
 import { Command } from "commander";
 import { action } from "../action.js";
@@ -12,6 +12,7 @@ import {
   serverOrigin,
 } from "../server-credentials.js";
 import { openUrlInBrowser } from "../open-url.js";
+import { resolveServerAuthorization } from "../server-auth.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 
 interface JsonOptions {
@@ -34,6 +35,39 @@ function formatTime(ms: number): string {
 
 function pairingLink(origin: string, code: string): string {
   return `${new URL(origin).origin}/pair#code=${code}`;
+}
+
+async function signInWithPairingCode(
+  serverUrl: string,
+  code: string,
+  label: string | undefined,
+): Promise<{ server: string; credential: AccessCredential; storedIn: string }> {
+  const privateJwk = generateDpopPrivateJwk();
+  const result = await createCliBbSdk(serverUrl).experimental_access.pairDevice(
+    {
+      code,
+      label: label ?? `bb CLI on ${hostname()}`,
+      signer: createNodeDpopSigner(privateJwk),
+    },
+  );
+  saveServerCredential(serverUrl, {
+    privateJwk,
+    accessToken: result.accessToken,
+    accessTokenExpiresAt: result.accessTokenExpiresAt,
+    credentialId: result.credential.id,
+    label: result.credential.label,
+  });
+  return {
+    server: serverOrigin(serverUrl),
+    credential: result.credential,
+    storedIn: serverCredentialsPath(),
+  };
+}
+
+function describeRequireSignIn(requireSignIn: boolean): string {
+  return requireSignIn
+    ? "Sign-in is required: every browser, phone and computer other than the server machine signs in with a pairing code."
+    : "Sign-in is not required: anyone who can reach this bb can use it without signing in.";
 }
 
 export function registerAccessCommands(
@@ -90,30 +124,14 @@ export function registerAccessCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: LoginOptions) => {
-        const serverUrl = getUrl();
-        const privateJwk = generateDpopPrivateJwk();
-        const result = await createCliBbSdk(
-          serverUrl,
-        ).experimental_access.pairDevice({
-          code: opts.code,
-          label: opts.label ?? `bb CLI on ${hostname()}`,
-          signer: createNodeDpopSigner(privateJwk),
-        });
-        saveServerCredential(serverUrl, {
-          privateJwk,
-          accessToken: result.accessToken,
-          accessTokenExpiresAt: result.accessTokenExpiresAt,
-          credentialId: result.credential.id,
-          label: result.credential.label,
-        });
-        const summary = {
-          server: serverOrigin(serverUrl),
-          credential: result.credential,
-          storedIn: serverCredentialsPath(),
-        };
+        const summary = await signInWithPairingCode(
+          getUrl(),
+          opts.code,
+          opts.label,
+        );
         if (outputJson(opts, summary)) return;
         console.log(
-          `Signed in to ${summary.server} as "${result.credential.label}" (${result.credential.id}).`,
+          `Signed in to ${summary.server} as "${summary.credential.label}" (${summary.credential.id}).`,
         );
         console.log(`The sign-in is stored in ${summary.storedIn}.`);
       }),
@@ -166,7 +184,9 @@ export function registerAccessCommands(
                 ? `signed-in device ${session.credentialId ?? ""}`.trim()
                 : session.via === "machine"
                   ? "an enrolled machine's credential"
-                  : null;
+                  : session.via === "open"
+                    ? "no sign-in needed, because this bb doesn't require one (`bb access require-sign-in on` changes that)"
+                    : null;
         console.log(
           via === null
             ? session.problem === "credential_requires_https"
@@ -174,6 +194,66 @@ export function registerAccessCommands(
               : "Not signed in. Run `bb access pair` on the server machine, then `bb access login --code <code>` here."
             : `Signed in: ${via}.`,
         );
+      }),
+    );
+
+  access
+    .command("require-sign-in [state]")
+    .description(
+      "Show, or turn on or off, whether every device other than the server machine must sign in (on|off). Turning it on from a CLI that isn't signed in signs it in first",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (state: string | undefined, opts: JsonOptions) => {
+        const serverUrl = getUrl();
+        if (state === undefined) {
+          const session =
+            await createCliBbSdk(serverUrl).experimental_access.session();
+          if (
+            outputJson(opts, {
+              server: serverOrigin(serverUrl),
+              requireSignIn: session.requireSignIn,
+            })
+          )
+            return;
+          console.log(describeRequireSignIn(session.requireSignIn));
+          return;
+        }
+        if (state !== "on" && state !== "off") {
+          throw new Error(
+            `Expected "on" or "off", got "${state}". Run \`bb access require-sign-in\` to see the current setting.`,
+          );
+        }
+        const enabled = state === "on";
+        const signedInThisCli =
+          enabled && resolveServerAuthorization(serverUrl).kind === "none"
+            ? await signInWithPairingCode(
+                serverUrl,
+                (
+                  await createCliBbSdk(
+                    serverUrl,
+                  ).experimental_access.createPairing()
+                ).code,
+                undefined,
+              )
+            : null;
+        const result = await createCliBbSdk(
+          serverUrl,
+        ).experimental_access.setRequireSignIn({ enabled });
+        if (
+          outputJson(opts, {
+            server: serverOrigin(serverUrl),
+            requireSignIn: result.requireSignIn,
+            signedInThisCli: signedInThisCli?.credential ?? null,
+          })
+        )
+          return;
+        if (signedInThisCli !== null) {
+          console.log(
+            `Signed this CLI in as "${signedInThisCli.credential.label}" (${signedInThisCli.credential.id}) so it keeps working; the sign-in is stored in ${signedInThisCli.storedIn}.`,
+          );
+        }
+        console.log(describeRequireSignIn(result.requireSignIn));
       }),
     );
 

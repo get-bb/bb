@@ -1,10 +1,13 @@
+import { getExperiments, setExperiments } from "@bb/db";
 import {
   ACCESS_CREDENTIAL_LABEL_MAX_LENGTH,
+  ACCESS_SIGN_IN_THIS_DEVICE_FIRST_ERROR_CODE,
   publicApiRoutes,
   typedRoutes,
   type AccessCredential as AccessCredentialResponse,
   type AccessSessionResponse,
   type PublicApiSchema,
+  type SetRequireSignInResponse,
 } from "@bb/server-contract";
 import type { Context, Hono } from "hono";
 import { serialize } from "hono/utils/cookie";
@@ -18,13 +21,16 @@ import {
   type RequestAccess,
   type RequestAccessReader,
 } from "../request-access.js";
-import { getTrustedRemoteAddress } from "../request-context.js";
+import {
+  getTrustedRemoteAddress,
+  type TrustedRemoteAddressReader,
+} from "../request-context.js";
 import type { AccessCredential } from "../services/access/access-service.js";
 import type { ServerAppDeps } from "../types.js";
 
 const ACCESS_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
-type AccessRouteDeps = Pick<ServerAppDeps, "access" | "config">;
+type AccessRouteDeps = Pick<ServerAppDeps, "access" | "config" | "db" | "hub">;
 
 function currentCredentialId(access: RequestAccess): string | null {
   return access.kind === "owner" && access.via === "credential"
@@ -62,7 +68,10 @@ function credentialResponse(
   };
 }
 
-function sessionResponse(access: RequestAccess): AccessSessionResponse {
+function sessionResponse(
+  access: RequestAccess,
+  requireSignIn: boolean,
+): AccessSessionResponse {
   switch (access.kind) {
     case "owner":
       return {
@@ -70,6 +79,7 @@ function sessionResponse(access: RequestAccess): AccessSessionResponse {
         via: access.via === "in-process" ? "local" : access.via,
         credentialId: currentCredentialId(access),
         problem: null,
+        requireSignIn,
       };
     case "machine":
       return {
@@ -77,6 +87,7 @@ function sessionResponse(access: RequestAccess): AccessSessionResponse {
         via: "machine",
         credentialId: null,
         problem: null,
+        requireSignIn,
       };
     case "oauth":
       return {
@@ -84,6 +95,7 @@ function sessionResponse(access: RequestAccess): AccessSessionResponse {
         via: null,
         credentialId: null,
         problem: null,
+        requireSignIn,
       };
     case "anonymous":
       return {
@@ -91,6 +103,7 @@ function sessionResponse(access: RequestAccess): AccessSessionResponse {
         via: null,
         credentialId: null,
         problem: access.problem,
+        requireSignIn,
       };
   }
 }
@@ -117,6 +130,80 @@ function assertOwnerRequest(context: RequestAccessReader): void {
     );
   }
   throw new ApiError(401, "unauthenticated", "Sign in to this bb first");
+}
+
+function setAccessCookie(
+  context: Pick<Context, "header">,
+  cookieName: string,
+  token: string,
+  secure: boolean,
+): void {
+  context.header(
+    "set-cookie",
+    serialize(cookieName, token, {
+      httpOnly: true,
+      maxAge: ACCESS_COOKIE_MAX_AGE_SECONDS,
+      path: "/",
+      sameSite: "Lax",
+      secure,
+    }),
+    { append: true },
+  );
+}
+
+type ChangeRequireSignInContext = Pick<Context, "req" | "header"> &
+  RequestAccessReader &
+  TrustedRemoteAddressReader;
+
+export function changeRequireSignIn(
+  context: ChangeRequireSignInContext,
+  deps: AccessRouteDeps,
+  enabled: boolean,
+): SetRequireSignInResponse {
+  const access = getRequestAccess(context);
+  if (access.kind === "machine") {
+    throw new ApiError(
+      403,
+      "machine_access_management_forbidden",
+      "Machine credentials cannot change whether bb requires sign-in",
+    );
+  }
+  if (access.kind !== "owner") {
+    throw new ApiError(401, "unauthenticated", "Sign in to this bb first");
+  }
+  let signedInThisBrowser: AccessCredentialResponse | null = null;
+  if (enabled && access.via === "open") {
+    if (context.req.header("origin") === undefined) {
+      throw new ApiError(
+        409,
+        ACCESS_SIGN_IN_THIS_DEVICE_FIRST_ERROR_CODE,
+        "This device isn't signed in, so requiring sign-in would lock it out. Run `bb access require-sign-in on`, which signs this CLI in first, or sign in with `bb access login --code <code>` and try again.",
+      );
+    }
+    const remoteAddress = getTrustedRemoteAddress(context);
+    const secureOnly = isHttpsRequest(context, remoteAddress);
+    const issued = deps.access.createBrowserSession({
+      label: browserLabel(context.req.header("user-agent")),
+      origin: requestOrigin(context, remoteAddress),
+      secureOnly,
+    });
+    setAccessCookie(
+      context,
+      accessCookieName(deps.config.serverPort),
+      issued.token,
+      secureOnly,
+    );
+    signedInThisBrowser = credentialResponse(
+      issued.credential,
+      issued.credential.id,
+    );
+  }
+  setExperiments(deps.db, { requireSignIn: enabled });
+  deps.hub.notifySystem(["config-changed"]);
+  return {
+    requireSignIn: getExperiments(deps.db).requireSignIn,
+    signedInThisBrowser,
+  };
 }
 
 function browserLabel(userAgent: string | undefined): string {
@@ -150,7 +237,7 @@ function browserLabel(userAgent: string | undefined): string {
 }
 
 export function registerAccessRoutes(app: Hono, deps: AccessRouteDeps): void {
-  const { del, get, post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (message) =>
       new ApiError(400, "invalid_request", message),
   });
@@ -159,7 +246,12 @@ export function registerAccessRoutes(app: Hono, deps: AccessRouteDeps): void {
 
   get(routes.session, (context) => {
     context.header("cache-control", "no-store");
-    return context.json(sessionResponse(getRequestAccess(context)));
+    return context.json(
+      sessionResponse(
+        getRequestAccess(context),
+        getExperiments(deps.db).requireSignIn,
+      ),
+    );
   });
 
   post(routes.createPairing, (context) => {
@@ -172,19 +264,12 @@ export function registerAccessRoutes(app: Hono, deps: AccessRouteDeps): void {
     context: Pick<Context, "header">,
     token: string,
     secure: boolean,
-  ): void => {
-    context.header(
-      "set-cookie",
-      serialize(cookieName(), token, {
-        httpOnly: true,
-        maxAge: ACCESS_COOKIE_MAX_AGE_SECONDS,
-        path: "/",
-        sameSite: "Lax",
-        secure,
-      }),
-      { append: true },
-    );
-  };
+  ): void => setAccessCookie(context, cookieName(), token, secure);
+
+  put(routes.setRequireSignIn, (context, payload) => {
+    context.header("cache-control", "no-store");
+    return context.json(changeRequireSignIn(context, deps, payload.enabled));
+  });
 
   post(routes.redeemPairing, (context, payload) => {
     context.header("cache-control", "no-store");

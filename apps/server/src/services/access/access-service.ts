@@ -118,6 +118,11 @@ export interface AccessService {
     label: string;
     origin: string;
   }): IssuedSessionCookie;
+  createBrowserSession(args: {
+    label: string;
+    origin: string;
+    secureOnly: boolean;
+  }): IssuedSessionCookie;
   createDeviceBrowserSession(args: {
     device: AccessCredential;
     origin: string;
@@ -381,6 +386,21 @@ export function createAccessService(
     return { credential: stored, token };
   };
 
+  const insertBrowserSession = (session: {
+    label: string;
+    origin: string;
+    secureOnly: boolean;
+  }): IssuedSessionCookie =>
+    insertSessionCookie({
+      kind: "browser",
+      label: session.label,
+      dpopJkt: null,
+      parentId: null,
+      secureOnly: session.secureOnly,
+      origin: session.origin,
+      expiresAt: now() + SESSION_IDLE_LIFETIME_MS,
+    });
+
   return {
     tunnelMarker,
 
@@ -432,14 +452,10 @@ export function createAccessService(
         return { outcome: "invalid" };
       }
       if (jkt === null) {
-        const issued = insertSessionCookie({
-          kind: "browser",
+        const issued = insertBrowserSession({
           label: redeem.label,
-          dpopJkt: null,
-          parentId: null,
           secureOnly: redeem.secureOnly,
           origin: redeem.origin,
-          expiresAt: at + SESSION_IDLE_LIFETIME_MS,
         });
         return {
           outcome: "redeemed-browser",
@@ -528,6 +544,8 @@ export function createAccessService(
         token: issueDeviceToken(renewed),
       };
     },
+
+    createBrowserSession: insertBrowserSession,
 
     createLocalBrowserSession(session) {
       const replaced = new Set(

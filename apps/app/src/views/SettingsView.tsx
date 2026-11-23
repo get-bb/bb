@@ -1178,6 +1178,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
   },
+  requireSignIn: {
+    label: "Require sign-in",
+    description:
+      "Every browser, phone and computer other than this one has to sign in with a pairing code before it can use bb, and the Local network route can be added. Turning it on signs this browser in. Older bb mobile app versions and some marketplace plugins that call bb directly stop working until they sign in. Change it in Settings → Devices.",
+  },
   serverRoutes: {
     label: "Reach machines over several routes",
     description:

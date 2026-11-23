@@ -437,6 +437,9 @@ import type {
 import {
   createLocalSessionRequestSchema,
   redeemAccessPairingRequestSchema,
+  setRequireSignInRequestSchema,
+  type SetRequireSignInRequest,
+  type SetRequireSignInResponse,
   type CreateLocalSessionRequest,
   type RenewAccessTokenResponse,
   type SessionCookieResponse,
@@ -536,6 +539,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest(),
       response: jsonResponse<WebsocketTicketResponse>(),
+    }),
+    setRequireSignIn: defineRoute({
+      path: "/access/require-sign-in",
+      method: "put",
+      request: jsonRequest<EmptyInput, SetRequireSignInRequest>(
+        setRequireSignInRequestSchema,
+      ),
+      response: jsonResponse<SetRequireSignInResponse>(),
     }),
   },
   promptHistory: {

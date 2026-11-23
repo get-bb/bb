@@ -15,6 +15,7 @@ import {
   type RequestAccessReader,
 } from "../request-access.js";
 import { serverAccessOverview } from "../services/machines/server-access.js";
+import { changeRequireSignIn } from "./access.js";
 import {
   getAppSettings,
   listRunningThreads,
@@ -389,7 +390,11 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    setExperiments(deps.db, payload);
+    const { requireSignIn, ...experiments } = payload;
+    if (requireSignIn !== undefined) {
+      changeRequireSignIn(context, deps, requireSignIn);
+    }
+    setExperiments(deps.db, experiments);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
   });

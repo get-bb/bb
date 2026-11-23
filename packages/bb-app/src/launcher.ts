@@ -1849,6 +1849,14 @@ async function mintLocalSignInLink(args: {
   serverUrl: string;
 }): Promise<string | null> {
   try {
+    const session = z.object({ requireSignIn: z.boolean() }).safeParse(
+      await (
+        await fetch(new URL("/api/v1/access/session", args.serverUrl), {
+          headers: localServerHeaders(args.dataDir),
+        })
+      ).json(),
+    );
+    if (!session.success || !session.data.requireSignIn) return null;
     const response = await fetch(
       new URL("/api/v1/access/pairings", args.serverUrl),
       { method: "POST", headers: localServerHeaders(args.dataDir) },

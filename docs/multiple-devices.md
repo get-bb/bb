@@ -64,9 +64,11 @@ shown in Settings and `bb server access list`. Connected machines learn the
 route the next time their session opens and Settings → Machines shows "via
 Local network" for those using it.
 
-Devices on that network still have to sign in (see [Sign in](#sign-in)), but
-the traffic is plain HTTP that anyone on the network can read. Add it only for
-a network you trust, and never on public Wi-Fi.
+The route opens only while **Require sign-in** is on (see
+[Sign in](#sign-in)); until then its status says to turn it on, and bb does not
+listen on the network. Devices on that network sign in, but the traffic is
+plain HTTP that anyone on the network can read. Add it only for a network you
+trust, and never on public Wi-Fi.
 
 Every route is optional and each keeps its own trust boundary: the local
 network trusts the network, the Tailscale route trusts the tailnet's ACLs, a
@@ -82,14 +84,35 @@ encrypted (HTTPS) route while a machine uses the local network, unless the
 local network is the only route.
 
 `npx bb-app --server-bind-host 0.0.0.0` serves bb on every IPv4 interface, so
-other devices on a trusted network can open `http://<lan-ip>:38886` and sign in.
+other devices on a trusted network can open `http://<lan-ip>:38886`. Turn on
+**Require sign-in** first unless everyone on that network should have full
+access.
 
 ### Sign in
 
-Every request to bb needs a credential, including requests from the server
-machine itself. bb never trusts a request for its address: Tailscale Serve,
-nginx, socat or an SSH forward all reach the server from loopback, and some of
-them hide the real client. What each client uses:
+**Require sign-in** (Settings → Devices, `bb access require-sign-in on|off`,
+or the `requireSignIn` experiment) decides whether other devices must sign in.
+It is off by default, and then bb works as it always has: anyone who can reach
+the server can use it, and a stale or foreign sign-in is ignored rather than
+refused.
+
+Turn it on before you open bb to a network. While it is on, every request needs
+a credential, including requests from the server machine itself. bb never
+trusts a request for its address: Tailscale Serve, nginx, socat or an SSH
+forward all reach the server from loopback, and some of them hide the real
+client. Turning it on never locks you out: a browser that turns it on is signed
+in by the same request, the server machine's CLI uses the local token, and
+`bb access require-sign-in on` from a CLI on another computer signs that CLI in
+first. What stops working while it is on:
+
+- bb mobile app versions without device sign-in cannot add this server, and on
+  iPhone their notifications stop re-registering until the app is updated;
+  updated apps sign themselves in from their signed-in web view.
+- Marketplace plugins that call bb's API directly instead of through the plugin
+  SDK are refused until they are updated.
+
+Devices can sign in while it is off; revoking one takes effect once it is on.
+What each client uses:
 
 | Client                                                                      | Credential                                                                      | Setup                                                                                                              |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |

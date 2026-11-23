@@ -8,6 +8,7 @@ import {
   createThread,
   getThread,
   insertThreadPluginMetadata,
+  setExperiments,
   type DbConnection,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -1016,6 +1017,7 @@ describe("plugin bb.sdk against a running server", () => {
 
   it("tells rpc handlers which plugin called them and treats every other caller as a client", async () => {
     const server = await startTestServer();
+    setExperiments(server.db, { requireSignIn: true });
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-rpc-caller-"));
     try {
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });

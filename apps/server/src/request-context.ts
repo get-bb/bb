@@ -8,7 +8,7 @@ import {
   type RequestAppSurface,
 } from "@bb/config/app-surface";
 import type { Context } from "hono";
-import { getRequestAccess } from "./request-access.js";
+import { getRequestAccess, isLoopbackPeer } from "./request-access.js";
 import {
   PLUGIN_RPC_CALLER_HEADER,
   type PluginRpcCallerResolution,
@@ -23,7 +23,7 @@ export interface RequestHeaderReader {
   req: { header(name: string): string | undefined };
 }
 
-interface TrustedRemoteAddressReader {
+export interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
 }
 
@@ -73,11 +73,18 @@ export function resolveRequestAccessRoute(
     case "oauth":
       return "connect";
     case "owner":
-      return access.via === "connect"
-        ? "connect"
-        : access.via === "credential"
-          ? "direct"
-          : "loopback";
+      switch (access.via) {
+        case "connect":
+          return "connect";
+        case "credential":
+          return "direct";
+        case "open":
+          return isLoopbackPeer(getTrustedRemoteAddress(context))
+            ? "loopback"
+            : "direct";
+        default:
+          return "loopback";
+      }
     case "anonymous":
       return access.via;
   }

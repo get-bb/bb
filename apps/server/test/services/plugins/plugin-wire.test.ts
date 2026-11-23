@@ -10,6 +10,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { setExperiments } from "@bb/db";
 import WebSocket, { type ClientOptions, type RawData } from "ws";
 import {
   createTestAppHarness,
@@ -249,6 +250,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness({ devAppPort: 5173 });
+    setExperiments(harness.deps.db, { requireSignIn: true });
     rootDir = await installWireFixture(harness);
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
@@ -1000,6 +1002,7 @@ describe("plugin WebSocket routes", () => {
 
   beforeEach(async () => {
     server = await startTestServer({ devAppPort: 5173 });
+    setExperiments(server.db, { requireSignIn: true });
     rootDir = await installWireFixture(server);
     const entry = await server.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");

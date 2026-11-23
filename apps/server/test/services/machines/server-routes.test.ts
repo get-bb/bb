@@ -237,7 +237,7 @@ describe("server routes", () => {
 
   it("advertises the local network as soon as it is turned on, before its listeners are reconciled", async () => {
     await withTestHarness(async ({ deps }) => {
-      setExperiments(deps.db, { serverRoutes: true });
+      setExperiments(deps.db, { serverRoutes: true, requireSignIn: true });
       installProviders();
       setAppSettings(deps.db, {
         ...defaultAppSettings,
@@ -308,7 +308,7 @@ describe("server routes", () => {
   it("advertises available routes in order with Local network off until it is added", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
-      setExperiments(deps.db, { serverRoutes: true });
+      setExperiments(deps.db, { serverRoutes: true, requireSignIn: true });
       installProviders(relay());
       installLan(() => false);
       expect((await serverAccessOverview(deps)).routes).toEqual([
@@ -347,7 +347,7 @@ describe("server routes", () => {
   it("gives each machine every available route with its own headers and records lazy grants", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
-      setExperiments(deps.db, { serverRoutes: true });
+      setExperiments(deps.db, { serverRoutes: true, requireSignIn: true });
       const acquire = vi.fn(relay().acquire);
       installProviders(relay({ acquire }));
       installLan(() => true);
@@ -407,7 +407,7 @@ describe("server routes", () => {
 
   it("answers without a slow provider and reports its route once it arrives", async () => {
     await withTestHarness(async ({ deps }) => {
-      setExperiments(deps.db, { serverRoutes: true });
+      setExperiments(deps.db, { serverRoutes: true, requireSignIn: true });
       let finish: (() => void) | undefined;
       installProviders(
         relay({
@@ -535,7 +535,7 @@ describe("server routes", () => {
 
   it("admits route hostnames without BB_APP_URL and refuses Manual's once its URL is cleared", async () => {
     await withTestHarness(async (h) => {
-      setExperiments(h.db, { serverRoutes: true });
+      setExperiments(h.db, { serverRoutes: true, requireSignIn: true });
       setAppSettings(h.db, {
         ...defaultAppSettings,
         machineServerUrl: "https://bb.custom.example:8443",
@@ -562,7 +562,7 @@ describe("server routes", () => {
   it("installs a new machine on Local network only when no other route works", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://bb.example.com");
-      setExperiments(deps.db, { serverRoutes: true });
+      setExperiments(deps.db, { serverRoutes: true, requireSignIn: true });
       installProviders();
       installLan(() => true);
       setAppSettings(deps.db, {
@@ -601,7 +601,7 @@ describe("server routes", () => {
 
     it("admits every route's address from the first request after a restart, before plugins load", async () => {
       await withTestHarness(async (h) => {
-        setExperiments(h.db, { serverRoutes: true });
+        setExperiments(h.db, { serverRoutes: true, requireSignIn: true });
         setAppSettings(h.db, {
           ...defaultAppSettings,
           machineServerUrl: "https://bb.custom.example:8443",
@@ -640,7 +640,7 @@ describe("server routes", () => {
 
     it("keeps a route's address through a failed check and drops it on a definite answer, or for core routes with the experiment off", async () => {
       await withTestHarness(async (h) => {
-        setExperiments(h.db, { serverRoutes: true });
+        setExperiments(h.db, { serverRoutes: true, requireSignIn: true });
         const routeSettings = {
           ...defaultAppSettings,
           machineServerUrl: "https://bb.custom.example:8443",
