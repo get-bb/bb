@@ -59,7 +59,9 @@ async function readGitTopLevel(folderPath: string): Promise<string | null> {
     timeoutMs: GIT_TOP_LEVEL_TIMEOUT_MS,
   });
   const topLevel = result.stdout.trim();
-  return result.exitCode === 0 && topLevel.length > 0 ? topLevel : null;
+  return result.exitCode === 0 && topLevel.length > 0
+    ? path.resolve(topLevel)
+    : null;
 }
 
 async function listChildDirectories(directoryPath: string): Promise<string[]> {
