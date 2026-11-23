@@ -213,11 +213,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
         .then((hosts) => hosts.filter((host) => host.type !== "ephemeral")),
       bb.sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
       bb.sdk.providers
-        .list(
-          hostId === undefined
-            ? { capability: "usage" }
-            : { capability: "usage", hostId },
-        )
+        .list(hostId === undefined ? {} : { hostId })
         .catch(() => []),
       bb.sdk.system.config().catch(() => null),
     ]);
