@@ -3811,7 +3811,8 @@ export interface PluginCommandRegistration {
    * modals. `"pluginPage"` limits it to while one of this plugin's nav panel
    * pages is the focused surface, and never while focus is in a field, an
    * editor or a menu, or a modal is open; only this scope accepts a bare-key
-   * default.
+   * default. Another plugin's page-scoped binding never conflicts with it,
+   * since the two pages are never focused together.
    * The palette still lists the command everywhere `isAvailable` allows.
    * Experimental: see docs/api_to_audit.md.
    */

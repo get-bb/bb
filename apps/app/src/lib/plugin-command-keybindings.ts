@@ -9,6 +9,7 @@ import {
   type AppShortcut,
   type KeyboardCommandId,
 } from "@bb/domain";
+import { canAppKeybindingsFireTogether } from "./app-keybindings";
 
 export function shortcutsConflict(
   left: AppShortcut,
@@ -69,7 +70,8 @@ export function resolvePluginCommandDefaults(
         (!bundled ||
           !candidate.command.startsWith("plugin:") ||
           bundledCommands.has(candidate.command)) &&
-        shortcutsConflict(shortcut, candidate.shortcut, platform),
+        shortcutsConflict(shortcut, candidate.shortcut, platform) &&
+        canAppKeybindingsFireTogether(binding, candidate),
     );
     if (collisions.length === 0) return binding;
     conflicts.set(binding.command, [

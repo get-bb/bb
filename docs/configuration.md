@@ -667,6 +667,7 @@ like the matching thread menu item.
 | Window    | New window                                   | `Mod+Shift+N`               | Desktop                  |
 | Window    | Find in window                               | `Mod+F`                     | Desktop                  |
 | Window    | Settings                                     | `Mod+,`                     | All clients              |
+| Window    | Search settings                              | `/`                         | Settings page            |
 | Window    | Open data directory                          | Unassigned                  | Desktop                  |
 | Window    | Open local logs                              | Unassigned                  | Desktop                  |
 | Window    | Show all notifications                       | Unassigned                  | All clients              |
@@ -693,6 +694,11 @@ skip text fields outside the card, so the composer keeps its own keys;
 `Mod+Enter` and `Mod+.` also work from the card's own answer field, where
 `Enter` goes to the next question or submits and `Shift+Enter` adds a line.
 Previous / next need focus in the card, outside its answer field.
+
+`settings.search` (`/`) focuses the Settings search field. Like a plugin's
+page command, it works only on its own page and never while focus is in a
+field, an editor or a menu, so it can be rebound to another bare key. Page
+commands on different pages never conflict with each other.
 
 Cycle shortcuts act only from the active composer or an open picker; other
 editable controls keep their Option-composed input. Reasoning cycles through

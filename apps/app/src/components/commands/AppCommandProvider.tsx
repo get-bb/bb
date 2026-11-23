@@ -92,6 +92,7 @@ const EMPTY_CONTEXT: AppCommandContext = {
   questionFocus: false,
   promptAvailable: false,
   pluginPage: false,
+  settingsPage: false,
   splitActive: false,
   webSurface: false,
   macPlatform: false,

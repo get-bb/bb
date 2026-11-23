@@ -260,7 +260,8 @@ message, Original }` — render fenced code blocks of chosen languages in
   `experimental_keyScope: "pluginPage"` limits the binding to while one of
   the plugin's own nav panel pages is the focused surface (the focused pane in
   a split), and never while focus is in a field, an editor or a menu, or a
-  modal is open.
+  modal is open. Another plugin's page-scoped binding on the same key does not
+  collide with it; app-wide bindings and the plugin's own page commands do.
   Only this scope accepts a bare-key default such as `{ key: "c" }`, and only
   its commands can be rebound to bare keys; registering a bare default without
   it rejects plugin setup. The palette still lists the command wherever

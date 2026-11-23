@@ -1,5 +1,9 @@
 import { shortcutsConflict } from "./plugin-command-keybindings";
 import {
+  canAppKeybindingsFireTogether,
+  isPageScopedAppKeybinding,
+} from "./app-keybindings";
+import {
   QUESTION_ACTION_APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
   isAppKeybindingAvailableForClient,
@@ -71,7 +75,7 @@ export function allowsBareKeyShortcut(
     QUESTION_COMMANDS.has(command) ||
     defaults.some(
       (binding) =>
-        binding.command === command && binding.when.all.includes("pluginPage"),
+        binding.command === command && isPageScopedAppKeybinding(binding),
     )
   );
 }
@@ -193,6 +197,9 @@ export function getShortcutConflicts(
     platform,
   );
   if (shortcut === null) return [];
+  const commandBindings = defaults.filter(
+    (binding) => binding.command === command,
+  );
   return [...new Set(defaults.map((binding) => binding.command))].filter(
     (candidate) => {
       if (candidate === command) return false;
@@ -205,7 +212,14 @@ export function getShortcutConflicts(
       );
       return (
         candidateShortcut !== null &&
-        shortcutsConflict(shortcut, candidateShortcut, platform)
+        shortcutsConflict(shortcut, candidateShortcut, platform) &&
+        defaults.some(
+          (candidateBinding) =>
+            candidateBinding.command === candidate &&
+            commandBindings.some((binding) =>
+              canAppKeybindingsFireTogether(binding, candidateBinding),
+            ),
+        )
       );
     },
   );

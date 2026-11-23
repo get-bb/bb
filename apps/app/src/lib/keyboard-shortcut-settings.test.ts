@@ -12,6 +12,7 @@ import {
   allowsBareKeyShortcut,
   canAssignAppShortcut,
   getCommandShortcut,
+  getShortcutConflicts,
   resetCommandShortcutOverride,
   setCommandShortcutOverride,
 } from "./keyboard-shortcut-settings";
@@ -132,7 +133,7 @@ describe("keyboard shortcut settings", () => {
     ).toMatchObject({ key: "k", mod: true, control: true, shift: true });
   });
 
-  it("rejects unmodified typing keys except for question choices and plugin page commands", () => {
+  it("rejects unmodified typing keys except for question choices and page commands", () => {
     const plainKey = {
       key: "x",
       mod: false,
@@ -157,6 +158,15 @@ describe("keyboard shortcut settings", () => {
         shortcut: null,
         when: { all: ["mainSurface"], none: ["modalOpen"] },
       },
+      {
+        command: "settings.search",
+        desktopOnly: false,
+        shortcut: { ...plainKey, key: "/" },
+        when: {
+          all: ["mainSurface", "settingsPage"],
+          none: ["modalOpen", "editableFocus"],
+        },
+      },
     ];
     const assignable = (command: KeyboardCommandId, shortcut = plainKey) =>
       canAssignAppShortcut(shortcut, allowsBareKeyShortcut(defaults, command));
@@ -164,7 +174,69 @@ describe("keyboard shortcut settings", () => {
     expect(assignable("plugin:tasks/sync")).toBe(false);
     expect(assignable("question.select.1")).toBe(true);
     expect(assignable("plugin:tasks/new-task")).toBe(true);
+    expect(assignable("settings.search")).toBe(true);
     expect(assignable("thread.new", { ...plainKey, key: "F2" })).toBe(true);
+  });
+
+  it("reports a conflict only between bindings that can fire on the same page", () => {
+    const key = {
+      key: "c",
+      mod: false,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    };
+    const pageWhen = (page: "pluginPage" | "settingsPage") => ({
+      all: ["mainSurface" as const, page],
+      none: ["modalOpen" as const, "editableFocus" as const],
+    });
+    const defaults: AppDefaultKeybindings = [
+      {
+        command: "plugin:tasks/new-task",
+        desktopOnly: false,
+        shortcut: key,
+        when: pageWhen("pluginPage"),
+      },
+      {
+        command: "plugin:tasks/archive",
+        desktopOnly: false,
+        shortcut: key,
+        when: pageWhen("pluginPage"),
+      },
+      {
+        command: "plugin:board/add-card",
+        desktopOnly: false,
+        shortcut: key,
+        when: pageWhen("pluginPage"),
+      },
+      {
+        command: "settings.search",
+        desktopOnly: false,
+        shortcut: key,
+        when: pageWhen("settingsPage"),
+      },
+      {
+        command: "thread.search",
+        desktopOnly: false,
+        shortcut: key,
+        when: { all: ["mainSurface"], none: ["modalOpen"] },
+      },
+    ];
+    const conflicts = (command: KeyboardCommandId) =>
+      getShortcutConflicts(defaults, [], command, false, "Linux");
+    expect(conflicts("plugin:tasks/new-task")).toEqual([
+      "plugin:tasks/archive",
+      "thread.search",
+    ]);
+    expect(conflicts("plugin:board/add-card")).toEqual(["thread.search"]);
+    expect(conflicts("settings.search")).toEqual(["thread.search"]);
+    expect(conflicts("thread.search")).toEqual([
+      "plugin:tasks/new-task",
+      "plugin:tasks/archive",
+      "plugin:board/add-card",
+      "settings.search",
+    ]);
   });
 
   it("stores edits and disabled bindings explicitly for the current platform", () => {

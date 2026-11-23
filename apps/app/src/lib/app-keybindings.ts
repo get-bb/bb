@@ -51,6 +51,29 @@ function isAppCommandContextActive(
   );
 }
 
+function appKeybindingPage(
+  binding: Pick<AppKeybinding, "command" | "when">,
+): string | null {
+  if (binding.when.all.includes("settingsPage")) return "settings";
+  if (!binding.when.all.includes("pluginPage")) return null;
+  return binding.command.slice(0, binding.command.indexOf("/") + 1);
+}
+
+export function isPageScopedAppKeybinding(
+  binding: Pick<AppKeybinding, "command" | "when">,
+): boolean {
+  return appKeybindingPage(binding) !== null;
+}
+
+export function canAppKeybindingsFireTogether(
+  left: Pick<AppKeybinding, "command" | "when">,
+  right: Pick<AppKeybinding, "command" | "when">,
+): boolean {
+  const leftPage = appKeybindingPage(left);
+  const rightPage = appKeybindingPage(right);
+  return leftPage === null || rightPage === null || leftPage === rightPage;
+}
+
 export function isAppCommandWhenSatisfied(
   binding: Pick<AppKeybinding, "command" | "when">,
   context: AppCommandContext,
