@@ -383,6 +383,109 @@ const coreContributionImports = {
   },
 };
 
+const corePluginSdkAppSpecifier = "@get-bb/plugin-sdk/app";
+const corePluginSdkAppBindingPath = path.join(
+  repoRoot,
+  "apps",
+  "app",
+  "src",
+  "lib",
+  "core-plugin-sdk-app.ts",
+);
+
+function readCorePluginSdkAppBindingExports() {
+  const source = readFileSync(corePluginSdkAppBindingPath, "utf8");
+  const statement = /export\s*\{([^}]*)\}\s*from\s*"[^"]+";/gu;
+  const unparsed = source.replace(statement, "").trim();
+  if (unparsed !== "") {
+    throw new Error(
+      `${corePluginSdkAppBindingPath} may contain only \`export { ... } from "...";\` statements so bb/core-plugin-sdk-app-binding can read its exports. Unparsed: ${unparsed}`,
+    );
+  }
+  return new Set(
+    [...source.matchAll(statement)].flatMap((match) =>
+      match[1]
+        .split(",")
+        .map((specifier) => specifier.trim())
+        .filter((specifier) => specifier !== "")
+        .map((specifier) => specifier.split(/\s+as\s+/u).at(-1)),
+    ),
+  );
+}
+
+const corePluginSdkAppBindingExports = readCorePluginSdkAppBindingExports();
+
+const corePluginSdkAppBinding = {
+  create(context) {
+    const binding =
+      "apps/app/vite-core-plugin-sdk-app.ts resolves @get-bb/plugin-sdk/app in app source to apps/app/src/lib/core-plugin-sdk-app.ts, so every other member is undefined at runtime even though it typechecks. Re-export the member there from the implementation pluginSdkAppImplementation serves, or import it as a type.";
+
+    function isBindingSource(node) {
+      return (
+        node?.type === "Literal" && node.value === corePluginSdkAppSpecifier
+      );
+    }
+
+    function checkName(node, name) {
+      if (corePluginSdkAppBindingExports.has(name)) return;
+      context.report({
+        node,
+        message: `${name} is not exported by the core binding of ${corePluginSdkAppSpecifier}. ${binding}`,
+      });
+    }
+
+    function reportWholeModule(node) {
+      context.report({
+        node,
+        message: `Import named members of ${corePluginSdkAppSpecifier}; a default, namespace or dynamic import reaches past the members the core binding exports. ${binding}`,
+      });
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (!isBindingSource(node.source) || node.importKind === "type") {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.type !== "ImportSpecifier") {
+            reportWholeModule(specifier);
+          } else if (specifier.importKind !== "type") {
+            checkName(
+              specifier,
+              specifier.imported.type === "Identifier"
+                ? specifier.imported.name
+                : specifier.imported.value,
+            );
+          }
+        }
+      },
+      ExportNamedDeclaration(node) {
+        if (!isBindingSource(node.source) || node.exportKind === "type") {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.exportKind !== "type") {
+            checkName(
+              specifier,
+              specifier.local.type === "Identifier"
+                ? specifier.local.name
+                : specifier.local.value,
+            );
+          }
+        }
+      },
+      ExportAllDeclaration(node) {
+        if (isBindingSource(node.source) && node.exportKind !== "type") {
+          reportWholeModule(node);
+        }
+      },
+      ImportExpression(node) {
+        if (isBindingSource(node.source)) reportWholeModule(node);
+      },
+    };
+  },
+};
+
 const noComments = {
   meta: {
     fixable: "whitespace",
@@ -515,6 +618,7 @@ const imeSafeKeyHandlers = {
 
 export const rules = {
   "core-contribution-imports": coreContributionImports,
+  "core-plugin-sdk-app-binding": corePluginSdkAppBinding,
   "forkable-plugin-imports": forkablePluginImports,
   "ime-safe-key-handlers": imeSafeKeyHandlers,
   "no-blocking-child-process-call": noBlockingChildProcessCall,
