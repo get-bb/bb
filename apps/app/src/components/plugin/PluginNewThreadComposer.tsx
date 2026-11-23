@@ -11,6 +11,7 @@ import {
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 
 export function PluginNewThreadComposer({
   defaultProjectId,
@@ -48,7 +49,11 @@ export function PluginNewThreadComposer({
     serviceTier: defaultServiceTier,
     permissionMode: defaultPermissionMode,
     environment: defaultEnvironment,
-    initialPrompt,
+    ...(initialPrompt !== undefined
+      ? {
+          initialPrompt: initialPromptSeedFromComposer(initialPrompt, pluginId),
+        }
+      : {}),
   };
   const composerKey = draftKey ?? pluginId ?? "default";
   const handleSubmit = async (request: NewThreadRequest) => {

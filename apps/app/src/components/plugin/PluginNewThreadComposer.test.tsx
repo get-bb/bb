@@ -85,6 +85,9 @@ import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
+import { PluginContext } from "./plugin-context";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
+import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 
 function PanedRootComposeView() {
   return (
@@ -2297,6 +2300,99 @@ describe("PluginNewThreadComposer seeding", () => {
     );
     consoleError.mockRestore();
     expect(updateDepthErrors).toEqual([]);
+  });
+
+  it("seeds core's plugin-edit hand-off with a path mention pill", async () => {
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const rootDraft = getPromptDraftAccessor({ kind: "new-thread" });
+    const router = createMemoryRouter(
+      [{ path: "/", element: <PanedRootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: {
+              focusPrompt: true,
+              initialPrompt: initialPromptSeedFromComposer(
+                buildPluginEditThreadPrompt({
+                  name: "Pattern Atlas",
+                  path: "/Users/me/plugins/pattern-atlas",
+                }),
+                null,
+              ),
+              replaceInitialPrompt: true,
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+
+    const text =
+      'Edit the bb plugin "Pattern Atlas" at @/Users/me/plugins/pattern-atlas/. I want to ';
+    await waitFor(() => {
+      expect(rootDraft.getCurrent().text).toBe(text);
+    });
+    expect(rootDraft.getCurrent().mentions).toEqual([
+      {
+        start: 38,
+        end: 71,
+        resource: {
+          kind: "path",
+          source: "workspace",
+          entryKind: "directory",
+          path: "/Users/me/plugins/pattern-atlas",
+          label: "pattern-atlas",
+        },
+      },
+    ]);
+  });
+
+  it("submits a plugin's structured seed with its own mention resolved to the plugin", async () => {
+    const onSubmit = vi.fn<(request: NewThreadRequest) => void>();
+    render(
+      <MemoryRouter>
+        <PluginContext.Provider value="obsidian">
+          <PluginNewThreadComposer
+            draftKey="structured-seed"
+            defaultProjectId="proj_1"
+            initialPrompt={[
+              "Ask about ",
+              { provider: "notes", id: "daily/2026-11-22", label: "Daily" },
+            ]}
+            onSubmit={onSubmit}
+          />
+        </PluginContext.Provider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(promptBoxText()).toBe("Ask about @Daily");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(onSubmit.mock.calls[0]?.[0].input).toEqual([
+      {
+        type: "text",
+        text: "Ask about @Daily",
+        mentions: [
+          {
+            start: 10,
+            end: 16,
+            resource: {
+              kind: "plugin",
+              pluginId: "obsidian",
+              itemId: "notes:daily/2026-11-22",
+              label: "Daily",
+              icon: null,
+            },
+          },
+        ],
+      },
+    ]);
   });
 
   it("ignores a repeated submit while the first submission is pending", async () => {

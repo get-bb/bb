@@ -5336,13 +5336,20 @@ export interface NewThreadComposerProps {
    */
   defaultEnvironment?: CreateThreadEnvironmentArgs;
   /**
-   * Seeds the draft, only while the draft is still empty. Serialized
-   * `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens become mention
-   * pills with host-resolved titles/names. Missing projects/sections use their
-   * IDs; unavailable generated thread IDs use "Unavailable thread" ("Thread"
-   * if lookup fails). Other unknown thread IDs use the ID as their label.
+   * Seeds the draft, only while the draft is still empty. In a string,
+   * serialized `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens
+   * become mention pills with host-resolved titles/names. Missing
+   * projects/sections use their IDs; unavailable generated thread IDs use
+   * "Unavailable thread" ("Thread" if lookup fails). Other unknown thread IDs
+   * use the ID as their label.
+   *
+   * Pass {@link ComposerInsertPart}s instead to seed any mention kind,
+   * exactly as `useComposer().insert()` would: string parts stay plain text,
+   * mentions with a `kind` are recreated as given, and this plugin's own
+   * `{ provider, id, label }` resolves through its mention provider at send
+   * time. Throws for an invalid provider id.
    */
-  initialPrompt?: string;
+  initialPrompt?: string | readonly ComposerInsertPart[];
   placeholder?: string;
   /**
    * "contained" (default) fills and scrolls inside a bounded parent;
@@ -5656,8 +5663,10 @@ export interface BbNavigate {
   ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
-   * `initialPrompt` to seed the composer draft when it is empty (serialized
-   * thread, project, and section mention tokens become pills) and
+   * `initialPrompt` to seed the composer draft when it is empty, as a string
+   * (serialized thread, project, and section mention tokens become pills) or
+   * as {@link ComposerInsertPart}s with the same meaning as
+   * `useComposer().insert()` (throws for an invalid provider id), and
    * `focusPrompt` to focus the composer on arrival — the pairing behind
    * "Create via chat" style entry points that drop the user into chat with a
    * prefilled prompt. `projectId` makes that project the composer's
@@ -5671,7 +5680,7 @@ export interface BbNavigate {
    */
   toCompose(options?: {
     projectId?: string;
-    initialPrompt?: string;
+    initialPrompt?: string | readonly ComposerInsertPart[];
     focusPrompt?: boolean;
     placement?: { sectionId: string | null; pinned: boolean };
     environmentId?: string;
