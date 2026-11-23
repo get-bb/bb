@@ -3097,6 +3097,40 @@ it("resumes a provider launch and its original request after the in-memory conte
   });
 });
 
+it("rejects a new checkout path request when its environment provider is not registered", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, {
+      id: "host-unavailable-checkout",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+      path: WORKSPACE_PATH,
+    });
+    setPluginEnvironmentProviderBridge(undefined);
+
+    await expect(
+      createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("Check workspace admission"),
+        origin: "app",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      body: {
+        code: "invalid_request",
+        message: expect.stringMatching(/project-checkout.*not registered/),
+      },
+    });
+  });
+});
+
 it("keeps an existing request waiting when its provider is not registered", async () => {
   await withTestHarness(async (harness) => {
     const { host, project } = seedTargetFixture(

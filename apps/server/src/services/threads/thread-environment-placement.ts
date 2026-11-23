@@ -567,6 +567,16 @@ export async function resolveThreadEnvironmentPlacement(
           "Validated unmanaged host request is missing a workspace path",
         );
       }
+      if (
+        getEnvironmentProvider(
+          DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
+        ) === undefined
+      ) {
+        refuseProviderSelection(
+          DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
+          "is not registered. Enable its plugin before starting a thread.",
+        );
+      }
       const dataDir = (
         await ensureHostSessionReadyForWork(deps, {
           hostId: resolvedEnvironment.hostId,
