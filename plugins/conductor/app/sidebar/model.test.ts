@@ -90,6 +90,7 @@ function thread(
     updatedAt: options.createdAt ?? 0,
     lastReadAt: null,
     latestAttentionAt: 0,
+    experimental_statusChangedAt: 0,
   };
 }
 

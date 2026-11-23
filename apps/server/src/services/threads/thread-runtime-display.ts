@@ -92,15 +92,18 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   thread: ThreadWithPendingInteractionState;
 }
 
+type ThreadWithStatusChangedAt = Thread &
+  Pick<ThreadListEntry, "statusChangedAt">;
+
 interface BuildThreadStatusChangeMetadataByThreadIdArgs {
   environmentHostId: string;
-  threads: readonly Thread[];
+  threads: readonly ThreadWithStatusChangedAt[];
 }
 
 interface ToThreadStatusChangeMetadataArgs {
   activity: ThreadActivityState;
   runtime: ThreadRuntimeState;
-  thread: Thread;
+  thread: ThreadWithStatusChangedAt;
 }
 
 interface PromptBannerActivityState extends Pick<
@@ -244,7 +247,7 @@ function resolveThreadEnvironmentHostId(
 
 export function buildThreadStatusChangeMetadata(
   deps: ThreadPromptBannerDeps,
-  thread: Thread,
+  thread: ThreadWithStatusChangedAt,
 ): ThreadChangeMetadata {
   return toThreadStatusChangeMetadata({
     activity:
@@ -304,6 +307,7 @@ function toThreadStatusChangeMetadata(
       runtime: args.runtime,
       activity: args.activity,
       latestAttentionAt: args.thread.latestAttentionAt,
+      statusChangedAt: args.thread.statusChangedAt,
       updatedAt: args.thread.updatedAt,
     },
   };
@@ -578,6 +582,7 @@ function toThreadListEntryResponseFromLatestSession(
     activity: args.activity,
     queuedWork: args.queuedWork,
     pinSortKey: args.thread.pinSortKey,
+    statusChangedAt: args.thread.statusChangedAt,
     environmentBranchName: args.thread.environmentBranchName,
     environmentHostId: args.thread.environmentHostId,
     environmentName: args.thread.environmentName,

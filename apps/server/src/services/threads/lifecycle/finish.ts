@@ -4,7 +4,7 @@ import {
   hasThreadStartTurnRequest,
   type DbQueryConnection,
 } from "@bb/db";
-import { clientTurnRequestIdSchema, type Thread } from "@bb/domain";
+import { clientTurnRequestIdSchema } from "@bb/domain";
 import type { ThreadStopAim } from "@bb/host-daemon-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../../types.js";
 import {
@@ -208,7 +208,7 @@ async function runEffect(
 
 export function announceThreadStatusChange(
   deps: Pick<FinishDeps, "db" | "hub" | "providerRegistry">,
-  thread: Thread,
+  thread: NonNullable<ReturnType<typeof getThread>>,
 ): void {
   resetActiveThreadEventPruningState(thread.id);
   deps.hub.notifyThread(

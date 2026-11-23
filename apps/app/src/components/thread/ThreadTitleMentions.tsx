@@ -36,8 +36,7 @@ import { PromptMentionPill } from "@/components/thread/timeline/ConversationMess
 import { useThread } from "@/hooks/queries/thread-queries";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
-import { getThreadRoutePath } from "@/lib/route-paths";
-import { getMessageLinkPath } from "@bb/client-core";
+import { getThreadLocationPath } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -74,13 +73,11 @@ export function useThreadRoutePath(): (
   return (threadId, projectId, messageSeq) => {
     const resolvedProjectId =
       projectId ?? threadById.get(threadId)?.projectId ?? PERSONAL_PROJECT_ID;
-    return messageSeq === null
-      ? getThreadRoutePath({ projectId: resolvedProjectId, threadId })
-      : getMessageLinkPath({
-          projectId: resolvedProjectId,
-          threadId,
-          seq: messageSeq,
-        });
+    return getThreadLocationPath({
+      projectId: resolvedProjectId,
+      threadId,
+      ...(messageSeq === null ? {} : { messageSeq }),
+    });
   };
 }
 

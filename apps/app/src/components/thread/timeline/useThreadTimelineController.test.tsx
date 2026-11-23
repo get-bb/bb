@@ -968,6 +968,120 @@ describe("useThreadTimelineController", () => {
     expect(toastSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("reveals a message newer than the cached timeline after refreshing", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const refresh = createDeferredPromise<ThreadTimelineResponse>();
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refresh.promise);
+    const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
+      { queries: { staleTime: 0 } },
+    );
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ rows: [newestLoadedRow], maxSeq: 1 }),
+    );
+    markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter initialEntries={["/threads/thread-1#msg=2"]}>
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const scrollIntoView = vi.fn();
+    const renderedTarget = document.createElement("div");
+    renderedTarget.setAttribute("data-timeline-row-id", realtimeRow.id);
+    renderedTarget.scrollIntoView = scrollIntoView;
+    onTestFinished(() => renderedTarget.remove());
+    const { result } = renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        const pending = useScrollToSearchedMessage(
+          timeline.timelineRows,
+          "thread-1",
+          {
+            isCatchingUpRows: timeline.isCatchingUpTimeline,
+            reportsMissingTarget: true,
+          },
+        );
+        return { pending, rows: rowIds(timeline) };
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => expect(sdk.threads.timeline).toHaveBeenCalledOnce());
+    expect(result.current.pending).toBe(true);
+    expect(toastSpy).not.toHaveBeenCalled();
+    document.body.appendChild(renderedTarget);
+    await act(async () => {
+      refresh.resolve(
+        makeTimelineResponse({
+          rows: [newestLoadedRow, realtimeRow],
+          maxSeq: 2,
+        }),
+      );
+    });
+    await waitFor(() => expect(result.current.rows).toContain(realtimeRow.id));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      inline: "nearest",
+    });
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing message link settled when later rows contain its target", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
+      { queries: { staleTime: Infinity } },
+    );
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ rows: [newestLoadedRow], maxSeq: 1 }),
+    );
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter initialEntries={["/threads/thread-1#msg=2"]}>
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const { result } = renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        const pending = useScrollToSearchedMessage(
+          timeline.timelineRows,
+          "thread-1",
+          { reportsMissingTarget: true },
+        );
+        return { pending, rows: rowIds(timeline) };
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledOnce());
+    expect(result.current.pending).toBe(false);
+    act(() => {
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({
+          rows: [newestLoadedRow, realtimeRow],
+          maxSeq: 2,
+        }),
+      );
+    });
+    await waitFor(() => expect(result.current.rows).toContain(realtimeRow.id));
+    expect(result.current.pending).toBe(false);
+    expect(toastSpy).toHaveBeenCalledOnce();
+  });
+
   it("reveals an accepted steer from a link to its request seq", async () => {
     const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
     onTestFinished(() => toastSpy.mockRestore());

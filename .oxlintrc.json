@@ -269,6 +269,37 @@
       }
     },
     {
+      "files": ["apps/app/src/**/*.{ts,tsx}"],
+      "rules": {
+        "bb/core-plugin-sdk-app-binding": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/app/src/**/*.test.{ts,tsx}",
+        "apps/app/src/**/*.stories.tsx",
+        "apps/app/src/test/**"
+      ],
+      "rules": {
+        "bb/core-plugin-sdk-app-binding": "off"
+      }
+    },
+    {
+      "files": ["apps/app/src/core-contributions/**/*.{ts,tsx}"],
+      "rules": {
+        "bb/core-contribution-imports": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/app/src/core-contributions/**/*.test.{ts,tsx}",
+        "apps/app/src/core-contributions/**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/core-contribution-imports": "off"
+      }
+    },
+    {
       "files": [
         "apps/**/*.{ts,tsx}",
         "packages/**/*.{ts,tsx}",

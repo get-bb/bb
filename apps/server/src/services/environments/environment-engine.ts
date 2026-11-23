@@ -62,6 +62,8 @@ import {
   getPreparingEnvironment,
   claimEnvironmentPath,
   bindEnvironmentPath,
+  adoptHeldEnvironment,
+  releaseEnvironmentHolds,
   listProviderLifecycleEnvironments,
   updatePreparingEnvironment,
   type DbConnection,
@@ -161,6 +163,7 @@ import {
 } from "../../internal/command-result-side-effects.js";
 import { errorMessage } from "../lib/error-log-fields.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
+import { NotificationBuffer } from "../lib/notification-buffer.js";
 import {
   callHostOnlineRpc,
   isHostUnavailableApiError,
@@ -271,18 +274,21 @@ function mutateProvisioning(
 
 function provisioningReporter(
   deps: Deps,
-  provisioning: EnvironmentRow,
+  current: () => EnvironmentRow,
 ): PluginEnvironmentProviderProgress {
   const report = (
     change: (row: EnvironmentRow) => void,
     step: string | null,
   ) => {
+    const provisioning = current();
     const before = getEnvironment(deps.db, provisioning.id);
     if (
       !mutateProvisioning(
         deps,
         provisioning,
-        ["creating", "provisioning"],
+        before?.status === "ready" && before.createPending
+          ? ["ready"]
+          : ["creating", "provisioning"],
         change,
       )
     )
@@ -561,6 +567,7 @@ async function runCreate(
   });
   let adoptedExistingEnvironment = false;
   let existingProviderOwnsLifecycle = false;
+  let handedOff = false;
   const requested: { path: string | null } = {
     path: provisioning.status === "creating" ? null : provisioning.path,
   };
@@ -613,6 +620,23 @@ async function runCreate(
       return;
     }
     signal.throwIfAborted();
+    if (handedOff) {
+      if (
+        provisioning.path === null ||
+        !areHostPathsEqual(provisioning.path, path)
+      )
+        throw new Error(
+          `Setup can't run at ${path}: the adopted environment is at ${provisioning.path}`,
+        );
+      requested.path = path;
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId: provisioning.id,
+        event: { type: "provision.requested" },
+      });
+      if (provisioning.ownerThreadId !== null)
+        requestEnvironmentProvisioningRecheck(provisioning.ownerThreadId);
+      return;
+    }
     const declared = target.row;
     if (declared?.path != null && areHostPathsEqual(declared.path, path))
       throw new Error(
@@ -636,10 +660,37 @@ async function runCreate(
         environmentId: provisioning.id,
       });
   };
+  const createMap = perDbRegistry(createOperations, deps.db);
+  let running: ActiveOperation | undefined;
+  const adopt = async (
+    environmentId: string,
+    resource: JsonValue,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    if (requested.path !== null || adoptedExistingEnvironment)
+      throw new Error("adopt must come before setup and only once");
+    running = createMap.get(provisioning.id);
+    provisioning = adoptHeldEnvironment(
+      deps.db,
+      provisioning,
+      environmentId,
+      `plugin:${record.pluginId}`,
+      resourceSchema.parse(resource),
+    );
+    if (running !== undefined) createMap.set(provisioning.id, running);
+    adoptedExistingEnvironment = true;
+    existingProviderOwnsLifecycle = true;
+    handedOff = true;
+  };
+  const forgetAdoption = () => {
+    if (running !== undefined && createMap.get(provisioning.id) === running)
+      createMap.delete(provisioning.id);
+  };
   const steps: ProviderSteps = {
     environment: providerEnvironment(provisioning),
     branchName: () => untilAborted(context.branchName(), signal),
     setup: requestSetup,
+    adopt,
   };
   let failure: string | null = null;
   try {
@@ -655,7 +706,7 @@ async function runCreate(
       inputs: context.inputs,
       pathKey: provisioning.environmentProviderInstanceKey ?? provisioning.id,
       attempt: provisioning.attempt,
-      report: provisioningReporter(deps, provisioning),
+      report: provisioningReporter(deps, () => provisioning),
       signal: signal,
     };
     const located = await locateEnvironment(deps, record, {
@@ -743,7 +794,15 @@ async function runCreate(
         if (existing !== null && existing.id !== provisioning.id)
           target.row = existing;
       }
-      if (setupPath !== null) {
+      if (handedOff) {
+        if (
+          provisioning.path === null ||
+          !areHostPathsEqual(producedPath, provisioning.path)
+        )
+          throw new Error(
+            `The provider adopted ${provisioning.id} but created ${producedPath}`,
+          );
+      } else if (setupPath !== null) {
         if (!areHostPathsEqual(producedPath, setupPath) || !created.ownsPath)
           throw new Error(
             `The provider requested setup at ${setupPath} but created ${producedPath}${created.ownsPath ? "" : " without owning it"}`,
@@ -798,12 +857,14 @@ async function runCreate(
             row.additionalPaths = produced.additionalPaths ?? [];
             row.resource = produced.resource ?? null;
           } else {
-            if (produced.mergeBaseBranch !== undefined) {
+            if (handedOff) {
+              row.resource = produced.resource ?? null;
+              row.heldBy = null;
+            }
+            if (produced.mergeBaseBranch !== undefined)
               row.mergeBaseBranch = produced.mergeBaseBranch;
-            }
-            if (produced.additionalPaths !== undefined) {
+            if (produced.additionalPaths !== undefined)
               row.additionalPaths = produced.additionalPaths;
-            }
           }
           if (row.status === "creating") row.status = "provisioning";
           if (row.ownerThreadId === null) row.claimPath = null;
@@ -820,8 +881,10 @@ async function runCreate(
       signal.aborted &&
       current?.attempt === provisioning.attempt &&
       current.teardownStatus === "running"
-    )
+    ) {
+      forgetAdoption();
       return;
+    }
     failure = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${errorMessage(error)}`;
   }
   try {
@@ -863,6 +926,7 @@ async function runCreate(
       }
       requestEnvironmentProvisioningRecheck(threadId);
     }
+    forgetAdoption();
   }
 }
 
@@ -878,6 +942,13 @@ function failCreate(
   provisioning: EnvironmentRow,
   message: string,
 ): boolean {
+  if (currentProvisioningRow(deps, provisioning, ["ready"])?.createPending)
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: provisioning.id,
+      event: { type: "provision.requested" },
+    });
+  const before = getEnvironment(deps.db, provisioning.id);
+  const releaseHold = before !== null && isHandOff(deps, before);
   const changed = mutateProvisioning(
     deps,
     provisioning,
@@ -885,6 +956,7 @@ function failCreate(
     (row) => {
       row.createPending = false;
       row.statusMessage = message;
+      if (releaseHold) row.heldBy = null;
       if (row.status === "creating") row.status = "error";
       if (row.ownerThreadId === null) row.claimPath = null;
     },
@@ -1479,6 +1551,22 @@ export function providerEnvironmentHasPendingWork(
   const row = getPreparingEnvironment(db, threadId);
   if (row === null) return false;
   return row.teardownStatus !== "removed";
+}
+
+export function releasePluginEnvironmentHolds(
+  deps: {
+    db: DbConnection | DbTransaction;
+    hub: Pick<Deps["hub"], "notifyEnvironment">;
+  },
+  pluginId: string,
+): void {
+  for (const environmentId of releaseEnvironmentHolds(
+    deps.db,
+    `plugin:${pluginId}`,
+  )) {
+    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
+    refreshProviderRetirement(deps, environmentId);
+  }
 }
 
 export function refreshProviderRetirement(
@@ -2317,12 +2405,12 @@ async function runEnvironmentProvisionCommand(
   args: StartTrackedEnvironmentProvisionCommandArgs & { signal: AbortSignal },
 ): Promise<void> {
   const execution = createLiveHostCommandExecution(args.environment.hostId);
-  const createPending =
-    getEnvironment(deps.db, args.environment.id)?.createPending === true;
+  const current = getEnvironment(deps.db, args.environment.id);
   if (
     args.environment.providerOwnsPath &&
     !(
-      createPending &&
+      current?.createPending === true &&
+      !isHandOff(deps, current) &&
       setupSucceededAt(deps, args.environment, args.request.command.path)
     )
   ) {
@@ -2407,6 +2495,92 @@ function recoverEnvironmentProvisionRequest(
     : null;
 }
 
+function handOffThreadId(
+  deps: Pick<Deps, "db">,
+  environment: EnvironmentRow,
+): string | null {
+  if (!environment.heldBy?.startsWith("plugin:")) return null;
+  return (
+    environment.ownerThreadId ??
+    startingThreadOf(deps, environment.id)?.id ??
+    null
+  );
+}
+
+function isHandOff(
+  deps: Pick<Deps, "db">,
+  environment: EnvironmentRow,
+): boolean {
+  return handOffThreadId(deps, environment) !== null;
+}
+
+function isInterruptedHandOff(
+  deps: Pick<Deps, "db">,
+  environment: EnvironmentRow,
+  createMap: Map<string, ActiveOperation>,
+): boolean {
+  return (
+    isHandOff(deps, environment) &&
+    environment.createPending &&
+    environment.teardownStatus === null &&
+    !createMap.has(environment.id)
+  );
+}
+
+async function restartInterruptedHandOff(
+  deps: Deps,
+  environment: EnvironmentRow,
+): Promise<void> {
+  const threadId = handOffThreadId(deps, environment);
+  const selection = environment.environmentProviderSelection;
+  const notifications = new NotificationBuffer();
+  const discarded = deps.db.transaction(
+    (tx) => {
+      const current = getEnvironment(tx, environment.id);
+      if (
+        current === null ||
+        current.heldBy !== environment.heldBy ||
+        current.teardownStatus !== null ||
+        !current.createPending
+      )
+        return false;
+      setEnvironmentColumns(tx, environment.id, {
+        heldBy: null,
+        createPending: false,
+        ownerThreadId: null,
+        claimPath: null,
+        teardownStatus: "running",
+        retireAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      notifications.notifyEnvironment(environment.id, ["metadata-changed"]);
+      if (threadId === null || selection === null) return true;
+      const context = getThreadProvisionContext(tx, threadId);
+      if (context === null) return true;
+      updateThread(tx, notifications, threadId, { environmentId: null });
+      context.request.environmentIntent = {
+        type: "provider",
+        environmentProviderId: environment.environmentProviderId!,
+        machine: selection.machine,
+        inputs: selection.inputs,
+        selectionResolved: true,
+      };
+      context.state.environmentId = null;
+      saveThreadProvisionContext({ replace: false, db: tx, threadId, context });
+      return true;
+    },
+    { behavior: "immediate" },
+  );
+  notifications.flushInto(deps.hub);
+  if (!discarded) return;
+  deps.logger.info(
+    { environmentId: environment.id, threadId },
+    "Discarded an environment whose handoff was interrupted; the thread gets a new one",
+  );
+  if (threadId !== null) requestEnvironmentProvisioningRecheck(threadId);
+  await sweepProviderEnvironment(deps, environment.id);
+}
+
 export async function advanceEnvironmentProvisioning(
   deps: CommandResultSideEffectsDeps,
   args: AdvanceEnvironmentProvisioningArgs,
@@ -2464,6 +2638,11 @@ export async function advanceEnvironmentProvisioning(
   const createMap = perDbRegistry(createOperations, deps.db);
   if (environment.status === "creating" && createMap.has(environment.id))
     return;
+  if (isInterruptedHandOff(deps, environment, createMap)) {
+    await restartInterruptedHandOff(deps, environment);
+    return;
+  }
+  if (environment.status === "ready" && environment.createPending) return;
   if (
     environment.status === "creating" ||
     (environment.createPending &&

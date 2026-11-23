@@ -13,9 +13,9 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { FullPage } from "@/views/SettingsView.stories";
 import { SETTINGS_SEARCH_INDEX } from "./settings-search";
 import {
-  getSettingsSectionRoutePath,
   SETTINGS_NAV_SECTIONS,
   type SettingsNavSection,
+  getSettingsTargetPath,
 } from "./settings-sections";
 
 const LOCAL_URL = "http://localhost:3000/";
@@ -61,7 +61,9 @@ function registerReplacementPlugin() {
 
 function renderSection(section: SettingsNavSection) {
   render(
-    <MemoryRouter initialEntries={[getSettingsSectionRoutePath(section.id)]}>
+    <MemoryRouter
+      initialEntries={[getSettingsTargetPath({ section: section.id })]}
+    >
       <TooltipProvider>
         <FullPage />
       </TooltipProvider>

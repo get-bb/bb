@@ -39,13 +39,28 @@ interface SearchMessageLocation {
   readLocationKey: () => string;
 }
 
+export interface MessageRevealRequest {
+  threadId: string;
+  messageSeq: number;
+  key: number;
+}
+
 interface SearchMessageLocationProviderProps {
   threadId: string | undefined;
+  revealRequest?: MessageRevealRequest | null;
   children: ReactNode;
+}
+
+interface TargetOrder {
+  locationKey: string;
+  locationOrder: number;
+  requestKey: number | null;
+  requestOrder: number;
 }
 
 interface SearchMessagePaginationOptions {
   hasOlderRows?: boolean;
+  isCatchingUpRows?: boolean;
   isLoadingOlderRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   reportsMissingTarget?: boolean;
@@ -278,28 +293,67 @@ function createLocationKeyReader(initialLocationKey: string): {
 
 export function SearchMessageLocationProvider({
   threadId,
+  revealRequest = null,
   children,
 }: SearchMessageLocationProviderProps) {
   const location = useLocation();
   const locationKey = `${location.key}:${location.pathname}${location.search}${location.hash}`;
-  const [locationKeyReader] = useState(() =>
-    createLocationKeyReader(locationKey),
+  const requestKey = revealRequest?.key ?? null;
+  const [order, setOrder] = useState<TargetOrder>(() => ({
+    locationKey,
+    locationOrder: 1,
+    requestKey,
+    requestOrder: 0,
+  }));
+  let currentOrder = order;
+  if (currentOrder.locationKey !== locationKey) {
+    currentOrder = {
+      ...currentOrder,
+      locationKey,
+      locationOrder:
+        Math.max(currentOrder.locationOrder, currentOrder.requestOrder) + 1,
+    };
+  }
+  if (currentOrder.requestKey !== requestKey) {
+    currentOrder = {
+      ...currentOrder,
+      requestKey,
+      requestOrder:
+        requestKey === null
+          ? 0
+          : Math.max(currentOrder.locationOrder, currentOrder.requestOrder) + 1,
+    };
+  }
+  if (currentOrder !== order) setOrder(currentOrder);
+  const requestIsActive =
+    revealRequest !== null &&
+    currentOrder.requestOrder > currentOrder.locationOrder;
+  const activeTargetKey = requestIsActive
+    ? `reveal:${revealRequest.key}`
+    : locationKey;
+  const [targetKeyReader] = useState(() =>
+    createLocationKeyReader(activeTargetKey),
   );
   useLayoutEffect(() => {
-    locationKeyReader.write(locationKey);
-  }, [locationKey, locationKeyReader]);
-  const readLocationKey = locationKeyReader.read;
+    targetKeyReader.write(activeTargetKey);
+  }, [activeTargetKey, targetKeyReader]);
+  const readLocationKey = targetKeyReader.read;
   const searchTarget = readSearchMessageTarget(location.state);
   const messageLinkTarget = parseMessageLink(
     `${location.pathname}${location.search}${location.hash}`,
   );
-  const target =
-    messageLinkTarget === null
+  const target: SearchMessageTarget | null = requestIsActive
+    ? {
+        match: "message",
+        seq: revealRequest.messageSeq,
+        threadId: revealRequest.threadId,
+      }
+    : messageLinkTarget === null
       ? searchTarget
       : { ...messageLinkTarget, match: "message" as const };
   const applies =
     target !== null && searchTargetAppliesToThread(target, threadId);
-  const targetLocationKey = applies ? locationKey : null;
+  const targetLocationKey = applies ? activeTargetKey : null;
   const targetMatch = applies ? target.match : null;
   const targetSeq = applies ? target.seq : null;
   const targetThreadId = applies ? target.threadId : null;
@@ -346,6 +400,7 @@ export function useScrollToSearchedMessage(
   threadId: string | undefined,
   {
     hasOlderRows = false,
+    isCatchingUpRows = false,
     isLoadingOlderRows = false,
     onLoadOlderRows,
     reportsMissingTarget = false,
@@ -375,12 +430,24 @@ export function useScrollToSearchedMessage(
     loadedRange !== null &&
     (targetMatch === "message" || targetIsOlderThanLoadedRows);
   const canLoadOlderTarget = targetIsOlderThanLoadedRows && hasOlderRows;
+  const targetIsNotFound =
+    reportsMissingTarget &&
+    targetIsMissing &&
+    !canLoadOlderTarget &&
+    !isLoadingOlderRows &&
+    !isCatchingUpRows;
+  if (
+    targetIsNotFound &&
+    targetLocationKey !== null &&
+    settledLocationKey !== targetLocationKey
+  ) {
+    setSettledLocationKey(targetLocationKey);
+  }
   const isInitialRevealPending =
     reportsMissingTarget &&
     initialLocationKey !== null &&
     initialLocationKey === targetLocationKey &&
-    settledLocationKey !== initialLocationKey &&
-    !(targetIsMissing && !canLoadOlderTarget && !isLoadingOlderRows);
+    settledLocationKey !== initialLocationKey;
 
   useEffect(() => {
     if (
@@ -429,12 +496,7 @@ export function useScrollToSearchedMessage(
         });
         return;
       }
-      if (
-        reportsMissingTarget &&
-        targetIsMissing &&
-        !canLoadOlderTarget &&
-        !isLoadingOlderRows
-      ) {
+      if (targetIsNotFound) {
         handledKeyRef.current = targetLocationKey;
         appToast.message("Message not found", {
           description:
@@ -501,7 +563,7 @@ export function useScrollToSearchedMessage(
     targetMatch,
     targetSeq,
     targetThreadId,
-    targetIsMissing,
+    targetIsNotFound,
     targetLeafRow,
     threadId,
   ]);

@@ -201,6 +201,7 @@ describe("announceThreadStatusChange", () => {
           },
           activity: NO_ACTIVITY,
           latestAttentionAt: row?.latestAttentionAt,
+          statusChangedAt: row?.statusChangedAt,
           updatedAt: row?.updatedAt,
         },
       },

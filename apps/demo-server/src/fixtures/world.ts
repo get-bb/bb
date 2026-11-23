@@ -62,6 +62,7 @@ export function threadListEntry(
     deletedAt: null,
     lastReadAt: now,
     latestAttentionAt: updatedAt,
+    statusChangedAt: updatedAt,
     createdAt: seedStartedAt(seed, now),
     updatedAt,
     runtime: { displayStatus: busy ? "active" : "idle" },

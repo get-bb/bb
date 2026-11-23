@@ -2,45 +2,49 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const SIDEBAR_CONTENT_SELECTOR = '[data-sidebar="content"]';
-
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0";
 
-export function useSidebarContentElement(
-  anchorRef: React.RefObject<HTMLElement | null>,
-): HTMLElement | null {
-  const [element, setElement] = React.useState<HTMLElement | null>(null);
-  React.useLayoutEffect(() => {
-    const next =
-      anchorRef.current?.closest<HTMLElement>(SIDEBAR_CONTENT_SELECTOR) ??
-      null;
-    setElement((current) => (current === next ? current : next));
-  }, [anchorRef]);
-  return element;
+export type SidebarScrollArea =
+  | { kind: "sidebar"; element: HTMLElement }
+  | { kind: "overflow" };
+
+const OVERFLOW_SCROLL_AREA: SidebarScrollArea = { kind: "overflow" };
+
+const SidebarScrollAreaContext =
+  React.createContext<SidebarScrollArea>(OVERFLOW_SCROLL_AREA);
+
+export function useSidebarScrollArea(): SidebarScrollArea {
+  return React.useContext(SidebarScrollAreaContext);
 }
 
-export const SidebarContentElementContext =
-  React.createContext<React.RefObject<HTMLElement | null> | null>(null);
-
-export function useSidebarContentElementRef(): React.RefObject<HTMLElement | null> | null {
-  return React.useContext(SidebarContentElementContext);
+export function SidebarScrollAreaProvider({
+  scrollElement,
+  children,
+}: {
+  scrollElement: HTMLElement;
+  children: React.ReactNode;
+}) {
+  const area = React.useMemo<SidebarScrollArea>(
+    () => ({ kind: "sidebar", element: scrollElement }),
+    [scrollElement],
+  );
+  return (
+    <SidebarScrollAreaContext.Provider value={area}>
+      {children}
+    </SidebarScrollAreaContext.Provider>
+  );
 }
 
-export function SidebarContentElementProvider({
+export function SidebarOverflowScrollArea({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const anchorRef = React.useRef<HTMLDivElement>(null);
-  const element = useSidebarContentElement(anchorRef);
-  const contentRef = React.useMemo(() => ({ current: element }), [element]);
   return (
-    <SidebarContentElementContext.Provider value={contentRef}>
-      <div ref={anchorRef} className="contents">
-        {children}
-      </div>
-    </SidebarContentElementContext.Provider>
+    <SidebarScrollAreaContext.Provider value={OVERFLOW_SCROLL_AREA}>
+      {children}
+    </SidebarScrollAreaContext.Provider>
   );
 }
 

@@ -150,6 +150,7 @@ describe("writeThreadLifecycleStateInTransaction", () => {
         if (result.kind !== "written") continue;
         expect(result.statusChanged).toBe(true);
         expect(result.thread.status).toBe(testCase.to);
+        expect(result.thread.statusChangedAt).toBe(now);
         expect(result.thread.latestAttentionAt).toBe(
           testCase.attention ? now : thread.latestAttentionAt,
         );

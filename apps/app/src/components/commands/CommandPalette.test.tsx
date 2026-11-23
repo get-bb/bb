@@ -132,9 +132,16 @@ const modeState = vi.hoisted(() => ({
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
-  openThreadInSplit: openThreadInSplitMock,
-}));
+vi.mock("@/lib/split-layout/openThread", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/split-layout/openThread")>();
+  return {
+    openThread: (args: Parameters<typeof actual.openThread>[0]) =>
+      args.split === undefined
+        ? actual.openThread(args)
+        : openThreadInSplitMock(args),
+  };
+});
 
 function expectClasses(
   element: Element | null | undefined,
@@ -329,6 +336,7 @@ function makeThread(
     deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: 1,
+    statusChangedAt: 1,
     createdAt: 1,
     updatedAt: threadUpdatedAt,
     activity: {
@@ -508,7 +516,10 @@ describe("CommandPalette", () => {
         expect(openThreadInSplitMock).toHaveBeenCalledTimes(1),
       );
       expect(openThreadInSplitMock).toHaveBeenCalledWith(
-        expect.objectContaining({ threadId: "second", isCompact: false }),
+        expect.objectContaining({
+          threadId: "second",
+          split: expect.objectContaining({ zone: "right", isCompact: false }),
+        }),
       );
       expect(routeNavigateMock).not.toHaveBeenCalled();
     },
@@ -1545,7 +1556,6 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(routeNavigateMock).toHaveBeenCalledWith(
         "/projects/project-1/threads/fix-5",
-        { state: undefined },
       ),
     );
   });

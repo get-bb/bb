@@ -110,7 +110,8 @@ const GIT_COMMAND_REPLACEMENTS: Record<
 
 function parseEnvironmentHolder(value: string): EnvironmentHolder {
   const parsed = environmentHolderSchema.safeParse(value);
-  if (!parsed.success) throw new Error('--held-by must be "user".');
+  if (!parsed.success)
+    throw new Error('--held-by must be "user" or "plugin:<plugin-id>".');
   return parsed.data;
 }
 
@@ -283,7 +284,7 @@ export function registerEnvironmentCommands(
     .option("--host <id-or-name>", "Only environments on this machine")
     .option(
       "--held-by <holder>",
-      'Only environments kept alive by this holder: "user"',
+      'Only environments kept alive by this holder: "user" or "plugin:<plugin-id>"',
     )
     .option(
       "--instance-key <key>",

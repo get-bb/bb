@@ -63,7 +63,7 @@ import {
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -85,6 +85,7 @@ import {
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
+import type { MessageRevealRequest } from "@/components/thread/timeline/useScrollToSearchedMessage";
 
 const THREAD_DETAIL_COMPOSER_ID = "thread-detail-follow-up-composer";
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
@@ -230,7 +231,7 @@ function useChildThreadsSection(
       .map((entry) => ({
         id: entry.id,
         title: getThreadDisplayTitle(entry),
-        href: getThreadRoutePath({
+        href: getThreadLocationPath({
           projectId: entry.projectId,
           threadId: entry.id,
         }),
@@ -558,8 +559,18 @@ export function ThreadScreen({
     draftStorageKey,
     composer?.focusRequest ?? undefined,
   );
-  const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
-    useState<string | null>(null);
+  const [messageRevealRequest, setMessageRevealRequest] =
+    useState<MessageRevealRequest | null>(null);
+  const revealMessage = useCallback(
+    (messageSeq: number) => {
+      setMessageRevealRequest((previous) => ({
+        threadId: thread.id,
+        messageSeq,
+        key: (previous?.key ?? 0) + 1,
+      }));
+    },
+    [thread.id],
+  );
   const { timelineLoading, timelineRows } = timeline;
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
 
@@ -624,7 +635,7 @@ export function ThreadScreen({
             !isThreadTimelinePending
           }
           timelineRows={timelineRows}
-          timelineNavigationTargetRowId={timelineNavigationTargetRowId}
+          messageRevealRequest={messageRevealRequest}
           isStopping={thread.status === "stopping"}
           stoppingAnchorAt={thread.updatedAt}
           threadId={thread.id}
@@ -708,9 +719,7 @@ export function ThreadScreen({
                     contextBoundarySeq={timeline.contextBoundarySeq}
                     threadId={thread.id}
                     timelineRows={timelineRows}
-                    hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-                    loadOlderTimelineRows={timeline.loadOlderTimelineRows}
-                    onNavigateToRow={setTimelineNavigationTargetRowId}
+                    onRevealMessage={revealMessage}
                   />
                 </div>
               </>

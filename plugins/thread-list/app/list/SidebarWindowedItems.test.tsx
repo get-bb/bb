@@ -1,23 +1,14 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
-import type { ReactNode, RefObject } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  SIDEBAR_CONTENT_SELECTOR,
-  SidebarContentElementContext,
-  SidebarContentElementProvider,
+  SidebarOverflowScrollArea,
+  SidebarScrollAreaProvider,
 } from "../ui/sidebar.js";
 import { SidebarWindowedItems } from "./SidebarWindowedItems.js";
-
-const selectorMatch = SIDEBAR_CONTENT_SELECTOR.match(/^\[([\w-]+)="(.+)"\]$/);
-if (!selectorMatch) {
-  throw new Error(
-    `Unparseable SIDEBAR_CONTENT_SELECTOR: ${SIDEBAR_CONTENT_SELECTOR}`,
-  );
-}
-const [, SIDEBAR_CONTENT_ATTR, SIDEBAR_CONTENT_VALUE] = selectorMatch;
 
 const VIEWPORT_RECT = new DOMRect(0, 0, 300, 500);
 
@@ -65,25 +56,20 @@ function emitIntersections(
   );
 }
 
-function mountSidebarContentContainer(clientHeight: number) {
-  const container = document.createElement("div");
-  container.setAttribute(SIDEBAR_CONTENT_ATTR, SIDEBAR_CONTENT_VALUE);
-  Object.defineProperty(container, "clientHeight", {
-    configurable: true,
-    value: clientHeight,
-  });
-  document.body.appendChild(container);
-  return container;
+function withScrollElement(element: HTMLElement, children: ReactNode) {
+  return (
+    <SidebarScrollAreaProvider scrollElement={element}>
+      {children}
+    </SidebarScrollAreaProvider>
+  );
 }
 
-function withScrollRef(
-  ref: RefObject<HTMLElement | null>,
-  children: ReactNode,
-) {
+function HostScroller({ children }: { children: ReactNode }) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
   return (
-    <SidebarContentElementContext.Provider value={ref}>
-      {children}
-    </SidebarContentElementContext.Provider>
+    <div ref={setElement} data-testid="host-scroller">
+      {element === null ? null : withScrollElement(element, children)}
+    </div>
   );
 }
 
@@ -102,14 +88,8 @@ function list() {
   );
 }
 
-function renderList(
-  ref: RefObject<HTMLElement | null>,
-  container?: HTMLElement,
-) {
-  return render(
-    withScrollRef(ref, list()),
-    container ? { container } : undefined,
-  );
+function renderList(element: HTMLElement) {
+  return render(withScrollElement(element, list()));
 }
 
 beforeEach(() => {
@@ -143,7 +123,7 @@ beforeEach(() => {
 
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
-      if (this === scrollElement || this.matches(SIDEBAR_CONTENT_SELECTOR)) {
+      if (this === scrollElement) {
         return VIEWPORT_RECT;
       }
       if (this.hasAttribute("data-sidebar-windowed-item")) {
@@ -163,8 +143,8 @@ afterEach(() => {
 describe("SidebarWindowedItems", () => {
   it("mounts and focuses an offscreen item on request without refocusing on updates", () => {
     const tree = (focusItemKey?: string) =>
-      withScrollRef(
-        { current: scrollElement },
+      withScrollElement(
+        scrollElement,
         <SidebarWindowedItems
           itemKeys={["first", "second", "third"]}
           focusItemKey={focusItemKey}
@@ -188,8 +168,8 @@ describe("SidebarWindowedItems", () => {
 
   it("focuses a collapsed group disclosure when no thread link is rendered", () => {
     render(
-      withScrollRef(
-        { current: scrollElement },
+      withScrollElement(
+        scrollElement,
         <SidebarWindowedItems
           itemKeys={["group"]}
           focusItemKey="group"
@@ -204,7 +184,7 @@ describe("SidebarWindowedItems", () => {
   });
 
   it("windows a short list when every item is outside the viewport margin", () => {
-    renderList({ current: scrollElement });
+    renderList(scrollElement);
 
     expect(screen.queryByTestId("real-item-0")).toBeNull();
     expect(
@@ -215,51 +195,31 @@ describe("SidebarWindowedItems", () => {
     ).toHaveLength(3);
   });
 
-  it("windows rows when the scroll container ref is not attached yet (same-commit mount)", () => {
-    const container = mountSidebarContentContainer(500);
-
-    renderList({ current: null }, container);
-
-    expect(screen.queryByTestId("real-item-0")).toBeNull();
-    expect(
-      container.querySelectorAll("[data-sidebar-windowed-item]"),
-    ).toHaveLength(3);
-    expect(
-      container.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(3);
-  });
-
-  it("windows rows under the sidebar scroller resolved by the list provider", () => {
-    vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(
-      function (this: Element) {
-        return this.matches(SIDEBAR_CONTENT_SELECTOR) ? 500 : 0;
+  it("windows against the host scroll element the list mounts inside", () => {
+    const ONSCREEN_ROW_RECT = new DOMRect(0, 0, 300, 30);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.testid === "host-scroller" ? 500 : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.dataset.testid === "host-scroller") {
+          return VIEWPORT_RECT;
+        }
+        if (this.hasAttribute("data-sidebar-windowed-item")) {
+          return this === wrapperAt(0) ? ONSCREEN_ROW_RECT : OFFSCREEN_ROW_RECT;
+        }
+        return new DOMRect();
       },
     );
 
-    const { container } = render(
-      <div data-sidebar="content">
-        <SidebarContentElementProvider>{list()}</SidebarContentElementProvider>
-      </div>,
-    );
+    render(<HostScroller>{list()}</HostScroller>);
 
-    const scroller = container.querySelector(SIDEBAR_CONTENT_SELECTOR);
-    expect(scroller).not.toBeNull();
-    expect(
-      scroller?.querySelectorAll("[data-sidebar-windowed-item]"),
-    ).toHaveLength(3);
-    expect(screen.queryByTestId("real-item-0")).toBeNull();
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(3);
-  });
-
-  it("realizes every row when no scroll container can be found", () => {
-    renderList({ current: null });
-
-    expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
-    expect(
-      document.querySelectorAll("[data-sidebar-windowed-nav]"),
-    ).toHaveLength(0);
+    expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(1);
+    expect(screen.getByTestId("real-item-0")).toBeDefined();
+    expect(observerInstances).toHaveLength(1);
+    expect(observerInstances[0]?.observed.size).toBe(3);
   });
 
   it("realizes every row without a list provider", () => {
@@ -270,10 +230,10 @@ describe("SidebarWindowedItems", () => {
 
   it("keeps all overflow rows mounted when a portal opts out of sidebar windowing", () => {
     render(
-      withScrollRef(
-        { current: scrollElement },
+      withScrollElement(
+        scrollElement,
         createPortal(
-          <SidebarContentElementContext.Provider value={null}>
+          <SidebarOverflowScrollArea>
             <SidebarWindowedItems
               itemKeys={Array.from({ length: 40 }, (_, index) => `${index}`)}
               estimateRows={() => 1}
@@ -283,7 +243,7 @@ describe("SidebarWindowedItems", () => {
                 </span>
               )}
             />
-          </SidebarContentElementContext.Provider>,
+          </SidebarOverflowScrollArea>,
           document.body,
         ),
       ),
@@ -299,7 +259,7 @@ describe("SidebarWindowedItems", () => {
     const ONSCREEN_ROW_RECT = new DOMRect(0, 0, 300, 30);
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
-        if (this === scrollElement || this.matches(SIDEBAR_CONTENT_SELECTOR)) {
+        if (this === scrollElement) {
           return VIEWPORT_RECT;
         }
         if (this.hasAttribute("data-sidebar-windowed-item")) {
@@ -314,10 +274,9 @@ describe("SidebarWindowedItems", () => {
       },
     );
 
-    const scrollRef = { current: scrollElement };
     const tree = (itemKeys: readonly string[]) =>
-      withScrollRef(
-        scrollRef,
+      withScrollElement(
+        scrollElement,
         <SidebarWindowedItems
           itemKeys={itemKeys}
           estimateRows={() => 1}
@@ -356,7 +315,7 @@ describe("SidebarWindowedItems", () => {
           (target) => ({ target, isIntersecting: false, boundingClientRect }),
         ),
       );
-    renderList({ current: scrollElement });
+    renderList(scrollElement);
     act(realizeAll);
     expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
 
@@ -368,10 +327,9 @@ describe("SidebarWindowedItems", () => {
   });
 
   it("re-observes wrappers on list changes so a stuck placeholder self-heals", () => {
-    const scrollRef = { current: scrollElement };
     const tree = (itemKeys: readonly string[]) =>
-      withScrollRef(
-        scrollRef,
+      withScrollElement(
+        scrollElement,
         <SidebarWindowedItems
           itemKeys={itemKeys}
           estimateRows={() => 1}
@@ -414,7 +372,7 @@ describe("SidebarWindowedItems", () => {
       },
     );
 
-    renderList({ current: pendingLayoutElement });
+    renderList(pendingLayoutElement);
     expect(screen.queryAllByTestId(/^real-item-/)).toHaveLength(0);
     expect(observerInstances).toHaveLength(0);
 
@@ -440,9 +398,13 @@ describe("SidebarWindowedItems", () => {
   });
 
   it("mounts no rows while the scroll container has no height", () => {
-    const container = mountSidebarContentContainer(0);
+    const collapsed = document.createElement("div");
+    Object.defineProperty(collapsed, "clientHeight", {
+      configurable: true,
+      value: 0,
+    });
 
-    renderList({ current: null }, container);
+    renderList(collapsed);
 
     expect(screen.queryAllByTestId(/^real-item-/)).toHaveLength(0);
     expect(

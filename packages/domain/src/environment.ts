@@ -1,7 +1,11 @@
 import { jsonValueSchema } from "./json-value.js";
+import { pluginIdSchema } from "./plugin-id.js";
 import { z } from "zod";
 
-export const environmentHolderSchema = z.literal("user");
+export const environmentHolderSchema = z.union([
+  z.literal("user"),
+  z.templateLiteral(["plugin:", pluginIdSchema]),
+]);
 export type EnvironmentHolder = z.infer<typeof environmentHolderSchema>;
 
 export const environmentMachineSelectionSchema = z.discriminatedUnion("type", [

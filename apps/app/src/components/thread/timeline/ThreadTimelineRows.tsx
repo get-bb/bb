@@ -50,7 +50,7 @@ import {
   resolveDeferredTimelineContent,
 } from "@bb/client-core";
 import {
-  getMessageLinkPath,
+  getThreadLocationPath,
   isRunningThreadRuntimeDisplayStatus,
 } from "@bb/client-core";
 import type {
@@ -110,6 +110,7 @@ import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keepe
 import {
   collectSearchedMessageAncestorRowIds,
   SearchMessageLocationProvider,
+  type MessageRevealRequest,
   useScrollToSearchedMessage,
   useSearchMessageLocation,
 } from "./useScrollToSearchedMessage.js";
@@ -169,10 +170,11 @@ export interface ThreadTimelineRowsProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   timelineRows: TimelineRow[];
-  timelineNavigationTargetRowId?: string | null;
+  messageRevealRequest?: MessageRevealRequest | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -215,8 +217,8 @@ interface TimelineTurnStateContextValue {
 interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
-  navigationTargetRowId?: string | null;
   onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
@@ -927,10 +929,10 @@ const ConversationRowContent = memo(function ConversationRowContent({
       : () => {
           void copyToClipboardWithToast(
             new URL(
-              getMessageLinkPath({
+              getThreadLocationPath({
                 projectId,
                 threadId: row.threadId,
-                seq: row.messageSeq,
+                messageSeq: row.messageSeq,
               }),
               window.location.origin,
             ).toString(),
@@ -944,6 +946,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: messageMetadata,
     id: row.id,
     threadId: row.threadId,
+    messageSeq: row.messageSeq,
     createdAt: row.startedAt,
     turnId: row.turnId,
     ...(row.role === "user"
@@ -2130,8 +2133,8 @@ function estimateTimelineWindowedRowHeight(
 function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
+  isCatchingUpTimeline,
   isLoadingOlderTimelineRows,
-  navigationTargetRowId,
   onLoadOlderRows,
   rows,
   scopeActive,
@@ -2155,6 +2158,7 @@ function TimelineRowsList({
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   const isInitialRevealPending = useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
+    isCatchingUpRows: isCatchingUpTimeline,
     isLoadingOlderRows: isLoadingOlderTimelineRows,
     onLoadOlderRows,
     reportsMissingTarget: spacing === "top-level",
@@ -2204,11 +2208,8 @@ function TimelineRowsList({
     for (const rowId of stableSearchExpandedRowIds) {
       keys.add(rowId);
     }
-    if (spacing === "top-level" && navigationTargetRowId != null) {
-      keys.add(navigationTargetRowId);
-    }
     return keys;
-  }, [items, rows, spacing, stableSearchExpandedRowIds, navigationTargetRowId]);
+  }, [items, rows, stableSearchExpandedRowIds]);
   const isTopLevelList = spacing === "top-level";
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
@@ -2487,7 +2488,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
 
   return (
     <MessageSlotRegistriesProvider>
-      <SearchMessageLocationProvider threadId={props.threadId}>
+      <SearchMessageLocationProvider
+        threadId={props.threadId}
+        revealRequest={props.messageRevealRequest ?? null}
+      >
         <TimelineRendererStaticContext.Provider value={staticContextValue}>
           <LatestActionableAssistantMessageIdContext.Provider
             value={latestActionableAssistantMessageId}
@@ -2507,11 +2511,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     <div className="relative">
                       <TimelineRowsList
                         hasOlderTimelineRows={props.hasOlderTimelineRows}
+                        isCatchingUpTimeline={props.isCatchingUpTimeline}
                         isLoadingOlderTimelineRows={
                           props.isLoadingOlderTimelineRows
-                        }
-                        navigationTargetRowId={
-                          props.timelineNavigationTargetRowId
                         }
                         onLoadOlderRows={props.onLoadOlderRows}
                         rows={rows}

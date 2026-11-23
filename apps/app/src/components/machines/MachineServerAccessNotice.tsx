@@ -3,11 +3,11 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { getSettingsRoutePath } from "@/lib/route-paths";
 import {
   MACHINE_SERVER_ACCESS_TITLE,
   machineServerAccessBlockedReason,
 } from "./machine-server-access";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 export function PluginMachineServerAccessNotice({
   pluginId,
@@ -60,7 +60,7 @@ export function MachineServerAccessNoticeContent({
           variant="outline"
           className="w-full shrink-0 @md:w-auto"
         >
-          <Link to={getSettingsRoutePath("machines")}>
+          <Link to={getSettingsTargetPath({ section: "machines" })}>
             Set up machine access
             <Icon name="ArrowRight" />
           </Link>

@@ -53,11 +53,7 @@ import {
 } from "@/components/ui/confirm-delete-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  SidebarContentElementProvider,
-  SidebarGroupContent,
-  SidebarStickyStack,
-} from "../ui/sidebar.js";
+import { SidebarGroupContent, SidebarStickyStack } from "../ui/sidebar.js";
 import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
@@ -320,8 +316,8 @@ export function getSidebarThreadComparator(
     normalizedSort === "created"
       ? compareByCreatedAtDescending
       : compareStandardThreads;
-  return (left, right) => {
-    const comparison = base(left, right);
+  return (left, right, level) => {
+    const comparison = base(left, right, level);
     if (
       normalizedSort === "updated" &&
       (left.status === "active") !== (right.status === "active")
@@ -376,11 +372,9 @@ function ProjectListNavigationLoadingRow({
 export function ProjectListShell({ children }: ProjectListShellProps) {
   return (
     <ThreadRowNavigationProvider>
-      <SidebarContentElementProvider>
-        <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
-        </SidebarStickyStack>
-      </SidebarContentElementProvider>
+      <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
+        <SidebarGroupContent>{children}</SidebarGroupContent>
+      </SidebarStickyStack>
     </ThreadRowNavigationProvider>
   );
 }

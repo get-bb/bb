@@ -2,7 +2,7 @@ import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
+import { openThread } from "@/lib/split-layout/openThread";
 import type { DroppedThreadMention } from "@/lib/thread-mention-drop";
 import { beginSidebarPaneContentSplitDrag } from "./usePaneContentSplitDrag";
 
@@ -44,12 +44,11 @@ export function useThreadRowSplitDrag({
   );
 
   const openInSplit = useCallback(() => {
-    openThreadInSplit({
-      store,
+    openThread({
       navigate,
       projectId,
       threadId,
-      isCompact,
+      split: { zone: "right", store, isCompact },
     });
   }, [isCompact, navigate, projectId, store, threadId]);
 

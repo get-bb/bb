@@ -21,7 +21,7 @@ export function resolveThreadTimelineSegmentLimit(): number | undefined {
     : undefined;
 }
 
-export function syncThreadTimelineSubscriptionTag(
+function syncThreadTimelineSubscriptionTag(
   queryClient: QueryClient,
   threadId: string,
   tag: string,
@@ -35,6 +35,16 @@ export function syncThreadTimelineSubscriptionTag(
     },
     tag,
   );
+}
+
+export function applyFetchedThreadTimeline(
+  queryClient: QueryClient,
+  threadId: string,
+  timeline: ThreadTimelineResponse,
+): void {
+  queryClient.setQueryData(threadTimelineQueryKey(threadId), timeline);
+  clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
+  syncThreadTimelineSubscriptionTag(queryClient, threadId, timeline.tag);
 }
 
 export function trackHeldThreadTimelineTags(

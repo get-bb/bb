@@ -1022,6 +1022,18 @@ describe("workspace open targets", () => {
         targetId: "vscode-insiders",
       },
       {
+        appName: "VSCodium",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "codium",
+        ],
+        targetId: "vscodium",
+      },
+      {
         appName: "Windsurf",
         args: ["-g", `${filePath}:15:6`],
         relativeExecutablePath: [

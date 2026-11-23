@@ -316,6 +316,14 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   let targetEnvironment: ReadyEnvironment;
 
   if (existingEnvironment) {
+    if (
+      existingEnvironment.heldBy !== null &&
+      existingEnvironment.heldBy !== "user"
+    ) {
+      return toolCallFailure(
+        `${normalizedPath} belongs to environment ${existingEnvironment.id}, which is held by ${existingEnvironment.heldBy.slice("plugin:".length)}. Use a different directory.`,
+      );
+    }
     const ready = resolveReadyEnvironment(existingEnvironment);
     if ("failure" in ready) {
       return toolCallFailure(ready.failure);

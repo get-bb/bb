@@ -16,9 +16,9 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
-import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 interface ProjectActionsMenuBaseProps {
   project: ProjectResponse;
@@ -61,7 +61,7 @@ export function ProjectActionsMenuItems({
         surface={surface}
         icon="Settings"
         onSelect={() => {
-          void navigate(getSettingsProjectRoutePath(project.id));
+          void navigate(getSettingsTargetPath({ projectId: project.id }));
         }}
       >
         Project settings

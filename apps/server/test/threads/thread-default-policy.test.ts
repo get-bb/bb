@@ -383,6 +383,93 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   });
 
+  it("gives a project child of a scheduled parent the project's default environment", async () => {
+    await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-scheduled-parent",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/scheduled-parent-source",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: () => ({
+          ok: true,
+          result: {
+            checkout: {
+              kind: "branch" as const,
+              branchName: "main",
+              headSha: "abc123",
+            },
+          },
+        }),
+      });
+
+      await expect(
+        resolveCreateThreadEnvironment(harness.deps, {
+          parentThread: makeParentThread({
+            projectId: project.id,
+            environmentId: null,
+          }),
+          projectId: project.id,
+          requestedEnvironment: { type: "project-default" },
+        }),
+      ).resolves.toEqual({
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        machine: { type: "existing", hostId: host.id },
+        inputs: { branch: { kind: "default" } },
+      });
+    });
+  });
+
+  it.each([
+    {
+      name: "no environment at all",
+      requestedEnvironment: { type: "project-default" as const },
+      expected: {
+        type: "provider",
+        environmentProviderId: "personal-workspace",
+        machine: { type: "existing", hostId: "host-scheduled-personal" },
+        inputs: null,
+      },
+    },
+    {
+      name: "the personal workspace sugar",
+      requestedEnvironment: {
+        type: "host" as const,
+        workspace: { type: "personal" as const },
+      },
+      expected: { type: "host", workspace: { type: "personal" } },
+    },
+  ])(
+    "gives a personal child of a scheduled parent a fresh workspace from $name",
+    async ({ requestedEnvironment, expected }) => {
+      await withTestHarness(async (harness) => {
+        installFakePersonalWorkspaceProvider();
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-scheduled-personal",
+        });
+        seedPrimaryHost(harness.deps, host.id);
+
+        await expect(
+          resolveCreateThreadEnvironment(harness.deps, {
+            parentThread: makeParentThread({
+              environmentId: null,
+              projectId: PERSONAL_PROJECT_ID,
+            }),
+            projectId: PERSONAL_PROJECT_ID,
+            requestedEnvironment,
+          }),
+        ).resolves.toEqual(expected);
+      });
+    },
+  );
+
   it("does not reuse a personal parent environment from another project", async () => {
     const requestedEnvironment = {
       type: "host",

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { ThreadPromptParentThreadSection } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { useThread } from "@/hooks/queries/thread-queries";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 export function useParentThreadSection(
@@ -25,7 +25,7 @@ export function useParentThreadSection(
     const relationship = threadOriginKind === "fork" ? "fork" : "parent";
     const relatedThread =
       relationship === "parent" ? parentThread : sourceThread;
-    const href = getThreadRoutePath({
+    const href = getThreadLocationPath({
       projectId: relatedThread?.projectId ?? thread.projectId,
       threadId: relatedThreadId,
     });
