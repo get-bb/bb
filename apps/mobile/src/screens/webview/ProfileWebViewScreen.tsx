@@ -367,10 +367,19 @@ export function ProfileWebViewScreen() {
         hideKeyboardAccessoryView
         allowsBackForwardNavigationGestures={false}
         bounces={false}
+        setBuiltInZoomControls={false}
         pullToRefreshEnabled={false}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
         webviewDebuggingEnabled={__DEV__}
+        injectedJavaScript={
+          Platform.OS === "ios"
+            ? `(function () {
+                const viewport = document.querySelector('meta[name="viewport"]');
+                if (viewport) viewport.content += ", maximum-scale=1, user-scalable=no";
+              })(); true;`
+            : undefined
+        }
         injectedJavaScriptBeforeContentLoaded={buildBridgeInjectionScript(
           handshake,
           servers,
