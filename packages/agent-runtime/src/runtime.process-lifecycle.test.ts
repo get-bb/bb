@@ -221,6 +221,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     await expect(
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222224w",
         threadId: "t1",
         input: [promptTextInput({ text: "hi" })],
@@ -847,12 +848,14 @@ describe("createAgentRuntime process lifecycle", () => {
     );
     await Promise.all([
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222225a",
         threadId: "t1",
         input: [promptTextInput({ text: "first" })],
         options: fullRuntimeOptions,
       }),
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222225b",
         threadId: "t2",
         input: [promptTextInput({ text: "second" })],
@@ -892,6 +895,7 @@ describe("createAgentRuntime process lifecycle", () => {
     expect(runtime.hasThread("t1")).toBe(false);
     expect(runtime.listRunningProviders()).toEqual(["codex"]);
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222252",
       threadId: "t2",
       input: [promptTextInput({ text: "still alive" })],
@@ -1041,6 +1045,7 @@ describe("createAgentRuntime process lifecycle", () => {
         throw new Error("Expected a codex session");
       }
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_2222222257",
         threadId: "t1",
         input: [promptTextInput({ text: "prestart_fail:401_Unauthorized" })],
@@ -1096,6 +1101,7 @@ describe("createAgentRuntime process lifecycle", () => {
         throw new Error("Expected a codex session");
       }
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_2222222258",
         threadId: "t1",
         input: [promptTextInput({ text: "before reap" })],
@@ -1148,6 +1154,7 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_2222222259",
         threadId: "t1",
         input: [promptTextInput({ text: "after reap" })],
@@ -1189,6 +1196,7 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222226a",
         threadId: "t1",
         input: [promptTextInput({ text: "hold_turn" })],
@@ -1549,6 +1557,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     await expect(
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222226b",
         threadId: "t1",
         input: [promptTextInput({ text: "after crash" })],
@@ -1577,6 +1586,7 @@ describe("createAgentRuntime process lifecycle", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222262",
       threadId: "t1",
       input: [promptTextInput({ text: "never starts" })],
@@ -1626,6 +1636,7 @@ describe("createAgentRuntime process lifecycle", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_bgtaskdea2",
       threadId: "t1",
       input: [promptTextInput({ text: "bg_task" })],
@@ -1714,6 +1725,7 @@ describe("createAgentRuntime process lifecycle", () => {
   it("does not settle a background task its provider already settled", async () => {
     const { events, runtime } = await startIdleThreadWithOpenBackgroundTask();
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_bgtaskdeb3",
       threadId: "t1",
       input: [promptTextInput({ text: "bg_task_done" })],

@@ -143,6 +143,127 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
   ]);
 }, 30_000);
 
+it("forks the session from its rollout when a writable folder is removed, and adds folders in place", async () => {
+  const storageOnly = {
+    ...autoAskSessionOptions,
+    providerOptions: { additionalWorkspaceWriteRoots: ["/data/storage"] },
+  };
+  const withFolder = {
+    ...autoAskSessionOptions,
+    providerOptions: {
+      additionalWorkspaceWriteRoots: ["/work/api", "/data/storage"],
+    },
+  };
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: storageOnly,
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  const replacementsAfterTurn: number[] = [];
+  for (const [index, options] of [
+    withFolder,
+    withFolder,
+    storageOnly,
+    storageOnly,
+  ].entries()) {
+    const id = index + 2;
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: `creq_rtswapxxx${id}`,
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options,
+    });
+    expect((await harness.waitForResponse(id)).error).toBeUndefined();
+    replacementsAfterTurn.push(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ).length,
+    );
+  }
+
+  expect(replacementsAfterTurn).toEqual([0, 0, 1, 1]);
+  const requests = recordedRequests();
+  expect(
+    requests.filter((request) => request.method === "thread/resume"),
+  ).toEqual([]);
+  const forks = requests.filter((request) => request.method === "thread/fork");
+  expect(forks).toHaveLength(1);
+  expect(
+    z
+      .object({ config: z.record(z.string(), z.unknown()) })
+      .parse(forks[0]?.params).config["sandbox_workspace_write.writable_roots"],
+  ).not.toContain("/work/api");
+  expect(
+    requests.filter((request) => request.method === "turn/start").at(1)?.params,
+  ).toMatchObject({
+    sandboxPolicy: { writableRoots: expect.arrayContaining(["/work/api"]) },
+  });
+}, 30_000);
+
+it.each([
+  {
+    name: "forks before the first turn when Codex restores a folder bb no longer grants",
+    restoredRoots: ["/work/api", "/data/storage"],
+    forkedRoots: [["/data/storage"]],
+  },
+  {
+    name: "keeps the resumed session when Codex restores only granted folders",
+    restoredRoots: ["/data/storage"],
+    forkedRoots: [],
+  },
+])("$name", async ({ restoredRoots, forkedRoots }) => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumedSandbox: { type: "workspaceWrite", writableRoots: restoredRoots },
+    }),
+  );
+  const storageOnly = {
+    ...autoAskSessionOptions,
+    providerOptions: { additionalWorkspaceWriteRoots: ["/data/storage"] },
+  };
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    clientRequestId: "creq_rstrdrts22",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+
+  const forks = recordedRequests().filter(
+    (request) => request.method === "thread/fork",
+  );
+  expect(
+    forks.map(
+      (fork) =>
+        z
+          .object({
+            excludeTurns: z.literal(true),
+            config: z.record(z.string(), z.unknown()),
+          })
+          .parse(fork.params).config["sandbox_workspace_write.writable_roots"],
+    ),
+  ).toEqual(forkedRoots);
+}, 30_000);
+
 it("keeps an auto-reviewed session when only escalation intent changes", async () => {
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,

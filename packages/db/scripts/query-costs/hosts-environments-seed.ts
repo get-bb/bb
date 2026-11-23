@@ -23,6 +23,7 @@ import {
   createProjectSource,
   getProjectSourceByHost,
 } from "../../src/data/project-sources.js";
+import { createProjectSourceFolder } from "../../src/data/project-source-folders.js";
 import {
   createProject,
   ensurePersonalProject,
@@ -71,6 +72,7 @@ export interface HostsEnvironmentsSeed {
   busyDefaultSourceId: string;
   busyExtraSourceId: string;
   busySourcePath: string;
+  busyFolderId: string;
   readyEnvironmentId: string;
   readyEnvironmentPath: string;
   readyEnvironmentSetupOperationId: string;
@@ -904,6 +906,14 @@ export function seedHostsEnvironments(
       if (busyDefaultSource === null || !busyDefaultSource.isDefault) {
         throw new Error("Expected a default source for the busy project");
       }
+      const busyFolderIds = ["api", "docs", "fixtures"].map(
+        (name) =>
+          createProjectSourceFolder(db, noopNotifier, {
+            projectId: fixture.projectId,
+            projectSourceId: busyDefaultSource.id,
+            path: `/Users/dev/code/${name}`,
+          }).id,
+      );
       return {
         busyHostId: hosts.busyHostId,
         machineHostId: hosts.machineHostId,
@@ -924,6 +934,7 @@ export function seedHostsEnvironments(
         busyDefaultSourceId: busyDefaultSource.id,
         busyExtraSourceId: projects.busyExtraSourceId,
         busySourcePath: busyDefaultSource.path,
+        busyFolderId: pick(busyFolderIds, 0),
         readyEnvironmentId: environments.readyEnvironmentId,
         readyEnvironmentPath: environments.readyEnvironmentPath,
         readyEnvironmentSetupOperationId:

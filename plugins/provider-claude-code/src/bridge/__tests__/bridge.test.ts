@@ -1021,7 +1021,7 @@ describe("bridge", () => {
       expect(reports[1].getContextUsage).toHaveBeenCalledOnce();
       const reportOptions = contextQueryMock.mock.calls[1][0].options;
       expect(reportOptions).toMatchObject({
-        resume: threadId,
+        resume: expect.any(String),
         forkSession: true,
         persistSession: false,
         settings: { disableAllHooks: true },
@@ -4245,6 +4245,65 @@ describe("bridge", () => {
     }
   });
 
+  it("rebuilds the session before the next turn when a writable folder is removed", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const rootsDir = mkdtempSync(join(tmpdir(), "bb-claude-roots-"));
+    const extraFolder = join(rootsDir, "api");
+    const threadStorage = join(rootsDir, "storage");
+    mkdirSync(extraFolder);
+    mkdirSync(threadStorage);
+    const threadId = "thread-folder-removed";
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions({
+          providerOptions: {
+            additionalWorkspaceWriteRoots: [extraFolder, threadStorage],
+          },
+        }),
+      });
+      await bridge.waitForResponse(1);
+      expect(queries).toHaveLength(1);
+
+      bridge.sendRequest(10, "turn/start", {
+        ...canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "Continue without the api folder" }],
+        }),
+        options: canonicalOptions({
+          providerOptions: { additionalWorkspaceWriteRoots: [threadStorage] },
+        }),
+      });
+      await bridge.flushWork();
+
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: expect.any(String),
+        additionalDirectories: [threadStorage],
+        sandbox: expect.objectContaining({
+          filesystem: { allowWrite: [threadStorage] },
+        }),
+      });
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(10);
+
+      await stopBridgeThread({ bridge, queries: queries.slice(-1), threadId });
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+      rmSync(rootsDir, { recursive: true, force: true });
+    }
+  });
+
   it("returns an existing live same-provider thread/resume session", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -4718,7 +4777,10 @@ describe("bridge", () => {
             providerOptions: {
               workflowsEnabled: false,
               sandboxEnabled: true,
-              additionalWorkspaceWriteRoots: [otherWorktreeRoot],
+              additionalWorkspaceWriteRoots: [
+                sharedWorktreeRoot,
+                otherWorktreeRoot,
+              ],
             },
           },
         });

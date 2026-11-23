@@ -1,3 +1,7 @@
+import {
+  MAX_WORKSPACE_FOLDERS,
+  validateWorkspaceFolderPaths,
+} from "../projects/workspace-folder-paths.js";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
@@ -207,6 +211,7 @@ const createResultSchema = z.discriminatedUnion("status", [
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
     mergeBaseBranch: z.string().min(1).nullable().optional(),
+    additionalPaths: z.array(z.string()).max(MAX_WORKSPACE_FOLDERS).optional(),
     resource: resourceSchema.optional(),
   }),
   z.object({
@@ -738,6 +743,7 @@ async function runCreate(
             path: provisioning.path,
             ownsPath: true,
             mergeBaseBranch: provisioning.mergeBaseBranch ?? undefined,
+            additionalPaths: provisioning.additionalPaths,
             resource: provisioning.resource ?? undefined,
           }
         : previous?.status === "destroyed"
@@ -819,7 +825,20 @@ async function runCreate(
           throw error;
         }
       }
-      result = { ...result, path: producedPath };
+      const producedAdditionalPaths =
+        result.additionalPaths === undefined
+          ? undefined
+          : validateWorkspaceFolderPaths({
+              mainPath: producedPath,
+              paths: result.additionalPaths,
+            });
+      result = {
+        ...result,
+        path: producedPath,
+        ...(producedAdditionalPaths === undefined
+          ? {}
+          : { additionalPaths: producedAdditionalPaths }),
+      };
       const produced = result;
       signal.throwIfAborted();
       changed = mutateProvisioning(
@@ -835,6 +854,7 @@ async function runCreate(
           }
           if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
             row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
+            row.additionalPaths = produced.additionalPaths ?? [];
             row.resource = produced.resource ?? null;
           } else {
             if (handedOff) {
@@ -843,6 +863,8 @@ async function runCreate(
             }
             if (produced.mergeBaseBranch !== undefined)
               row.mergeBaseBranch = produced.mergeBaseBranch;
+            if (produced.additionalPaths !== undefined)
+              row.additionalPaths = produced.additionalPaths;
           }
           if (row.status === "creating") row.status = "provisioning";
           if (row.ownerThreadId === null) row.claimPath = null;

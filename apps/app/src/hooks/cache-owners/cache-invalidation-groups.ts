@@ -3,6 +3,7 @@ import { getCachedProjectThreadListInvalidationQueryKeys } from "./query-cache";
 import {
   allProjectPathsQueryKeyPrefix,
   allProjectSourceBranchesQueryKeyPrefix,
+  allProjectSourceFoldersQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
@@ -14,6 +15,7 @@ import {
   projectPromptHistoryQueryKey,
   projectPromptHistoryQueryKeyPrefix,
   projectSourceBranchesQueryKeyPrefix,
+  projectSourceFoldersQueryKeyPrefix,
   projectsQueryKey,
   sidebarNavigationQueryKey,
   threadQueuedMessagesQueryKey,
@@ -69,12 +71,14 @@ export function getProjectSourceDependentInvalidationQueryKeys({
       ...sharedKeys,
       allProjectPathsQueryKeyPrefix(),
       allProjectSourceBranchesQueryKeyPrefix(),
+      allProjectSourceFoldersQueryKeyPrefix(),
     ];
   }
   return [
     ...sharedKeys,
     projectPathsQueryKeyPrefix(projectId),
     projectSourceBranchesQueryKeyPrefix(projectId),
+    projectSourceFoldersQueryKeyPrefix(projectId),
   ];
 }
 

@@ -1,9 +1,13 @@
 export interface WorkspaceFolderStatus {
+  exists: boolean;
   isGitRepo: boolean;
   path: string;
 }
 
-function describeRepository(folder: WorkspaceFolderStatus): string {
+function describeFolder(folder: WorkspaceFolderStatus): string {
+  if (!folder.exists) {
+    return "missing on this machine, so you cannot use it this session";
+  }
   return folder.isGitRepo ? "git repository" : "not a git repository";
 }
 
@@ -16,11 +20,11 @@ export function renderWorkspaceFolderInstructions(
   }
   return [
     "You are working across these folders:",
-    `- Main folder (your working directory): ${mainFolder.path} (${describeRepository(mainFolder)})`,
+    `- Main folder (your working directory): ${mainFolder.path} (${describeFolder(mainFolder)})`,
     ...additionalFolders.map(
       (folder) =>
-        `- Additional folder: ${folder.path} (${describeRepository(folder)})`,
+        `- Additional folder: ${folder.path} (${describeFolder(folder)})`,
     ),
-    "You can read and write files in every folder listed here. Run git commands from inside the repository you mean to change.",
+    "You can read and write files in every folder listed here that is not missing. Run git commands from inside the repository you mean to change.",
   ].join("\n");
 }

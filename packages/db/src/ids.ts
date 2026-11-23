@@ -22,6 +22,10 @@ export function createProjectSourceId(): string {
   return createId("src");
 }
 
+export function createProjectSourceFolderId(): string {
+  return createId("psf");
+}
+
 export function createEnvironmentId(): string {
   return createId("env");
 }

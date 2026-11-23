@@ -45,6 +45,7 @@ function makeEnvironment(overrides?: Partial<Environment>): Environment {
     projectId: "proj_test",
     hostId: "host_test",
     path: "/workspace",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: false,
     baseBranch: null,

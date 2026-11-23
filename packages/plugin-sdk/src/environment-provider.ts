@@ -147,6 +147,14 @@ export type PluginEnvironmentProviderCreateResult =
       ownsPath: boolean;
       /** Ref the workspace's changes are compared against. Null clears the value recorded on a reused environment; omit to keep it. */
       mergeBaseBranch?: string | null;
+      /**
+       * Experimental: absolute paths of this environment's own extra folders,
+       * such as sibling checkouts it created next to `path`. Threads in the
+       * environment can read and write them. Core records them with the
+       * environment; omit on a reused environment to keep the recorded list.
+       * See docs/api_to_audit.md.
+       */
+      additionalPaths?: string[];
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };

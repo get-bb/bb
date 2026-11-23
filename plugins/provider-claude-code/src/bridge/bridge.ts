@@ -571,6 +571,12 @@ async function applyPermissionSettings(
   ) {
     return false;
   }
+  const writeRootRemoved =
+    construction.permissionScope === "workspace" &&
+    params.permissionScope === "workspace" &&
+    (construction.additionalWorkspaceWriteRoots ?? []).some(
+      (root) => !writeRoots.includes(root),
+    );
   const permissionMode =
     attachment.permissionMode === "plan" ? "plan" : params.permissionMode;
   const nextConstruction = {
@@ -635,6 +641,11 @@ async function applyPermissionSettings(
   if (resident && needsRestart) {
     resident.restartBeforeNextTurn = {
       reason: "Claude Code permissions changed",
+      showRuntimeNote: false,
+    };
+  } else if (resident && writeRootRemoved) {
+    resident.restartBeforeNextTurn = {
+      reason: "Claude Code writable folders changed",
       showRuntimeNote: false,
     };
   }

@@ -18,10 +18,12 @@ import {
   getProjectExecutionDefaults,
   getPublicProjectByLocalPathSource,
   deleteProjectSource,
+  deleteProjectSourceFolder,
   getProjectSourceByHost,
   getProjectSourceForProject,
   listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
+  listProjectSourceFolders,
   listProjectSourcesByProjectIds,
   listThreadSections,
   listThreadsWithPendingInteractionStateForProjects,
@@ -66,6 +68,10 @@ import {
   registerProjectSourceOnHost,
   projectSourceHostConflict,
 } from "../services/projects/project-source-setup.js";
+import {
+  addProjectSourceFolder,
+  updateProjectSourceFolder,
+} from "../services/projects/project-source-folders.js";
 import {
   deleteProjectSkill,
   listProjectSkillFiles,
@@ -667,6 +673,77 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
     if (!deleted) {
       throw new ApiError(404, "invalid_request", "Project source not found");
+    }
+    return context.json(operationComplete());
+  });
+
+  get(routes.listSourceFolders, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    return context.json(listProjectSourceFolders(deps.db, source.id));
+  });
+
+  post(routes.addSourceFolder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await addProjectSourceFolder(deps, { path: payload.path, source }),
+      201,
+    );
+  });
+
+  patch(routes.updateSourceFolder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await updateProjectSourceFolder(deps, {
+        folderId: context.req.param("folderId"),
+        path: payload.path,
+        source,
+      }),
+    );
+  });
+
+  del(routes.removeSourceFolder, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    const deleted = deleteProjectSourceFolder(deps.db, deps.hub, {
+      projectId,
+      projectSourceId: source.id,
+      folderId: context.req.param("folderId"),
+    });
+    if (!deleted) {
+      throw new ApiError(
+        404,
+        "invalid_request",
+        "Project source folder not found",
+      );
     }
     return context.json(operationComplete());
   });

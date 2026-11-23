@@ -96,6 +96,7 @@ for (const providerId of providers) {
 
         await Promise.all([
           ctx.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             threadId: firstCapture.threadId,
             clientRequestId: "creq_23456789ab",
             options,
@@ -108,6 +109,7 @@ for (const providerId of providers) {
             ],
           }),
           ctx.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             threadId: secondCapture.threadId,
             clientRequestId: "creq_23456789ab",
             options,
@@ -216,6 +218,7 @@ it("codex provider applies rotated and removed contributions on the next turn", 
     for (const [index, value] of ["original", "rotated", ""].entries()) {
       const fileName = `rotation-${randomUUID()}.txt`;
       await ctx.runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId,
         clientRequestId: `creq_23456789a${index + 2}`,
         options,

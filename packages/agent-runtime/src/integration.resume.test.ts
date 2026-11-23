@@ -46,6 +46,7 @@ for (const providerId of providers) {
         providerThreadId = startResult.providerThreadId;
 
         await ctx1.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_2222222222",
           threadId: firstThreadId,
           input: [
@@ -82,6 +83,7 @@ for (const providerId of providers) {
           });
 
           await ctx2.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_2222222223",
             threadId,
             input: [
@@ -178,6 +180,7 @@ describe.concurrent("codex resume scenarios", () => {
         providerThreadId = startResult.providerThreadId;
 
         await ctx1.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_2222222228",
           threadId: firstThreadId,
           input: [
@@ -244,6 +247,7 @@ describe.concurrent("codex resume scenarios", () => {
         });
 
         await ctx2.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_2222222229",
           threadId,
           input: [

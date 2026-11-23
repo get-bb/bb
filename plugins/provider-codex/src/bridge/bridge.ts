@@ -465,6 +465,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
+  grantedWriteRoots: string[];
   environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
@@ -1147,6 +1148,10 @@ async function initializeChild(
 const codexThreadIdentityResultSchema = z
   .object({
     modelProvider: z.string().optional(),
+    sandbox: z
+      .object({ writableRoots: z.array(z.string()).optional() })
+      .passthrough()
+      .nullish(),
     thread: z
       .object({
         id: z.string().min(1),
@@ -1372,6 +1377,7 @@ async function constructThreadSession(
       decoded.sessionOptions,
       envHash,
     ),
+    grantedWriteRoots: decoded.additionalWorkspaceWriteRoots,
     environmentHash: envHash,
     turnPermissionSettings: toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
@@ -1504,6 +1510,7 @@ async function constructThreadSession(
         method = "thread/fork";
         const forkParams: BbThreadForkParams = {
           threadId: args.request.sourceProviderThreadId,
+          excludeTurns: true,
           ...(args.request.sourceProviderCheckpointId !== undefined
             ? {
                 lastTurnId: stripLegacyBridgeIdPrefix(
@@ -1560,11 +1567,24 @@ async function constructThreadSession(
       providerThreadId: codexThreadId,
       threadId: args.threadId,
     });
+    const gitWritableRoots = translator.getThreadGitWritableRoots(
+      args.threadId,
+    );
     session.turnPermissionSettings = toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: translator.getThreadGitWritableRoots(args.threadId),
+      gitWritableRoots,
       options: decoded.sessionOptions,
     });
+    session.grantedWriteRoots = [
+      ...new Set([
+        ...decoded.additionalWorkspaceWriteRoots,
+        ...(result.sandbox?.writableRoots ?? []).filter(
+          (root) =>
+            !gitWritableRoots.includes(root) &&
+            !decoded.additionalWorkspaceWriteRoots.includes(root),
+        ),
+      ]),
+    ];
     announceSessionIdentity(session, codexThreadId);
     session.daybreakEnabled = result.thread.daybreakEnabled ?? null;
     if (args.request.kind === "start" && decoded.daybreak !== null) {
@@ -1632,6 +1652,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
+    grantedWriteRoots: session.grantedWriteRoots,
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
@@ -1661,6 +1682,7 @@ async function rebuildThreadSession(
   session: CodexBridgeSession,
   options: BridgeExecutionOptions,
   reason: string,
+  restore: "resume" | "fork",
 ): Promise<CodexBridgeSession> {
   const codexThreadId = session.codexThreadId;
   if (codexThreadId === null) {
@@ -1678,7 +1700,10 @@ async function rebuildThreadSession(
       ...(session.construction.dynamicTools !== undefined
         ? { dynamicTools: session.construction.dynamicTools }
         : {}),
-      request: { kind: "resume", providerThreadId: codexThreadId },
+      request:
+        restore === "fork"
+          ? { kind: "fork", sourceProviderThreadId: codexThreadId }
+          : { kind: "resume", providerThreadId: codexThreadId },
     });
   } catch (error) {
     if (!(error instanceof CodexSessionReleasedError)) {
@@ -1851,28 +1876,48 @@ async function requireLiveSessionForTurn(
       ? session.environmentHash
       : environmentHash(turnEnvVars),
   );
-  if (session.connection === null || session.connection.exited) {
+  const revokesWriteRoot = (candidate: CodexBridgeSession): boolean =>
+    candidate.grantedWriteRoots.some(
+      (root) => !decoded.additionalWorkspaceWriteRoots.includes(root),
+    );
+  const forkWithoutRevokedRoots = (
+    candidate: CodexBridgeSession,
+  ): Promise<CodexBridgeSession> =>
+    rebuildThreadSession(
+      candidate,
+      params.options,
+      "A writable folder was removed; the codex session was forked from its rollout to drop its access.",
+      "fork",
+    );
+  const resumeReason =
+    session.connection === null || session.connection.exited
+      ? "codex app-server exited; the session was restored from its rollout."
+      : (session.rebuildBeforeNextTurnReason ??
+        (signature !== session.constructionSignature
+          ? "Execution settings changed; the codex session was rebuilt to apply them."
+          : null));
+  if (revokesWriteRoot(session)) {
+    session = await forkWithoutRevokedRoots(session);
+  } else if (resumeReason !== null) {
     session = await rebuildThreadSession(
       session,
       params.options,
-      "codex app-server exited; the session was restored from its rollout.",
+      resumeReason,
+      "resume",
     );
-  } else if (session.rebuildBeforeNextTurnReason !== null) {
-    session = await rebuildThreadSession(
-      session,
-      params.options,
-      session.rebuildBeforeNextTurnReason,
-    );
-  } else if (signature !== session.constructionSignature) {
-    session = await rebuildThreadSession(
-      session,
-      params.options,
-      "Execution settings changed; the codex session was rebuilt to apply them.",
-    );
+    if (revokesWriteRoot(session)) {
+      session = await forkWithoutRevokedRoots(session);
+    }
   }
   if (session.connection === null) {
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
+  session.grantedWriteRoots = [
+    ...new Set([
+      ...session.grantedWriteRoots,
+      ...decoded.additionalWorkspaceWriteRoots,
+    ]),
+  ];
   return { session, connection: session.connection };
 }
 

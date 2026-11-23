@@ -582,6 +582,9 @@ async function handleRequest(message) {
       }
       respond(id, {
         modelProvider: script?.resumedModelProvider,
+        ...(script?.resumedSandbox === undefined
+          ? {}
+          : { sandbox: script.resumedSandbox }),
         thread: {
           id: params.threadId,
           ...(script?.resumedDaybreakEnabled === undefined

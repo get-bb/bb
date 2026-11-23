@@ -7,6 +7,8 @@ import type {
   CopyProjectAttachmentsRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  CreateProjectSourceFolderRequest,
+  UpdateProjectSourceFolderRequest,
   ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
@@ -26,7 +28,11 @@ import type {
   WorkspaceFileListResponse,
 } from "@bb/server-contract";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
-import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
+import type {
+  ProjectExecutionDefaults,
+  ProjectSource,
+  ProjectSourceFolder,
+} from "@bb/domain";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface ProjectListArgs {
@@ -155,6 +161,29 @@ export interface ProjectSourceDeleteArgs {
   sourceId: string;
 }
 
+export interface ProjectSourceFolderListArgs {
+  projectId: string;
+  sourceId: string;
+  signal?: AbortSignal;
+}
+
+export interface ProjectSourceFolderAddArgs extends CreateProjectSourceFolderRequest {
+  projectId: string;
+  sourceId: string;
+}
+
+export interface ProjectSourceFolderUpdateArgs extends UpdateProjectSourceFolderRequest {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export interface ProjectSourceFolderRemoveArgs {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
 export type ProjectBranchesResult = ProjectBranchesResponse;
 export interface ProjectAttachmentReadResult {
   bytes: Uint8Array;
@@ -186,8 +215,16 @@ export type ProjectSourceDeleteResult = OperationResponse;
 export type ProjectSourceUpdateResult = ProjectSource;
 export type ProjectUpdateResult = ProjectResponse;
 
+export interface ProjectSourceFoldersArea {
+  add(args: ProjectSourceFolderAddArgs): Promise<ProjectSourceFolder>;
+  list(args: ProjectSourceFolderListArgs): Promise<ProjectSourceFolder[]>;
+  remove(args: ProjectSourceFolderRemoveArgs): Promise<OperationResponse>;
+  update(args: ProjectSourceFolderUpdateArgs): Promise<ProjectSourceFolder>;
+}
+
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
+  experimental_folders: ProjectSourceFoldersArea;
   delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
   update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
@@ -420,7 +457,53 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       return uploadedPromptAttachmentSchema.parse(await response.json());
     },
   };
+  const folders: ProjectSourceFoldersArea = {
+    async add(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders.$post({
+          param: { id: input.projectId, sourceId: input.sourceId },
+          json: { path: input.path },
+        }),
+      );
+    },
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders.$get(
+          { param: { id: input.projectId, sourceId: input.sourceId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async update(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders[
+          ":folderId"
+        ].$patch({
+          param: {
+            id: input.projectId,
+            sourceId: input.sourceId,
+            folderId: input.folderId,
+          },
+          json: { path: input.path },
+        }),
+      );
+    },
+    async remove(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders[
+          ":folderId"
+        ].$delete({
+          param: {
+            id: input.projectId,
+            sourceId: input.sourceId,
+            folderId: input.folderId,
+          },
+        }),
+      );
+    },
+  };
   const sources: ProjectSourcesArea = {
+    experimental_folders: folders,
     async add(input) {
       return transport.readJson(
         transport.api.v1.projects[":id"].sources.$post({

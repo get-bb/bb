@@ -1146,6 +1146,31 @@ resource (a provider that named a branch before failing must clean it up
 itself), and whether core should record the branch a provider owns; today
 the Worktree keeps it in its private resource and core has no reader.
 
+## Environment folders (`PluginEnvironmentProviderCreateResult.additionalPaths`, `Environment.additionalPaths`)
+
+A `created` result from `create` or `restore` may carry `additionalPaths`:
+absolute host paths of the environment's own extra folders, such as sibling
+checkouts the provider made next to `path`. Core canonicalizes them and fails
+the create when one is relative, equals `path`, is inside `path`, contains
+`path`, or repeats another entry (at most 64). They are stored on
+`environments.additional_paths` and returned as `Environment.additionalPaths`
+(`[]` when the provider sends none). Omitting the field on a reused
+environment keeps the recorded list. At every session start, turn and steer
+the server merges them after the project's folders for the thread's machine
+(`bb project folder`), drops duplicates and the main folder, and sends the
+list to the daemon, which grants the agent write access for that turn; the
+agent's instructions list the folders as of its session start. The field is a member of a result type, so it carries no
+nested `experimental_` prefix.
+
+Core path: `environment-engine.ts` records the field for every provider,
+including the built-in Worktree and Project checkout, which return none
+today; `thread-runtime-config.ts` is the only reader.
+
+Before stabilizing, decide whether a provider needs to change the list after
+create (today only a restore replaces it), whether removal should be told
+about the folders, and whether the Worktree should report worktrees it makes
+of a project's folders.
+
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
 The slot registers `{ environmentProviderId, component }`, the control the
@@ -5190,6 +5215,29 @@ or `"machine"` only together with a consumer.
 Stabilize after validating first-install discovery, shared-plugin enablement,
 dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
 with third-party providers.
+
+## Project folders (`sdk.projects.sources.experimental_folders`, also on `PluginBbSdk`)
+
+`list({ projectId, sourceId })` returns the extra folders of one project
+checkout (`ProjectSourceFolder`: `id`, `projectSourceId`, `path`,
+`createdAt`) in order. `add({ projectId, sourceId, path })` checks that the
+path is absolute, exists on the checkout's machine, is not the checkout,
+inside it or containing it, and is not already listed (409
+`project_source_folder_conflict`; at most 64), then appends it.
+`update({ projectId, sourceId, folderId, path })` repoints a folder in place
+with the same rules. `remove({ projectId, sourceId, folderId })` deletes it.
+Every thread of the project on that machine can read and write the folders
+from its next turn. Routes: `GET|POST /projects/:id/sources/:sourceId/folders`,
+`PATCH|DELETE …/folders/:folderId`.
+
+Core callers: the project settings Folders section
+(`project-source-folders-query.ts`, `project-mutations.ts`) and
+`bb project folder list|add|update|remove`.
+
+Before stabilizing, decide whether folders belong on the checkout (per
+machine) or on the project with per-machine paths, whether environment
+providers should read them (for example to make a worktree of each), and
+whether `list` should report which folders are missing on the machine.
 
 ## Global prompt history (`bb.sdk.experimental_promptHistory`)
 

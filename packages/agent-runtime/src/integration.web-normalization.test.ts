@@ -116,6 +116,7 @@ describe("web normalization integration", () => {
       });
 
       await ctx.runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId,
         clientRequestId: "creq_23456789ab",
         input: [promptTextInput({ text: buildCodexSearchPrompt() })],
@@ -135,6 +136,7 @@ describe("web normalization integration", () => {
         !webSearchEvents.some((event) => matchesExpectedWebQuery(event.item))
       ) {
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ac",
           input: [promptTextInput({ text: buildCodexSearchRetryPrompt() })],
@@ -188,6 +190,7 @@ describe("web normalization integration", () => {
       });
 
       await ctx.runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId,
         clientRequestId: "creq_23456789ab",
         input: [promptTextInput({ text: buildCodexOpenPagePrompt() })],
@@ -251,6 +254,7 @@ describe("web normalization integration", () => {
       });
 
       await ctx.runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId,
         clientRequestId: "creq_23456789ab",
         input: [promptTextInput({ text: buildClaudeWebPrompt() })],

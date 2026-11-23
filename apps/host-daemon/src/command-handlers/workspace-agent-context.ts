@@ -202,10 +202,10 @@ async function inspectWorkspaceFolder(
   }
   try {
     const folder = await provisionWorkspace({ path: folderPath });
-    return { path: folderPath, isGitRepo: folder.isGitRepo };
+    return { path: folderPath, exists: true, isGitRepo: folder.isGitRepo };
   } catch (error) {
     if (error instanceof WorkspaceError && error.code === "path_not_found") {
-      return { path: folderPath, isGitRepo: false };
+      return { path: folderPath, exists: false, isGitRepo: false };
     }
     throw error;
   }

@@ -46,6 +46,11 @@ This index lists every command path that the core CLI registers, including alias
 - `bb project source add`
 - `bb project source update`
 - `bb project source delete`
+- `bb project folder`
+- `bb project folder list`
+- `bb project folder add`
+- `bb project folder update`
+- `bb project folder remove`
 - `bb project attachment`
 - `bb project attachment upload`
 - `bb project attachment download`
