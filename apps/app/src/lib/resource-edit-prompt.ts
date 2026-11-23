@@ -1,4 +1,5 @@
 import type { ComposerInsertPart, ComposerMention } from "@get-bb/plugin-sdk";
+import { pathMentionResource } from "@bb/client-core";
 
 function quoteResourceName(name: string): string {
   return JSON.stringify(name);
@@ -8,15 +9,10 @@ function pathMention(
   path: string,
   entryKind: "file" | "directory",
 ): ComposerMention {
-  const normalizedPath = path.replace(/\/+$/u, "") || path;
   return {
     from: 0,
     to: 0,
-    kind: "path",
-    source: "workspace",
-    entryKind,
-    path: normalizedPath,
-    label: normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1) || path,
+    ...pathMentionResource({ path, source: "workspace", entryKind }),
   };
 }
 

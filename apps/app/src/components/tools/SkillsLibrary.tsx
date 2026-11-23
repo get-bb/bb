@@ -12,7 +12,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildSkillEditThreadPrompt } from "@/lib/resource-edit-prompt";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
 import { ResourceListState } from "@bb/shared-ui/resource-list";

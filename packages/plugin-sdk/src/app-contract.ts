@@ -4811,8 +4811,9 @@ export interface PluginComposerApi {
    * Insert text and mentions. See {@link ComposerInsertOptions} for placement.
    * Mentions read from `draft` are recreated exactly; the calling plugin's
    * own `{ provider, id, label }` resolves through its mention provider.
-   * Throws for another plugin's mention without `kind`, and for
-   * `at: "cursor"` when the composer is not on screen.
+   * Throws for another plugin's mention without `kind`, for an empty provider
+   * id, one containing `:`, or an empty item id, and for `at: "cursor"` when
+   * the composer is not on screen.
    */
   insert(
     parts: ComposerInsertPart | readonly ComposerInsertPart[],
@@ -5347,7 +5348,9 @@ export interface NewThreadComposerProps {
    * exactly as `useComposer().insert()` would: string parts stay plain text,
    * mentions with a `kind` are recreated as given, and this plugin's own
    * `{ provider, id, label }` resolves through its mention provider at send
-   * time. Throws for an invalid provider id.
+   * time. Parts that `insert()` would reject (an empty provider id, one
+   * containing `:`, or an empty item id) leave the draft empty and log a
+   * console warning instead of throwing.
    */
   initialPrompt?: string | readonly ComposerInsertPart[];
   placeholder?: string;
@@ -5666,7 +5669,7 @@ export interface BbNavigate {
    * `initialPrompt` to seed the composer draft when it is empty, as a string
    * (serialized thread, project, and section mention tokens become pills) or
    * as {@link ComposerInsertPart}s with the same meaning as
-   * `useComposer().insert()` (throws for an invalid provider id), and
+   * `useComposer().insert()` (throws for an invalid provider or item id), and
    * `focusPrompt` to focus the composer on arrival — the pairing behind
    * "Create via chat" style entry points that drop the user into chat with a
    * prefilled prompt. `projectId` makes that project the composer's

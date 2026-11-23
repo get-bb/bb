@@ -87,7 +87,7 @@ import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 import { PluginContext } from "./plugin-context";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
-import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
 
 function PanedRootComposeView() {
   return (
@@ -2393,6 +2393,38 @@ describe("PluginNewThreadComposer seeding", () => {
         ],
       },
     ]);
+  });
+
+  it("opens empty and warns instead of crashing the slot for a seed insert() would reject", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MemoryRouter>
+          <PluginContext.Provider value="obsidian">
+            <p>Plugin panel content</p>
+            <PluginNewThreadComposer
+              draftKey="invalid-structured-seed"
+              defaultProjectId="proj_1"
+              initialPrompt={[
+                "Ask about ",
+                { provider: "notes:daily", id: "x", label: "Daily" },
+              ]}
+              onSubmit={vi.fn()}
+            />
+          </PluginContext.Provider>
+        </MemoryRouter>,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
+      });
+      expect(screen.getByText("Plugin panel content")).toBeTruthy();
+      expect(promptBoxText()).toBe("");
+      expect(warn).toHaveBeenCalledWith(
+        '[plugin:obsidian] NewThreadComposer ignored its initialPrompt: Invalid mention provider id "notes:daily".',
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("ignores a repeated submit while the first submission is pending", async () => {

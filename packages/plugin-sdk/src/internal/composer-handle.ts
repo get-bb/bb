@@ -160,6 +160,9 @@ export function composerDraftFromInsertParts(
       if (provider === null) {
         throw new Error(`Invalid mention provider id "${part.provider}".`);
       }
+      if (part.id.length === 0) {
+        throw new Error(`Mention "${part.label}" has an empty id.`);
+      }
       mention = {
         from: 0,
         to: 0,

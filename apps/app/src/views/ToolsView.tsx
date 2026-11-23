@@ -40,7 +40,7 @@ import {
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
-import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";

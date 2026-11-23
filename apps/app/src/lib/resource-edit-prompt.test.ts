@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPluginEditThreadPrompt,
   buildSkillEditThreadPrompt,
-} from "@bb/shared-ui/resource-edit-prompt";
+} from "@/lib/resource-edit-prompt";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 
 describe("resource edit thread prompts", () => {

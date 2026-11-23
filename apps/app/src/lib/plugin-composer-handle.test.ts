@@ -235,6 +235,12 @@ describe("composer handle", () => {
     expect(() =>
       handle.insert({ provider: "bad:id", id: "x", label: "x" }, { at: "end" }),
     ).toThrow(/Invalid mention provider/);
+    expect(() =>
+      handle.insert(
+        { provider: "notes", id: "", label: "Note" },
+        { at: "end" },
+      ),
+    ).toThrow('Mention "Note" has an empty id.');
   });
 
   it("appends a cursor insert while the mounted editor is still initializing", () => {
