@@ -71,7 +71,12 @@ function Composer({
   focused: string[];
 }) {
   const host: PluginComposerHost = {
-    scope: { kind: "thread", threadId: composerKey },
+    scope: {
+      kind: "thread",
+      threadId: composerKey,
+      projectId: "proj_test",
+      environmentId: null,
+    },
     textEffectKey: composerKey,
     getCurrent: () => EMPTY_DRAFT,
     subscribeDraft: () => () => {},

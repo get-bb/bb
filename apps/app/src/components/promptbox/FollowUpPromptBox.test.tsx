@@ -428,14 +428,24 @@ describe("FollowUpPromptBox", () => {
         {...props}
         stack={<></>}
         pluginComposerHost={{
-          scope: { kind: "thread", threadId: "thr_test" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_test",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "thread:thr_test",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
           setDraft: vi.fn(),
           focus: vi.fn(),
         }}
-        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+        pluginComposerScope={{
+          kind: "thread",
+          threadId: "thr_test",
+          projectId: "proj_test",
+          environmentId: null,
+        }}
       />,
     );
     expect(screen.getByText("Expandable plugin banner")).toBeTruthy();
@@ -495,14 +505,24 @@ describe("FollowUpPromptBox", () => {
         {...props}
         stack={<div data-testid="queued-messages">Queued messages</div>}
         pluginComposerHost={{
-          scope: { kind: "thread", threadId: "thr_test" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_test",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "thread:thr_test",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
           setDraft: vi.fn(),
           focus: vi.fn(),
         }}
-        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+        pluginComposerScope={{
+          kind: "thread",
+          threadId: "thr_test",
+          projectId: "proj_test",
+          environmentId: null,
+        }}
       />,
     );
 
@@ -595,14 +615,24 @@ describe("FollowUpPromptBox", () => {
         composer={null}
         stack={<div data-testid="archived-notice">Thread is archived</div>}
         pluginComposerHost={{
-          scope: { kind: "thread", threadId: "thr_test" },
+          scope: {
+            kind: "thread",
+            threadId: "thr_test",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "thread:thr_test",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
           setDraft: vi.fn(),
           focus: vi.fn(),
         }}
-        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+        pluginComposerScope={{
+          kind: "thread",
+          threadId: "thr_test",
+          projectId: "proj_test",
+          environmentId: null,
+        }}
       />,
     );
 
@@ -723,6 +753,8 @@ describe("FollowUpPromptBox", () => {
         kind: "queued-message" as const,
         threadId: "thr_test",
         queuedMessageId: "queued_1",
+        projectId: "proj_test",
+        environmentId: null,
       };
       const props = createFollowUpPromptBoxProps({ kind: "ready" });
       render(

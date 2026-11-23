@@ -2471,6 +2471,11 @@ export interface RenderSlotOptions<
     text?: string;
     /** Mention pills already in `text`, with ranges into it. */
     mentions?: readonly ComposerMention[];
+    /**
+     * Omitted → a `thread` scope for `context.threadId` (project
+     * `context.projectId` or `project-test`, no environment), otherwise a
+     * `new-thread` scope for `context.projectId`.
+     */
     scope?: PluginComposerScope;
     attachmentCount?: number;
     attachments?: readonly ComposerAttachment[];
@@ -3263,7 +3268,12 @@ export function renderSlot<
   let composerScope: PluginComposerScope =
     options.composer?.scope ??
     (threadId !== null
-      ? { kind: "thread", threadId }
+      ? {
+          kind: "thread",
+          threadId,
+          projectId: projectId ?? "project-test",
+          environmentId: null,
+        }
       : { kind: "new-thread", projectId });
   let composerSelection: ComposerSelection | null =
     composerScope.kind === "queued-message"

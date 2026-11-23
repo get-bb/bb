@@ -4428,11 +4428,22 @@ export type PluginRealtimeConnectionState =
 
 /** Where `useComposer()` writes. */
 export type PluginComposerScope =
-  | { kind: "thread"; threadId: string }
+  | {
+      kind: "thread";
+      threadId: string;
+      /** The thread's project. */
+      projectId: string;
+      /** The thread's environment; null while the thread has none. */
+      environmentId: string | null;
+    }
   | {
       kind: "queued-message";
       threadId: string;
       queuedMessageId: string;
+      /** The queued message's thread's project. */
+      projectId: string;
+      /** The queued message's thread's environment; null while it has none. */
+      environmentId: string | null;
     }
   | {
       kind: "new-thread";
