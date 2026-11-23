@@ -1111,15 +1111,15 @@ export interface PluginNavPanelRegistration {
 }
 
 /**
- * Context handed to a thread action tab's `run`.
+ * Context handed to a thread action tab's `run`: the thread's tab props
+ * (`threadId` and `environment`, as the tab's component gets them) plus the
+ * shared action context.
  *
  * The action is thread-only and is never offered on the root New thread
  * screen, so `threadId` is always present.
  */
-export interface ExperimentalThreadTabActionContext extends ExperimentalPluginActionContext {
-  /** The thread whose panel launcher invoked the action. */
-  threadId: string;
-}
+export interface ExperimentalThreadTabActionContext
+  extends ExperimentalPluginActionContext, ExperimentalThreadTabProps {}
 
 /** Where a plugin tab belongs. Navigation panels are owned by the registering plugin. */
 export type ExperimentalTabContext =
@@ -3886,6 +3886,21 @@ export interface ExperimentalComposerCommandRegistration {
   /** The palette row's and keyboard settings' label. */
   title: string;
   /**
+   * Composer kinds that run the command, as `ComposerCustomization.scopes`
+   * does for a customization; omit for all kinds. The sent-message editor
+   * reports `"thread"`. In other composers the shortcut is left to bb and the
+   * palette does not list the command for them.
+   */
+  scopes?: readonly PluginComposerScope["kind"][];
+  /**
+   * Whether the handling composer can run the command now, e.g. false on an
+   * empty draft. Called with the context `run` would get, before palette
+   * listing and keyboard invocation; keep it cheap and synchronous. While it
+   * returns false or throws, the shortcut is left to bb and the palette hides
+   * the row. Omitted means always available in `scopes`.
+   */
+  isAvailable?(context: ExperimentalComposerActionContext): boolean;
+  /**
    * Runs with the handling composer, bound to this plugin like `useComposer()`.
    * Errors (sync or async) are contained and logged.
    */
@@ -5287,6 +5302,15 @@ export interface NewThreadRequest {
    * created `pending` and its first message is queued as a row until then.
    */
   sendAt?: number;
+  /**
+   * The `experimental_data` a plugin passed to `useComposer().submit` from
+   * this composer, such as a send-menu row's (Drafts' "Save draft"), stamped
+   * with that plugin's id. Present only for such a submission. Forward it to
+   * `threads.spawn` unchanged: the server hands it to dispatch hooks on the
+   * first attempt as `experimental_submission`, which is how the row's plugin
+   * acts on the send. Dropping it sends the message as an ordinary one.
+   */
+  pluginSubmission?: { pluginId: string; data: JsonValue };
 }
 
 /**
@@ -5707,7 +5731,10 @@ export interface BbNavigate {
    * `useComposer().insert()` (throws for an invalid provider or item id), and
    * `focusPrompt` to focus the composer on arrival — the pairing behind
    * "Create via chat" style entry points that drop the user into chat with a
-   * prefilled prompt. `projectId` makes that project the composer's
+   * prefilled prompt. A draft that already has text keeps it and drops
+   * `initialPrompt`; `experimental_replacePrompt: true` replaces that draft
+   * with `initialPrompt` instead, as bb's own Create skill and Edit via chat
+   * buttons do. It does nothing without `initialPrompt`. `projectId` makes that project the composer's
    * selection; `placement` files the new thread in a section and pin state.
    * Without `placement`, the screen keeps the placement it already shows,
    * unless `environmentId` or `hostId` is set, which resets it to unpinned
@@ -5723,6 +5750,7 @@ export interface BbNavigate {
   toCompose(options?: {
     projectId?: string;
     initialPrompt?: string | readonly ComposerInsertPart[];
+    experimental_replacePrompt?: boolean;
     focusPrompt?: boolean;
     placement?: { sectionId: string | null; pinned: boolean };
     environmentId?: string;

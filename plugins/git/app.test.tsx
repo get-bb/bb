@@ -6,8 +6,6 @@ import {
 
 import { expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
-import gitApp from "./app.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
 
@@ -46,8 +44,8 @@ it("registers the Diff tab, Info rows and sections, the composer segment, and th
 });
 
 it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
-  const [command] = collectPluginAppRegistrations(gitApp).commandPaletteActions;
-  if (command?.target !== "app") throw new Error("expected an app command");
+  const [command] = app.commands;
+  if (command === undefined) throw new Error("expected a command");
   expect(command).toMatchObject({
     id: "toggle-diff",
     defaultShortcut: { key: "d", mod: true },

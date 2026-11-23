@@ -2,6 +2,8 @@ import type { ComponentType } from "react";
 import type {
   ExperimentalPanelController,
   ExperimentalTabReference,
+  ExperimentalThreadActionTabProps,
+  ExperimentalThreadTabActionContext,
   ExperimentalThreadTabProps,
   JsonValue,
   PluginAppSlots,
@@ -28,7 +30,23 @@ const actionTab = {
 declare const panel: ExperimentalPanelController;
 declare const Component: ComponentType<ExperimentalThreadTabProps>;
 declare const slots: PluginAppSlots;
+declare const tabActionContext: ExperimentalThreadTabActionContext;
+declare const ActionComponent: ComponentType<ExperimentalThreadActionTabProps>;
 if (false) {
+  const environment: ExperimentalThreadTabProps["environment"] =
+    tabActionContext.environment;
+  void environment;
+  slots.experimental_tab({
+    id: "side",
+    title: "Side",
+    icon: "Chat",
+    context: { kind: "thread" },
+    availability: "action",
+    component: ActionComponent,
+    run(context: ExperimentalThreadTabActionContext) {
+      void context.environment?.id;
+    },
+  });
   panel.openTab({ tab: fixedNavTab, target: { recordId: "issue-42" } });
   panel.openTab({ tab: fixedThreadTab, target: ["any", "json"] });
   panel.toggleTab({ tab: fixedThreadTab });

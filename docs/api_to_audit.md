@@ -290,17 +290,29 @@ Before stabilization:
 
 ## Composer commands
 
-`PluginAppComposer.experimental_registerCommand({ id, title, defaultShortcut?, run })`
+`PluginAppComposer.experimental_registerCommand({ id, title, defaultShortcut?, scopes?, isAvailable?, run })`
 registers a palette and keyboard command that runs against the owning
 composer's `PluginComposerApi`, rebindable under
 `plugin:<plugin-id>/<command-id>` and sharing the `app.commands` id namespace.
 
+`scopes` takes the composer kinds of `ComposerCustomization.scopes`
+(`"thread"`, `"queued-message"`, `"new-thread"`; the sent-message editor
+reports `"thread"`), and `isAvailable(context)` gets the context `run` would
+get. Both feed the availability predicate of `useComposerCommand`
+(`apps/app/src/components/promptbox/composer-commands.tsx`), the hook bb's own
+`composer.focus` command registers through: out of scope, unavailable or
+throwing (logged), the composer does not claim the key, so the shortcut falls
+through to bb, and the palette leaves the row out for that composer. Callers
+these replace: kalindudc/bb-marketplace's tavern returns early from `run` when
+`composer.scope.kind !== "thread"`, and jonnik-bb-plugins/bb-plugin-bang-shell
+returns early on `composer.isEmpty || composer.isSubmittingBlocked`; both
+still swallow the key and keep the palette row today. Prompt Library's
+`search-prompts` command needs neither.
+
 Docs: `frontend-hooks-and-ui.md`.
 
 Before stabilization, verify split panes, side chat, inline queued-message
-editing, palette invocation from each, plugin reload, and rebinding. Audit
-whether composer scopes should filter commands the way they filter other
-composer contributions, and whether commands need an availability callback.
+editing, palette invocation from each, plugin reload, and rebinding.
 
 ## `settingsSection.experimental_page`
 
@@ -409,7 +421,9 @@ verbs: a new core flow joins the handle it belongs to, such as
 `threadRequests`, instead of the top level. Every plugin callback context extends it:
 `PluginCommandContext`, `PluginMessageActionContext`,
 `PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`,
-`ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`,
+`ExperimentalThreadTabActionContext` (which also carries the tab's
+`ExperimentalThreadTabProps`, `threadId` and `environment`) and nav-panel
+action tabs' `run`,
 `PluginNewThreadPanelActionContext`, `PluginSidebarFooterActionContext`,
 `ExperimentalSidebarFooterActionContext`, and
 `ExperimentalComposerActionContext` (composer commands, `plusMenu` and
@@ -3228,7 +3242,15 @@ The host-owned new-thread compose surface. It calls `onSubmit` with a
 `NewThreadRequest` carrying every resolved selection (including
 `sessionOptions` when the user changed a provider's agent option), and the plugin then
 creates the thread with `bb.sdk.threads.spawn`, which owns filing and
-attribution.
+attribution. A submission from a plugin's `useComposer().submit({ experimental_data })`,
+such as Drafts' "Save draft" send-menu row, also carries
+`pluginSubmission: { pluginId, data }`, the field `threads.spawn` already
+accepts, so forwarding the request unchanged keeps the row working; the
+server hands it to dispatch hooks as `experimental_submission`. The New thread
+screen submits the same `NewThreadRequest` type (`RootComposeView`), so core
+and plugins share one declared request. Conductor's `NewChatPage` forwards it
+to `spawn`; community embedders that rebuild the request field by field drop
+it and turn "Save draft" into an ordinary send.
 
 **Core callers.** The New thread screen (`RootComposeView`) renders the same
 `apps/app/src/components/promptbox/NewThreadComposer.tsx`;
@@ -5351,6 +5373,22 @@ Redirects after a deletion or a disabled plugin and route repair only build the
 path. Requested in #8011 (a nav panel opening the composer beside a note) and
 #2795.
 
+**Replacing the draft.** `toCompose({ initialPrompt, experimental_replacePrompt: true })`
+replaces a draft that already has text with `initialPrompt`; without it the
+draft wins and `initialPrompt` is dropped, and without `initialPrompt` the
+option does nothing. It maps to `openNewThread`'s `replaceInitialPrompt`, the
+option bb's own Create skill, Fork skill, Edit skill via chat, Edit plugin
+via chat and Create plugin from a template pass (`SkillsLibrary.tsx`,
+`ToolsView.tsx`, `PluginsOverview.tsx`), so both read the
+same route state in `RootComposeView`. It replaces a hidden branch that gave
+only the Automations plugin `replace` + `replaceInitialPrompt`, and only on
+its edit route, where its one `toCompose` button (Edit with chat) is disabled.
+Callers: Automations' New automation, template Use and Edit with chat
+(`plugins/automations/app.tsx`). Before stabilizing, check the about 45
+community `toCompose({ initialPrompt })` callers for ones that want the
+replacement, and decide whether it should be the default for
+`focusPrompt: true` entry points.
+
 ## Provider discovery metadata
 
 `package.json` → `bb.experimental_providers` statically declares
@@ -5776,6 +5814,21 @@ neoromantic/bb-plugin-subthread-columns (`contract.ts`). Shuttle, vantage,
 gtd-sidebar and kitchen-sink, named by the October scan, have migrated.
 Remove the runtime path and the field from `ContractTagDeclarations`
 consumers in the plugin SDK only after those plugins have migrated.
+
+## Retired composer menu-row `run` member `view`
+
+`plusMenu` and `sendMenu` rows' `run` context carries `view: ComposerView`
+besides `ExperimentalComposerActionContext`, for plugins built when `run` got
+`{ composer, view }`. It is declared only on the host
+(`RetiredComposerMenuRunMembers` in
+`apps/app/src/components/plugin/PluginComposerActions.tsx`) and is not in
+`@get-bb/plugin-sdk/app`'s types; `composer.scope`, `composer.isEmpty`,
+`composer.attachmentCount`, `composer.isRunning` and `composer.isSubmitting`
+replace its fields. Callers
+in the November 2026 community scan: patleeman/bb-plugins'
+agent-checklists (`view.scope`), suiramdev/bb-plugin-rephrase and
+MacHatter1/bb-plugin-orchestrator-mode. Remove the member after they migrate
+to `composer`.
 
 ## Retired composer renderer `view` and `key` runtime members
 

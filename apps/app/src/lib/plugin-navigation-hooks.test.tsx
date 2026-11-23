@@ -277,6 +277,28 @@ describe("useBbNavigate New thread screen", () => {
     expect(composeProjectId()).toBe("proj_vault");
   });
 
+  it("replaces a draft with initialPrompt only when the caller asks", () => {
+    const { navigate, locations } = renderNavigate({ layout: null });
+    act(() => {
+      navigate().toCompose({
+        initialPrompt: "Edit this automation",
+        experimental_replacePrompt: true,
+      });
+    });
+    expect(locations.at(-1)?.state).toEqual({
+      initialPrompt: "Edit this automation",
+      replaceInitialPrompt: true,
+    });
+    act(() => {
+      navigate().toCompose({ initialPrompt: "Seed if empty" });
+    });
+    expect(locations.at(-1)?.state).toEqual({ initialPrompt: "Seed if empty" });
+    act(() => {
+      navigate().toCompose({ experimental_replacePrompt: true });
+    });
+    expect(locations.at(-1)?.state ?? null).toBeNull();
+  });
+
   it("leaves the panes alone without split", () => {
     const layout: SplitLayout = {
       root: PLUGIN_PANEL_PANE,

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   cleanup,
@@ -11,16 +10,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { PluginContext } from "@/components/plugin/plugin-context";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
-import { useBbNavigate } from "./plugin-sdk-hooks";
-import {
-  AUTOMATIONS_PLUGIN_ID,
-  getAutomationDetailRoutePath,
-  getAutomationEditRoutePath,
-  getAutomationsRoutePath,
-  getSkillDetailRoutePath,
-} from "./route-paths";
+import { getSkillDetailRoutePath } from "./route-paths";
 import { resetAppRouteHistoryForTest } from "./app-route-history";
 
 const TOOL_SKILL_DETAIL_ROUTE = getSkillDetailRoutePath({
@@ -56,89 +47,6 @@ function RemountableSidebarControlsHarness() {
         </button>
       ))}
     </div>
-  );
-}
-
-const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
-
-const AUTOMATION_ROUTE = {
-  projectId: "proj_standard",
-  automationId: "auto_standard",
-} as const;
-
-function PluginNavigationHarness() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const pluginNavigate = useBbNavigate();
-  const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
-  const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
-  const detailSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}`;
-
-  return (
-    <div>
-      <div data-testid="path">{location.pathname}</div>
-      <button type="button" onClick={() => void navigate(detailPath)}>
-        Open detail
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
-            subPath: editSubPath,
-          })
-        }
-      >
-        Edit from detail
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
-            subPath: editSubPath,
-          })
-        }
-      >
-        Open direct edit
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          pluginNavigate.toCompose({
-            initialPrompt: "Edit this automation",
-          })
-        }
-      >
-        Redirect edit to compose
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
-            subPath: detailSubPath,
-            replace: true,
-          })
-        }
-      >
-        Exit edit
-      </button>
-      <button type="button" onClick={() => void navigate(-1)}>
-        Native back
-      </button>
-    </div>
-  );
-}
-
-function RemountablePluginNavigationHarness() {
-  const [mountKey, setMountKey] = useState(0);
-  return (
-    <>
-      <button type="button" onClick={() => setMountKey((value) => value + 1)}>
-        Remount plugin
-      </button>
-      <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
-        <PluginNavigationHarness key={mountKey} />
-      </PluginContext.Provider>
-    </>
   );
 }
 
@@ -195,30 +103,5 @@ describe("useRouteStateHistoryNavigation", () => {
 
     await expectSidebarButtonState("Go back", false);
     await clickAndExpectPath("Go back", "/skills");
-  });
-
-  it("redirects remounted automation edit routes without duplicate history entries", async () => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
-          <RemountablePluginNavigationHarness />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
-    const editPath = getAutomationEditRoutePath(AUTOMATION_ROUTE);
-
-    await clickAndExpectPath("Open detail", detailPath);
-    await clickAndExpectPath("Edit from detail", editPath);
-    await clickAndExpectPath("Remount plugin", editPath);
-    await clickAndExpectPath("Redirect edit to compose", "/");
-    await clickAndExpectPath("Native back", detailPath);
-    await clickAndExpectPath("Native back", getAutomationsRoutePath());
-
-    await clickAndExpectPath("Open direct edit", editPath);
-    await clickAndExpectPath("Remount plugin", editPath);
-    await clickAndExpectPath("Redirect edit to compose", "/");
-    await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 });

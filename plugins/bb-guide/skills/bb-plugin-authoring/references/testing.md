@@ -233,8 +233,10 @@ await contentScripts.lifecycle.dispose();
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path,
 fileOpener extensions, code-fence renderer languages (exposed as
-`app.codeFenceRenderers`), and content-script ids/mount functions) and returns
-them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
+`app.codeFenceRenderers`), command shortcuts and composer-command scopes
+(`app.commands`, `app.composerCommands`; call their `isAvailable` and `run`
+with `experimental_makeActionContext()`), and content-script ids/mount
+functions) and returns them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
 mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
 per-window instances. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →

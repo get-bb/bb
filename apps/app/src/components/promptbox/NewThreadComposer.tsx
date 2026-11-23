@@ -39,7 +39,6 @@ import type {
   PluginEnvironmentProviderInputsChange,
 } from "@get-bb/plugin-sdk";
 import type {
-  CreateThreadRequest,
   CreateExecutionInputSources,
   SidebarBootstrapResponse,
   SystemEnvironmentProvider,
@@ -272,11 +271,6 @@ export function resolveSubmittedExecutionSources(
     : sources;
 }
 
-export interface NewThreadComposerSubmission extends NewThreadRequest {
-  pluginSubmission?: CreateThreadRequest["pluginSubmission"];
-  sendAt?: number;
-}
-
 export interface NewThreadComposerProps {
   projectId: string | null;
   onProjectChange: (projectId: string) => void | Promise<void>;
@@ -285,7 +279,7 @@ export interface NewThreadComposerProps {
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
   preferReadyProviderWhenUnset?: boolean;
-  onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
+  onSubmit: (request: NewThreadRequest) => void | Promise<void>;
   focusRequest?: number;
   children: (state: NewThreadComposerState) => ReactNode;
 }
@@ -739,10 +733,10 @@ async function submitNewThreadRequest({
   setIsSubmitting,
   setAttachmentError,
 }: {
-  request: NewThreadComposerSubmission;
+  request: NewThreadRequest;
   submittedDraft: PromptDraftState;
   promptDraft: PromptDraftController;
-  onSubmit: (request: NewThreadComposerSubmission) => void | Promise<void>;
+  onSubmit: (request: NewThreadRequest) => void | Promise<void>;
   clearReuseEnvironment: () => void;
   isSubmittingRef: RefObject<boolean>;
   setIsSubmitting: (isSubmitting: boolean) => void;
@@ -1925,7 +1919,7 @@ export function NewThreadComposer({
         ...executionInputSources,
         ...seededExecutionInputSources,
       };
-      const request: NewThreadComposerSubmission = {
+      const request: NewThreadRequest = {
         projectId,
         providerId: selectedProviderId,
         model: selectedThreadModel,

@@ -25,7 +25,13 @@ throws `RangeError`.
 ```ts
 navigate.toCompose({ projectId, initialPrompt, focusPrompt: true });
 navigate.toCompose({ projectId, focusPrompt: true, split: true }); // beside the caller
+navigate.toCompose({ initialPrompt, experimental_replacePrompt: true }); // replace the draft
 ```
+
+`initialPrompt` only seeds an empty draft; a draft with text keeps it and the
+prompt is dropped. Pass `experimental_replacePrompt: true` from an explicit
+"Edit via chat" or "Create from template" button to replace the draft, as
+bb's own Create skill does.
 
 `split: true` follows `toThread`'s split rules: a right split by default,
 replace at the pane cap, plain navigation where splits are off. bb has one New

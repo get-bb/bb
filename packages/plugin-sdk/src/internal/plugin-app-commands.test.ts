@@ -214,6 +214,53 @@ describe("app.commands.register", () => {
     ).toThrow(/duplicate/i);
   });
 
+  it("keeps a composer command's scopes and isAvailable and rejects invalid ones", () => {
+    const isAvailable = vi.fn(() => true);
+    const run = vi.fn();
+    const collected = collectPluginAppRegistrations({
+      __bbPluginApp: true,
+      setup(app) {
+        app.composer.experimental_registerCommand({
+          id: "toggle",
+          title: "Toggle widget",
+          scopes: ["thread", "queued-message"],
+          isAvailable,
+          run,
+        });
+      },
+    });
+    expect(collected.commandPaletteActions).toEqual([
+      {
+        target: "composer",
+        id: "toggle",
+        title: "Toggle widget",
+        defaultShortcut: null,
+        scopes: ["thread", "queued-message"],
+        isAvailable,
+        run,
+      },
+    ]);
+    for (const invalid of [
+      { scopes: ["side-panel"] },
+      { scopes: "thread" },
+      { isAvailable: true },
+    ]) {
+      expect(() =>
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            app.composer.experimental_registerCommand({
+              id: "toggle",
+              title: "Toggle widget",
+              run,
+              ...(invalid as object),
+            });
+          },
+        }),
+      ).toThrow(/composer\.experimental_registerCommand/);
+    }
+  });
+
   it.each(entryPoints)(
     "validates IDs and titles through the %s entry point",
     (entryPoint) => {

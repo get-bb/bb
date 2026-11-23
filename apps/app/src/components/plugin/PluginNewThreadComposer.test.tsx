@@ -1305,7 +1305,7 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toMatchObject({ pluginSubmission });
+    expect(submitted[0]?.pluginSubmission).toEqual(pluginSubmission);
   });
 
   it("does not demote a project the replayed bootstrap does not know yet", async () => {

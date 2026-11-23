@@ -319,7 +319,9 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   `{ projectId, providerId, model, reasoningLevel, permissionMode,
 serviceTier?, sessionOptions?, executionInputSources, environment, input }`
   (`sessionOptions` only when the user changed an agent option the provider
-  declares). Hand it to
+  declares), plus `sendAt` for a scheduled send and `pluginSubmission` when a
+  plugin row such as Drafts' "Save draft" submitted with `experimental_data`;
+  keep both, or those rows turn into ordinary sends. Hand it to
   `useSdk().threads.spawn` from the frontend (or forward it verbatim to your
   backend rpc and `bb.sdk.threads.spawn` when the create needs server-side
   work), adding `sectionId` / `parentThreadId` / `title` / `visibility`

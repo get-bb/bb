@@ -23,6 +23,10 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { ControlledComposerBox } from "@/test/fixtures/controlled-composer-box";
 import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
+import type {
+  ExperimentalComposerCommandRegistration,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk";
 
 const SHORTCUT = {
   mod: false,
@@ -58,7 +62,13 @@ vi.mock("@/lib/bb-desktop", () => ({
 const PLUGIN_COMMAND = pluginCommandId("saved-prompts", "search");
 const EMPTY_DRAFT = { text: "", mentions: [], attachments: [] };
 
-function registerPluginCommand(runs: string[]) {
+function registerPluginCommand(
+  runs: string[],
+  availability: Pick<
+    ExperimentalComposerCommandRegistration,
+    "scopes" | "isAvailable"
+  > = {},
+) {
   setPluginSlotRegistrations(
     "saved-prompts",
     makePluginRegistrationSet({
@@ -68,6 +78,7 @@ function registerPluginCommand(runs: string[]) {
           id: "search",
           title: "Search saved prompts",
           defaultShortcut: { ...SHORTCUT, key: "r" },
+          ...availability,
           run: ({ composer }) => {
             runs.push(composer.key);
           },
@@ -80,16 +91,18 @@ function registerPluginCommand(runs: string[]) {
 function Composer({
   composerKey,
   role,
+  scope = { kind: "new-thread", projectId: null },
   onFocusCommand,
   suppressPluginComposerCustomizations = false,
 }: {
   composerKey: string;
   role: "primary" | "secondary";
+  scope?: PluginComposerScope;
   onFocusCommand(): void;
   suppressPluginComposerCustomizations?: boolean;
 }) {
   const host: PluginComposerHost = {
-    scope: { kind: "new-thread", projectId: null },
+    scope,
     textEffectKey: composerKey,
     getCurrent: () => EMPTY_DRAFT,
     subscribeDraft: () => () => {},
@@ -157,6 +170,12 @@ function renderComposers() {
         <Composer
           composerKey="side"
           role="secondary"
+          scope={{
+            kind: "thread",
+            threadId: "thr_side",
+            projectId: "proj_side",
+            environmentId: null,
+          }}
           onFocusCommand={() => focused.push("side")}
         />
         <Composer
@@ -242,6 +261,51 @@ describe("composer commands", () => {
     press(editorIn("sent-message"), "r");
 
     expect(runs).toEqual(["sent-message"]);
+  });
+
+  it("runs a scoped command only in composers of its scopes and leaves other composers' keys to bb", () => {
+    const runs: string[] = [];
+    registerPluginCommand(runs, { scopes: ["thread"] });
+    const { runner, editorIn } = renderComposers();
+
+    const outOfScope = press(editorIn("main"), "r");
+    press(editorIn("side"), "r");
+
+    expect(runs).toEqual(["side"]);
+    expect(outOfScope.defaultPrevented).toBe(false);
+    expect(
+      runner.current?.isCommandAvailable(PLUGIN_COMMAND, editorIn("main")),
+    ).toBe(false);
+    expect(
+      runner.current?.isCommandAvailable(PLUGIN_COMMAND, editorIn("side")),
+    ).toBe(true);
+  });
+
+  it("asks isAvailable with the handling composer before the palette lists it or a key runs it", () => {
+    const runs: string[] = [];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerPluginCommand(runs, {
+      isAvailable: ({ composer }) => {
+        if (composer.key === "sent-message") throw new Error("boom");
+        return composer.key !== "main";
+      },
+    });
+    const { runner, editorIn } = renderComposers();
+
+    const unavailable = press(editorIn("main"), "r");
+    const throwing = press(editorIn("sent-message"), "r");
+    press(editorIn("side"), "r");
+
+    expect(runs).toEqual(["side"]);
+    expect(unavailable.defaultPrevented).toBe(false);
+    expect(throwing.defaultPrevented).toBe(false);
+    expect(
+      runner.current?.isCommandAvailable(PLUGIN_COMMAND, editorIn("main")),
+    ).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('composer command "search" isAvailable failed'),
+    );
+    warn.mockRestore();
   });
 
   it("leaves the terminal's shortcut alone", () => {
