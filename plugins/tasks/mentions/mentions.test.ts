@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import { registerMentions } from ".";
 
+const searchSignal = new AbortController().signal;
+
 function setup() {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
   const store = createStore(bb);
@@ -57,6 +59,7 @@ describe("@task mention provider", () => {
           query: "tsk-1",
           projectId: null,
           threadId: null,
+          experimental_signal: searchSignal,
         }),
       ).toEqual([
         expect.objectContaining({
@@ -71,6 +74,7 @@ describe("@task mention provider", () => {
           query: "1",
           projectId: null,
           threadId: null,
+          experimental_signal: searchSignal,
         }),
       ).toHaveLength(2);
 
@@ -79,6 +83,7 @@ describe("@task mention provider", () => {
         query: "keyboard",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       });
       expect(recentTitleMatches.map((item) => item.id)).toEqual([
         otherTask.id,
@@ -90,6 +95,7 @@ describe("@task mention provider", () => {
         query: "keyboard",
         projectId: "proj_linked",
         threadId: "thr_composer",
+        experimental_signal: searchSignal,
       });
       expect(linkedTitleMatches.map((item) => item.id)).toEqual([
         linkedTask.id,
@@ -108,6 +114,7 @@ describe("@task mention provider", () => {
           query: "",
           projectId: null,
           threadId: null,
+          experimental_signal: searchSignal,
         }),
       ).toHaveLength(10);
     } finally {

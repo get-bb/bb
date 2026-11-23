@@ -663,6 +663,28 @@ Before stabilizing, audit whether HTTP route and thread event handlers need
 the same signal in a typed context, and whether a deadline (not only
 cancellation) belongs in the context.
 
+## Mention search cancellation (`PluginMentionSearchContext.experimental_signal`)
+
+Every `bb.ui.registerMentionProvider` search receives an `experimental_signal`
+that aborts when the search request disconnects (the composer cancels a query
+the person has typed past), when the 2s time box runs out, or when the plugin
+instance is reloaded, disabled or removed. Each provider runs one search at a
+time; only the newest query typed meanwhile waits, and a waiting query whose
+request disconnects never starts. Aborting a running search lets that waiting
+query start as soon as the provider settles. The host ignores whatever an
+aborted search returns.
+
+Core path: `GET /api/v1/plugins/mentions/search` forwards its request signal to
+the plugin service, which links it with the time box and the instance
+lifetime through the same `invokeWrapped` caller signal as RPC handlers. Docs
+checks the signal between vaults.
+
+Docs: `backend-ui-lifecycle.md`.
+
+Before stabilizing, audit it together with the RPC handler signal: whether
+every host-called handler should take one typed context with the signal, and
+whether a deadline belongs next to it.
+
 ## `bb.http.experimental_websocket`
 
 Registers an exact-path WebSocket upgrade in the plugin's
