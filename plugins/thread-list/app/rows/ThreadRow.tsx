@@ -418,7 +418,6 @@ function ThreadRowComponent({
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
   const childCount = parentOptions?.childCount ?? 0;
   const hasChildren = childCount > 0;
-  const reserveActionSpace = isParentRow && hasChildren;
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const hiddenThreads =
     hasHiddenChildren && parentOptions
@@ -539,7 +538,7 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
-            (reserveActionSpace
+            (hasHiddenChildren
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
@@ -667,7 +666,11 @@ function ThreadRowComponent({
           {parentOptions && hasChildren ? (
             <SidebarChildToggleChevron
               disabled={isEditing}
-              className={isEditing ? "hidden" : undefined}
+              className={cn(
+                isEditing && "hidden",
+                !isParentCollapsed &&
+                  "[@media(hover:hover)]:not-group-hover/thread-row:not-group-has-focus-visible/thread-row:not-group-has-[[data-sidebar-hover-actions-open=true]]/thread-row:absolute",
+              )}
               isCollapsed={isParentCollapsed}
               expandLabel={`Expand ${labelTitle} threads`}
               collapseLabel={`Collapse ${labelTitle} threads`}

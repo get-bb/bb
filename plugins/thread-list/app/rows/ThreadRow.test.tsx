@@ -1247,9 +1247,12 @@ describe("ThreadRow", () => {
     expect(renderedIndicators()).toEqual(["unread-error"]);
   });
 
-  it.each([true, false])(
-    "reserves quick-action space after parent disclosure (collapsed: %s)",
-    (isCollapsed) => {
+  it.each([
+    { isCollapsed: true, reservesAtRest: true },
+    { isCollapsed: false, reservesAtRest: false },
+  ])(
+    "reserves quick-action space at rest only while the parent disclosure is visible (collapsed: $isCollapsed)",
+    ({ isCollapsed, reservesAtRest }) => {
       const onToggleCollapsed = vi.fn();
       renderThreadRow({
         thread: createThread({
@@ -1273,11 +1276,13 @@ describe("ThreadRow", () => {
       const link = screen.getByRole("link", {
         name: "Open Nested discussion with enough text to fill the sidebar width",
       });
+      const content = link.parentElement;
       expect(
-        link.parentElement?.classList.contains(
-          "pr-(--bb-sidebar-hover-actions-inset)",
-        ),
-      ).toBe(true);
+        content?.classList.contains("pr-(--bb-sidebar-hover-actions-inset)"),
+      ).toBe(reservesAtRest);
+      expect(
+        content?.classList.contains("bb-sidebar-hover-actions-inset"),
+      ).toBe(!reservesAtRest);
       const row = link.closest("[data-sidebar-rename-row]");
       expect(
         Array.from(row?.querySelectorAll("button") ?? [], (button) =>
