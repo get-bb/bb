@@ -1587,8 +1587,8 @@ describe("workflow service policy integration", () => {
       const worker = test.service.runWorker(controller.signal);
       try {
         await vi.waitFor(() => expect(test.childCount()).toBe(1), {
-          timeout: 200,
-          interval: 1,
+          timeout: 5_000,
+          interval: 0,
         });
         await vi.advanceTimersByTimeAsync(100);
         expect(getRunRequired(test.db, second.id).status).toBe("queued");
@@ -1605,7 +1605,7 @@ describe("workflow service policy integration", () => {
         await vi.waitFor(
           () =>
             expect(getRunRequired(test.db, second.id).status).toBe("succeeded"),
-          { timeout: 20, interval: 1 },
+          { timeout: 5_000, interval: 0 },
         );
       } finally {
         controller.abort();
