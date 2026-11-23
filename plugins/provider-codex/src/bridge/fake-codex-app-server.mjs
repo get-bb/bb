@@ -521,8 +521,14 @@ async function handleRequest(message) {
       if (script?.configReadError) {
         respondError(id, -32601, "Configuration read unavailable");
       } else {
-        respond(id, script?.configRead ?? { config: { model: null } });
+        respond(id, {
+          origins: {},
+          ...(script?.configRead ?? { config: { model: null } }),
+        });
       }
+      return;
+    case "configRequirements/read":
+      respond(id, script?.configRequirementsRead ?? { requirements: null });
       return;
     case "skills/list":
       respond(id, script?.skillsList ?? { data: [] });

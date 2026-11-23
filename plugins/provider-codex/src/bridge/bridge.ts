@@ -87,7 +87,10 @@ import {
   codexRateLimitReadResponseSchema,
 } from "../schemas.js";
 import {
+  codexWorkspaceNetworkConfigSchema,
+  codexWorkspaceNetworkRequirementsSchema,
   resolveCodexInstructionOverrides,
+  resolveCodexWorkspaceNetworkAccess,
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
@@ -473,6 +476,7 @@ interface CodexBridgeSession {
   grantedWriteRoots: string[];
   environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
+  workspaceNetworkAccess: boolean;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
@@ -1150,6 +1154,31 @@ async function initializeChild(
   return version !== null && compareVersions(version, "0.145.0") >= 0;
 }
 
+async function readCodexWorkspaceNetworkAccess(
+  connection: CodexAppServerConnection,
+  cwd: string,
+): Promise<boolean> {
+  try {
+    const [config, requirements] = await Promise.all([
+      connection.request({
+        method: "config/read",
+        params: { cwd },
+        resultSchema: codexWorkspaceNetworkConfigSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+      connection.request({
+        method: "configRequirements/read",
+        resultSchema: codexWorkspaceNetworkRequirementsSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+    ]);
+    return resolveCodexWorkspaceNetworkAccess({ config, requirements });
+  } catch (error) {
+    if (!(error instanceof CodexAppServerRpcError)) throw error;
+    return false;
+  }
+}
+
 const codexThreadIdentityResultSchema = z
   .object({
     modelProvider: z.string().optional(),
@@ -1388,7 +1417,9 @@ async function constructThreadSession(
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots: [],
       options: decoded.sessionOptions,
+      workspaceNetworkAccess: false,
     }),
+    workspaceNetworkAccess: false,
     openCodexTurnIds: new Set(),
     pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
@@ -1459,6 +1490,10 @@ async function constructThreadSession(
 
   try {
     const supportsAgentsEnabled = await initializeChild(connection);
+    session.workspaceNetworkAccess = await readCodexWorkspaceNetworkAccess(
+      connection,
+      args.cwd,
+    );
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       supportsAgentsEnabled,
@@ -1579,6 +1614,7 @@ async function constructThreadSession(
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots,
       options: decoded.sessionOptions,
+      workspaceNetworkAccess: session.workspaceNetworkAccess,
     });
     session.grantedWriteRoots = [
       ...new Set([
@@ -1660,6 +1696,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     grantedWriteRoots: session.grantedWriteRoots,
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
+    workspaceNetworkAccess: session.workspaceNetworkAccess,
     openCodexTurnIds: new Set(),
     pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
@@ -2278,6 +2315,7 @@ async function handleTurnStart(
           params.threadId,
         ),
         options: decoded.sessionOptions,
+        workspaceNetworkAccess: session.workspaceNetworkAccess,
       });
       const cyberAccessProgram = await resolveTurnCyberAccessProgram(
         session,
@@ -2361,6 +2399,7 @@ async function handleTurnSteer(
         params.threadId,
       ),
       options: decoded.sessionOptions,
+      workspaceNetworkAccess: session.workspaceNetworkAccess,
     });
     if (
       !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)

@@ -880,3 +880,73 @@ it.each([
     );
   },
 );
+
+const workspaceNetworkCases = [
+  { name: "unset Codex network config", script: {}, networkAccess: true },
+  {
+    name: "Codex config turning network off",
+    script: {
+      configRead: {
+        config: { sandbox_workspace_write: { network_access: false } },
+        origins: {
+          "sandbox_workspace_write.network_access": {
+            name: { type: "user", file: "/home/user/.codex/config.toml" },
+          },
+        },
+      },
+    },
+    networkAccess: false,
+  },
+  {
+    name: "admin requirements managing permission profiles",
+    script: {
+      configRequirementsRead: {
+        requirements: { defaultPermissions: "sandboxed" },
+      },
+    },
+    networkAccess: false,
+  },
+  {
+    name: "an unreadable Codex config",
+    script: { configReadError: true },
+    networkAccess: false,
+  },
+];
+
+it.each(workspaceNetworkCases)(
+  "sends workspace turns the network access resolved from $name",
+  async ({ script, networkAccess }) => {
+    writeFileSync(scriptPath, JSON.stringify({ requestLogPath, ...script }));
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: autoAskSessionOptions,
+    });
+    const started = await harness.waitForResponse(1);
+    expect(started.error).toBeUndefined();
+    const { providerThreadId } = z
+      .object({ providerThreadId: z.string() })
+      .parse(started.result);
+
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: "creq_netwrkaccs",
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options: autoAskSessionOptions,
+    });
+    expect((await harness.waitForResponse(2)).error).toBeUndefined();
+
+    const requests = recordedRequests();
+    expect(
+      requests.find((entry) => entry.method === "config/read")?.params,
+    ).toEqual({ cwd: workspaceDir });
+    expect(
+      requests.filter((entry) => entry.method === "turn/start").at(-1)?.params,
+    ).toMatchObject({
+      sandboxPolicy: { type: "workspaceWrite", networkAccess },
+    });
+  },
+  30_000,
+);

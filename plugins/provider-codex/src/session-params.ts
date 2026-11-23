@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import type { ReasoningEffort as CodexReasoningEffort } from "./generated/codex-app-server/schema/ReasoningEffort.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
@@ -69,6 +70,49 @@ interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options: CodexSessionOptions;
+  workspaceNetworkAccess: boolean;
+}
+
+const CODEX_WORKSPACE_NETWORK_CONFIG_KEY =
+  "sandbox_workspace_write.network_access";
+
+export const codexWorkspaceNetworkConfigSchema = z.object({
+  config: z.object({
+    sandbox_workspace_write: z
+      .object({ network_access: z.boolean().nullish() })
+      .nullish(),
+  }),
+  origins: z.record(z.string(), z.unknown()),
+});
+
+export const codexWorkspaceNetworkRequirementsSchema = z.object({
+  requirements: z
+    .object({
+      allowedPermissionProfiles: z.record(z.string(), z.unknown()).nullish(),
+      defaultPermissions: z.string().nullish(),
+      network: z.record(z.string(), z.unknown()).nullish(),
+    })
+    .nullable(),
+});
+
+export function resolveCodexWorkspaceNetworkAccess(args: {
+  config: z.infer<typeof codexWorkspaceNetworkConfigSchema>;
+  requirements: z.infer<typeof codexWorkspaceNetworkRequirementsSchema>;
+}): boolean {
+  const configured = args.config.config.sandbox_workspace_write?.network_access;
+  const requirements = args.requirements.requirements;
+  const managedPermissions =
+    requirements !== null &&
+    (requirements.allowedPermissionProfiles != null ||
+      requirements.defaultPermissions != null ||
+      requirements.network != null);
+  if (managedPermissions) {
+    return configured ?? false;
+  }
+  if (CODEX_WORKSPACE_NETWORK_CONFIG_KEY in args.config.origins) {
+    return configured ?? false;
+  }
+  return true;
 }
 
 interface BuildCodexConfigArgs {
@@ -158,11 +202,12 @@ export function resolveCodexInstructionOverrides(
 
 function toWorkspaceWriteCodexSandboxPolicy(
   writableRoots: readonly string[],
+  networkAccess: boolean,
 ): SandboxPolicy {
   return {
     type: "workspaceWrite",
     writableRoots: [...writableRoots],
-    networkAccess: true,
+    networkAccess,
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
   };
@@ -540,6 +585,7 @@ export function toCodexPermissionSettings(
               args.gitWritableRoots,
               args.additionalWorkspaceWriteRoots,
             ),
+            args.workspaceNetworkAccess,
           )
         : { type: "dangerFullAccess" },
   };
