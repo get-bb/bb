@@ -1205,9 +1205,9 @@ either way.
   drop. It applies from the next disconnect.
 - `serverRoutes` (on for early adopters) advertises every available server
   access route (see [Multi-machine](#multi-machine)) to machines in daemon
-  session open and to apps in `/system/config` `routes`, and adds the
-  `local-network` route. A machine dials the first route that answers and stays
-  on it until the connection drops. While it is off, the server advertises
+  session open and to apps in `/system/config` `routes`, and makes the
+  `local-network` route available to add. A machine dials the highest route in
+  its order that answers and stays on it until the connection drops. While it is off, the server advertises
   `routes: []`, `local-network` is unavailable, and machines use only the URL
   they were installed with. It applies when each machine next opens a session
   or receives `server-routes.replace`.

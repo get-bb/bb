@@ -1174,7 +1174,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   serverRoutes: {
     label: "Reach machines over several routes",
     description:
-      "Machines learn every route in Settings → Machines (local network, bb connect, your own address) and connect over the first one that answers, falling back to the next when it stops working. Adds the Local network route. Applies when each machine next connects.",
+      "Machines learn every route in Settings → Machines (such as bb connect, Tailscale, the local network or your own address) and connect over the highest one in your order that answers, moving to the next when it stops working. Lets you add a Local network route. Applies when each machine next connects.",
   },
 
   serverMove: {
