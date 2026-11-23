@@ -43,7 +43,9 @@ plugin bundled with bb but not installed by default).
 
 Once `status` is `served`, bb accepts the address as a request host without
 `BB_APP_URL`, and it is the server access route `tailscale` (a private overlay
-route). New machines install over it when no route reachable from anywhere (bb
-connect, Manual) works; to force it, turn those off in Settings → Machine
-access or with `bb server access disable connect`. `bb server access list`
+route). New machines install over the first working route in the Settings →
+Machines order; put it first with `bb server access order tailscale`. With the
+`serverRoutes` experiment on, routes reachable from anywhere (bb connect,
+Manual) come first whatever the order; to force Tailscale, turn those off with
+`bb server access disable connect`. `bb server access list`
 shows every route.

@@ -194,9 +194,11 @@ execute work. Choose Windows in the dialog for a PowerShell command; a Windows
 machine needs Node.js 22.19 or newer and Git for Windows, and its daemon starts
 when you sign in to Windows. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
-through the account gate. Without bb connect, set up the Tailscale plugin; with
-no route reachable from anywhere turned on and set up (bb connect, Manual), the
-installer targets `https://<machine>.<tailnet>.ts.net`; the loopback listener
+through the account gate. Without bb connect, set up the Tailscale plugin; the
+installer targets the first working route in the Settings → Machines order, so
+with Tailscale first it targets `https://<machine>.<tailnet>.ts.net`. With the
+`serverRoutes` experiment on, a route reachable from anywhere (bb connect,
+Manual) that is turned on and set up comes first instead; the loopback listener
 is not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
 installer. It asks you to set up machine access first by choosing the address

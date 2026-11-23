@@ -4747,10 +4747,13 @@ Every turned-on provider is a route, each host holds a grant per provider, and
 the daemon session-open response and system configuration advertise the routes
 in the user's order (advertisement is behind the `serverRoutes` experiment;
 while it is off, routes are empty). Core's own Local network and Manual
-providers use the same ordering, enablement and advertisement path. New
+providers use the same ordering, enablement and advertisement path. With
+`serverRoutes` on, providers rank by route kind after the user's order and new
 machines install on the first working `relay` or `custom` route;
 `local-network` and `private-overlay` serve as the install route only when
-nothing else is on. While a turned-on provider reports `available` with a
+nothing else is on. While it is off, providers rank by the user's order, then
+the earliest-installed plugin, then Manual, and new machines install on the
+first working one, as the single default route did before. While a turned-on provider reports `available` with a
 `serverUrl`, core's Host and Origin guards admit that URL's origin, as they do
 for `BB_APP_URL` (plugin providers always; core's Local network and Manual
 routes only with `serverRoutes` on); core refreshes the set when configuration

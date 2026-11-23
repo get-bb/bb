@@ -295,12 +295,14 @@ lists each route with a toggle, its status and address; the CLI is
   machines, or `bb settings general machineServerUrl https://bb.example.com`;
   an unset value uses BB_EXTERNAL_URL.
 
-The default order is local network, private overlay (for example Tailscale),
-relay (bb connect), then custom; `bb server access order` puts the listed ids
-first. A route that needs setup or is unavailable is skipped. A new machine is
-installed with the first working route it can reach from anywhere (relay or
-custom), and with a local network or private overlay route only when nothing
-else is turned on; each
+`bb server access order` puts the listed ids first. A route that needs setup
+or is unavailable is skipped. While `serverRoutes` is off, the rest follow
+plugin install order with Manual last, and a new machine is installed with the
+first working route. With it on, the default order is local network, private
+overlay (for example Tailscale), relay (bb connect), then custom, and a new
+machine is installed with the first working route it can reach from anywhere
+(relay or custom), and with a local network or private overlay route only when
+nothing else is turned on; each
 connected machine then receives every route with its own credentials when its
 session opens, and is shown "via <route>" in Settings → Machines and the Route
 column of `bb machine list`. Each time a machine connects it probes every route

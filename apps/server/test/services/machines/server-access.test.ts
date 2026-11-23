@@ -166,7 +166,11 @@ describe("machine server access", () => {
       });
       const resolveFor = async (name: string) => {
         const host = upsertHost(deps.db, deps.hub, { name })!;
-        await serverAccess.resolve(deps, { key: name, hostId: host.id, signal });
+        await serverAccess.resolve(deps, {
+          key: name,
+          hostId: host.id,
+          signal,
+        });
         return getHost(deps.db, host.id)?.serverAccessProviderId;
       };
       expect(await resolveFor("cloud")).toBe("relay");
@@ -176,6 +180,60 @@ describe("machine server access", () => {
         disabledServerAccessProviderIds: ["direct", "relay"],
       });
       expect(await resolveFor("tailnet")).toBe("overlay");
+    });
+  });
+
+  it("installs a new machine on the user's first route, then the first registered one, while the serverRoutes experiment is off", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const overlay: ServerAccessProviderDeclaration = {
+        ...provider(),
+        id: "overlay",
+        displayName: "Overlay",
+        routeKind: "private-overlay",
+        acquire: async ({ hostId }) => ({
+          id: hostId,
+          serverUrl: "https://mini.tail1234.ts.net",
+        }),
+      };
+      setServerAccessBridge({
+        list: () => [
+          {
+            pluginId: "access-plugin",
+            provider: { ...provider(), routeKind: "relay" },
+          },
+          { pluginId: "overlay-plugin", provider: overlay },
+        ],
+        invoke: async (_id, run) => run(),
+      });
+      const resolveFor = async (name: string) => {
+        const host = upsertHost(deps.db, deps.hub, { name })!;
+        await serverAccess.resolve(deps, {
+          key: name,
+          hostId: host.id,
+          signal,
+        });
+        return getHost(deps.db, host.id)?.serverAccessProviderId;
+      };
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        serverAccessOrder: ["overlay"],
+      });
+      expect(
+        (await serverAccessStatus(deps)).providers.map((entry) => entry.id),
+      ).toEqual(["overlay", "relay", "direct"]);
+      expect(await resolveFor("tailnet")).toBe("overlay");
+      setServerAccessBridge({
+        list: () => [
+          { pluginId: "overlay-plugin", provider: overlay },
+          {
+            pluginId: "access-plugin",
+            provider: { ...provider(), routeKind: "relay" },
+          },
+        ],
+        invoke: async (_id, run) => run(),
+      });
+      setAppSettings(deps.db, defaultAppSettings);
+      expect(await resolveFor("first-registered")).toBe("overlay");
     });
   });
 

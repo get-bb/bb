@@ -146,8 +146,9 @@ export function serverRoutesEnabled(deps: Pick<Dependencies, "db">): boolean {
 export function orderedServerAccessProviders(
   deps: Pick<Dependencies, "db">,
 ): ServerAccessProviderEntry[] {
+  const routesEnabled = serverRoutesEnabled(deps);
   const registered: ServerAccessProviderEntry[] = [
-    ...(serverRoutesEnabled(deps) ? [LOCAL_NETWORK_PROVIDER] : []),
+    ...(routesEnabled ? [LOCAL_NETWORK_PROVIDER] : []),
     ...listServerAccessProviders().map((record) => ({
       id: record.provider.id,
       displayName: record.provider.displayName,
@@ -163,13 +164,14 @@ export function orderedServerAccessProviders(
     const index = userOrder.indexOf(id);
     return index === -1 ? userOrder.length : index;
   };
+  const kindRank = (entry: ServerAccessProviderEntry) =>
+    routesEnabled ? ROUTE_KIND_RANK[entry.routeKind] : 0;
   return registered
     .map((entry, registration) => ({ entry, registration }))
     .sort(
       (left, right) =>
         position(left.entry.id) - position(right.entry.id) ||
-        ROUTE_KIND_RANK[left.entry.routeKind] -
-          ROUTE_KIND_RANK[right.entry.routeKind] ||
+        kindRank(left.entry) - kindRank(right.entry) ||
         left.registration - right.registration,
     )
     .map(({ entry }) => entry);
@@ -512,9 +514,8 @@ async function acquireGrant(
     } catch (error) {
       if (args.recordFailure) {
         setHostColumns(deps.db, args.hostId, {
-            statusMessage:
-              error instanceof Error ? error.message : String(error),
-          });
+          statusMessage: error instanceof Error ? error.message : String(error),
+        });
         deps.hub.notifyHost(args.hostId, ["host-connected"]);
       }
       throw error;
@@ -549,6 +550,7 @@ function anchorCandidates(
   const enabled = entries.filter((entry) =>
     isServerAccessProviderEnabled(deps, entry.id),
   );
+  if (!serverRoutesEnabled(deps)) return enabled;
   return [
     ...enabled.filter((entry) => REACHABLE_FROM_ANYWHERE[entry.routeKind]),
     ...enabled.filter((entry) => !REACHABLE_FROM_ANYWHERE[entry.routeKind]),
@@ -583,10 +585,10 @@ async function resolve(
         recordFailure: true,
       });
       setHostColumns(deps.db, args.hostId, {
-          serverAccessProviderId: entry.id,
-          serverAccessGrantId: grant.id,
-          statusMessage: null,
-        });
+        serverAccessProviderId: entry.id,
+        serverAccessGrantId: grant.id,
+        statusMessage: null,
+      });
       return grant;
     } catch (error) {
       args.signal.throwIfAborted();
@@ -646,7 +648,10 @@ async function release(
       "remove",
     );
   }
-  setHostColumns(deps.db, args.hostId, { serverAccessProviderId: null, serverAccessGrantId: null });
+  setHostColumns(deps.db, args.hostId, {
+    serverAccessProviderId: null,
+    serverAccessGrantId: null,
+  });
 }
 
 async function repair(
