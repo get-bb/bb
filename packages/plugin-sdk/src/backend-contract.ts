@@ -1878,6 +1878,14 @@ export interface PluginMentionSearchContext {
   query: string;
   projectId: string | null;
   threadId: string | null;
+  /**
+   * Aborts when the search is no longer wanted: the person typed past it and
+   * the composer cancelled the request, the 2s time box ran out, or this
+   * plugin instance is reloaded, disabled or removed. Pass it to `fetch` or
+   * check it between steps; the host ignores whatever a search returns after
+   * its signal aborts.
+   */
+  experimental_signal: AbortSignal;
 }
 
 /** One row a mention provider returns from `search`. `id` is the provider's
@@ -1916,7 +1924,11 @@ export interface PluginMentionProviderRegistration {
    * Runs server-side as the user types after one of this provider's triggers
    * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
    * or throwing provider contributes an empty list — it can never break the
-   * mention menu.
+   * mention menu. A provider runs one search at a time: a query typed while a
+   * search is running waits for it, and only the newest waiting query runs.
+   * A search still running after its time box keeps the provider out of
+   * results until it settles. Stop work when `ctx.experimental_signal` aborts
+   * so the next query starts sooner.
    */
   search(
     ctx: PluginMentionSearchContext,

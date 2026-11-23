@@ -509,6 +509,7 @@ export function registerPluginRoutes(
       query,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
+      signal: context.req.raw.signal,
     });
     return context.json({ ok: true, groups });
   });

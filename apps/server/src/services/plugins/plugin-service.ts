@@ -504,6 +504,7 @@ export interface PluginService {
     query: string;
     projectId: string | null;
     threadId: string | null;
+    signal: AbortSignal;
   }): Promise<PluginMentionSearchGroup[]>;
   resolveMention(args: {
     pluginId: string;
@@ -2744,19 +2745,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               const outcome = await invokeWrapped(
                 plugin,
                 `mention search ${record.id}`,
-                async () => {
-                  const result = await mentionSearches.search(record, () =>
-                    record.search({
-                      trigger: args.trigger,
-                      query: args.query,
-                      projectId: args.projectId,
-                      threadId: args.threadId,
-                    }),
+                async (signal) => {
+                  const result = await mentionSearches.search(
+                    record,
+                    (searchSignal) =>
+                      record.search({
+                        trigger: args.trigger,
+                        query: args.query,
+                        projectId: args.projectId,
+                        threadId: args.threadId,
+                        experimental_signal: searchSignal,
+                      }),
+                    signal,
                   );
                   return result === null
                     ? []
                     : normalizeMentionSearchItems(record.id, result);
                 },
+                args.signal,
               );
               if (!outcome.ok || outcome.value.length === 0) return null;
               return {
