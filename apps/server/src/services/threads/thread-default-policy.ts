@@ -394,12 +394,10 @@ export async function resolveCreateThreadEnvironment(
   if (
     hasLiveParent &&
     parentThread?.projectId === PERSONAL_PROJECT_ID &&
+    parentThread.environmentId !== null &&
     args.projectId === PERSONAL_PROJECT_ID &&
     isPersonalWorkspaceEnvironment(args.requestedEnvironment)
   ) {
-    if (!parentThread.environmentId) {
-      throw new Error("Personal parent thread is missing an environment");
-    }
     const requestedEnvironment = args.requestedEnvironment;
     const requestedMachine: ProviderEnvironmentArgs["machine"] =
       requestedEnvironment.type === "provider"
@@ -420,12 +418,10 @@ export async function resolveCreateThreadEnvironment(
   if (
     hasLiveParent &&
     parentThread?.projectId === args.projectId &&
+    parentThread.environmentId !== null &&
     args.projectId !== PERSONAL_PROJECT_ID &&
     args.requestedEnvironment.type === "project-default"
   ) {
-    if (!parentThread.environmentId) {
-      throw new Error("Parent thread is missing an environment");
-    }
     const parentEnvironment = getEnvironment(
       deps.db,
       parentThread.environmentId,
