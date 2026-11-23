@@ -25,6 +25,7 @@ import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { reorderStoredOrder } from "@/lib/stored-order";
 import {
   SortableSettingsRowList,
@@ -479,56 +480,58 @@ function RouteRow({
               </p>
             )}
           </div>
-          {broken && provider.pluginId !== null && (
-            <Link
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-              onClick={onNavigate}
-              to={getSettingsTargetPath({ pluginId: provider.pluginId })}
-            >
-              Fix
-            </Link>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          {provider.pluginId !== null &&
+            (broken ? (
+              <Link
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+                onClick={onNavigate}
+                to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+              >
+                Fix
+              </Link>
+            ) : (
+              <RouteIconAction label={`${provider.displayName} settings`}>
+                <Link
+                  className={buttonVariants({ variant: "ghost", size: "icon" })}
+                  aria-label={`${provider.displayName} settings`}
+                  onClick={onNavigate}
+                  to={getSettingsTargetPath({ pluginId: provider.pluginId })}
+                >
+                  <Icon name="Settings" className="size-4" />
+                </Link>
+              </RouteIconAction>
+            ))}
+          {manual && (
+            <RouteIconAction label="Edit address">
               <Button
                 variant="ghost"
                 size="icon"
                 disabled={disabled}
-                aria-label={`${provider.displayName} options`}
+                aria-label="Edit address"
+                aria-expanded={editing}
+                onClick={() => setEditing((open) => !open)}
               >
-                <Icon name="MoreHorizontal" className="size-4" />
+                <Icon name="Edit" className="size-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {provider.pluginId !== null && (
-                <DropdownMenuItem asChild>
-                  <Link
-                    onClick={onNavigate}
-                    to={getSettingsTargetPath({ pluginId: provider.pluginId })}
-                  >
-                    Manage
-                  </Link>
-                </DropdownMenuItem>
-              )}
-              {manual && (
-                <DropdownMenuItem onSelect={() => setEditing(true)}>
-                  Edit address
-                </DropdownMenuItem>
-              )}
-              {(manual || localNetwork) && (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() =>
-                    manual
-                      ? machineAccess.removeManualAddress()
-                      : machineAccess.setLocalNetworkEnabled(false)
-                  }
-                >
-                  Remove
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </RouteIconAction>
+          )}
+          {(manual || localNetwork) && (
+            <RouteIconAction label={`Remove ${provider.displayName}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={disabled}
+                aria-label={`Remove ${provider.displayName}`}
+                onClick={() =>
+                  manual
+                    ? machineAccess.removeManualAddress()
+                    : machineAccess.setLocalNetworkEnabled(false)
+                }
+              >
+                <Icon name="Trash2" className="size-4" />
+              </Button>
+            </RouteIconAction>
+          )}
         </div>
         {localNetwork && !broken && (
           <p className="text-xs text-warning-text">
@@ -545,6 +548,21 @@ function RouteRow({
         )}
       </div>
     </SettingsRow>
+  );
+}
+
+function RouteIconAction({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

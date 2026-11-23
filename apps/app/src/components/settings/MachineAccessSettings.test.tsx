@@ -12,6 +12,7 @@ import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   MachineAccessSettings,
   MobileServerAccess,
@@ -106,10 +107,12 @@ function CurrentPath() {
 
 function renderSettings() {
   render(
-    <MemoryRouter>
-      <MachineAccessSettings />
-      <CurrentPath />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <MachineAccessSettings />
+        <CurrentPath />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
 }
 
@@ -169,7 +172,7 @@ it("lists routes that are on and offers the rest from Add a route", async () => 
       .map((handle) => handle.getAttribute("aria-label")),
   ).toEqual(["Reorder Local network", "Reorder Relay"]);
 
-  await chooseMenuItem("Local network options", "Remove");
+  fireEvent.click(screen.getByRole("button", { name: "Remove Local network" }));
   expect(state.mutate).toHaveBeenLastCalledWith({ localNetworkEnabled: false });
 
   setSettings({ serverAccessOrder: ["relay", "direct", "local-network"] });
@@ -211,13 +214,13 @@ it("closes the Manual editor once the address saves, so removing Manual later le
   expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
 });
 
-it("edits or removes Manual's address from its options menu", async () => {
+it("edits or removes Manual's address from its row", () => {
   setProviders([LAN, RELAY, ready(MANUAL, "https://bb.example.com")]);
   renderSettings();
   expect(namesIn("Routes")).toEqual(["Manual"]);
-  await chooseMenuItem("Manual options", "Edit address");
+  fireEvent.click(screen.getByRole("button", { name: "Edit address" }));
   expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
-  await chooseMenuItem("Manual options", "Remove");
+  fireEvent.click(screen.getByRole("button", { name: "Remove Manual" }));
   expect(state.mutate).toHaveBeenLastCalledWith({ machineServerUrl: null });
 });
 
@@ -234,16 +237,14 @@ it("follows a plugin route through setup, readiness, and failure, leaving remova
   expect(
     within(relayRow()).getByText("https://relay.example.com"),
   ).toBeTruthy();
-  fireEvent.pointerDown(
-    within(relayRow()).getByRole("button", { name: "Relay options" }),
-    { button: 0 },
-  );
   expect(
-    (await screen.findAllByRole("menuitem")).map((item) => item.textContent),
-  ).toEqual(["Manage"]);
-  fireEvent.keyDown(document.activeElement ?? document.body, {
-    key: "Escape",
-  });
+    within(relayRow())
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("aria-label")),
+  ).toEqual(["Relay settings"]);
+  expect(
+    within(relayRow()).queryByRole("button", { name: /^Remove/ }),
+  ).toBeNull();
 
   setProviders([
     LAN,
@@ -260,11 +261,13 @@ it("follows a plugin route through setup, readiness, and failure, leaving remova
 
 it("shows the phone only ready routes, and every plugin route's section", () => {
   render(
-    <MemoryRouter>
-      <MobileServerAccess
-        renderPluginSettings={(pluginId) => <p>{`${pluginId} pairing`}</p>}
-      />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <MobileServerAccess
+          renderPluginSettings={(pluginId) => <p>{`${pluginId} pairing`}</p>}
+        />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
   expect(screen.getByText(/No route is ready yet/)).toBeTruthy();
   expect(screen.getByText("relay-plugin pairing")).toBeTruthy();
