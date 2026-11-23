@@ -214,6 +214,7 @@ function renderThreadRow({
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
 } {
+  renderedRowThreads.set(thread.id, thread);
   const slot = renderSlot(
     { component: ThreadRowHarness },
     { thread, projects, providers, ...harness },
@@ -244,6 +245,7 @@ function renderThreadRow({
   );
   return Object.assign(slot, {
     rerenderThreadRow(nextThread: PluginSidebarThread) {
+      renderedRowThreads.set(nextThread.id, nextThread);
       slot.lifecycle.rerender(
         <ThreadRowHarness
           thread={nextThread}
@@ -320,6 +322,8 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+const renderedRowThreads = new Map<string, PluginSidebarThread>();
+
 interface RanThreadAction {
   key: string;
   threadId: string;
@@ -332,7 +336,9 @@ function hostThreadActions({
   ran?: RanThreadAction[];
   archiveRun?: () => Promise<void>;
 } = {}): TestThreadActionsResolver {
-  return (thread, { requestRename }) => {
+  return ({ id }, { requestRename }) => {
+    const thread = renderedRowThreads.get(id);
+    if (thread === undefined) return [];
     const entry = (
       key: string,
       label: string,
@@ -396,6 +402,7 @@ async function expectRenamePresentation(outcome: RenamePresentationOutcome) {
 }
 
 afterEach(() => {
+  renderedRowThreads.clear();
   cleanup();
   pointerState.coarse = false;
   vi.restoreAllMocks();

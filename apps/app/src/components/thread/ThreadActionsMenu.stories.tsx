@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import type { ThreadListEntry } from "@bb/domain";
-import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 import { ThreadActionsProvider } from "./ThreadActionsProvider";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
 
@@ -23,7 +24,7 @@ function Stage({ children }: { children: ReactNode }) {
 function Menu({ thread }: { thread: ThreadListEntry }) {
   return (
     <ThreadActionsMenu
-      thread={threadListEntryActionTarget(thread)}
+      thread={thread}
       trigger={(props) => (
         <button {...props} type="button" aria-label="Thread actions">
           ...
@@ -49,6 +50,14 @@ export function Overview() {
     id: "thr_archived",
     archivedAt: 150,
   });
+  const queryClient = useQueryClient();
+  useState(() =>
+    holdSidebarThreads(queryClient, [
+      readThread,
+      unreadPinnedThread,
+      archivedThread,
+    ]),
+  );
 
   return (
     <StoryCard>

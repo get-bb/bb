@@ -15,7 +15,6 @@ import type {
   PluginThreadActionsInlineItem,
   PluginThreadActionsMenuProps,
   PluginThreadActionsTriggerProps,
-  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import {
   ContextMenu,
@@ -50,7 +49,7 @@ function ThreadActionsMenuItems({
   drawerStep,
   onDrawerStepChange,
 }: {
-  thread: PluginThreadActionTarget;
+  thread: { id: string };
   inline?: readonly PluginThreadActionsInlineItem[];
   requestRename?: (threadId: string) => void;
   surface: ThreadActionMenuSurface;
@@ -235,7 +234,7 @@ function ThreadBulkMenuItems({
   drawerStep,
   onDrawerStepChange,
 }: {
-  threads: readonly PluginThreadActionTarget[];
+  threads: readonly { id: string }[];
   inline?: readonly PluginThreadActionsInlineItem[];
 } & MenuItemsRenderProps) {
   const groups = useThreadBulkActionMenuGroups({ threads, inline });

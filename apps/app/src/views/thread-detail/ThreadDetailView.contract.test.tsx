@@ -16,7 +16,11 @@ import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import {
@@ -59,7 +63,6 @@ import {
   type ContractStateSink,
   type PanelContractSurface,
 } from "@/test/panel-controller-contract";
-import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import {
   ThreadActionCollectors,
@@ -73,6 +76,8 @@ const appCommandHandlers = vi.hoisted(
   () => new Map<string, () => boolean | void>(),
 );
 const fixtures = vi.hoisted(() => ({
+  environmentStatus: "ready" as import("@bb/domain").EnvironmentStatus,
+  headerTargets: [] as import("@get-bb/plugin-sdk").PluginThreadActionTarget[],
   probe: {
     current: null,
   } as import("@/test/panel-controller-contract").ContractPanelRef,
@@ -104,7 +109,6 @@ const ENVIRONMENT = makeEnvironment({
   id: "env_contract",
   projectId: "proj_contract",
 });
-const THREAD_ACTION_TARGET = toThreadActionTarget(THREAD, null);
 
 vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
@@ -146,9 +150,16 @@ vi.mock("./ThreadDetailSecondaryContent", async () => {
     ),
   };
 });
-vi.mock("./ThreadDetailHeader", () => ({
-  ThreadDetailHeader: () => <header data-testid="thread-header" />,
-}));
+vi.mock("./ThreadDetailHeader", async () => {
+  const { useThreadHeaderActionEntries } =
+    await import("@/lib/thread-actions/thread-action-registry");
+  return {
+    ThreadDetailHeader: ({ thread }: { thread: { id: string } }) => {
+      useThreadHeaderActionEntries(thread);
+      return <header data-testid="thread-header" />;
+    },
+  };
+});
 vi.mock("./ThreadDetailPromptArea", async () => {
   const { PluginContext } = await import("@/components/plugin/plugin-context");
   const { ContractPanelProbe } =
@@ -197,7 +208,7 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
     typeof import("@/hooks/queries/environment-queries")
   >()),
   useEnvironment: () => ({
-    data: ENVIRONMENT,
+    data: { ...ENVIRONMENT, status: fixtures.environmentStatus },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -248,12 +259,14 @@ async function mountThreadView(
     { initialEntries: ["/"] },
   );
   fixtures.router = router;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  holdSidebarThreads(queryClient, [
+    makeThreadListEntry({ ...THREAD, environmentPath: ENVIRONMENT.path }),
+  ]);
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <Provider>
         <RouterProvider router={router} />
       </Provider>
@@ -408,7 +421,7 @@ function HeaderRowProbe() {
 }
 
 function ThreadActionProbe() {
-  useThreadHeaderActionEntries(THREAD_ACTION_TARGET);
+  useThreadHeaderActionEntries(THREAD);
   return null;
 }
 
@@ -502,7 +515,8 @@ beforeEach(() => {
           icon: "Info",
           group: "probe",
           placement: "header",
-          item: ({ navigate, panel }) => {
+          item: ({ thread, navigate, panel }) => {
+            fixtures.headerTargets.push(thread);
             if (fixtures.probeHost === "threadAction") {
               fixtures.probe.current = panel;
               fixtures.probe.tabs = undefined;
@@ -517,11 +531,26 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  fixtures.environmentStatus = "ready";
+  fixtures.headerTargets.length = 0;
   cleanup();
   vi.restoreAllMocks();
   resetThreadActionRegistryForTest();
   resetPluginSlotStoreForTest();
   resetFocusedAppNavigationSurfacesForTest();
+});
+
+describe("thread action target on the thread page", () => {
+  it("gives header actions the thread's environment while it provisions, as sidebar rows get it", async () => {
+    fixtures.environmentStatus = "provisioning";
+    await mountThreadView("prompt");
+    await waitFor(() =>
+      expect(fixtures.headerTargets.at(-1)?.environment).toEqual({
+        id: ENVIRONMENT.id,
+        path: ENVIRONMENT.path,
+      }),
+    );
+  });
 });
 
 describe("experimental_threadHeaderRow", () => {

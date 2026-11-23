@@ -19,12 +19,19 @@ import {
   type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
+  type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import type { ThreadListEntry } from "@bb/domain";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { appToast } from "@/components/ui/app-toast";
-import { threadQueryKey } from "@/hooks/queries/query-keys";
+import {
+  environmentQueryKey,
+  threadQueryKey,
+} from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -34,7 +41,7 @@ import type { SplitLayout } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { threadRequestsAtom } from "@/lib/thread-requests";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
-import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 import {
   ThreadActionCollectors,
   ThreadActionSurfaceVisibility,
@@ -70,7 +77,10 @@ const sdkThreads = vi.hoisted(() => ({
 }));
 const copyToClipboard = vi.hoisted(() => vi.fn(async () => true));
 
-vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sdk")>()),
+  sdk: { threads: sdkThreads },
+}));
 vi.mock("@/lib/clipboard", () => ({ copyToClipboard }));
 
 const moveRun = vi.fn();
@@ -137,6 +147,18 @@ const baseThread = makeThreadListEntry({
   environmentPath: "/repo",
 });
 
+function sidebarQueryClient(threads: readonly ThreadListEntry[]): QueryClient {
+  const queryClient = new QueryClient();
+  holdSidebarThreads(queryClient, threads);
+  return queryClient;
+}
+
+function sidebarThreadsWithIds(ids: readonly string[]): QueryClient {
+  return sidebarQueryClient(
+    ids.map((id) => makeThreadListEntry({ ...baseThread, id })),
+  );
+}
+
 interface SurfaceOptions {
   thread: ThreadListEntry;
   inline?: readonly PluginThreadActionsInlineItem[];
@@ -156,7 +178,7 @@ const SURFACES: readonly Surface[] = [
     compact: false,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         trigger={(props) => (
           <button {...props} type="button">
             Thread actions
@@ -178,7 +200,7 @@ const SURFACES: readonly Surface[] = [
     compact: false,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsContextMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         inline={inline}
         requestRename={requestRename}
       >
@@ -194,7 +216,7 @@ const SURFACES: readonly Surface[] = [
     compact: true,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         trigger={(props) => (
           <button {...props} type="button">
             Thread actions
@@ -213,7 +235,7 @@ const SURFACES: readonly Surface[] = [
     compact: true,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsContextMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         inline={inline}
         requestRename={requestRename}
       >
@@ -276,7 +298,7 @@ function renderSurface(
     threadActions = [],
   }: HostState = {},
 ) {
-  const queryClient = new QueryClient();
+  const queryClient = sidebarQueryClient([options.thread]);
   const store = createStore();
   store.set(threadRequestsAtom, threadRequests);
   if (layout !== null) store.set(splitLayoutAtom, layout);
@@ -827,7 +849,7 @@ describe("thread actions menu trigger", () => {
         ...surface,
         render: ({ thread }) => (
           <ThreadActionsMenu
-            thread={threadListEntryActionTarget(thread)}
+            thread={thread}
             trigger={(props) => (
               <button {...props} type="button" className="mine">
                 Thread actions
@@ -865,7 +887,7 @@ describe("thread actions menu trigger", () => {
         ...surface,
         render: ({ thread }) => (
           <ThreadActionsMenu
-            thread={threadListEntryActionTarget(thread)}
+            thread={thread}
             trigger={() => <button type="button">Thread actions</button>}
           />
         ),
@@ -1006,12 +1028,177 @@ describe("thread actions outside bb's own surfaces", () => {
   });
 });
 
+describe("thread action target", () => {
+  const expected: PluginThreadActionTarget = {
+    id: baseThread.id,
+    projectId: baseThread.projectId,
+    parentThreadId: null,
+    parentNotifications: baseThread.parentNotifications,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: "sec_planning",
+    isUnread: false,
+    isHidden: false,
+    status: baseThread.status,
+    environment: { id: "env_a", path: "/repo" },
+  };
+  const seen: { from: string; thread: PluginThreadActionTarget }[] = [];
+  const recorder = (
+    placement: "menu" | "header",
+  ): PluginThreadActionRegistration => ({
+    id: `recorder-${placement}`,
+    title: "Recorder",
+    icon: "Notification",
+    group: "5_plugin",
+    placement,
+    useData: ({ experimental_threads }) => {
+      for (const thread of experimental_threads) {
+        seen.push({ from: `${placement} useData`, thread });
+      }
+      return undefined;
+    },
+    item: ({ thread }) => {
+      seen.push({ from: `${placement} item`, thread });
+      return null;
+    },
+    experimental_bulkItem: ({ threads }) => {
+      for (const thread of threads) seen.push({ from: "bulk", thread });
+      return null;
+    },
+  });
+
+  afterEach(() => {
+    seen.length = 0;
+  });
+
+  it.each(SURFACES)(
+    "is resolved from the thread's id on the $name",
+    async (surface) => {
+      renderSurface(
+        surface,
+        { thread: makeThreadListEntry({ ...baseThread, title: "Ignored" }) },
+        { threadActions: [recorder("menu")] },
+      );
+      await surface.open();
+      await waitFor(() =>
+        expect(seen.map(({ from }) => from)).toEqual(
+          expect.arrayContaining(["menu item", "menu useData"]),
+        ),
+      );
+      for (const { thread } of seen) expect(thread).toEqual(expected);
+    },
+  );
+
+  it("is the same for the open thread's header and a selection", async () => {
+    const other = makeThreadListEntry({ ...baseThread, id: "thr_other" });
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        threadActions: [recorder("menu"), recorder("header")],
+      }),
+    );
+    function Header() {
+      useThreadHeaderActionEntries({ id: baseThread.id });
+      return null;
+    }
+    render(
+      <QueryClientProvider client={sidebarQueryClient([baseThread, other])}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Header />
+          <ThreadActionsContextMenu
+            thread={{ id: baseThread.id }}
+            experimental_bulkThreads={[{ id: baseThread.id }, { id: other.id }]}
+          >
+            <div>Selection</div>
+          </ThreadActionsContextMenu>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    await waitFor(() =>
+      expect(seen.map(({ from }) => from)).toEqual(
+        expect.arrayContaining([
+          "header item",
+          "header useData",
+          "menu useData",
+          "bulk",
+        ]),
+      ),
+    );
+    const forThread = seen.filter(({ thread }) => thread.id === baseThread.id);
+    for (const { thread } of forThread) expect(thread).toEqual(expected);
+    expect(
+      seen.find(({ from, thread }) => from === "bulk" && thread.id === other.id)
+        ?.thread,
+    ).toEqual({ ...expected, id: other.id });
+  });
+});
+
+describe("thread action target outside the sidebar", () => {
+  it("is read through the thread and environment queries", async () => {
+    const seen: PluginThreadActionTarget[] = [];
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        threadActions: [
+          {
+            id: "recorder",
+            title: "Recorder",
+            icon: "Notification",
+            group: "5_plugin",
+            item: ({ thread }) => {
+              seen.push(thread);
+              return null;
+            },
+          },
+        ],
+      }),
+    );
+    const unheld = makeThreadListEntry({
+      ...baseThread,
+      id: "thr_unheld",
+      archivedAt: 30,
+      environmentId: "env_b",
+    });
+    sdkThreads.get.mockResolvedValue(unheld);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(threadQueryKey(unheld.id), unheld);
+    queryClient.setQueryData(
+      environmentQueryKey("env_b"),
+      makeEnvironment({ id: "env_b", path: "/b" }),
+    );
+    function Row() {
+      useThreadActionEntries({ id: unheld.id });
+      return null;
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({
+        id: unheld.id,
+        archivedAt: 30,
+        environment: { id: "env_b", path: "/b" },
+      }),
+    );
+  });
+});
+
 describe("thread action data input", () => {
   function Row({ id }: { id: string }) {
-    useThreadActionEntries(
-      threadListEntryActionTarget({ ...baseThread, id }),
-      {},
-    );
+    useThreadActionEntries({ ...baseThread, id }, {});
     return null;
   }
 
@@ -1032,7 +1219,12 @@ describe("thread action data input", () => {
       "fixture",
       makePluginRegistrationSet({ threadActions: [recorder] }),
     );
-    const queryClient = new QueryClient();
+    const queryClient = sidebarThreadsWithIds([
+      "thr_a",
+      "thr_b",
+      "thr_c",
+      ...Array.from({ length: 250 }, (_, index) => `thr_${index}`),
+    ]);
     function Surface({
       ids,
       visible = true,
@@ -1107,13 +1299,13 @@ describe("thread action data input", () => {
       makePluginRegistrationSet({ threadActions: [headerRecorder] }),
     );
     function Header({ id }: { id: string }) {
-      useThreadHeaderActionEntries(
-        threadListEntryActionTarget({ ...baseThread, id }),
-      );
+      useThreadHeaderActionEntries({ ...baseThread, id });
       return null;
     }
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider
+        client={sidebarThreadsWithIds(["thr_row_a", "thr_row_b", "thr_open"])}
+      >
         <MemoryRouter>
           <ThreadActionCollectors
             coreRegistrations={[]}
@@ -1186,7 +1378,7 @@ describe.each([
   };
 
   function renderSelection(threads: readonly ThreadListEntry[]) {
-    const queryClient = new QueryClient();
+    const queryClient = sidebarQueryClient(threads);
     const store = createStore();
     store.set(threadRequestsAtom, threadRequests);
     for (const thread of threads) {
@@ -1213,10 +1405,8 @@ describe.each([
                 requestRename={defaultRequestRename}
               />
               <ThreadActionsContextMenu
-                thread={threadListEntryActionTarget(threads[0] ?? baseThread)}
-                experimental_bulkThreads={threads.map(
-                  threadListEntryActionTarget,
-                )}
+                thread={threads[0] ?? baseThread}
+                experimental_bulkThreads={threads}
                 inline={[CLEAR]}
                 onEscapeKeyDown={onEscapeKeyDown}
               >
@@ -1389,9 +1579,7 @@ describe("header thread actions", () => {
   function HeaderLabels() {
     return (
       <ol>
-        {useThreadHeaderActionEntries(
-          threadListEntryActionTarget(baseThread),
-        ).map((entry) => (
+        {useThreadHeaderActionEntries(baseThread).map((entry) => (
           <li key={entry.key}>{entry.action.label}</li>
         ))}
       </ol>
@@ -1487,17 +1675,13 @@ describe("thread action rows", () => {
     const entries = new Map<string, readonly PluginThreadActionEntry[]>();
     function Row({ id }: { id: string }) {
       renders.set(id, (renders.get(id) ?? 0) + 1);
-      entries.set(
-        id,
-        useThreadActionEntries(
-          threadListEntryActionTarget({ ...baseThread, id }),
-          {},
-        ),
-      );
+      entries.set(id, useThreadActionEntries({ ...baseThread, id }, {}));
       return null;
     }
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider
+        client={sidebarThreadsWithIds(["thr_a", "thr_b", "thr_c"])}
+      >
         <MemoryRouter>
           <ThreadActionCollectors
             coreRegistrations={[]}

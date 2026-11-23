@@ -224,10 +224,13 @@ sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 
 `useData` is a hook the host runs once for the whole app, never per row: read
-your preferences or a realtime channel there. It receives `{ threadIds }`, the
-sorted ids of every thread on screen or in an open menu; for per-thread state,
-keep an id-keyed cache and fetch only the ids not in it, in one batch (for
-example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
+your preferences or a realtime channel there. It receives `{ threadIds,
+experimental_threads }`: the sorted ids of every thread on screen or in an
+open menu, and the targets `item` gets for them. Read thread fields such as
+`environment` from `experimental_threads`; never fetch each thread. For other
+per-thread state, keep an id-keyed cache and fetch only the ids not in it, in
+one batch (for example
+`useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `item` is pure: it gets `{ thread, data }` plus the [callback context](frontend-hooks-and-ui.md#callback-context)
 `{ sdk, navigate, panel }`, and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
@@ -274,7 +277,10 @@ app.slots.experimental_threadAction({
 A replacement thread list renders bb's menus with
 `experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
 passing its own rename editor as `requestRename` and list-only entries as
-`inline` (`{ key, group, action }`). `trigger` is a function: spread the props
+`inline` (`{ key, group, action }`). Pass the thread you hold (a
+`PluginSidebarThread`) as `thread`: bb reads only its `id` and builds the
+target its actions see itself, the same as in its own menus, so never map
+threads to targets yourself. `trigger` is a function: spread the props
 and ref it receives onto your button, or the menu never opens. `experimental_useThreadActions(thread, { keys })` returns bound
 actions for quick-action buttons, and
 `experimental_useThreadActionRegistrations()` lists every action's static

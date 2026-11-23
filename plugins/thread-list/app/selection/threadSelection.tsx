@@ -8,10 +8,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useSidebarData } from "../model/use-sidebar-data.js";
-import { toThreadActionTarget } from "../rows/threadActionTarget.js";
 import { useSidebarScrollArea } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
 import { isNonImeKey } from "@/lib/ime-keyboard";
@@ -36,7 +34,7 @@ export class ThreadSelectionStore {
   private activeThreadId: string | null = null;
   private scrollElement: HTMLElement | null = null;
   private listedThreadsById: ReadonlyMap<string, SidebarThread> = new Map();
-  private selectionTargets: readonly PluginThreadActionTarget[] | null = null;
+  private selectionThreads: readonly SidebarThread[] | null = null;
   private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -48,12 +46,12 @@ export class ThreadSelectionStore {
 
   getSelected = (): readonly string[] => this.selected;
 
-  getSelectionTargets = (): readonly PluginThreadActionTarget[] => {
-    this.selectionTargets ??= this.selected.flatMap((threadId) => {
+  getSelectionThreads = (): readonly SidebarThread[] => {
+    this.selectionThreads ??= this.selected.flatMap((threadId) => {
       const thread = this.listedThreadsById.get(threadId);
-      return thread === undefined ? [] : [toThreadActionTarget(thread)];
+      return thread === undefined ? [] : [thread];
     });
-    return this.selectionTargets;
+    return this.selectionThreads;
   };
 
   setListedThreads(threadsById: ReadonlyMap<string, SidebarThread>): void {
@@ -67,7 +65,7 @@ export class ThreadSelectionStore {
       return;
     }
     if (this.selected.length === 0) return;
-    this.selectionTargets = null;
+    this.selectionThreads = null;
     for (const listener of this.listeners) listener();
   }
 
@@ -158,7 +156,7 @@ export class ThreadSelectionStore {
     }
     this.selected = next;
     this.selectedSet = new Set(next);
-    this.selectionTargets = null;
+    this.selectionThreads = null;
     for (const listener of this.listeners) listener();
   }
 }

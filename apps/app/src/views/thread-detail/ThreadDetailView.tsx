@@ -61,7 +61,6 @@ import type {
   PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
-import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -1377,14 +1376,6 @@ function ThreadDetailViewInternal(
           },
         }))
       : [];
-  const threadActionTarget = toThreadActionTarget(
-    thread,
-    reusesEnvironment &&
-      thread.environmentId !== null &&
-      environment?.path != null
-      ? { id: thread.environmentId, path: environment.path }
-      : null,
-  );
   const workspaceOpenButton =
     workspaceOpenPath && preferredDirectoryTarget ? (
       <ThreadWorkspaceOpenButton
@@ -1416,7 +1407,7 @@ function ThreadDetailViewInternal(
           onCloseAutoFocus,
         }) => (
           <ThreadActionsMenu
-            thread={threadActionTarget}
+            thread={thread}
             trigger={(triggerProps) => (
               <Button
                 {...triggerProps}
@@ -1469,7 +1460,7 @@ function ThreadDetailViewInternal(
             projectId={thread.projectId}
           />
         }
-        thread={threadActionTarget}
+        thread={thread}
         threadTitle={threadTitle}
         contextCardButton={<ThreadContextCardHeaderButton />}
         workspaceOpenButton={workspaceOpenButton}
@@ -1760,7 +1751,7 @@ function ThreadDetailViewInternal(
   );
   return (
     <>
-      <PaneThreadActionCommandHandler thread={threadActionTarget} />
+      <PaneThreadActionCommandHandler thread={thread} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
         <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
           <AttachmentOpenerContext.Provider value={openAttachment}>

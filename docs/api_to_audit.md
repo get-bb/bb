@@ -4330,8 +4330,11 @@ Docs: `frontend-registration.md`, `frontend-pull-requests.md`.
 
 A registration is `{ id, title, icon, group, order?, placement?, useData?, item }`.
 `useData` runs once per registration for the whole app and receives
-`{ threadIds }`, every thread a visible surface evaluates actions for,
-debounced (32 ms quiet, 100 ms max). `item` is a pure function of
+`{ threadIds, experimental_threads }`: every thread a visible surface
+evaluates actions for, debounced (32 ms quiet, 100 ms max), and the targets
+`item` receives for those ids, leaving out threads bb has not loaded yet.
+The Git plugin's Commit reads `experimental_threads` for each open thread's
+environment instead of fetching every thread with `threads.get`. `item` is a pure function of
 `{ thread, data, sdk, navigate }` returning a `PluginThreadAction` or null;
 throws drop the registration or that thread's item, and `run` errors are
 contained. Registrations sort by `group`, `order`, then registration order
@@ -4352,11 +4355,30 @@ of the header. A header registration's `useData` receives only the threads
 whose header is on screen, so per-thread reads scale with open panes, not
 sidebar rows. The Git plugin's Commit is the only header action.
 
+**One target.** Every surface hands the host a thread by id:
+`experimental_useThreadActions(thread)`, the menus' `thread`, and
+`experimental_bulkThreads` read only `id` (their type is `{ id: string }`, so a
+`PluginSidebarThread`, an `ExperimentalThread`, or an old hand-built target
+all still fit). `thread-action-target.tsx` builds the
+`PluginThreadActionTarget` on `experimental_useThread`'s resolution
+(`thread-state.ts`: the held sidebar entry, else the thread query) plus the
+environment's path, through `threadReadSource`, the non-hook form of that
+resolution. For ids the sidebar does not hold, `ThreadActionCollectors` mounts
+a loader that calls `useThreadState` and `useEnvironment`. `item`,
+`experimental_bulkItem` and `useData`'s `experimental_threads` all read that
+one resolution, so the header, row menus, quick actions, selection menus,
+the palette commands and plugin lists see the same target. `environment` is
+the thread's environment with its checkout `path` (null before the checkout
+exists or after it is removed); it no longer drops to null on the header
+while the environment provisions or its machine is offline, so core's New
+thread in environment shows in the header menu wherever the sidebar row
+shows it.
+
 `experimental_bulkItem` is an optional pure function of
 `{ threads, data, sdk, navigate }` (two or more selected threads in list
 order) returning one action for the whole selection, or null.
 `experimental_ThreadActionsContextMenu`'s optional `experimental_bulkThreads`
-(the selected targets) and `onEscapeKeyDown` turn the row's menu into the
+(the selected threads, by id) and `onEscapeKeyDown` turn the row's menu into the
 selection menu when it holds two or more threads: a "N threads selected"
 heading, every registration's bulk item in the same group order as the
 thread menu, then `inline`, with every selected id retained in `useData`'s
@@ -4369,8 +4391,10 @@ takes `threadBulkActions` for the entries it lists.
 public SDK and registry items (`bb/core-contribution-imports`) and collected
 as `CORE_THREAD_ACTIONS` under the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
 `ThreadDetailHeader`), `RootComposeMobileRecents`, and
-`PaneThreadActionCommandHandler` read the same registry, and the thread list's
-row menus and quick actions use the SDK exports. The contract table in
+`PaneThreadActionCommandHandler` read the same registry with the thread they
+show, and the thread list's and Conductor's row menus, quick actions and
+selection menu pass their `PluginSidebarThread`s to the SDK exports; neither
+plugin builds a target. The contract table in
 `ThreadActionsMenu.test.tsx` runs every menu surface against the same
 registrations. Core's Mark read, Pin, Notify parent, Archive and Delete
 registrations carry the bulk items; Notify parent reads the target's
@@ -4391,10 +4415,13 @@ Docs: `frontend-registration.md`, `frontend-thread-list.md`.
 
 **Audit before stabilizing.**
 
-1. **Per-thread data.** `threadIds` makes each registration fetch and cache
-   per-thread state itself. Decide whether a host attributes layer should
-   batch those reads across registrations, and whether `useData` should move
-   onto `experimental_useRpcQuery`.
+1. **Per-thread data.** `experimental_threads` carries the target fields;
+   anything else per thread (git status, notification levels) each
+   registration still fetches and caches itself. Decide whether a host
+   attributes layer should batch those reads across registrations, whether
+   `useData` should move onto `experimental_useRpcQuery`, and whether
+   `threadIds` should go once `experimental_threads` is stable. Requires SDK
+   0.6.192.
 2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.

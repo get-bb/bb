@@ -84,8 +84,17 @@ function target(
 
 type ItemFor = (thread: PluginThreadActionTarget) => PluginThreadAction | null;
 
-function Probe({ onItem }: { onItem(item: ItemFor): void }) {
-  const data = commitThreadAction.useData!({ threadIds: ["thr-1"] });
+function Probe({
+  threads,
+  onItem,
+}: {
+  threads: readonly PluginThreadActionTarget[];
+  onItem(item: ItemFor): void;
+}) {
+  const data = commitThreadAction.useData!({
+    threadIds: threads.map((thread) => thread.id),
+    experimental_threads: threads,
+  });
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const panel = experimental_useAppPanel();
@@ -101,28 +110,33 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
   return null;
 }
 
+const threadsGet = vi.fn(async () => {
+  throw new Error("the commit action reads targets, not threads.get");
+});
+
 function renderAction({
   workspace = DIRTY,
   settings = { showCommitButton: true },
+  threads = [target()],
 }: {
   workspace?: WorkspaceStatus;
   settings?: Record<string, boolean>;
+  threads?: readonly PluginThreadActionTarget[];
 } = {}) {
   let itemFor: ItemFor | null = null;
+  const onItem = (next: ItemFor) => {
+    itemFor = next;
+  };
   const view = renderSlot(
     { component: Probe },
-    {
-      onItem: (next: ItemFor) => {
-        itemFor = next;
-      },
-    },
+    { threads, onItem },
     {
       rpc: statusFor(workspace) as PluginRpcTestHandlers<typeof gitRpcContract>,
       experimental_rpcContract: gitRpcContract,
       pluginId: "bb--git",
       settings,
       sdk: {
-        threads: { get: async () => ({ environmentId: "env-1" }) },
+        threads: { get: threadsGet },
         subscribe: () => () => {},
       } as never,
     },
@@ -145,7 +159,15 @@ describe("commit header action", () => {
     expect(action.item()?.icon).toBe("GitBranch");
   });
 
-  it("hides Commit for a clean workspace, an archived thread, or no reusable environment", async () => {
+  it("reads each thread's environment from its target without fetching the thread", async () => {
+    const action = renderAction({
+      threads: [target({ id: "thr-2", environment: null }), target()],
+    });
+    await waitFor(() => expect(action.item()?.label).toBe("Commit"));
+    expect(threadsGet).not.toHaveBeenCalled();
+  });
+
+  it("hides Commit for a clean workspace, an archived thread, or another environment", async () => {
     const clean = renderAction({ workspace: makeWorkspaceStatus() });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(clean.item()).toBeNull();
