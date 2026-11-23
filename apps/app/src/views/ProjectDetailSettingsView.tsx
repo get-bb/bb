@@ -278,12 +278,9 @@ function MachineFoldersRow({
           )}
         />
         <MachineStatusDot connected={connected} />
-        <Link
-          to={getSettingsTargetPath({ machineId: host.id })}
-          className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
-        >
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
           {host.name}
-        </Link>
+        </span>
       </div>
       <div className="mt-2 ml-[7px] border-l border-border pl-4">
         {foldersQuery.isError ? (

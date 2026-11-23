@@ -113,6 +113,7 @@ import {
   deleteProjectSourceFolder,
   listProjectFolderPathsForHost,
   listProjectSourceFolders,
+  updateProjectSourceFolderPath,
 } from "../../src/data/project-source-folders.js";
 import {
   createProject,
@@ -1004,6 +1005,16 @@ const FOLDER_CASES: readonly Case[] = [
         projectId: fixture.projectId,
         projectSourceId: seed.busyDefaultSourceId,
         path: "/Users/dev/code/new-folder",
+      }),
+  },
+  {
+    name: `${FOLDERS}#updateProjectSourceFolderPath`,
+    run: (db, fixture, seed) =>
+      updateProjectSourceFolderPath(db, noopNotifier, {
+        projectId: fixture.projectId,
+        projectSourceId: seed.busyDefaultSourceId,
+        folderId: seed.busyFolderId,
+        path: "/Users/dev/code/api-renamed",
       }),
   },
   {
