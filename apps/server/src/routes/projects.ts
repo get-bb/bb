@@ -963,16 +963,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const branchQuery = normalizeBranchQuery(query.query);
     const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-    const inspectionPromise = callHostRetryableOnlineRpc(deps, {
-      hostId: source.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_source",
-        path: source.path,
-        remoteRefresh,
-      },
-    });
-    const readBranchOptions = () =>
+    const [inspection, branchOptions] = await Promise.all([
+      callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.inspect_git_source",
+          path: source.path,
+          remoteRefresh,
+        },
+      }),
       callHostRetryableOnlineRpc(deps, {
         hostId: source.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -982,16 +982,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           ...(branchQuery ? { query: branchQuery } : {}),
           ...(selectedBranch ? { selectedBranch } : {}),
           limit: parseBranchListLimit(query.limit),
-          remoteRefresh: "none",
+          remoteRefresh,
         },
-      });
-    const branchOptionsPromise =
-      remoteRefresh === "background"
-        ? readBranchOptions()
-        : inspectionPromise.then(readBranchOptions);
-    const [inspection, branchOptions] = await Promise.all([
-      inspectionPromise,
-      branchOptionsPromise,
+      }),
     ]);
     return { ...inspection, ...branchOptions };
   };

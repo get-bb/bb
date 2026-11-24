@@ -1645,7 +1645,7 @@ describe("host-daemon command schemas", () => {
         type: "host.list_branch_options",
         path: "/tmp/workspace",
         limit: 50,
-        remoteRefresh: "none",
+        remoteRefresh: "blocking",
       },
       {
         type: "host.inspect_git_source",
@@ -2592,7 +2592,7 @@ describe("host-daemon command schemas", () => {
       type: "host.list_branch_options",
       path: "/tmp/workspace",
       limit: 50,
-      remoteRefresh: "none",
+      remoteRefresh: "background",
     };
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({

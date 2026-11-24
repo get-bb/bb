@@ -29,7 +29,7 @@ const primaryCommand: HostProviderCommand = {
 };
 
 describe("public project workspace routing", () => {
-  it("keeps app branch options cache-first and public branch listing blocking", async () => {
+  it("keeps app branch options cache-first and sends the blocking refresh calls together", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-project-branches",
@@ -107,7 +107,7 @@ describe("public project workspace routing", () => {
             type: "host.list_branch_options",
             path: "/project/branches",
             limit: 50,
-            remoteRefresh: "none",
+            remoteRefresh: "background",
           },
         ]);
       } finally {
@@ -126,7 +126,7 @@ describe("public project workspace routing", () => {
           type: "host.list_branch_options",
           path: "/project/branches",
           limit: 50,
-          remoteRefresh: "none",
+          remoteRefresh: "background",
         },
       ]);
       await expect(readJson(response)).resolves.toMatchObject({
@@ -143,19 +143,7 @@ describe("public project workspace routing", () => {
       const refreshedResponsePromise = harness.app.request(
         `/api/v1/projects/${project.id}/branches?hostId=${host.id}&limit=50`,
       );
-      try {
-        await vi.waitFor(() => expect(responder.requests).toHaveLength(1));
-        expect(responder.requests[0]?.command).toEqual({
-          type: "host.inspect_git_source",
-          path: "/project/branches",
-          remoteRefresh: "blocking",
-        });
-      } finally {
-        releaseBlockingInspection?.();
-      }
-      const refreshedResponse = await refreshedResponsePromise;
-      expect(refreshedResponse.status).toBe(200);
-      expect(responder.requests.map((request) => request.command)).toEqual([
+      const blockingCommands = [
         {
           type: "host.inspect_git_source",
           path: "/project/branches",
@@ -165,9 +153,22 @@ describe("public project workspace routing", () => {
           type: "host.list_branch_options",
           path: "/project/branches",
           limit: 50,
-          remoteRefresh: "none",
+          remoteRefresh: "blocking",
         },
-      ]);
+      ];
+      try {
+        await vi.waitFor(() => expect(responder.requests).toHaveLength(2));
+        expect(responder.requests.map((request) => request.command)).toEqual(
+          blockingCommands,
+        );
+      } finally {
+        releaseBlockingInspection?.();
+      }
+      const refreshedResponse = await refreshedResponsePromise;
+      expect(refreshedResponse.status).toBe(200);
+      expect(responder.requests.map((request) => request.command)).toEqual(
+        blockingCommands,
+      );
     });
   });
 

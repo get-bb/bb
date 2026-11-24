@@ -922,7 +922,7 @@ const hostListBranchOptionsCommandSchema = z
     query: z.string().max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
     selectedBranch: gitBranchNameSchema.optional(),
     limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
-    remoteRefresh: z.enum(["background", "none"]),
+    remoteRefresh: z.enum(["background", "blocking"]),
   })
   .strict();
 
