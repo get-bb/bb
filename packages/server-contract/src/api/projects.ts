@@ -5,6 +5,7 @@ import {
   normalizeProjectPathInput,
   projectExecutionDefaultsSchema,
   projectSchema,
+  projectSourceFolderSchema,
   projectSourceSchema,
   promptHistoryEntrySchema,
   threadListEntrySchema,
@@ -68,6 +69,46 @@ export const createProjectSourceFolderRequestSchema = z
   .strict();
 export type CreateProjectSourceFolderRequest = z.infer<
   typeof createProjectSourceFolderRequestSchema
+>;
+
+export const importProjectSourceFoldersRequestSchema = z
+  .object({
+    path: localProjectPathRequestSchema,
+  })
+  .strict();
+export type ImportProjectSourceFoldersRequest = z.infer<
+  typeof importProjectSourceFoldersRequestSchema
+>;
+
+export const projectSourceFolderImportSkipReasonSchema = z.enum([
+  "main_folder",
+  "inside_main_folder",
+  "duplicate",
+  "not_found",
+  "limit",
+  "invalid",
+  "unsupported_uri",
+]);
+export type ProjectSourceFolderImportSkipReason = z.infer<
+  typeof projectSourceFolderImportSkipReasonSchema
+>;
+
+export const importProjectSourceFoldersResponseSchema = z
+  .object({
+    added: z.array(projectSourceFolderSchema),
+    skipped: z.array(
+      z
+        .object({
+          path: z.string(),
+          reason: projectSourceFolderImportSkipReasonSchema,
+          message: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ImportProjectSourceFoldersResponse = z.infer<
+  typeof importProjectSourceFoldersResponseSchema
 >;
 
 export const updateProjectSourceFolderRequestSchema = z

@@ -356,7 +356,12 @@ type ExpectedProjectSourcesKey =
   | "delete"
   | "experimental_folders"
   | "update";
-type ExpectedProjectSourceFoldersKey = "add" | "list" | "remove" | "update";
+type ExpectedProjectSourceFoldersKey =
+  | "add"
+  | "importCodeWorkspace"
+  | "list"
+  | "remove"
+  | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
 type ExpectedProvidersKey = "catalog" | "list" | "models" | "setEnabled";

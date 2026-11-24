@@ -4,7 +4,7 @@ import {
   reportOperation,
 } from "../command-result.js";
 import { readFile, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, resolve as resolveLocalPath } from "node:path";
 import { Command } from "commander";
 import type { ProjectSourceFolder } from "@bb/domain";
 import type {
@@ -833,6 +833,55 @@ export function registerProjectCommands(
           });
           if (outputJson(opts, added)) return;
           console.log(`Project folder added: ${added.id}  ${added.path}`);
+        },
+      ),
+    );
+
+  folder
+    .command("import <projectId> <file>")
+    .description(
+      "Add the folders a VS Code .code-workspace file lists; folders that are the main folder or inside it are skipped",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout gets the folders and holds the file (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          file: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const onThisMachine =
+            opts.machine === undefined && opts.host === undefined;
+          const result =
+            await sdk.projects.sources.experimental_folders.importCodeWorkspace(
+              {
+                projectId,
+                sourceId: projectSource.id,
+                path: onThisMachine ? resolveLocalPath(file) : file,
+              },
+            );
+          if (outputJson(opts, result)) return;
+          for (const added of result.added) {
+            console.log(`Added    ${added.path}`);
+          }
+          for (const skipped of result.skipped) {
+            console.log(`Skipped  ${skipped.message}`);
+          }
+          if (result.added.length === 0 && result.skipped.length === 0) {
+            console.log("The workspace file lists no folders.");
+          }
         },
       ),
     );

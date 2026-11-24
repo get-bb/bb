@@ -5574,13 +5574,21 @@ inside it or containing it, and is not already listed (409
 `project_source_folder_conflict`; at most 64), then appends it.
 `update({ projectId, sourceId, folderId, path })` repoints a folder in place
 with the same rules. `remove({ projectId, sourceId, folderId })` deletes it.
+`importCodeWorkspace({ projectId, sourceId, path })` reads a VS Code
+`.code-workspace` file on the checkout's machine (comments and trailing commas
+allowed), resolves each `folders[].path` against the file's folder (a `file:`
+`uri` counts as a path; other URIs are skipped), and adds each folder through
+`add`. It returns `{ added, skipped }`: folders that are the main folder or
+inside it are skipped (`main_folder`, `inside_main_folder`), and the rest are
+reported as `duplicate`, `not_found`, `limit`, `invalid` or
+`unsupported_uri`. A file that is not a workspace document fails with 400.
 Every thread of the project on that machine can read and write the folders
 from its next turn. Routes: `GET|POST /projects/:id/sources/:sourceId/folders`,
-`PATCH|DELETE …/folders/:folderId`.
+`POST …/folders/import`, `PATCH|DELETE …/folders/:folderId`.
 
 Core callers: the project settings Folders section
 (`project-source-folders-query.ts`, `project-mutations.ts`) and
-`bb project folder list|add|update|remove`.
+`bb project folder list|add|import|update|remove`.
 
 Before stabilizing, decide whether folders belong on the checkout (per
 machine) or on the project with per-machine paths, and whether `list` should

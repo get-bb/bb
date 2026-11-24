@@ -13,6 +13,10 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
+import {
+  ImportCodeWorkspaceDialog,
+  type ImportCodeWorkspaceTarget,
+} from "@/components/dialogs/ImportCodeWorkspaceDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {
   ProjectDeleteDialog,
@@ -240,6 +244,7 @@ interface MachineItemProps extends Omit<MachineFoldersProps, "source"> {
   source: LocalPathProjectSource | null;
   onSetUp: () => void;
   onAddFolder: () => void;
+  onImportCodeWorkspace: () => void;
 }
 
 function MachineItem({
@@ -249,6 +254,7 @@ function MachineItem({
   pending,
   onSetUp,
   onAddFolder,
+  onImportCodeWorkspace,
   ...folderProps
 }: MachineItemProps) {
   const connected = host.status === "connected";
@@ -303,6 +309,15 @@ function MachineItem({
           >
             {connected ? "Add folder" : "Add folder (machine offline)"}
           </SettingsListAction>
+          {connected ? (
+            <SettingsListAction
+              icon="FileText"
+              disabled={pending}
+              onClick={onImportCodeWorkspace}
+            >
+              Import .code-workspace
+            </SettingsListAction>
+          ) : null}
         </>
       )}
     </SettingsListItem>
@@ -349,6 +364,8 @@ export function ProjectDetailSettingsView() {
     useState<ProjectSourceDeleteDialogTarget | null>(null);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
+  const [importTarget, setImportTarget] =
+    useState<ImportCodeWorkspaceTarget | null>(null);
   const [now] = useState(Date.now);
 
   const projects = sidebarNavigationQuery.data?.projects;
@@ -606,6 +623,15 @@ export function ProjectDetailSettingsView() {
                         hostName: host.name,
                       });
                     }}
+                    onImportCodeWorkspace={() => {
+                      if (!source) return;
+                      setImportTarget({
+                        projectId: project.id,
+                        sourceId: source.id,
+                        hostName: host.name,
+                        checkoutPath: source.path,
+                      });
+                    }}
                     onChangeFolder={(folder) => {
                       if (!source) return;
                       localSourcePicker.openPicker({
@@ -740,6 +766,13 @@ export function ProjectDetailSettingsView() {
         hostName={localSourcePicker.hostName}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}
+      />
+
+      <ImportCodeWorkspaceDialog
+        target={importTarget}
+        onOpenChange={(open) => {
+          if (!open) setImportTarget(null);
+        }}
       />
 
       <ProjectMachineSetupDialog

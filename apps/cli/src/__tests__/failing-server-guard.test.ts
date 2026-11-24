@@ -103,6 +103,12 @@ const ARGUMENTS_BY_COMMAND: Record<string, readonly string[]> = {
   "project discover": ["--host", IDS.host],
   "project source add": [IDS.project, "--path", "/tmp/x", "--host", IDS.host],
   "project folder add": [IDS.project, "/tmp/x", "--host", IDS.host],
+  "project folder import": [
+    IDS.project,
+    "/tmp/x.code-workspace",
+    "--host",
+    IDS.host,
+  ],
   "project folder list": [IDS.project, "--host", IDS.host],
   "project folder remove": [IDS.project, "/tmp/x", "--host", IDS.host],
   "project folder update": [

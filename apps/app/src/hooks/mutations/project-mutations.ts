@@ -252,6 +252,30 @@ export function useAddProjectSourceFolder() {
   });
 }
 
+interface ImportCodeWorkspaceFoldersRequest {
+  path: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useImportCodeWorkspaceFolders() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to import the workspace file.",
+    },
+    mutationFn: (request: ImportCodeWorkspaceFoldersRequest) =>
+      sdk.projects.sources.experimental_folders.importCodeWorkspace(request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
 interface UpdateProjectSourceFolderRequest {
   folderId: string;
   path: string;

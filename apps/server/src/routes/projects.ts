@@ -73,6 +73,7 @@ import {
 } from "../services/projects/project-source-setup.js";
 import {
   addProjectSourceFolder,
+  importCodeWorkspaceFolders,
   updateProjectSourceFolder,
 } from "../services/projects/project-source-folders.js";
 import {
@@ -726,6 +727,23 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         path: payload.path,
         source,
       }),
+    );
+  });
+
+  post(routes.importSourceFolders, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await importCodeWorkspaceFolders(deps, { path: payload.path, source }),
     );
   });
 

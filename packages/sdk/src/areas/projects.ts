@@ -8,6 +8,8 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateProjectSourceFolderRequest,
+  ImportProjectSourceFoldersRequest,
+  ImportProjectSourceFoldersResponse,
   UpdateProjectSourceFolderRequest,
   ProjectBranchesResponse,
   ProjectBranchesQuery,
@@ -178,6 +180,11 @@ export interface ProjectSourceFolderUpdateArgs extends UpdateProjectSourceFolder
   sourceId: string;
 }
 
+export interface ProjectSourceFolderImportArgs extends ImportProjectSourceFoldersRequest {
+  projectId: string;
+  sourceId: string;
+}
+
 export interface ProjectSourceFolderRemoveArgs {
   folderId: string;
   projectId: string;
@@ -217,6 +224,9 @@ export type ProjectUpdateResult = ProjectResponse;
 
 export interface ProjectSourceFoldersArea {
   add(args: ProjectSourceFolderAddArgs): Promise<ProjectSourceFolder>;
+  importCodeWorkspace(
+    args: ProjectSourceFolderImportArgs,
+  ): Promise<ImportProjectSourceFoldersResponse>;
   list(args: ProjectSourceFolderListArgs): Promise<ProjectSourceFolder[]>;
   remove(args: ProjectSourceFolderRemoveArgs): Promise<OperationResponse>;
   update(args: ProjectSourceFolderUpdateArgs): Promise<ProjectSourceFolder>;
@@ -472,6 +482,16 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
           { param: { id: input.projectId, sourceId: input.sourceId } },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async importCodeWorkspace(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[
+          ":sourceId"
+        ].folders.import.$post({
+          param: { id: input.projectId, sourceId: input.sourceId },
+          json: { path: input.path },
+        }),
       );
     },
     async update(input) {

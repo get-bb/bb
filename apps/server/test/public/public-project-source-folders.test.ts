@@ -13,7 +13,10 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-function seedFolderProject(harness: TestAppHarness) {
+function seedFolderProject(
+  harness: TestAppHarness,
+  files: Record<string, string> = {},
+) {
   const { host, session } = seedHostSession(harness.deps, {
     id: "host-project-folders",
   });
@@ -28,6 +31,26 @@ function seedFolderProject(harness: TestAppHarness) {
     hostId: host.id,
     sessionId: session.id,
     handle: ({ command }) => {
+      if (command.type === "host.read_file") {
+        const content = files[command.path];
+        if (content === undefined) {
+          return {
+            ok: false,
+            errorCode: "ENOENT",
+            errorMessage: `${command.path} not found`,
+          };
+        }
+        return {
+          ok: true,
+          result: {
+            path: command.path,
+            content,
+            contentEncoding: "utf8",
+            sizeBytes: content.length,
+            sha256: "0".repeat(64),
+          },
+        };
+      }
       if (command.type !== "host.paths_exist") {
         throw new Error(`Unexpected RPC ${command.type}`);
       }
@@ -52,10 +75,97 @@ function seedFolderProject(harness: TestAppHarness) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ path }),
     });
-  return { addFolder, foldersUrl, host, project, responder, source };
+  const importWorkspace = (path: string) =>
+    harness.app.request(`${foldersUrl}/import`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+  return {
+    addFolder,
+    foldersUrl,
+    host,
+    importWorkspace,
+    project,
+    responder,
+    source,
+  };
 }
 
 describe("project source folders", () => {
+  it("imports a .code-workspace file's folders and says why each other folder was skipped", async () => {
+    await withTestHarness(async (harness) => {
+      const { addFolder, foldersUrl, importWorkspace } = seedFolderProject(
+        harness,
+        {
+          "/work/app/app.code-workspace": `{
+  // relative folders resolve against the file's directory
+  "folders": [
+    { "path": "." },
+    { "path": "packages/ui" },
+    { "path": "../api" },
+    { "path": "/work/docs" },
+    { "uri": "file:///work/api-v2" },
+    { "path": "../gone" },
+    { "path": "/work/docs/" },
+    { "path": ".." },
+    { "uri": "vscode-remote://ssh-remote+box/srv/app" },
+  ],
+}`,
+          "/work/app/broken.code-workspace": "{ folders: ",
+        },
+      );
+      expect((await addFolder("/work/api")).status).toBe(201);
+
+      const response = await importWorkspace("/work/app/app.code-workspace");
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({
+        added: [
+          expect.objectContaining({ path: "/work/docs" }),
+          expect.objectContaining({ path: "/work/api-v2" }),
+        ],
+        skipped: [
+          expect.objectContaining({ path: "/work/app", reason: "main_folder" }),
+          expect.objectContaining({
+            path: "/work/app/packages/ui",
+            reason: "inside_main_folder",
+          }),
+          expect.objectContaining({ path: "/work/api", reason: "duplicate" }),
+          expect.objectContaining({ path: "/work/gone", reason: "not_found" }),
+          expect.objectContaining({ path: "/work/docs", reason: "duplicate" }),
+          expect.objectContaining({
+            path: "/work",
+            reason: "invalid",
+            message: expect.stringContaining("contains the main folder"),
+          }),
+          expect.objectContaining({
+            path: "vscode-remote://ssh-remote+box/srv/app",
+            reason: "unsupported_uri",
+          }),
+        ],
+      });
+      expect(
+        (await readJson(await harness.app.request(foldersUrl))) as unknown[],
+      ).toEqual([
+        expect.objectContaining({ path: "/work/api" }),
+        expect.objectContaining({ path: "/work/docs" }),
+        expect.objectContaining({ path: "/work/api-v2" }),
+      ]);
+
+      const broken = await importWorkspace("/work/app/broken.code-workspace");
+      expect(broken.status).toBe(400);
+      expect(JSON.stringify(await readJson(broken))).toContain(
+        "is not a VS Code workspace file",
+      );
+      expect((await importWorkspace("relative.code-workspace")).status).toBe(
+        400,
+      );
+      const missing = await importWorkspace("/work/app/none.code-workspace");
+      expect(missing.status).toBe(404);
+      expect(await readJson(missing)).toMatchObject({ code: "ENOENT" });
+    });
+  });
+
   it("adds, lists and removes folders in order", async () => {
     await withTestHarness(async (harness) => {
       const { addFolder, foldersUrl, host, project } =
