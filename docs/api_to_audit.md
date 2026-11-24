@@ -4038,7 +4038,7 @@ fixed tab with `component: experimental_ThreadInfo` and its seven rows
 failure, Directory, Archived) and three sections (Child threads, Forks, Thread
 storage) through `app.slots.experimental_threadInfoRow`/`Section`, behind the
 `bb/core-contribution-imports` lint, so they read only public SDK members and
-registry components. The registration module stays light for the boot payload: the row and section components live in `thread-info/components.tsx` and load through `import()` behind per-entry Suspense (the host shows its skeleton, not the empty text, while one is pending). Files in a subdirectory of `core-contributions` resolve `@get-bb/plugin-sdk/app` to `apps/app/src/lib/core-plugin-sdk-app-lazy.ts`, top-level registration files to the light `core-plugin-sdk-app.ts`; `bb/core-plugin-sdk-app-binding` checks each against its own binding and `core-plugin-sdk-app.test.ts` checks both against `pluginSdkAppImplementation`. `apps/app/src/lib/plugin-slots.ts` places them first in
+registry components. The registration module stays light for the boot payload: the row and section components live in `thread-info/components.tsx` and load through `import()` behind per-entry Suspense (the host shows its skeleton, not the empty text, while one is pending). `vite-core-plugin-sdk-app.ts` resolves the one core binding with `moduleSideEffects: false`, so the eager registration pulls in only `definePluginApp` and `experimental_ThreadInfo`, and the hooks the components use load with them. `apps/app/src/lib/plugin-slots.ts` places them first in
 the same slot lists plugin entries join, and `ThreadInfoRows` and
 `ThreadInfoSections`
 (`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`) mount
