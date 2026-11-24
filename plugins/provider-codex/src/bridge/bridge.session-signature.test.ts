@@ -27,13 +27,15 @@ const autoDenySessionOptions = {
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 let requestLogPath: string;
+let launchLogPath: string;
 let scriptPath: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-signature-ws-"));
   requestLogPath = join(workspaceDir, "requests.jsonl");
+  launchLogPath = join(workspaceDir, "launches.jsonl");
   scriptPath = join(workspaceDir, "script.json");
-  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, launchLogPath }));
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -83,7 +85,10 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
 }, 30_000);
 
 it("rebuilds the session only when a turn changes or removes an env var", async () => {
-  const original = { BB_TEST_SECRET: "original", BB_TEST_REMOVED: "gone" };
+  const original = {
+    CODEX_SIGNATURE_TEST_SECRET: "original",
+    CODEX_SIGNATURE_TEST_REMOVED: "gone",
+  };
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -96,10 +101,16 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
     .parse(started.result);
 
   const turnEnvVars: Record<string, string>[] = [
-    { BB_TEST_REMOVED: "gone", BB_TEST_SECRET: "original" },
-    { BB_TEST_SECRET: "rotated", BB_TEST_REMOVED: "gone" },
-    { BB_TEST_SECRET: "rotated" },
-    { BB_TEST_SECRET: "rotated" },
+    {
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+      CODEX_SIGNATURE_TEST_SECRET: "original",
+    },
+    {
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+    },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ];
   const replacementsAfterTurn: number[] = [];
   for (const [index, envVars] of turnEnvVars.entries()) {
@@ -120,27 +131,38 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
   }
 
   expect(replacementsAfterTurn).toEqual([0, 1, 2, 2]);
-  const resumeConfigs = recordedRequests()
-    .filter((request) => request.method === "thread/resume")
-    .map((request) =>
-      z
-        .object({ config: z.record(z.string(), z.unknown()) })
-        .parse(request.params),
-    )
-    .map(({ config }) =>
-      Object.fromEntries(
-        Object.entries(config).filter(([key]) =>
-          key.startsWith("shell_environment_policy.set.BB_TEST_"),
-        ),
-      ),
+  const launchedEnvs = readFileSync(launchLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map(
+      (line) =>
+        z
+          .object({ testEnv: z.record(z.string(), z.string()) })
+          .parse(JSON.parse(line)).testEnv,
     );
-  expect(resumeConfigs).toEqual([
+  expect(launchedEnvs).toEqual([
+    original,
     {
-      "shell_environment_policy.set.BB_TEST_SECRET": "rotated",
-      "shell_environment_policy.set.BB_TEST_REMOVED": "gone",
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
     },
-    { "shell_environment_policy.set.BB_TEST_SECRET": "rotated" },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ]);
+  const sessionConfigs = recordedRequests()
+    .filter(
+      (request) =>
+        request.method === "thread/start" || request.method === "thread/resume",
+    )
+    .map(
+      (request) =>
+        z
+          .object({ config: z.record(z.string(), z.unknown()) })
+          .parse(request.params).config,
+    );
+  expect(sessionConfigs).toHaveLength(3);
+  expect(JSON.stringify(sessionConfigs)).not.toContain(
+    "CODEX_SIGNATURE_TEST_",
+  );
 }, 30_000);
 
 it("forks the session from its rollout when a writable folder is removed, and adds folders in place", async () => {

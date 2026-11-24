@@ -222,6 +222,11 @@ if (script?.launchLogPath) {
       args: process.argv.slice(2),
       poolToken: process.env.CODEX_POOL_AUTH_TOKEN ?? null,
       codexHome: process.env.CODEX_HOME ?? null,
+      testEnv: Object.fromEntries(
+        Object.entries(process.env).filter(([name]) =>
+          name.startsWith("CODEX_SIGNATURE_TEST_"),
+        ),
+      ),
     })}\n`,
   );
 }
