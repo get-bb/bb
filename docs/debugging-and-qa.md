@@ -1349,11 +1349,14 @@ applied chunk.
 
 The server passes `host.read_workspace_agent_context` its project skill read
 policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
-`SKILL.md`, and 32 MiB of JSON-encoded content in total (directory metadata,
-shared skill discovery, and workspace instructions do not count). These are a
-starting policy, not a measured requirement or transport ceiling. Files over a
-limit are skipped with server warnings; smaller later files can still fit, and
-count truncation is reported separately. Only exact-case `SKILL.md` files are
+`SKILL.md`, and 4 MiB of JSON-encoded frontmatter in total (directory metadata,
+shared skill discovery, and workspace instructions do not count). The daemon
+returns each `SKILL.md` only through its closing `---` delimiter, never the
+body; the server parses that block exactly as it would the whole file, because
+injected project skills reach the provider by path. These are a starting
+policy, not a measured requirement or transport ceiling. Files over a limit are
+skipped with server warnings; smaller later files can still fit, and count
+truncation is reported separately. Only exact-case `SKILL.md` files are
 read; symlinked skill directories or files and roots escaping the workspace are
 skipped before reading. Command lookup sets `includeAgentInstructions: false`,
 so an invalid `.bb/AGENTS.md` cannot break the command catalog; turn

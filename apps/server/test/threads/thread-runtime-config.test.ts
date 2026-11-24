@@ -18,6 +18,7 @@ import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/h
 import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
+import { skillFrontmatterBlock } from "@bb/skill-index/metadata";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
@@ -130,7 +131,7 @@ function registerRemoteRuntimeFileResponder(
           .map(({ segments, content }) => ({
             kind: "file" as const,
             directoryName: segments[0]!,
-            content,
+            frontmatter: skillFrontmatterBlock(content),
           }))
           .sort((left, right) =>
             left.directoryName.localeCompare(right.directoryName),
@@ -1384,7 +1385,7 @@ describe("thread runtime config", () => {
             projectSkillRead: {
               limit: 1_000,
               maxFileBytes: 10 * 1024 * 1024,
-              maxContentBytes: 32 * 1024 * 1024,
+              maxFrontmatterBytes: 4 * 1024 * 1024,
               excludeNames: expect.arrayContaining(["venv", "node_modules"]),
             },
             rootPath: workspacePath,

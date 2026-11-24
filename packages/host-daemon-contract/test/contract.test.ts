@@ -260,7 +260,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       {
         kind: "file",
         directoryName: "review",
-        content: "---\nname: review\ndescription: Review\n---\n",
+        frontmatter: "---\nname: review\ndescription: Review\n---",
       },
       { kind: "oversized", directoryName: "huge", sizeBytes: 11_000_000 },
       { kind: "budget-exceeded", directoryName: "later" },

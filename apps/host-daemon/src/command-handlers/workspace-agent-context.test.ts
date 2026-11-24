@@ -19,7 +19,7 @@ const readOptions = {
   projectSkillRead: {
     limit: 1_000,
     maxFileBytes: 10 * 1024 * 1024,
-    maxContentBytes: 32 * 1024 * 1024,
+    maxFrontmatterBytes: 4 * 1024 * 1024,
     excludeNames: ["venv"],
   },
 };
@@ -43,8 +43,12 @@ async function writeFile(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content);
 }
 
+function skillFrontmatter(name: string): string {
+  return `---\nname: ${name}\ndescription: ${name} skill\n---`;
+}
+
 function skillMarkdown(name: string): string {
-  return `---\nname: ${name}\ndescription: ${name} skill\n---\n\nBody\n`;
+  return `${skillFrontmatter(name)}\n\nBody\n`;
 }
 
 describe("readWorkspaceAgentContext", () => {
@@ -120,9 +124,13 @@ describe("readWorkspaceAgentContext", () => {
         {
           kind: "file",
           directoryName: "alpha",
-          content: skillMarkdown("alpha"),
+          frontmatter: skillFrontmatter("alpha"),
         },
-        { kind: "file", directoryName: "beta", content: skillMarkdown("beta") },
+        {
+          kind: "file",
+          directoryName: "beta",
+          frontmatter: skillFrontmatter("beta"),
+        },
         {
           kind: "oversized",
           directoryName: "huge",
@@ -203,16 +211,17 @@ describe("readWorkspaceAgentContext", () => {
     ]);
   });
 
-  it("budgets JSON-encoded content and still admits smaller later files", async () => {
+  it("returns only frontmatter, budgeted by its JSON encoding, and still admits smaller later files", async () => {
     const root = await makeWorkspace();
-    for (const [name, content] of [
-      ["a", "\u0001".repeat(10)],
-      ["b", "b".repeat(10)],
-      ["c", "c"],
-    ] as const) {
+    const frontmatters = {
+      a: `---\n${"\u0001".repeat(10)}\n---`,
+      b: `---\n${"b".repeat(30)}\n---`,
+      c: "---\nc\n---",
+    };
+    for (const [name, frontmatter] of Object.entries(frontmatters)) {
       await writeFile(
         path.join(root, ".bb", "skills", name, "SKILL.md"),
-        content,
+        `${frontmatter}\n${"body ".repeat(1_000)}`,
       );
     }
     const result = await readWorkspaceAgentContext({
@@ -220,15 +229,17 @@ describe("readWorkspaceAgentContext", () => {
       ...readOptions,
       projectSkillRead: {
         ...readOptions.projectSkillRead,
-        maxContentBytes: 65,
+        maxFrontmatterBytes:
+          JSON.stringify(frontmatters.a).length +
+          JSON.stringify(frontmatters.c).length,
       },
       rootPath: root,
       sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     });
     expect(result.projectSkills).toEqual([
-      { kind: "file", directoryName: "a", content: "\u0001".repeat(10) },
+      { kind: "file", directoryName: "a", frontmatter: frontmatters.a },
       { kind: "budget-exceeded", directoryName: "b" },
-      { kind: "file", directoryName: "c", content: "c" },
+      { kind: "file", directoryName: "c", frontmatter: frontmatters.c },
     ]);
   });
 
@@ -287,8 +298,12 @@ describe("readWorkspaceAgentContext", () => {
       sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     });
     expect(result.projectSkills).toEqual([
-      { kind: "file", directoryName: "a", content: skillMarkdown("linked") },
-      { kind: "file", directoryName: "b", content: skillMarkdown("b") },
+      {
+        kind: "file",
+        directoryName: "a",
+        frontmatter: skillFrontmatter("linked"),
+      },
+      { kind: "file", directoryName: "b", frontmatter: skillFrontmatter("b") },
     ]);
     expect(result.projectSkillsTruncated).toBe(true);
   });

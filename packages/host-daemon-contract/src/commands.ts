@@ -769,7 +769,7 @@ const hostReadWorkspaceAgentContextCommandSchema = z
       .object({
         limit: z.number().int().positive(),
         maxFileBytes: z.number().int().positive(),
-        maxContentBytes: z.number().int().positive(),
+        maxFrontmatterBytes: z.number().int().positive(),
         excludeNames: z.array(z.string()),
       })
       .strict(),
@@ -789,7 +789,7 @@ const workspaceProjectSkillFileSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("file"),
       directoryName: z.string().min(1),
-      content: z.string(),
+      frontmatter: z.string(),
     })
     .strict(),
   z
