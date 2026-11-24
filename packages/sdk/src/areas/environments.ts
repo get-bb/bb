@@ -13,10 +13,12 @@ import {
 } from "@bb/domain";
 import {
   commitActionResponseSchema,
+  environmentReposResponseSchema,
   updateEnvironmentRequestSchema,
   type CommitActionResponse,
   type EnvironmentArchiveThreadsResponse,
   type EnvironmentPathsQuery,
+  type EnvironmentReposResponse,
   type UpdateEnvironmentRequest,
   type WorkspacePathListResponse,
   type SystemEnvironmentProvider,
@@ -64,6 +66,11 @@ export interface EnvironmentCommitArgs {
 }
 
 export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
+  environmentId: string;
+  signal?: AbortSignal;
+}
+
+export interface EnvironmentReposArgs {
   environmentId: string;
   signal?: AbortSignal;
 }
@@ -140,6 +147,10 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentListProvidersResult>;
   delete(args: EnvironmentDeleteArgs): Promise<EnvironmentDeleteResult>;
   paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
+  /** Git repositories of a ready environment: its main folder, extra folders, and repos found inside them. Experimental: see docs/api_to_audit.md. */
+  experimental_repos(
+    args: EnvironmentReposArgs,
+  ): Promise<EnvironmentReposResponse>;
   update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
 }
 
@@ -278,6 +289,15 @@ export function createEnvironmentsArea(
         ),
       );
       return environmentSchema.parse(body);
+    },
+    async experimental_repos(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].repos.$get(
+          { param: { id: input.environmentId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return environmentReposResponseSchema.parse(body);
     },
     async paths(input) {
       return transport.readJson(

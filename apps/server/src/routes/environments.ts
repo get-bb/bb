@@ -5,6 +5,7 @@ import {
   recoverEnvironmentCleanup,
   requestEnvironmentRemoval,
 } from "../services/environments/environment-engine.js";
+import { resolveEnvironmentRepos } from "../services/environments/environment-repos.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import { createEnvironmentBeforeThread } from "../services/environments/environment-creation.js";
 import {
@@ -217,6 +218,14 @@ export function registerEnvironmentRoutes(
       ok: true,
       archivedThreadIds,
     });
+  });
+
+  get(routes.repos, async (context) => {
+    const environment = requireReadyEnvironment(
+      deps.db,
+      context.req.param("id"),
+    );
+    return context.json(await resolveEnvironmentRepos(deps, environment));
   });
 
   get(routes.paths, async (context, query) => {

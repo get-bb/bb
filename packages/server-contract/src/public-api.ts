@@ -125,6 +125,7 @@ import {
   type EnvironmentActionResponse,
   type EnvironmentArchiveThreadsResponse,
   type EnvironmentPathsQuery,
+  type EnvironmentReposResponse,
   type HostDirectoryListing,
   type HostDirectoryQuery,
   type HostDiscoveredReposResponse,
@@ -1284,6 +1285,12 @@ export const publicApiRoutes = {
         updateEnvironmentRequestSchema,
       ),
       response: jsonResponse<Environment>(),
+    }),
+    repos: defineRoute({
+      path: "/environments/:id/repos",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<EnvironmentReposResponse>(),
     }),
     paths: defineRoute({
       path: "/environments/:id/paths",

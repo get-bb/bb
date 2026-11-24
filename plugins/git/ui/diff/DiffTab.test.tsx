@@ -53,6 +53,7 @@ const RPC: Partial<PluginRpcTestHandlers<typeof gitRpcContract>> = {
     shortstat: "",
     mergeBaseRef: null,
     initialPatches: [],
+    repos: [],
   }),
   viewed: () => ({ files: [] }),
   branches: () => ({
@@ -201,6 +202,7 @@ describe("DiffTab", () => {
             shortstat: "",
             mergeBaseRef: null,
             initialPatches: [],
+            repos: [],
           }),
           patches: ({ keys }) =>
             Object.fromEntries(
@@ -236,6 +238,7 @@ describe("DiffTab", () => {
       shortstat: "",
       mergeBaseRef: null,
       initialPatches: [],
+      repos: [],
     });
     const previewCalls = (rendered: ReturnType<typeof renderTab>) =>
       rendered.navigateCalls.filter(

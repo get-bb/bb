@@ -61,6 +61,19 @@ export function useWorkspacePath(environmentId: string): string | null {
     : (workspacePaths.get(environmentId) ?? null);
 }
 
+export function useGitRepoCount(
+  environmentId: string | null,
+  enabled: boolean,
+): number | undefined {
+  const query = useRpcQuery({
+    contract: gitRpcContract,
+    method: "repos",
+    input: { environmentId: environmentId ?? "" },
+    enabled: enabled && environmentId !== null,
+  });
+  return query.data?.repos.length;
+}
+
 export function useGitViewed(args: {
   environmentId: string | null;
   target: WorkspaceDiffTarget | undefined;

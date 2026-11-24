@@ -592,6 +592,43 @@ const hostPathsExistCommandSchema = pathsExistRequestSchema
   })
   .strict();
 
+export const HOST_FIND_GIT_REPOS_MAX_FOLDERS = 64;
+export const HOST_FIND_GIT_REPOS_MAX_DEPTH = 4;
+export const HOST_FIND_GIT_REPOS_MAX_REPOS = 256;
+
+const hostFindGitReposCommandSchema = z
+  .object({
+    type: z.literal("host.find_git_repos"),
+    folderPaths: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(HOST_FIND_GIT_REPOS_MAX_FOLDERS),
+    maxDepth: z.number().int().min(1).max(HOST_FIND_GIT_REPOS_MAX_DEPTH),
+    maxRepos: z.number().int().min(1).max(HOST_FIND_GIT_REPOS_MAX_REPOS),
+  })
+  .strict();
+
+const hostFoundGitRepoSchema = z
+  .object({
+    path: z.string().min(1),
+    gitRoot: z.string().min(1),
+  })
+  .strict();
+
+const hostFindGitReposFolderSchema = z
+  .object({
+    path: z.string().min(1),
+    exists: z.boolean(),
+    gitRoot: z.string().min(1).nullable(),
+    repos: z.array(hostFoundGitRepoSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+const hostFindGitReposResultSchema = z
+  .object({ folders: z.array(hostFindGitReposFolderSchema) })
+  .strict();
+
 const projectInspectCommandSchema = z
   .object({
     type: z.literal("project.inspect"),
@@ -1674,6 +1711,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.find_git_repos": defineHostDaemonCommandDescriptor({
+    type: "host.find_git_repos",
+    schema: hostFindGitReposCommandSchema,
+    resultSchema: hostFindGitReposResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

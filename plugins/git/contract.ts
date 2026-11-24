@@ -255,12 +255,57 @@ const gitFilesSchema = z
   })
   .strict();
 
-export const gitFilesResultSchema = z.discriminatedUnion("outcome", [
+export const gitRepoFilesResultSchema = z.discriminatedUnion("outcome", [
   gitFilesSchema.extend({ outcome: z.literal("available") }),
   notApplicableSchema,
   unavailableSchema,
 ]);
+export type GitRepoFilesResult = z.infer<typeof gitRepoFilesResultSchema>;
+
+export const gitDiffRepoSchema = z
+  .object({
+    label: z.string(),
+    rootPath: z.string().min(1),
+    source: z.enum(["main", "folder", "discovered"]),
+    error: z.string().nullable(),
+  })
+  .strict();
+export type GitDiffRepo = z.infer<typeof gitDiffRepoSchema>;
+
+export const gitFilesResultSchema = z.discriminatedUnion("outcome", [
+  gitFilesSchema.extend({
+    outcome: z.literal("available"),
+    repos: z.array(gitDiffRepoSchema),
+  }),
+  notApplicableSchema,
+  unavailableSchema,
+]);
 export type GitFilesResult = z.infer<typeof gitFilesResultSchema>;
+
+export function gitDiffRepoPath(repo: { label: string }, path: string): string {
+  return repo.label.length === 0 ? path : `${repo.label}/${path}`;
+}
+
+export function locateGitDiffRepoPath<Repo extends { label: string }>(
+  repos: readonly Repo[],
+  path: string,
+): { repo: Repo; relativePath: string } | null {
+  let found: { repo: Repo; relativePath: string } | null = null;
+  for (const repo of repos) {
+    if (repo.label.length === 0) {
+      if (found === null) found = { repo, relativePath: path };
+      continue;
+    }
+    const prefix = `${repo.label}/`;
+    if (
+      path.startsWith(prefix) &&
+      (found === null || found.repo.label.length < repo.label.length)
+    ) {
+      found = { repo, relativePath: path.slice(prefix.length) };
+    }
+  }
+  return found;
+}
 
 export const gitPatchResultSchema = z.discriminatedUnion("outcome", [
   z

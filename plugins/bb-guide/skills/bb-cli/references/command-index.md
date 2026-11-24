@@ -240,6 +240,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb environment delete`
 - `bb environment cleanup`
 - `bb environment show`
+- `bb environment repos`
 - `bb environment get`
 - `bb environment paths`
 - `bb environment update`
