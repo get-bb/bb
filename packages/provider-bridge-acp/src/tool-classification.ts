@@ -3,6 +3,8 @@ import type {
   DeltaItemShape,
   DeltaPresentation,
 } from "@bb/provider-bridge-protocol";
+import { homedir } from "node:os";
+import path from "node:path";
 import {
   REASONING_PRESENTATION,
   extractResultText,
@@ -382,15 +384,37 @@ function fileReadItem(
   options: AcpToolCallPathOptions | undefined,
 ): AcpClassifiedToolCall | null {
   const ticked = tickedTokenFromTitle(title);
-  const path =
-    extractAcpToolCallPaths(event, options)[0] ??
+  const candidate =
+    extractAcpToolCallPaths(event)[0] ??
     (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
-  if (path === undefined) {
+  if (candidate === undefined) {
     return null;
   }
+  const isUrl =
+    candidate.startsWith("//") ||
+    (!path.isAbsolute(candidate) && /^[a-z][a-z\d+.-]*:/i.test(candidate));
+  const resolvedPath = isUrl
+    ? candidate
+    : candidate.startsWith("~/")
+      ? path.resolve(homedir(), candidate.slice(2))
+      : resolveAcpToolCallPath(candidate, options);
+  if (
+    !isUrl &&
+    path.isAbsolute(resolvedPath) &&
+    /\.(png|jpe?g|gif|webp|bmp)$/i.test(resolvedPath)
+  ) {
+    return {
+      item: { type: "imageView", path: resolvedPath },
+      presentation: {
+        ...fileReadPresentation(resolvedPath),
+        label: { pending: "Viewing image", completed: "Viewed image" },
+        icon: { glyph: "Eye" },
+      },
+    };
+  }
   return {
-    item: { type: "fileRead", path },
-    presentation: fileReadPresentation(path),
+    item: { type: "fileRead", path: resolvedPath },
+    presentation: fileReadPresentation(resolvedPath),
   };
 }
 
