@@ -334,6 +334,7 @@ export class CommandRouter {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       skillTreeTransport: this.options.skillTreeTransport,
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
+      pluginHost: this.options.pluginHostManager,
       runtimeManager: this.options.runtimeManager,
       desktopBrowserBroker: this.options.desktopBrowserBroker,
       dataDir: this.options.dataDir,

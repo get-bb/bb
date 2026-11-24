@@ -1421,15 +1421,19 @@ two declarations or become one list of typed roots; confirm that a flat
 ## `PluginProviderDeclaration.experimental_resolvesNativeRoots`
 
 Declares that the plugin's `bb.host` entry serves
-`resolveNativeRoots({ providerId, cwd })`. bb scans the answer beside the
-declared roots (cached ten seconds). A failed answer yields no resolved roots
-and never fails the listing.
+`resolveNativeRoots({ providerId, cwd })`. The workspace host's daemon calls
+it inside the same `host.list_commands` / `host.list_skills` request as the
+scan, so a listing is one host round trip, and scans the answer beside the
+declared roots. Nothing caches the answer; each listing asks again. A failed,
+malformed, or timed-out answer (10 s cap) yields no resolved roots and never
+fails the listing.
 
 Docs: `providers.md`, [provider-plugin-api.md](provider-plugin-api.md) §1.
 
 **Audit before stabilizing.** Decide whether the flag should exist at all or
-whether the server should detect the method on the host entry; and settle
-the cache TTL and the invalidation set against a real multi-host setup.
+whether the server should detect the method on the host entry; and confirm
+that an uncached resolver call per listing stays cheap for third-party
+resolvers.
 
 ## `experimental_nativeRootsHostContract` (`@get-bb/plugin-sdk/host`)
 
@@ -4495,14 +4499,13 @@ Requires SDK 0.6.178.
    split layout, not the calling surface. Check plugin-hosted surfaces (nav
    panel pages, overlays) once they host threads.
 
-
 ## `experimental_makeActionContext` / `ExperimentalActionContextFixture` / `ExperimentalActionContextCall` (`@get-bb/plugin-sdk/testing`)
 
 Requires SDK 0.6.178.
 
 - **Surface:** `experimental_makeActionContext(overrides?: Partial<ExperimentalPluginActionContext>): ExperimentalActionContextFixture`,
   a complete `ExperimentalPluginActionContext` plus `calls:
-  ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
+ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
   false except `experimental_threadHref` and `experimental_settingsHref`,
   which return the test harness's paths (`/threads/<id>#msg=<seq>`,
@@ -4522,6 +4525,7 @@ Requires SDK 0.6.178.
   `NavigateCall` shape `renderSlot` uses, and whether composer and message
   contexts need their own builders once their fields grow. Then rename
   project-wide and remove this entry.
+
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
 Renders a plugin component beside the address bar in each Browser tab. It

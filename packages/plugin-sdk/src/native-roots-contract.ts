@@ -1,9 +1,9 @@
 /**
  * The host RPC a provider plugin implements when its declaration sets
- * `experimental_resolvesNativeRoots`. Core calls `resolveNativeRoots` on the
- * workspace host each time it lists a provider's commands or skills (cached
- * briefly per host and workspace) and scans the returned roots beside the
- * declared ones. The plugin answers from the host's own files — a moved
+ * `experimental_resolvesNativeRoots`. The workspace host's daemon calls
+ * `resolveNativeRoots` each time it lists a provider's commands or skills,
+ * inside the same host request as the scan, and scans the returned roots
+ * beside the declared ones. The plugin answers from the host's own files — a moved
  * config directory, installed vendor plugins, config-file skill entries —
  * and decides each root's origin: a project-scoped vendor plugin is
  * `project`, a home-directory entry is `user`.
@@ -147,8 +147,8 @@ function filterResolvedRootSide<Root extends ProviderResolvedNativeRootInput>(
 }
 
 /**
- * A persistent bad root would warn on every listing (about three lines every
- * ten seconds per open workspace) and exhaust the host worker's diagnostic
+ * A persistent bad root would warn on every listing (about three lines each
+ * time a workspace opens the slash menu or the skills list) and exhaust the host worker's diagnostic
  * line budget, silencing later diagnostics. Each (side, path, reason) warns
  * once per `warned` set — the worker's lifetime by default.
  */

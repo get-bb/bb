@@ -5,7 +5,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonBridgeLaunch,
+  HostNativeRootScan,
+} from "@bb/host-daemon-contract";
 import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
 import {
   validatePluginProviderDeclaration,
@@ -13,12 +16,10 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
-  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
   type JsonValue,
   parseNamespacedGlyph,
   pluginPackageJsonSchema,
   type ProviderInfo,
-  type ProviderNativeRootSet,
 } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
@@ -226,18 +227,37 @@ async function hasHostEntry(rootDir: string): Promise<boolean> {
   );
 }
 
-export function declaredNativeRootSet(
-  registry: ProviderRegistryService,
+export function declaredNativeRootScan(
+  deps: {
+    providerRegistry: ProviderRegistryService;
+    pluginHostArtifacts: PluginHostArtifactRegistry;
+  },
   providerId: string,
-): ProviderNativeRootSet {
-  const registration = registry.get(providerId);
+): HostNativeRootScan {
+  const registration = deps.providerRegistry.get(providerId);
   if (registration === null) {
     throw new Error(`provider "${providerId}" is not registered`);
   }
+  const artifact = registration.resolvesNativeRoots
+    ? deps.pluginHostArtifacts.get(registration.pluginId)
+    : undefined;
   return {
-    skills: registration.nativeSkillRoots,
-    commands: registration.nativeCommandRoots,
-    resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+    providerId,
+    declaredRoots: {
+      skills: registration.nativeSkillRoots,
+      commands: registration.nativeCommandRoots,
+    },
+    resolver:
+      artifact === undefined
+        ? null
+        : {
+            pluginId: registration.pluginId,
+            generation: artifact.generation,
+            artifact: {
+              digest: artifact.digest,
+              byteLength: artifact.byteLength,
+            },
+          },
   };
 }
 
