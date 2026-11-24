@@ -113,6 +113,6 @@ changes. bb's outline marks the first visible prompt, or the last one when
 
 `useBbNavigate().toThread(threadId, { messageSeq })` loads older history as
 needed, scrolls to the message and highlights it, even when it is far outside
-the rendered rows. When the focused pane already shows the thread, as after a
-click in it, bb reveals in place and replaces the history entry. Do not scroll
-the transcript yourself or send synthetic wheel events.
+the rendered rows. When the route or the pane your component renders in
+already shows the thread, bb reveals in place and replaces the history entry.
+Do not scroll the transcript yourself or send synthetic wheel events.

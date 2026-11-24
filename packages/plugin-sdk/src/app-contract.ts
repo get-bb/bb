@@ -5831,10 +5831,10 @@ export interface BbNavigate {
    * `messageSeq` opens the thread at that message, as a message
    * link does: bb loads older history as needed, scrolls to the message and
    * highlights it, or shows a "Message not found" toast. Repeating the call
-   * reveals the message again. When the focused pane already shows the
-   * thread, as after a click inside it, bb reveals the message in place and
-   * replaces the current history entry instead of adding one, so Back leaves
-   * the thread rather than stepping through reveals.
+   * reveals the message again. When the route, or the thread pane the
+   * caller renders in, already shows the thread, bb reveals the message in
+   * place and replaces the current history entry instead of adding one, so
+   * Back leaves the thread rather than stepping through reveals.
    */
   toThread(
     threadId: string,

@@ -2191,9 +2191,10 @@ Docs: `frontend-hooks-and-ui.md`.
 `…/threads/<id>#msg=<seq>`, through the same placement as `split`, so bb
 loads older history, scrolls to and highlights the message, or toasts
 "Message not found"; a repeated call reveals it again. When the route
-already shows the thread (the focused pane's thread, as after a click in it),
-the call replaces the current history entry instead of pushing one, so a run
-of reveals leaves one entry and Back leaves the thread (SDK 0.6.196; earlier
+already shows the thread (the focused pane's thread), or the caller renders
+in a thread pane that shows it (an unfocused split pane's rail), the call
+replaces the current history entry instead of pushing one, so a run of
+reveals leaves one entry and Back leaves the thread (SDK 0.6.196; earlier
 SDKs pushed an entry per call). That option is stable
 and unprefixed, so it matches the href option below; this entry covers the
 experimental members around it.
@@ -2231,8 +2232,8 @@ target rendered, waits for its position to settle, highlights it, and toasts
 when it is missing. bb's thread outline reveals through `toThread` itself
 (`core-contributions/thread-outline.tsx`), so it gets the same in-place
 replace as a plugin; the private in-place reveal request it used before is
-gone. Test: `plugin-navigation-hooks.test.tsx` (replace while the route shows
-the thread, push otherwise). `getSettingsTargetPath`
+gone. Test: `plugin-navigation-hooks.test.tsx` (replace while the route or the
+calling pane shows the thread, push otherwise). `getSettingsTargetPath`
 (`settings-sections.ts`) is the only settings path builder: sections, plugin,
 machine and project pages, including `experimental_toSettings` and
 `experimental_settingsHref`. The sidebar footer's `openSettings` /

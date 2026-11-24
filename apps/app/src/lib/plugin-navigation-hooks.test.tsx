@@ -28,6 +28,7 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { TimelineViewportProvider } from "@/lib/timeline-viewport";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { useBbNavigate } from "./plugin-navigation-hooks";
@@ -48,10 +49,12 @@ interface Harness {
 function renderNavigate({
   initialPath = "/plugins/demo/home",
   layout = null,
+  paneThreadId = null,
   renderLink,
 }: {
   initialPath?: string;
   layout?: SplitLayout | null;
+  paneThreadId?: string | null;
   renderLink?: (navigate: BbNavigate) => string;
 } = {}): Harness {
   const { queryClient } = createQueryClientTestHarness();
@@ -91,7 +94,16 @@ function renderNavigate({
         <MemoryRouter initialEntries={[initialPath]}>
           <RouteNavigationProvider>
             <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-              <Probe />
+              {paneThreadId === null ? (
+                <Probe />
+              ) : (
+                <TimelineViewportProvider
+                  messageIds={new Set()}
+                  threadId={paneThreadId}
+                >
+                  <Probe />
+                </TimelineViewportProvider>
+              )}
             </PluginSlotMount>
             <LocationProbe />
             <ComposeProjectProbe />
@@ -158,6 +170,32 @@ describe("useBbNavigate thread and settings locations", () => {
     ]);
     expect(navigationTypes.slice(1)).toEqual(["REPLACE", "REPLACE", "PUSH"]);
     expect(locations[1]?.key).not.toBe(locations[2]?.key);
+  });
+
+  it("reveals a message of the thread the calling pane shows in place while the route still shows another pane's thread", () => {
+    const reveal = (paneThreadId: string) => {
+      const { navigate, locations, navigationTypes } = renderNavigate({
+        initialPath: "/projects/proj_demo/threads/thr_other",
+        paneThreadId,
+      });
+      act(() => {
+        navigate().toThread("thr_target", { messageSeq: 42 });
+      });
+      const result = {
+        hrefs: locations.slice(1).map(href),
+        types: navigationTypes.slice(1),
+      };
+      cleanup();
+      return result;
+    };
+    expect(reveal("thr_target")).toEqual({
+      hrefs: ["/projects/proj_demo/threads/thr_target#msg=42"],
+      types: ["REPLACE"],
+    });
+    expect(reveal("thr_other")).toEqual({
+      hrefs: ["/projects/proj_demo/threads/thr_target#msg=42"],
+      types: ["PUSH"],
+    });
   });
 
   it("keeps the message when the thread is already open in another pane", () => {
