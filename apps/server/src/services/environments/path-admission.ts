@@ -11,7 +11,7 @@ import {
 import { canonicalizeHostPath } from "@bb/domain";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hooks.js";
+import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hook-timeout.js";
 
 export const CHECKOUT_BUSY_MESSAGE =
   "Cannot checkout branch while another thread is using this workspace";

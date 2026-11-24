@@ -14,8 +14,8 @@ import {
   callHostOnlineRpc,
   callHostOnlineRpcForWork,
 } from "../hosts/online-rpc.js";
+import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hook-timeout.js";
 
-export const ENVIRONMENT_HOOK_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPORT_GRACE_MS = 6_000;
 
 export type EnvironmentHookProgressSink = (
