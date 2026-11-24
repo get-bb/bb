@@ -227,6 +227,12 @@ export const githubPrStatusRpcContract = defineRpcContract({
     input: environmentActionInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
+  revalidate: {
+    experimental_description:
+      "Re-check the environment's pull request on GitHub unless its saved row was checked in the last 10 seconds, or in the last hour for a merged or closed PR, and resolve once the row is current.",
+    input: environmentActionInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
   markReady: {
     experimental_description:
       "Mark the environment's draft pull request ready for review.",

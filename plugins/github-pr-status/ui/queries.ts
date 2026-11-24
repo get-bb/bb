@@ -28,18 +28,18 @@ export function useEnvironmentPullRequest(
     enabled,
   });
   const row = environmentId ? query.data?.[environmentId] : undefined;
-  const refresh = useRpcMutation({
+  const revalidate = useRpcMutation({
     contract: githubPrStatusRpcContract,
-    method: "refresh",
+    method: "revalidate",
   });
   const shown = enabled && environmentId ? environmentId : null;
   useRefetchOnShowAndFocus({
     shown,
     loaded: row !== undefined,
     refetch: query.refetch,
-    refreshOnShow: () => {
+    revalidateOnShow: () => {
       if (shown !== null)
-        refresh.mutate({ environmentId: shown }).catch(() => {});
+        revalidate.mutate({ environmentId: shown }).catch(() => {});
     },
   });
 

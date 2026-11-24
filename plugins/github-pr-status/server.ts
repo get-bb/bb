@@ -584,6 +584,10 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         await store.reread(environmentId);
         return { ok: true } as const;
       },
+      async revalidate({ environmentId }) {
+        await store.revalidate(environmentId);
+        return { ok: true } as const;
+      },
       markReady: ({ environmentId }) => markReady(environmentId),
       markDraft: ({ environmentId }) => markDraft(environmentId),
       merge: ({ environmentId, method }) => merge(environmentId, method),

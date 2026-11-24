@@ -8,7 +8,7 @@ import { useEnvironmentPullRequest } from "./queries";
 const keyedQuery = vi.hoisted(() => ({
   data: {} as Record<string, EnvironmentPullRequest>,
   refetch: vi.fn(async (_keys: readonly string[]) => {}),
-  refresh: vi.fn(async (_input: { environmentId: string }) => ({
+  revalidate: vi.fn(async (_input: { environmentId: string }) => ({
     ok: true as const,
   })),
 }));
@@ -23,8 +23,8 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
   }),
   experimental_useRpcMutation: (options: { method: string }) => ({
     mutate:
-      options.method === "refresh"
-        ? (input: { environmentId: string }) => keyedQuery.refresh(input)
+      options.method === "revalidate"
+        ? (input: { environmentId: string }) => keyedQuery.revalidate(input)
         : vi.fn(),
     isPending: false,
   }),
@@ -73,25 +73,25 @@ async function showPage(): Promise<void> {
 afterEach(() => {
   cleanup();
   keyedQuery.refetch.mockClear();
-  keyedQuery.refresh.mockClear();
+  keyedQuery.revalidate.mockClear();
   keyedQuery.data = {};
 });
 
 describe("useEnvironmentPullRequest refreshes", () => {
-  it("re-checks GitHub when a thread's PR first shows, before its row has loaded", async () => {
+  it("revalidates a thread's PR when it first shows, before its row has loaded", async () => {
     renderHook(() => useEnvironmentPullRequest("env-new"));
     await settle();
-    expect(keyedQuery.refresh.mock.calls).toEqual([
+    expect(keyedQuery.revalidate.mock.calls).toEqual([
       [{ environmentId: "env-new" }],
     ]);
     expect(keyedQuery.refetch).not.toHaveBeenCalled();
   });
 
-  it("re-checks GitHub when a cached row shows again, then refetches each time the page shows", async () => {
+  it("revalidates a cached row when it shows again, then refetches each time the page shows", async () => {
     keyedQuery.data = { "env-open": row("open") };
     renderHook(() => useEnvironmentPullRequest("env-open"));
     await settle();
-    expect(keyedQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.revalidate).toHaveBeenCalledTimes(1);
     expect(keyedQuery.refetch).not.toHaveBeenCalled();
 
     await showPage();
@@ -100,7 +100,7 @@ describe("useEnvironmentPullRequest refreshes", () => {
       [["env-open"]],
       [["env-open"]],
     ]);
-    expect(keyedQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.revalidate).toHaveBeenCalledTimes(1);
   });
 
   it("does not refetch while the page is hidden", async () => {
@@ -118,22 +118,22 @@ describe("useEnvironmentPullRequest refreshes", () => {
     }
   });
 
-  it("re-checks only when an environment starts showing, not for each extra view", async () => {
+  it("revalidates only when an environment starts showing, not for each extra view", async () => {
     keyedQuery.data = { "env-shared": row("open") };
     const banner = renderHook(() => useEnvironmentPullRequest("env-shared"));
     await settle();
-    expect(keyedQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.revalidate).toHaveBeenCalledTimes(1);
 
     const infoRow = renderHook(() => useEnvironmentPullRequest("env-shared"));
     await settle();
-    expect(keyedQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.revalidate).toHaveBeenCalledTimes(1);
 
     banner.unmount();
     infoRow.unmount();
     await settle();
     renderHook(() => useEnvironmentPullRequest("env-shared"));
     await settle();
-    expect(keyedQuery.refresh).toHaveBeenCalledTimes(2);
+    expect(keyedQuery.revalidate).toHaveBeenCalledTimes(2);
   });
 
   it("keeps an environment shown when its view remounts in one commit", async () => {
@@ -144,10 +144,10 @@ describe("useEnvironmentPullRequest refreshes", () => {
     }
     const { rerender } = render(<View key="thr_a" />);
     await settle();
-    keyedQuery.refresh.mockClear();
+    keyedQuery.revalidate.mockClear();
 
     rerender(<View key="thr_b" />);
     await settle();
-    expect(keyedQuery.refresh).not.toHaveBeenCalled();
+    expect(keyedQuery.revalidate).not.toHaveBeenCalled();
   });
 });

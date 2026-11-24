@@ -252,19 +252,16 @@ export function createPullRequestStore(options: {
     return isSettled(environmentId) ? SETTLED_STALE_MS : OPEN_STALE_MS;
   }
 
-  async function read(
+  async function readWithin(
     environmentId: string,
-    { viewer }: { viewer: boolean },
+    staleAfter: (entry: Entry) => number,
+    viewer: boolean,
   ): Promise<EnvironmentPullRequest> {
     const cached = lookups.get(environmentId);
-    const age =
-      cached === undefined
-        ? Number.POSITIVE_INFINITY
-        : Date.now() - cached.fetchedAt;
-    const stale =
+    if (
       cached === undefined ||
-      age >= (viewer ? staleAfterMs(environmentId, cached) : READ_FRESH_MS);
-    if (stale) {
+      Date.now() - cached.fetchedAt >= staleAfter(cached)
+    ) {
       const loading = load(environmentId, currentUrl(environmentId));
       if (cached === undefined || !viewer) await loading;
     }
@@ -272,6 +269,19 @@ export function createPullRequestStore(options: {
     if (viewer) served.set(environmentId, JSON.stringify(result));
     schedule();
     return result;
+  }
+
+  function read(
+    environmentId: string,
+    { viewer }: { viewer: boolean },
+  ): Promise<EnvironmentPullRequest> {
+    return readWithin(
+      environmentId,
+      viewer
+        ? (entry) => staleAfterMs(environmentId, entry)
+        : () => READ_FRESH_MS,
+      viewer,
+    );
   }
 
   return {
@@ -307,6 +317,13 @@ export function createPullRequestStore(options: {
       const cached = lookups.get(environmentId);
       if (cached) cached.fetchedAt = Number.NEGATIVE_INFINITY;
       await read(environmentId, { viewer: false });
+    },
+    async revalidate(environmentId: string) {
+      await readWithin(
+        environmentId,
+        () => (isSettled(environmentId) ? SETTLED_STALE_MS : READ_FRESH_MS),
+        false,
+      );
     },
     pushed(environmentId: string) {
       const url = currentUrl(environmentId);

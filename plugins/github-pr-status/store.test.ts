@@ -600,6 +600,51 @@ describe("read freshness", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    ["an open", available(pullRequest()), 9_000, 11_000],
+    ["a missing", { outcome: "absent" } as const, 9_000, 11_000],
+    [
+      "a merged",
+      available(pullRequest({ state: "merged" })),
+      59 * 60_000,
+      61 * 60_000,
+    ],
+    [
+      "a closed",
+      available(pullRequest({ state: "closed" })),
+      59 * 60_000,
+      61 * 60_000,
+    ],
+  ])(
+    "revalidates %s PR on GitHub only once its row is past the shown window",
+    async (_, value, fresh, stale) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([value]);
+      await store.read("a", { viewer: true });
+      load.mockClear();
+      await vi.advanceTimersByTimeAsync(fresh);
+      await store.revalidate("a");
+      expect(load).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(stale - fresh);
+      let release!: () => void;
+      load.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(value);
+          }),
+      );
+      let settled = false;
+      const revalidating = store.revalidate("a").then(() => {
+        settled = true;
+      });
+      await flush();
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(settled).toBe(false);
+      release();
+      await revalidating;
+    },
+  );
+
   it("makes a one-shot read wait for a row older than ten seconds", async () => {
     vi.useFakeTimers();
     const { store, load } = setup([available(pullRequest())]);

@@ -6,16 +6,16 @@ export function useRefetchOnShowAndFocus({
   shown,
   loaded,
   refetch,
-  refreshOnShow,
+  revalidateOnShow,
 }: {
   shown: string | null;
   loaded: boolean;
   refetch: () => Promise<void>;
-  refreshOnShow?: () => void;
+  revalidateOnShow?: () => void;
 }): void {
-  const latest = useRef({ loaded, refetch, refreshOnShow });
+  const latest = useRef({ loaded, refetch, revalidateOnShow });
   useEffect(() => {
-    latest.current = { loaded, refetch, refreshOnShow };
+    latest.current = { loaded, refetch, revalidateOnShow };
   });
   useEffect(() => {
     if (shown === null) return;
@@ -23,7 +23,7 @@ export function useRefetchOnShowAndFocus({
     shownCounts.set(shown, shownBefore + 1);
     if (shownBefore === 0) {
       const current = latest.current;
-      if (current.refreshOnShow) current.refreshOnShow();
+      if (current.revalidateOnShow) current.revalidateOnShow();
       else if (current.loaded) void current.refetch();
     }
     const refetchIfVisible = () => {
