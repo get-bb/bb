@@ -151,7 +151,11 @@ fresh worktree, and so does a thread that finds no usable warm worktree.
 
 Turn it on per project in the Worktree plugin's settings, or with
 `bb worktree pool set <project-id> <size>` (`0` turns it off and deletes the
-idle ones); `bb worktree pool status` lists them. While a project keeps warm
+idle ones); `bb worktree pool status` lists them. Every machine with a checkout
+keeps the project's count unless you give that machine its own: pick a count
+next to the machine in settings, or run
+`bb worktree pool set <project-id> <size> --host <host-id>` (`project` as the
+size makes the machine follow the project's count again). While a project keeps warm
 worktrees, bb fetches its default base every two minutes and replaces warm
 worktrees that are no longer on it (the default branch was rewritten); a warm
 worktree that is only behind is kept and moved forward when a thread takes it.

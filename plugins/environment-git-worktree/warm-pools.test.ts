@@ -266,9 +266,32 @@ async function setup(args: {
       .toBe(true);
     return status;
   };
+  const resizeHost = async (hostId: string, size: number | null) => {
+    const before = harness.realtimeSignals.length;
+    const status = await harness.callRpc("setWarmPoolHostSize", {
+      projectId: PROJECT_ID,
+      hostId,
+      size,
+    });
+    await expect
+      .poll(() =>
+        harness.realtimeSignals
+          .slice(before)
+          .some((signal) => signal.channel === "warm-pools-changed"),
+      )
+      .toBe(true);
+    return status as {
+      pools: {
+        size: number;
+        checkouts: { size: number; hostSize: number | null }[];
+      }[];
+    };
+  };
   return {
+    bb,
     harness,
     resize,
+    resizeHost,
     provider,
     context,
     hostCalls,
@@ -770,6 +793,51 @@ describe("warm worktree reconcile", () => {
     );
     await fixture.resize(0);
     expect(fixture.deleted).toEqual(["env_failed", READY.id]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("lets a machine turn off a project's pool, then follow the project again", async () => {
+    const fixture = await setup({ members: [READY], size: 1 });
+    const off = await fixture.resizeHost(HOST_ID, 0);
+    expect(off.pools[0]?.size).toBe(1);
+    expect(off.pools[0]?.checkouts[0]).toMatchObject({ size: 0, hostSize: 0 });
+    expect(fixture.deleted).toEqual([READY.id]);
+    expect(await fixture.bb.storage.kv.get("warm-pools")).toEqual([
+      { projectId: PROJECT_ID, size: 1, hosts: { [HOST_ID]: 0 } },
+    ]);
+    expect(
+      await fixture.provider.create(fixture.context("env_thread", "feature")),
+    ).toMatchObject({ path: "/worktrees/cold/bb" });
+    expect(fixture.adopted).toEqual([]);
+    const following = await fixture.resizeHost(HOST_ID, null);
+    expect(following.pools[0]?.checkouts[0]).toMatchObject({
+      size: 1,
+      hostSize: null,
+    });
+    await expect.poll(() => fixture.created.length).toBe(1);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("keeps a machine's own pool while the project's count is off", async () => {
+    const fixture = await setup({ members: [READY], size: 1 });
+    await fixture.resizeHost(HOST_ID, 1);
+    await fixture.resize(0);
+    expect(fixture.deleted).toEqual([]);
+    expect(
+      await fixture.provider.create(fixture.context("env_thread", "feature")),
+    ).toMatchObject({ path: READY.path });
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("refuses a machine count for a machine without a checkout of the project", async () => {
+    const fixture = await setup({ members: [READY], size: 1 });
+    await expect(
+      fixture.harness.callRpc("setWarmPoolHostSize", {
+        projectId: PROJECT_ID,
+        hostId: "host_other",
+        size: 2,
+      }),
+    ).rejects.toThrow("has no checkout on machine host_other");
     await fixture.harness.lifecycle.dispose();
   });
 });
