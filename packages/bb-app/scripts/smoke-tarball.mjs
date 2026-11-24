@@ -133,6 +133,14 @@ function waitForProcessExit(childProcess) {
   });
 }
 
+function waitForProcessOutput(childProcess) {
+  return new Promise((resolvePromise) => {
+    childProcess.once("close", (code, signal) => {
+      resolvePromise({ code, signal });
+    });
+  });
+}
+
 function resolveLaunch(command, args) {
   if (
     process.platform === "win32" &&
@@ -182,7 +190,7 @@ async function runCommand({ args, command, cwd = tempRoot, env = {}, label }) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const output = collectProcessOutput(childProcess);
-  const result = await waitForProcessExit(childProcess);
+  const result = await waitForProcessOutput(childProcess);
   if (result.code !== 0) {
     throw new Error(
       `${label} failed with ${result.code ?? result.signal}\n${formatProcessOutput(output)}`,
@@ -729,7 +737,7 @@ async function smokeBridgeModelList({
   );
   const modelListResponse = await modelListResponsePromise;
   childProcess.stdin.end();
-  const result = await waitForProcessExit(childProcess);
+  const result = await waitForProcessOutput(childProcess);
   if (result.code !== 0) {
     throw new Error(
       `${label} failed with ${result.code ?? result.signal}\n${formatProcessOutput(output)}`,

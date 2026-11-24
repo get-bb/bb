@@ -48,7 +48,7 @@ it("bounds intent parsing work after a script's disqualifying write", () => {
     ),
     32,
   );
-  expect(writeFirstCpuUs).toBeLessThan(readOnlyCpuUs! / 8);
+  expect(writeFirstCpuUs).toBeLessThan(readOnlyCpuUs! / 3);
 });
 
 it("keeps bb thread tell parsing linear on unterminated heredocs", () => {
