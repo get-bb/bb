@@ -232,7 +232,8 @@ visible thread; `environment` is `{ id }` taken from the thread, null only when
 the thread has no environment. Read state the way bb's rows do:
 `experimental_useThread(threadId)`, `experimental_useEnvironment(environment.id)`
 (the environment plus bb's `label` and its machine `host`) and
-`experimental_useThreadStorageFiles(threadId)`; all three share bb's caches and
+`experimental_useThreadStorageFiles(threadId, { enabled })` (`enabled: false`
+pauses it while hidden); all three share bb's caches and
 return `{ status, ... }` with `loading`/`ready`/`notFound` or `error`. Return
 null to show nothing; the tab says "No thread details available." only when
 no row or section rendered. A row renders `experimental_DetailRow`.

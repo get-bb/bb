@@ -22,29 +22,6 @@ describe("filterThreadStorageFiles", () => {
 });
 
 describe("thread storage folder state", () => {
-  it("opens the folders above a newly selected file", () => {
-    const empty = initialThreadStorageFolderState("thr_a", null);
-    expect(empty.expandedFolders.size).toBe(0);
-
-    const selected = syncThreadStorageFolderState(empty, {
-      selectedPath: "docs/notes.md",
-      threadId: "thr_a",
-    });
-    expect([...selected.expandedFolders]).toEqual(["docs"]);
-    expect([...selected.foldersShowingAll]).toEqual(["docs"]);
-
-    const deselected = syncThreadStorageFolderState(selected, {
-      selectedPath: null,
-      threadId: "thr_a",
-    });
-    expect(deselected.lastSelectedPath).toBe("docs/notes.md");
-    expect(
-      toggleThreadStorageFolderChain(deselected.expandedFolders, ["docs"]).has(
-        "docs",
-      ),
-    ).toBe(false);
-  });
-
   it("opens and closes every folder in a merged chain together", () => {
     const opened = toggleThreadStorageFolderChain(new Set(), [
       "qa",
@@ -57,17 +34,15 @@ describe("thread storage folder state", () => {
     ).toBe(0);
   });
 
-  it("starts each thread with only the selected file's folders open", () => {
+  it("starts each thread with every folder closed", () => {
     const threadA = {
-      ...initialThreadStorageFolderState("thr_a", null),
+      ...initialThreadStorageFolderState("thr_a"),
       expandedFolders: new Set(["docs"]),
       foldersShowingAll: new Set(["docs"]),
     };
 
-    const threadB = syncThreadStorageFolderState(threadA, {
-      selectedPath: null,
-      threadId: "thr_b",
-    });
+    expect(syncThreadStorageFolderState(threadA, "thr_a")).toBe(threadA);
+    const threadB = syncThreadStorageFolderState(threadA, "thr_b");
     expect(threadB.expandedFolders.size).toBe(0);
     expect(threadB.foldersShowingAll.size).toBe(0);
   });

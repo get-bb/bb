@@ -2087,12 +2087,13 @@ const testPluginSdkApp = {
   },
   experimental_useThreadStorageFiles(
     threadId,
+    options,
   ): ExperimentalThreadStorageFilesState {
-    return (
-      useSlotEnv("experimental_useThreadStorageFiles").threadStorageFiles.get(
-        threadId,
-      ) ?? LOADING_THREAD_STORAGE_FILES
-    );
+    const states = useSlotEnv(
+      "experimental_useThreadStorageFiles",
+    ).threadStorageFiles;
+    if (options?.enabled === false) return LOADING_THREAD_STORAGE_FILES;
+    return states.get(threadId) ?? LOADING_THREAD_STORAGE_FILES;
   },
   experimental_useEnvironment(environmentId): ExperimentalEnvironmentState {
     return (
@@ -2732,7 +2733,7 @@ export interface RenderSlotOptions<
   environments?: Readonly<Record<string, ExperimentalEnvironmentState>>;
   /**
    * What `experimental_useThreadStorageFiles(threadId)` reports per thread
-   * id. Omitted ids stay `loading`.
+   * id. Omitted ids, and calls with `{ enabled: false }`, stay `loading`.
    */
   threadStorageFiles?: Readonly<
     Record<string, ExperimentalThreadStorageFilesState>

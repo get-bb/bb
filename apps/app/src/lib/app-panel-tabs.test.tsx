@@ -21,7 +21,6 @@ import {
   createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
-  createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type FixedPanelViewTab,
   type SecondaryFileFixedPanelTab,
@@ -135,60 +134,7 @@ describe("panel tab details", () => {
           },
         }),
       ),
-      {
-        kind: "file",
-        path: "src/app.ts",
-        target: {
-          kind: "workspace",
-          environmentId: "env_1",
-          path: "src/app.ts",
-        },
-      },
-    ],
-    [
-      "a workspace file at HEAD",
-      content(
-        createWorkspaceFilePreviewFixedPanelTab({
-          environmentId: "env_1",
-          projectId: null,
-          tab: {
-            path: "src/app.ts",
-            lineRange: null,
-            source: { kind: "head" },
-            statusLabel: null,
-          },
-        }),
-      ),
-      {
-        kind: "file",
-        path: "src/app.ts",
-        target: {
-          kind: "workspace",
-          environmentId: "env_1",
-          path: "src/app.ts",
-          experimental_ref: "HEAD",
-        },
-      },
-    ],
-    [
-      "a thread storage file",
-      content(
-        createThreadStorageFilePreviewFixedPanelTab({
-          environmentId: null,
-          isPinned: false,
-          threadId: "thr_1",
-          tab: { path: "notes/plan.md", lineRange: null },
-        }),
-      ),
-      {
-        kind: "file",
-        path: "notes/plan.md",
-        target: {
-          kind: "thread-storage",
-          threadId: "thr_1",
-          path: "notes/plan.md",
-        },
-      },
+      { kind: "file", path: "src/app.ts" },
     ],
     [
       "an attachment",
@@ -199,7 +145,7 @@ describe("panel tab details", () => {
           projectId: "proj_1",
         }),
       ),
-      { kind: "file", path: "uploads/log.txt", target: null },
+      { kind: "file", path: "uploads/log.txt" },
     ],
     [
       "a Browser page",

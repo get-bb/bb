@@ -2134,6 +2134,15 @@ export type ExperimentalThreadStorageFilesState =
   | { status: "ready"; files: readonly ExperimentalThreadStorageFile[] }
   | { status: "error"; files: null; errorMessage: string };
 
+/** Options for {@link PluginSdkApp.experimental_useThreadStorageFiles}. */
+export interface ExperimentalThreadStorageFilesOptions {
+  /**
+   * False pauses the hook: it makes no request and reports the last list it
+   * read for the thread, or `loading` before the first. Defaults to true.
+   */
+  enabled?: boolean;
+}
+
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
   id: string;
@@ -2610,11 +2619,6 @@ export interface ExperimentalInfoListProps<Item> {
   renderItem(item: Item): ReactNode;
   /** Rows shown before the "N more" toggle; defaults to 5. */
   limit?: number;
-  /**
-   * The index of an item the list must show, such as the selected one: when
-   * it lies past `limit`, the list expands. Null or omitted reveals nothing.
-   */
-  revealIndex?: number | null;
 }
 
 /**
@@ -5883,15 +5887,7 @@ export interface ExperimentalPanelController {
 /** What an open side panel tab shows. */
 export type ExperimentalPanelTabDetail =
   | { kind: "info" }
-  | {
-      kind: "file";
-      path: string;
-      /**
-       * The file the tab shows, in the form `experimental_FileLink` and the
-       * file intents take; null for a message attachment, which has none.
-       */
-      target: ExperimentalLiveFileTarget | null;
-    }
+  | { kind: "file"; path: string }
   | { kind: "browser"; url: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "new-tab" }
@@ -6656,12 +6652,13 @@ export interface PluginSdkApp {
    * {@link ExperimentalThreadStorageFilesState}), the list bb's Info tab
    * shows, kept current as the thread writes them. The list is read once
    * however many components ask, and a failed refresh keeps the last list.
-   * Open a file with the file intents and a `thread-storage` target. An empty
-   * id stays `loading` with no request. Experimental: see
-   * docs/api_to_audit.md.
+   * Open a file with the file intents and a `thread-storage` target. Pass
+   * `{ enabled: false }` to stop reading while the list is not shown.
+   * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadStorageFiles(
     threadId: string,
+    options?: ExperimentalThreadStorageFilesOptions,
   ): ExperimentalThreadStorageFilesState;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).

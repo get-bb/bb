@@ -1,8 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  threadStorageAncestorPaths,
-  type ThreadStorageFileEntry,
-} from "./thread-storage-tree";
+import type { ThreadStorageFileEntry } from "./thread-storage-tree";
 
 const EMPTY_STORAGE_FILES: readonly ThreadStorageFileEntry[] = [];
 
@@ -11,7 +8,6 @@ export type ThreadStoragePathSelectHandler = (path: string) => void;
 interface UseThreadStorageBrowserArgs {
   files: readonly ThreadStorageFileEntry[] | undefined;
   onSelectPath: ThreadStoragePathSelectHandler;
-  selectedPath: string | null;
   threadId: string;
 }
 
@@ -20,67 +16,36 @@ export interface ThreadStorageBrowserController {
   toggleFolder: (chainPaths: readonly string[]) => void;
   foldersShowingAll: ReadonlySet<string>;
   showAllInFolder: (folderPath: string) => void;
-  lastSelectedPath: string | null;
   filteredFiles: readonly ThreadStorageFileEntry[];
   loadedFiles: readonly ThreadStorageFileEntry[];
   searchQuery: string;
-  selectedPath: string | null;
   selectPath: ThreadStoragePathSelectHandler;
   setSearchQuery: (query: string) => void;
-}
-
-function ancestorsOf(path: string | null): ReadonlySet<string> {
-  return new Set(path ? threadStorageAncestorPaths(path) : []);
-}
-
-function withPaths(
-  folders: ReadonlySet<string>,
-  paths: readonly string[],
-): ReadonlySet<string> {
-  return paths.every((path) => folders.has(path))
-    ? folders
-    : new Set([...folders, ...paths]);
 }
 
 export interface ThreadStorageFolderState {
   expandedFolders: ReadonlySet<string>;
   foldersShowingAll: ReadonlySet<string>;
-  lastSelectedPath: string | null;
-  revealedPath: string | null;
   threadId: string;
 }
 
 export function initialThreadStorageFolderState(
   threadId: string,
-  selectedPath: string | null,
 ): ThreadStorageFolderState {
   return {
-    expandedFolders: ancestorsOf(selectedPath),
-    foldersShowingAll: ancestorsOf(selectedPath),
-    lastSelectedPath: selectedPath,
-    revealedPath: selectedPath,
+    expandedFolders: new Set(),
+    foldersShowingAll: new Set(),
     threadId,
   };
 }
 
 export function syncThreadStorageFolderState(
   state: ThreadStorageFolderState,
-  { selectedPath, threadId }: { selectedPath: string | null; threadId: string },
+  threadId: string,
 ): ThreadStorageFolderState {
-  if (threadId !== state.threadId) {
-    return initialThreadStorageFolderState(threadId, selectedPath);
-  }
-  if (selectedPath === state.revealedPath) {
-    return state;
-  }
-  const ancestors = [...ancestorsOf(selectedPath)];
-  return {
-    expandedFolders: withPaths(state.expandedFolders, ancestors),
-    foldersShowingAll: withPaths(state.foldersShowingAll, ancestors),
-    lastSelectedPath: selectedPath ?? state.lastSelectedPath,
-    revealedPath: selectedPath,
-    threadId,
-  };
+  return state.threadId === threadId
+    ? state
+    : initialThreadStorageFolderState(threadId);
 }
 
 export function toggleThreadStorageFolderChain(
@@ -112,17 +77,13 @@ export function filterThreadStorageFiles(
 export function useThreadStorageBrowser({
   files,
   onSelectPath,
-  selectedPath,
   threadId,
 }: UseThreadStorageBrowserArgs): ThreadStorageBrowserController {
   const [searchQuery, setSearchQuery] = useState("");
   const [folderState, setFolderState] = useState(() =>
-    initialThreadStorageFolderState(threadId, selectedPath),
+    initialThreadStorageFolderState(threadId),
   );
-  const syncedFolderState = syncThreadStorageFolderState(folderState, {
-    selectedPath,
-    threadId,
-  });
+  const syncedFolderState = syncThreadStorageFolderState(folderState, threadId);
   if (syncedFolderState !== folderState) {
     setFolderState(syncedFolderState);
   }
@@ -156,11 +117,9 @@ export function useThreadStorageBrowser({
     toggleFolder,
     foldersShowingAll: syncedFolderState.foldersShowingAll,
     showAllInFolder,
-    lastSelectedPath: syncedFolderState.lastSelectedPath,
     filteredFiles,
     loadedFiles,
     searchQuery,
-    selectedPath,
     selectPath: onSelectPath,
     setSearchQuery,
   };

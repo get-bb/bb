@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import type { ExperimentalThreadStorageFilesState } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalThreadStorageFilesOptions,
+  ExperimentalThreadStorageFilesState,
+} from "@get-bb/plugin-sdk";
 import { useThreadStorageFiles } from "@/hooks/queries/thread-panel-queries";
 import {
   describeLifecycleError,
@@ -32,11 +35,12 @@ function describeStorageError(error: Error): string {
 
 export function useThreadStorageFilesState(
   threadId: string,
+  options?: ExperimentalThreadStorageFilesOptions,
 ): ExperimentalThreadStorageFilesState {
   const query = useThreadStorageFiles(
     threadId,
     DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
-    { enabled: threadId !== "" },
+    { enabled: options?.enabled ?? true },
   );
   const data = query.data;
   const error = query.error;

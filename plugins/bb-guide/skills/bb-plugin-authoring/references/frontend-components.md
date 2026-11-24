@@ -167,8 +167,7 @@ className? }` —
   `experimental_threadContextCardSection`. `experimental_DetailRow` takes
   `{ label, icon?, align?, children }`, where `icon` is any name
   `experimental_Icon` accepts. `experimental_InfoList` takes
-  `{ items, getKey, renderItem, limit?, revealIndex? }`; `revealIndex`
-  expands the list to show an item past `limit`. `experimental_InfoListRow` takes
+  `{ items, getKey, renderItem, limit? }`. `experimental_InfoListRow` takes
   `{ leading, leadingLabel?, name, title?, context?, trailing?, onSelect? }`.
   Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.

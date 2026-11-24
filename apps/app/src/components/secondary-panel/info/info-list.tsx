@@ -107,7 +107,6 @@ export interface InfoListProps<T> {
   getKey: (item: T) => string;
   renderItem: (item: T) => ReactNode;
   limit?: number;
-  revealIndex?: number | null;
 }
 
 export function InfoList<T>({
@@ -115,14 +114,8 @@ export function InfoList<T>({
   getKey,
   renderItem,
   limit = INFO_LIST_DEFAULT_LIMIT,
-  revealIndex = null,
 }: InfoListProps<T>) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [revealedIndex, setRevealedIndex] = useState<number | null>(null);
-  if (revealIndex !== revealedIndex) {
-    setRevealedIndex(revealIndex);
-    if (revealIndex !== null && revealIndex >= limit) setIsExpanded(true);
-  }
   const canToggle = infoListCollapses(items.length, limit);
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
   return (

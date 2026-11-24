@@ -4,7 +4,6 @@ import {
   experimental_InfoList as InfoList,
   experimental_InfoSection as InfoSection,
   experimental_useEnvironment as useEnvironment,
-  experimental_usePanelTabs as usePanelTabs,
   experimental_useTabVisible as useTabVisible,
   experimental_useThreadStorageFiles as useThreadStorageFiles,
   useBbNavigate,
@@ -59,11 +58,9 @@ function ThreadStorageList({
   const {
     expandedFolders,
     foldersShowingAll,
-    lastSelectedPath,
     filteredFiles,
     loadedFiles,
     searchQuery,
-    selectedPath,
     selectPath,
     setSearchQuery,
     showAllInFolder,
@@ -84,14 +81,6 @@ function ThreadStorageList({
         : [],
     [isSearching, tree],
   );
-  const revealIndex =
-    lastSelectedPath === null
-      ? null
-      : tree.findIndex(
-          (node) =>
-            node.path === lastSelectedPath ||
-            lastSelectedPath.startsWith(`${node.path}/`),
-        );
   if (loadedFiles.length === 0 && errorMessage === null) return null;
   const isFolderExpanded = (folderPath: string) =>
     isSearching || expandedFolders.has(folderPath);
@@ -157,7 +146,6 @@ function ThreadStorageList({
         }
         name={node.name}
         title={`Open ${node.path}`}
-        selected={selectedPath === node.path}
         target={{ kind: "button", onSelect: () => selectPath(node.path) }}
         actions={[
           {
@@ -239,7 +227,6 @@ function ThreadStorageList({
         <InfoList
           items={tree}
           getKey={(node) => node.path}
-          revealIndex={revealIndex === -1 ? null : revealIndex}
           renderItem={(node) =>
             flattenThreadStorageNode(node, flattenOptions).map(renderRow)
           }
@@ -258,21 +245,10 @@ export default function ThreadStorageSection({
   const isTabVisible = useTabVisible();
   const { environment } = useEnvironment(threadEnvironment?.id ?? "");
   const isHostConnected = environment?.host?.connected === true;
-  const storage = useThreadStorageFiles(
-    isTabVisible && isHostConnected ? threadId : "",
-  );
-  const panelTabs = usePanelTabs();
+  const storage = useThreadStorageFiles(threadId, {
+    enabled: isTabVisible && isHostConnected,
+  });
   const navigate = useBbNavigate();
-  const selectedTab = panelTabs.tabs.find(
-    (tab) => tab.key === panelTabs.selectedKey,
-  );
-  const selectedTarget =
-    selectedTab?.detail.kind === "file" ? selectedTab.detail.target : null;
-  const selectedPath =
-    selectedTarget?.kind === "thread-storage" &&
-    selectedTarget.threadId === threadId
-      ? selectedTarget.path
-      : null;
   const selectPath = useCallback(
     (path: string) => {
       navigate.experimental_openFilePreview({
@@ -285,7 +261,6 @@ export default function ThreadStorageSection({
   const controller = useThreadStorageBrowser({
     files: storage.status === "ready" ? storage.files : NO_STORAGE_FILES,
     onSelectPath: selectPath,
-    selectedPath,
     threadId,
   });
   if (!isHostConnected) return null;
