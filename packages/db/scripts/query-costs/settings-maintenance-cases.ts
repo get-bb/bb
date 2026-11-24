@@ -472,7 +472,6 @@ const SETTINGS_CASES: readonly Case[] = [
         serverMove: false,
         performanceDiagnostics: true,
         pluginUpdates: true,
-        resumeDaemonSessions: true,
         serverRoutes: true,
       }),
   },

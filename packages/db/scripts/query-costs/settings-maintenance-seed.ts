@@ -847,7 +847,6 @@ function seedSettings(db: DbConnection): void {
   setAutoAppUpdate(db, true);
   setExperiments(db, {
     compactExpiredCache: true,
-    resumeDaemonSessions: true,
     serverRoutes: true,
     pluginUpdates: false,
   });

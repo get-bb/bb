@@ -69,7 +69,6 @@ describe("experiments settings", () => {
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
-        resumeDaemonSessions: false,
         serverRoutes: true,
       });
       expect(

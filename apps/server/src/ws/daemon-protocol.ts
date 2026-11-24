@@ -1,6 +1,6 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
-import { getExperiments, heartbeatSession, recordSessionRoute } from "@bb/db";
+import { heartbeatSession, recordSessionRoute } from "@bb/db";
 import {
   HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
   HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON,
@@ -214,8 +214,7 @@ export function createDaemonSocketEvents(
       if (
         detached === "detached" &&
         reason !== HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON &&
-        deps.hub.getDaemonSessionSocket(target.sessionId) === channel &&
-        getExperiments(deps.db).resumeDaemonSessions
+        deps.hub.getDaemonSessionSocket(target.sessionId) === channel
       ) {
         onDaemonSocketDetached(deps, target);
         return;

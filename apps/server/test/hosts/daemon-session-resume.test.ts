@@ -1,4 +1,4 @@
-import { getSessionById, setExperiments } from "@bb/db";
+import { getSessionById } from "@bb/db";
 import {
   buildHostDaemonWebSocketProtocols,
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -137,7 +137,6 @@ describe("daemon session resume", () => {
   it("keeps the session and in-flight host RPCs across a dropped socket and replays what the server sent meanwhile", async () => {
     server = await startTestServer();
     const running = server;
-    setExperiments(running.db, { resumeDaemonSessions: true });
     const sessionId = await openSession(running.baseUrl);
     const first = await connect(running.baseUrl, sessionId, null);
     await vi.waitFor(() =>
@@ -203,7 +202,6 @@ describe("daemon session resume", () => {
 
   it("refuses to resume from a sequence the server never sent so the daemon opens a new session", async () => {
     server = await startTestServer();
-    setExperiments(server.db, { resumeDaemonSessions: true });
     const sessionId = await openSession(server.baseUrl);
     const first = await connect(server.baseUrl, sessionId, null);
     first.socket.terminate();
@@ -262,7 +260,6 @@ async function openMockDaemon(harness: TestAppHarness) {
 describe("detached daemon sessions", () => {
   it("ends a detached session as expired once the reconnect grace passes, without the liveness check ending it first", async () => {
     await withTestHarness(async (harness) => {
-      setExperiments(harness.db, { resumeDaemonSessions: true });
       const daemon = await openMockDaemon(harness);
       expect(daemon.reconnectGraceMs).toBe(HOST_RECONNECT_GRACE_MS);
       vi.useFakeTimers({
@@ -289,21 +286,8 @@ describe("detached daemon sessions", () => {
     });
   });
 
-  it("ends the session at once and offers no reconnect grace while the resumeDaemonSessions experiment is off", async () => {
-    await withTestHarness(async (harness) => {
-      const daemon = await openMockDaemon(harness);
-      expect(daemon.reconnectGraceMs).toBe(0);
-      daemon.events.onClose(daemon.socket, "");
-      expect(harness.hub.hasDaemonForHost(HOST_ID)).toBe(false);
-      expect(
-        getSessionById(harness.db, { sessionId: daemon.sessionId }),
-      ).toMatchObject({ status: "closed", closeReason: "daemon-disconnect" });
-    });
-  });
-
   it("ends the session at once when the daemon closes for shutdown", async () => {
     await withTestHarness(async (harness) => {
-      setExperiments(harness.db, { resumeDaemonSessions: true });
       const daemon = await openMockDaemon(harness);
       daemon.events.onClose(daemon.socket, "daemon-shutdown");
       expect(harness.hub.hasDaemonForHost(HOST_ID)).toBe(false);

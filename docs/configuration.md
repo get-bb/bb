@@ -1129,6 +1129,17 @@ instead of starting turns the restart would cut. bb sends them when it starts
 again, after any resume `resumeThreadsAfterRestart` queues, in order; if the
 update is deferred, cancelled, or fails, it sends them at once. See `bb guide machines`.
 
+## Daemon session resume
+
+A machine's daemon session outlives a dropped WebSocket. When the socket closes
+for any reason other than the daemon shutting down, the server keeps the
+session active for 30 seconds (`reconnectGraceMs` in session open): terminals,
+pending host requests, Connect sharing and the host's connected status stay as
+they are, and messages for the daemon queue up. A daemon that reconnects in
+time resumes the same session with `/internal/ws?sessionId=…&resumeFrom=<n>`,
+and each side re-sends only the messages the other has not acknowledged. Past
+30 seconds the session ends as `expired` and the daemon opens a new one.
+
 ## Thread context card
 
 A running thread's details sit in the thread context card at the upper-right
@@ -1184,8 +1195,8 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `compactExpiredCache`, `pluginUpdates`, `resumeDaemonSessions`, and
-`serverRoutes`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+(currently `compactExpiredCache`, `pluginUpdates`, and `serverRoutes`) turn
+on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -1222,18 +1233,6 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
-- `resumeDaemonSessions` (on for early adopters) lets a machine's daemon
-  session outlive a dropped WebSocket. When the socket closes for any reason
-  other than the daemon shutting down, the server keeps the session active for
-  30 seconds: terminals, pending host requests, Connect sharing and the host's
-  connected status stay as they are, and messages for the daemon queue up. A
-  daemon that reconnects in time resumes the same session with
-  `/internal/ws?sessionId=…&resumeFrom=<n>`, and each side re-sends only the
-  messages the other has not acknowledged. Past 30 seconds the session ends as
-  `expired` and the daemon opens a new one. While the experiment is off, the
-  server ends the session as soon as the socket closes, and session open
-  returns `reconnectGraceMs: 0`, so the daemon opens a new session after every
-  drop. It applies from the next disconnect.
 - `serverRoutes` (on for early adopters) advertises every available server
   access route (see [Multi-machine](#multi-machine)) to machines in daemon
   session open and to apps in `/system/config` `routes`, and makes the

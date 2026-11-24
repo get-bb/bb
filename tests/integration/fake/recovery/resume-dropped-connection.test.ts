@@ -21,7 +21,6 @@ describe.sequential("fake provider dropped daemon connection", () => {
     () =>
       withHarness(
         {
-          experiments: { resumeDaemonSessions: true },
           proxyDaemonConnection: true,
         },
         async (harness) => {

@@ -1,6 +1,5 @@
 import {
   getAppSettings,
-  getExperiments,
   getLatestSessionForHost,
   getOrCreateServerId,
   getHost,
@@ -314,9 +313,7 @@ export function registerInternalSessionRoutes(
         serverRoutes,
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
-        reconnectGraceMs: getExperiments(deps.db).resumeDaemonSessions
-          ? HOST_RECONNECT_GRACE_MS
-          : 0,
+        reconnectGraceMs: HOST_RECONNECT_GRACE_MS,
         watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,

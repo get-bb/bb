@@ -196,6 +196,10 @@ bb runs agent processes and setup and teardown scripts at a lower CPU priority
 (and, on macOS, the bb server and daemon with application scheduling) so it
 stays responsive under heavy agent load; terminals keep normal priority.
 
+A machine stays connected through a network drop of under 30 seconds: its
+daemon resumes the same server session, so terminals and running requests carry
+on, instead of opening a new one.
+
 Thread row metadata adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
 request number.
@@ -212,10 +216,6 @@ gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`resumeDaemonSessions` keeps a machine connected through a network drop of
-under 30 seconds: its daemon resumes the same server session, so terminals and
-running requests carry on, instead of opening a new one. It defaults on for
-early adopters and applies from the next disconnect.
 `serverRoutes` lets machines learn every available server access route and
 connect over the first one that answers; see Server access in
 `bb guide machines`. It defaults on for early adopters.
@@ -223,8 +223,7 @@ connect over the first one that answers; see Server access in
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`compactExpiredCache`, `pluginUpdates`, `resumeDaemonSessions`, and
-`serverRoutes`; an experiment you set yourself keeps your value.
+`compactExpiredCache`, `pluginUpdates`, and `serverRoutes`; an experiment you set yourself keeps your value.
 
 Launcher settings
 

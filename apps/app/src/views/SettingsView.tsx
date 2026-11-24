@@ -1156,11 +1156,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
   },
-  resumeDaemonSessions: {
-    label: "Keep machines connected through network drops",
-    description:
-      "When a machine's connection to the server drops for under 30 seconds, it picks up where it left off instead of reconnecting from scratch, so its terminals and running requests carry on. Applies from the next drop.",
-  },
   serverRoutes: {
     label: "Reach machines over several routes",
     description:

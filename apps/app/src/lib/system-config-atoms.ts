@@ -40,7 +40,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,
-    resumeDaemonSessions: false,
     serverRoutes: false,
   },
   appearance: defaultAppTheme,
