@@ -22,6 +22,7 @@ import {
 const mocks = vi.hoisted(() => ({
   resolveHook: vi.fn(),
   resolve: vi.fn(async () => ({})),
+  stop: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
@@ -36,8 +37,14 @@ vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
   }),
 }));
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { interactions: { respond: vi.fn(), cancel: vi.fn() } } },
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sdk")>()),
+  sdk: {
+    threads: {
+      stop: mocks.stop,
+      interactions: { respond: vi.fn(), cancel: vi.fn() },
+    },
+  },
 }));
 
 function childQuestion(
@@ -160,6 +167,7 @@ afterEach(() => {
   cleanup();
   mocks.resolveHook.mockClear();
   mocks.resolve.mockClear();
+  mocks.stop.mockClear();
 });
 
 describe("ThreadPromptContextBanner child questions", () => {
@@ -231,7 +239,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
-  it("drops the back control when the parent has a single child thread", () => {
+  it("goes back to the row list from a single child's question and leaves it waiting", () => {
     const only = section([newest]);
     render(
       bannerElement({
@@ -240,11 +248,17 @@ describe("ThreadPromptContextBanner child questions", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
-
     expect(shownSource()).toBe("Child thr_b");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
+
+    expect(openForm()).toBe(null);
     expect(
-      screen.queryByRole("button", { name: "Back to active child threads" }),
-    ).toBe(null);
+      screen.getByRole("button", { name: /Child thr_b/ }).textContent,
+    ).toBe("Child thr_b: Which size?");
+    expect(mocks.stop).not.toHaveBeenCalled();
   });
 
   it("drops the stepper and the collapse row for a single open question", () => {
@@ -316,19 +330,16 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("returns to the row list on Cancel and leaves the question waiting", () => {
+  it("stops the open child's turn on Cancel, as Cancel does in the child's own composer", async () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(openForm()).toBe(null);
-    expect(
-      screen.getByRole("button", { name: /Child thr_c/ }).textContent,
-    ).toBe("Child thr_c: Which shape?");
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: /Child thr_c/ }),
+    await waitFor(() =>
+      expect(mocks.stop).toHaveBeenCalledWith({ threadId: "thr_c" }),
     );
+    expect(mocks.stop).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the question open for an Escape that ends text composition", () => {

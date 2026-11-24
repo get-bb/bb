@@ -33,7 +33,6 @@ import {
   PLUGIN_SDK_APP_SPECIFIER,
   RUNTIME_SLOT_BY_SPECIFIER,
   SHARED_UI_ICON_SPECIFIER,
-  SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
   SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
   VERSIONED_RUNTIME_SLOT_BY_SPECIFIER,
 } from "./runtime-shims.mjs";
@@ -56,10 +55,6 @@ export {
 const SHARED_UI_SOURCE_IMPORTER = /[\\/]shared-ui[\\/]src[\\/]/;
 const SHARED_UI_RUNTIME_MODULES: ReadonlyMap<string, string> = new Map([
   ["/shared-ui/src/components/ui/icon", SHARED_UI_ICON_SPECIFIER],
-  [
-    "/shared-ui/src/components/ui/question-form-host",
-    SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
-  ],
   [
     "/shared-ui/src/components/ui/voice-input-textarea",
     SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
@@ -359,8 +354,7 @@ export function runtimeShimPlugin(
       });
       build.onResolve(
         {
-          filter:
-            /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/,
+          filter: /(^|\/)(icon|voice-input-textarea)(\.[jt]sx?)?$/,
         },
         (args) => {
           if (args.namespace !== "file" || !args.path.startsWith(".")) {

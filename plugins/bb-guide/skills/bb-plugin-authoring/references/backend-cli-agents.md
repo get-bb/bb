@@ -139,6 +139,9 @@ frontend `pendingInteraction` slot. The promise resolves to
 `{ outcome: "submitted", value }` or `{ outcome: "cancelled", reason }`.
 Payloads and responses are JSON values capped at 64 KiB. `timeoutMs` defaults
 to ten minutes and is capped at seven days.
+The form's `cancel` prop does what Cancel on bb's own question form does: it
+cancels the request (a provider's request stops the turn instead), in the
+thread's composer and in a parent's Active child threads card alike.
 
 Two optional fields control the form's timeline row:
 

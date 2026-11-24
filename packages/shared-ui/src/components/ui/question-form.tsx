@@ -456,7 +456,6 @@ export function QuestionForm({
   const {
     density,
     promptShownAbove,
-    closeInline,
     shortcuts,
     actionShortcuts,
     registerChoiceHandler,
@@ -472,8 +471,7 @@ export function QuestionForm({
     [formState, questions],
   );
   const navigationDisabled = disabled || voiceBusy;
-  const cancelBlocked =
-    closeInline === null && (cancelDisabled || settledAction !== null);
+  const cancelBlocked = cancelDisabled || settledAction !== null;
 
   const updateQuestionState = useCallback(
     (
@@ -541,10 +539,6 @@ export function QuestionForm({
   };
 
   const handleCancel = async (): Promise<void> => {
-    if (closeInline) {
-      closeInline();
-      return;
-    }
     try {
       await onCancel();
       setSettledAction("cancel");

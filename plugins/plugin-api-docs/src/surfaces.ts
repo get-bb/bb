@@ -467,6 +467,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginRowPresentation",
           "PluginPendingInteractionRegistration",
           "experimental_useQuestionFormHost",
+          "ExperimentalQuestionFormHost",
           "ExperimentalQuestionFormAction",
           "PluginPendingInteractionProps",
           "PluginPendingInteractionView",

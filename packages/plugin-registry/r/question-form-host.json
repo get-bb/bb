@@ -3,11 +3,11 @@
   "name": "question-form-host",
   "type": "registry:ui",
   "title": "question-form-host",
-  "description": "BB ui \"question-form-host\" — the plugin version of the BB app's question-form-host, drawing on the host app at runtime (version-matched to this BB release).",
+  "description": "BB ui \"question-form-host\" — vendored from the BB app's own source (version-matched to this BB release).",
   "files": [
     {
       "path": "registry/components/ui/question-form-host.tsx",
-      "content": "import {\n  experimental_useQuestionFormHost,\n  type ExperimentalQuestionFormAction,\n  type ExperimentalQuestionFormHost,\n  type ExperimentalQuestionShortcut,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type QuestionFormHost = ExperimentalQuestionFormHost & {\n  density: \"default\" | \"compact\";\n  promptShownAbove: string | null;\n  closeInline: (() => void) | null;\n};\nexport type QuestionShortcut = ExperimentalQuestionShortcut;\nexport type QuestionFormAction = ExperimentalQuestionFormAction;\nexport function useQuestionFormHost(): QuestionFormHost {\n  return {\n    ...experimental_useQuestionFormHost(),\n    density: \"default\",\n    promptShownAbove: null,\n    closeInline: null,\n  };\n}\n",
+      "content": "import {\n  experimental_useQuestionFormHost,\n  type ExperimentalQuestionFormAction,\n  type ExperimentalQuestionFormHost,\n  type ExperimentalQuestionShortcut,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type QuestionFormHost = ExperimentalQuestionFormHost;\nexport type QuestionShortcut = ExperimentalQuestionShortcut;\nexport type QuestionFormAction = ExperimentalQuestionFormAction;\nexport const useQuestionFormHost: () => QuestionFormHost =\n  experimental_useQuestionFormHost;\n",
       "type": "registry:ui",
       "target": "components/ui/question-form-host.tsx"
     }

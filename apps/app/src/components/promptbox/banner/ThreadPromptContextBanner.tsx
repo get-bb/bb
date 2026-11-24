@@ -486,14 +486,12 @@ function ChildQuestionBody({
   index,
   total,
   onStep,
-  onClose,
 }: {
   titleLinkRef: RefObject<HTMLAnchorElement | null>;
   current: ChildThreadQuestion;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
-  onClose: (childThreadId: string) => void;
 }) {
   const position = `${index + 1} of ${total}`;
   const childTitle = useThreadTitleDisplayText(current.childTitle);
@@ -503,10 +501,7 @@ function ChildQuestionBody({
   const form = useMemo(
     () => (
       <InlinePendingInteractionContext.Provider
-        value={{
-          promptShownAbove: question,
-          close: () => onClose(current.childThreadId),
-        }}
+        value={{ promptShownAbove: question }}
       >
         <ThreadPendingInteractionBanners
           interactions={[current.interaction]}
@@ -514,7 +509,7 @@ function ChildQuestionBody({
         />
       </InlinePendingInteractionContext.Provider>
     ),
-    [current.interaction, current.childThreadId, question, onClose],
+    [current.interaction, current.childThreadId, question],
   );
   return (
     <div className="px-3 pb-2 pt-2">
@@ -770,7 +765,7 @@ function ActiveChildThreadsCard({
       closeQuestion(currentQuestion.childThreadId);
     }
   };
-  const showBackHeader = currentQuestion !== undefined && items.length > 1;
+  const showBackHeader = currentQuestion !== undefined;
   const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
@@ -848,7 +843,6 @@ function ActiveChildThreadsCard({
                   pendingInteractions.length,
               )
             }
-            onClose={closeQuestion}
           />
         ) : (
           <ChildThreadsBody

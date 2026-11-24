@@ -9,7 +9,12 @@ const PLUGIN_RUNTIME_IMPORTERS =
 export function corePluginSdkApp(): Plugin {
   const appSourcePrefix = `${normalizePath(resolve(appDir, "src"))}/`;
   const coreContributionPrefix = `${normalizePath(resolve(appDir, "src/core-contributions"))}/`;
+  const sharedUiSourcePrefix = `${normalizePath(resolve(appDir, "../../packages/shared-ui/src"))}/`;
   const binding = resolve(appDir, "src/lib/core-plugin-sdk-app.ts");
+  const sharedUiBinding = resolve(
+    appDir,
+    "src/lib/shared-ui-plugin-sdk-app.ts",
+  );
   const sonnerBinding = resolve(appDir, "src/lib/plugin-sonner.ts");
   return {
     name: "bb:core-plugin-sdk-app",
@@ -19,7 +24,10 @@ export function corePluginSdkApp(): Plugin {
       const normalizedImporter = normalizePath(importer);
       if (PLUGIN_RUNTIME_IMPORTERS.test(normalizedImporter)) return null;
       if (source === "@get-bb/plugin-sdk/app") {
-        return normalizedImporter.startsWith(appSourcePrefix) ? binding : null;
+        if (normalizedImporter.startsWith(appSourcePrefix)) return binding;
+        return normalizedImporter.startsWith(sharedUiSourcePrefix)
+          ? sharedUiBinding
+          : null;
       }
       if (source === "sonner") {
         return normalizedImporter.startsWith(coreContributionPrefix)

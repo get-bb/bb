@@ -2,6 +2,7 @@ import {
   InlinePendingInteractionContext,
   PendingInteractionShell,
 } from "@/components/thread/pending-interactions/PendingInteractionShell";
+import { usePendingInteractionCancel } from "@/components/thread/pending-interactions/usePendingInteractionCancel";
 import { useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PendingInteraction } from "@bb/domain";
@@ -13,7 +14,6 @@ import {
   usePluginFrontendSettled,
   usePluginSlotKind,
 } from "@/lib/plugin-slots";
-import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { sdk } from "@/lib/sdk";
 
 export interface PluginPendingInteractionRequest {
@@ -43,7 +43,11 @@ export function PluginPendingInteractionComposer({
   const pluginName = usePluginDisplayName(request.pluginId);
   const pluginSettled = usePluginFrontendSettled(request.pluginId);
   const inline = useContext(InlinePendingInteractionContext) !== null;
-  const stopThread = useStopThread();
+  const { cancel: cancelInteraction } = usePendingInteractionCancel({
+    interactionId: interaction.id,
+    threadId: interaction.threadId,
+    origin,
+  });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const slot = useMemo(
@@ -78,20 +82,13 @@ export function PluginPendingInteractionComposer({
     setSubmitting(true);
     setError(null);
     try {
-      if (origin === "provider") {
-        await stopThread.mutateAsync(interaction.threadId);
-      } else {
-        await sdk.threads.interactions.cancel({
-          interactionId: interaction.id,
-          threadId: interaction.threadId,
-        });
-      }
+      await cancelInteraction();
     } catch (cause) {
       setSubmitting(false);
       setError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
     }
-  }, [origin, interaction.id, interaction.threadId, stopThread]);
+  }, [cancelInteraction]);
   const dismissLabel = origin === "plugin" ? "Cancel" : "Stop turn";
 
   return (

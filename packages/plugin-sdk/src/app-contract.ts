@@ -205,9 +205,27 @@ export interface PluginPendingInteractionView {
   expiresAt: number | null;
 }
 
+/**
+ * Props of a `pendingInteraction` component. bb renders the component in two
+ * places: in the thread's own composer, and in a parent thread's Active child
+ * threads card when the request belongs to a child thread
+ * (`experimental_useQuestionFormHost().density` is `"compact"` there). Both
+ * props behave the same in either place.
+ */
 export interface PluginPendingInteractionProps {
   interaction: PluginPendingInteractionView;
+  /**
+   * Answer the request with `value`. Resolves once bb records the answer and
+   * rejects when it cannot; bb shows the error under the form.
+   */
   submit(value: JsonValue): Promise<void>;
+  /**
+   * End the request, what Cancel on bb's own question form does. A request
+   * from a plugin backend (`bb.ui.requestInput`) is cancelled, and a request a
+   * provider made during a turn stops that thread's turn, the way Stop does.
+   * It does the same in a parent thread's Active child threads card; the card
+   * has its own Back control and Escape for leaving without answering.
+   */
   cancel(): Promise<void>;
 }
 
@@ -230,11 +248,24 @@ export type ExperimentalQuestionFormAction =
   | "cancel";
 
 /**
- * The keyboard shortcuts bb binds while a pending interaction is open. The
- * host owns the bindings (users can remap them); a form shows them and decides
- * what choosing an option or an action means.
+ * What bb tells a pending interaction form about where it renders, and the
+ * keyboard shortcuts bb binds while it is open. bb's own question forms read
+ * the same host. The host owns the bindings (users can remap them); a form
+ * shows them and decides what choosing an option or an action means.
  */
 export interface ExperimentalQuestionFormHost {
+  /**
+   * `"compact"` in a parent thread's Active child threads card, where bb's
+   * own form uses tighter spacing and regular-weight buttons; `"default"`
+   * elsewhere.
+   */
+  density: "default" | "compact";
+  /**
+   * The question text the Active child threads card already shows above the
+   * form, so a single-question form can skip repeating it. Null outside that
+   * card.
+   */
+  promptShownAbove: string | null;
   /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.
