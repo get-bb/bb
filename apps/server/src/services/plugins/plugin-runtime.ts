@@ -350,10 +350,24 @@ const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
 const PREVIOUS_INSTANCE_KEPT = "the previous instance is still running";
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
+const DEFAULT_PREPARATION_TIMEOUT_MS = 60_000;
+const EARLIER_LOAD_STILL_WAITING =
+  "an earlier load is still waiting on this plugin's files; reload it once they are readable";
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
+
+interface PluginLoadAttempt {
+  readonly signal: AbortSignal;
+  prepare<T>(work: () => Promise<T>): Promise<T>;
+  endPreparation(): void;
+}
+
+function abortMessage(signal: AbortSignal): string {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error ? reason.message : String(reason);
+}
 
 interface ServiceInstance {
   id: string;
@@ -376,7 +390,7 @@ export interface SafeModeActivationRefusalArgs {
   action: "install" | "update";
 }
 
-const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
+export const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
 
 export interface PluginLoadHold {
   sources: readonly string[];
@@ -425,6 +439,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     logger: deps.logger,
   });
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
+  const preparationTimeoutMs =
+    deps.preparationTimeoutMs ?? DEFAULT_PREPARATION_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
   const serviceRestartBaseMs =
@@ -442,6 +458,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const withLifecycleLock = createKeyedLock<string>();
   const withArtifactLock = createKeyedLock<string>();
   const withPluginOperationLock = createKeyedLock<string>();
+  const loadAttempts = new Map<string, AbortController>();
+  const abandonedLoadWork = new Map<string, Set<Promise<unknown>>>();
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const builtinSourceWatchers: FSWatcher[] = [];
 
@@ -1576,15 +1594,87 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     };
   }
 
-  async function populateIdentity(row: InstalledPluginRow): Promise<void> {
+  function abandonLoadWork(pluginId: string, work: Promise<unknown>): void {
+    let pending = abandonedLoadWork.get(pluginId);
+    if (pending === undefined) {
+      pending = new Set();
+      abandonedLoadWork.set(pluginId, pending);
+    }
+    const tracked = pending;
+    tracked.add(work);
+    const settle = () => {
+      tracked.delete(work);
+      if (tracked.size === 0 && abandonedLoadWork.get(pluginId) === tracked) {
+        abandonedLoadWork.delete(pluginId);
+      }
+    };
+    work.then(settle, settle);
+  }
+
+  function startLoadAttempt(pluginId: string): PluginLoadAttempt {
+    const controller = new AbortController();
+    loadAttempts.set(pluginId, controller);
+    if ((abandonedLoadWork.get(pluginId)?.size ?? 0) > 0) {
+      controller.abort(new Error(EARLIER_LOAD_STILL_WAITING));
+    }
+    const deadline = setTimeout(() => {
+      controller.abort(
+        new Error(
+          `load timed out after ${preparationTimeoutMs}ms reading or building the plugin's files`,
+        ),
+      );
+    }, preparationTimeoutMs);
+    deadline.unref();
+    return {
+      signal: controller.signal,
+      async prepare(work) {
+        controller.signal.throwIfAborted();
+        const pending = work();
+        return await new Promise((resolvePrepared, rejectPrepared) => {
+          const onAbort = () => {
+            abandonLoadWork(pluginId, pending);
+            rejectPrepared(controller.signal.reason);
+          };
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+          pending.then(
+            (value) => {
+              controller.signal.removeEventListener("abort", onAbort);
+              resolvePrepared(value);
+            },
+            (error: unknown) => {
+              controller.signal.removeEventListener("abort", onAbort);
+              rejectPrepared(error);
+            },
+          );
+        });
+      },
+      endPreparation() {
+        clearTimeout(deadline);
+        if (loadAttempts.get(pluginId) === controller) {
+          loadAttempts.delete(pluginId);
+        }
+      },
+    };
+  }
+
+  function abortLoad(pluginId: string, reason: string): void {
+    loadAttempts.get(pluginId)?.abort(new Error(reason));
+  }
+
+  async function populateIdentity(
+    row: InstalledPluginRow,
+    attempt: PluginLoadAttempt,
+  ): Promise<void> {
     try {
-      const manifest = await readPluginManifest(row.rootDir);
-      identities.set(row.id, {
-        manifest,
-        brandingAssets: await loadPluginBrandingAssets(row.id, manifest),
-      });
+      const manifest = await attempt.prepare(() =>
+        readPluginManifest(row.rootDir),
+      );
+      const assets = await attempt.prepare(() =>
+        loadPluginBrandingAssets(row.id, manifest),
+      );
+      identities.set(row.id, { manifest, brandingAssets: assets });
     } catch {
-      identities.delete(row.id);
+      if (!attempt.signal.aborted) identities.delete(row.id);
     }
   }
 
@@ -1825,46 +1915,72 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `plugin safe mode is on; turn it off with \`bb plugin safe-mode off\` before you ${args.action} "${args.pluginId}"`;
   }
 
+  function failBeforeFactory(
+    row: InstalledPluginRow,
+    status: PluginRuntimeStatus,
+    detail: string,
+  ): string {
+    if (loaded.has(row.id)) {
+      setStatus(row.id, "running", `reload failed: ${detail}`);
+      pluginLog.warn(
+        row.id,
+        `reload failed (kept previous instance): ${detail}`,
+      );
+      return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
+    }
+    setStatus(row.id, status, detail);
+    pluginLog.warn(row.id, `not loaded (${status}): ${detail}`);
+    return detail;
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    const attempt = startLoadAttempt(row.id);
+    try {
+      return await loadOneAttempt(row, attempt);
+    } catch (error) {
+      if (!attempt.signal.aborted || error !== attempt.signal.reason) {
+        throw error;
+      }
+      return failBeforeFactory(row, "error", abortMessage(attempt.signal));
+    } finally {
+      attempt.endPreparation();
+    }
+  }
+
+  async function loadOneAttempt(
+    row: InstalledPluginRow,
+    attempt: PluginLoadAttempt,
+  ): Promise<string | null> {
     const held = await heldDetail(row);
     if (held !== null) {
       await disposeOne(row.id);
-      await populateIdentity(row);
+      await populateIdentity(row, attempt);
       setStatus(row.id, "disabled", held);
       pluginLog.warn(row.id, `not loaded (held): ${held}`);
       return null;
     }
     if (isSuppressedBySafeMode(row)) {
       await disposeOne(row.id);
-      await populateIdentity(row);
+      await populateIdentity(row, attempt);
       if ((hungServices.get(row.id)?.size ?? 0) === 0) {
         setStatus(row.id, "disabled", PLUGIN_SAFE_MODE_DETAIL);
       }
       return null;
     }
     if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");
-    await populateIdentity(row);
+    await populateIdentity(row, attempt);
     if (!row.enabled) {
       setStatus(row.id, "disabled");
       return null;
     }
     const previous = loaded.get(row.id);
-    const isReload = previous !== undefined;
-    function failBeforeFactory(
+    function failPreparation(
       status: PluginRuntimeStatus,
       detail: string,
     ): string {
-      if (isReload) {
-        setStatus(row.id, "running", `reload failed: ${detail}`);
-        pluginLog.warn(
-          row.id,
-          `reload failed (kept previous instance): ${detail}`,
-        );
-        return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
-      }
-      setStatus(row.id, status, detail);
-      pluginLog.warn(row.id, `not loaded (${status}): ${detail}`);
-      return detail;
+      return attempt.signal.aborted
+        ? failBeforeFactory(row, "error", abortMessage(attempt.signal))
+        : failBeforeFactory(row, status, detail);
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
@@ -1874,18 +1990,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       return detail;
     }
     try {
-      await stat(row.rootDir);
+      await attempt.prepare(() => stat(row.rootDir));
     } catch {
-      return failBeforeFactory(
+      return failPreparation(
         "missing",
         `plugin directory not found: ${row.rootDir} (reinstall)`,
       );
     }
     let manifest: PluginManifest;
     try {
-      manifest = await readPluginManifest(row.rootDir);
+      manifest = await attempt.prepare(() => readPluginManifest(row.rootDir));
     } catch (error) {
-      return failBeforeFactory(
+      return failPreparation(
         "error",
         error instanceof Error ? error.message : String(error),
       );
@@ -1893,27 +2009,32 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const engineProblem =
       checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
-      return failBeforeFactory("incompatible", engineProblem);
+      return failPreparation("incompatible", engineProblem);
     }
-    const artifactProblem = await packagedBuiltinArtifactProblem(row, manifest);
+    const artifactProblem = await attempt.prepare(() =>
+      packagedBuiltinArtifactProblem(row, manifest),
+    );
     if (artifactProblem !== null) {
-      return failBeforeFactory("incompatible", artifactProblem);
+      return failPreparation("incompatible", artifactProblem);
     }
-    const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
+    const appBundleCandidate = await attempt.prepare(() =>
+      loadAppBundleCandidate(row, manifest),
+    );
     let hostArtifactCandidate: PluginHostArtifactSnapshot | null = null;
     let hostArtifactProblem: string | null = null;
     try {
-      hostArtifactCandidate = await loadHostArtifactCandidate(row, manifest);
+      hostArtifactCandidate = await attempt.prepare(() =>
+        loadHostArtifactCandidate(row, manifest),
+      );
     } catch (error) {
       hostArtifactProblem =
         error instanceof Error ? error.message : String(error);
-      if (previous !== undefined) {
-        return failBeforeFactory("error", hostArtifactProblem);
+      if (previous !== undefined || attempt.signal.aborted) {
+        return failPreparation("error", hostArtifactProblem);
       }
     }
-    const brandingAssetCandidate = await loadPluginBrandingAssets(
-      row.id,
-      manifest,
+    const brandingAssetCandidate = await attempt.prepare(() =>
+      loadPluginBrandingAssets(row.id, manifest),
     );
     const settingsDescriptorsRef: { current: PluginSettingDescriptors } = {
       current: {},
@@ -2112,7 +2233,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       invocations: new Set(),
     };
     try {
-      const serverEntry = await resolveServerEntry(row, manifest);
+      const serverEntry = await attempt.prepare(() =>
+        resolveServerEntry(row, manifest),
+      );
       if (row.sourceKind === "path" || row.sourceKind === "builtin") {
         const mutation = setMutableRootVersion(
           row.rootDir,
@@ -2151,13 +2274,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         rollbackGenerations.push(mutation.rollback);
         candidateModuleRootUrls.add(mutation.rootUrl);
         pluginCodeLocations.set(mutation.rootUrl, row.id);
-        mod = (await pluginCodeContext.run(
-          row.id,
-          () => import(pathToFileURL(serverEntry.path).href),
+        mod = (await attempt.prepare(() =>
+          pluginCodeContext.run(
+            row.id,
+            () => import(pathToFileURL(serverEntry.path).href),
+          ),
         )) as {
           default?: unknown;
         };
       }
+      attempt.endPreparation();
       const factory = mod.default;
       if (typeof factory !== "function") {
         throw new Error(
@@ -2423,6 +2549,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     getPluginMachineProvider,
     identities,
     isPackagedBuiltinEntry,
+    abortLoad,
     loadAll,
     loaded,
     loadOne,

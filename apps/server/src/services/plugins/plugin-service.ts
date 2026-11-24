@@ -179,6 +179,7 @@ import { createPluginRegistration } from "./plugin-registration.js";
 import {
   createPluginRuntime,
   forgetMutableRoot,
+  PLUGIN_SAFE_MODE_DETAIL,
   type PluginLoadHold,
 } from "./plugin-runtime.js";
 import {
@@ -741,6 +742,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listPluginServerAccessProviders,
     getPluginMachineProvider,
     isPackagedBuiltinEntry,
+    abortLoad,
     loadAll,
     loaded,
     loadOne,
@@ -2000,6 +2002,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const rows = listInstalledPlugins(deps.db)
           .filter((row) => row.enabled && !isSafeModeExemptRow(row))
           .sort((a, b) => a.id.localeCompare(b.id));
+        if (enabled) {
+          for (const row of rows) abortLoad(row.id, PLUGIN_SAFE_MODE_DETAIL);
+        }
         const problems: string[] = [];
         for (const row of rows) {
           const problem = await withLifecycleLock(row.id, () => loadOne(row));
