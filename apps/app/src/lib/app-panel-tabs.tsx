@@ -9,6 +9,7 @@ import { parsePluginDetailKey } from "@/components/plugin/plugin-detail-key";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 import { CORE_PLUGIN_ID } from "@bb/domain";
+import { getEnvironmentFilePreviewSourceRef } from "@bb/client-core";
 import type { FixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
 export interface AppPanelTabEntry {
@@ -92,11 +93,46 @@ function panelTabDetail(
         kind: "plugin-details",
         pluginId: parsePluginDetailKey(tab.detailKey).pluginId,
       };
-    case "workspace-file-preview":
+    case "workspace-file-preview": {
+      const ref = getEnvironmentFilePreviewSourceRef(tab.source);
+      return {
+        kind: "file",
+        path: tab.path,
+        target:
+          tab.environmentId === null
+            ? null
+            : {
+                kind: "workspace",
+                environmentId: tab.environmentId,
+                path: tab.path,
+                ...(ref === null ? {} : { experimental_ref: ref }),
+              },
+      };
+    }
     case "host-file-preview":
+      return {
+        kind: "file",
+        path: tab.path,
+        target:
+          tab.hostId === null
+            ? null
+            : { kind: "host", hostId: tab.hostId, path: tab.path },
+      };
     case "thread-storage-file-preview":
+      return {
+        kind: "file",
+        path: tab.path,
+        target:
+          tab.threadId === null
+            ? null
+            : {
+                kind: "thread-storage",
+                threadId: tab.threadId,
+                path: tab.path,
+              },
+      };
     case "attachment-file-preview":
-      return { kind: "file", path: tab.path };
+      return { kind: "file", path: tab.path, target: null };
     case "browser":
       return { kind: "browser", url: tab.url };
     case "terminal":

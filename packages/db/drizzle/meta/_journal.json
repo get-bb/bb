@@ -1205,6 +1205,13 @@
       "when": 1795550504908,
       "tag": "0171_environment_additional_path_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "6",
+      "when": 1795565649440,
+      "tag": "0172_thread_failure_kind",
+      "breakpoints": true
     }
   ]
 }

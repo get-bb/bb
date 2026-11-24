@@ -501,6 +501,14 @@ export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
   return [HOST_QUERY_KEY, hostId];
 }
 
+const REMOVED_HOST_QUERY_KEY = "removedHost";
+
+export function removedHostQueryKey(
+  hostId: string,
+): readonly [typeof REMOVED_HOST_QUERY_KEY, string] {
+  return [REMOVED_HOST_QUERY_KEY, hostId];
+}
+
 export function allHostQueryKeyPrefix(): AllHostQueryKeyPrefix {
   return [HOST_QUERY_KEY];
 }

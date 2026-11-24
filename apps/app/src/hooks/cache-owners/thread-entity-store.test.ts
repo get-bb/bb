@@ -115,7 +115,7 @@ describe("thread entity store", () => {
     });
     updateCachedThreadListStatusState(s.queryClient, "t1", {
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       activity: server[0]!.activity,
       latestAttentionAt: 20,
       statusChangedAt: 11,
@@ -203,7 +203,7 @@ describe("thread entity store", () => {
     });
     updateCachedThreadListStatusState(s.queryClient, "t1", {
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       activity: server[0]!.activity,
       latestAttentionAt: 12,
       statusChangedAt: 12,
@@ -219,7 +219,7 @@ describe("thread entity store", () => {
                 entry(threadId, {
                   pinnedAt: 7,
                   status: "active",
-                  runtime: { displayStatus: "active" },
+                  runtime: { displayStatus: "active", failure: null },
                   updatedAt: 12,
                 }),
               ])
@@ -282,7 +282,7 @@ describe("thread entity store", () => {
     ] as const)
       updateCachedThreadListStatusState(s.queryClient, "t1", {
         status,
-        runtime: { displayStatus: status },
+        runtime: { displayStatus: status, failure: null },
         activity: server[0]!.activity,
         latestAttentionAt: updatedAt,
         statusChangedAt: updatedAt,
@@ -393,7 +393,10 @@ describe("thread entity store", () => {
 
   it("shows the server's idle status when a stop is confirmed after the thread already went idle", async () => {
     const server = [
-      entry("t1", { status: "active", runtime: { displayStatus: "active" } }),
+      entry("t1", {
+        status: "active",
+        runtime: { displayStatus: "active", failure: null },
+      }),
     ];
     const s = setup(server);
     const transaction = await beginStopThreadTransaction({
@@ -403,7 +406,7 @@ describe("thread entity store", () => {
     });
     updateCachedThreadListStatusState(s.queryClient, "t1", {
       status: "idle",
-      runtime: { displayStatus: "idle" },
+      runtime: { displayStatus: "idle", failure: null },
       activity: server[0]!.activity,
       latestAttentionAt: 11,
       statusChangedAt: 11,
@@ -445,7 +448,7 @@ describe("thread entity store", () => {
     ] as const)
       updateCachedThreadListStatusState(s.queryClient, "t1", {
         status,
-        runtime: { displayStatus: status },
+        runtime: { displayStatus: status, failure: null },
         activity: server[0]!.activity,
         latestAttentionAt: updatedAt,
         statusChangedAt: updatedAt,

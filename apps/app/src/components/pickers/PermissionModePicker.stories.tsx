@@ -1,6 +1,6 @@
 import type { PermissionMode } from "@bb/domain";
 import { PermissionModePicker } from "./PermissionModePicker";
-import type { PickerOption } from "./OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {

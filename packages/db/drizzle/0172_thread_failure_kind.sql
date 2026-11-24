@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `failure_kind` text;

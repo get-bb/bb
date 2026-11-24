@@ -556,6 +556,7 @@ const RUN_STATE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
       db.transaction((tx) =>
         writeThreadLifecycleStateInTransaction(tx, {
           expectedStatus: "idle",
+          failureKind: null,
           next: {
             heldCompletion: null,
             requests: [],

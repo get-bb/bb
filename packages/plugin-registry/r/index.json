@@ -98,6 +98,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "copy-button",
+      "type": "registry:ui"
+    },
+    {
       "name": "delayed-loading",
       "type": "registry:ui"
     },
@@ -142,6 +146,14 @@
       "type": "registry:lib"
     },
     {
+      "name": "info-list-more-row",
+      "type": "registry:ui"
+    },
+    {
+      "name": "info-list-row",
+      "type": "registry:ui"
+    },
+    {
       "name": "inline-rename",
       "type": "registry:ui"
     },
@@ -163,6 +175,10 @@
     },
     {
       "name": "label",
+      "type": "registry:ui"
+    },
+    {
+      "name": "list-loading-placeholder",
       "type": "registry:ui"
     },
     {
@@ -190,6 +206,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "option-picker",
+      "type": "registry:ui"
+    },
+    {
       "name": "overflow-fade",
       "type": "registry:ui"
     },
@@ -203,6 +223,10 @@
     },
     {
       "name": "pagination",
+      "type": "registry:ui"
+    },
+    {
+      "name": "picker-layout",
       "type": "registry:ui"
     },
     {
@@ -302,6 +326,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "right-panel-file-visuals",
+      "type": "registry:ui"
+    },
+    {
       "name": "schedule-time",
       "type": "registry:lib"
     },
@@ -390,6 +418,14 @@
       "type": "registry:ui"
     },
     {
+      "name": "thread-storage-tree",
+      "type": "registry:ui"
+    },
+    {
+      "name": "thread-unarchive-button",
+      "type": "registry:ui"
+    },
+    {
       "name": "toggle",
       "type": "registry:ui"
     },
@@ -399,6 +435,10 @@
     },
     {
       "name": "tooltip",
+      "type": "registry:ui"
+    },
+    {
+      "name": "truncate-path-middle",
       "type": "registry:ui"
     },
     {
@@ -434,11 +474,19 @@
       "type": "registry:ui"
     },
     {
+      "name": "use-reset-picker-scroll",
+      "type": "registry:ui"
+    },
+    {
       "name": "use-scroll-overflow-state",
       "type": "registry:ui"
     },
     {
       "name": "use-sidebar-reorder-dnd",
+      "type": "registry:ui"
+    },
+    {
+      "name": "use-thread-storage-browser",
       "type": "registry:ui"
     },
     {

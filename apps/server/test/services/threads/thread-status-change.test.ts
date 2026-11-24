@@ -198,6 +198,7 @@ describe("announceThreadStatusChange", () => {
           status: "active",
           runtime: {
             displayStatus: "active",
+            failure: null,
           },
           activity: NO_ACTIVITY,
           latestAttentionAt: row?.latestAttentionAt,

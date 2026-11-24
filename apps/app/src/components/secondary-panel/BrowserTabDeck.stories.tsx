@@ -146,7 +146,6 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         )}
         isConversationCollapsed={false}
         isOpen
-        metadataContent={null}
         onClose={noop}
         onCollapse={noop}
         onTabReorder={noop}

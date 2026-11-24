@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { threadFailureKindSchema } from "./thread-failure-kind.js";
 import { threadStatusValues } from "./thread-status.js";
 
 const threadRuntimeDisplayStatusValues = [
@@ -13,6 +14,7 @@ export const threadRuntimeDisplayStatusSchema = z.enum(
 
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
+  failure: threadFailureKindSchema.nullable(),
 });
 
 export const threadActivityStateSchema = z.object({

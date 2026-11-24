@@ -13,7 +13,7 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Pill } from "@bb/shared-ui/pill";
-import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
+import { ThreadUnarchiveButton } from "@bb/shared-ui/thread-unarchive-button";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   hasThreadSearchableQuery,

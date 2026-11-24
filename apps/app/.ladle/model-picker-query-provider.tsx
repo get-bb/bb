@@ -13,7 +13,7 @@ import {
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
 } from "../src/hooks/queries/query-keys";
-import type { PickerOption } from "../src/components/pickers/OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import {
   STORY_CLAUDE_CODE_MORE_MODELS,

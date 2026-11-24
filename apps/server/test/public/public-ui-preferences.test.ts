@@ -62,15 +62,18 @@ describe("public ui preferences", () => {
     },
   );
 
-  it("reads Info sections collapsed under core's old Git ids as the Git plugin's sections", async () => {
+  it("reads Info sections collapsed under old bare ids as their registration keys", async () => {
     await withTestHarness(async (harness) => {
       overwriteStoredUiPreference(harness.deps.db, {
         key: "infoPanel.collapsedSections",
         valueJson: JSON.stringify([
           "commits",
           "uncommittedChanges",
+          "childThreads",
           "forks",
+          "threadStorage",
           "bb--git/commits",
+          "bb--core/forks",
         ]),
       });
       const body = (await readJson(await listPreferences(harness))) as {
@@ -79,7 +82,9 @@ describe("public ui preferences", () => {
       expect(body.preferences["infoPanel.collapsedSections"]?.value).toEqual([
         "bb--git/commits",
         "bb--git/uncommitted-changes",
-        "forks",
+        "bb--core/childThreads",
+        "bb--core/forks",
+        "bb--core/threadStorage",
       ]);
     });
   });

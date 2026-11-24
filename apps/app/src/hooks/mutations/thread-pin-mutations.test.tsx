@@ -195,7 +195,7 @@ it("rolls back a failed pin under concurrent status and membership writes", asyn
   act(() => {
     const statusChange = {
       status: "active" as const,
-      runtime: { displayStatus: "active" as const },
+      runtime: { displayStatus: "active" as const, failure: null },
       activity: entry("t1", null).activity,
       latestAttentionAt: 5,
       statusChangedAt: 5,
@@ -284,7 +284,8 @@ it("predicts on a thread list mounted while the pin is pending", async () => {
   act(() => server.view.result.current.pin.mutate({ id: "t1" }));
 
   const late = renderHook(
-    () => useThreads({ projectId: PROJECT_ID, archived: false, hasParent: false }),
+    () =>
+      useThreads({ projectId: PROJECT_ID, archived: false, hasParent: false }),
     { wrapper: server.wrapper },
   );
   await waitFor(() =>
@@ -354,7 +355,9 @@ it("keeps an acknowledged unpin when the rest of its move fails", async () => {
 it("reverts a failed unpin and never sends the move chained after it", async () => {
   const server = serve([{ ...entry("t1", 50), sectionId: "old" }]);
   await waitFor(() => expect(server.pinnedAt("t1")).toEqual([50, 50, 50]));
-  vi.mocked(sdk.threads.unpin).mockRejectedValueOnce(new Error("unpin refused"));
+  vi.mocked(sdk.threads.unpin).mockRejectedValueOnce(
+    new Error("unpin refused"),
+  );
   const threads = createThreadMutationBatcher(sdk.threads, server.queryClient);
   const sidebarRow = () =>
     listSidebarNavigationThreads(server.view.result.current.sidebar.data!)[0];
@@ -385,7 +388,9 @@ it("keeps another thread's acknowledged unpin when an update in its batch fails"
   vi.mocked(sdk.threads.unpin).mockResolvedValue(
     makeThreadResponse({ ...entry("t1", null), sectionId: "old" }),
   );
-  vi.mocked(sdk.threads.update).mockRejectedValueOnce(new Error("move refused"));
+  vi.mocked(sdk.threads.update).mockRejectedValueOnce(
+    new Error("move refused"),
+  );
   const threads = createThreadMutationBatcher(sdk.threads, server.queryClient);
   const sidebarRow = (id: string) =>
     listSidebarNavigationThreads(server.view.result.current.sidebar.data!).find(
@@ -443,7 +448,7 @@ it("reads the thread back when a pin response is older than concurrent thread st
   act(() => {
     const statusChange = {
       status: "active" as const,
-      runtime: { displayStatus: "active" as const },
+      runtime: { displayStatus: "active" as const, failure: null },
       activity: entry("t1", null).activity,
       latestAttentionAt: 5,
       statusChangedAt: 30,

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import type {
   HeldTurnCompletionStatus,
+  ThreadFailureKind,
   SystemThreadInterruptedReason,
   ThreadStatus,
   ThreadTurnRequestKind,
@@ -86,6 +87,7 @@ export function readThreadRunState(
 
 interface WriteThreadLifecycleStateArgs {
   expectedStatus: ThreadStatus;
+  failureKind: ThreadFailureKind | null;
   next: StoredThreadRunState & { status: ThreadStatus };
   previous: StoredThreadRunState;
   threadId: string;
@@ -157,6 +159,7 @@ export function writeThreadLifecycleStateInTransaction(
     const set: Partial<typeof threads.$inferInsert> = {
       status: args.next.status,
       statusChangedAt: now,
+      failureKind: args.failureKind,
       updatedAt: now,
     };
     if (args.next.status === "idle" && current.environmentId !== null) {

@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { GIT_PLUGIN_ID } from "./plugin-id.js";
+import { CORE_PLUGIN_ID, GIT_PLUGIN_ID } from "./plugin-id.js";
+
+const LEGACY_INFO_SECTION_KEYS: Readonly<Record<string, string>> = {
+  childThreads: `${CORE_PLUGIN_ID}/childThreads`,
+  forks: `${CORE_PLUGIN_ID}/forks`,
+  threadStorage: `${CORE_PLUGIN_ID}/threadStorage`,
+  commits: `${GIT_PLUGIN_ID}/commits`,
+  uncommittedChanges: `${GIT_PLUGIN_ID}/uncommitted-changes`,
+};
 
 const UI_PREFERENCE_STRING_MAX_LENGTH = 1_024;
 const UI_PREFERENCE_LIST_MAX_LENGTH = 10_000;
@@ -232,18 +240,10 @@ export const uiPreferenceDefinitions = {
   ),
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((ids) => [
-      ...new Set(
-        ids.map((id) =>
-          id === "commits"
-            ? `${GIT_PLUGIN_ID}/commits`
-            : id === "uncommittedChanges"
-              ? `${GIT_PLUGIN_ID}/uncommitted-changes`
-              : id,
-        ),
-      ),
+      ...new Set(ids.map((id) => LEGACY_INFO_SECTION_KEYS[id] ?? id)),
     ]),
     [],
-    "Thread Info panel section ids that are collapsed, such as forks, threadStorage, or <pluginId>/<sectionId> for plugin sections like bb--git/commits and bb--git/uncommitted-changes. Legacy commits and uncommittedChanges resolve to the Git plugin's sections.",
+    "Thread Info panel sections that are collapsed, as <pluginId>/<sectionId>: bb--core/childThreads, bb--core/forks and bb--core/threadStorage for bb's own, bb--git/commits and bb--git/uncommitted-changes for the Git plugin's. Legacy bare ids (childThreads, forks, threadStorage, commits, uncommittedChanges) resolve to those keys.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

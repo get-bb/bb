@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { Link } from "react-router-dom";
-import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { OptionPicker } from "@bb/shared-ui/option-picker";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { Icon } from "@bb/shared-ui/icon";
 import { useState, type ReactNode } from "react";

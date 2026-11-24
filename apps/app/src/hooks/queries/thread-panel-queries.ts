@@ -65,7 +65,6 @@ import {
 } from "../cache-owners/thread-open-cache-owner";
 
 import { fetchThreadTimeline, type QueryOptions } from "./thread-queries";
-import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 interface ThreadTimelineQueryOptions extends QueryOptions {
   notifyOnChangeProps?: NotifyOnChangeProps;
 }
@@ -337,25 +336,6 @@ export function useThreadTimelineSubscription(
     enabled: options.enabled,
     notifyOnChangeProps: NO_TIMELINE_RESULT_PROPS,
   });
-}
-
-const selectThreadTimelineProvisioningFailure = (
-  timeline: ThreadTimelineResponse,
-) => hasThreadProvisioningFailure(timeline.rows);
-const selectNoThreadTimelineProvisioningFailure = () => false;
-
-export function useThreadTimelineProvisioningFailure(
-  id: string,
-  check: boolean,
-): boolean {
-  const queryClient = useQueryClient();
-  const query = useQuery({
-    ...threadTimelineQueryOptions(queryClient, id, { enabled: false }),
-    select: check
-      ? selectThreadTimelineProvisioningFailure
-      : selectNoThreadTimelineProvisioningFailure,
-  });
-  return query.data ?? false;
 }
 
 export function useThreadConversationOutline(

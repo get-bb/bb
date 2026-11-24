@@ -91,7 +91,7 @@ describe("thread state cache owner", () => {
     const child = makeThreadListEntry({
       parentThreadId: "parent",
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       latestAttentionAt: 10,
       statusChangedAt: 20,
       updatedAt: 20,
@@ -107,7 +107,7 @@ describe("thread state cache owner", () => {
     );
     updateCachedThreadListStatusState(queryClient, child.id, {
       status: "idle",
-      runtime: { displayStatus: "idle" },
+      runtime: { displayStatus: "idle", failure: null },
       activity: child.activity,
       latestAttentionAt: 10,
       statusChangedAt: 30,
@@ -118,7 +118,7 @@ describe("thread state cache owner", () => {
       thread: makeThreadWithRuntime({
         ...child,
         status: "idle",
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", failure: null },
         lastReadAt: 40,
         updatedAt: 40,
       }),
@@ -145,7 +145,7 @@ describe("thread state cache owner", () => {
       const { queryClient } = createQueryClientTestHarness();
       const original = makeThreadListEntry({
         status: "idle",
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", failure: null },
         lastReadAt: 10,
       });
       const listKey = threadListQueryKey({
@@ -506,7 +506,7 @@ function seedConcurrentThreadCaches() {
   });
   const original = makeThreadListEntry({
     status: "idle",
-    runtime: { displayStatus: "idle" },
+    runtime: { displayStatus: "idle", failure: null },
     title: "Original",
     sectionId: "old",
     updatedAt: 10,
@@ -540,7 +540,7 @@ it.each(["rename", "reorder", "batch"])(
     const current = makeThreadListEntry({
       ...original,
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       updatedAt: 30,
       sectionId: "new",
       lastReadAt: 25,
@@ -623,7 +623,7 @@ it.each(["single", "batch"])(
         title: "Pending",
         sectionId: "later-edit",
         status: "active",
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", failure: null },
         updatedAt: 30,
       }),
       [sibling],
@@ -654,14 +654,14 @@ it("preserves concurrent state when an older status event reaches detail and sid
     makeThreadListEntry({
       ...original,
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       updatedAt: 30,
     }),
   );
   const stale = {
     statusChangedAt: 20,
     status: "idle" as const,
-    runtime: { displayStatus: "idle" as const },
+    runtime: { displayStatus: "idle" as const, failure: null },
     latestAttentionAt: 20,
     activity: original.activity,
     updatedAt: 20,
@@ -671,7 +671,7 @@ it("preserves concurrent state when an older status event reaches detail and sid
   for (const thread of read())
     expect(thread).toMatchObject({
       status: "active",
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", failure: null },
       updatedAt: 30,
     });
 });

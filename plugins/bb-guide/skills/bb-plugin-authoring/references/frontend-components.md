@@ -167,9 +167,16 @@ className? }` —
   `experimental_threadContextCardSection`. `experimental_DetailRow` takes
   `{ label, icon?, align?, children }`, where `icon` is any name
   `experimental_Icon` accepts. `experimental_InfoList` takes
-  `{ items, getKey, renderItem, limit? }`. `experimental_InfoListRow` takes
+  `{ items, getKey, renderItem, limit?, revealIndex? }`; `revealIndex`
+  expands the list to show an item past `limit`. `experimental_InfoListRow` takes
   `{ leading, leadingLabel?, name, title?, context?, trailing?, onSelect? }`.
   Usage is in frontend-registration.md. Experimental: see
+  `docs/api_to_audit.md`.
+
+- `experimental_searchPickerOptions({ options, query, getLabel, getAliases? })`
+  — bb's own picker search: fuzzy matches on each option's label and aliases,
+  best first, non-matches dropped, `options` unchanged for a blank query. Use
+  it so a plugin picker ranks like bb's. Experimental: see
   `docs/api_to_audit.md`.
 
 - `experimental_ThreadContextCardRow` — the thread context card's row, the one

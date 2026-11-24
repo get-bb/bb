@@ -267,6 +267,10 @@ export function runThreadLifecycleInTransaction(
   }
   const written = writeThreadLifecycleStateInTransaction(deps.db, {
     expectedStatus: state.status,
+    failureKind:
+      input.type === "provisioning.failed" && transition.next.status === "error"
+        ? "provisioning"
+        : null,
     next: transition.next,
     previous: stored,
     threadId,

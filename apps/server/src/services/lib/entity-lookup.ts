@@ -138,6 +138,15 @@ export function listPublicHostsWithStatus(
   );
 }
 
+export function getRemovedHost(
+  deps: HostLookupDeps,
+  hostId: string,
+): Host | null {
+  const host = getHost(deps.db, hostId);
+  if (host === null || host.destroyedAt === null) return null;
+  return toHostRecord(host, "disconnected");
+}
+
 export function requireNonDestroyedHostWithStatus(
   deps: HostLookupDeps,
   hostId: string,

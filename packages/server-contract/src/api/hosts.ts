@@ -216,6 +216,11 @@ export const hostListQuerySchema = z.object({
 });
 export type HostListQuery = z.input<typeof hostListQuerySchema>;
 
+export const hostGetQuerySchema = z.object({
+  includeRemoved: z.enum(["true", "false"]).optional(),
+});
+export type HostGetQuery = z.input<typeof hostGetQuerySchema>;
+
 export const hostDeleteQuerySchema = z.object({
   force: z.enum(["true", "false"]).optional(),
 });

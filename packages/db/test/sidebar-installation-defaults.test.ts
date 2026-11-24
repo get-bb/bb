@@ -23,6 +23,7 @@ import {
   dropQueuedMessageRecheckAtColumn,
   dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
+  rewindThreadFailureKindColumn,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
   dropThreadRunStateTables,
@@ -118,6 +119,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropForkHistoryCopyIndex(db);
           dropEnvironmentHoldColumns(db);
           dropThreadSearchOrderIndex(db);
+          rewindThreadFailureKindColumn(db);
           rewindThreadPurgeStartedColumn(db);
           dropQueuedMessageSourcesAndCompactFirstColumns(db);
           db.$client

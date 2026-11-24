@@ -67,7 +67,6 @@ import {
   LazyBrowserTabDeck,
   preloadThreadSecondaryPanel,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -1284,16 +1283,6 @@ function RootComposeSurface({
       terminals,
     ],
   );
-  const rootPanelMetadataContent = useMemo(
-    () => (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-1">
-        <EmptyStatePanel className="rounded-lg">
-          No thread details available.
-        </EmptyStatePanel>
-      </div>
-    ),
-    [],
-  );
   const handleOpenFilePreview = useCallback(
     (relativePath: string) => {
       openWorkspaceFile({
@@ -1485,7 +1474,6 @@ function RootComposeSurface({
                 secondaryPanel={{
                   activeTab: activeFixedSecondaryTab,
                   environmentId: rootPanelEnvironmentId ?? undefined,
-                  metadataContent: rootPanelMetadataContent,
                   workspaceRootPath:
                     rootPanelEnvironment?.path ??
                     (rootPanelTerminalTarget?.kind === "host_path"

@@ -1,4 +1,4 @@
-import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
+import coreThreadInfo from "@/core-contributions/thread-info";
 import coreMessageTime from "@/core-contributions/message-time";
 import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
@@ -58,6 +58,15 @@ import {
 const coreMessageMetadata = collectCoreContributionSlots(
   coreMessageTime,
   "messageMetadata",
+);
+const coreTabs = collectCoreContributionSlots(coreThreadInfo, "tabs");
+const coreThreadInfoRows = collectCoreContributionSlots(
+  coreThreadInfo,
+  "threadInfoRows",
+);
+const coreThreadInfoSections = collectCoreContributionSlots(
+  coreThreadInfo,
+  "threadInfoSections",
 );
 
 export interface PluginRegistrationSet {
@@ -266,9 +275,9 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
   threadContextSegments: [],
-  threadInfoRows: [],
+  threadInfoRows: coreThreadInfoRows,
   threadRowMetadata: [],
-  threadInfoSections: [],
+  threadInfoSections: coreThreadInfoSections,
   threadHeaderRows: [],
   threadHeaderTitles: [],
   threadRails: [],
@@ -464,6 +473,12 @@ function collectKind<K extends SlotKind>(
   }
   if (kind === "messageMetadata") {
     for (const slot of coreMessageMetadata) collected.push(slot);
+  }
+  if (kind === "threadInfoRows") {
+    for (const slot of coreThreadInfoRows) collected.push(slot);
+  }
+  if (kind === "threadInfoSections") {
+    for (const slot of coreThreadInfoSections) collected.push(slot);
   }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);

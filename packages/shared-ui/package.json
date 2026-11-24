@@ -94,6 +94,16 @@
       "types": "./src/components/ui/hover-card.tsx",
       "default": "./src/components/ui/hover-card.tsx"
     },
+    "./info-list-more-row": {
+      "source": "./src/components/ui/info-list-more-row.tsx",
+      "types": "./src/components/ui/info-list-more-row.tsx",
+      "default": "./src/components/ui/info-list-more-row.tsx"
+    },
+    "./option-picker": {
+      "source": "./src/components/ui/option-picker.tsx",
+      "types": "./src/components/ui/option-picker.tsx",
+      "default": "./src/components/ui/option-picker.tsx"
+    },
     "./plugin-icon": {
       "source": "./src/components/ui/plugin-icon.tsx",
       "types": "./src/components/ui/plugin-icon.tsx",
@@ -194,6 +204,11 @@
       "types": "./src/components/ui/responsive-overlay.tsx",
       "default": "./src/components/ui/responsive-overlay.tsx"
     },
+    "./right-panel-file-visuals": {
+      "source": "./src/components/ui/right-panel-file-visuals.ts",
+      "types": "./src/components/ui/right-panel-file-visuals.ts",
+      "default": "./src/components/ui/right-panel-file-visuals.ts"
+    },
     "./schedule-time-fields": {
       "source": "./src/components/ui/schedule-time-fields.tsx",
       "types": "./src/components/ui/schedule-time-fields.tsx",
@@ -224,6 +239,16 @@
       "types": "./src/components/ui/textarea.tsx",
       "default": "./src/components/ui/textarea.tsx"
     },
+    "./thread-storage-tree": {
+      "source": "./src/components/ui/thread-storage-tree.ts",
+      "types": "./src/components/ui/thread-storage-tree.ts",
+      "default": "./src/components/ui/thread-storage-tree.ts"
+    },
+    "./thread-unarchive-button": {
+      "source": "./src/components/ui/thread-unarchive-button.tsx",
+      "types": "./src/components/ui/thread-unarchive-button.tsx",
+      "default": "./src/components/ui/thread-unarchive-button.tsx"
+    },
     "./toggle-group": {
       "source": "./src/components/ui/toggle-group.tsx",
       "types": "./src/components/ui/toggle-group.tsx",
@@ -233,6 +258,16 @@
       "source": "./src/components/ui/tooltip.tsx",
       "types": "./src/components/ui/tooltip.tsx",
       "default": "./src/components/ui/tooltip.tsx"
+    },
+    "./truncate-path-middle": {
+      "source": "./src/components/ui/truncate-path-middle.tsx",
+      "types": "./src/components/ui/truncate-path-middle.tsx",
+      "default": "./src/components/ui/truncate-path-middle.tsx"
+    },
+    "./use-thread-storage-browser": {
+      "source": "./src/components/ui/use-thread-storage-browser.ts",
+      "types": "./src/components/ui/use-thread-storage-browser.ts",
+      "default": "./src/components/ui/use-thread-storage-browser.ts"
     },
     "./workflow-progress": {
       "source": "./src/components/ui/workflow-progress.tsx",
@@ -545,19 +580,14 @@
       "default": "./src/components/pickers/BranchPicker.tsx"
     },
     "./picker-layout": {
-      "source": "./src/components/pickers/picker-layout.ts",
-      "types": "./src/components/pickers/picker-layout.ts",
-      "default": "./src/components/pickers/picker-layout.ts"
-    },
-    "./picker-search": {
-      "source": "./src/components/pickers/picker-search.ts",
-      "types": "./src/components/pickers/picker-search.ts",
-      "default": "./src/components/pickers/picker-search.ts"
+      "source": "./src/components/ui/picker-layout.ts",
+      "types": "./src/components/ui/picker-layout.ts",
+      "default": "./src/components/ui/picker-layout.ts"
     },
     "./hooks/use-reset-picker-scroll": {
-      "source": "./src/components/pickers/use-reset-picker-scroll.ts",
-      "types": "./src/components/pickers/use-reset-picker-scroll.ts",
-      "default": "./src/components/pickers/use-reset-picker-scroll.ts"
+      "source": "./src/components/ui/use-reset-picker-scroll.ts",
+      "types": "./src/components/ui/use-reset-picker-scroll.ts",
+      "default": "./src/components/ui/use-reset-picker-scroll.ts"
     },
     "./list-loading-placeholder": {
       "source": "./src/components/ui/list-loading-placeholder.tsx",

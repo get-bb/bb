@@ -196,6 +196,7 @@ export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  rewindThreadFailureKindColumn(db);
   rewindThreadPurgeStartedColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   dropThreadSearchOrderIndex(db);
@@ -255,6 +256,15 @@ export function dropQueuedMessageSourcesAndCompactFirstColumns(
   for (const name of ["execution_input_sources", "compact_first"])
     if (columns.some((existing) => existing.name === name))
       db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+}
+
+export function rewindThreadFailureKindColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((existing) => existing.name === "failure_kind")) {
+    db.$client.exec("ALTER TABLE threads DROP COLUMN failure_kind");
+  }
 }
 
 export function rewindThreadPurgeStartedColumn(db: DbConnection): void {

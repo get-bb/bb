@@ -1,4 +1,3 @@
-import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,11 +17,9 @@ import {
   ThreadSecondaryPanel,
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
-import { ThreadMetadataContent } from "./ThreadMetadataContent";
-import { baseProps as baseMetadataProps } from "./ThreadMetadataContent.fixtures";
+import { RepresentativeThreadInfo } from "@/test/fixtures/thread-info";
 import { FilePreview } from "./FilePreview";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { threadListQueryKey } from "@/hooks/queries/query-keys";
 
 export default {
   title: "right-panel/Compact shelf",
@@ -124,14 +121,13 @@ function ShelfPanel({
     <ThreadSecondaryPanel
       activeTab={activeTab}
       isOpen
-      metadataContent={<ThreadMetadataContent {...baseMetadataProps} />}
       tabs={tabs}
       fixedTabs={[
         {
           ariaLabel: "Show thread info panel",
           label: "Info",
           contentFillsRegion: true,
-          renderContent: () => <ThreadInfoFixedTabContent />,
+          renderContent: () => <RepresentativeThreadInfo />,
           leadingVisual: <Icon name="Info" />,
           onSelect: () => onSelectTab(infoTab),
           tab: infoTab,
@@ -167,15 +163,6 @@ function Stage({ children }: { children: ReactNode }) {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    client.setQueryData(
-      threadListQueryKey({
-        projectId: baseMetadataProps.thread.projectId,
-        sourceThreadId: baseMetadataProps.thread.id,
-        originKind: "fork",
-        archived: false,
-      }),
-      [],
-    );
     return client;
   });
   return (

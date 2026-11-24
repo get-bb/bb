@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ExperimentalThreadTabProps } from "@get-bb/plugin-sdk";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type {
   BrowserFixedPanelTab,
   SecondaryFixedPanelTab,
@@ -27,39 +28,42 @@ function renderLoadingPanel({
   activeTab = null,
   isConversationCollapsed = false,
   isOpen = true,
-  metadataContent = null,
+  threadInfo = null,
   renderAsDrawer = false,
 }: {
   activeTab?: SecondaryFixedPanelTab | null;
-  metadataContent?: ReactNode;
+  threadInfo?: ExperimentalThreadTabProps | null;
   isConversationCollapsed?: boolean;
   isOpen?: boolean;
   renderAsDrawer?: boolean;
 } = {}) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
-    <PanelGroup direction="horizontal">
-      <LazyThreadSecondaryPanel
-        drawerFallback={
-          <ThreadSecondaryPanelDrawerPlaceholder
-            activeTab={activeTab}
-            metadataContent={metadataContent}
-          />
-        }
-        activeTab={activeTab}
-        fixedTabs={[]}
-        isConversationCollapsed={isConversationCollapsed}
-        isOpen={isOpen}
-        metadataContent={metadataContent}
-        onClose={noop}
-        onCollapse={noop}
-        onOpenNewTab={noop}
-        onPanelFocus={noop}
-        onTabReorder={noop}
-        onToggleConversationCollapse={noop}
-        renderAsDrawer={renderAsDrawer}
-        tabs={[]}
-      />
-    </PanelGroup>,
+    <Wrapper>
+      <PanelGroup direction="horizontal">
+        <LazyThreadSecondaryPanel
+          drawerFallback={
+            <ThreadSecondaryPanelDrawerPlaceholder
+              activeTab={activeTab}
+              threadInfo={threadInfo}
+            />
+          }
+          activeTab={activeTab}
+          fixedTabs={[]}
+          isConversationCollapsed={isConversationCollapsed}
+          isOpen={isOpen}
+          threadInfo={threadInfo}
+          onClose={noop}
+          onCollapse={noop}
+          onOpenNewTab={noop}
+          onPanelFocus={noop}
+          onTabReorder={noop}
+          onToggleConversationCollapse={noop}
+          renderAsDrawer={renderAsDrawer}
+          tabs={[]}
+        />
+      </PanelGroup>
+    </Wrapper>,
   );
 }
 
@@ -120,7 +124,7 @@ describe("LazyThreadSecondaryPanel drawer", () => {
 
 describe("LazyThreadSecondaryPanel thread info placeholder", () => {
   it.each([false, true])(
-    "shows thread details for the core info tab (drawer: %s)",
+    "shows the thread Info body for the core info tab (drawer: %s)",
     (renderAsDrawer) => {
       renderLoadingPanel({
         renderAsDrawer,
@@ -130,10 +134,12 @@ describe("LazyThreadSecondaryPanel thread info placeholder", () => {
           pluginId: "bb--core",
           tabId: "info",
         },
-        metadataContent: <p>Thread details</p>,
+        threadInfo: { threadId: "thr_loading", environment: null },
       });
 
-      expect(screen.getByText("Thread details")).not.toBeNull();
+      expect(
+        screen.getByRole("status", { name: "Loading thread info" }),
+      ).not.toBeNull();
       expect(
         screen.queryByTestId("secondary-panel-content-skeleton"),
       ).toBeNull();

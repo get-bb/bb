@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { MachineEnvironmentList } from "@bb/server-contract";
-import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { OptionPicker } from "@bb/shared-ui/option-picker";
 import {
   MachineEnvironmentAutomaticRow,
   MachineEnvironmentInheritedRow,

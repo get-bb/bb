@@ -2,7 +2,7 @@ import { Button } from "@bb/shared-ui/button";
 import { DetailCard, DetailRow } from "./detail-card";
 import { Input } from "@bb/shared-ui/input";
 import { BranchPicker } from "@bb/shared-ui/branch-picker";
-import { OptionPicker } from "../pickers/OptionPicker";
+import { OptionPicker } from "@bb/shared-ui/option-picker";
 import {
   WorkspaceChangesList,
   type WorkspaceChangedFile,

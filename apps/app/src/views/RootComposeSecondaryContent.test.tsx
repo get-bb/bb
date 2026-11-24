@@ -120,7 +120,6 @@ function createSecondaryPanel(
     tabs: [],
     fixedTabs: [],
     isOpen,
-    metadataContent: null,
     onCollapse: noop,
     onClose: noop,
     onTabReorder: noop,
