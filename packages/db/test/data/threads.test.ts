@@ -338,6 +338,23 @@ describe("threads", () => {
     });
   });
 
+  it("exposes model and reasoning level overrides on the thread DTO", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    setThreadExecutionOverride(db, {
+      threadId: thread.id,
+      modelOverride: "gpt-5",
+      reasoningLevelOverride: "high",
+    });
+
+    const fetched = getThread(db, thread.id);
+    expect(fetched?.modelOverride).toBe("gpt-5");
+    expect(fetched?.reasoningLevelOverride).toBe("high");
+  });
+
   it("pins and unpins threads with durable pin order keys", () => {
     vi.useFakeTimers();
     try {

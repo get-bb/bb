@@ -114,6 +114,8 @@ export const threadSchema = z.object({
   projectId: z.string(),
   environmentId: z.string().nullable(),
   providerId: z.string(),
+  modelOverride: z.string().nullable().optional(),
+  reasoningLevelOverride: z.string().nullable().optional(),
   title: z.string().nullable(),
   titleFallback: z.string().nullable(),
   sectionId: z.string().nullable(),
