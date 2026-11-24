@@ -270,4 +270,21 @@ describe("useAutoLoadOlderRows", () => {
     });
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
   });
+
+  it("does not retry every frame when a load settles without loading a page", async () => {
+    const onLoadOlderRows = vi.fn(() => undefined);
+    const anchor = createBottomAnchor(scrollElementAt(0, 500));
+    const { sentinel } = renderAutoLoad({ anchor, onLoadOlderRows });
+    paint();
+
+    mockElementRect(sentinel, { top: 100, bottom: 120 });
+    notifyPosition(anchor);
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+
+    for (let frame = 0; frame < 5; frame += 1) {
+      await act(async () => {});
+      paint();
+    }
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+  });
 });

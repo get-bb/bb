@@ -41,6 +41,7 @@ import {
 } from "@testing-library/react";
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -6551,6 +6552,10 @@ describe("thread URL clipboard paste", () => {
     projectId,
     label: "Composer paste improvements",
   };
+
+  beforeAll(async () => {
+    await import("../../../../../plugins/composer/src/mentions/pasted-thread-links");
+  });
 
   it("keeps HTML code and authored links literal while converting repeated URLs in prose", async () => {
     const lookup = vi

@@ -1301,7 +1301,12 @@ describe("SplitThreadArea", () => {
     await screen.findByTestId("pane-thr-a");
 
     expect(commandHandlers.get("pane.focus.right")?.()).toBe(true);
-    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
+    await waitFor(() => {
+      expect(store.get(maximizedPaneIdAtom)).toBe("pane-2");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
 
     const opened = applyThreadOpenToLayout(
       store.get(splitLayoutAtom),
