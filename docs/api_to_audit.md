@@ -4369,10 +4369,17 @@ a loader that calls `useThreadState` and `useEnvironment`. `item`,
 one resolution, so the header, row menus, quick actions, selection menus,
 the palette commands and plugin lists see the same target. `environment` is
 the thread's environment with its checkout `path` (null before the checkout
-exists or after it is removed); it no longer drops to null on the header
-while the environment provisions or its machine is offline, so core's New
-thread in environment shows in the header menu wherever the sidebar row
-shows it.
+exists or after it is removed), its setup `status`, and its machine's
+`hostLifecycle`, or null when the thread has none or bb cannot read it. A
+held entry carries all four from the server's thread list entry
+(`environmentStatus` and `environmentHostLifecycle`, joined from the
+environment and its host; an environment `status-changed` event, which host
+lifecycle changes also send, refreshes the sidebar threads in that
+environment); a fetched thread reads them from the environment query. Core's
+New thread in environment reads them: it shows, on every surface, only for
+an environment with a checkout that is ready or still provisioning on an
+active machine, the rule the thread page's own New thread in environment
+button uses.
 
 `experimental_bulkItem` is an optional pure function of
 `{ threads, data, sdk, navigate }` (two or more selected threads in list

@@ -18,6 +18,8 @@ import type {
   RefObject,
 } from "react";
 import type {
+  EnvironmentHostLifecycle,
+  EnvironmentStatus,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -2576,12 +2578,19 @@ export interface PluginThreadActionTarget {
   isHidden: boolean;
   status: ThreadStatus;
   /**
-   * The thread's environment, null when the thread has none. `path` is its
-   * checkout path, null while the environment has no checkout (not created
-   * yet, or removed). The environment may still be provisioning or on a
-   * machine that is offline; read its state yourself when that matters.
+   * The thread's environment, null when the thread has none or bb cannot
+   * read it. `path` is its checkout path, null while the environment has no
+   * checkout (not created yet, or removed). `status` is its setup state
+   * ("error" when setup failed) and `hostLifecycle` its machine's ("active"
+   * unless the machine is being removed or is gone). Experimental: see
+   * docs/api_to_audit.md.
    */
-  environment: { id: string; path: string | null } | null;
+  environment: {
+    id: string;
+    path: string | null;
+    status: EnvironmentStatus;
+    hostLifecycle: EnvironmentHostLifecycle;
+  } | null;
 }
 
 /** One row of a thread action's choice list. */

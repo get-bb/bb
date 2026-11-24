@@ -263,7 +263,12 @@ async function mountThreadView(
     defaultOptions: { queries: { retry: false } },
   });
   holdSidebarThreads(queryClient, [
-    makeThreadListEntry({ ...THREAD, environmentPath: ENVIRONMENT.path }),
+    makeThreadListEntry({
+      ...THREAD,
+      environmentPath: ENVIRONMENT.path,
+      environmentStatus: fixtures.environmentStatus,
+      environmentHostLifecycle: ENVIRONMENT.hostLifecycle,
+    }),
   ]);
   render(
     <QueryClientProvider client={queryClient}>
@@ -548,6 +553,8 @@ describe("thread action target on the thread page", () => {
       expect(fixtures.headerTargets.at(-1)?.environment).toEqual({
         id: ENVIRONMENT.id,
         path: ENVIRONMENT.path,
+        status: "provisioning",
+        hostLifecycle: ENVIRONMENT.hostLifecycle,
       }),
     );
   });

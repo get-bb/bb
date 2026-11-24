@@ -410,6 +410,8 @@ export function optimisticallyInsertThread(
     environmentHostId,
     environmentName: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",

@@ -46,6 +46,17 @@ function useSplitAvailability(): SplitAvailability {
   );
 }
 
+function acceptsNewThreads(
+  environment: PluginThreadActionTarget["environment"],
+): environment is NonNullable<PluginThreadActionTarget["environment"]> {
+  return (
+    environment !== null &&
+    environment.path !== null &&
+    environment.hostLifecycle === "active" &&
+    (environment.status === "ready" || environment.status === "provisioning")
+  );
+}
+
 function afterMenuCloses(run: () => void): void {
   window.setTimeout(run, 0);
 }
@@ -168,9 +179,7 @@ export default definePluginApp((app) => {
     useData: useIsCompactViewport,
     item: ({ thread, data: isCompact, navigate }) => {
       const environment = thread.environment;
-      if (!isCompact || environment === null || environment.path === null) {
-        return null;
-      }
+      if (!isCompact || !acceptsNewThreads(environment)) return null;
       return {
         label: "New thread in environment",
         icon: "MessageSquarePlus",

@@ -77,7 +77,12 @@ function target(
     isUnread: false,
     isHidden: false,
     status: "idle",
-    environment: { id: "env-1", path: "/work/env-1" },
+    environment: {
+      id: "env-1",
+      path: "/work/env-1",
+      status: "ready",
+      hostLifecycle: "active",
+    },
     ...overrides,
   };
 }
@@ -176,7 +181,16 @@ describe("commit header action", () => {
     await waitFor(() => expect(dirty.item()).not.toBeNull());
     expect(dirty.item({ archivedAt: 1 })).toBeNull();
     expect(dirty.item({ environment: null })).toBeNull();
-    expect(dirty.item({ environment: { id: "env-2", path: "/x" } })).toBeNull();
+    expect(
+      dirty.item({
+        environment: {
+          id: "env-2",
+          path: "/x",
+          status: "ready",
+          hostLifecycle: "active",
+        },
+      }),
+    ).toBeNull();
   });
 
   it("hides Commit while the Show Commit button setting is off", async () => {

@@ -194,6 +194,8 @@ export function makeThreadListEntry(
     environmentName: null,
     environmentBranchName: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",

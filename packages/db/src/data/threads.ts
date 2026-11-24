@@ -20,6 +20,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
+  EnvironmentHostLifecycle,
+  EnvironmentStatus,
   JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
@@ -29,13 +31,17 @@ import type {
   ThreadStatus,
   ThreadVisibility,
 } from "@bb/domain";
-import { threadSearchSourceKindSchema } from "@bb/domain";
+import {
+  resolveEnvironmentHostLifecycle,
+  threadSearchSourceKindSchema,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   events,
+  hosts,
   pendingInteractions,
   projects,
   terminalSessions,
@@ -636,11 +642,16 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
       environmentPath: environments.path,
+      environmentStatus: environments.status,
+      environmentHostDestroyedAt: hosts.destroyedAt,
+      environmentHostPhase: hosts.phase,
+      environmentHostTeardownStatus: hosts.teardownStatus,
       environmentProviderId: environments.environmentProviderId,
       hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
     .from(threads)
-    .leftJoin(environments, eq(threads.environmentId, environments.id));
+    .leftJoin(environments, eq(threads.environmentId, environments.id))
+    .leftJoin(hosts, eq(environments.hostId, hosts.id));
 }
 
 export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
@@ -677,6 +688,8 @@ export interface ThreadWithPendingInteractionState extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentPath: string | null;
+  environmentStatus: EnvironmentStatus | null;
+  environmentHostLifecycle: EnvironmentHostLifecycle | null;
   environmentProviderId: string | null;
   hasPendingInteraction: boolean;
 }
@@ -687,6 +700,10 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentPath: string | null;
+  environmentStatus: EnvironmentStatus | null;
+  environmentHostDestroyedAt: number | null;
+  environmentHostPhase: string | null;
+  environmentHostTeardownStatus: string | null;
   environmentProviderId: string | null;
   hasPendingInteraction: number;
 }
@@ -806,6 +823,10 @@ function toThreadWithPendingInteractionState(
     environmentIsWorktree,
     environmentName,
     environmentPath,
+    environmentStatus,
+    environmentHostDestroyedAt,
+    environmentHostPhase,
+    environmentHostTeardownStatus,
     environmentProviderId,
     hasPendingInteraction,
     ...thread
@@ -817,6 +838,19 @@ function toThreadWithPendingInteractionState(
     environmentIsWorktree,
     environmentName,
     environmentPath,
+    environmentStatus,
+    environmentHostLifecycle:
+      environmentStatus === null
+        ? null
+        : resolveEnvironmentHostLifecycle(
+            environmentHostPhase === null
+              ? null
+              : {
+                  destroyedAt: environmentHostDestroyedAt,
+                  phase: environmentHostPhase,
+                  teardownStatus: environmentHostTeardownStatus,
+                },
+          ),
     environmentProviderId,
     hasPendingInteraction: hasPendingInteraction > 0,
   };

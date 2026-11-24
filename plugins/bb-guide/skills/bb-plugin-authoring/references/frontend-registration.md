@@ -75,7 +75,11 @@ export default definePluginApp((app) => {
     component: IssuePanel,
     run: async ({ threadId, panel }) => {
       panel.openTab({
-        tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
+        tab: {
+          id: "issue",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: `Issue for ${threadId}`,
       });
     },
@@ -159,9 +163,18 @@ not apply. Header buttons do not show `choices`. bb's Git plugin registers
 Commit this way.
 
 ```tsx
-app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
+app.slots.experimental_threadAction({
+  id: "deploy",
+  title: "Deploy",
+  icon: "Rocket",
+  group: "deploy",
+  placement: "header",
   useData: ({ threadIds }) => useDeployable(threadIds),
-  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) } : null });
+  item: ({ thread, data }) =>
+    data.has(thread.id)
+      ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) }
+      : null,
+});
 ```
 
 `app.slots.experimental_threadHeaderAction` is retired: existing callers keep
@@ -175,14 +188,29 @@ own rows and sections are registrations of the same `{ id, group, order?,
 component }` shape, drawn with the SDK's Info components (frontend-components.md).
 
 ```tsx
-app.slots.experimental_threadInfoSection({ id: "automations", group: SECTION_GROUPS.related, order: 0, component: Automations });
+app.slots.experimental_threadInfoSection({
+  id: "automations",
+  group: SECTION_GROUPS.related,
+  order: 0,
+  component: Automations,
+});
 function Automations({ threadId }: ExperimentalThreadInfoProps) {
   const items = useItems(threadId);
   if (items.length === 0) return null;
   return (
     <InfoSection label="Automations" count={items.length}>
-      <InfoList items={items} getKey={(item) => item.id} limit={3}
-        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={() => openAutomation(item.id)} />} />
+      <InfoList
+        items={items}
+        getKey={(item) => item.id}
+        limit={3}
+        renderItem={(item) => (
+          <InfoListRow
+            leading={<Glyph />}
+            name={item.name}
+            onSelect={() => openAutomation(item.id)}
+          />
+        )}
+      />
     </InfoSection>
   );
 }
@@ -227,7 +255,8 @@ same shape.
 your preferences or a realtime channel there. It receives `{ threadIds,
 experimental_threads }`: the sorted ids of every thread on screen or in an
 open menu, and the targets `item` gets for them. Read thread fields such as
-`environment` from `experimental_threads`; never fetch each thread. For other
+`environment` (its `id`, checkout `path`, setup `status`, and machine
+`hostLifecycle`) from `experimental_threads`; never fetch each thread. For other
 per-thread state, keep an id-keyed cache and fetch only the ids not in it, in
 one batch (for example
 `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).

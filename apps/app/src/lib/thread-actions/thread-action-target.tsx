@@ -4,7 +4,11 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import type { Environment, ThreadWithRuntime } from "@bb/domain";
+import type {
+  Environment,
+  ThreadListEntry,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import { isThreadRead } from "@bb/client-core";
 import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
 import { environmentQueryKey } from "@/hooks/queries/query-keys";
@@ -20,9 +24,11 @@ interface SnapshotSource<T> {
   getSnapshot(): T;
 }
 
+type TargetEnvironment = PluginThreadActionTarget["environment"];
+
 function toThreadActionTarget(
   thread: ThreadWithRuntime,
-  environmentPath: string | null,
+  environment: TargetEnvironment,
 ): PluginThreadActionTarget {
   return {
     id: thread.id,
@@ -35,10 +41,23 @@ function toThreadActionTarget(
     isUnread: !isThreadRead(thread),
     isHidden: thread.visibility === "hidden",
     status: thread.status,
-    environment:
-      thread.environmentId === null
-        ? null
-        : { id: thread.environmentId, path: environmentPath },
+    environment,
+  };
+}
+
+function entryEnvironment(entry: ThreadListEntry): TargetEnvironment {
+  if (
+    entry.environmentId === null ||
+    entry.environmentStatus === null ||
+    entry.environmentHostLifecycle === null
+  ) {
+    return null;
+  }
+  return {
+    id: entry.environmentId,
+    path: entry.environmentPath,
+    status: entry.environmentStatus,
+    hostLifecycle: entry.environmentHostLifecycle,
   };
 }
 
@@ -58,7 +77,9 @@ function sameTarget(
     left.isHidden === right.isHidden &&
     left.status === right.status &&
     left.environment?.id === right.environment?.id &&
-    left.environment?.path === right.environment?.path
+    left.environment?.path === right.environment?.path &&
+    left.environment?.status === right.environment?.status &&
+    left.environment?.hostLifecycle === right.environment?.hostLifecycle
   );
 }
 
@@ -69,22 +90,30 @@ function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
   );
 }
 
-type EnvironmentPath =
-  | { status: "ready"; path: string | null }
+type EnvironmentRead =
+  | { status: "ready"; environment: TargetEnvironment }
   | { status: "loading" };
 
-function readEnvironmentPath(
+function readEnvironment(
   queryClient: QueryClient,
   environmentId: string,
-): EnvironmentPath {
+): EnvironmentRead {
   const state = queryClient.getQueryState<Environment>(
     environmentQueryKey(environmentId),
   );
   if (state?.data !== undefined) {
-    return { status: "ready", path: state.data.path };
+    return {
+      status: "ready",
+      environment: {
+        id: environmentId,
+        path: state.data.path,
+        status: state.data.status,
+        hostLifecycle: state.data.hostLifecycle,
+      },
+    };
   }
   return state?.status === "error"
-    ? { status: "ready", path: null }
+    ? { status: "ready", environment: null }
     : { status: "loading" };
 }
 
@@ -104,15 +133,13 @@ function targetSource(
       read.entry === null && environmentId !== null
         ? hashKey(environmentQueryKey(environmentId))
         : null;
-    if (read.entry !== null || environmentId === null) {
-      return toThreadActionTarget(
-        read.thread,
-        read.entry?.environmentPath ?? null,
-      );
+    if (read.entry !== null) {
+      return toThreadActionTarget(read.thread, entryEnvironment(read.entry));
     }
-    const environment = readEnvironmentPath(queryClient, environmentId);
+    if (environmentId === null) return toThreadActionTarget(read.thread, null);
+    const environment = readEnvironment(queryClient, environmentId);
     if (environment.status === "loading") return last;
-    return toThreadActionTarget(read.thread, environment.path);
+    return toThreadActionTarget(read.thread, environment.environment);
   };
   return {
     subscribe: (listener) => {

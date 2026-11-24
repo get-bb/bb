@@ -145,6 +145,8 @@ const baseThread = makeThreadListEntry({
   latestAttentionAt: 5,
   environmentId: "env_a",
   environmentPath: "/repo",
+  environmentStatus: "ready",
+  environmentHostLifecycle: "active",
 });
 
 function sidebarQueryClient(threads: readonly ThreadListEntry[]): QueryClient {
@@ -680,6 +682,49 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     },
   );
 
+  it.skipIf(!surface.compact).each([
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "active",
+      offered: true,
+    },
+    {
+      environmentStatus: "provisioning",
+      environmentHostLifecycle: "active",
+      offered: true,
+    },
+    {
+      environmentStatus: "error",
+      environmentHostLifecycle: "active",
+      offered: false,
+    },
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "removing",
+      offered: false,
+    },
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "removed",
+      offered: false,
+    },
+  ] as const)(
+    "offers New thread in environment for a $environmentStatus environment on a $environmentHostLifecycle machine: $offered",
+    async ({ environmentStatus, environmentHostLifecycle, offered }) => {
+      renderSurface(surface, {
+        thread: makeThreadListEntry({
+          ...baseThread,
+          environmentStatus,
+          environmentHostLifecycle,
+        }),
+      });
+      await surface.open();
+      expect((await menuRows()).includes("New thread in environment")).toBe(
+        offered,
+      );
+    },
+  );
+
   it("keeps a submenu row's detail out of sight but in its accessible name", async () => {
     renderSurface(
       surface,
@@ -1040,7 +1085,12 @@ describe("thread action target", () => {
     isUnread: false,
     isHidden: false,
     status: baseThread.status,
-    environment: { id: "env_a", path: "/repo" },
+    environment: {
+      id: "env_a",
+      path: "/repo",
+      status: "ready",
+      hostLifecycle: "active",
+    },
   };
   const seen: { from: string; thread: PluginThreadActionTarget }[] = [];
   const recorder = (
