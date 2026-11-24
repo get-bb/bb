@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import {
@@ -13,6 +19,7 @@ import { Terminal } from "@xterm/xterm";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 
 const state = vi.hoisted(() => ({
+  dispatchAppCommandKey: vi.fn<(event: KeyboardEvent) => boolean>(() => false),
   transports: [] as Array<{
     dispose: ReturnType<typeof vi.fn>;
     onMessage: (message: unknown) => void;
@@ -26,6 +33,13 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: { generalSettings: { terminalCopyOnSelect: false } },
   }),
+}));
+
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandKeyDispatch: () => state.dispatchAppCommandKey,
 }));
 
 vi.mock("@xterm/addon-webgl", () => {
@@ -65,6 +79,7 @@ afterEach(() => {
     terminalId: session.id,
   });
   vi.restoreAllMocks();
+  state.dispatchAppCommandKey = vi.fn(() => false);
   state.transports = [];
 });
 
@@ -152,6 +167,24 @@ it("keeps a terminal parked when its view unmounts before the attach frame", asy
   expect(third.container.querySelector(".xterm")).toBe(first.xterm);
   expect(state.transports).toHaveLength(1);
   expect(transport.start).toHaveBeenCalledTimes(2);
+});
+
+it("sends app command keys of a remounted parked terminal to the new view", async () => {
+  const parkedDispatch = vi.fn<(event: KeyboardEvent) => boolean>(() => true);
+  state.dispatchAppCommandKey = parkedDispatch;
+  const first = await mountTerminal(true);
+  first.view.unmount();
+  const dispatch = vi.fn<(event: KeyboardEvent) => boolean>(() => true);
+  state.dispatchAppCommandKey = dispatch;
+  const second = renderTerminal(true);
+  await nextFrame();
+  const textarea = second.container.querySelector<HTMLTextAreaElement>(
+    ".xterm-helper-textarea",
+  );
+  expect(textarea).not.toBeNull();
+  fireEvent.keyDown(textarea!, { key: "F5", code: "F5", keyCode: 116 });
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(parkedDispatch).not.toHaveBeenCalled();
 });
 
 it("keeps the selection of a parked terminal when the same session remounts", async () => {
