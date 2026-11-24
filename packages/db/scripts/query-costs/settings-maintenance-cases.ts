@@ -52,6 +52,7 @@ import {
   interruptPendingInteractionsForThreads,
   listActivePluginPendingInteractions,
   listActiveProviderPendingInteractionsForHost,
+  listExpiringProviderPendingInteractions,
   listHostThreadIdsWithInterruptiblePendingInteractions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
@@ -793,6 +794,10 @@ const INTERACTION_CASES: readonly Case[] = [
   {
     name: `${PENDING_INTERACTIONS}#listActivePluginPendingInteractions`,
     run: (db) => listActivePluginPendingInteractions(db),
+  },
+  {
+    name: `${PENDING_INTERACTIONS}#listExpiringProviderPendingInteractions`,
+    run: (db) => listExpiringProviderPendingInteractions(db),
   },
   {
     name: `${PENDING_INTERACTIONS}#getActivePendingInteractionForThread`,
