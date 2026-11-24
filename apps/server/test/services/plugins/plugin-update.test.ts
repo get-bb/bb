@@ -581,16 +581,16 @@ describe("plugin update service and routes", () => {
 
   it("checks a subdirectory update when its installed commit is missing remotely", async () => {
     const installedCommit = await installSubdirectoryUpdater();
-    await git(repo, ["checkout", "--orphan", "replacement"]);
+    await rm(join(repo, ".git"), { recursive: true, force: true });
+    await git(repo, ["init", "-q", "-b", "main"]);
+    await git(repo, ["config", "user.email", "test@example.com"]);
+    await git(repo, ["config", "user.name", "Test"]);
     await writeFile(
       join(repo, "plugins", "updater", "server.ts"),
       "export default function plugin() {}",
     );
     await git(repo, ["add", "-A"]);
     await git(repo, ["commit", "-qm", "Replace fixture history"]);
-    await git(repo, ["branch", "-M", "main"]);
-    await git(repo, ["reflog", "expire", "--expire=now", "--all"]);
-    await git(repo, ["prune", "--expire=now"]);
     await expect(
       git(repo, ["cat-file", "-e", installedCommit]),
     ).rejects.toThrow();
