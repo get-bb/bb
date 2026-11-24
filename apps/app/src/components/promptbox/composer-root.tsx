@@ -109,7 +109,7 @@ export function ComposerRoot({
     editorRef.current = editor;
   });
 
-  const stateKey = JSON.stringify(editor.state);
+  const layout = editor.state.layout;
   const publishedRef = useRef<{ key: string; unregister: () => void } | null>(
     null,
   );
@@ -128,7 +128,7 @@ export function ComposerRoot({
         isPopupOpen: () => editorRef.current.isPopupOpen(),
       }),
     };
-  }, [key, registerEditor, stateKey]);
+  }, [key, registerEditor, layout]);
   useEffect(() => () => publishedRef.current?.unregister(), []);
   useLayoutEffect(() => attachEditor(() => editorRef.current), [attachEditor]);
 

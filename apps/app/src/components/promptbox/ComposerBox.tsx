@@ -78,10 +78,13 @@ import {
   publishComposerEditorBridge,
 } from "@/lib/composer-editor-registry";
 import type {
-  ComposerEditorState,
   ComposerEditorSubmission,
   ComposerSubmitExtras,
 } from "@get-bb/plugin-sdk/internal/composer-handle";
+import {
+  composerHostState,
+  type ComposerHostState,
+} from "./composer-host-state";
 import {
   readMessageClipboardHtml,
   readMessageClipboardImage,
@@ -331,6 +334,37 @@ function mentionLinkResolver({
   };
 }
 
+function useStableComposerHostState(
+  next: ComposerHostState,
+): ComposerHostState {
+  const {
+    isRunning,
+    isSubmitting,
+    isSubmittingBlocked,
+    submittingBlockedReason,
+    isAttaching,
+    attachmentError,
+  } = next;
+  return useMemo(
+    () => ({
+      isRunning,
+      isSubmitting,
+      isSubmittingBlocked,
+      submittingBlockedReason,
+      isAttaching,
+      attachmentError,
+    }),
+    [
+      isRunning,
+      isSubmitting,
+      isSubmittingBlocked,
+      submittingBlockedReason,
+      isAttaching,
+      attachmentError,
+    ],
+  );
+}
+
 function composerAttachments(
   attachments: AttachmentsConfig | undefined,
   items: PromptDraftAttachment[],
@@ -448,8 +482,17 @@ function useComposerRendererHostApi({
     }
     previousAttachmentPathsRef.current = paths;
   }, [draftAttachments]);
+  const inputSubmission = composerSubmission(submission, onSubmit);
+  const hostState = useStableComposerHostState(
+    composerHostState({
+      submission: inputSubmission,
+      attachments: attachments ?? {},
+      voiceState: voice?.state ?? null,
+      hasInput: draft.text.trim().length > 0 || draft.attachments.length > 0,
+    }),
+  );
   const submitForPlugin =
-    (state: ComposerEditorState) =>
+    (state: ComposerHostState) =>
     async ({ mode, ...extras }: ComposerEditorSubmission) => {
       if (host?.sendsOnEnter !== true) {
         throw new Error("This composer cannot submit programmatically.");
@@ -467,15 +510,7 @@ function useComposerRendererHostApi({
           ? onModifierSubmit !== undefined
           : mode === "enter" && submission?.swapSubmitActions === true;
       const run = runsSteer ? onModifierSubmit : onSubmit;
-      const voiceActive =
-        voice?.state === "recording" || voice?.state === "transcribing";
-      if (
-        run === undefined ||
-        state.isAttaching ||
-        state.isSubmitting ||
-        submission?.disabled === true ||
-        voiceActive
-      ) {
+      if (run === undefined || state.isSubmittingBlocked) {
         throw new Error(
           state.submittingBlockedReason ??
             "This composer can't submit right now.",
@@ -536,13 +571,22 @@ function useComposerRendererHostApi({
         host: host ?? boxHost,
         pluginCustomizable,
         ...editor,
+        state: { ...hostState, layout: editor.state.layout },
         submit: (submission: ComposerEditorSubmission) =>
-          submitForPluginRef.current(editor.state)(submission),
+          submitForPluginRef.current(hostState)(submission),
       };
       publishComposerEditorBridge(key, bridge);
       return () => clearComposerEditorBridge(key, bridge);
     },
-    [boxHost, handleLayoutChange, host, key, layout, pluginCustomizable],
+    [
+      boxHost,
+      handleLayoutChange,
+      host,
+      hostState,
+      key,
+      layout,
+      pluginCustomizable,
+    ],
   );
   const getCachedThreadLink = (threadId: string) => {
     const thread =
@@ -565,7 +609,7 @@ function useComposerRendererHostApi({
         ...input,
         ...(mountedInFocusedPane ? {} : { autoFocus: false }),
         ...(maxHeight === undefined ? {} : { maxHeight }),
-        submission: composerSubmission(submission, onSubmit),
+        submission: inputSubmission,
         voice: composerVoice(voice),
         mentionTriggers,
         commandTriggers: typeahead.command.source.skillsTriggers.filter(
