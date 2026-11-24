@@ -95,8 +95,15 @@ export interface PluginEnvironmentProviderSteps {
    * runs alongside the rest of create. The environment becomes ready only
    * after create returns `created` with the same path and `ownsPath: true`.
    * Without a call, core runs setup after create returns.
+   *
+   * Experimental: `folders` lists extra folders this create made, such as
+   * new sibling worktrees. Core runs each folder's setup script once, in the
+   * given order, before `path`'s, and runs their teardown scripts after
+   * `path`'s, in reverse order. Each folder must be absolute, outside `path`,
+   * and returned in the result's `additionalPaths`. A setup after `adopt`
+   * runs only in `path`, so it takes no folders. See docs/api_to_audit.md.
    */
-  setup(path: string): Promise<void>;
+  setup(path: string, options?: { folders?: string[] }): Promise<void>;
   /**
    * Hands this operation a ready environment this plugin holds, at once and
    * atomically: the environment becomes the one this create produces, keeps

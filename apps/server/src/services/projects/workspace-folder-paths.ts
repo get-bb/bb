@@ -89,6 +89,26 @@ export function validateEnvironmentAdditionalPaths(args: {
   return accepted;
 }
 
+export function validateSetupFolderPaths(args: {
+  mainPath: string;
+  paths: readonly string[];
+}): string[] {
+  const accepted: string[] = [];
+  for (const raw of args.paths) {
+    const path = canonicalizeHostPath(raw);
+    const problem = workspaceFolderPathProblem({
+      existingPaths: accepted,
+      mainPath: args.mainPath,
+      path,
+    });
+    if (problem !== null) {
+      throw new Error(problem.message);
+    }
+    accepted.push(path);
+  }
+  return accepted;
+}
+
 export function mergeWorkspaceFolderPaths(args: {
   mainPath: string;
   projectFolderPaths: readonly string[];

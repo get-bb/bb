@@ -584,6 +584,10 @@ export const environments = sqliteTable(
       .$type<{ path: string; replaces: string | null }[]>()
       .notNull()
       .default(sql`'[]'`),
+    setupFolderPaths: text("setup_folder_paths", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
       .notNull()
       .default(false),

@@ -7,6 +7,7 @@ import {
   noopNotifier,
   upsertHost,
 } from "../src/index.js";
+import { dropEnvironmentSetupFolderPathsColumn } from "./helpers/rewind.js";
 
 const ADDITIONAL_PATH_ENTRIES_MIGRATION_TIMESTAMP = 1795544769010;
 
@@ -33,6 +34,7 @@ it("turns each recorded additional path into an entry that replaces nothing, in 
     db.$client
       .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
       .run(ADDITIONAL_PATH_ENTRIES_MIGRATION_TIMESTAMP);
+    dropEnvironmentSetupFolderPathsColumn(db);
     db.$client
       .prepare("UPDATE environments SET additional_paths = ? WHERE id = ?")
       .run(JSON.stringify(["/work/b", "/work/a"]), withFolders.id);
