@@ -36,7 +36,7 @@ function CountSelect({ value, inherit }: { value: string; inherit?: string }) {
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent align="end">
         {inherit === undefined ? null : (
           <SelectItem value="inherit">{inherit}</SelectItem>
         )}

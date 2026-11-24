@@ -78,7 +78,8 @@ Slot props contracts (versioned, additive-only):
   `SettingsListMessage` covers loading, empty and load-error rows, and
   `SettingsListAction` an "Add …" row at the end of a nested group. Pass
   `dividers={false}` when items nest, so the nested hairline carries the
-  grouping. Use the
+  grouping. For a value picker in a row, put `SETTINGS_INLINE_SELECT_CLASS`
+  on the `SelectTrigger` and `align="end"` on its `SelectContent`. Use the
   existing hooks (`useRpc`, `useRealtime`,
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the

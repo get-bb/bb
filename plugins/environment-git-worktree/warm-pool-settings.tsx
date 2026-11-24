@@ -71,7 +71,7 @@ function SizeSelect(props: {
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent align="end">
         {props.followProjectLabel === null ? null : (
           <SelectItem value={FOLLOW_PROJECT}>
             {props.followProjectLabel}
