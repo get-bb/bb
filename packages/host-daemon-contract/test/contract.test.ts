@@ -326,7 +326,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       name: "main",
       kind: "local",
     },
-    source: null,
   },
   "host.read_file": {
     path: "/tmp/report.html",
@@ -1513,7 +1512,6 @@ describe("host-daemon command schemas", () => {
         selectedBranch: "origin/main",
         limit: 50,
         remoteRefresh: "background",
-        includeSource: false,
       }),
     ).toMatchObject({
       type: "host.list_branch_options",
@@ -1522,7 +1520,6 @@ describe("host-daemon command schemas", () => {
       selectedBranch: "origin/main",
       limit: 50,
       remoteRefresh: "background",
-      includeSource: false,
     });
 
     expect(
@@ -1649,7 +1646,6 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 50,
         remoteRefresh: "blocking",
-        includeSource: true,
       },
       {
         type: "host.inspect_git_source",
@@ -2597,7 +2593,6 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/workspace",
       limit: 50,
       remoteRefresh: "background",
-      includeSource: false,
     };
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({

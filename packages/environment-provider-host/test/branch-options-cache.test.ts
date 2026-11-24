@@ -33,6 +33,7 @@ async function listNames(
   const result = await listBranchOptions({
     path: repo,
     limit: 50,
+    remoteRefresh: "none",
     ...(shellPath === undefined ? {} : { shellPath }),
   });
   return { local: result.branches, remote: result.remoteBranches };
@@ -125,6 +126,7 @@ describe("branch option listing across ref changes", () => {
       const result = await listBranchOptions({
         path: repo,
         limit: 50,
+        remoteRefresh: "none",
         query: "search",
         shellPath,
       });

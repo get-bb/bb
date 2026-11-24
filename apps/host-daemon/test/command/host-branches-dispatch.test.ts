@@ -522,7 +522,6 @@ describe("host.list_branch_options dispatch", () => {
         path: repoPath,
         limit: 50,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -551,7 +550,6 @@ describe("host.list_branch_options dispatch", () => {
         path: repoPath,
         limit: 50,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -576,7 +574,6 @@ describe("host.list_branch_options dispatch", () => {
         query: "release",
         limit: 1,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -607,7 +604,6 @@ describe("host.list_branch_options dispatch", () => {
         path: repoPath,
         limit: 1,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -619,7 +615,7 @@ describe("host.list_branch_options dispatch", () => {
     expect(result.remoteBranchesTruncated).toBe(true);
   });
 
-  it("returns cached refs while a remote refresh continues in the background", async () => {
+  it("returns cached refs during a background refresh and waits for it when blocking", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branch-options-remote-");
     await runGitCommand(["init", "--bare"], { cwd: remotePath });
@@ -663,6 +659,9 @@ describe("host.list_branch_options dispatch", () => {
       },
     );
     const harness = createHarness();
+    let refreshedPromise:
+      | ReturnType<typeof dispatchOnlineRpcCommand<"host.list_branch_options">>
+      | undefined;
 
     const resultPromise = dispatchOnlineRpcCommand(
       {
@@ -672,7 +671,6 @@ describe("host.list_branch_options dispatch", () => {
         selectedBranch: "origin/feature/remote-only",
         limit: 50,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -689,26 +687,25 @@ describe("host.list_branch_options dispatch", () => {
           kind: "missing",
           name: "origin/feature/remote-only",
         },
-        source: null,
       });
       await waitForFile(refreshStartedPath);
+      refreshedPromise = dispatchOnlineRpcCommand(
+        {
+          type: "host.list_branch_options",
+          path: repoPath,
+          query: "remote-only",
+          limit: 50,
+          remoteRefresh: "blocking",
+        },
+        harness.dispatchOptions(),
+        new AbortController().signal,
+      );
     } finally {
       await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
     }
 
-    const refreshed = await dispatchOnlineRpcCommand(
-      {
-        type: "host.list_branch_options",
-        path: repoPath,
-        query: "remote-only",
-        limit: 50,
-        remoteRefresh: "blocking",
-        includeSource: false,
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    expect(refreshed.remoteBranches).toContain("origin/feature/remote-only");
+    const refreshed = await refreshedPromise;
+    expect(refreshed?.remoteBranches).toContain("origin/feature/remote-only");
   });
 
   it("classifies selected refs before filtering and pagination", async () => {
@@ -732,7 +729,6 @@ describe("host.list_branch_options dispatch", () => {
         selectedBranch: "upstream/main",
         limit: 1,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -759,7 +755,6 @@ describe("host.list_branch_options dispatch", () => {
         path: root,
         limit: 50,
         remoteRefresh: "background",
-        includeSource: false,
       },
       harness.dispatchOptions(),
       new AbortController().signal,
@@ -782,7 +777,6 @@ describe("host.list_branch_options dispatch", () => {
           selectedBranch: "main",
           limit: 50,
           remoteRefresh: "background",
-          includeSource: false,
         },
         harness.dispatchOptions(),
         new AbortController().signal,
@@ -794,41 +788,7 @@ describe("host.list_branch_options dispatch", () => {
         remoteBranches: [],
         remoteBranchesTruncated: false,
         selectedBranch: { kind: "missing", name: "main" },
-        source: null,
       });
     }
-  });
-
-  it("returns the source inspection with the page only when asked", async () => {
-    const repoPath = await initBranchRepo();
-    await fs.writeFile(path.join(repoPath, "README.md"), "changed\n", "utf8");
-    const harness = createHarness();
-    const listCommand = {
-      type: "host.list_branch_options",
-      path: repoPath,
-      query: "rel",
-      limit: 50,
-      remoteRefresh: "background",
-    } as const;
-
-    const withSource = await dispatchOnlineRpcCommand(
-      { ...listCommand, includeSource: true },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    const withoutSource = await dispatchOnlineRpcCommand(
-      { ...listCommand, includeSource: false },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(withSource.branches).toEqual(["release/1.2"]);
-    expect(withSource.source).toMatchObject({
-      checkout: { kind: "branch", branchName: "develop" },
-      defaultBranch: "main",
-      hasUncommittedChanges: true,
-      operation: { kind: "none" },
-    });
-    expect(withoutSource).toEqual({ ...withSource, source: null });
   });
 });

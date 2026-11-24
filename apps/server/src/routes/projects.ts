@@ -99,7 +99,6 @@ import {
   parseBranchListLimit,
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
-import { createProjectBranchesReader } from "../services/projects/project-branches.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import {
   readWorkspaceAgentContext,
@@ -951,25 +950,43 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(result);
   });
 
-  const readBranches = createProjectBranchesReader();
-  const readProjectBranches = (
+  const readProjectBranches = async (
     projectId: string,
     query: ProjectBranchesQuery,
     remoteRefresh: "background" | "blocking",
   ) => {
     requirePublicStandardProject(deps.db, projectId);
+
     const source = resolveProjectWorkspaceTarget(deps, {
       projectId,
       hostId: query.hostId,
     });
-    return readBranches(deps, {
-      hostId: source.hostId,
-      path: source.path,
-      query: normalizeBranchQuery(query.query),
-      selectedBranch: normalizeBranchQuery(query.selectedBranch),
-      limit: parseBranchListLimit(query.limit),
-      remoteRefresh,
-    });
+    const branchQuery = normalizeBranchQuery(query.query);
+    const selectedBranch = normalizeBranchQuery(query.selectedBranch);
+    const [inspection, branchOptions] = await Promise.all([
+      callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.inspect_git_source",
+          path: source.path,
+          remoteRefresh,
+        },
+      }),
+      callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_branch_options",
+          path: source.path,
+          ...(branchQuery ? { query: branchQuery } : {}),
+          ...(selectedBranch ? { selectedBranch } : {}),
+          limit: parseBranchListLimit(query.limit),
+          remoteRefresh,
+        },
+      }),
+    ]);
+    return { ...inspection, ...branchOptions };
   };
 
   get(routes.branches, async (context, query) =>
