@@ -191,6 +191,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   appendComposerDraft,
+  appendQuoteToComposerDraft,
   composerDraftFromInsertParts,
   createComposerHandleBinding,
   reconcileComposerMentions,
@@ -1033,7 +1034,6 @@ function TestThreadChat({
               composer: null,
               experimental_invokedFrom: "button",
               experimental_messageRequests: {
-                addToChat: null,
                 edit: null,
                 fork: null,
               },
@@ -2175,6 +2175,7 @@ const testPluginSdkApp = {
   ): Promise<boolean> {
     return activeClipboard?.(content) ?? Promise.resolve(true);
   },
+  experimental_appendQuoteToDraft: appendQuoteToComposerDraft,
   experimental_showErrorToast(options: TestErrorToast): void {
     activeErrorToasts?.push({ ...options });
   },

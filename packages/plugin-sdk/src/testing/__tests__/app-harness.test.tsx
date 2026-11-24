@@ -1534,7 +1534,7 @@ describe("loadPluginApp", () => {
       selectedText: "answer",
       composer: null,
       experimental_invokedFrom: "selection",
-      experimental_messageRequests: { addToChat: null, edit: null, fork: null },
+      experimental_messageRequests: { edit: null, fork: null },
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({

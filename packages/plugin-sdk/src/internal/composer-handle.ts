@@ -2,7 +2,11 @@ import {
   removeComposerMentions,
   setComposerText,
 } from "./composer-draft-transforms.js";
-export { reconcileComposerMentions } from "./composer-draft-transforms.js";
+export {
+  appendQuoteAndAttachmentsToDraft,
+  appendQuoteToComposerDraft,
+  reconcileComposerMentions,
+} from "./composer-draft-transforms.js";
 import type {
   ComposerDraft,
   ComposerDraftReplacement,

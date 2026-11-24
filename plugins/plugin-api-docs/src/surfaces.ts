@@ -444,7 +444,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear under user or assistant messages, in their menu, or on text selected in a reply",
           "Hide or disable itself per message, in bb's thread view, embedded ThreadChat, or one ThreadChat",
           "Receive the message with its link sequence and attachments, or the selected text and its Markdown",
-          "Run bb's own Add to chat, Edit and Fork, as bb's Copy, Edit, Copy link, Add to chat and Fork do",
+          "Quote into the thread's prompt box or run bb's Edit and Fork, as bb's own actions do",
         ],
         apiSymbols: [
           "PluginMessageActionRegistration",
@@ -465,6 +465,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalMessageActionAvailabilityInput",
           "ExperimentalMessageRequests",
           "PluginMessageActionContext.experimental_messageRequests",
+          "PluginMessageActionContext.composer",
+          "experimental_appendQuoteToDraft",
           "ThreadChatProps.experimental_messageActions",
         ],
         firstParty: ["Side chat"],

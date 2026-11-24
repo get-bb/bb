@@ -9,6 +9,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   appendComposerDraft,
+  appendQuoteAndAttachmentsToDraft,
   composerDraftFromInsertParts,
   createComposerHandleBinding,
   createComposerDraftActions,
@@ -24,7 +25,6 @@ import {
 } from "@bb/domain";
 import { createThreadEnvironmentArgsSchema } from "@bb/server-contract";
 import {
-  appendQuoteAndAttachmentsToDraft,
   composerMentionFromPromptTextMention,
   promptMentionResourceFromComposerMention,
   promptTextMentionFromComposerMention,

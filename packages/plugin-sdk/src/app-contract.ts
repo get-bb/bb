@@ -3919,8 +3919,9 @@ export interface ThreadChatMessageReference {
   /**
    * The files the user attached to the message, in the shape
    * `PluginComposerApi.replace` takes, so they can be added to a draft as
-   * bb's Add to chat does. Empty for assistant messages and for messages
-   * with only remote images. Experimental: see docs/api_to_audit.md.
+   * bb's Add to chat does with `experimental_appendQuoteToDraft`. Empty for
+   * assistant messages and for messages with only remote images.
+   * Experimental: see docs/api_to_audit.md.
    */
   experimental_attachments: readonly ComposerAttachment[];
   /**
@@ -4007,20 +4008,11 @@ export type ExperimentalMessageActionInvocation =
   | "selection";
 
 /**
- * bb's own flows on one message, the ones bb's Add to chat, Edit and Fork
- * actions run. Each is null when bb would not offer that action on this
- * message right now. Experimental: see docs/api_to_audit.md.
+ * bb's own flows on one message, the ones bb's Edit and Fork actions run.
+ * Each is null when bb would not offer that action on this message right
+ * now. Experimental: see docs/api_to_audit.md.
  */
 export interface ExperimentalMessageRequests {
-  /**
-   * Appends `text` to the draft of the message's thread as a `> ` blockquote,
-   * adds `attachments` the draft does not hold yet (by path), and focuses
-   * that composer. Null when that thread has no composer on this surface,
-   * as in a `ThreadChat` with `variant: "timeline"`.
-   */
-  addToChat:
-    | ((text: string, attachments?: readonly ComposerAttachment[]) => void)
-    | null;
   /**
    * Opens bb's inline editor on this user message; sending the edit rewinds
    * the thread to it. Null unless this is a user message the user typed,
@@ -4055,6 +4047,11 @@ export interface ExperimentalMessageActionAvailabilityInput {
    */
   selectedText?: string;
   messageRequests: ExperimentalMessageRequests;
+  /**
+   * The composer `run` gets as `composer` for this message, or null when it
+   * will get none.
+   */
+  composer: PluginComposerApi | null;
   /**
    * The thread's `canSpawnChild`: false when it is at bb's thread-nesting
    * limit, where bb shows its own Fork disabled.
@@ -4156,8 +4153,11 @@ export interface PluginMessageActionContext extends ExperimentalPluginActionCont
   experimental_selectedMarkdown?: string;
   /**
    * The composer of the thread the message is in, or null when that thread's
-   * composer is not available on this surface. The same handle
-   * `useComposer()` returns there.
+   * composer is not available on this surface, as in a `ThreadChat` with
+   * `variant: "timeline"`. While the user edits one of the thread's queued
+   * messages, this is that message's editor. The same handle `useComposer()`
+   * returns there. bb's Add to chat quotes into it with
+   * `experimental_appendQuoteToDraft`.
    */
   composer: PluginComposerApi | null;
   /**
@@ -4167,7 +4167,7 @@ export interface PluginMessageActionContext extends ExperimentalPluginActionCont
    */
   experimental_invokedFrom: ExperimentalMessageActionInvocation;
   /**
-   * bb's own Add to chat, Edit and Fork for this message (see
+   * bb's own Edit and Fork for this message (see
    * {@link ExperimentalMessageRequests}). Experimental: see
    * docs/api_to_audit.md.
    */
@@ -7011,6 +7011,20 @@ export interface PluginSdkApp {
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean>;
+  /**
+   * bb's Add to chat quoting: returns `draft` with `text` appended as a `> `
+   * blockquote on its own lines and every attachment in `attachments` whose
+   * path the draft does not hold yet. Blank text adds no quote, and the
+   * draft comes back unchanged when nothing is added. Pure; pass it to
+   * `composer.replace`, as bb's own Add to chat does:
+   * `composer.replace((current) => experimental_appendQuoteToDraft(current, text))`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_appendQuoteToDraft(
+    draft: ComposerDraftSnapshot,
+    text: string,
+    attachments?: readonly ComposerAttachment[],
+  ): ComposerDraftSnapshot;
   /**
    * Shows the error toast bb's own actions show when a request fails. A plain
    * function, callable from components, action callbacks, and command

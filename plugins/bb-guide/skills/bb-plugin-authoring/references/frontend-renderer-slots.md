@@ -229,7 +229,8 @@ experimental_availability?, run }`. `experimental_surfaces` limits it to
   join the overflow menu as one block where the row's first inline action
   sorts. `experimental_availability(input)` is pure and runs per
   message while rendering; return `"enabled"`, `"disabled"` or `"hidden"` from
-  `{ threadId, message, selectedText?, messageRequests, canSpawnChild }`.
+  `{ threadId, message, selectedText?, messageRequests, composer,
+canSpawnChild }`.
   Activating it calls `run(context)` with `{ threadId, message, selectedText?,
 experimental_selectedMarkdown?, composer, experimental_invokedFrom,
 experimental_messageRequests }` plus the
@@ -241,8 +242,15 @@ experimental_settled, experimental_attachments, experimental_imageUrls }`
   `?msg=`, `sdk.threads.message` and `bb thread log --message` use,
   `sourceSeqEnd` anchors provider-history forks, and `experimental_settled` is
   false while the message streams or its request is pending.
-  `experimental_messageRequests` is `{ addToChat, edit, fork }`: bb's own
-  flows for that message, each null when bb would not offer it there.
+  `experimental_messageRequests` is `{ edit, fork }`: bb's own flows for that
+  message, each null when bb would not offer it there. `composer` is the
+  message's thread composer on this surface (or the inline editor of one of its
+  queued messages while open), else null; bb's Add to chat is
+  `composer.replace((d) => experimental_appendQuoteToDraft(d, text,
+attachments))` then `composer.focus()`. `experimental_appendQuoteToDraft(draft,
+text, attachments?)` (from `@get-bb/plugin-sdk/app`) is pure: it returns the
+  draft with `text` appended as a `> ` blockquote on its own lines and each
+  attachment the draft lacks (by path) added.
   `experimental_invokedFrom` is `"button"`, `"menu"` or `"selection"`;
   `navigate` and `panel` act on that thread view. Resolve `true` from `run` to
   show a check mark on an inline button. Errors from `run` (sync or async) and

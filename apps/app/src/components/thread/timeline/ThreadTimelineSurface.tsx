@@ -24,7 +24,6 @@ import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
-  ThreadTimelineAddToChatHandler,
   ThreadTimelineUnreadDividerPlacement,
 } from "./types.js";
 
@@ -47,7 +46,6 @@ export interface ThreadTimelineSurfaceProps {
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
-  onAddToChat?: ThreadTimelineAddToChatHandler;
   instanceMessageActions?: readonly PluginMessageActionSlot[];
   onLoadOlderRows?: () => Promise<void> | void;
   onTitleAction?: TimelineTitleActionResolver;
@@ -141,7 +139,6 @@ export function ThreadTimelineSurface({
   onForkMessage,
   onEditMessage,
   inlineMessageEditor,
-  onAddToChat,
   instanceMessageActions,
   onLoadOlderRows,
   onTitleAction,
@@ -218,7 +215,6 @@ export function ThreadTimelineSurface({
             onForkMessage={onForkMessage}
             onEditMessage={onEditMessage}
             inlineMessageEditor={inlineMessageEditor}
-            onAddToChat={onAddToChat}
             instanceMessageActions={instanceMessageActions}
             onTitleAction={onTitleAction}
             projectId={projectId}

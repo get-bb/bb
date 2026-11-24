@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
-  appendQuoteAndAttachmentsToDraft,
-  appendQuoteToDraftText,
   emptyPromptDraftState,
   isPromptDraftEmpty,
   getProjectStoredPromptAttachmentPaths,
@@ -298,130 +296,6 @@ describe("prompt draft helpers", () => {
         },
       ],
     });
-  });
-});
-
-describe("appendQuoteToDraftText", () => {
-  it("appends a one-line quote to an empty draft with a trailing newline", () => {
-    const next = appendQuoteToDraftText(
-      emptyPromptDraftState(),
-      "  hello world  ",
-    );
-    expect(next.text).toBe("> hello world\n");
-  });
-
-  it("prefixes each line of a multi-line quote and prefixes blank lines as `>`", () => {
-    const next = appendQuoteToDraftText(
-      emptyPromptDraftState(),
-      "para one\n\npara two",
-    );
-    expect(next.text).toBe("> para one\n>\n> para two\n");
-  });
-
-  it("appends to existing text separated by a newline", () => {
-    const base = { text: "existing reply", mentions: [], attachments: [] };
-    const next = appendQuoteToDraftText(base, "quoted");
-    expect(next.text).toBe("existing reply\n> quoted\n");
-  });
-
-  it("stacks a second quote below the first, separated by a blank line", () => {
-    const first = appendQuoteToDraftText(emptyPromptDraftState(), "first");
-    expect(appendQuoteToDraftText(first, "second").text).toBe(
-      "> first\n\n> second\n",
-    );
-  });
-
-  it("ignores an empty or whitespace-only quote", () => {
-    const base = emptyPromptDraftState();
-    expect(appendQuoteToDraftText(base, "")).toBe(base);
-    expect(appendQuoteToDraftText(base, "   \n  ")).toBe(base);
-  });
-
-  it("leaves existing mention offsets byte-for-byte unchanged (appends to the end)", () => {
-    const resource: PromptMentionResource = {
-      kind: "thread",
-      threadId: "thr_parent",
-      label: "Prompt UX thread",
-    };
-    const text = "Ask @manager now";
-    const start = text.indexOf("@manager");
-    const mention = { start, end: start + "@manager".length, resource };
-    const base = { text, mentions: [mention], attachments: [] };
-
-    const next = appendQuoteToDraftText(base, "context");
-
-    expect(next.mentions).toEqual([mention]);
-    expect(next.text.startsWith(text)).toBe(true);
-  });
-});
-
-describe("appendQuoteAndAttachmentsToDraft", () => {
-  it("appends a quote and merges new attachments", () => {
-    const next = appendQuoteAndAttachmentsToDraft(
-      emptyPromptDraftState(),
-      "review this",
-      [
-        {
-          type: "localImage",
-          path: "uploads/screenshot.png",
-          name: "screenshot.png",
-          sizeBytes: 0,
-        },
-      ],
-    );
-
-    expect(next).toEqual({
-      text: "> review this\n",
-      mentions: [],
-      attachments: [
-        {
-          type: "localImage",
-          path: "uploads/screenshot.png",
-          name: "screenshot.png",
-          sizeBytes: 0,
-        },
-      ],
-    });
-  });
-
-  it("adds attachments even when there is no quote text", () => {
-    const next = appendQuoteAndAttachmentsToDraft(emptyPromptDraftState(), "", [
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-        sizeBytes: 0,
-      },
-    ]);
-
-    expect(next).toEqual({
-      text: "",
-      mentions: [],
-      attachments: [
-        {
-          type: "localFile",
-          path: "uploads/spec.md",
-          name: "spec.md",
-          sizeBytes: 0,
-        },
-      ],
-    });
-  });
-
-  it("dedupes attachments by path", () => {
-    const attachment = {
-      type: "localFile" as const,
-      path: "uploads/spec.md",
-      name: "spec.md",
-      sizeBytes: 0,
-    };
-    const base = {
-      text: "",
-      mentions: [],
-      attachments: [attachment],
-    };
-
-    expect(appendQuoteAndAttachmentsToDraft(base, "", [attachment])).toBe(base);
   });
 });
 

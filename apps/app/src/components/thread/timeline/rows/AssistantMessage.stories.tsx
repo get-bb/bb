@@ -2,6 +2,8 @@ import type { TimelineRow } from "@bb/server-contract";
 import { StoryConversationMessage } from "@/components/thread/timeline/story-message-actions";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import { ThreadTimelineRows } from "@/components/thread/timeline/ThreadTimelineRows";
+import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
+import { useStoryPromptDraft } from "@/components/thread/timeline/StoryDraftPromptBox";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
@@ -259,6 +261,7 @@ const overflowStoryPluginActions = [
 ];
 
 export function ActionOverflow() {
+  const promptDraft = useStoryPromptDraft();
   return (
     <StoryCard>
       <StoryRow
@@ -278,7 +281,7 @@ export function ActionOverflow() {
               mobileActionDisplay="inline"
               streaming={false}
               timestamp={0}
-              onAddToChat={noop}
+              composerHost={promptDraft.composerHost}
               onFork={noop}
               pluginActions={overflowStoryPluginActions}
             />
@@ -301,7 +304,7 @@ export function ActionOverflow() {
             mobileActionDisplay="inline"
             streaming={false}
             timestamp={0}
-            onAddToChat={noop}
+            composerHost={promptDraft.composerHost}
             onFork={noop}
             pluginActions={overflowStoryPluginActions}
           />
@@ -312,6 +315,7 @@ export function ActionOverflow() {
 }
 
 export function MobileActionsAndSelection() {
+  const promptDraft = useStoryPromptDraft(MOBILE_REVIEW_THREAD_ID);
   return (
     <div className="mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
@@ -321,14 +325,15 @@ export function MobileActionsAndSelection() {
         a mouse or long-press agent text on touch to exercise the floating
         selection menu.
       </p>
-      <ThreadTimelineRows
-        canSpawnChild
-        onForkMessage={noop}
-        onAddToChat={noop}
-        threadId={MOBILE_REVIEW_THREAD_ID}
-        threadRuntimeDisplayStatus="idle"
-        timelineRows={mobileReviewRows}
-      />
+      <PluginComposerHostProvider value={promptDraft.composerHost}>
+        <ThreadTimelineRows
+          canSpawnChild
+          onForkMessage={noop}
+          threadId={MOBILE_REVIEW_THREAD_ID}
+          threadRuntimeDisplayStatus="idle"
+          timelineRows={mobileReviewRows}
+        />
+      </PluginComposerHostProvider>
     </div>
   );
 }

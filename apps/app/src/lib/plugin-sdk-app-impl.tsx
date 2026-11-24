@@ -2,6 +2,7 @@ import { useConversationOutline } from "@/lib/conversation-outline";
 import { lazyComponent } from "./lazy-component";
 import { useTimelineViewport } from "@/lib/timeline-viewport";
 import { applicationLinkApprovals } from "./application-url";
+import { appendQuoteToComposerDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { matchesAppShortcutKey } from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
 import { searchPickerOptions } from "@bb/fuzzy-match";
@@ -281,6 +282,7 @@ export const pluginSdkAppImplementation = {
   experimental_useProviders: useProviders,
   experimental_useCodeTheme: useCodeTheme,
   experimental_copyToClipboard: copyToClipboard,
+  experimental_appendQuoteToDraft: appendQuoteToComposerDraft,
   experimental_showErrorToast: showMutationErrorToast,
   experimental_saveFile: saveFile,
 } satisfies PluginSdkApp;

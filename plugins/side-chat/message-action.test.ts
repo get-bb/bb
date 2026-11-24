@@ -44,7 +44,7 @@ const message = {
   experimental_imageUrls: [],
 };
 
-const messageRequests = { addToChat: null, edit: null, fork: null };
+const messageRequests = { edit: null, fork: null };
 
 describe("parsePanelParams", () => {
   it("narrows persisted params and rejects malformed values", () => {

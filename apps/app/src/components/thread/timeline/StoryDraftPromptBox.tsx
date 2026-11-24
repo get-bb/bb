@@ -6,8 +6,9 @@ import {
 import {
   createComposerDraftStore,
   type ComposerDraftStore,
+  type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { appendQuoteToDraftText, emptyPromptDraftState } from "@bb/client-core";
+import { emptyPromptDraftState } from "@bb/client-core";
 import {
   makeAttachmentsConfig,
   makeTypeaheadConfig,
@@ -20,24 +21,39 @@ const STORY_HISTORY: HistoryConfig = { entries: [], onSelectEntry: noop };
 interface StoryPromptDraftController {
   store: ComposerDraftStore;
   focusEndKey: number;
-  addQuote: (text: string) => void;
+  composerHost: PluginComposerHost;
 }
 
-export function useStoryPromptDraft(): StoryPromptDraftController {
+export const STORY_THREAD_ID = "thr_story";
+
+export function useStoryPromptDraft(
+  threadId: string = STORY_THREAD_ID,
+): StoryPromptDraftController {
   const [store] = useState(() =>
     createComposerDraftStore(emptyPromptDraftState()),
   );
   const [focusEndKey, setFocusEndKey] = useState(0);
-
-  const addQuote = useCallback(
-    (quotedText: string) => {
-      store.setDraft(appendQuoteToDraftText(store.getCurrent(), quotedText));
-      setFocusEndKey((current) => current + 1);
-    },
-    [store],
+  const focus = useCallback(() => {
+    setFocusEndKey((current) => current + 1);
+  }, []);
+  const composerHost = useMemo<PluginComposerHost>(
+    () => ({
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_story",
+        environmentId: null,
+      },
+      textEffectKey: `story-draft:${threadId}`,
+      getCurrent: store.getCurrent,
+      subscribeDraft: store.subscribeDraft,
+      setDraft: store.setDraft,
+      focus,
+    }),
+    [focus, store, threadId],
   );
 
-  return { store, focusEndKey, addQuote };
+  return { store, focusEndKey, composerHost };
 }
 
 export function StoryDraftPromptBox({

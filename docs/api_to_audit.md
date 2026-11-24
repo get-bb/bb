@@ -421,8 +421,8 @@ sorts last; ties keep registration order, the rule its sibling order fields
 use) and `experimental_availability(input)`, a pure per-message function that
 returns `"enabled"`, `"disabled"` or `"hidden"`. Its input
 (`ExperimentalMessageActionAvailabilityInput`) carries the thread id, the
-message, `selectedText` for the selection menu, `messageRequests` and the
-thread's `canSpawnChild`. A throw or an invalid result hides the action on that
+message, `selectedText` for the selection menu, `messageRequests`, the
+`composer` `run` will get (or null) and the thread's `canSpawnChild`. A throw or an invalid result hides the action on that
 message and logs. `run` may resolve `true` so an inline button shows a check
 mark for 2 seconds. Validation lives in `collectMessageActionRegistration`
 (`packages/plugin-sdk/src/internal/plugin-app-registration-collector.ts`),
@@ -431,9 +431,13 @@ which fills every default once.
 `PluginMessageActionContext` gains `experimental_invokedFrom` (`"button"`,
 `"menu"` or `"selection"`), `experimental_selectedMarkdown` (the selection's
 Markdown source) and `experimental_messageRequests`
-(`ExperimentalMessageRequests`): bb's own `addToChat(text, attachments?)`,
-`edit()` and `fork()` for the message, each null when bb would not offer that
-action there. `ThreadChatMessageReference` gains `experimental_settled`,
+(`ExperimentalMessageRequests`): bb's own `edit()` and `fork()` for the
+message, each null when bb would not offer that action there. Add to chat is
+not a request: it is `composer.replace` with `experimental_appendQuoteToDraft`
+(below), so a plugin quotes into the draft exactly as bb does. The context's
+`composer` is the message's thread composer on this surface, or the inline
+editor of that thread's queued message while one is open, else null.
+`ThreadChatMessageReference` gains `experimental_settled`,
 `experimental_attachments` (as `ComposerAttachment`s) and
 `experimental_imageUrls`. `ExperimentalClipboardContent.imageUrl` copies an
 image with the text through bb's own image clipboard writer.
@@ -446,7 +450,8 @@ filtered and ordered with the registered ones. The old
 `experimental_placements: ["inline"]`.
 
 Core callers: bb's Copy link, Copy, Edit, Add to chat (row menu and selection
-menu) and Fork are registrations in
+menu; `composer.replace` with `experimental_appendQuoteToDraft`, then
+`composer.focus()`) and Fork are registrations in
 `apps/app/src/core-contributions/message-actions.ts`, collected with the plugin
 registrations in `apps/app/src/lib/plugin-slots.ts` and resolved for every
 surface by `buildMessageActions` (`apps/app/src/lib/plugin-message-actions.ts`).
@@ -3061,6 +3066,30 @@ Docs: `frontend-hooks-and-ui.md`.
    marketplace audit found it in 22 repositories, which feed it to Monaco,
    Shiki and terminal renderers. Confirm the payload serves the terminal
    engines before the prefix drops.
+
+## `app.experimental_appendQuoteToDraft` (`@get-bb/plugin-sdk/app`)
+
+A pure function, `(draft, text, attachments?) => ComposerDraftSnapshot`:
+bb's Add to chat quoting. It appends `text` to the draft as a `> ` blockquote
+on its own lines (blank text adds nothing, blank lines between quoted blocks
+collapse) and adds each attachment whose path the draft does not hold yet,
+returning the same draft when nothing changes. Plugins pass it to
+`composer.replace`.
+
+**Core callers.** The implementation is `appendQuoteAndAttachmentsToDraft` in
+`packages/plugin-sdk/src/internal/composer-draft-transforms.ts`, the only copy:
+bb's message Add to chat (`apps/app/src/core-contributions/message-actions.ts`,
+through this export), the diff, file-preview and terminal selection Add to
+chat (`useThreadComposerAddToChat` in `ThreadScreen.tsx`), root compose's
+quote (`RootComposeView.tsx`) and the retired `composer.addQuote`. The test
+harness runs the same function.
+
+Docs: `frontend-renderer-slots.md`.
+
+**Audit before stabilizing.** Whether the quote should carry a source link or
+mention back to the quoted message, whether the attachment merge should
+consider names as well as paths, and whether a cursor-position variant is
+needed beside the append-at-end one.
 
 ## `app.experimental_copyToClipboard` (`@get-bb/plugin-sdk/app`)
 

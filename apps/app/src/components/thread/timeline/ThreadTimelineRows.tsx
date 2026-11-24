@@ -52,7 +52,6 @@ import {
 } from "@bb/client-core";
 import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
-  ThreadTimelineAddToChatHandler,
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
   ThreadTimelineForkMessageHandler,
@@ -140,6 +139,7 @@ import {
 } from "./MessageMetadata.js";
 import {
   buildMessageActions,
+  messageActionComposerHost,
   type MessageActionTarget,
 } from "@/lib/plugin-message-actions.js";
 import type { ExperimentalPluginActionContext } from "@get-bb/plugin-sdk";
@@ -162,7 +162,6 @@ export interface ThreadTimelineRowsProps {
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
-  onAddToChat?: ThreadTimelineAddToChatHandler;
   instanceMessageActions?: readonly PluginMessageActionSlot[];
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -186,7 +185,6 @@ interface TimelineRendererStaticContextValue {
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
   inlineMessageEditor: ThreadTimelineInlineMessageEditor | undefined;
-  onAddToChat: ThreadTimelineAddToChatHandler | undefined;
   messageActionSlots: readonly PluginMessageActionSlot[];
   messageMetadata: readonly PluginMessageMetadataSlot[];
   reportProseSelection:
@@ -831,7 +829,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
     inlineMessageEditor,
     onEditMessage,
     onForkMessage,
-    onAddToChat,
     messageActionSlots,
     messageMetadata,
     reportProseSelection,
@@ -884,7 +881,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
     threadId: threadId ?? row.threadId,
     message: messageReference,
     messageRequests: {
-      addToChat: onAddToChat ?? null,
       edit:
         row.role === "user" &&
         onEditMessage !== undefined &&
@@ -2221,13 +2217,18 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => findLastActionableAssistantMessageId(rows),
     [rows],
   );
+  const composerHost = usePluginComposerHost();
+  const hasMessageComposer =
+    props.threadId === undefined
+      ? composerHost !== null
+      : messageActionComposerHost(composerHost, props.threadId) !== null;
   const latestActionableUserMessageId = useMemo(
     () =>
       findLastActionableUserMessageId(
         rows,
-        props.onAddToChat !== undefined || props.onEditMessage !== undefined,
+        hasMessageComposer || props.onEditMessage !== undefined,
       ),
-    [props.onEditMessage, props.onAddToChat, rows],
+    [hasMessageComposer, props.onEditMessage, rows],
   );
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
@@ -2307,7 +2308,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => (pluginId: string) =>
       bindPluginActionContext(pluginId, () => latestNavigationHost.current),
   );
-  const composerHost = usePluginComposerHost();
   const selectionActions = useMemo<
     readonly ThreadTimelineMessageAction[]
   >(() => {
@@ -2332,7 +2332,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onForkMessage: props.onForkMessage,
       onEditMessage: props.onEditMessage,
       inlineMessageEditor: props.inlineMessageEditor,
-      onAddToChat: props.onAddToChat,
       messageActionSlots,
       messageMetadata: messageMetadataSlots,
       reportProseSelection,
@@ -2350,7 +2349,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onForkMessage,
       props.onEditMessage,
       props.inlineMessageEditor,
-      props.onAddToChat,
       messageActionSlots,
       messageMetadataSlots,
       reportProseSelection,

@@ -38,19 +38,41 @@ interface BuildMessageActionsArgs {
   actionContext: (pluginId: string) => ExperimentalPluginActionContext;
 }
 
+export function messageActionComposerHost(
+  host: PluginComposerHost | null,
+  threadId: string,
+): PluginComposerHost | null {
+  if (host === null) return null;
+  const scope = host.scope;
+  if (scope.kind !== "thread" && scope.kind !== "queued-message") return null;
+  return scope.threadId === threadId ? host : null;
+}
+
+const messageActionComposers = new WeakMap<
+  PluginComposerHost,
+  Map<string, PluginComposerApi>
+>();
+
 function messageActionComposer(
   pluginId: string,
   threadId: string,
-  host: PluginComposerHost | null,
+  composerHost: PluginComposerHost | null,
 ): PluginComposerApi | null {
+  const host = messageActionComposerHost(composerHost, threadId);
   if (host === null) return null;
-  if (host.scope.kind !== "thread" || host.scope.threadId !== threadId) {
-    return null;
+  let byPlugin = messageActionComposers.get(host);
+  if (byPlugin === undefined) {
+    byPlugin = new Map();
+    messageActionComposers.set(host, byPlugin);
   }
-  return createComposerHandleBinding(
+  const existing = byPlugin.get(pluginId);
+  if (existing !== undefined) return existing;
+  const handle = createComposerHandleBinding(
     host.textEffectKey,
     detachedComposerController(pluginId, host, "a message action's"),
   ).handle;
+  byPlugin.set(pluginId, handle);
+  return handle;
 }
 
 function warnMessageAction(
@@ -111,13 +133,6 @@ export function buildMessageActions({
   composerHost,
   actionContext,
 }: BuildMessageActionsArgs): readonly ThreadTimelineMessageAction[] {
-  const input: ExperimentalMessageActionAvailabilityInput = {
-    threadId: target.threadId,
-    message: target.message,
-    ...(selection === undefined ? {} : { selectedText: selection.text }),
-    messageRequests: target.messageRequests,
-    canSpawnChild: target.canSpawnChild,
-  };
   const actions: (ThreadTimelineMessageAction & { order: number })[] = [];
   for (const slot of slots) {
     const placement = slot.experimental_placements.find((candidate) =>
@@ -126,7 +141,19 @@ export function buildMessageActions({
         : candidate === "selection",
     );
     if (placement === undefined) continue;
-    const availability = evaluateAvailability(slot, input);
+    const composer = messageActionComposer(
+      slot.pluginId,
+      target.threadId,
+      composerHost,
+    );
+    const availability = evaluateAvailability(slot, {
+      threadId: target.threadId,
+      message: target.message,
+      ...(selection === undefined ? {} : { selectedText: selection.text }),
+      messageRequests: target.messageRequests,
+      composer,
+      canSpawnChild: target.canSpawnChild,
+    });
     if (availability === "hidden") continue;
     actions.push({
       key: `${slot.pluginId}/${slot.id}/${slot.generation}`,
@@ -153,11 +180,7 @@ export function buildMessageActions({
                   experimental_selectedMarkdown: markdown ?? selection.text,
                 }),
             openPanel: createRetiredOpenPanel(bound.panel),
-            composer: messageActionComposer(
-              slot.pluginId,
-              target.threadId,
-              composerHost,
-            ),
+            composer,
             experimental_invokedFrom: invokedFrom,
             experimental_messageRequests: target.messageRequests,
           };

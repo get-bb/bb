@@ -12,8 +12,8 @@ import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
 import { defaultAppSettings, type Environment } from "@bb/domain";
 import type { ThreadResponse, TimelineRow } from "@bb/server-contract";
+import { appendQuoteAndAttachmentsToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
-  appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
   promptInputToDraft,
@@ -616,7 +616,6 @@ export function ThreadScreen({
           onForkMessage={timelineHost.onForkMessage ?? undefined}
           onEditMessage={handleEditSentMessage}
           inlineMessageEditor={inlineMessageEditor}
-          onAddToChat={selectionAddToChat}
           onLoadOlderRows={timeline.loadOlderTimelineRows}
           onTitleAction={timelineHost.onTitleAction ?? undefined}
           projectId={projectId}

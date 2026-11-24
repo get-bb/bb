@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
 import { useStoryMessageActions } from "@/components/thread/timeline/story-message-actions";
+import { useStoryPromptDraft } from "@/components/thread/timeline/StoryDraftPromptBox";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -22,21 +23,22 @@ function StoryBar({
   text,
   mobileActionDisplay,
   role,
-  onAddToChat,
+  withComposer = false,
   onFork,
   forkDisabled,
 }: {
   text: string;
   mobileActionDisplay: "inline" | "overflow";
   role: "user" | "assistant";
-  onAddToChat?: () => void;
+  withComposer?: boolean;
   onFork?: () => void;
   forkDisabled?: boolean;
 }) {
+  const promptDraft = useStoryPromptDraft();
   const actions = useStoryMessageActions({
     role,
     text,
-    onAddToChat,
+    ...(withComposer ? { composerHost: promptDraft.composerHost } : {}),
     onFork,
     forkDisabled,
   });
@@ -70,7 +72,7 @@ export function Overview() {
               role="user"
               text="A user message you can quote into the composer."
               mobileActionDisplay="overflow"
-              onAddToChat={noop}
+              withComposer
             />
           </HoverRevealStage>
         </StoryRow>

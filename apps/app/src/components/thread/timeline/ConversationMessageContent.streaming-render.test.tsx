@@ -64,7 +64,7 @@ function coreActions(text: string, streaming: boolean) {
         experimental_attachments: [],
         experimental_imageUrls: [],
       },
-      messageRequests: { addToChat: null, edit: null, fork: null },
+      messageRequests: { edit: null, fork: null },
       canSpawnChild: true,
     },
     composerHost: null,

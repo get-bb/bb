@@ -1,4 +1,4 @@
-import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { appendQuoteAndAttachmentsToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftState } from "@bb/client-core";
@@ -9,7 +9,10 @@ import {
   type ComposerEditorBridge,
 } from "./composer-editor-registry";
 import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
-import type { PluginComposerScope } from "@get-bb/plugin-sdk";
+import type {
+  ComposerAttachment,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk";
 import {
   notifyComposerSubmitted,
   subscribeComposerSubmitted,
@@ -456,7 +459,7 @@ describe.each(["core", "plugin"] as const)(
     const quote = (
       actions: ReturnType<typeof actionsFor>,
       text: string,
-      attachments?: Parameters<typeof appendQuoteAndAttachmentsToDraft>[2],
+      attachments?: readonly ComposerAttachment[],
     ) => {
       actions.replace((current) =>
         appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),

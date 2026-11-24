@@ -519,7 +519,6 @@ const mentionedMessageMentions: PromptTextMention[] = [
 
 export function Overview() {
   const promptDraft = useStoryPromptDraft();
-  const handleAddToChat = promptDraft.addQuote;
 
   return (
     <StoryCard>
@@ -541,7 +540,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
           />
         </TimelineStage>
@@ -591,7 +590,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -610,7 +609,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -633,7 +632,7 @@ export function Overview() {
             mentions={mentionedMessageMentions}
             projectId="proj_bb"
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -655,7 +654,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -677,7 +676,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={pendingSteer}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -699,7 +698,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedSteer}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -719,7 +718,7 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -742,7 +741,7 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -969,7 +968,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
           />
         </TimelineStage>
@@ -992,7 +991,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
             pluginActions={overflowStoryActions}
           />
@@ -1016,7 +1015,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
             pluginActions={overflowStoryActions}
           />

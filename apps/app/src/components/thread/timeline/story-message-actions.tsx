@@ -7,6 +7,8 @@ import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
   type PluginMessageActionSlot,
 } from "@/lib/plugin-slots";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { STORY_THREAD_ID } from "./StoryDraftPromptBox";
 import type { ThreadTimelineMessageAction } from "./types";
 
 interface StoryPluginAction {
@@ -19,7 +21,7 @@ interface StoryPluginAction {
 interface StoryMessageActionsArgs {
   role: "user" | "assistant";
   text: string;
-  onAddToChat?: (text: string) => void;
+  composerHost?: PluginComposerHost;
   onEdit?: () => void;
   onFork?: () => void;
   forkDisabled?: boolean;
@@ -43,7 +45,7 @@ function storyPluginSlot(action: StoryPluginAction): PluginMessageActionSlot {
 export function useStoryMessageActions({
   role,
   text,
-  onAddToChat,
+  composerHost,
   onEdit,
   onFork,
   forkDisabled = false,
@@ -57,10 +59,10 @@ export function useStoryMessageActions({
       ...pluginActions.map(storyPluginSlot),
     ],
     target: {
-      threadId: "thr_story",
+      threadId: STORY_THREAD_ID,
       message: {
         id: "msg_story",
-        threadId: "thr_story",
+        threadId: STORY_THREAD_ID,
         role,
         text,
         sourceSeqEnd: 1,
@@ -70,13 +72,12 @@ export function useStoryMessageActions({
         experimental_imageUrls: [],
       },
       messageRequests: {
-        addToChat: onAddToChat ?? null,
         edit: onEdit ?? null,
         fork: onFork ?? null,
       },
       canSpawnChild: !forkDisabled,
     },
-    composerHost: null,
+    composerHost: composerHost ?? null,
     actionContext: (pluginId) => bind(pluginId, () => host),
   });
 }
@@ -89,7 +90,7 @@ type StoryConversationMessageProps = ConversationMessageContentProps &
   Omit<StoryMessageActionsArgs, "role" | "text">;
 
 export function StoryConversationMessage({
-  onAddToChat,
+  composerHost,
   onEdit,
   onFork,
   forkDisabled,
@@ -99,7 +100,7 @@ export function StoryConversationMessage({
   const actions = useStoryMessageActions({
     role: props.role,
     text: props.text,
-    ...(onAddToChat === undefined ? {} : { onAddToChat }),
+    ...(composerHost === undefined ? {} : { composerHost }),
     ...(onEdit === undefined ? {} : { onEdit }),
     ...(onFork === undefined ? {} : { onFork }),
     ...(forkDisabled === undefined ? {} : { forkDisabled }),

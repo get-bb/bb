@@ -403,6 +403,11 @@ export const experimental_useCodeTheme = runtimeFunction(
 export const experimental_copyToClipboard = runtimeFunction(
   "experimental_copyToClipboard",
 );
+// bb's Add to chat quoting, for `composer.replace` (experimental — see
+// docs/api_to_audit.md).
+export const experimental_appendQuoteToDraft = runtimeFunction(
+  "experimental_appendQuoteToDraft",
+);
 export const experimental_showErrorToast = runtimeFunction(
   "experimental_showErrorToast",
 );

@@ -5,6 +5,7 @@ import type {
 } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
+import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import {
   StoryDraftPromptBox,
   useStoryPromptDraft,
@@ -718,8 +719,7 @@ const interleavedConversationRows: TimelineRow[] = [
 ];
 
 export function Conversation() {
-  const promptDraft = useStoryPromptDraft();
-  const handleAddToChat = promptDraft.addQuote;
+  const promptDraft = useStoryPromptDraft(CONV_THREAD_ID);
 
   return (
     <StoryCard>
@@ -728,12 +728,13 @@ export function Conversation() {
         hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent"
       >
         <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            threadRuntimeDisplayStatus="active"
-            onAddToChat={handleAddToChat}
-            timelineRows={interleavedConversationRows}
-          />
+          <PluginComposerHostProvider value={promptDraft.composerHost}>
+            <ThreadTimelineRows
+              {...baseProps}
+              threadRuntimeDisplayStatus="active"
+              timelineRows={interleavedConversationRows}
+            />
+          </PluginComposerHostProvider>
           <div className="mt-3">
             <StoryDraftPromptBox draft={promptDraft} />
           </div>

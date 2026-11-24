@@ -1,9 +1,15 @@
 import { toast } from "sonner";
-import type { ThreadChatMessageReference } from "@get-bb/plugin-sdk";
+import type {
+  ComposerAttachment,
+  PluginComposerApi,
+  ThreadChatMessageReference,
+} from "@get-bb/plugin-sdk";
 import {
   definePluginApp,
+  experimental_appendQuoteToDraft,
   experimental_copyToClipboard,
 } from "@get-bb/plugin-sdk/app";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 
 function copyableText(message: ThreadChatMessageReference): string {
   return message.role === "user" ? message.text.trim() : message.text;
@@ -40,6 +46,23 @@ async function copyMessage(
   }
   toast.error("Failed to copy");
   return false;
+}
+
+function addToChat(
+  composer: PluginComposerApi,
+  text: string,
+  attachments: readonly ComposerAttachment[] = [],
+): void {
+  if (
+    window.matchMedia(COMPACT_VIEWPORT_QUERY).matches &&
+    document.activeElement instanceof HTMLElement
+  ) {
+    document.activeElement.blur();
+  }
+  composer.replace((current) =>
+    experimental_appendQuoteToDraft(current, text, attachments),
+  );
+  composer.focus();
 }
 
 function enabledWhen(condition: boolean) {
@@ -99,16 +122,11 @@ export default definePluginApp((app) => {
     icon: "MessageSquarePlus",
     experimental_placements: ["selection"],
     experimental_order: -10,
-    experimental_availability: ({ messageRequests }) =>
-      enabledWhen(messageRequests.addToChat !== null),
-    run({
-      selectedText,
-      experimental_selectedMarkdown,
-      experimental_messageRequests,
-    }) {
+    experimental_availability: ({ composer }) => enabledWhen(composer !== null),
+    run({ selectedText, experimental_selectedMarkdown, composer }) {
       const text = experimental_selectedMarkdown ?? selectedText;
-      if (text === undefined) return;
-      experimental_messageRequests.addToChat?.(text);
+      if (text === undefined || composer === null) return;
+      addToChat(composer, text);
     },
   });
   app.slots.messageAction({
@@ -117,21 +135,19 @@ export default definePluginApp((app) => {
     icon: "MessageSquarePlus",
     experimental_placements: ["menu"],
     experimental_order: 10,
-    experimental_availability: ({ message, messageRequests }) =>
+    experimental_availability: ({ message, composer }) =>
       enabledWhen(
-        messageRequests.addToChat !== null &&
+        composer !== null &&
           (hasCopyableContent(message) ||
             message.experimental_attachments.length > 0),
       ),
-    run({ message, experimental_messageRequests }) {
-      const addToChat = experimental_messageRequests.addToChat;
-      if (addToChat === null) return;
-      const attachments = message.experimental_attachments;
-      if (attachments.length > 0) {
-        addToChat(copyableText(message), attachments);
-      } else {
-        addToChat(copyableText(message));
-      }
+    run({ message, composer }) {
+      if (composer === null) return;
+      addToChat(
+        composer,
+        copyableText(message),
+        message.experimental_attachments,
+      );
     },
   });
   app.slots.messageAction({
