@@ -29,6 +29,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Pill } from "@bb/shared-ui/pill";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
@@ -524,14 +525,15 @@ function WorktreeInputsControl({
                         selected={folders.includes(folder)}
                         title={`Give this thread its own worktree of ${folder}, started from that repository's default branch and named like the thread's branch, instead of the shared folder`}
                         onSelect={() => toggleFolder(folder)}
+                        align="first-line"
                       >
                         <span className="flex min-w-0 flex-1 flex-col">
                           <span className="min-w-0 truncate">
                             {folderLabel(folder)}
                           </span>
-                          <span className="min-w-0 truncate text-left text-xs text-muted-foreground [direction:rtl]">
-                            <bdi dir="ltr">{folder}</bdi>
-                          </span>
+                          <TruncateStart className="text-muted-foreground">
+                            {folder}
+                          </TruncateStart>
                         </span>
                       </BranchPickerRow>
                     ))}
