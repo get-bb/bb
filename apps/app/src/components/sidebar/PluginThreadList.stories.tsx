@@ -3,7 +3,6 @@ import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -28,7 +27,6 @@ import { SidebarThreadListContent } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 
-installTestPluginRuntime();
 const threadListApp = await loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../plugins/thread-list/app.tsx"),
 );
