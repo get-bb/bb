@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { DbQueryConnection } from "../connection.js";
 import { environmentHookOperations } from "../schema.js";
 
@@ -77,6 +77,21 @@ export function restartEnvironmentHookOperation(
   db.update(environmentHookOperations)
     .set({ startedAt, finishedAt: null, error: null })
     .where(eq(environmentHookOperations.id, id))
+    .run();
+}
+
+export function forgetFinishedEnvironmentHookOperations(
+  db: DbQueryConnection,
+  ids: readonly string[],
+): void {
+  if (ids.length === 0) return;
+  db.delete(environmentHookOperations)
+    .where(
+      and(
+        inArray(environmentHookOperations.id, [...ids]),
+        isNotNull(environmentHookOperations.finishedAt),
+      ),
+    )
     .run();
 }
 

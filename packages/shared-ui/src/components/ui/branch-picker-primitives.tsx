@@ -58,6 +58,7 @@ interface BranchPickerRowProps {
   selected: boolean;
   title: string;
   onSelect: () => void;
+  align?: "center" | "first-line";
   children: ReactNode;
 }
 
@@ -186,6 +187,17 @@ export function BranchPickerSectionHeader({
   );
 }
 
+function FirstLine({
+  align,
+  children,
+}: {
+  align: "center" | "first-line";
+  children: ReactNode;
+}) {
+  if (align === "center") return children;
+  return <span className="flex h-[1lh] shrink-0 items-center">{children}</span>;
+}
+
 export function BranchPickerRow({
   value,
   disabled,
@@ -193,6 +205,7 @@ export function BranchPickerRow({
   selected,
   title,
   onSelect,
+  align = "center",
   children,
 }: BranchPickerRowProps) {
   const { highlighted, setHighlighted } = useContext(
@@ -207,6 +220,7 @@ export function BranchPickerRow({
       className={cn(
         BRANCH_PICKER_ROW_CLASS_NAME,
         LIST_HOVER_TRANSITION,
+        align === "first-line" && "items-start",
         disabled && "cursor-not-allowed text-muted-foreground opacity-60",
       )}
       disabled={disabled}
@@ -216,21 +230,25 @@ export function BranchPickerRow({
         if (!disabled && highlighted !== value) setHighlighted(value);
       }}
     >
-      <Icon
-        name={icon}
-        className={cn(
-          "text-muted-foreground",
-          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
+      <FirstLine align={align}>
+        <Icon
+          name={icon}
+          className={cn(
+            "text-muted-foreground",
+            COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+          )}
+        />
+      </FirstLine>
       {children}
-      <Icon
-        name="Check"
-        className={cn(
-          selected ? "opacity-100" : "opacity-0",
-          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
+      <FirstLine align={align}>
+        <Icon
+          name="Check"
+          className={cn(
+            selected ? "opacity-100" : "opacity-0",
+            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+          )}
+        />
+      </FirstLine>
     </button>
   );
 }

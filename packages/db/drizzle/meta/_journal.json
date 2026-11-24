@@ -1191,6 +1191,20 @@
       "when": 1795476630771,
       "tag": "0169_queued_message_sources_and_compact_first",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "6",
+      "when": 1795550504233,
+      "tag": "0170_environment_setup_folder_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "6",
+      "when": 1795550504908,
+      "tag": "0171_environment_additional_path_entries",
+      "breakpoints": true
     }
   ]
 }

@@ -1148,7 +1148,10 @@ describe("core environment orchestration", () => {
           status: "created",
           path: `/tmp/${context.pathKey}`,
           ownsPath: true,
-          additionalPaths: ["/tmp/siblings/api/", "/tmp/siblings/docs"],
+          additionalPaths: [
+            { path: "/tmp/siblings/api/", replaces: "/work/api/" },
+            { path: "/tmp/siblings/docs" },
+          ],
         }),
       });
       fixture.ask();
@@ -1156,7 +1159,33 @@ describe("core environment orchestration", () => {
       fixture.attach();
       expect(fixture.row()).toMatchObject({
         status: "ready",
-        additionalPaths: ["/tmp/siblings/api", "/tmp/siblings/docs"],
+        additionalPaths: [
+          { path: "/tmp/siblings/api", replaces: "/work/api" },
+          { path: "/tmp/siblings/docs", replaces: null },
+        ],
+      });
+    }));
+
+  it("fails a create that replaces a relative project folder", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: [
+            { path: "/tmp/siblings/api", replaces: "work/api" },
+          ],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.ask()).toMatchObject({
+        action: "reject",
+        message: expect.stringContaining("must be an absolute path"),
+      });
+      expect(fixture.row()).toMatchObject({
+        status: "error",
       });
     }));
 
@@ -1167,7 +1196,7 @@ describe("core environment orchestration", () => {
           status: "created",
           path: `/tmp/${context.pathKey}`,
           ownsPath: true,
-          additionalPaths: [`/tmp/${context.pathKey}/nested`],
+          additionalPaths: [{ path: `/tmp/${context.pathKey}/nested` }],
         }),
       });
       fixture.ask();

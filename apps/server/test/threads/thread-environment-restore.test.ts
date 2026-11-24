@@ -48,7 +48,10 @@ function registerProvider(
         : {
             restore: async (context) => {
               restoreCalls.push(context.previous.environment.branchName);
-              return { ...created, additionalPaths: ["/tmp/restored-sibling"] };
+              return {
+                ...created,
+                additionalPaths: [{ path: "/tmp/restored-sibling" }],
+              };
             },
           }),
       remove: async () => ({ status: "removed" }),
@@ -184,7 +187,7 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
             getEnvironment(harness.db, restored?.environmentId ?? "")
               ?.additionalPaths,
         )
-        .toEqual(["/tmp/restored-sibling"]);
+        .toEqual([{ path: "/tmp/restored-sibling", replaces: null }]);
 
       clearAllThreadProvisionSchedules();
       harness.db

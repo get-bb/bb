@@ -54,7 +54,42 @@ export function workspaceFolderPathProblem(
   return null;
 }
 
-export function validateWorkspaceFolderPaths(args: {
+export interface EnvironmentAdditionalPath {
+  path: string;
+  replaces: string | null;
+}
+
+export function validateEnvironmentAdditionalPaths(args: {
+  mainPath: string;
+  entries: readonly EnvironmentAdditionalPath[];
+}): EnvironmentAdditionalPath[] {
+  const accepted: EnvironmentAdditionalPath[] = [];
+  for (const entry of args.entries) {
+    const path = canonicalizeHostPath(entry.path);
+    const problem = workspaceFolderPathProblem({
+      existingPaths: accepted.map((existing) => existing.path),
+      mainPath: args.mainPath,
+      path,
+    });
+    if (problem !== null) {
+      throw new Error(problem.message);
+    }
+    const replaces =
+      entry.replaces === null ? null : canonicalizeHostPath(entry.replaces);
+    if (
+      replaces !== null &&
+      (!isAbsoluteHostPath(replaces) || replaces.includes("\0"))
+    ) {
+      throw new Error(
+        `Folder ${path} replaces ${replaces}, which must be an absolute path`,
+      );
+    }
+    accepted.push({ path, replaces });
+  }
+  return accepted;
+}
+
+export function validateSetupFolderPaths(args: {
   mainPath: string;
   paths: readonly string[];
 }): string[] {
@@ -76,10 +111,21 @@ export function validateWorkspaceFolderPaths(args: {
 
 export function mergeWorkspaceFolderPaths(args: {
   mainPath: string;
-  paths: readonly string[];
+  projectFolderPaths: readonly string[];
+  additionalPaths: readonly EnvironmentAdditionalPath[];
 }): string[] {
+  const projectFolderPaths = args.projectFolderPaths.filter(
+    (path) =>
+      !args.additionalPaths.some(
+        (entry) =>
+          entry.replaces !== null && areHostPathsEqual(entry.replaces, path),
+      ),
+  );
   const merged: string[] = [];
-  for (const path of args.paths) {
+  for (const path of [
+    ...projectFolderPaths,
+    ...args.additionalPaths.map((entry) => entry.path),
+  ]) {
     if (
       areHostPathsEqual(path, args.mainPath) ||
       merged.some((existing) => areHostPathsEqual(existing, path))
