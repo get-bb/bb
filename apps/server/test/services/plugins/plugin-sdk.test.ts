@@ -33,6 +33,7 @@ import {
 } from "../../helpers/commands.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
+import { installDefaultEnvironmentProviders } from "../../helpers/environment-provider.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
@@ -1231,6 +1232,7 @@ describe("plugin bb.sdk against a running server", () => {
         path: "/tmp/plugin-sdk-live-source",
       });
 
+      installDefaultEnvironmentProviders();
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-spawner",

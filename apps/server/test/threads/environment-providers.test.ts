@@ -14,6 +14,7 @@ import {
   type TestProviderDecision,
 } from "../helpers/provider-decisions.js";
 import {
+  countThreads,
   createEnvironment,
   createProjectSource,
   environmentHookOperations,
@@ -80,6 +81,7 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -2700,6 +2702,7 @@ describe("core's worktree beside providers", () => {
           (record) => `${record.pluginId}:${record.provider.id}`,
         ),
       ).toEqual([`${PLUGIN_ID}:${PROVIDER_ID}`]);
+      installFakeGitWorktreeProvider();
       const environmentIntents = installEnvironmentIntentProbe();
       const { host, project, session } = seedTargetFixture(
         harness,
@@ -2735,7 +2738,7 @@ describe("core's worktree beside providers", () => {
         environmentProviderId: "git-worktree",
         machine: { type: "existing", hostId: host.id },
         inputs: { branch: { kind: "named", name: "main" } },
-        selectionResolved: false,
+        selectionResolved: true,
       });
       expect(environmentIntents).toEqual([
         {
@@ -3096,6 +3099,65 @@ it("resumes a provider launch and its original request after the in-memory conte
     expect(getThread(harness.db, created.id)?.status).not.toBe("error");
   });
 });
+
+it.each([
+  {
+    environmentProviderId: "project-checkout",
+    personal: false,
+    workspace: { type: "unmanaged" as const, path: WORKSPACE_PATH },
+  },
+  {
+    environmentProviderId: "git-worktree",
+    personal: false,
+    workspace: {
+      type: "managed-worktree" as const,
+      baseBranch: { kind: "default" as const },
+    },
+  },
+  {
+    environmentProviderId: "personal-workspace",
+    personal: true,
+    workspace: { type: "personal" as const },
+  },
+])(
+  "rejects a new $workspace.type request when $environmentProviderId is not registered",
+  async ({ environmentProviderId, personal, workspace }) => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-unavailable-default-provider",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      let projectId = PERSONAL_PROJECT_ID;
+      if (personal) {
+        ensurePersonalProject(harness.db);
+      } else {
+        projectId = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: WORKSPACE_PATH,
+        }).project.id;
+      }
+      setPluginEnvironmentProviderBridge(undefined);
+
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          environment: { type: "host", hostId: host.id, workspace },
+          input: textInput("Check workspace admission"),
+          origin: "app",
+          projectId,
+          providerId: "codex",
+          startedOnBehalfOf: null,
+        }),
+      ).rejects.toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message: `The "${environmentProviderId}" environment provider is not registered. Enable its plugin before starting a thread.`,
+        },
+      });
+      expect(countThreads(harness.db, { projectId }).total).toBe(0);
+    });
+  },
+);
 
 it("keeps an existing request waiting when its provider is not registered", async () => {
   await withTestHarness(async (harness) => {
