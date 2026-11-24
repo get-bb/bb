@@ -363,9 +363,27 @@ describe("createRealtimeCacheEffects", () => {
 
   it("isolates project workspace caches between selected hosts", () => {
     expect(
-      projectPathsQueryKey("project-1", null, "host-a", "src", 8, true, true),
+      projectPathsQueryKey(
+        "project-1",
+        null,
+        "host-a",
+        "src",
+        8,
+        true,
+        true,
+        "main",
+      ),
     ).not.toEqual(
-      projectPathsQueryKey("project-1", null, "host-b", "src", 8, true, true),
+      projectPathsQueryKey(
+        "project-1",
+        null,
+        "host-b",
+        "src",
+        8,
+        true,
+        true,
+        "main",
+      ),
     );
     expect(
       projectCommandsQueryKey("project-1", "codex", null, "host-a"),
@@ -2566,6 +2584,7 @@ describe("createRealtimeCacheEffects", () => {
       20,
       true,
       true,
+      "main",
     );
     const secondProjectPathsKey = projectPathsQueryKey(
       "project-2",
@@ -2575,6 +2594,7 @@ describe("createRealtimeCacheEffects", () => {
       20,
       true,
       true,
+      "main",
     );
     const firstProjectSourceBranchesKey = projectSourceBranchesQueryKey(
       "project-1",

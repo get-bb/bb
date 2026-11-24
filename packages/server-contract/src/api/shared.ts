@@ -214,6 +214,26 @@ export const workspacePathEntrySchema = z.object({
 });
 export type WorkspacePathEntry = z.infer<typeof workspacePathEntrySchema>;
 
+export const workspacePathSearchFoldersSchema = z.enum(["main", "extra"]);
+export type WorkspacePathSearchFolders = z.infer<
+  typeof workspacePathSearchFoldersSchema
+>;
+
+export const workspaceSearchPathEntrySchema = workspacePathEntrySchema.extend({
+  folderPath: z.string().nullable(),
+});
+export type WorkspaceSearchPathEntry = z.infer<
+  typeof workspaceSearchPathEntrySchema
+>;
+
+export const workspaceSearchPathListResponseSchema = z.object({
+  paths: z.array(workspaceSearchPathEntrySchema),
+  truncated: z.boolean(),
+});
+export type WorkspaceSearchPathListResponse = z.infer<
+  typeof workspaceSearchPathListResponseSchema
+>;
+
 export const workspaceFileListResponseSchema = z.object({
   files: z.array(workspaceFileSchema),
   truncated: z.boolean(),

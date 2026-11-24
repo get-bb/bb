@@ -190,6 +190,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         name: "src",
         score: 0,
         positions: [],
+        rootPath: "/tmp/workspace",
       },
       {
         kind: "file",
@@ -197,6 +198,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         name: "index.ts",
         score: 1,
         positions: [0, 4],
+        rootPath: "/tmp/workspace",
       },
     ],
     truncated: false,
@@ -1112,7 +1114,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(283);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(284);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1155,7 +1157,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(280)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(282)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(283)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(283)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(284)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -1394,7 +1397,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
-        path: "/tmp/workspace",
+        rootPaths: ["/tmp/workspace"],
         limit: 1000,
         includeHidden: true,
         respectGitIgnore: false,
@@ -1404,7 +1407,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "host.list_paths",
-      path: "/tmp/workspace",
+      rootPaths: ["/tmp/workspace"],
       limit: 1000,
       includeHidden: true,
       respectGitIgnore: false,
@@ -1656,7 +1659,7 @@ describe("host-daemon command schemas", () => {
       },
       {
         type: "host.list_paths",
-        path: "/tmp/workspace",
+        rootPaths: ["/tmp/workspace"],
         limit: 100,
         includeHidden: true,
         respectGitIgnore: false,
@@ -2665,7 +2668,7 @@ describe("host-daemon command schemas", () => {
     };
     const listPaths = {
       type: "host.list_paths",
-      path: "/tmp/workspace",
+      rootPaths: ["/tmp/workspace"],
       limit: 100,
       includeFiles: true,
       includeDirectories: true,
@@ -2755,7 +2758,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
-        path: "/tmp/workspace",
+        rootPaths: ["/tmp/workspace"],
         query: longQuery,
         limit: 100,
         includeHidden: true,
@@ -2769,7 +2772,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
-        path: "/tmp/workspace",
+        rootPaths: ["/tmp/workspace"],
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
         respectGitIgnore: false,
@@ -2782,7 +2785,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
-        path: "/tmp/workspace",
+        rootPaths: ["/tmp/workspace"],
         limit: 100,
         includeHidden: true,
         respectGitIgnore: false,

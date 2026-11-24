@@ -8,6 +8,7 @@ import {
   environmentHolderSchema,
   environmentStatusSchema,
   environmentStatusValues,
+  joinHostPath,
   jsonValueSchema,
   type EnvironmentHolder,
   type EnvironmentStatus,
@@ -537,7 +538,14 @@ export function registerEnvironmentCommands(
         });
         if (outputJson(opts, result)) return;
         for (const entry of result.paths) {
-          console.log(`${entry.kind}\t${entry.path}`);
+          const path =
+            entry.folderPath === null
+              ? entry.path
+              : (joinHostPath({
+                  rootPath: entry.folderPath,
+                  relativePath: entry.path,
+                }) ?? entry.path);
+          console.log(`${entry.kind}\t${path}`);
         }
         if (result.truncated) console.log("(results truncated)");
       }),

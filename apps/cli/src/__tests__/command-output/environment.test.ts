@@ -264,8 +264,17 @@ describe("bb environment command output", () => {
           kind: "directory",
           path: "apps/cli",
           name: "cli",
-          score: 1,
+          score: 2,
           positions: [5],
+          folderPath: null,
+        },
+        {
+          kind: "directory",
+          path: "packages/cli",
+          name: "cli",
+          score: 1,
+          positions: [9],
+          folderPath: "/work/shared",
         },
       ],
       truncated: true,
@@ -298,6 +307,7 @@ describe("bb environment command output", () => {
     });
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "directory\tapps/cli",
+      "directory\t/work/shared/packages/cli",
       "(results truncated)",
     ]);
   });

@@ -145,7 +145,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.list_paths",
-        path: tempDir,
+        rootPaths: [tempDir],
         limit: 1000,
         includeHidden: false,
         respectGitIgnore: false,
@@ -204,7 +204,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.list_paths",
-        path: missingPath,
+        rootPaths: [missingPath],
         limit: 1000,
         includeHidden: false,
         respectGitIgnore: false,

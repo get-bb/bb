@@ -5,7 +5,8 @@ import type {
   ProjectBranchesResponse,
   ProjectWithThreadsResponse,
   PromptHistoryResponse,
-  WorkspacePathListResponse,
+  WorkspacePathSearchFolders,
+  WorkspaceSearchPathListResponse,
 } from "@bb/server-contract";
 import type { FilePreview } from "@bb/client-core";
 import { loadFilePreview } from "@/lib/api";
@@ -54,6 +55,7 @@ interface UseProjectPathSuggestionsArgs {
   limit?: number;
   includeFiles: boolean;
   includeDirectories: boolean;
+  folders: WorkspacePathSearchFolders;
 }
 
 interface UseProjectCommandsArgs {
@@ -214,7 +216,7 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
   const enabled = Boolean(projectId) && trimmedQuery.length > 0;
   useProjectDetailRealtimeSubscription(projectId, { enabled });
 
-  return useQuery<WorkspacePathListResponse>({
+  return useQuery<WorkspaceSearchPathListResponse>({
     queryKey: projectPathsQueryKey(
       projectId,
       args.environmentId,
@@ -223,9 +225,11 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
       limit,
       includeFiles,
       includeDirectories,
+      args.folders,
     ),
     queryFn: ({ signal }) =>
       sdk.projects.paths({
+        folders: args.folders,
         projectId: projectId ?? "",
         query: trimmedQuery,
         limit: String(limit),

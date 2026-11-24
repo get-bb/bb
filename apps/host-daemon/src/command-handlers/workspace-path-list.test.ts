@@ -230,7 +230,7 @@ describe("workspace path discovery", () => {
     await write(root, "beta.md");
     const command = {
       type: "host.list_paths" as const,
-      path: root,
+      rootPaths: [root],
       includeFiles: true,
       includeDirectories: false,
       includeHidden: true,
@@ -247,6 +247,40 @@ describe("workspace path discovery", () => {
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
   });
 
+  it("ranks every root together under one limit and names each result's root", async () => {
+    const main = await createRoot();
+    const extra = await createRoot();
+    await write(main, "docs/readme-notes.md");
+    await write(main, "src/index.ts");
+    await write(extra, "readme.md");
+    await write(extra, "lib/readme.txt");
+    const missing = path.join(extra, "does-not-exist");
+    const result = await listHostPaths(
+      {
+        type: "host.list_paths",
+        rootPaths: [main, missing, extra],
+        query: "readme",
+        includeFiles: true,
+        includeDirectories: false,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
+        limit: 2,
+      },
+      new AbortController().signal,
+    );
+    expect(result.truncated).toBe(true);
+    expect(
+      result.paths.map(({ path: entryPath, rootPath }) => ({
+        path: entryPath,
+        rootPath,
+      })),
+    ).toEqual([
+      { path: "readme.md", rootPath: extra },
+      { path: "lib/readme.txt", rootPath: extra },
+    ]);
+  });
+
   it("stops an unqueried listing after the limit with the same entries as a full walk", async () => {
     const root = await createRoot();
     for (const dir of ["a", "b", "c", "d"]) {
@@ -255,7 +289,7 @@ describe("workspace path discovery", () => {
     }
     const command = {
       type: "host.list_paths" as const,
-      path: root,
+      rootPaths: [root],
       includeFiles: true,
       includeDirectories: true,
       includeHidden: true,

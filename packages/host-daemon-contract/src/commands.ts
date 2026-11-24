@@ -26,6 +26,7 @@ import {
   FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
+  PATH_LIST_ROOT_PATHS_MAX,
   flattenPromptInputGroups,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
@@ -535,13 +536,14 @@ const hostPathEntrySchema = z.object({
   name: z.string(),
   score: z.number(),
   positions: z.array(z.number().int().nonnegative()),
+  rootPath: z.string(),
 });
 export type HostPathEntry = z.infer<typeof hostPathEntrySchema>;
 
 const hostListPathsCommandSchema = z
   .object({
     type: z.literal("host.list_paths"),
-    path: z.string().min(1),
+    rootPaths: z.array(z.string().min(1)).min(1).max(PATH_LIST_ROOT_PATHS_MAX),
     query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
     includeFiles: z.boolean(),

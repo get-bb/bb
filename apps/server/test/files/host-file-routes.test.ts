@@ -254,7 +254,7 @@ describe("host file routes", () => {
       expect(commands).toEqual([
         {
           type: "host.list_paths",
-          path: "/notes",
+          rootPaths: ["/notes"],
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
@@ -264,7 +264,7 @@ describe("host file routes", () => {
         },
         {
           type: "host.list_paths",
-          path: "/notes",
+          rootPaths: ["/notes"],
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,

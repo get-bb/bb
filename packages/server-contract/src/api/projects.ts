@@ -16,6 +16,7 @@ import {
   branchListQuerySchema,
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
+  workspacePathSearchFoldersSchema,
 } from "./shared.js";
 
 const localProjectPathRequestSchema = z
@@ -194,6 +195,7 @@ export const projectPathsQuerySchema = z
     limit: z.string().regex(/^\d+$/).optional(),
     includeFiles: pathListIncludeQueryValueSchema,
     includeDirectories: pathListIncludeQueryValueSchema,
+    folders: workspacePathSearchFoldersSchema.optional(),
   })
   .partial({
     hostId: true,

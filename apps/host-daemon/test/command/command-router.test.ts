@@ -261,7 +261,7 @@ describe("CommandRouter", () => {
         requestId: "paths-cancelled",
         command: {
           type: "host.list_paths",
-          path: root,
+          rootPaths: [root],
           query: "alpha",
           limit: 5,
           includeFiles: true,
@@ -299,7 +299,7 @@ describe("CommandRouter", () => {
         requestId: "paths-kept",
         command: {
           type: "host.list_paths",
-          path: root,
+          rootPaths: [root],
           query: "alpha",
           limit: 5,
           includeFiles: true,

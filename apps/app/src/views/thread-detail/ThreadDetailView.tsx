@@ -35,7 +35,7 @@ import {
   type ThreadTimelineLocalFileLink,
 } from "@/components/thread/timeline";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
-import { type ThreadListEntry } from "@bb/domain";
+import { isAbsoluteHostPath, type ThreadListEntry } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -873,6 +873,15 @@ function ThreadDetailViewInternal(
             path: resource.path,
           });
       }
+      if (isAbsoluteHostPath(resource.path)) {
+        const hostId = environment?.hostId;
+        if (hostId === undefined) return null;
+        return () =>
+          openLiveFilePreview({
+            target: { kind: "host", hostId, path: resource.path },
+            location: null,
+          });
+      }
       if (!thread?.environmentId) return null;
       return () =>
         openWorkspaceFile({
@@ -883,7 +892,9 @@ function ThreadDetailViewInternal(
         });
     },
     [
+      environment?.hostId,
       openAttachment,
+      openLiveFilePreview,
       navigate,
       navigateInPane,
       openStorageFile,
