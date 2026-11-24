@@ -57,6 +57,9 @@ function setup(
     pluginId: "bb--git",
     sdk: {
       environments: {
+        experimental_listByIds: async () => [
+          options.environment ?? ENVIRONMENT,
+        ],
         get: async () => options.environment ?? ENVIRONMENT,
       },
       files: {
@@ -686,6 +689,7 @@ describe("bb git errors", () => {
       pluginId: "bb--git",
       sdk: {
         environments: {
+          experimental_listByIds: async () => [],
           get: async () => {
             throw new experimental_BbHttpError({
               status: 404,

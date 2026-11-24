@@ -159,6 +159,7 @@ export function findForeignManagedEnvironmentAtHostPath(
 }
 
 export interface ListEnvironmentsFilters {
+  environmentIds?: readonly string[];
   environmentProviderId?: string;
   heldBy?: EnvironmentHolder;
   hostId?: string;
@@ -175,6 +176,9 @@ export function listEnvironments(
   filters: ListEnvironmentsFilters = {},
 ) {
   const conditions = [
+    filters.environmentIds === undefined
+      ? undefined
+      : inArray(environments.id, [...filters.environmentIds]),
     filters.projectId === undefined
       ? undefined
       : eq(environments.projectId, filters.projectId),

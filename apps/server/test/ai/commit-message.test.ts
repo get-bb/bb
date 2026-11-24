@@ -128,7 +128,7 @@ async function commitThroughRoute(
     responder.requests.map((request) =>
       request.command.type === "plugin.host.call" ? request.command.method : null,
     ),
-  ).toEqual(expect.arrayContaining(["status", "diff"]));
+  ).toEqual(expect.arrayContaining(["statuses", "diff"]));
   responder.unregister();
   return message;
 }

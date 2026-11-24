@@ -92,6 +92,11 @@ export interface EnvironmentListArgs {
   status?: EnvironmentStatus;
 }
 export type EnvironmentListResult = Environment[];
+export interface EnvironmentListByIdsArgs {
+  environmentIds: readonly string[];
+  signal?: AbortSignal;
+}
+export type EnvironmentListByIdsResult = Environment[];
 interface EnvironmentCreateBaseArgs {
   projectId: string;
   /** Defaults to the project's default checkout machine. */
@@ -135,6 +140,14 @@ export interface EnvironmentsArea {
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   list(args: EnvironmentListArgs): Promise<EnvironmentListResult>;
+  /**
+   * Each of `environmentIds` (1–200 per request) that exists, in any status
+   * including `destroyed`, ordered like `list`; unknown ids are omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listByIds(
+    args: EnvironmentListByIdsArgs,
+  ): Promise<EnvironmentListByIdsResult>;
   listProviders(
     args?: EnvironmentListProvidersArgs,
   ): Promise<EnvironmentListProvidersResult>;
@@ -189,6 +202,14 @@ export function createEnvironmentsArea(
         }),
       );
       return commitActionResponseSchema.parse(body);
+    },
+    async experimental_listByIds(input) {
+      return transport.readJson(
+        transport.api.v1.environments["by-id"].$post(
+          { json: { environmentIds: [...input.environmentIds] } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
     },
     async list(input) {
       return transport.readJson(

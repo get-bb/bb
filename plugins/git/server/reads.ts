@@ -94,6 +94,13 @@ function fileReadFailure(error: unknown): {
   return { code, message };
 }
 
+function environmentNotFound(environmentId: string) {
+  return new experimental_PluginRpcRefusal({
+    code: "not_found",
+    message: `Environment not found: ${environmentId}`,
+  });
+}
+
 export async function requireGitEnvironment(
   bb: BbPluginApi,
   environmentId: string,
@@ -102,13 +109,18 @@ export async function requireGitEnvironment(
     return await bb.sdk.environments.get({ environmentId });
   } catch (error) {
     if (error instanceof experimental_BbHttpError && error.status === 404) {
-      throw new experimental_PluginRpcRefusal({
-        code: "not_found",
-        message: `Environment not found: ${environmentId}`,
-      });
+      throw environmentNotFound(environmentId);
     }
     throw error;
   }
+}
+
+function toReadyGitEnvironment(
+  environment: Environment,
+): ReadyGitEnvironment | null {
+  const path = requireWorkspacePath(environment);
+  if (!environment.isGitRepo) return null;
+  return { environment, hostId: environment.hostId, path };
 }
 
 const KEY_SEPARATOR = "\u0000";
@@ -251,10 +263,9 @@ export function createGitReads(
   async function requireReady(
     environmentId: string,
   ): Promise<ReadyGitEnvironment | null> {
-    const environment = await requireGitEnvironment(bb, environmentId);
-    const path = requireWorkspacePath(environment);
-    if (!environment.isGitRepo) return null;
-    return { environment, hostId: environment.hostId, path };
+    return toReadyGitEnvironment(
+      await requireGitEnvironment(bb, environmentId),
+    );
   }
 
   async function loadStatuses(
@@ -284,52 +295,67 @@ export function createGitReads(
     }
   }
 
+  async function readStatus(
+    { environmentId, mergeBase }: StatusRequest,
+    environment: Environment | undefined,
+    cache: ReadCacheUse,
+    loadsByHost: Map<string, StatusLoad[]>,
+  ): Promise<GitStatusResult> {
+    if (environment === undefined) throw environmentNotFound(environmentId);
+    const ready = toReadyGitEnvironment(environment);
+    if (ready === null) return notApplicable("status");
+    const mergeBaseBranch =
+      mergeBase.kind === "environment"
+        ? resolveEnvironmentMergeBaseBranch(ready.environment)
+        : mergeBase.branch;
+    return statusCache.read(
+      { environmentId, hostId: ready.hostId },
+      [ready.path, mergeBaseBranch ?? null],
+      cache,
+      () =>
+        new Promise<GitStatusResult>((resolve, reject) => {
+          const loads = loadsByHost.get(ready.hostId) ?? [];
+          loads.push({
+            read: {
+              path: ready.path,
+              freshness: freshness(environmentId, cache === "shared"),
+              ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
+            },
+            resolve,
+            reject,
+          });
+          loadsByHost.set(ready.hostId, loads);
+        }),
+    );
+  }
+
   function readStatuses(
     requests: readonly StatusRequest[],
     cache: ReadCacheUse,
   ): Promise<GitStatusResult>[] {
-    const started = Promise.all(
-      requests.map(({ environmentId }) =>
-        requireReady(environmentId).then(
-          (ready) => ({ ready }),
-          (error: unknown) => ({ error }),
-        ),
-      ),
-    ).then((prepared) => {
-      const loadsByHost = new Map<string, StatusLoad[]>();
-      const results = prepared.map((entry, index): Promise<GitStatusResult> => {
-        if ("error" in entry) return Promise.reject(entry.error);
-        const { ready } = entry;
-        if (ready === null) return Promise.resolve(notApplicable("status"));
-        const { environmentId, mergeBase } = requests[index]!;
-        const mergeBaseBranch =
-          mergeBase.kind === "environment"
-            ? resolveEnvironmentMergeBaseBranch(ready.environment)
-            : mergeBase.branch;
-        return statusCache.read(
-          { environmentId, hostId: ready.hostId },
-          [ready.path, mergeBaseBranch ?? null],
-          cache,
-          () =>
-            new Promise<GitStatusResult>((resolve, reject) => {
-              const loads = loadsByHost.get(ready.hostId) ?? [];
-              loads.push({
-                read: {
-                  path: ready.path,
-                  freshness: freshness(environmentId, cache === "shared"),
-                  ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
-                },
-                resolve,
-                reject,
-              });
-              loadsByHost.set(ready.hostId, loads);
-            }),
+    const started = bb.sdk.environments
+      .experimental_listByIds({
+        environmentIds: [
+          ...new Set(requests.map(({ environmentId }) => environmentId)),
+        ],
+      })
+      .then((found) => {
+        const environments = new Map(
+          found.map((environment) => [environment.id, environment]),
         );
+        const loadsByHost = new Map<string, StatusLoad[]>();
+        const results = requests.map((request) =>
+          readStatus(
+            request,
+            environments.get(request.environmentId),
+            cache,
+            loadsByHost,
+          ),
+        );
+        for (const [hostId, loads] of loadsByHost)
+          void loadStatuses(hostId, loads);
+        return results;
       });
-      for (const [hostId, loads] of loadsByHost)
-        void loadStatuses(hostId, loads);
-      return results;
-    });
     return requests.map((_, index) =>
       started.then((results) => results[index]!),
     );

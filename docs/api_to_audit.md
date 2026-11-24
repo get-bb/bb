@@ -4759,6 +4759,28 @@ generations, expiry and cancellation races, bounded screenshot bytes, and
 cross-platform desktop startup. Cloud browsers and external provider
 registration are outside this surface.
 
+## `bb.sdk.environments.experimental_listByIds`
+
+`POST /environments/by-id` with `{ environmentIds }` (1–200 ids) returns the
+`Environment` row for each id that exists, in any status including
+`destroyed`, ordered like `list` (creation time, then id). Unknown ids are
+omitted. It is one `WHERE id IN (…)` query (`listEnvironments` with an
+`environmentIds` filter) plus one host lookup for the rows' machines. First
+caller: the git plugin's keyed `status` read (`plugins/git/server/reads.ts`),
+which resolves every requested environment with it before making one host
+`statuses` call per machine. Before this, the read made one `environments.get`
+per key, and the batch had to wait for the slowest of them.
+
+Docs: `backend-sdk.md`.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether this should be an `environmentIds` filter on
+   `list` instead of its own method. `list` hides `destroyed` rows by default,
+   and callers that resolve ids need them.
+2. **Batch size.** 200 ids per request, matching the threads batch reads;
+   callers chunk.
+
 ## Environments before threads and holds (`bb.sdk.environments.experimental_create`, `Environment.heldBy`, `sdk.environments.list({ heldBy })`, provider `adopt`)
 
 `experimental_create({ projectId, hostId?, provider?: { id, inputs? }, name?,

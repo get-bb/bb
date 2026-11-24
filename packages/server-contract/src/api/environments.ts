@@ -55,6 +55,20 @@ export type CreateEnvironmentRequest = z.infer<
   typeof createEnvironmentRequestSchema
 >;
 
+export const ENVIRONMENTS_BY_ID_MAX_IDS = 200;
+
+export const environmentsByIdRequestSchema = z
+  .object({
+    environmentIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(ENVIRONMENTS_BY_ID_MAX_IDS),
+  })
+  .strict();
+export type EnvironmentsByIdRequest = z.infer<
+  typeof environmentsByIdRequestSchema
+>;
+
 export const listEnvironmentsQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
   environmentProviderId: z.string().min(1).optional(),

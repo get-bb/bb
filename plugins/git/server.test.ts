@@ -99,6 +99,11 @@ async function setup(environments: Record<string, Environment>) {
         },
       },
       environments: {
+        experimental_listByIds: async ({
+          environmentIds,
+        }: {
+          environmentIds: readonly string[];
+        }) => environmentIds.flatMap((id) => environments[id] ?? []),
         get: async ({ environmentId }: { environmentId: string }) => {
           const found = environments[environmentId];
           if (found === undefined) {
@@ -162,7 +167,10 @@ describe("Git plugin server", () => {
     const fake = createFakePluginHost({
       pluginId: "bb--git",
       sdk: {
-        environments: { get: async () => environment() },
+        environments: {
+          experimental_listByIds: async () => [environment()],
+          get: async () => environment(),
+        },
         threads: {
           get: async () => {
             state.threadReads += 1;
@@ -290,8 +298,14 @@ describe("Git plugin server", () => {
         sdk: {
           subscribe: () => () => {},
           environments: {
-            get: async ({ environmentId }: { environmentId: string }) =>
-              environments[environmentId as keyof typeof environments],
+            experimental_listByIds: async ({
+              environmentIds,
+            }: {
+              environmentIds: readonly string[];
+            }) =>
+              environmentIds.map(
+                (id) => environments[id as keyof typeof environments],
+              ),
           },
         },
         experimental_callHostRpc: (call) => {

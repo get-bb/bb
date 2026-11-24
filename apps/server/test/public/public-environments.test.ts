@@ -324,6 +324,64 @@ describe("environment list and delete", () => {
     });
   });
 
+  it("reads environments by id in one request, destroyed included and unknown ids omitted", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-env-by-id",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const ready = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/env-by-id-ready",
+        projectId: project.id,
+      });
+      const gone = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: null,
+        projectId: project.id,
+        status: "destroyed",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/env-by-id-other",
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request("/api/v1/environments/by-id", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          environmentIds: [gone.id, "env_missing", ready.id, gone.id],
+        }),
+      });
+      expect(response.status).toBe(200);
+      const found = (await readJson(response)) as Array<{
+        id: string;
+        status: string;
+        hostLifecycle: string;
+      }>;
+      expect(
+        found.map(({ id, status, hostLifecycle }) => ({
+          id,
+          status,
+          hostLifecycle,
+        })),
+      ).toEqual([
+        { id: ready.id, status: "ready", hostLifecycle: "active" },
+        { id: gone.id, status: "destroyed", hostLifecycle: "active" },
+      ]);
+
+      const empty = await harness.app.request("/api/v1/environments/by-id", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ environmentIds: [] }),
+      });
+      expect(empty.status).toBe(400);
+    });
+  });
+
   it("records a deleted environment as destroyed and hides it from the list", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-env-del" });

@@ -43,7 +43,9 @@ signatures (see "Looking up the exact API" in distribution.md).
   `copy`), `sources` (`add` `update` `delete`)
 - `experimental_promptHistory`: `list`
 - `environments`: `list` `listProviders` `get` `update` `delete` `paths`
-  `commit` `archiveThreads` `experimental_cleanup`
+  `commit` `archiveThreads` `experimental_cleanup` `experimental_listByIds`
+  (1–200 ids in one request, any status including `destroyed`, unknown ids
+  omitted)
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
   `experimental_startProviderCliInstall` `retryUpdate`

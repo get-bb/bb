@@ -179,6 +179,15 @@ export function registerEnvironmentRoutes(
     return context.json(readEnvironmentRemovalProgress(deps, environment.id));
   });
 
+  post(routes.byId, (context, payload) =>
+    context.json(
+      toEnvironmentResponses(
+        deps.db,
+        listEnvironments(deps.db, { environmentIds: payload.environmentIds }),
+      ),
+    ),
+  );
+
   get(routes.get, (context) =>
     context.json(
       toEnvironmentResponse(

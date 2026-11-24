@@ -287,6 +287,7 @@ import {
   type TimelineTurnSummaryDetailsQuery,
   type TimelineTurnSummaryDetailsResponse,
   type ListEnvironmentsQuery,
+  type EnvironmentsByIdRequest,
   type CreateEnvironmentRequest,
   type UpdateEnvironmentRequest,
   type UpdateThreadSectionRequest,
@@ -400,6 +401,7 @@ import {
   threadConversationOutlineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   listEnvironmentsQuerySchema,
+  environmentsByIdRequestSchema,
   createEnvironmentRequestSchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
@@ -1243,6 +1245,18 @@ export const publicApiRoutes = {
       method: "get",
       request: optionalQueryRequest<EmptyInput, ListEnvironmentsQuery>(
         listEnvironmentsQuerySchema,
+      ),
+      response: jsonResponse<Environment[]>(),
+    }),
+    /**
+     * Each of `environmentIds` (1–200) that exists, in any status including
+     * `destroyed`, ordered like `list`. Unknown ids are omitted.
+     */
+    byId: defineRoute({
+      path: "/environments/by-id",
+      method: "post",
+      request: jsonRequest<EmptyInput, EnvironmentsByIdRequest>(
+        environmentsByIdRequestSchema,
       ),
       response: jsonResponse<Environment[]>(),
     }),

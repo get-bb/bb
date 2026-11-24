@@ -10,9 +10,10 @@ import {
   installTestBuiltinPlugin,
   type RunningTestServer,
 } from "./test-app.js";
-import type {
-  ThreadGitDiffResponse,
-  WorkspaceStatus,
+import {
+  gitHostContract,
+  type ThreadGitDiffResponse,
+  type WorkspaceStatus,
 } from "bb-plugin-bb--git/contract";
 
 export interface GitHostReads {
@@ -40,11 +41,18 @@ export async function installGitPluginWithHost(
         return args.handleOther(request);
       }
       switch (command.method) {
-        case "status":
+        case "statuses": {
+          const { reads } = gitHostContract.statuses.input.parse(command.input);
           return {
             ok: true,
-            result: { output: { outcome: "available", value: args.reads.status } },
+            result: {
+              output: reads.map(() => ({
+                outcome: "available",
+                value: args.reads.status,
+              })),
+            },
           };
+        }
         case "diff":
           return {
             ok: true,
