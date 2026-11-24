@@ -298,6 +298,7 @@ async function checkPoolMember(args: {
 
 type PoolMemberClaim =
   | { status: "no-base" }
+  | { status: "timed-out" }
   | { status: "base-unavailable"; reason: string }
   | { status: "usable"; base: RemoteBase; head: string }
   | { status: "refused"; base: RemoteBase; reason: string }
@@ -308,29 +309,41 @@ export async function claimPoolMember(args: {
   path: string;
   placeholder: string;
   base: RemoteBase | null;
+  checkTimeoutMs: number;
   signal: AbortSignal | undefined;
 }): Promise<PoolMemberClaim> {
+  const deadline = AbortSignal.timeout(args.checkTimeoutMs);
+  const checkSignal =
+    args.signal === undefined
+      ? deadline
+      : AbortSignal.any([args.signal, deadline]);
   let base = args.base;
-  if (base === null) {
-    try {
-      base = await readRemoteBase({
-        sourcePath: args.sourcePath,
-        signal: args.signal,
-      });
-    } catch (error) {
-      if (args.signal?.aborted) throw error;
-      return { status: "base-unavailable", reason: errorText(error) };
+  let checked;
+  try {
+    if (base === null) {
+      try {
+        base = await readRemoteBase({
+          sourcePath: args.sourcePath,
+          signal: checkSignal,
+        });
+      } catch (error) {
+        if (checkSignal.aborted) throw error;
+        return { status: "base-unavailable", reason: errorText(error) };
+      }
     }
+    if (base === null) return { status: "no-base" };
+    checked = await checkPoolMember({
+      sourcePath: args.sourcePath,
+      path: args.path,
+      placeholder: args.placeholder,
+      baseBranch: base.ref,
+      baseCommit: base.commit,
+      signal: checkSignal,
+    });
+  } catch (error) {
+    if (args.signal?.aborted || !deadline.aborted) throw error;
+    return { status: "timed-out" };
   }
-  if (base === null) return { status: "no-base" };
-  const checked = await checkPoolMember({
-    sourcePath: args.sourcePath,
-    path: args.path,
-    placeholder: args.placeholder,
-    baseBranch: base.ref,
-    baseCommit: base.commit,
-    signal: args.signal,
-  });
   if (checked.status !== "usable") return { ...checked, base };
   if (checked.head !== base.commit) {
     try {

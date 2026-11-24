@@ -18,7 +18,8 @@ const FAILURE_BACKOFF_MS = 10 * 60 * 1000;
 const MEMBER_TTL_MS = 8 * 60 * 60 * 1000;
 const RESERVATION_TTL_MS = 10 * 60 * 1000;
 const REFRESH_TIMEOUT_MS = 5 * 60 * 1000;
-const HANDOFF_TIMEOUT_MS = 15_000;
+const HANDOFF_CHECK_TIMEOUT_MS = 15_000;
+const CLAIM_TIMEOUT_MS = 15 * 60 * 1000;
 const LIST_PAGE_SIZE = 500;
 const SETTLE_POLL_MS = 2_000;
 
@@ -661,11 +662,12 @@ export async function createWarmPools(args: {
             path: member.path,
             placeholder: member.branchName,
             base,
+            checkTimeoutMs: HANDOFF_CHECK_TIMEOUT_MS,
           },
           {
             hostId: request.hostId,
             signal: request.signal,
-            timeoutMs: HANDOFF_TIMEOUT_MS,
+            timeoutMs: CLAIM_TIMEOUT_MS,
           },
         );
       } catch (error) {
@@ -681,6 +683,13 @@ export async function createWarmPools(args: {
       }
       if (claimed.status === "no-base") {
         reserved.delete(member.id);
+        break;
+      }
+      if (claimed.status === "timed-out") {
+        reserved.delete(member.id);
+        bb.log.warn(
+          `Warm worktree ${member.id} could not be handed off: its check took longer than ${HANDOFF_CHECK_TIMEOUT_MS / 1000} s`,
+        );
         break;
       }
       if (claimed.status === "base-unavailable") {

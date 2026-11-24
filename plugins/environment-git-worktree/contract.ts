@@ -143,10 +143,12 @@ export const worktreeHostContract = defineRpcContract({
         path: z.string().min(1),
         placeholder: z.string().min(1),
         base: remoteBaseSchema.nullable(),
+        checkTimeoutMs: z.number().int().positive(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
       z.object({ status: z.literal("no-base") }).strict(),
+      z.object({ status: z.literal("timed-out") }).strict(),
       z
         .object({
           status: z.literal("base-unavailable"),

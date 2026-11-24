@@ -59,7 +59,8 @@ async function setup(args: {
   ) =>
     | { status: "usable"; head: string }
     | { status: "refused"; reason: string }
-    | { status: "busy" };
+    | { status: "busy" }
+    | { status: "timed-out" };
   remoteBase?: { ref: string; commit: string; offline: boolean } | null;
   baseCommit?: string;
   offBase?: string[];
@@ -98,10 +99,11 @@ async function setup(args: {
               : args.remoteBase;
         }
         if (base === null) return { status: "no-base" };
-        return {
-          ...(args.check?.(call) ?? { status: "usable", head: "base" }),
-          base,
+        const checked = args.check?.(call) ?? {
+          status: "usable",
+          head: "base",
         };
+        return checked.status === "timed-out" ? checked : { ...checked, base };
       }
       if (call.method === "nameHandedOffBranch") return null;
       if (call.method === "refreshPoolBase") {
@@ -365,7 +367,9 @@ describe("warm worktree handoff", () => {
       path: READY.path,
       placeholder: "bb/env_warm",
       base: null,
+      checkTimeoutMs: 15_000,
     });
+    expect(fixture.hostCalls[0]?.timeoutMs).toBe(15 * 60 * 1000);
     expect(fixture.hostCalls[1]?.input).toEqual({
       path: READY.path,
       fromBranch: "bb/env_warm",
@@ -498,6 +502,11 @@ describe("warm worktree handoff", () => {
 
   it.each([
     ["the host lock is busy", () => ({ status: "busy" as const }), []],
+    [
+      "the host check runs out of time",
+      () => ({ status: "timed-out" as const }),
+      [],
+    ],
     [
       "the claim times out",
       () => {

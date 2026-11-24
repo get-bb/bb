@@ -1584,11 +1584,15 @@ describe("warm worktree handoff", () => {
       commit,
       offline: false,
     });
-    const claim = (knownBase: ReturnType<typeof base> | null = null) => ({
+    const claim = (
+      knownBase: ReturnType<typeof base> | null = null,
+      checkTimeoutMs = 15_000,
+    ) => ({
       sourcePath: clone,
       path: created.path,
       placeholder: "bb/env_warm",
       base: knownBase,
+      checkTimeoutMs,
     });
     const name = (toBranch: string) => ({
       path: created.path,
@@ -1660,6 +1664,60 @@ describe("warm worktree handoff", () => {
       commit: upstream,
       members: [{ path, head: upstream, branch: "bb/env_warm", onBase: true }],
     });
+  });
+
+  it("gives the fast-forward time of its own instead of the check's time limit", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, clone, harness, path, head, base, claim } =
+      await warmWorktree(onTestFinished);
+    const upstream = await commitIn(sourcePath, "upstream.txt");
+    await git(clone, "fetch", "--quiet", "origin");
+    const commonDir = (
+      await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    ).trim();
+    await mkdir(join(commonDir, "hooks"), { recursive: true });
+    await writeFile(
+      join(commonDir, "hooks", "post-merge"),
+      "#!/bin/sh\nsleep 3\n",
+      { mode: 0o755 },
+    );
+    expect(
+      await harness.experimental_call(
+        "claimPoolMember",
+        claim(base(upstream), 1_500),
+      ),
+    ).toEqual({ status: "usable", base: base(upstream), head });
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(upstream);
+  });
+
+  it("gives up on a check that runs out of time and leaves the warm worktree where it was", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, harness, path, head, claim } =
+      await warmWorktree(onTestFinished);
+    await commitIn(sourcePath, "upstream.txt");
+    const commonDir = (
+      await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    ).trim();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = withGitRefMutationLock(commonDir, () => held);
+    onTestFinished(async () => {
+      release();
+      await holding;
+    });
+    const started = Date.now();
+    expect(
+      await harness.experimental_call("claimPoolMember", claim(null, 300)),
+    ).toEqual({ status: "timed-out" });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(head);
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
   });
 
   it("reports a project folder that is gone or is not a git repository", async ({

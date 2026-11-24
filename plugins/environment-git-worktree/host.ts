@@ -107,6 +107,7 @@ export function createWorktreeHostEntry() {
           path: input.path,
           placeholder: input.placeholder,
           base: input.base,
+          checkTimeoutMs: input.checkTimeoutMs,
           signal: context.signal,
         });
       },
