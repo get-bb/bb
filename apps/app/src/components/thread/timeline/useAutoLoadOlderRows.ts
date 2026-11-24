@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useReducer,
   useRef,
   useState,
   type RefObject,
@@ -49,7 +48,7 @@ async function runOlderRowsLoad(
   onLoadOlderRows: () => Promise<void> | void,
   loadPhaseRef: RefObject<OlderRowsLoadPhase>,
   setAutoLoadFailed: (failed: boolean) => void,
-  commitSettledLoad: () => void,
+  setSettledLoads: (update: (count: number) => number) => void,
 ): Promise<void> {
   try {
     await onLoadOlderRows();
@@ -57,7 +56,7 @@ async function runOlderRowsLoad(
     setAutoLoadFailed(true);
   } finally {
     loadPhaseRef.current = "settled";
-    commitSettledLoad();
+    setSettledLoads((count) => count + 1);
   }
 }
 
@@ -70,7 +69,7 @@ export function useAutoLoadOlderRows({
   const sentinelNodeRef = useRef<HTMLElement | null>(null);
   const loadPhaseRef = useRef<OlderRowsLoadPhase>("idle");
   const [autoLoadFailed, setAutoLoadFailed] = useState(false);
-  const [, commitSettledLoad] = useReducer((count: number) => count + 1, 0);
+  const [, setSettledLoads] = useState(0);
 
   const sentinelRef = useCallback((node: HTMLElement | null) => {
     sentinelNodeRef.current = node;
@@ -91,9 +90,9 @@ export function useAutoLoadOlderRows({
       onLoadOlderRows,
       loadPhaseRef,
       setAutoLoadFailed,
-      commitSettledLoad,
+      setSettledLoads,
     );
-  }, [onLoadOlderRows]);
+  }, [onLoadOlderRows, setSettledLoads]);
 
   const loadOlderRows = useCallback(() => {
     setAutoLoadFailed(false);
