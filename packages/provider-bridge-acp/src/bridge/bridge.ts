@@ -3674,13 +3674,38 @@ function enqueueNativeInterject(
   runtimeRequestId: AcpBridgeRequestId,
   method: string,
 ): void {
+  const owningTurn = session.turnSettled;
   const previous = session.nativeInterjectTail ?? Promise.resolve();
   session.nativeInterjectTail = previous
     .catch(() => undefined)
     .then(() =>
-      steerWithNativeInterject(session, pending, runtimeRequestId, method),
+      steerWithNativeInterject(
+        session,
+        pending,
+        runtimeRequestId,
+        method,
+        owningTurn,
+      ),
     )
     .catch(() => undefined);
+}
+
+function interjectStillOwnsTurn(
+  session: AcpThreadSession,
+  owningTurn: Promise<void> | undefined,
+): boolean {
+  return (
+    owningTurn !== undefined &&
+    session.activePromptKind === "turn" &&
+    session.turnSettled === owningTurn
+  );
+}
+
+function sendStaleNativeInterject(runtimeRequestId: AcpBridgeRequestId): void {
+  const message = "No active turn to interject";
+  sendError(runtimeRequestId, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+    recovery: { kind: "staleTurn", message, retryable: false },
+  });
 }
 
 async function steerWithNativeInterject(
@@ -3688,8 +3713,8 @@ async function steerWithNativeInterject(
   pending: AcpPendingTurnInput,
   runtimeRequestId: AcpBridgeRequestId,
   method: string,
+  owningTurn: Promise<void> | undefined,
 ): Promise<void> {
-  const originalSession = session;
   if (
     session.stopping ||
     sessionsByBbThreadId.get(session.bbThreadId) !== session
@@ -3702,6 +3727,10 @@ async function steerWithNativeInterject(
       message,
       { recovery: { kind: "staleTurn", message, retryable: false } },
     );
+    return;
+  }
+  if (!interjectStillOwnsTurn(session, owningTurn)) {
+    sendStaleNativeInterject(runtimeRequestId);
     return;
   }
   try {
@@ -3719,19 +3748,8 @@ async function steerWithNativeInterject(
     });
     const reconciled = reconcileExecutionSettings(session, pending.options);
     session = reconciled instanceof Promise ? await reconciled : reconciled;
-    if (session.activePromptKind !== "turn") {
-      if (session !== originalSession) {
-        runTurn(session, pending, true);
-        sendResult(runtimeRequestId, { threadId: session.bbThreadId });
-        return;
-      }
-      const message = "No active turn to interject";
-      sendError(
-        runtimeRequestId,
-        BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-        message,
-        { recovery: { kind: "staleTurn", message, retryable: false } },
-      );
+    if (!interjectStillOwnsTurn(session, owningTurn)) {
+      sendStaleNativeInterject(runtimeRequestId);
       return;
     }
     const turnSettled = session.turnSettled;
@@ -4671,6 +4689,67 @@ function grokSubagentActionMatches(
   return grokSubagentToolText(update.rawInput) === action.text;
 }
 
+const GROK_CORRELATED_TOOL_NAMES = new Set([
+  "spawn_subagent",
+  "send_subagent_message",
+  "kill_command_or_subagent",
+]);
+
+function grokToolCallNeedsCorrelation(
+  session: AcpThreadSession,
+  update: {
+    toolCallId?: string;
+    title?: string;
+    rawInput?: unknown;
+    _meta?: unknown;
+  },
+): boolean {
+  if (
+    update.toolCallId !== undefined &&
+    session.grokToolCallsById.has(update.toolCallId)
+  ) {
+    return true;
+  }
+  if (isJsonObject(update.rawInput) && update.rawInput["variant"] === "Task") {
+    return true;
+  }
+  const name = grokSubagentActionToolName(session, update);
+  if (name !== undefined && GROK_CORRELATED_TOOL_NAMES.has(name)) {
+    return true;
+  }
+  if (update.toolCallId === undefined) {
+    return false;
+  }
+  for (const action of session.pendingSubagentActions.values()) {
+    if (action.toolCallId === update.toolCallId) {
+      return true;
+    }
+    if (
+      action.toolCallId === undefined &&
+      (name === undefined || name === action.toolName)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function grokToolCallCorrelationFinished(
+  session: AcpThreadSession,
+  merged: GrokToolCallState,
+  spawnedSubagentId: string | undefined,
+): boolean {
+  if (spawnedSubagentId !== undefined) {
+    return true;
+  }
+  for (const action of session.pendingSubagentActions.values()) {
+    if (action.toolCallId === merged.toolCallId) {
+      return false;
+    }
+  }
+  return merged.status === "completed" || merged.status === "failed";
+}
+
 function rememberGrokToolCall(
   session: AcpThreadSession,
   update: {
@@ -4721,12 +4800,21 @@ function noteGrokSubagentToolCall(
     _meta?: unknown;
   },
 ): string | undefined {
+  if (
+    session.dialect.id !== "grok" ||
+    !grokToolCallNeedsCorrelation(session, update)
+  ) {
+    return undefined;
+  }
   const merged = rememberGrokToolCall(session, update);
   if (merged === undefined) {
     return undefined;
   }
   const spawnedSubagentId = bindGrokSpawnedSubagent(session, merged);
   noteGrokSubagentActionResult(session, merged);
+  if (grokToolCallCorrelationFinished(session, merged, spawnedSubagentId)) {
+    session.grokToolCallsById.delete(merged.toolCallId);
+  }
   return spawnedSubagentId;
 }
 

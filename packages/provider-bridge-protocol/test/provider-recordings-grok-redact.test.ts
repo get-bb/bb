@@ -235,6 +235,10 @@ describe("Grok recording redaction", () => {
     const second = join(root, "second");
     const text = "CHILD_MESSAGE 😀 مراجعة";
     const actionPrompt = `Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly ${JSON.stringify(text)}. Send it only to that child, then return the tool result.`;
+    const cancelPrompt =
+      'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.';
+    const leakedTellPrompt = `Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly ${JSON.stringify(`${text}\nconfidential customer plan`)}. Send it only to that child, then return the tool result.`;
+    const leakedCancelPrompt = `${cancelPrompt}\nconfidential customer plan`;
     writeRecording(input, [
       {
         method: "subagent/tell",
@@ -250,6 +254,18 @@ describe("Grok recording redaction", () => {
       {
         method: "session/prompt",
         params: { prompt: [{ type: "text", text: actionPrompt }] },
+      },
+      {
+        method: "session/prompt",
+        params: { prompt: [{ type: "text", text: cancelPrompt }] },
+      },
+      {
+        method: "session/prompt",
+        params: { prompt: [{ type: "text", text: leakedTellPrompt }] },
+      },
+      {
+        method: "session/prompt",
+        params: { prompt: [{ type: "text", text: leakedCancelPrompt }] },
       },
       {
         method: "subagent/tell",
@@ -393,6 +409,14 @@ describe("Grok recording redaction", () => {
     expect(readMessages(output)).toContainEqual({
       method: "session/prompt",
       params: { prompt: [{ type: "text", text: actionPrompt }] },
+    });
+    expect(readMessages(output)).toContainEqual({
+      method: "session/prompt",
+      params: { prompt: [{ type: "text", text: cancelPrompt }] },
+    });
+    expect(readMessages(output)).toContainEqual({
+      method: "session/prompt",
+      params: { prompt: [{ type: "text", text: "REDACTED_TEXT" }] },
     });
     expect(redacted).not.toContain("private-user-prompt");
     expect(redacted).not.toContain("private-api-key-value");

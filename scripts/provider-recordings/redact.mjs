@@ -80,8 +80,6 @@ const PRESERVED_ENV_VALUES = new Map([
   ["GROK_ACTIVE_AGENT_MESSAGES", "1"],
   ["FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING", "1"],
 ]);
-const GROK_SUBAGENT_ACTION_PROMPT =
-  /^Use (?:send_subagent_message|kill_command_or_subagent) with /;
 const GROK_SYNTHETIC_SUBAGENT_MESSAGE = "CHILD_MESSAGE 😀 مراجعة";
 const GROK_SYNTHETIC_SUBAGENT_MESSAGES = new Set([
   GROK_SYNTHETIC_SUBAGENT_MESSAGE,
@@ -95,6 +93,10 @@ const PRESERVED_RAW_INPUT_KEYS = ["subagent_id", "task_id", "delivery"];
 const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
   "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
+]);
+const GROK_SYNTHETIC_SUBAGENT_PROMPTS = new Set([
+  'Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly "CHILD_MESSAGE 😀 مراجعة". Send it only to that child, then return the tool result.',
+  'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.',
 ]);
 
 function parseArgs(argv) {
@@ -420,9 +422,7 @@ function redactLine(line) {
       if (
         item?.type === "text" &&
         typeof item.text === "string" &&
-        GROK_SUBAGENT_ACTION_PROMPT.test(item.text) &&
-        (item.text.includes(GROK_SYNTHETIC_SUBAGENT_MESSAGE) ||
-          item.text.includes('task_ids=["child-alpha"]')) &&
+        GROK_SYNTHETIC_SUBAGENT_PROMPTS.has(item.text) &&
         redacted.params.prompt[index] !== null &&
         typeof redacted.params.prompt[index] === "object"
       ) {

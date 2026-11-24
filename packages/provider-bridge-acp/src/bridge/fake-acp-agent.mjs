@@ -775,6 +775,27 @@ function spawnGrokSubagentPair() {
     status: "completed",
     output: "STALE",
   });
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_REBIND_AFTER_SPAWN === "1") {
+    notifySubagent("subagent_spawned", {
+      subagent_id: "child-gamma",
+      attempt_id: "attempt-child-gamma",
+      parent_session_id: activeSessionId,
+      parent_prompt_id: "parent-prompt",
+      child_session_id: "session-child-gamma",
+      subagent_type: "general-purpose",
+      description: "CHILD_GAMMA",
+      model: "grok-test",
+    });
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "spawn-alpha",
+      status: "completed",
+      rawOutput: {
+        type: "Text",
+        text: "Subagent started in background.\nsubagent_id: child-gamma\ndescription: CHILD_GAMMA",
+      },
+    });
+  }
 }
 
 async function handleGrokSubagentTell(text) {

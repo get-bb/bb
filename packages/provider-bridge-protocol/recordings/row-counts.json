@@ -126,7 +126,7 @@
     "grammarDrops": 0
   },
   "acp-grok/subagent": {
-    "events": 24,
+    "events": 23,
     "rows": 3,
     "unhandled": 0,
     "grammarDrops": 0
