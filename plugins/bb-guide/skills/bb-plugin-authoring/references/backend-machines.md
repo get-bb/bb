@@ -331,23 +331,41 @@ teardown status/attempt/message.
 
 A provider can build environments ahead of time and hand one to each new
 thread. Here each environment is an app checkout with sibling `api` and
-`docs` checkouts, which threads also read and write. `cloneStack` and
-`removeStack` stand for your own build and cleanup:
+`docs` checkouts, which threads also read and write. `StackBuilder` stands
+for your own code that builds and removes them on the machine, such as a
+host RPC:
 
 ```ts
-const PROVIDER_ID = "stack";
+interface StackBuilder {
+  build(
+    key: string,
+    signal: AbortSignal,
+  ): Promise<{ app: string; api: string; docs: string }>;
+  remove(app: string): Promise<void>;
+}
 
-export default async function plugin(bb: BbPluginApi) {
+function registerStackProvider(stacks: StackBuilder) {
+  const PROVIDER_ID = "stack";
   const holder = `plugin:${bb.pluginId}` as const;
 
-  function warmUp(projectId: string, hostId: string) {
-    return bb.sdk.environments.experimental_create({
+  const warmUp = (projectId: string, hostId: string) =>
+    bb.sdk.environments.experimental_create({
       projectId,
       hostId,
       provider: { id: PROVIDER_ID },
       hold: "plugin",
     });
-  }
+
+  const build = async (key: string, signal: AbortSignal) => {
+    const stack = await stacks.build(key, signal);
+    return {
+      status: "created" as const,
+      path: stack.app,
+      ownsPath: true,
+      additionalPaths: [stack.api, stack.docs],
+      resource: stack.app,
+    };
+  };
 
   bb.experimental_environments.register({
     apiVersion: 2,
@@ -373,41 +391,25 @@ export default async function plugin(bb: BbPluginApi) {
         for (const candidate of warm) {
           if (candidate.status !== "ready" || candidate.path === null) continue;
           try {
-            await context.adopt(candidate.id, { root: candidate.path });
+            await context.adopt(candidate.id, candidate.path);
           } catch {
             continue;
           }
-          context.report.step(`Adopted warm stack ${candidate.id}`);
           void warmUp(context.project.id, context.host.id);
           return {
             status: "created",
             path: candidate.path,
             ownsPath: true,
-            resource: { root: candidate.path },
+            resource: candidate.path,
           };
         }
       }
-      const stack = await cloneStack(context);
-      return {
-        status: "created",
-        path: stack.app,
-        ownsPath: true,
-        additionalPaths: [stack.api, stack.docs],
-        resource: { root: stack.app },
-      };
+      return build(context.pathKey, context.signal);
     },
-    async restore(context) {
-      const stack = await cloneStack(context);
-      return {
-        status: "created",
-        path: stack.app,
-        ownsPath: true,
-        additionalPaths: [stack.api, stack.docs],
-        resource: { root: stack.app },
-      };
-    },
+    restore: (context) => build(context.pathKey, context.signal),
     async remove(context) {
-      await removeStack(context.resource);
+      if (typeof context.resource === "string")
+        await stacks.remove(context.resource);
       return { status: "removed" };
     },
   });
