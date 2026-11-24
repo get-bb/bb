@@ -208,7 +208,10 @@ export function SettingsListRows({
     <div
       role="list"
       aria-label={label}
-      className={cn(dividers && "divide-y divide-border")}
+      className={cn(
+        "@container/settings-list",
+        dividers && "divide-y divide-border",
+      )}
     >
       {children}
     </div>
@@ -275,6 +278,14 @@ export function SettingsListMessage({
 
 const SettingsListDepthContext = createContext(0);
 
+function gridColumns(hasLeading: boolean, hasControl: boolean): string {
+  if (!hasControl)
+    return hasLeading ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-1";
+  return hasLeading
+    ? "grid-cols-[1rem_minmax(0,1fr)] @min-[30rem]/settings-list:grid-cols-[1rem_minmax(0,1fr)_auto] has-[>[data-settings-control]_[role=switch]]:grid-cols-[1rem_minmax(0,1fr)_auto]"
+    : "grid-cols-1 @min-[30rem]/settings-list:grid-cols-[minmax(0,1fr)_auto] has-[>[data-settings-control]_[role=switch]]:grid-cols-[minmax(0,1fr)_auto]";
+}
+
 export type SettingsListMeta = readonly (ReactNode | null | false)[];
 
 interface SettingsListItemProps {
@@ -314,50 +325,43 @@ export function SettingsListItem({
       <div
         className={cn(
           "grid items-center gap-x-3",
-          leading === undefined
-            ? control === undefined
-              ? "grid-cols-1"
-              : "grid-cols-[minmax(0,1fr)_auto]"
-            : control === undefined
-              ? "grid-cols-[1rem_minmax(0,1fr)]"
-              : "grid-cols-[1rem_minmax(0,1fr)_auto]",
+          gridColumns(leading !== undefined, control !== undefined),
           !hasDetails && "min-h-9",
         )}
       >
         {leading === undefined ? null : (
           <div className="flex justify-center">{leading}</div>
         )}
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+        <div className="min-w-0 break-words">
           <span
             className={cn(
-              "min-w-0 truncate text-foreground",
+              "text-foreground",
               nested ? "font-normal" : "font-medium",
             )}
           >
             {title}
           </span>
-          {badge === undefined ? null : (
-            <span className="self-center">
-              {typeof badge === "string" ? (
-                <SettingsBadge>{badge}</SettingsBadge>
-              ) : (
-                badge
-              )}
-            </span>
-          )}
           {visibleMeta.map((item, index) => (
-            <span
-              key={index}
-              className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs text-subtle-foreground"
-            >
-              <span aria-hidden>·</span>
-              <span className="min-w-0 truncate">{item}</span>
+            <span key={index} className="text-xs text-subtle-foreground">
+              <span aria-hidden className="ml-1.5 pr-0.5">
+                ·
+              </span>{" "}
+              <span>{item}</span>
             </span>
           ))}
+          {badge === undefined ? null : (
+            <>
+              {" "}
+              <span className="inline-flex align-middle">
+                {typeof badge === "string" ? (
+                  <SettingsBadge>{badge}</SettingsBadge>
+                ) : (
+                  badge
+                )}
+              </span>
+            </>
+          )}
         </div>
-        {control === undefined ? null : (
-          <div className="flex items-center gap-2">{control}</div>
-        )}
         {hasDetails ? (
           <div
             className={cn(
@@ -383,6 +387,19 @@ export function SettingsListItem({
             ) : null}
           </div>
         ) : null}
+        {control === undefined ? null : (
+          <div
+            data-settings-control=""
+            className={cn(
+              "flex items-center gap-2",
+              leading === undefined
+                ? "col-start-1 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-2 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch]]:col-start-2 has-[[role=switch]]:row-start-1 has-[[role=switch]]:mt-0 has-[[role=switch]]:justify-self-end"
+                : "col-start-2 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-3 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch]]:col-start-3 has-[[role=switch]]:row-start-1 has-[[role=switch]]:mt-0 has-[[role=switch]]:justify-self-end",
+            )}
+          >
+            {control}
+          </div>
+        )}
       </div>
       {children === undefined ? null : (
         <SettingsListDepthContext.Provider value={depth + 1}>
