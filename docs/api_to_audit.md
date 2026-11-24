@@ -4475,7 +4475,7 @@ Requires SDK 0.6.178.
 
 - **Surface:** `experimental_makeActionContext(overrides?: Partial<ExperimentalPluginActionContext>): ExperimentalActionContextFixture`,
   a complete `ExperimentalPluginActionContext` plus `calls:
-ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
+  ExperimentalActionContextCall[]` (`{ member, args }`). Defaults record each
   call: `threadRequests` methods resolve, `composer` is null, `navigate` methods return
   false except `experimental_threadHref` and `experimental_settingsHref`,
   which return the test harness's paths (`/threads/<id>#msg=<seq>`,

@@ -180,6 +180,7 @@ export function createWorktreeHostEntry() {
             branchName: input.branchName,
             baseBranch,
             branchMode: input.branchMode,
+            role: "workspace",
             onProgress: createHostProgress({
               operationId: input.operationId,
               emit: (payload) =>

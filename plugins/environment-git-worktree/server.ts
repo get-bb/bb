@@ -445,56 +445,54 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       .catch(() => undefined);
   }
 
-  async function resolveBranchedFolders(context: {
-    project: { id: string };
-    host: { id: string; name: string };
-    projectCheckout: { path: string };
-    inputs: WorktreeInputs;
-  }): Promise<
-    | { status: "accepted"; folders: string[] }
-    | { status: "refused"; message: string }
-  > {
-    if ("kind" in context.inputs || context.inputs.folders.length === 0) {
-      return { status: "accepted", folders: [] };
-    }
-    const project = await bb.sdk.projects.get({
-      projectId: context.project.id,
+  async function listProjectFolderPaths(args: {
+    projectId: string;
+    hostId: string;
+  }): Promise<string[]> {
+    const project = await bb.sdk.projects.get({ projectId: args.projectId });
+    const source = project.sources.find(
+      (candidate) =>
+        candidate.type === "local_path" && candidate.hostId === args.hostId,
+    );
+    if (source === undefined) return [];
+    const folders = await bb.sdk.projects.sources.experimental_folders.list({
+      projectId: args.projectId,
+      sourceId: source.id,
     });
-    const source =
-      project.sources.find(
-        (candidate) =>
-          candidate.type === "local_path" &&
-          candidate.hostId === context.host.id &&
-          candidate.path === context.projectCheckout.path,
-      ) ??
-      project.sources.find(
-        (candidate) =>
-          candidate.type === "local_path" &&
-          candidate.hostId === context.host.id,
-      );
-    const projectFolders =
-      source === undefined
-        ? []
-        : await bb.sdk.projects.sources.experimental_folders.list({
-            projectId: context.project.id,
-            sourceId: source.id,
-          });
+    return folders.map((folder) => folder.path);
+  }
+
+  async function matchProjectFolders(context: {
+    project: { id: string };
+    host: { id: string };
+    inputs: WorktreeInputs;
+  }): Promise<{ folders: string[]; unknown: string[] }> {
+    if ("kind" in context.inputs || context.inputs.folders.length === 0) {
+      return { folders: [], unknown: [] };
+    }
+    const projectFolders = await listProjectFolderPaths({
+      projectId: context.project.id,
+      hostId: context.host.id,
+    });
     const folders: string[] = [];
+    const unknown: string[] = [];
     for (const requested of context.inputs.folders) {
       const match = projectFolders.find(
-        (folder) =>
-          trimTrailingSeparators(folder.path) ===
+        (folderPath) =>
+          trimTrailingSeparators(folderPath) ===
           trimTrailingSeparators(requested),
       );
-      if (match === undefined) {
-        return {
-          status: "refused",
-          message: `${requested} is not one of this project's folders on ${context.host.name}, so it can't be branched. List them with \`bb project folder list ${context.project.id}\`.`,
-        };
-      }
-      if (!folders.includes(match.path)) folders.push(match.path);
+      if (match === undefined) unknown.push(requested);
+      else if (!folders.includes(match)) folders.push(match);
     }
-    return { status: "accepted", folders };
+    return { folders, unknown };
+  }
+
+  function unknownFolderMessage(
+    context: { project: { id: string }; host: { name: string } },
+    folder: string,
+  ): string {
+    return `${folder} is not one of this project's folders on ${context.host.name}, so it can't be branched. List them with \`bb project folder list ${context.project.id}\`.`;
   }
 
   bb.experimental_environments.register({
@@ -509,18 +507,24 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     locate: ({ inputs }) =>
       "kind" in inputs ? { path: inputs.path, reuse: true } : null,
     async validate(context) {
-      const resolved = await resolveBranchedFolders(context);
-      return resolved.status === "refused"
-        ? { action: "refuse", message: resolved.message }
-        : { action: "accept" };
+      const { unknown } = await matchProjectFolders(context);
+      return unknown[0] === undefined
+        ? { action: "accept" }
+        : {
+            action: "refuse",
+            message: unknownFolderMessage(context, unknown[0]),
+          };
     },
     async create(context) {
       if ("kind" in context.inputs) {
         return adoptExistingWorktree(context, context.inputs.path);
       }
-      const branched = await resolveBranchedFolders(context);
-      if (branched.status === "refused") {
-        return { status: "failed", message: branched.message };
+      const branched = await matchProjectFolders(context);
+      if (branched.unknown[0] !== undefined) {
+        return {
+          status: "failed",
+          message: unknownFolderMessage(context, branched.unknown[0]),
+        };
       }
       if (context.inputs.branch.kind === "default") {
         const ownedBranch = (name: string, baseBranch: string) => ({
@@ -653,9 +657,15 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         resource !== null && "ownedBranch" in resource
           ? resource.ownedBranch
           : null;
+      const matched = await matchProjectFolders(context);
+      for (const folder of matched.unknown) {
+        context.report.step(
+          `Skipped ${folder}: it is no longer one of this project's folders`,
+        );
+      }
       const folders = await createFolderWorktrees(context, {
         path: created.path,
-        folders: context.inputs.folders,
+        folders: matched.folders,
         branchName,
         branchMode: "reuse-existing",
       });
@@ -668,20 +678,20 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         );
         return folders;
       }
-      if (folders.folders.length === 0) return created;
       const folderBranches = folderBranchesOf(
         folders.folders.filter((folder) => folder.ownsBranch),
         branchName,
       );
-      return withFolders(
-        {
-          ...created,
-          ...(ownedBranch === null && folderBranches.length === 0
-            ? {}
-            : { resource: { ownedBranch, folderBranches } }),
-        },
-        folders.folders,
-      );
+      return {
+        ...created,
+        ...(ownedBranch === null && folderBranches.length === 0
+          ? {}
+          : { resource: { ownedBranch, folderBranches } }),
+        additionalPaths: folders.folders.map((folder) => folder.path),
+        replacedProjectFolders: folders.folders.map(
+          (folder) => folder.sourcePath,
+        ),
+      };
     },
     async remove(context) {
       const resource = parseWorktreeResource(context.resource);
@@ -721,20 +731,11 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
 
   bb.rpc.register(worktreeRpcContract, {
     async listBranchableFolders({ projectId, hostId }) {
-      const project = await bb.sdk.projects.get({ projectId });
-      const source = project.sources.find(
-        (candidate) =>
-          candidate.hostId === hostId && candidate.type === "local_path",
-      );
-      if (source === undefined) return { folders: [] };
-      const folders = await bb.sdk.projects.sources.experimental_folders.list({
-        projectId,
-        sourceId: source.id,
-      });
+      const folders = await listProjectFolderPaths({ projectId, hostId });
       if (folders.length === 0) return { folders: [] };
       const repositories = await host.call(
         "listFolderRepositories",
-        { paths: folders.map((folder) => folder.path) },
+        { paths: folders },
         { hostId },
       );
       return { folders: repositories.paths };

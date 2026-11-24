@@ -367,7 +367,7 @@ function WorktreeInputsControl({
     existingPath ??
     (folders.length === 0
       ? `Create a worktree from ${baseBranchLabel}`
-      : `Create a worktree from ${baseBranchLabel}, and worktrees of ${folders.join(", ")}`);
+      : `Create a worktree from ${baseBranchLabel}, and worktrees of ${folders.join(", ")} from their default branches`);
 
   const updateOpen = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -522,7 +522,7 @@ function WorktreeInputsControl({
                         value={folderRowValue(folder)}
                         icon="FolderGit"
                         selected={folders.includes(folder)}
-                        title={`Give this thread its own worktree of ${folder} on the same branch, instead of the shared folder`}
+                        title={`Give this thread its own worktree of ${folder}, started from that repository's default branch and named like the thread's branch, instead of the shared folder`}
                         onSelect={() => toggleFolder(folder)}
                       >
                         <span className="flex min-w-0 flex-1 flex-col">

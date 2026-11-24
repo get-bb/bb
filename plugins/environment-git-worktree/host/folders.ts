@@ -132,6 +132,7 @@ export async function createFolderWorktrees(args: {
             kind: "default",
           }),
           branchMode: args.branchMode,
+          role: "folder",
           onProgress: prefixProgress(
             args.onProgress,
             path.basename(folder.sourcePath),

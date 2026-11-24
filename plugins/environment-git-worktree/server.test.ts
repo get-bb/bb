@@ -533,6 +533,26 @@ describe("branching project folders", () => {
     expect(fixture.harness.experimental_hostRpcCalls).toEqual([]);
   });
 
+  it("restores without a folder that left the project, and clears the recorded folder lists", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const restored = await fixture.restore({
+      ...restoreContext(fixture.context, "bb/original-thread"),
+      inputs: { branch: { kind: "default" }, folders: ["/code/gone"] },
+    });
+    expect(restored).toMatchObject({
+      status: "created",
+      path: WORKTREE_PATH,
+      additionalPaths: [],
+      replacedProjectFolders: [],
+    });
+    expect(fixture.steps).toContain(
+      "Skipped /code/gone: it is no longer one of this project's folders",
+    );
+    expect(
+      fixture.harness.experimental_hostRpcCalls.map((call) => call.method),
+    ).toEqual(["create"]);
+  });
+
   it("fails the create and removes the main worktree when a folder worktree fails", async () => {
     const fixture = await setup(
       folderHost(() => ({

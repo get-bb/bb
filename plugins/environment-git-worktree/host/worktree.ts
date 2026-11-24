@@ -54,6 +54,7 @@ export interface CreateWorktreeArgs {
   branchName: string | null;
   baseBranch: ResolvedWorktreeBaseBranch | null;
   branchMode: BranchMode;
+  role: "workspace" | "folder";
   onProgress?: ProgressCallback | undefined;
   signal?: AbortSignal | undefined;
 }
@@ -527,11 +528,20 @@ async function refreshWorktreeIndex(
 
 async function finishWorktreeSetup(args: CreateWorktreeArgs): Promise<void> {
   await refreshWorktreeIndex(args.targetPath, args.signal);
-  emitCwd({
-    onProgress: args.onProgress,
-    keySuffix: "target",
-    cwd: args.targetPath,
-  });
+  if (args.role === "workspace") {
+    emitCwd({
+      onProgress: args.onProgress,
+      keySuffix: "target",
+      cwd: args.targetPath,
+    });
+  } else {
+    emitStep({
+      onProgress: args.onProgress,
+      key: "folder-worktree-path",
+      text: `Worktree at ${args.targetPath}`,
+      status: "completed",
+    });
+  }
   await copyIncludedFiles({
     sourcePath: args.sourcePath,
     targetPath: args.targetPath,
