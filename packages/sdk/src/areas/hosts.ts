@@ -366,11 +366,12 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     async get(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"].$get(
-          {
-            param: { id: input.hostId },
-            query:
-              input.includeRemoved === true ? { includeRemoved: "true" } : {},
-          },
+          input.includeRemoved === true
+            ? {
+                param: { id: input.hostId },
+                query: { includeRemoved: "true" },
+              }
+            : { param: { id: input.hostId } },
           ...signalRequestArgs(input.signal),
         ),
       );

@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,14 +36,14 @@ afterEach(() => {
   removePluginSlotRegistrations("automations");
 });
 
-function renderInfo(
+async function renderInfo(
   fixture: ThreadInfoFixture,
   threadId: string,
   environmentId: string | null = null,
 ) {
   const queryClient = createThreadInfoQueryClient();
   seedThreadInfo(queryClient, fixture);
-  return render(
+  const view = render(
     <ThreadInfoFixtureProvider queryClient={queryClient}>
       <ThreadInfo
         threadId={threadId}
@@ -50,6 +51,12 @@ function renderInfo(
       />
     </ThreadInfoFixtureProvider>,
   );
+  await waitFor(() =>
+    expect(
+      view.container.querySelector("[data-thread-info-pending]"),
+    ).toBeNull(),
+  );
+  return view;
 }
 
 function rowLabels(): string[] {
@@ -66,7 +73,7 @@ function rowValue(label: string): HTMLElement {
 }
 
 describe("ThreadInfo", () => {
-  it("shows plugin sections and core rows on a thread with no environment or parent", () => {
+  it("shows plugin sections and core rows on a thread with no environment or parent", async () => {
     setPluginSlotRegistrations(
       "automations",
       makePluginRegistrationSet({
@@ -84,7 +91,7 @@ describe("ThreadInfo", () => {
         ],
       }),
     );
-    renderInfo(
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -104,14 +111,14 @@ describe("ThreadInfo", () => {
     expect(rowLabels()).toEqual(["Parent", "Project"]);
   });
 
-  it("names the machine and offers a new thread in a reusable environment", () => {
+  it("names the machine and offers a new thread in a reusable environment", async () => {
     const environment = makeEnvironment({
       id: "env_1",
       hostId: "host_b",
       path: "/work/bb",
       environmentProviderId: "git-worktree",
     });
-    renderInfo(
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -151,13 +158,13 @@ describe("ThreadInfo", () => {
     expect(within(rowValue("Directory")).getByTitle("/work/bb")).toBeTruthy();
   });
 
-  it("keeps naming a removed machine through the removed-host read", () => {
+  it("keeps naming a removed machine through the removed-host read", async () => {
     const environment = makeEnvironment({
       id: "env_gone",
       hostId: "host_gone",
       hostLifecycle: "removed",
     });
-    renderInfo(
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -195,8 +202,8 @@ describe("ThreadInfo", () => {
     ).toBe("Old cloud box (unavailable)");
   });
 
-  it("marks a failed provisioning only when the thread says provisioning failed", () => {
-    renderInfo(
+  it("marks a failed provisioning only when the thread says provisioning failed", async () => {
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -223,7 +230,7 @@ describe("ThreadInfo", () => {
     );
     cleanup();
 
-    renderInfo(
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -241,8 +248,8 @@ describe("ThreadInfo", () => {
     expect(rowLabels()).not.toContain("Environment");
   });
 
-  it("shows an archived thread the sidebar does not hold, with Unarchive", () => {
-    renderInfo(
+  it("shows an archived thread the sidebar does not hold, with Unarchive", async () => {
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [],
@@ -264,8 +271,8 @@ describe("ThreadInfo", () => {
     ).toBeTruthy();
   });
 
-  it("lists active child threads and forks and leaves out side chats", () => {
-    renderInfo(
+  it("lists active child threads and forks and leaves out side chats", async () => {
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [
@@ -298,8 +305,8 @@ describe("ThreadInfo", () => {
     expect(screen.getByRole("link", { name: "Fork work" })).toBeTruthy();
   });
 
-  it("offers project threads as parents, threads with children first, never itself or its descendants", () => {
-    renderInfo(
+  it("offers project threads as parents, threads with children first, never itself or its descendants", async () => {
+    await renderInfo(
       {
         projectId: PROJECT_ID,
         sidebarThreads: [

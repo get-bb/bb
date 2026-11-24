@@ -384,22 +384,29 @@ const coreContributionImports = {
 };
 
 const corePluginSdkAppSpecifier = "@get-bb/plugin-sdk/app";
-const corePluginSdkAppBindingPath = path.join(
+const corePluginSdkAppBindingDir = path.join(
   repoRoot,
   "apps",
   "app",
   "src",
   "lib",
+);
+const corePluginSdkAppBindingPath = path.join(
+  corePluginSdkAppBindingDir,
   "core-plugin-sdk-app.ts",
 );
+const corePluginSdkAppLazyBindingPath = path.join(
+  corePluginSdkAppBindingDir,
+  "core-plugin-sdk-app-lazy.ts",
+);
 
-function readCorePluginSdkAppBindingExports() {
-  const source = readFileSync(corePluginSdkAppBindingPath, "utf8");
+function readCorePluginSdkAppBindingExports(bindingPath) {
+  const source = readFileSync(bindingPath, "utf8");
   const statement = /export\s*\{([^}]*)\}\s*from\s*"[^"]+";/gu;
   const unparsed = source.replace(statement, "").trim();
   if (unparsed !== "") {
     throw new Error(
-      `${corePluginSdkAppBindingPath} may contain only \`export { ... } from "...";\` statements so bb/core-plugin-sdk-app-binding can read its exports. Unparsed: ${unparsed}`,
+      `${bindingPath} may contain only \`export { ... } from "...";\` statements so bb/core-plugin-sdk-app-binding can read its exports. Unparsed: ${unparsed}`,
     );
   }
   return new Set(
@@ -413,12 +420,28 @@ function readCorePluginSdkAppBindingExports() {
   );
 }
 
-const corePluginSdkAppBindingExports = readCorePluginSdkAppBindingExports();
+const corePluginSdkAppBindingExports = readCorePluginSdkAppBindingExports(
+  corePluginSdkAppBindingPath,
+);
+const corePluginSdkAppLazyBindingExports = readCorePluginSdkAppBindingExports(
+  corePluginSdkAppLazyBindingPath,
+);
 
 const corePluginSdkAppBinding = {
   create(context) {
-    const binding =
-      "apps/app/vite-core-plugin-sdk-app.ts resolves @get-bb/plugin-sdk/app in app source to apps/app/src/lib/core-plugin-sdk-app.ts, so every other member is undefined at runtime even though it typechecks. Re-export the member there from the implementation pluginSdkAppImplementation serves, or import it as a type.";
+    const relativeToContributions = path.relative(
+      coreContributionRoot,
+      path.resolve(context.filename),
+    );
+    const lazy =
+      !relativeToContributions.startsWith("..") &&
+      relativeToContributions.includes(path.sep);
+    const exports = lazy
+      ? corePluginSdkAppLazyBindingExports
+      : corePluginSdkAppBindingExports;
+    const binding = lazy
+      ? "apps/app/vite-core-plugin-sdk-app.ts resolves @get-bb/plugin-sdk/app in files under a subdirectory of apps/app/src/core-contributions, which core loads only through import(), to apps/app/src/lib/core-plugin-sdk-app-lazy.ts, so every other member is undefined at runtime even though it typechecks. Re-export the member there from the implementation pluginSdkAppImplementation serves, or import it as a type."
+      : "apps/app/vite-core-plugin-sdk-app.ts resolves @get-bb/plugin-sdk/app in app source to apps/app/src/lib/core-plugin-sdk-app.ts, which is in the boot payload, so every other member is undefined at runtime even though it typechecks. Re-export a light member there from the implementation pluginSdkAppImplementation serves; load a heavy one from a core contribution's subdirectory module through import(), which gets core-plugin-sdk-app-lazy.ts; or import it as a type.";
 
     function isBindingSource(node) {
       return (
@@ -427,7 +450,7 @@ const corePluginSdkAppBinding = {
     }
 
     function checkName(node, name) {
-      if (corePluginSdkAppBindingExports.has(name)) return;
+      if (exports.has(name)) return;
       context.report({
         node,
         message: `${name} is not exported by the core binding of ${corePluginSdkAppSpecifier}. ${binding}`,

@@ -91,6 +91,7 @@ import {
   upsertThreadSearchSegments,
   type ReorderPinnedThreadArgs,
   clearThreadForkHistoryCopyMark,
+  getThreadFailureKind,
   getThreadStatus,
   hasLiveChildThread,
   hasProjectThreads,
@@ -874,6 +875,10 @@ const PROMPT_HISTORY_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
 ];
 
 const THREAD_LIFECYCLE_CASES: readonly QueryCostCase<ThreadsSeed>[] = [
+  {
+    name: `${THREADS}#getThreadFailureKind`,
+    run: (db, fixture) => getThreadFailureKind(db, fixture.threadId),
+  },
   {
     name: `${THREADS}#getThreadStatus`,
     run: (db, fixture) => getThreadStatus(db, fixture.threadId),

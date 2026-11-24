@@ -56,6 +56,13 @@ export function ThreadInfoCard({ children }: { children: ReactNode }) {
 
 const SKELETON_ROW_VALUE_WIDTHS = ["w-40", "w-28", "w-36", "w-24"];
 
+const SKELETON_ROWS = SKELETON_ROW_VALUE_WIDTHS.map((valueWidth, index) => (
+  <div key={index} className={cn(DETAIL_GRID_CLASS, "items-center py-0.5")}>
+    <Skeleton className="h-3 w-14 rounded-sm" />
+    <Skeleton className={`h-3 ${valueWidth} max-w-full rounded-sm`} />
+  </div>
+));
+
 export function ThreadInfoSkeleton() {
   return (
     <div
@@ -63,17 +70,7 @@ export function ThreadInfoSkeleton() {
       aria-label="Loading thread info"
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <ThreadInfoCard>
-        {SKELETON_ROW_VALUE_WIDTHS.map((valueWidth, index) => (
-          <div
-            key={index}
-            className={cn(DETAIL_GRID_CLASS, "items-center py-0.5")}
-          >
-            <Skeleton className="h-3 w-14 rounded-sm" />
-            <Skeleton className={`h-3 ${valueWidth} max-w-full rounded-sm`} />
-          </div>
-        ))}
-      </ThreadInfoCard>
+      <ThreadInfoCard>{SKELETON_ROWS}</ThreadInfoCard>
     </div>
   );
 }
@@ -89,7 +86,10 @@ function ThreadInfoBody(props: ExperimentalThreadInfoProps) {
             <ThreadInfoRows {...props} />
           </div>
           <ThreadInfoSections {...props} />
-          <p className="hidden text-sm text-muted-foreground [:not(:has(dt)):not(:has([data-info-section]))>&]:block">
+          <div className="hidden flex-col gap-1.5 [:has([data-thread-info-pending]):not(:has(dt)):not(:has([data-info-section]))>&]:flex">
+            {SKELETON_ROWS}
+          </div>
+          <p className="hidden text-sm text-muted-foreground [:not(:has(dt)):not(:has([data-info-section])):not(:has([data-thread-info-pending]))>&]:block">
             {NO_DETAILS_MESSAGE}
           </p>
         </div>
