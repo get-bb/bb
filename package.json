@@ -69,6 +69,7 @@
     "tsx": "^4.23.15",
     "turbo": "^2.11.10",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "ultracite": "7.12.4",
     "vitest": "^4.1.12"
   },
   "packageManager": "pnpm@9.15.0",

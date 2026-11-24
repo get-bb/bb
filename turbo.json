@@ -450,7 +450,9 @@
     "lint": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/.oxlintrc.json",
+        "$TURBO_ROOT$/oxlint.config.ts",
+        "$TURBO_ROOT$/oxlint.policy.json",
+        "$TURBO_ROOT$/oxlint.migration.json",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
