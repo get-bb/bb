@@ -25,6 +25,7 @@ import { readJson } from "../helpers/json.js";
 import {
   inspectResult,
   registerFakeDaemon,
+  SERVER_MOVE_STEP_POLL,
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { seedHost, seedPrimaryHost } from "../helpers/seed.js";
@@ -184,7 +185,9 @@ describe("server move routes", () => {
       });
       expect(start.status).toBe(200);
       const started = serverMoveStatusSchema.parse(await readJson(start));
-      await expect.poll(() => received.prepare !== null).toBe(true);
+      await expect
+        .poll(() => received.prepare !== null, SERVER_MOVE_STEP_POLL)
+        .toBe(true);
       const prepareCommand = received.prepare;
       if (prepareCommand === null) {
         throw new Error("The target never received prepare");
@@ -288,7 +291,7 @@ describe("server move routes", () => {
           const response = await harness.app.request(`${API}/server/move`);
           return serverMoveStatusResponseSchema.parse(await readJson(response))
             .move?.state;
-        })
+        }, SERVER_MOVE_STEP_POLL)
         .toBe("completed");
 
       expect(
@@ -394,10 +397,10 @@ describe("server move routes", () => {
           method: "DELETE",
           headers: machine,
         }),
-        harness.app.request(
-          `${API}/hosts/${OLD}/old-server-copy/delete-jobs`,
-          { method: "POST", headers: machine },
-        ),
+        harness.app.request(`${API}/hosts/${OLD}/old-server-copy/delete-jobs`, {
+          method: "POST",
+          headers: machine,
+        }),
       ]);
       for (const response of responses) {
         expect(response.status).toBe(403);
@@ -516,6 +519,7 @@ describe("server move routes", () => {
                 join(harness.config.dataDir, "server-export"),
               ).catch(() => [])
             ).length,
+          SERVER_MOVE_STEP_POLL,
         )
         .toBe(0);
     }));
