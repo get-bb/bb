@@ -221,12 +221,6 @@ describe("every codex lifecycle delta carries a presentation", () => {
       threadId: "t1",
       turnId: "turn-1",
       startedAtMs: 0,
-      item: { type: "imageView", id: "i1", path: "/tmp/x.png" },
-    },
-    {
-      threadId: "t1",
-      turnId: "turn-1",
-      startedAtMs: 0,
       item: { type: "reasoning", id: "r1", summary: ["s"], content: ["c"] },
     },
     {

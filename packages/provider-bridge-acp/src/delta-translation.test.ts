@@ -1915,19 +1915,13 @@ describe("acp delta translation (native kinds → core kinds)", () => {
       ) {
         throw new Error("Expected one started and one completed image item");
       }
-      const image = {
-        type: "imageView",
-        path: imagePath,
-        presentation: {
-          label: { pending: "Viewing image", completed: "Viewed image" },
-          icon: { glyph: "Eye" },
-        },
-      };
+      const image = { type: "imageView", path: imagePath };
       expect(startedEvent.item).toMatchObject(image);
       expect(completedEvent.item).toMatchObject({
         ...image,
         id: startedEvent.item.id,
       });
+      expect(completedEvent.item).not.toHaveProperty("presentation");
       expect(
         completedItems(harness.translate(turnCompletedEvent("end_turn"))),
       ).toEqual([]);

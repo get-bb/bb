@@ -8,6 +8,7 @@ import type {
   PendingInteractionPayload,
   PendingInteractionResolution,
 } from "@bb/domain";
+import { fileReadPresentation } from "@bb/provider-bridge-protocol/bridge-kit";
 import { toolKindPresentation } from "./presentation.js";
 import {
   type AcpToolCallOperation,
@@ -101,7 +102,7 @@ function buildToolUseSubject(
     classifyAcpToolCall(event, toolCall.injectedTool, options);
   const own = classify(permissionToolCallEvent(toolCall));
   const described =
-    own.presentation.title === undefined && toolCall.startedToolCall
+    own.presentation?.title === undefined && toolCall.startedToolCall
       ? classify(toolCall.startedToolCall)
       : own;
   return {
@@ -113,7 +114,11 @@ function buildToolUseSubject(
         : (toolCall.kind ??
           toolCall.startedToolCall?.kind ??
           described.item.type),
-    presentation: described.presentation,
+    presentation:
+      described.presentation ??
+      (described.item.type === "imageView"
+        ? fileReadPresentation(described.item.path)
+        : toolKindPresentation({ kind: toolCall.kind, title: toolCall.title })),
   };
 }
 

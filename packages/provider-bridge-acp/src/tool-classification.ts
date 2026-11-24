@@ -7,7 +7,6 @@ import {
   REASONING_PRESENTATION,
   extractResultText,
   fileReadPresentation,
-  imageViewPresentation,
   searchPresentation,
   toOptionalString,
   toolPresentation,
@@ -33,7 +32,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface AcpClassifiedToolCall {
   item: DeltaItemShape;
-  presentation: DeltaPresentation;
+  presentation: DeltaPresentation | undefined;
 }
 
 export interface AcpInjectedTool {
@@ -397,7 +396,7 @@ function fileReadItem(
   if (isAcpLocalAbsolutePath(readPath) && IMAGE_PATH_PATTERN.test(readPath)) {
     return {
       item: { type: "imageView", path: readPath },
-      presentation: imageViewPresentation(readPath),
+      presentation: undefined,
     };
   }
   return {

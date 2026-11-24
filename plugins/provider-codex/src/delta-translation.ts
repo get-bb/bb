@@ -15,7 +15,6 @@ import {
   type ProviderRuntimeEvent,
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
   experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
-  experimental_imageViewPresentation as imageViewPresentation,
   experimental_toolPresentation as toolPresentation,
   experimental_webFetchPresentation as webFetchPresentation,
   experimental_webSearchPresentation as webSearchPresentation,
@@ -342,7 +341,7 @@ type CodexItemTranslationResult =
   | {
       kind: "translated";
       shape: DeltaItemShape;
-      presentation: DeltaPresentation;
+      presentation: DeltaPresentation | undefined;
       status: ThreadEventItemStatus;
       approvalDenied: boolean;
     }
@@ -970,7 +969,7 @@ function translateCodexItemShape(
       return {
         kind: "translated",
         shape: { type: "imageView", path: parsedItem.path },
-        presentation: imageViewPresentation(parsedItem.path),
+        presentation: undefined,
         status: "completed",
         approvalDenied: false,
       };

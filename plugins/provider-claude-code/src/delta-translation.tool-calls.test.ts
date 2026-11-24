@@ -516,14 +516,7 @@ describe("claude tool-use translation (delta path)", () => {
       name: "an image result",
       content: [imageBlock],
       isError: false,
-      expected: {
-        type: "imageView",
-        presentation: {
-          label: { pending: "Viewing image", completed: "Viewed image" },
-          icon: { glyph: "Eye" },
-          title: "diagram.png",
-        },
-      },
+      expected: { type: "imageView" },
     },
     {
       name: "mixed text and image",
@@ -596,6 +589,9 @@ describe("claude tool-use translation (delta path)", () => {
       };
       expect(lifecycle[0]).toMatchObject({ item });
       expect(lifecycle[1]).toMatchObject({ item: { ...expected, ...item } });
+      if (expected.type === "imageView") {
+        expect(lifecycle[1]).not.toHaveProperty("item.presentation");
+      }
     },
   );
 

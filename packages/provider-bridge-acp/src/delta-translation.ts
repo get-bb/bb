@@ -546,7 +546,7 @@ export function createAcpDeltaTranslator(
       permissionTitle === undefined
         ? undefined
         : presentationTitle(permissionTitle);
-    return title === undefined
+    return title === undefined || classified.presentation === undefined
       ? classified
       : {
           item: classified.item,
@@ -845,7 +845,7 @@ export function createAcpDeltaTranslator(
           previous?.item.type === "command" &&
           classified.item.type === "command" &&
           (previous.item.command !== classified.item.command ||
-            previous.presentation.title !== classified.presentation.title)
+            previous.presentation?.title !== classified.presentation?.title)
         ) {
           refreshed.push({
             kind: "item.open",

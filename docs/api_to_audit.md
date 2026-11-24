@@ -1998,7 +1998,7 @@ a user-installed CLI.
    it still returns `sh -c` with `mktemp`, `curl` and `bash`. Decide whether it
    should refuse there rather than hand the daemon a command that cannot run.
 
-## Presentation builders (`experimental_presentationTitle`, `experimental_presentationDetail`, `experimental_withTitle`, `experimental_presentationFileName`, `experimental_COMPACTION_PRESENTATION`, `experimental_REASONING_PRESENTATION`, `experimental_fileReadPresentation`, `experimental_imageViewPresentation`, `experimental_searchPresentation`, `experimental_webSearchPresentation`, `experimental_webFetchPresentation`, `experimental_planStepsPresentation`, `experimental_toolPresentation`) (`@get-bb/plugin-sdk/provider-bridge`)
+## Presentation builders (`experimental_presentationTitle`, `experimental_presentationDetail`, `experimental_withTitle`, `experimental_presentationFileName`, `experimental_COMPACTION_PRESENTATION`, `experimental_REASONING_PRESENTATION`, `experimental_fileReadPresentation`, `experimental_searchPresentation`, `experimental_webSearchPresentation`, `experimental_webFetchPresentation`, `experimental_planStepsPresentation`, `experimental_toolPresentation`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 These build the grammar-v3 `presentation` a bridge stamps on every item
 ([provider-plugin-api.md](provider-plugin-api.md) §3 owns the vocabulary).
@@ -2006,9 +2006,8 @@ These build the grammar-v3 `presentation` a bridge stamps on every item
 or undefined. `presentationDetail` caps a detail at the persisted schema's 280
 characters. `withTitle` stamps a title only when there is one, and
 `presentationFileName` returns the last path segment. The two constants carry
-bb's fixed wording for compaction and reasoning rows. The six builders shape
-file read, image view (`imageViewPresentation`, SDK 0.6.197), search, web
-search, web fetch and plan-steps rows, and
+bb's fixed wording for compaction and reasoning rows. The five builders shape
+file read, search, web search, web fetch and plan-steps rows, and
 `toolPresentation` is the generic "Running/Ran <tool>" row.
 
 **Audit before stabilizing.**

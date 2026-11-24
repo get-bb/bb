@@ -1410,6 +1410,25 @@ describe("buildTimelineRowTitle", () => {
     },
   );
 
+  it("keeps an integration's own image view label and icon", () => {
+    const row: TimelineImageViewWorkRow = {
+      ...imageViewRow(),
+      presentation: {
+        label: {
+          pending: "Inspecting screenshot",
+          completed: "Inspected screenshot",
+        },
+        icon: { glyph: "Camera" },
+      },
+    };
+    const isHostGlyph = (glyph: string): glyph is string => glyph.length > 0;
+
+    expect(buildTimelineRowTitle(row, DEFAULT_OPTIONS).plain).toBe(
+      "Inspected screenshot /tmp/sightglass-quote-merge-check/dashboard-main.png",
+    );
+    expect(workRowGlyph(row, isHostGlyph)).toBe("Camera");
+  });
+
   it("can render step summaries as bundle titles or muted background summaries", () => {
     const row = workSummaryRow([webSearchRow(), webFetchRow()]);
 

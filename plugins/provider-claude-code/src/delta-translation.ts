@@ -22,7 +22,6 @@ import {
   type ClientTurnRequestId,
   type ProviderRawEvent,
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
-  experimental_imageViewPresentation as imageViewPresentation,
   experimental_planStepsPresentation as planStepsPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
@@ -1121,7 +1120,7 @@ export function createClaudeDeltaTranslator(
           ? fallback
           : {
               shape: { type: "imageView" as const, path: viewedImagePath },
-              presentation: imageViewPresentation(viewedImagePath),
+              presentation: undefined,
             };
       const key = { providerItemId: result.toolUseId, ...parentRefField };
       if (deferredImageRead) {
