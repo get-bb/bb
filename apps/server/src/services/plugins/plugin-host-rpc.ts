@@ -1,4 +1,4 @@
-import { resolveHostEnvironment } from "../hosts/host-environment.js";
+import { recheckHostEnvironment } from "../hosts/host-environment-sync.js";
 import { randomUUID } from "node:crypto";
 import { listPublicHosts } from "@bb/db";
 import type {
@@ -83,6 +83,7 @@ export async function callPluginHostRpc(
     await validateValue(method.input, args.input, "input"),
     `host rpc input for ${args.method}`,
   );
+  void recheckHostEnvironment(deps, args.hostId);
   const firstCallId = randomUUID();
   const callIds = [firstCallId];
   const timeoutMs = args.timeoutMs ?? COMMAND_TIMEOUT_MS;
@@ -104,10 +105,6 @@ export async function callPluginHostRpc(
     timeoutMs: timeoutMs + HOST_RPC_TRANSPORT_GRACE_MS,
     command: {
       type: "plugin.host.call" as const,
-      contributedEnv: await resolveHostEnvironment(deps, {
-        hostId: args.hostId,
-        projectId: null,
-      }),
       pluginId: args.pluginId,
       generation: args.artifact.generation,
       artifact: {

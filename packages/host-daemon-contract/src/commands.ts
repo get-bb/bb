@@ -655,7 +655,6 @@ const environmentHookCancelCommandSchema = z
 const pluginHostCallCommandSchema = z
   .object({
     type: z.literal("plugin.host.call"),
-    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema).default([]),
     pluginId: z.string().min(1),
     generation: z.string().min(1),
     artifact: pluginHostArtifactSchema,

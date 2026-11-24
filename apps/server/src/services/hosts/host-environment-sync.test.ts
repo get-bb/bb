@@ -94,3 +94,57 @@ it("synchronizes configured variables to every connected host and reports real c
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+it("re-pushes a host's environment at most once a minute and only when it changed outside a config change", async () => {
+  const db = createMigratedConnection();
+  const dataDir = await mkdtemp(join(tmpdir(), "bb-machine-env-recheck-"));
+  const hub = new NotificationHub();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      machineGitCredentialsEnabled: false,
+    });
+    upsertHost(db, noopNotifier, { id: "remote", name: "remote" });
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "MACHINE_VALUE", value: "first", note: null }],
+    });
+    const changedHostIds: string[] = [];
+    const sync = new HostEnvironmentSync(
+      { db, config: { dataDir }, hub, logger: { warn: vi.fn() } },
+      (hostId) => changedHostIds.push(hostId),
+    );
+    const sent: string[] = [];
+    hub.registerDaemon("session-1", "remote", {
+      send: (data) => {
+        sent.push(data);
+      },
+      close: () => {},
+    });
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    vi.advanceTimersByTime(61_000);
+    await sync.recheck("remote");
+    expect(sent).toHaveLength(1);
+
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "MACHINE_VALUE", value: "rotated", note: null }],
+    });
+    await sync.recheck("remote");
+    expect(sent).toHaveLength(1);
+
+    vi.advanceTimersByTime(61_000);
+    await sync.recheck("remote");
+    expect(sent).toHaveLength(2);
+    expect(JSON.parse(sent[1]!)).toMatchObject({
+      type: "machine-environment.replace",
+      environment: { entries: [expect.objectContaining({ value: "rotated" })] },
+    });
+    expect(changedHostIds).toEqual(["remote"]);
+  } finally {
+    vi.useRealTimers();
+    hub.unregisterDaemon("session-1");
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

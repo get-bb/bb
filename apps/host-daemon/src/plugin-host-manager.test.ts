@@ -161,7 +161,6 @@ export default {
 function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
   return {
     type: "plugin.host.call",
-    contributedEnv: [],
     pluginId: "fixture",
     generation: "generation-1",
     artifact: {
@@ -231,40 +230,24 @@ describe("PluginHostManager", () => {
     expect(fetchArtifact).toHaveBeenCalledOnce();
   });
 
-  it("scopes setup env, rotates while idle, and returns worker output as-is", async () => {
+  it("scopes the daemon machine env per call, rotates while idle, and returns worker output as-is", async () => {
+    let machineEnv: NodeJS.ProcessEnv = {};
     const manager = await createManager({
-      shellEnv: () => ({ npm_config_user_agent: "test" }),
+      shellEnv: () => ({ npm_config_user_agent: "test", ...machineEnv }),
     });
-    const contribution = (value: string) => [
-      {
-        name: "GATE_VALUE",
-        value,
-        reason: "Gate",
-        source: { core: "machine-environment" as const },
-      },
-      {
-        name: "GH_TOKEN",
-        value: 'worker-secret\nwith"quotes',
-        reason: "Git",
-        source: { core: "machine-git" as const },
-      },
-    ];
-    const [first, rotated] = [
-      await manager.call(
-        callCommand({
-          method: "environment",
-          input: { delay: 100 },
-          contributedEnv: contribution("first"),
-        }),
-      ),
-      await manager.call(
-        callCommand({
-          method: "environment",
-          input: {},
-          contributedEnv: contribution("rotated"),
-        }),
-      ),
-    ];
+    const contribution = (value: string) => ({
+      GATE_VALUE: value,
+      GH_TOKEN: 'worker-secret\nwith"quotes',
+    });
+    machineEnv = contribution("first");
+    const first = await manager.call(
+      callCommand({ method: "environment", input: { delay: 100 } }),
+    );
+    machineEnv = contribution("rotated");
+    const rotated = await manager.call(
+      callCommand({ method: "environment", input: {} }),
+    );
+    machineEnv = {};
     expect(first.output).toEqual({
       before: "first",
       after: "first",
@@ -307,14 +290,16 @@ describe("PluginHostManager", () => {
             ]);
       const onSignal = vi.fn();
       const onWorkerExit = vi.fn();
+      let gateValue = "base";
       const manager = await createManager({
-        shellEnv: () => ({ GATE_VALUE: "base" }),
+        shellEnv: () => ({ GATE_VALUE: gateValue }),
         onSignal,
         onWorkerExit,
         fetchArtifact: vi.fn(async () => artifactBody(source)),
       });
-      const command = (id: string, value: string, delay = 0) =>
-        callCommand({
+      const command = (id: string, value: string, delay = 0) => {
+        gateValue = value;
+        return callCommand({
           callId: id,
           artifact: {
             digest: createHash("sha256").update(source).digest("hex"),
@@ -323,15 +308,8 @@ describe("PluginHostManager", () => {
           method: "environment",
           input: { id, delay },
           timeoutMs: 15_000,
-          contributedEnv: [
-            {
-              name: "GATE_VALUE",
-              value,
-              reason: "test",
-              source: { core: "machine-environment" },
-            },
-          ],
         });
+      };
       const cancel = (callId: string) =>
         manager.cancel({
           type: "plugin.host.cancel",
@@ -419,11 +397,7 @@ describe("PluginHostManager", () => {
             (await manager.call(command("c", "third"))).output,
           ).toMatchObject({ before: "third", after: "third" });
           expect(
-            (
-              await manager.call(
-                callCommand({ method: "environment", input: {} }),
-              )
-            ).output,
+            (await manager.call(command("d", "base"))).output,
           ).toMatchObject({ before: "base", after: "base" });
           expect((await manager.call(callCommand())).output).toEqual(
             initial.output,
@@ -558,19 +532,14 @@ describe("PluginHostManager", () => {
     "preserves worker RPC structure and identifiers when the secret is %s",
     async (secret) => {
       const onSignal = vi.fn();
-      const manager = await createManager({ onSignal });
+      const manager = await createManager({
+        onSignal,
+        shellEnv: () => ({ TEST_SECRET: secret }),
+      });
       const command = callCommand({
         callId: secret,
         method: "secretProbe",
         input: {},
-        contributedEnv: [
-          {
-            name: "TEST_SECRET",
-            value: secret,
-            reason: "Probe",
-            source: { core: "machine-environment" },
-          },
-        ],
       });
       const payload = {
         type: secret,
@@ -599,18 +568,11 @@ describe("PluginHostManager", () => {
     const warn = vi.fn();
     const manager = await createManager({
       logger: { debug: vi.fn(), info: vi.fn(), warn },
+      shellEnv: () => ({ TEST_SECRET: secret }),
     });
     const command = callCommand({
       method: "secretProbe",
       input: {},
-      contributedEnv: [
-        {
-          name: "TEST_SECRET",
-          value: secret,
-          reason: "Probe",
-          source: { core: "machine-environment" },
-        },
-      ],
     });
     await manager.call(command);
     const bytes = Buffer.from(
@@ -618,7 +580,6 @@ describe("PluginHostManager", () => {
     );
     await manager.call({
       ...command,
-      contributedEnv: [],
       input: { chunks: [...bytes].map((byte) => [byte]) },
     });
     await vi.waitFor(() =>
@@ -634,7 +595,6 @@ describe("PluginHostManager", () => {
     const pendingPrefix = Buffer.from(secret.slice(0, 5));
     await manager.call({
       ...command,
-      contributedEnv: [],
       input: { chunks: [[...pendingPrefix]] },
     });
     await manager.shutdown();

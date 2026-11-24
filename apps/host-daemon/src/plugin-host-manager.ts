@@ -4,7 +4,6 @@ import {
   ensurePluginProcessDataDir,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
-import { operationEnvironment } from "./operation-environment.js";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -308,10 +307,7 @@ export class PluginHostManager {
             callId: command.callId,
             method: command.method,
             input: command.input,
-            envVars: operationEnvironment(
-              command.contributedEnv,
-              this.options.shellEnv?.() ?? {},
-            ),
+            envVars: { ...this.options.shellEnv?.() },
           })
         ) {
           worker.pending.delete(command.callId);
