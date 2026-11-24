@@ -13,6 +13,7 @@ import {
 } from "@bb/shared-ui/select";
 import {
   SettingsList,
+  SettingsListAction,
   SettingsListItem,
   SettingsListMessage,
 } from "@bb/shared-ui/settings-section";
@@ -47,6 +48,7 @@ export function Shapes() {
       <SettingsList
         title="Nested with inherited values"
         description="Each machine keeps the project's count unless you set its own."
+        dividers={false}
       >
         <SettingsListItem title="demo-app" control={<CountSelect value="1" />}>
           <SettingsListItem
@@ -59,6 +61,15 @@ export function Shapes() {
             meta={["1 ready", "1 setting up"]}
             control={<CountSelect value="inherit" inherit="Project (1)" />}
           />
+          <SettingsListItem
+            title="devbox"
+            meta={["0 ready"]}
+            error="Setup failed in a warm worktree, trying again in 10 minutes: pnpm install exited with code 1 after resolving 1,204 packages"
+            control={<CountSelect value="2" inherit="Project (1)" />}
+          />
+          <SettingsListAction onClick={() => {}}>
+            Add machine
+          </SettingsListAction>
         </SettingsListItem>
         <SettingsListItem
           title="docs-site"
@@ -102,6 +113,7 @@ export function Shapes() {
         <SettingsList
           title="Leading controls"
           description="Choose which Macs to keep awake."
+          dividers={false}
         >
           <SettingsListItem
             leading={<RadioGroupItem value="all" aria-label="All hosts" />}

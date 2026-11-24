@@ -170,6 +170,7 @@ function KeepAwakeSettings() {
           <SettingsList
             title="Hosts"
             description="Choose which Macs to keep awake."
+            dividers={false}
           >
             <SettingsListItem
               leading={

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "../../lib/utils";
+import { Icon, type IconName } from "./icon";
 
 interface SettingsSectionProps {
   action?: ReactNode;
@@ -197,12 +198,18 @@ export const SETTINGS_CARD_CLASS =
 export function SettingsListRows({
   children,
   label,
+  dividers = true,
 }: {
   children: ReactNode;
   label?: string;
+  dividers?: boolean;
 }) {
   return (
-    <div role="list" aria-label={label} className="divide-y divide-border">
+    <div
+      role="list"
+      aria-label={label}
+      className={cn(dividers && "divide-y divide-border")}
+    >
       {children}
     </div>
   );
@@ -213,15 +220,19 @@ export function SettingsList({
   title,
   description,
   label,
+  dividers,
 }: {
   children: ReactNode;
   title?: string;
   description?: ReactNode;
   label?: string;
+  dividers?: boolean;
 }) {
   const list = (
     <div className={SETTINGS_CARD_CLASS}>
-      <SettingsListRows label={label ?? title}>{children}</SettingsListRows>
+      <SettingsListRows label={label ?? title} dividers={dividers}>
+        {children}
+      </SettingsListRows>
     </div>
   );
   if (title === undefined && description === undefined) return list;
@@ -268,7 +279,7 @@ export type SettingsListMeta = readonly (ReactNode | null | false)[];
 
 interface SettingsListItemProps {
   title: ReactNode;
-  badge?: string;
+  badge?: ReactNode;
   meta?: SettingsListMeta;
   description?: ReactNode;
   leading?: ReactNode;
@@ -293,6 +304,8 @@ export function SettingsListItem({
     (item): item is Exclude<typeof item, null | false> =>
       item !== null && item !== false,
   );
+  const hasError = error !== undefined && error !== null;
+  const hasDetails = description !== undefined || hasError;
   return (
     <div
       role="listitem"
@@ -300,68 +313,118 @@ export function SettingsListItem({
     >
       <div
         className={cn(
-          "flex min-h-9 gap-3",
-          description === undefined ? "items-center" : "items-start",
+          "grid items-center gap-x-3",
+          leading === undefined
+            ? control === undefined
+              ? "grid-cols-1"
+              : "grid-cols-[minmax(0,1fr)_auto]"
+            : control === undefined
+              ? "grid-cols-[1rem_minmax(0,1fr)]"
+              : "grid-cols-[1rem_minmax(0,1fr)_auto]",
+          !hasDetails && "min-h-9",
         )}
       >
         {leading === undefined ? null : (
-          <div className="flex min-h-5 w-4 shrink-0 items-center justify-center">
-            {leading}
-          </div>
+          <div className="flex justify-center">{leading}</div>
         )}
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-            <span
-              className={cn(
-                "min-w-0 truncate text-foreground",
-                nested ? "font-normal" : "font-medium",
-              )}
-            >
-              {title}
-            </span>
-            {badge === undefined ? null : (
-              <span className="self-center">
-                <SettingsBadge>{badge}</SettingsBadge>
-              </span>
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+          <span
+            className={cn(
+              "min-w-0 truncate text-foreground",
+              nested ? "font-normal" : "font-medium",
             )}
-            {visibleMeta.map((item, index) => (
-              <span
-                key={index}
-                className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs text-subtle-foreground"
-              >
-                <span aria-hidden>·</span>
-                <span className="min-w-0 truncate">{item}</span>
-              </span>
-            ))}
-          </div>
-          {description === undefined ? null : (
-            <div className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-              {description}
-            </div>
+          >
+            {title}
+          </span>
+          {badge === undefined ? null : (
+            <span className="self-center">
+              {typeof badge === "string" ? (
+                <SettingsBadge>{badge}</SettingsBadge>
+              ) : (
+                badge
+              )}
+            </span>
           )}
+          {visibleMeta.map((item, index) => (
+            <span
+              key={index}
+              className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs text-subtle-foreground"
+            >
+              <span aria-hidden>·</span>
+              <span className="min-w-0 truncate">{item}</span>
+            </span>
+          ))}
         </div>
         {control === undefined ? null : (
-          <div className="flex shrink-0 items-center gap-2">{control}</div>
+          <div className="flex items-center gap-2">{control}</div>
         )}
+        {hasDetails ? (
+          <div
+            className={cn(
+              "min-w-0",
+              leading === undefined ? "col-start-1" : "col-start-2",
+            )}
+          >
+            {description === undefined ? null : (
+              <div className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+                {description}
+              </div>
+            )}
+            {hasError ? (
+              <p
+                role="alert"
+                className={cn(
+                  "text-xs leading-snug break-words text-destructive-text",
+                  description !== undefined && "mt-1",
+                )}
+              >
+                {error}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      {error === undefined || error === null ? null : (
-        <p
-          role="alert"
-          className="mt-1 text-xs leading-snug break-words text-destructive-text"
-        >
-          {error}
-        </p>
-      )}
       {children === undefined ? null : (
         <SettingsListDepthContext.Provider value={depth + 1}>
           <div
             role="list"
-            className={cn("mt-1", leading === undefined ? "pl-4" : "pl-7")}
+            className={cn(
+              "mt-1 border-l border-border",
+              leading === undefined ? "pl-4" : "ml-[7px] pl-5",
+            )}
           >
             {children}
           </div>
         </SettingsListDepthContext.Provider>
       )}
+    </div>
+  );
+}
+
+export function SettingsListAction({
+  children,
+  icon = "Plus",
+  disabled = false,
+  onClick,
+}: {
+  children: ReactNode;
+  icon?: IconName;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div role="listitem" className="py-1">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        className="flex min-h-7 items-center gap-3 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      >
+        <span className="flex w-4 shrink-0 justify-center">
+          <Icon name={icon} className="size-3.5" aria-hidden />
+        </span>
+        {children}
+      </button>
     </div>
   );
 }

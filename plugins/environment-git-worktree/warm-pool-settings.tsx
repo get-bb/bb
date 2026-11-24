@@ -165,7 +165,7 @@ export function WarmPoolSettingsContent(props: {
   const { status, error, saving, onChange } = props;
   return (
     <div className="w-full space-y-2">
-      <SettingsList label="Warm worktrees">
+      <SettingsList label="Warm worktrees" dividers={false}>
         {status === null ? (
           <SettingsListMessage tone={error === null ? "muted" : "error"}>
             {error ?? "Loading projects…"}

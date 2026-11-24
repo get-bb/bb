@@ -75,7 +75,10 @@ Slot props contracts (versioned, additive-only):
   `leading` (radio, checkbox, icon), a trailing `control` and an `error`
   line, and nests child items for per-machine or per-account overrides
   (show an inherited value in the control, e.g. `Project (2)`).
-  `SettingsListMessage` covers loading, empty and load-error rows. Use the
+  `SettingsListMessage` covers loading, empty and load-error rows, and
+  `SettingsListAction` an "Add …" row at the end of a nested group. Pass
+  `dividers={false}` when items nest, so the nested hairline carries the
+  grouping. Use the
   existing hooks (`useRpc`, `useRealtime`,
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the

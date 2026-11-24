@@ -39,6 +39,7 @@ import {
   SettingsBadge,
   SettingsDetailRow,
   SettingsRow,
+  SettingsListAction,
   SettingsListItem,
   SettingsListMessage,
   SettingsListRows,
@@ -285,29 +286,24 @@ function MachineItem({
           >
             Set up
           </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            aria-label={`Add folder on ${host.name}`}
-            disabled={pending || !connected}
-            onClick={onAddFolder}
-          >
-            <Icon name="Plus" className="size-3.5" aria-hidden />
-            Add folder
-          </Button>
-        )
+        ) : undefined
       }
     >
       {source === null ? undefined : (
-        <MachineFolders
-          host={host}
-          source={source}
-          pending={pending}
-          {...folderProps}
-        />
+        <>
+          <MachineFolders
+            host={host}
+            source={source}
+            pending={pending}
+            {...folderProps}
+          />
+          <SettingsListAction
+            disabled={pending || !connected}
+            onClick={onAddFolder}
+          >
+            {connected ? "Add folder" : "Add folder (machine offline)"}
+          </SettingsListAction>
+        </>
       )}
     </SettingsListItem>
   );
@@ -567,7 +563,7 @@ export function ProjectDetailSettingsView() {
               No machines are paired yet.
             </p>
           ) : (
-            <SettingsListRows label="Machines">
+            <SettingsListRows label="Machines" dividers={false}>
               {hosts.map((host) => {
                 const source = findLocalPathProjectSourceForHost(
                   sources,
