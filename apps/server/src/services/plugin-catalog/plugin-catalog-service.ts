@@ -649,6 +649,7 @@ export function createPluginCatalogService(deps: {
         manifestJson: row.manifestJson,
         etag: row.etag,
         lastModified: row.lastModified,
+        commit: row.sourceGitCommit,
       },
       stagingDir,
       fetch: fetchMarketplace,
