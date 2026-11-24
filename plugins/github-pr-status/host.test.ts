@@ -240,25 +240,23 @@ describe("pull request lookup for differently named upstream branches", () => {
     const workspacePath = await createManagedBaseTrackedWorkspace();
     const gh = await installFakeGh(sameRepository);
     const url = "https://github.com/acme/bb/pull/1236";
-    const read = async (branchName: string) =>
-      (
-        await harness.experimental_call("views", {
-          reads: [
-            { path: workspacePath, known: { url, branchName }, refresh: true },
-          ],
-        })
-      )[0]?.refs;
     const head = await runGit(["rev-parse", "HEAD"], { cwd: workspacePath });
     const refs = { oid: head.stdout.trim(), branchName: localBranch };
 
-    await expect(read(localBranch)).resolves.toEqual(refs);
-    await expect(read("bb/previous-branch")).resolves.toEqual(refs);
+    const views = await harness.experimental_call("views", {
+      reads: [localBranch, "bb/previous-branch"].map((branchName) => ({
+        path: workspacePath,
+        known: { url, branchName },
+        refresh: true,
+      })),
+    });
 
+    expect(views.map((view) => view.refs)).toEqual([refs, refs]);
     const queries = await gh.readQueries();
-    expect(queries).toHaveLength(2);
-    expect(queries[0]).toContain(`resource(url: ${JSON.stringify(url)})`);
-    expect(queries[1]).not.toContain("resource(url:");
-    expect(queries[1]).toContain(`headRefName: "${localBranch}"`);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]!.match(/resource\(url: /g)).toEqual(["resource(url: "]);
+    expect(queries[0]).toContain(`p0: resource(url: ${JSON.stringify(url)})`);
+    expect(queries[0]).toContain(`headRefName: "${localBranch}"`);
   });
 
   it("uses the local branch when a differently named remote aliases origin", async () => {
