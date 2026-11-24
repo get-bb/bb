@@ -190,6 +190,7 @@ import {
   type AcpCompactionUpdate,
   type AcpConfigStateResult,
   type AcpSessionModels,
+  type AcpToolCallUpdateEvent,
   type AcpUsageUpdate,
   acpStopReasonSchema,
   acpWriteTextFileParamsSchema,
@@ -3675,6 +3676,20 @@ async function steerWithNativeInterject(
   method: string,
 ): Promise<void> {
   const originalSession = session;
+  if (
+    session.stopping ||
+    sessionsByBbThreadId.get(session.bbThreadId) !== session
+  ) {
+    const message =
+      "Grok session was replaced before interject acknowledgement";
+    sendError(
+      runtimeRequestId,
+      BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+      message,
+      { recovery: { kind: "staleTurn", message, retryable: false } },
+    );
+    return;
+  }
   try {
     const text = pending.input
       .map((item) => {
@@ -4605,11 +4620,27 @@ function grokSubagentToolText(rawInput: unknown): string | undefined {
   return typeof text === "string" ? text : undefined;
 }
 
+function grokSubagentActionToolName(
+  session: AcpThreadSession,
+  update: { title?: string; _meta?: unknown },
+): string | undefined {
+  const identity = session.dialect.toolIdentity?.(
+    update as AcpToolCallUpdateEvent,
+  );
+  if (identity?.name !== undefined && identity.name.length > 0) {
+    return identity.name;
+  }
+  return update.title;
+}
+
 function grokSubagentActionMatches(
+  session: AcpThreadSession,
   action: PendingGrokSubagentAction,
-  update: { title?: string; rawInput?: unknown },
+  update: { title?: string; rawInput?: unknown; _meta?: unknown },
 ): boolean {
-  if (action.toolName !== update.title) return false;
+  if (grokSubagentActionToolName(session, update) !== action.toolName) {
+    return false;
+  }
   if (
     grokSubagentToolTarget(action.toolName, update.rawInput) !== action.childRef
   ) {
@@ -4684,7 +4715,7 @@ function noteGrokSubagentActionResult(
     const pending = Array.from(session.pendingSubagentActions.values()).find(
       (candidate) =>
         candidate.toolCallId === undefined &&
-        grokSubagentActionMatches(candidate, update),
+        grokSubagentActionMatches(session, candidate, update),
     );
     if (pending === undefined || update.sessionUpdate !== "tool_call") {
       return;

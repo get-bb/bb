@@ -4833,7 +4833,7 @@ describe("acp bridge", () => {
       dialectId: "grok",
       envVars: {
         FAKE_ACP_REQUEST_LOG: requestLog,
-        FAKE_ACP_GROK_INTERJECT_DELAY_MS: "150",
+        FAKE_ACP_GROK_INTERJECT_DELAY_MS: "500",
       },
     });
     await waitForResponse(
@@ -4846,6 +4846,15 @@ describe("acp bridge", () => {
       clientRequestId: "creq_abcdefghjm",
       input: [{ type: "text", text: "stale interject", mentions: [] }],
     });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) => request.method === "_x.ai/interject",
+        )
+          ? true
+          : undefined,
+      "in-flight interject",
+    );
     const restartOptions = executionOptions({
       providerOptions: launchProviderOptions({
         dialectId: "grok",
@@ -4920,6 +4929,57 @@ describe("acp bridge", () => {
     });
     await stopThread(providerThreadId);
     expect((await waitForResponse(steerId)).error).toBeDefined();
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
+  it("grok_queue_stopped_interject_does_not_resume", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-stop-queue.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        FAKE_ACP_GROK_INTERJECT_DELAY_MS: "500",
+        FAKE_ACP_LOAD_SESSION: "1",
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+      }),
+    );
+    const firstSteer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjp",
+      input: [{ type: "text", text: "first interject", mentions: [] }],
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) => request.method === "_x.ai/interject",
+        )
+          ? true
+          : undefined,
+      "first interject",
+    );
+    const secondSteer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjq",
+      input: [{ type: "text", text: "queued interject", mentions: [] }],
+    });
+    await stopThread(providerThreadId);
+    expect((await waitForResponse(firstSteer)).error).toBeDefined();
+    expect((await waitForResponse(secondSteer)).error).toBeDefined();
+    expect(notifications("session/replaced")).toHaveLength(0);
+    const requests = loggedAcpRequests(requestLog);
+    expect(
+      requests.filter((request) => request.method === "session/new"),
+    ).toHaveLength(1);
+    expect(
+      requests.filter((request) => request.method === "session/prompt"),
+    ).toHaveLength(1);
+    expect(
+      requests.filter((request) => request.method === "session/load"),
+    ).toHaveLength(0);
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
   });
 
@@ -8019,6 +8079,23 @@ describe("acp bridge: questions the agent asks", () => {
         JSON.stringify(event).includes('"childRef":"child-beta"'),
       ),
     ).toHaveLength(1);
+  });
+
+  it("acknowledges a tell whose display title differs from the tool name", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_DISPLAY_TITLE: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "titled differently",
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      messageId: "message-child-alpha",
+    });
   });
 
   it("grok_subagent_tell_targets_only_requested_child", async () => {

@@ -116,6 +116,9 @@ async function runScenario(scenario: QuestionScenario): Promise<void> {
         userQuestionPendingInteractionPayloadSchema.parse(plan.payload);
         const answers = scenario.answer(plan.payload.questions);
         const response = plan.toResponse({ kind: "user_answer", answers });
+        if ("unmappable" in response) {
+          throw new Error(response.unmappable);
+        }
         answered = grokQuestionResponse(request, response);
         responder.result(answered);
       } catch (error) {

@@ -784,7 +784,10 @@ async function handleGrokSubagentTell(text) {
   notifyUpdate({
     sessionUpdate: "tool_call",
     toolCallId: `tell-${addressed}`,
-    title: "send_subagent_message",
+    title:
+      process.env.FAKE_ACP_GROK_SUBAGENT_DISPLAY_TITLE === "1"
+        ? "Sending message to subagent"
+        : "send_subagent_message",
     rawInput: {
       subagent_id: addressed,
       text: content,
