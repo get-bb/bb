@@ -666,7 +666,7 @@ function ThreadRowComponent({
           {parentOptions && hasChildren ? (
             <SidebarChildToggleChevron
               disabled={isEditing}
-              className={isEditing ? "hidden" : undefined}
+              className={cn("-my-0.5", isEditing && "hidden")}
               isCollapsed={isParentCollapsed}
               expandLabel={`Expand ${labelTitle} threads`}
               collapseLabel={`Collapse ${labelTitle} threads`}
