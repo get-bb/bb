@@ -387,28 +387,30 @@ describe("createAgentRuntime process lifecycle", () => {
 
   it("does not wait for stalled replacement initialization during full shutdown", async () => {
     const stalledBridge = join(tmpDir, "stalled-provider.cjs");
-    const stalledBridgeStarted = join(tmpDir, "stalled-provider-started");
     writeFileSync(
       stalledBridge,
-      `require("readline").createInterface({input:process.stdin}).once("line",line=>{require("fs").writeFileSync(${JSON.stringify(stalledBridgeStarted)},"");setTimeout(()=>console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}})),3000)});`,
+      `require("readline").createInterface({input:process.stdin}).once("line",line=>{process.stderr.write("stalled-initialize-received\\n");setTimeout(()=>console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}})),3000)});`,
     );
     let starts = 0;
+    let markInitializing: () => void = () => {};
+    const replacementInitializing = new Promise<void>((resolve) => {
+      markInitializing = resolve;
+    });
     const manager = createProviderProcessManager({
       createAdapter: () =>
         createManagerAdapter(
           starts++ === 0 ? {} : { rawScriptPath: stalledBridge },
         ),
       onProcessExit: vi.fn(),
+      onStderr: (line) => {
+        if (line.includes("stalled-initialize-received")) markInitializing();
+      },
       workspacePath: tmpDir,
     });
     await manager.ensureProvider(MANAGER_PROVIDER);
     const retirement = manager.shutdownProvider(MANAGER_PROVIDER);
     const replacementStart = manager.ensureProvider(MANAGER_PROVIDER);
-    await waitForRuntimeState({
-      label: "the replacement bridge to begin initialization",
-      predicate: () => existsSync(stalledBridgeStarted),
-      timeoutMs: 1_000,
-    });
+    await replacementInitializing;
     expect(starts).toBe(2);
     const replacementProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
     onTestFinished(async () => {

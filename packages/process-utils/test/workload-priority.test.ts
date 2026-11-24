@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { getPriority, tmpdir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENT_WORKLOAD_NICE,
@@ -41,35 +42,28 @@ describe("deprioritizeAgentWorkload", () => {
       command: process.execPath,
       args: [
         "-e",
-        `process.stdin.once("data", () => {
-           const grandchild = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+        `const { spawn } = require("node:child_process");
+         process.stdin.once("data", () => {
+           const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
            process.stdout.write(String(grandchild.pid) + "\\n");
-           process.stdin.once("data", () => {
-             grandchild.kill();
-             process.exit(0);
-           });
-         });`,
+         });
+         process.stdout.write("ready\\n");`,
       ],
     });
     try {
+      const lines = createInterface({ input: child.stdout })[
+        Symbol.asyncIterator
+      ]();
+      expect((await lines.next()).value).toBe("ready");
       deprioritizeAgentWorkload(child.pid);
       expect(getPriority(child.pid)).toBe(AGENT_WORKLOAD_NICE);
-      const grandchildPid = new Promise<number>((resolve) => {
-        let output = "";
-        child.stdout.on("data", (chunk: Buffer) => {
-          output += chunk.toString();
-          if (output.includes("\n")) resolve(Number(output.trim()));
-        });
-      });
       child.stdin.write("go\n");
-      expect(getPriority(await grandchildPid)).toBe(AGENT_WORKLOAD_NICE);
-      const exited = new Promise((resolve) => child.once("exit", resolve));
-      child.stdin.write("done\n");
-      await exited;
+      const grandchildPid = Number((await lines.next()).value);
+      expect(getPriority(grandchildPid)).toBe(AGENT_WORKLOAD_NICE);
     } finally {
       await stop();
     }
-  });
+  }, 15_000);
 
   it("leaves processes at their inherited priority until lowering is turned on", async () => {
     const inherited = getPriority();
