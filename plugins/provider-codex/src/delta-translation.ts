@@ -41,7 +41,6 @@ import {
   commandPresentation,
   fileChangePresentation,
   imageGenerationPresentation,
-  imageViewPresentation,
   mcpToolPresentation,
   planStepsPresentation,
 } from "./presentation.js";
@@ -342,7 +341,7 @@ type CodexItemTranslationResult =
   | {
       kind: "translated";
       shape: DeltaItemShape;
-      presentation: DeltaPresentation;
+      presentation: DeltaPresentation | undefined;
       status: ThreadEventItemStatus;
       approvalDenied: boolean;
     }
@@ -970,7 +969,7 @@ function translateCodexItemShape(
       return {
         kind: "translated",
         shape: { type: "imageView", path: parsedItem.path },
-        presentation: imageViewPresentation(parsedItem.path),
+        presentation: undefined,
         status: "completed",
         approvalDenied: false,
       };

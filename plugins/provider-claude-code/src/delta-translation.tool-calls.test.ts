@@ -506,6 +506,95 @@ describe("claude tool-use translation (delta path)", () => {
     );
   });
 
+  const imageBlock = {
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" },
+  };
+
+  it.each([
+    {
+      name: "an image result",
+      content: [imageBlock],
+      isError: false,
+      expected: { type: "imageView" },
+    },
+    {
+      name: "mixed text and image",
+      content: [{ type: "text", text: "64x64 PNG" }, imageBlock],
+      isError: false,
+      expected: { type: "imageView" },
+    },
+    {
+      name: "a text result at an image path",
+      content: "not actually an image",
+      isError: false,
+      expected: { type: "fileRead", status: "completed" },
+    },
+    {
+      name: "a failed read",
+      content: [imageBlock],
+      isError: true,
+      expected: { type: "fileRead", status: "failed" },
+    },
+  ])(
+    "settles an image-path Read once from its result: $name",
+    ({ content, isError, expected }) => {
+      const harness = createClaudeDeltaHarness();
+      const opened = harness.translate({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-read-image",
+              name: "Read",
+              input: { file_path: "/workspace/diagram.png" },
+            },
+          ],
+        },
+        session_id: "sess-1",
+      });
+      expect(opened.filter((event) => event.type === "item/started")).toEqual(
+        [],
+      );
+
+      const settled = harness.translate({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-read-image",
+              content,
+              is_error: isError,
+            },
+          ],
+        },
+        session_id: "sess-1",
+      });
+      const lifecycle = settled.filter(
+        (event) =>
+          event.type === "item/started" || event.type === "item/completed",
+      );
+      expect(lifecycle.map((event) => event.type)).toEqual([
+        "item/started",
+        "item/completed",
+      ]);
+      const item = {
+        type: expected.type,
+        id: harness.itemId("tool-read-image"),
+        path: "/workspace/diagram.png",
+      };
+      expect(lifecycle[0]).toMatchObject({ item });
+      expect(lifecycle[1]).toMatchObject({ item: { ...expected, ...item } });
+      if (expected.type === "imageView") {
+        expect(lifecycle[1]).not.toHaveProperty("item.presentation");
+      }
+    },
+  );
+
   it("maps Read, Grep, and Glob to fileRead and search items with presentation", () => {
     const harness = createClaudeDeltaHarness();
 

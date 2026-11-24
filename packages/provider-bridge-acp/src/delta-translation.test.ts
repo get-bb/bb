@@ -1,4 +1,5 @@
 import path from "node:path";
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -1862,6 +1863,99 @@ describe("acp delta translation (native kinds → core kinds)", () => {
         title: "a.ts",
       },
     });
+  });
+
+  it.each([
+    [
+      { locations: [{ path: "/workspace/capture.png" }] },
+      "/workspace/capture.png",
+    ],
+    [{ locations: [{ path: "/workspace/photo.jpg" }] }, "/workspace/photo.jpg"],
+    [
+      { rawInput: { file_path: "assets/photo.JPEG" } },
+      path.resolve(SESSION_CWD, "assets/photo.JPEG"),
+    ],
+    [
+      { locations: [{ path: "~/animation.gif" }] },
+      path.join(homedir(), "animation.gif"),
+    ],
+    [
+      { title: "Read `./assets/preview.webp`" },
+      path.resolve(SESSION_CWD, "assets/preview.webp"),
+    ],
+    [{ rawInput: { path: "/workspace/bitmap.bmp" } }, "/workspace/bitmap.bmp"],
+  ])(
+    "previews a local image read through one stable lifecycle: %j",
+    (source, imagePath) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      const started = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "local-image",
+          kind: "read",
+          status: "in_progress",
+          ...source,
+        }),
+      );
+      const completed = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "local-image",
+          status: "completed",
+        }),
+      );
+      expect(started).toHaveLength(1);
+      expect(completed).toHaveLength(1);
+      const startedEvent = started[0];
+      const completedEvent = completed[0];
+      if (
+        startedEvent?.type !== "item/started" ||
+        completedEvent?.type !== "item/completed"
+      ) {
+        throw new Error("Expected one started and one completed image item");
+      }
+      const image = { type: "imageView", path: imagePath };
+      expect(startedEvent.item).toMatchObject(image);
+      expect(completedEvent.item).toMatchObject({
+        ...image,
+        id: startedEvent.item.id,
+      });
+      expect(completedEvent.item).not.toHaveProperty("presentation");
+      expect(
+        completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
+    "/workspace/notes.md",
+    "/workspace/picture.png.txt",
+    "https://images.invalid/capture.png",
+    "file:///workspace/capture.png",
+    "//images.invalid/capture.png",
+    "~another/capture.png",
+  ])("keeps non-local-image reads out of imageView: %s", (readPath) => {
+    expect(
+      openItem({
+        toolCallId: "ordinary-read",
+        kind: "read",
+        locations: [{ path: readPath }],
+      }),
+    ).toMatchObject({ type: "fileRead" });
+  });
+
+  it.each([
+    ["~/notes/plan.md", path.join(homedir(), "notes/plan.md")],
+    ["https://example.invalid/plan.md", "https://example.invalid/plan.md"],
+  ])("resolves an edit path %s like a read path", (editPath, expected) => {
+    expect(
+      openItem({
+        toolCallId: "edit-path",
+        kind: "edit",
+        locations: [{ path: editPath }],
+      }),
+    ).toMatchObject({ type: "fileChange", changes: [{ path: expected }] });
   });
 
   it("recovers the read path from a single code-ticked title token", () => {
