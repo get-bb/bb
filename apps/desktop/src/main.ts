@@ -171,6 +171,7 @@ import {
   type ConnectSessionRenewal,
 } from "./connect-session-renewal.js";
 import { registerDesktopShutdownSignalHandlers } from "./desktop-shutdown.js";
+import { createDesktopQuitApproval } from "./desktop-quit-approval.js";
 import {
   createDesktopWindowFactory,
   type DesktopBrowserWindow,
@@ -445,6 +446,9 @@ let connectSignInWindow: BrowserWindow | null = null;
 let stoppingForQuit = false;
 let appImageRelaunchPath: string | null = null;
 let quitting = false;
+const quitApproval = createDesktopQuitApproval();
+let installingUpdate = false;
+let endingWindowsSession = false;
 let serverTargetStore: ServerTargetStore | null = null;
 let connectServerSync: ConnectServerSync | null = null;
 let connectCredentialCache: ConnectCredentialCache | null = null;
@@ -1125,10 +1129,17 @@ function startRemoteSystemConfigSync(serverUrl: string): void {
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
+  quitApproval.clear();
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
   const nativeWindow = BrowserWindow.fromId(browserWindow.id);
   if (nativeWindow !== null) {
+    nativeWindow.on("query-session-end", () => {
+      endingWindowsSession = true;
+      setTimeout(() => {
+        endingWindowsSession = false;
+      }, 5_000);
+    });
     desktopBrowserBroker?.registerWindow(nativeWindow);
     nativeWindow.webContents.on(
       "did-start-navigation",
@@ -2344,7 +2355,40 @@ async function stopOwnedRuntime(): Promise<void> {
   }
 }
 
+function confirmWindowsQuit(): boolean {
+  const options: MessageBoxOptions = {
+    type: "warning",
+    title: "Quit bb?",
+    message: "Quit bb?",
+    detail: "Running agents and other local work may stop.",
+    buttons: ["Cancel", "Quit"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const parent = getFocusedApplicationWindow();
+  return (
+    (parent === null
+      ? dialog.showMessageBoxSync(options)
+      : dialog.showMessageBoxSync(parent, options)) === 1
+  );
+}
+
 function handleBeforeQuit(event: Event): void {
+  if (
+    process.platform === "win32" &&
+    !quitting &&
+    !stoppingForQuit &&
+    !quitApproval.hasClosedApprovedWindow() &&
+    !installingUpdate &&
+    !endingWindowsSession &&
+    app.isReady() &&
+    !confirmWindowsQuit()
+  ) {
+    event.preventDefault();
+    return;
+  }
+  quitApproval.clear();
   quitting = true;
   if (stoppingForQuit) {
     return;
@@ -2410,7 +2454,12 @@ async function installDesktopUpdate(): Promise<void> {
     throw new Error("This AppImage cannot be replaced in place.");
   }
   await desktopWindowFactory?.persistOpenWindows();
-  await desktopAutoUpdateService.installUpdate();
+  installingUpdate = true;
+  try {
+    await desktopAutoUpdateService.installUpdate();
+  } finally {
+    installingUpdate = false;
+  }
 }
 
 function registerDesktopUpdateIpc(): void {
@@ -2966,6 +3015,9 @@ async function runDesktopApp(): Promise<void> {
     });
   });
   app.on("before-quit", handleBeforeQuit);
+  nativeAutoUpdater.on("before-quit-for-update", () => {
+    installingUpdate = true;
+  });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
       app.quit();
@@ -3463,6 +3515,19 @@ async function runDesktopApp(): Promise<void> {
       void shell.openExternal(openArgs.url);
     },
     onWindowCreated: registerApplicationWindow,
+    shouldCloseWindow(browserWindow) {
+      if (
+        process.platform !== "win32" ||
+        quitting ||
+        installingUpdate ||
+        endingWindowsSession ||
+        applicationWindowWebContentsIds.size !== 1
+      )
+        return true;
+      if (!confirmWindowsQuit()) return false;
+      quitApproval.approve(browserWindow);
+      return true;
+    },
     preloadPath,
     userDataPath,
   });

@@ -80,9 +80,9 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
   maximize(): void;
+  on(eventName: "close", listener: (event: Event) => void): void;
   on(
     eventName:
-      | "close"
       | "closed"
       | "enter-full-screen"
       | "leave-full-screen"
@@ -121,6 +121,7 @@ interface CreateDesktopWindowFactoryArgs {
   shouldUseDarkColors(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
   onWindowCreated(browserWindow: DesktopBrowserWindow): void;
+  shouldCloseWindow(browserWindow: DesktopBrowserWindow): boolean;
   preloadPath: string;
   userDataPath: string;
 }
@@ -383,7 +384,11 @@ export function createDesktopWindowFactory(
       ] as const) {
         browserWindow.on(event, saveOnChange);
       }
-      browserWindow.on("close", () => {
+      browserWindow.on("close", (event) => {
+        if (!args.shouldCloseWindow(browserWindow)) {
+          event.preventDefault();
+          return;
+        }
         closing = true;
         if (args.isQuitting()) return;
         clearSaveTimer();
