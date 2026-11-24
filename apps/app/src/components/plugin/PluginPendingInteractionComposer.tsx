@@ -1,6 +1,9 @@
-import { PendingInteractionShell } from "@/components/thread/pending-interactions/PendingInteractionShell";
+import {
+  InlinePendingInteractionContext,
+  PendingInteractionShell,
+} from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { usePendingInteractionCancel } from "@/components/thread/pending-interactions/usePendingInteractionCancel";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -39,12 +42,12 @@ export function PluginPendingInteractionComposer({
   const pendingInteractions = usePluginSlotKind("pendingInteractions");
   const pluginName = usePluginDisplayName(request.pluginId);
   const pluginSettled = usePluginFrontendSettled(request.pluginId);
-  const { cancel: cancelInteraction, closesInline: inline } =
-    usePendingInteractionCancel({
-      interactionId: interaction.id,
-      threadId: interaction.threadId,
-      origin,
-    });
+  const inline = useContext(InlinePendingInteractionContext) !== null;
+  const { cancel: cancelInteraction } = usePendingInteractionCancel({
+    interactionId: interaction.id,
+    threadId: interaction.threadId,
+    origin,
+  });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const slot = useMemo(
@@ -76,10 +79,6 @@ export function PluginPendingInteractionComposer({
   );
 
   const cancel = useCallback(async () => {
-    if (inline) {
-      await cancelInteraction();
-      return;
-    }
     setSubmitting(true);
     setError(null);
     try {
@@ -89,8 +88,8 @@ export function PluginPendingInteractionComposer({
       setError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
     }
-  }, [cancelInteraction, inline]);
-  const dismissLabel = origin === "plugin" || inline ? "Cancel" : "Stop turn";
+  }, [cancelInteraction]);
+  const dismissLabel = origin === "plugin" ? "Cancel" : "Stop turn";
 
   return (
     <PendingInteractionShell

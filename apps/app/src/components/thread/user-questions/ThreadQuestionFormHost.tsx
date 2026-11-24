@@ -29,12 +29,10 @@ export function ThreadQuestionFormHost({
   children,
   density,
   promptShownAbove,
-  closeInline,
 }: {
   children: ReactNode;
   density: ExperimentalQuestionFormHost["density"];
   promptShownAbove: string | null;
-  closeInline: (() => void) | null;
 }) {
   const handlerRef = useRef<((index: number) => boolean) | null>(null);
   const actionHandlerRef = useRef<
@@ -73,7 +71,6 @@ export function ThreadQuestionFormHost({
     () => ({
       density,
       promptShownAbove,
-      closeInline,
       shortcuts: new Map(
         QUESTION_SELECT_APP_COMMAND_IDS.flatMap((command, index) => {
           const binding = bindings.get(command);
@@ -94,7 +91,6 @@ export function ThreadQuestionFormHost({
     [
       actionBindings,
       bindings,
-      closeInline,
       density,
       promptShownAbove,
       registerActionHandler,

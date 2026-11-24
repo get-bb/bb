@@ -3078,9 +3078,9 @@ Docs: `frontend-hooks-and-ui.md`.
 ## `app.experimental_useQuestionFormHost` (`@get-bb/plugin-sdk/app`)
 
 Returns where a pending interaction form renders and the remappable answer
-shortcuts bb binds while it is open. `density` is `"compact"` and
-`closeInline` is non-null in a parent thread's Active child threads card;
-`promptShownAbove` is the question text that card already shows. `shortcuts`
+shortcuts bb binds while it is open. `density` is `"compact"` in a parent
+thread's Active child threads card, and `promptShownAbove` is the question
+text that card already shows. `shortcuts`
 is keyed by option index, with `registerChoiceHandler` for a chosen index.
 `actionShortcuts` and `registerActionHandler` do the same for the form actions
 `submit`, `previous`, `next`, and `cancel` (`question.submit`,
@@ -3088,7 +3088,7 @@ is keyed by option index, with `registerChoiceHandler` for a chosen index.
 fire from text fields inside an element marked `data-question-form`. Core's
 card uses `actionShortcuts` only for `aria-keyshortcuts` and shows no action
 shortcut labels. Outside a pending interaction the maps are empty, handlers
-never run, `density` is `"default"`, and the other two fields are null.
+never run, `density` is `"default"`, and `promptShownAbove` is null.
 
 Core callers on the same path: `@bb/shared-ui/question-form`, which is also
 the registry's `question-form` item, reads the host through this hook. In the
@@ -3098,9 +3098,10 @@ whose members are the runtime's own (`core-plugin-sdk-app.test.ts`). Core's
 user question (`UserQuestionAnswerForm`) and every plugin form render inside
 the same `ThreadQuestionFormHost`, and both forms' Cancel run
 `usePendingInteractionCancel`, which also backs the `cancel` prop of
-`PluginPendingInteractionProps`: it closes the Active child threads card when
-the form is inline, and otherwise cancels a plugin request or stops the turn of
-a provider request.
+`PluginPendingInteractionProps`: it cancels a plugin request or stops the turn
+of a provider request, wherever the form renders. The Active child threads
+card leaves a question without answering through its own Back control and
+Escape, not through the form.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -3115,14 +3116,13 @@ Docs: `frontend-hooks-and-ui.md`.
    component should replace the attribute before the prefix drops.
 4. **Consumer count.** Four first-party plugins render forms inside the host:
    Ask User Question, Codex (async questions through the shared question form,
-   and its MCP elicitation form, which reads `closeInline`), pi's extension
-   dialogs, and Secrets. bb's own user question reads it through the shared
+   and its MCP elicitation form), pi's extension dialogs, and Secrets. bb's own user question reads it through the shared
    question form. Third-party forms: koenvg's pi-subagents provider
    (2026-11-06 marketplace audit) and brsbl's content-calendar and
    thread-organizer, which call `cancel` directly; audit items 1–3 against
    them.
-5. **Inline fields.** `density`, `promptShownAbove`, and `closeInline` describe
-   one placement, the Active child threads card. Decide whether a single
+5. **Inline fields.** `density` and `promptShownAbove` describe one
+   placement, the Active child threads card. Decide whether a single
    `placement` value should replace them before the prefix drops.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)

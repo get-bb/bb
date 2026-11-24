@@ -209,7 +209,8 @@ export interface PluginPendingInteractionView {
  * Props of a `pendingInteraction` component. bb renders the component in two
  * places: in the thread's own composer, and in a parent thread's Active child
  * threads card when the request belongs to a child thread
- * (`experimental_useQuestionFormHost().closeInline` tells them apart).
+ * (`experimental_useQuestionFormHost().density` is `"compact"` there). Both
+ * props behave the same in either place.
  */
 export interface PluginPendingInteractionProps {
   interaction: PluginPendingInteractionView;
@@ -219,13 +220,11 @@ export interface PluginPendingInteractionProps {
    */
   submit(value: JsonValue): Promise<void>;
   /**
-   * What Cancel on bb's own question form does. In the thread's own composer
-   * it ends the request: a request from a plugin backend
-   * (`bb.ui.requestInput`) is cancelled, and a request a provider made during
-   * a turn stops that thread's turn, the way Stop does. In a parent thread's
-   * Active child threads card it only closes the card, the same as
-   * `experimental_useQuestionFormHost().closeInline`: the request stays open in
-   * the child thread and its turn keeps waiting.
+   * End the request, what Cancel on bb's own question form does. A request
+   * from a plugin backend (`bb.ui.requestInput`) is cancelled, and a request a
+   * provider made during a turn stops that thread's turn, the way Stop does.
+   * It does the same in a parent thread's Active child threads card; the card
+   * has its own Back control and Escape for leaving without answering.
    */
   cancel(): Promise<void>;
 }
@@ -267,13 +266,6 @@ export interface ExperimentalQuestionFormHost {
    * card.
    */
   promptShownAbove: string | null;
-  /**
-   * Closes the question in the Active child threads card without answering.
-   * The request stays open in the child thread. Null outside that card. bb's
-   * own form calls it from Cancel there so the person's draft answers survive;
-   * `cancel` closes the card the same way.
-   */
-  closeInline: (() => void) | null;
   /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.

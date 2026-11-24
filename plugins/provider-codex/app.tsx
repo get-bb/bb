@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   definePluginApp,
-  experimental_useQuestionFormHost,
   UrlLink,
   useBbNavigate,
   type PluginPendingInteractionProps,
@@ -79,7 +78,6 @@ function CodexMcpElicitation({
   cancel,
 }: PluginPendingInteractionProps) {
   const navigate = useBbNavigate();
-  const inline = experimental_useQuestionFormHost().closeInline !== null;
   const parsed = useMemo(
     () => codexMcpElicitationSchema.safeParse(interaction.payload),
     [interaction.payload],
@@ -497,7 +495,7 @@ function CodexMcpElicitation({
           disabled={busy}
           onClick={() => void stopTurn()}
         >
-          {inline ? "Cancel" : "Stop turn"}
+          Stop turn
         </Button>
       ) : null}
     </form>

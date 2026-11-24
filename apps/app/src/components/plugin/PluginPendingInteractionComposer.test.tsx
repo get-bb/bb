@@ -369,8 +369,8 @@ describe("PluginPendingInteractionComposer", () => {
   it.each([
     { origin: "plugin", inline: false, expected: "cancel request" },
     { origin: "provider", inline: false, expected: "stop turn" },
-    { origin: "plugin", inline: true, expected: "close card" },
-    { origin: "provider", inline: true, expected: "close card" },
+    { origin: "plugin", inline: true, expected: "cancel request" },
+    { origin: "provider", inline: true, expected: "stop turn" },
   ] as const)(
     "cancel from a $origin request (inline: $inline) does what core's Cancel does: $expected",
     async ({ origin, inline, expected }) => {
@@ -398,7 +398,6 @@ describe("PluginPendingInteractionComposer", () => {
       const cancelRequest = vi
         .spyOn(sdk.threads.interactions, "cancel")
         .mockResolvedValue(undefined as never);
-      const close = vi.fn();
       const composer = (
         <PluginPendingInteractionComposer
           collapsedByDefault={false}
@@ -410,7 +409,7 @@ describe("PluginPendingInteractionComposer", () => {
       renderComposer(
         inline ? (
           <InlinePendingInteractionContext.Provider
-            value={{ promptShownAbove: "Pick a release name", close }}
+            value={{ promptShownAbove: "Pick a release name" }}
           >
             {composer}
           </InlinePendingInteractionContext.Provider>
@@ -428,11 +427,9 @@ describe("PluginPendingInteractionComposer", () => {
       await act(async () => {});
 
       expect({
-        closed: close.mock.calls.length,
         stopped: stop.mock.calls,
         cancelled: cancelRequest.mock.calls,
       }).toEqual({
-        closed: expected === "close card" ? 1 : 0,
         stopped: expected === "stop turn" ? [[{ threadId: "thr_test" }]] : [],
         cancelled:
           expected === "cancel request"
@@ -605,7 +602,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <InlinePendingInteractionContext.Provider
-        value={{ promptShownAbove: "Choose a secret", close: () => {} }}
+        value={{ promptShownAbove: "Choose a secret" }}
       >
         <PluginPendingInteractionComposer
           collapsedByDefault={false}
