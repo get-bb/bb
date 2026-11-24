@@ -15,12 +15,16 @@ const GIT_ROOTS: Record<string, string> = {
   "/work/api": "/work/api",
   "/work/also-mono": "/mono",
 };
-const FOUND: Record<string, string[]> = {
-  "/data/stack": ["/data/stack/infra", "/data/stack/api"],
+const FOUND: Record<string, { path: string; gitRoot: string }[]> = {
+  "/data/stack": [
+    { path: "/data/stack/infra", gitRoot: "/data/stack/infra" },
+    { path: "/data/stack/api", gitRoot: "/data/stack/api" },
+    { path: "/data/stack/api-link", gitRoot: "/work/api" },
+  ],
 };
 
 describe("environment repos", () => {
-  it("lists the main repo, each extra folder's repo and repos found inside plain folders, once each", async () => {
+  it("lists the main repo, each extra folder's repo and repos found inside plain folders, once each by resolved root", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-environment-repos",

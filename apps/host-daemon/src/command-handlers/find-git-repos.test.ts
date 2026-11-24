@@ -18,6 +18,10 @@ function initRepo(repoPath: string): void {
   execFileSync("git", ["init", "-q", repoPath]);
 }
 
+function found(...repoPaths: string[]) {
+  return repoPaths.map((repoPath) => ({ path: repoPath, gitRoot: repoPath }));
+}
+
 function find(folderPaths: string[], maxDepth = 2, maxRepos = 64) {
   return findGitRepos({
     type: "host.find_git_repos",
@@ -52,7 +56,7 @@ describe("findGitRepos", () => {
         path: root,
         exists: true,
         gitRoot: null,
-        repos: [path.join(root, "api"), path.join(root, "group", "web")],
+        repos: found(path.join(root, "api"), path.join(root, "group", "web")),
         truncated: false,
       },
     ]);
@@ -119,12 +123,37 @@ describe("findGitRepos", () => {
     ]);
 
     expect((await find([workspace])).folders[0]).toMatchObject({
-      repos: [path.join(workspace, "one"), path.join(workspace, "two")],
+      repos: found(path.join(workspace, "one"), path.join(workspace, "two")),
       truncated: false,
     });
     expect((await find([workspace], 2, 1)).folders[0]).toMatchObject({
-      repos: [path.join(workspace, "one")],
+      repos: found(path.join(workspace, "one")),
       truncated: true,
     });
+  });
+
+  it("reports a repo found through a symlinked folder at the same git root as the repo itself", async () => {
+    const realFolder = path.join(root, "real");
+    initRepo(path.join(realFolder, "api"));
+    const linkedFolder = path.join(root, "linked");
+    symlinkSync(realFolder, linkedFolder);
+
+    const { folders } = await find([
+      linkedFolder,
+      path.join(linkedFolder, "api"),
+    ]);
+
+    expect(folders.map(({ repos, gitRoot }) => ({ repos, gitRoot }))).toEqual([
+      {
+        repos: [
+          {
+            path: path.join(linkedFolder, "api"),
+            gitRoot: path.join(realFolder, "api"),
+          },
+        ],
+        gitRoot: null,
+      },
+      { repos: [], gitRoot: path.join(realFolder, "api") },
+    ]);
   });
 });

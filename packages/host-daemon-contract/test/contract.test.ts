@@ -219,7 +219,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         path: "/home/me/repos",
         exists: true,
         gitRoot: null,
-        repos: ["/home/me/repos/api"],
+        repos: [{ path: "/home/me/repos/api", gitRoot: "/home/me/repos/api" }],
         truncated: false,
       },
     ],

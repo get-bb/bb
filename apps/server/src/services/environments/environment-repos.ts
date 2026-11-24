@@ -107,8 +107,8 @@ async function findEnvironmentRepos(
       });
       return;
     }
-    for (const repoPath of folder.repos) {
-      add({ rootPath: repoPath, path: repoPath, source: "discovered" });
+    for (const repo of folder.repos) {
+      add({ rootPath: repo.gitRoot, path: repo.path, source: "discovered" });
     }
   });
   return {

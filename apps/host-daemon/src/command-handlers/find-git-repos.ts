@@ -22,6 +22,7 @@ const WALK_CONCURRENCY = 16;
 
 type FoundFolder =
   HostDaemonOnlineRpcResult<"host.find_git_repos">["folders"][number];
+type FoundRepo = FoundFolder["repos"][number];
 
 function isMissingError(error: unknown): boolean {
   return (
@@ -95,8 +96,8 @@ async function findReposInside(args: {
   folderPath: string;
   maxDepth: number;
   maxRepos: number;
-}): Promise<{ repos: string[]; truncated: boolean }> {
-  const repos: string[] = [];
+}): Promise<{ repos: FoundRepo[]; truncated: boolean }> {
+  const repos: FoundRepo[] = [];
   const visited = new Set<string>([await fs.realpath(args.folderPath)]);
   let level = [args.folderPath];
   for (let depth = 1; depth <= args.maxDepth && level.length > 0; depth += 1) {
@@ -110,7 +111,7 @@ async function findReposInside(args: {
           if (repos.length === args.maxRepos) {
             return { repos, truncated: true };
           }
-          repos.push(child);
+          repos.push({ path: child, gitRoot: realPath });
         } else {
           next.push(child);
         }

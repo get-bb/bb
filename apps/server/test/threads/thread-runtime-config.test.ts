@@ -1025,7 +1025,14 @@ describe("thread runtime config", () => {
                       ? folderPath
                       : null,
                   repos:
-                    folderPath === "/work/docs" ? ["/work/docs/notes"] : [],
+                    folderPath === "/work/docs"
+                      ? [
+                          {
+                            path: "/work/docs/notes",
+                            gitRoot: "/work/docs/notes",
+                          },
+                        ]
+                      : [],
                   truncated: false,
                 })),
               },
@@ -1278,7 +1285,10 @@ describe("thread runtime config", () => {
                   path: folderPath,
                   exists: true,
                   gitRoot: null,
-                  repos: [`${folderPath}/api`, `${folderPath}/web`],
+                  repos: ["api", "web"].map((name) => ({
+                    path: `${folderPath}/${name}`,
+                    gitRoot: `${folderPath}/${name}`,
+                  })),
                   truncated: false,
                 })),
               },

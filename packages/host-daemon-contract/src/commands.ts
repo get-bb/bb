@@ -608,12 +608,19 @@ const hostFindGitReposCommandSchema = z
   })
   .strict();
 
+const hostFoundGitRepoSchema = z
+  .object({
+    path: z.string().min(1),
+    gitRoot: z.string().min(1),
+  })
+  .strict();
+
 const hostFindGitReposFolderSchema = z
   .object({
     path: z.string().min(1),
     exists: z.boolean(),
     gitRoot: z.string().min(1).nullable(),
-    repos: z.array(z.string().min(1)),
+    repos: z.array(hostFoundGitRepoSchema),
     truncated: z.boolean(),
   })
   .strict();
