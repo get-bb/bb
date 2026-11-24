@@ -1,15 +1,12 @@
 import {
-  EMPTY_PROVIDER_NATIVE_ROOTS,
-  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
   normalizeProviderNativeRoots,
   providerNativeRootsAreEmpty,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
-import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { hostPathDirname } from "../lib/host-path.js";
+import { listNativeRootSkills } from "../providers/native-roots.js";
 import type { SharedInjectedSkillSource } from "./injected-skills.js";
 import type { SkillRegistration } from "./skill-listing.js";
 
@@ -78,21 +75,13 @@ export async function resolveSharedSkills(
   if (providerNativeRootsAreEmpty(roots)) {
     return { runtimeSources: [], summaries: [], identities: new Map() };
   }
-  const result = await callHostRetryableOnlineRpc(deps, {
+  const result = await listNativeRootSkills(deps, {
+    registrations: [],
+    sharedRoots: roots,
     hostId: args.hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "host.list_skills",
-      providerId: "bb-shared",
-      cwd: args.cwd,
-      nativeRoots: {
-        skills: roots,
-        commands: EMPTY_PROVIDER_NATIVE_ROOTS,
-        resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
-      },
-    },
+    cwd: args.cwd,
   });
-  return toResolvedSharedSkills(deps, result.skills);
+  return toResolvedSharedSkills(deps, result.sharedSkills);
 }
 
 export function toResolvedSharedSkills(

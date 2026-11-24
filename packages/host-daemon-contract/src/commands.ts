@@ -21,7 +21,6 @@ import {
   clientTurnRequestIdSchema,
   jsonObjectSchema,
   jsonValueSchema,
-  providerNativeRootSetSchema,
   providerNativeRootsSchema,
   FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
   FILE_LIST_EXCLUDE_NAMES_MAX,
@@ -718,12 +717,44 @@ const hostProviderCommandSchema = z.object({
 });
 export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
 
+const hostNativeRootsResolverSchema = z
+  .object({
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    artifact: pluginHostArtifactSchema,
+  })
+  .strict();
+
+const hostNativeRootScanSchema = z
+  .object({
+    providerId: z.string().min(1),
+    declaredRoots: z
+      .object({
+        skills: providerNativeRootsSchema,
+        commands: providerNativeRootsSchema,
+      })
+      .strict(),
+    resolver: hostNativeRootsResolverSchema.nullable(),
+  })
+  .strict();
+export type HostNativeRootScan = z.infer<typeof hostNativeRootScanSchema>;
+
+const hostNativeRootResolutionSchema = z
+  .object({
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
+    timeoutMs: z.number().int().positive().max(MAX_NODE_TIMER_DELAY_MS),
+  })
+  .strict();
+export type HostNativeRootResolution = z.infer<
+  typeof hostNativeRootResolutionSchema
+>;
+
 const hostListCommandsCommandSchema = z
   .object({
     type: z.literal("host.list_commands"),
-    providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
-    nativeRoots: providerNativeRootSetSchema,
+    provider: hostNativeRootScanSchema,
+    resolution: hostNativeRootResolutionSchema,
   })
   .strict();
 
@@ -754,9 +785,10 @@ export type DiscoveredSkill = z.infer<typeof discoveredSkillSchema>;
 const hostListSkillsCommandSchema = z
   .object({
     type: z.literal("host.list_skills"),
-    providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
-    nativeRoots: providerNativeRootSetSchema,
+    providers: z.array(hostNativeRootScanSchema),
+    sharedRoots: providerNativeRootsSchema,
+    resolution: hostNativeRootResolutionSchema,
   })
   .strict();
 
@@ -922,7 +954,7 @@ const hostListBranchOptionsCommandSchema = z
     query: z.string().max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
     selectedBranch: gitBranchNameSchema.optional(),
     limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
-    remoteRefresh: z.enum(["background", "none"]),
+    remoteRefresh: z.enum(["background", "blocking"]),
   })
   .strict();
 
@@ -1083,7 +1115,14 @@ const commandListResultSchema = z.object({
 });
 
 const skillListResultSchema = z.object({
-  skills: z.array(discoveredSkillSchema),
+  workspaceSkills: z.array(discoveredSkillSchema),
+  sharedSkills: z.array(discoveredSkillSchema),
+  providers: z.array(
+    z.object({
+      providerId: z.string().min(1),
+      skills: z.array(discoveredSkillSchema),
+    }),
+  ),
 });
 
 const hostReadWorkspaceAgentContextResultSchema = z

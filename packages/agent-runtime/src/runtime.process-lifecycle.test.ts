@@ -332,10 +332,7 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   it("keeps an old-hash bridge process that still owns a thread", async () => {
-    const manager = createProviderProcessManager({
-      onProcessExit: vi.fn(),
-      workspacePath: tmpDir,
-    });
+    const manager = createIdleProviderManager();
 
     const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
     await manager.ensureProvider({
@@ -350,7 +347,7 @@ describe("createAgentRuntime process lifecycle", () => {
     staleProcess.identity.threadIds.add("thread-live");
 
     await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      bridgeLaunch: SUPERSEDING_BRIDGE_LAUNCH,
       processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
       providerId: "fake",
     });
@@ -367,10 +364,7 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   it("waits for provider retirement before starting a same-key replacement", async () => {
-    const manager = createProviderProcessManager({
-      onProcessExit: vi.fn(),
-      workspacePath: tmpDir,
-    });
+    const manager = createIdleProviderManager();
     await manager.ensureProvider(MANAGER_PROVIDER);
     const retiringProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
     await Promise.all([
