@@ -849,4 +849,146 @@ describe("Grok recording redaction", () => {
       expect(readdirSync(output)).toEqual(["provider→bridge.ndjson"]);
     }
   });
+
+  it("redacts private grok question text and keeps the synthetic fixture", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    writeRecording(input, [
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/ask_user_question",
+        params: {
+          questions: [
+            {
+              question: "Choose synthetic option",
+              options: [
+                {
+                  label: "Alpha",
+                  description: "First synthetic choice",
+                  preview: "PREVIEW_ALPHA",
+                },
+              ],
+            },
+            {
+              question: "confidential customer question",
+              options: [
+                {
+                  label: "Ship",
+                  description: "confidential option description",
+                  preview: "SELECT * FROM secrets",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "interaction/request",
+        params: {
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                prompt: "Choose synthetic option",
+                shortLabel: "Question 1",
+                options: [
+                  {
+                    description: "Second synthetic choice",
+                    preview: "PREVIEW_BETA",
+                  },
+                  {
+                    description: "confidential runtime description",
+                    preview: "confidential runtime preview",
+                  },
+                ],
+              },
+              { prompt: "confidential runtime prompt" },
+            ],
+          },
+        },
+      },
+    ]);
+
+    redact(input, output);
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).toContain("Choose synthetic option");
+    expect(redacted).toContain("First synthetic choice");
+    expect(redacted).toContain("Second synthetic choice");
+    expect(redacted).toContain("PREVIEW_ALPHA");
+    expect(redacted).toContain("PREVIEW_BETA");
+    expect(redacted).not.toContain("confidential customer question");
+    expect(redacted).not.toContain("confidential option description");
+    expect(redacted).not.toContain("SELECT * FROM secrets");
+    expect(redacted).not.toContain("confidential runtime description");
+    expect(redacted).not.toContain("confidential runtime preview");
+    expect(redacted).not.toContain("confidential runtime prompt");
+    expect(readMessages(output)).toEqual(
+      expect.arrayContaining([
+        {
+          jsonrpc: "2.0",
+          method: "_x.ai/ask_user_question",
+          params: {
+            questions: [
+              {
+                question: "Choose synthetic option",
+                options: [
+                  {
+                    label: "Alpha",
+                    description: "First synthetic choice",
+                    preview: "PREVIEW_ALPHA",
+                  },
+                ],
+              },
+              {
+                question: "REDACTED_TEXT",
+                options: [
+                  {
+                    label: "Ship",
+                    description: "REDACTED_TEXT",
+                    preview: "REDACTED_TEXT",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          method: "interaction/request",
+          params: {
+            payload: {
+              kind: "user_question",
+              questions: [
+                {
+                  prompt: "Choose synthetic option",
+                  shortLabel: "Question 1",
+                  options: [
+                    {
+                      description: "Second synthetic choice",
+                      preview: "PREVIEW_BETA",
+                    },
+                    {
+                      description: "REDACTED_TEXT",
+                      preview: "REDACTED_TEXT",
+                    },
+                  ],
+                },
+                { prompt: "REDACTED_TEXT" },
+              ],
+            },
+          },
+        },
+      ]),
+    );
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
 });

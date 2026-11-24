@@ -3964,13 +3964,14 @@ function runTurn(
         }
         if (
           pending.subagentActionRequestId !== undefined &&
-          session !== previousSession &&
           !session.pendingSubagentActions.has(pending.subagentActionRequestId)
         ) {
-          dropTurnInput(
-            pending,
-            "ACP session was replaced before the subagent action ran",
-          );
+          if (session !== previousSession) {
+            dropTurnInput(
+              pending,
+              "ACP session was replaced before the subagent action ran",
+            );
+          }
           setActivePromptKind(session, "turn");
           finishTurn(session, "cancelled");
           return;

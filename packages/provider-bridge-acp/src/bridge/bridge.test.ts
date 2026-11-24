@@ -8430,6 +8430,78 @@ describe("acp bridge: questions the agent asks", () => {
     ).toHaveLength(promptsBefore + 1);
   });
 
+  it("does not send a subagent prompt cancelled during model reconciliation", async () => {
+    const requestLog = join(workspaceDir, "grok-action-cancel-model.log");
+    const envVars = {
+      FAKE_ACP_MODEL_CONFIG: "1",
+      FAKE_ACP_MODEL_DELAY_MS: "400",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const { providerThreadId } = await startGrokSubagentThread(envVars);
+    const promptsBefore = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/prompt",
+    ).length;
+    const completedBefore = threadEventsOfType("turn/completed").length;
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "cancelled during model selection",
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: launchProviderOptions({
+          dialectId: "grok",
+          envVars,
+        }),
+      }),
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "session/set_config_option" &&
+            request.params?.["configId"] === "model" &&
+            request.params?.["value"] === "fake/strong",
+        )
+          ? true
+          : undefined,
+      "tell model option",
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId: tellId },
+      }),
+    );
+    expect((await waitForResponse(tellId)).error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+    await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completedBefore
+          ? true
+          : undefined,
+      "cancelled action turn completed",
+    );
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore);
+    const recovered = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered after model cancel",
+      }),
+    );
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.result).toMatchObject({ childRef: "child-alpha" });
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore + 1);
+  });
+
   it("grok_subagent_tell_targets_only_requested_child", async () => {
     const { providerThreadId } = await startGrokSubagentThread();
     const text = `CHILD_MESSAGE 😀 مراجعة\n${"x".repeat(64_001)}`;

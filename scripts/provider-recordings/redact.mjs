@@ -95,6 +95,13 @@ const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
 ]);
 const GROK_SYNTHETIC_CANCEL_MESSAGE = "Subagent cancellation initiated";
+const GROK_SYNTHETIC_QUESTION_TEXTS = new Set([
+  "Choose synthetic option",
+  "First synthetic choice",
+  "Second synthetic choice",
+  "PREVIEW_ALPHA",
+  "PREVIEW_BETA",
+]);
 const GROK_SYNTHETIC_SUBAGENT_PROMPTS = new Set([
   'Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly "CHILD_MESSAGE 😀 مراجعة". Send it only to that child, then return the tool result.',
   'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.',
@@ -280,6 +287,99 @@ function isClaudeCatalogMessage(message) {
   );
 }
 
+function redactQuestionText(value) {
+  return GROK_SYNTHETIC_QUESTION_TEXTS.has(value)
+    ? trimString(value)
+    : "REDACTED_TEXT";
+}
+
+function redactQuestionOptions(options, redactedOptions) {
+  if (!Array.isArray(options) || !Array.isArray(redactedOptions)) return;
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index];
+    const redactedOption = redactedOptions[index];
+    if (
+      option === null ||
+      typeof option !== "object" ||
+      redactedOption === null ||
+      typeof redactedOption !== "object"
+    ) {
+      continue;
+    }
+    for (const key of ["description", "preview"]) {
+      if (typeof option[key] === "string") {
+        redactedOption[key] = redactQuestionText(option[key]);
+      }
+    }
+  }
+}
+
+function redactQuestionList(questions, redactedQuestions) {
+  if (!Array.isArray(questions) || !Array.isArray(redactedQuestions)) return;
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
+    const redactedQuestion = redactedQuestions[index];
+    if (
+      question === null ||
+      typeof question !== "object" ||
+      redactedQuestion === null ||
+      typeof redactedQuestion !== "object"
+    ) {
+      continue;
+    }
+    for (const key of ["question", "prompt"]) {
+      if (typeof question[key] === "string") {
+        redactedQuestion[key] = redactQuestionText(question[key]);
+      }
+    }
+    redactQuestionOptions(question.options, redactedQuestion.options);
+  }
+}
+
+function redactGrokQuestionPayloads(parsed, redacted) {
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    redacted === null ||
+    typeof redacted !== "object" ||
+    Array.isArray(redacted)
+  ) {
+    return;
+  }
+  const params = parsed.params;
+  const redactedParams = redacted.params;
+  if (
+    params === null ||
+    typeof params !== "object" ||
+    Array.isArray(params) ||
+    redactedParams === null ||
+    typeof redactedParams !== "object" ||
+    Array.isArray(redactedParams)
+  ) {
+    return;
+  }
+  if (parsed.method === "_x.ai/ask_user_question") {
+    redactQuestionList(params.questions, redactedParams.questions);
+    return;
+  }
+  if (parsed.method !== "interaction/request") return;
+  const payload = params.payload;
+  const redactedPayload = redactedParams.payload;
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    payload.kind !== "user_question" ||
+    redactedPayload === null ||
+    typeof redactedPayload !== "object" ||
+    Array.isArray(redactedPayload)
+  ) {
+    return;
+  }
+  redactQuestionList(payload.questions, redactedPayload.questions);
+}
+
 function preserveGrokToolResults(value, redacted) {
   if (Array.isArray(value)) {
     if (!Array.isArray(redacted)) return;
@@ -407,6 +507,7 @@ function redactLine(line) {
   const redacted = redactValue(parsed, "", catalogContext);
   preserveGrokToolResults(parsed, redacted);
   preserveLiteralCompactCommand(parsed, redacted);
+  redactGrokQuestionPayloads(parsed, redacted);
   if (
     !Array.isArray(parsed) &&
     ((parsed.method === "_x.ai/interject" &&
