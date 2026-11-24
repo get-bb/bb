@@ -117,37 +117,46 @@ function folderItems(props: {
   ];
   if (options.length === 0) return undefined;
   const where = pool.checkouts.length === 1 ? "" : ` on ${checkout.hostName}`;
-  return options.map((folder) => {
-    const checked = checkout.folders.includes(folder);
-    const missing = branchable !== undefined && !branchable.includes(folder);
-    return (
-      <SettingsListItem
-        key={`folder:${folder}`}
-        title={`Also branch ${folderLabel(folder)}`}
-        description={folder}
-        error={
-          missing
-            ? "No longer a git project folder on this machine; uncheck it to stop branching it"
-            : null
-        }
-        leading={
-          <Checkbox
-            aria-label={`${pool.projectName} warm worktrees${where} also branch ${folderLabel(folder)}`}
-            checked={checked}
-            onCheckedChange={() => {
-              onFoldersChange({
-                projectId: pool.projectId,
-                hostId: checkout.hostId,
-                folders: checked
-                  ? checkout.folders.filter((entry) => entry !== folder)
-                  : [...checkout.folders, folder],
-              });
-            }}
-          />
-        }
-      />
-    );
-  });
+  return [
+    <div
+      key="folder-worktrees-heading"
+      role="listitem"
+      className="pt-1.5 pb-0.5 text-xs font-medium text-subtle-foreground"
+    >
+      Folder worktrees
+    </div>,
+    ...options.map((folder) => {
+      const checked = checkout.folders.includes(folder);
+      const missing = branchable !== undefined && !branchable.includes(folder);
+      return (
+        <SettingsListItem
+          key={`folder:${folder}`}
+          title={folderLabel(folder)}
+          description={folder}
+          error={
+            missing
+              ? "No longer a git project folder on this machine; untick it to stop making a worktree of it"
+              : null
+          }
+          leading={
+            <Checkbox
+              aria-label={`${pool.projectName} warm worktrees${where}: worktree of ${folderLabel(folder)}`}
+              checked={checked}
+              onCheckedChange={() => {
+                onFoldersChange({
+                  projectId: pool.projectId,
+                  hostId: checkout.hostId,
+                  folders: checked
+                    ? checkout.folders.filter((entry) => entry !== folder)
+                    : [...checkout.folders, folder],
+                });
+              }}
+            />
+          }
+        />
+      );
+    }),
+  ];
 }
 
 function PoolItem(props: {

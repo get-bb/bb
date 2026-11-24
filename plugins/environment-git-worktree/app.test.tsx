@@ -218,7 +218,7 @@ describe("worktree inputs control", () => {
     await waitFor(() => {
       expect(
         branched.slot.getByRole("combobox", { name: "Worktree" }).textContent,
-      ).toContain("main +1");
+      ).toContain("main +1 folder");
     });
     await openPicker(branched.slot);
     fireEvent.click(branched.slot.getByRole("button", { name: "release" }));

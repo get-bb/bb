@@ -361,7 +361,7 @@ function WorktreeInputsControl({
     existingPath === null
       ? folders.length === 0
         ? baseBranchLabel
-        : `${baseBranchLabel} +${folders.length}`
+        : `${baseBranchLabel} +${folders.length} ${folders.length === 1 ? "folder" : "folders"}`
       : worktreePathLabel(existingPath);
   const triggerTitle =
     existingPath ??
@@ -515,7 +515,7 @@ function WorktreeInputsControl({
               <>
                 {folderOptions.length > 0 && query.trim() === "" ? (
                   <>
-                    <BranchPickerSectionHeader label="Also branch:" />
+                    <BranchPickerSectionHeader label="Folder worktrees:" />
                     {folderOptions.map((folder) => (
                       <BranchPickerRow
                         key={folder}

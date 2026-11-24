@@ -152,7 +152,7 @@ function formatWarmPoolStatus(status: WarmPoolStatus): string {
         }`,
         ...(checkout.folders.length === 0
           ? []
-          : [`    Also branches: ${checkout.folders.join(", ")}`]),
+          : [`    Folder worktrees: ${checkout.folders.join(", ")}`]),
         ...(checkout.lastError === null
           ? []
           : [`    Problem: ${checkout.lastError}`]),
@@ -947,7 +947,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         }),
         "pool folders": cliCommand({
           summary:
-            "Set which project folders a machine's warm worktrees also branch",
+            "Set which project folders get worktrees in a machine's warm worktrees",
           description:
             "The project's warm worktrees on a machine also get a worktree of each listed project folder on that machine, with setup finished, and are handed only to new threads that branch exactly those folders. Folders are set per machine because each machine's checkout has its own folder paths. List none to stop branching folders. Members made with other folders are replaced.",
           positionals: [
