@@ -6,6 +6,7 @@ import {
   resolveThreadEnvironmentPlacement,
   prepareProviderEnvironment,
 } from "../../../src/services/threads/thread-environment-placement.js";
+import { createGitCheckoutInspector } from "../../../src/services/environments/provider-availability.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
@@ -2343,6 +2344,7 @@ describe("existing-path provider selection", () => {
         const placement = await resolveThreadEnvironmentPlacement(
           harness.deps,
           {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             projectId: fixture.context.project.id,
             requestedEnvironment: {
               type: "provider",
@@ -2378,6 +2380,7 @@ describe("existing-path provider selection", () => {
         locate: () => ({ path: "/tmp/unrecorded", reuse: true }),
       });
       const placement = await resolveThreadEnvironmentPlacement(harness.deps, {
+        inspectGitCheckout: createGitCheckoutInspector(harness.deps),
         projectId: fixture.context.project.id,
         requestedEnvironment: {
           type: "provider",
@@ -2424,6 +2427,7 @@ describe("existing-path provider selection", () => {
           .run();
       await expect(
         resolveThreadEnvironmentPlacement(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           projectId: fixture.context.project.id,
           requestedEnvironment: {
             type: "provider",
@@ -2733,6 +2737,7 @@ describe("worktree adoption cleanup", () => {
         const placement = await resolveThreadEnvironmentPlacement(
           harness.deps,
           {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             projectId: fixture.context.project.id,
             requestedEnvironment: {
               type: "provider",

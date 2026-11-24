@@ -4829,10 +4829,11 @@ returns discards the environment, as for a fresh create. After a restart
 between adopt and create returning, core discards the environment (removed
 with the resource adopt recorded) and puts the thread back on its provider
 request, so it is provisioned again (`restartInterruptedHandOff`). Its only
-caller is the Worktree plugin's warm pool, which checks a member under the git
-ref lock, adopts it with a resource naming its placeholder branch,
-fast-forwards it and calls `setup(path)` when it is behind the remote's default
-base, waits for the thread's branch name, and renames the placeholder last.
+caller is the Worktree plugin's warm pool, which in one host call checks a
+member under the git ref lock and fast-forwards it when it is behind the
+remote's default base, adopts it with a resource naming its placeholder branch,
+calls `setup(path)` when it moved, waits for the thread's branch name, and
+renames the placeholder last.
 Its removal also deletes the branch named in the worktree's completion file,
 which the rename writes first, so a restart after the rename leaks nothing.
 Disabling or uninstalling a plugin releases its holds on environments no

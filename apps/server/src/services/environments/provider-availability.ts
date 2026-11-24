@@ -1,4 +1,5 @@
 import { getProjectSourceByHost } from "@bb/db";
+import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { isLocalPathProjectSource, PERSONAL_PROJECT_ID } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
@@ -94,6 +95,64 @@ export async function resolvePluginEnvironmentProviderAvailability(
   return parseProviderAvailabilityInvocation(record.pluginId, invocation);
 }
 
+type GitCheckoutInspection =
+  HostDaemonOnlineRpcResult<"host.inspect_git_checkout">;
+
+export type GitCheckoutInspector = (args: {
+  hostId: string;
+  path: string;
+}) => Promise<GitCheckoutInspection>;
+
+function inspectGitCheckout(
+  deps: WorkSessionDeps,
+  args: { hostId: string; path: string },
+): Promise<GitCheckoutInspection> {
+  return callHostRetryableOnlineRpc(deps, {
+    hostId: args.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: { type: "host.inspect_git_checkout", path: args.path },
+  });
+}
+
+export function createGitCheckoutInspector(
+  deps: WorkSessionDeps,
+): GitCheckoutInspector {
+  const inspections = new Map<string, Promise<GitCheckoutInspection>>();
+  return (args) => {
+    const key = JSON.stringify([args.hostId, args.path]);
+    const existing = inspections.get(key);
+    if (existing !== undefined) return existing;
+    const inspection = inspectGitCheckout(deps, args);
+    inspections.set(key, inspection);
+    return inspection;
+  };
+}
+
+export async function gitCheckoutAvailability(
+  inspection: Promise<GitCheckoutInspection>,
+): Promise<GitCheckoutAvailability> {
+  let checkout;
+  try {
+    ({ checkout } = await inspection);
+  } catch {
+    return {
+      status: "unavailable",
+      message: "This project checkout could not be inspected.",
+    };
+  }
+  if (
+    checkout.kind === "unknown" ||
+    checkout.kind === "unborn" ||
+    checkout.headSha === null
+  ) {
+    return {
+      status: "unavailable",
+      message: "This project checkout has no usable git branch.",
+    };
+  }
+  return { status: "available" };
+}
+
 const pendingGitInspections = new WeakMap<
   object,
   Map<string, Promise<GitCheckoutAvailability>>
@@ -111,41 +170,9 @@ export function resolveGitCheckoutAvailability(
   const key = JSON.stringify([args.hostId, args.path]);
   const existing = pending.get(key);
   if (existing !== undefined) return existing;
-  const result = inspectGitCheckoutAvailability(deps, args).finally(() =>
-    pending.delete(key),
-  );
+  const result = gitCheckoutAvailability(
+    inspectGitCheckout(deps, args),
+  ).finally(() => pending.delete(key));
   pending.set(key, result);
   return result;
-}
-
-async function inspectGitCheckoutAvailability(
-  deps: WorkSessionDeps,
-  args: { hostId: string; path: string },
-): Promise<GitCheckoutAvailability> {
-  try {
-    const inspection = await callHostRetryableOnlineRpc(deps, {
-      hostId: args.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_checkout",
-        path: args.path,
-      },
-    });
-    if (
-      inspection.checkout.kind === "unknown" ||
-      inspection.checkout.kind === "unborn" ||
-      inspection.checkout.headSha === null
-    ) {
-      return {
-        status: "unavailable",
-        message: "This project checkout has no usable git branch.",
-      };
-    }
-    return { status: "available" };
-  } catch {
-    return {
-      status: "unavailable",
-      message: "This project checkout could not be inspected.",
-    };
-  }
 }
