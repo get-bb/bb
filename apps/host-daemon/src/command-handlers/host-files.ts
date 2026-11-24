@@ -111,7 +111,7 @@ async function listHostRootPathCandidates(
   try {
     const realRootPath = await resolveNonSymlinkDirectoryPath({
       description: "Path",
-      path: rootPath,
+      path: command.followRootSymlink ? await fs.realpath(rootPath) : rootPath,
     });
     const candidates = await listWorkspacePathCandidates({
       root: realRootPath,

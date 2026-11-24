@@ -544,6 +544,7 @@ const hostListPathsCommandSchema = z
   .object({
     type: z.literal("host.list_paths"),
     rootPaths: z.array(z.string().min(1)).min(1).max(PATH_LIST_ROOT_PATHS_MAX),
+    followRootSymlink: z.boolean(),
     query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
     includeFiles: z.boolean(),

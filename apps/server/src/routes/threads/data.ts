@@ -506,6 +506,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         command: {
           type: "host.list_paths",
           rootPaths: [target.storagePath],
+          followRootSymlink: false,
           ...(query.query ? { query: query.query } : {}),
           limit,
           includeFiles: inclusion.includeFiles,

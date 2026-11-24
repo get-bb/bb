@@ -4486,6 +4486,7 @@ describe("public thread data routes", () => {
       );
       expect(pathsCommand.command).toMatchObject({
         rootPaths: [threadStoragePath],
+        followRootSymlink: false,
         query: "notes",
         limit: 1000,
         includeFiles: true,

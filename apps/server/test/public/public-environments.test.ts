@@ -98,6 +98,7 @@ describe("public environments", () => {
       );
       expect(pathsCommand.command).toMatchObject({
         rootPaths: ["/tmp/personal-workspace"],
+        followRootSymlink: true,
         query: "app",
         includeFiles: true,
         includeDirectories: false,

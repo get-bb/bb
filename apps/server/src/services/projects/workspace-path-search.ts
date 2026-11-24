@@ -41,6 +41,7 @@ export async function searchWorkspaceFolderPaths(
     command: {
       type: "host.list_paths",
       rootPaths,
+      followRootSymlink: true,
       ...(args.query ? { query: args.query } : {}),
       limit: args.limit,
       includeFiles: args.includeFiles,

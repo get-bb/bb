@@ -255,6 +255,7 @@ describe("host file routes", () => {
         {
           type: "host.list_paths",
           rootPaths: ["/notes"],
+          followRootSymlink: false,
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
@@ -265,6 +266,7 @@ describe("host file routes", () => {
         {
           type: "host.list_paths",
           rootPaths: ["/notes"],
+          followRootSymlink: false,
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,

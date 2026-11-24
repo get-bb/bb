@@ -279,11 +279,15 @@ export function usePathSuggestions(
     args.includeExtraFolders,
   ]);
 
+  const isExtraFoldersQueryEnabled =
+    isWorkspaceQueryEnabled && args.includeExtraFolders;
   const isFetching =
     (isWorkspaceQueryEnabled && workspaceQuery.isFetching) ||
+    (isExtraFoldersQueryEnabled && extraFoldersQuery.isFetching) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isFetching);
   const isPending =
     (isWorkspaceQueryEnabled && workspaceQuery.isPending) ||
+    (isExtraFoldersQueryEnabled && extraFoldersQuery.isPending) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isPending);
   const isSearching = isDebouncing || isPending || isFetching;
   const isLoading = hasQuery && suggestions.length === 0 && isSearching;
@@ -291,6 +295,7 @@ export function usePathSuggestions(
   const isError =
     hasQuery &&
     ((isWorkspaceQueryEnabled && workspaceQuery.isError) ||
+      (isExtraFoldersQueryEnabled && extraFoldersQuery.isError) ||
       (isThreadStorageQueryEnabled && threadStorageQuery.isError));
 
   return {

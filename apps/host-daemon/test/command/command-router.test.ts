@@ -262,6 +262,7 @@ describe("CommandRouter", () => {
         command: {
           type: "host.list_paths",
           rootPaths: [root],
+          followRootSymlink: false,
           query: "alpha",
           limit: 5,
           includeFiles: true,
@@ -300,6 +301,7 @@ describe("CommandRouter", () => {
         command: {
           type: "host.list_paths",
           rootPaths: [root],
+          followRootSymlink: false,
           query: "alpha",
           limit: 5,
           includeFiles: true,

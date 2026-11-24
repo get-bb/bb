@@ -308,6 +308,7 @@ describe("public project workspace routing", () => {
       expect(remoteRpc.requests.at(-1)?.command).toMatchObject({
         type: "host.list_paths",
         rootPaths: ["/remote/project"],
+        followRootSymlink: true,
       });
 
       const environmentPaths = await harness.app.request(
@@ -317,6 +318,7 @@ describe("public project workspace routing", () => {
       expect(remoteRpc.requests.at(-1)?.command).toMatchObject({
         type: "host.list_paths",
         rootPaths: ["/remote/worktree"],
+        followRootSymlink: true,
       });
 
       const commands = await harness.app.request(

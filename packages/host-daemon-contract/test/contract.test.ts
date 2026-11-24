@@ -1398,6 +1398,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
         rootPaths: ["/tmp/workspace"],
+        followRootSymlink: false,
         limit: 1000,
         includeHidden: true,
         respectGitIgnore: false,
@@ -1408,6 +1409,7 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "host.list_paths",
       rootPaths: ["/tmp/workspace"],
+      followRootSymlink: false,
       limit: 1000,
       includeHidden: true,
       respectGitIgnore: false,
@@ -1660,6 +1662,7 @@ describe("host-daemon command schemas", () => {
       {
         type: "host.list_paths",
         rootPaths: ["/tmp/workspace"],
+        followRootSymlink: false,
         limit: 100,
         includeHidden: true,
         respectGitIgnore: false,
@@ -2669,6 +2672,7 @@ describe("host-daemon command schemas", () => {
     const listPaths = {
       type: "host.list_paths",
       rootPaths: ["/tmp/workspace"],
+      followRootSymlink: false,
       limit: 100,
       includeFiles: true,
       includeDirectories: true,
@@ -2685,7 +2689,10 @@ describe("host-daemon command schemas", () => {
       const { includeHidden: _hidden, ...withoutHidden } = command;
       const { respectGitIgnore: _ignore, ...withoutIgnorePolicy } = command;
       const { excludeNames: _names, ...withoutNames } = command;
+      const { followRootSymlink: _follow, ...withoutFollowRootSymlink } =
+        command;
       expect(parses(withoutHidden)).toBe(false);
+      expect(parses(withoutFollowRootSymlink)).toBe(false);
       expect(parses(withoutIgnorePolicy)).toBe(false);
       expect(parses({ ...command, respectGitIgnore: true })).toBe(true);
       expect(parses(withoutNames)).toBe(false);
@@ -2759,6 +2766,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
         rootPaths: ["/tmp/workspace"],
+        followRootSymlink: false,
         query: longQuery,
         limit: 100,
         includeHidden: true,
@@ -2773,6 +2781,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
         rootPaths: ["/tmp/workspace"],
+        followRootSymlink: false,
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
         respectGitIgnore: false,
@@ -2786,6 +2795,7 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_paths",
         rootPaths: ["/tmp/workspace"],
+        followRootSymlink: false,
         limit: 100,
         includeHidden: true,
         respectGitIgnore: false,

@@ -146,6 +146,7 @@ describe("workspace command dispatch", () => {
       {
         type: "host.list_paths",
         rootPaths: [tempDir],
+        followRootSymlink: false,
         limit: 1000,
         includeHidden: false,
         respectGitIgnore: false,
@@ -205,6 +206,7 @@ describe("workspace command dispatch", () => {
       {
         type: "host.list_paths",
         rootPaths: [missingPath],
+        followRootSymlink: false,
         limit: 1000,
         includeHidden: false,
         respectGitIgnore: false,
