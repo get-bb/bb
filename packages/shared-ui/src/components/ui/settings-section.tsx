@@ -194,6 +194,20 @@ export function SettingsWithControl({
 export const SETTINGS_CARD_CLASS =
   "rounded-lg border border-border bg-card px-4 py-3.5";
 
+export function SettingsListRows({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
+  return (
+    <div role="list" aria-label={label} className="divide-y divide-border">
+      {children}
+    </div>
+  );
+}
+
 export function SettingsList({
   children,
   title,
@@ -206,12 +220,8 @@ export function SettingsList({
   label?: string;
 }) {
   const list = (
-    <div
-      role="list"
-      aria-label={label ?? title}
-      className={SETTINGS_CARD_CLASS}
-    >
-      <SettingsRowList>{children}</SettingsRowList>
+    <div className={SETTINGS_CARD_CLASS}>
+      <SettingsListRows label={label ?? title}>{children}</SettingsListRows>
     </div>
   );
   if (title === undefined && description === undefined) return list;

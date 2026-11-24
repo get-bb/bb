@@ -67,9 +67,16 @@ Slot props contracts (versioned, additive-only):
   form for running, needs-configuration, and degraded plugins. Registration:
   `{ id, title?, description?, component }`; `title` is an optional host-rendered
   section heading and `description` is optional supporting copy rendered with
-  that heading. Build the body from `@bb/settings-section`
-  (`SettingsList`, `SettingsListItem`) so it matches the host's settings
-  cards. Use the existing hooks (`useRpc`, `useRealtime`,
+  that heading; put your heading there instead of your own `h3`. Build the
+  body from `npx shadcn add @bb/settings-section`, the primitives bb's own
+  settings pages use: `SettingsList` is the settings card (optional
+  `title`/`description` sub-heading); each `SettingsListItem` takes `title`,
+  `meta` (short facts joined with a middot), `badge`, `description`,
+  `leading` (radio, checkbox, icon), a trailing `control` and an `error`
+  line, and nests child items for per-machine or per-account overrides
+  (show an inherited value in the control, e.g. `Project (2)`).
+  `SettingsListMessage` covers loading, empty and load-error rows. Use the
+  existing hooks (`useRpc`, `useRealtime`,
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register

@@ -308,16 +308,7 @@ composer.
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.
-- Settings sections: `npx shadcn add @bb/settings-section` gives the same
-  primitives bb's own settings pages use. `SettingsList` is the settings card
-  (optional `title`/`description` sub-heading); each `SettingsListItem` takes
-  `title`, `meta` (short facts joined with a middot), `badge`, `description`,
-  `leading` (radio, checkbox, icon), a trailing `control` and an `error` line.
-  Nest `SettingsListItem`s as children for per-machine or per-account
-  overrides; show an inherited value in the control (e.g. `Project (2)`).
-  `SettingsListMessage` covers loading, empty and load-error rows. Put the
-  section heading in the slot's `title`/`description` instead of your own
-  `h3`.
+- `@bb/settings-section`: bb's settings cards and rows (frontend-core-slots.md).
 - `EmptyState` ships as `npx shadcn add @bb/empty-state`. There is no
   `PageBody` or `Spinner`; write your own (each is a few lines; see
   `plugins/github/components/` for reference implementations).
