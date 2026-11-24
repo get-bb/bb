@@ -99,6 +99,7 @@ import {
   parseBranchListLimit,
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
+import { createProjectBranchesReader } from "../services/projects/project-branches.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import {
   readWorkspaceAgentContext,
@@ -950,50 +951,25 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(result);
   });
 
-  const readProjectBranches = async (
+  const readBranches = createProjectBranchesReader();
+  const readProjectBranches = (
     projectId: string,
     query: ProjectBranchesQuery,
     remoteRefresh: "background" | "blocking",
   ) => {
     requirePublicStandardProject(deps.db, projectId);
-
     const source = resolveProjectWorkspaceTarget(deps, {
       projectId,
       hostId: query.hostId,
     });
-    const branchQuery = normalizeBranchQuery(query.query);
-    const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-    const inspectionPromise = callHostRetryableOnlineRpc(deps, {
+    return readBranches(deps, {
       hostId: source.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_source",
-        path: source.path,
-        remoteRefresh,
-      },
+      path: source.path,
+      query: normalizeBranchQuery(query.query),
+      selectedBranch: normalizeBranchQuery(query.selectedBranch),
+      limit: parseBranchListLimit(query.limit),
+      remoteRefresh,
     });
-    const readBranchOptions = () =>
-      callHostRetryableOnlineRpc(deps, {
-        hostId: source.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_branch_options",
-          path: source.path,
-          ...(branchQuery ? { query: branchQuery } : {}),
-          ...(selectedBranch ? { selectedBranch } : {}),
-          limit: parseBranchListLimit(query.limit),
-          remoteRefresh: "none",
-        },
-      });
-    const branchOptionsPromise =
-      remoteRefresh === "background"
-        ? readBranchOptions()
-        : inspectionPromise.then(readBranchOptions);
-    const [inspection, branchOptions] = await Promise.all([
-      inspectionPromise,
-      branchOptionsPromise,
-    ]);
-    return { ...inspection, ...branchOptions };
   };
 
   get(routes.branches, async (context, query) =>

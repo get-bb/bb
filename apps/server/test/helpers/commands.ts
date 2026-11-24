@@ -244,7 +244,7 @@ function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"hos
 
 function buildDefaultGitBranchOptionsResult(
   selectedBranch: string | undefined,
-): HostDaemonOnlineRpcResult<"host.list_branch_options"> {
+): Omit<HostDaemonOnlineRpcResult<"host.list_branch_options">, "source"> {
   return {
     branches: ["main"],
     branchesTruncated: false,
@@ -438,9 +438,13 @@ export function registerTestHostRpcCapture(
             requestId: message.requestId,
             commandType: command.type,
             ok: true,
-            result:
-              args.gitBranchOptionsResult ??
-              buildDefaultGitBranchOptionsResult(command.selectedBranch),
+            result: args.gitBranchOptionsResult ?? {
+              ...buildDefaultGitBranchOptionsResult(command.selectedBranch),
+              source: command.includeSource
+                ? (args.gitSourceInspectionResult ??
+                  buildDefaultGitSourceInspectionResult())
+                : null,
+            },
           }),
           sessionId: args.sessionId,
         });

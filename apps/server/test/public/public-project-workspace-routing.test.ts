@@ -1,6 +1,6 @@
 import { createProjectSource } from "@bb/db";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   registerHostRpcResponder,
   EMPTY_WORKSPACE_AGENT_CONTEXT,
@@ -29,7 +29,7 @@ const primaryCommand: HostProviderCommand = {
 };
 
 describe("public project workspace routing", () => {
-  it("keeps app branch options cache-first and public branch listing blocking", async () => {
+  it("reads branches in one host call and reuses the source inspection while searching", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-project-branches",
@@ -39,133 +39,145 @@ describe("public project workspace routing", () => {
         hostId: host.id,
         path: "/project/branches",
       });
-      let releaseBackgroundInspection: (() => void) | undefined;
-      const backgroundInspectionGate = new Promise<void>((resolve) => {
-        releaseBackgroundInspection = resolve;
-      });
-      let releaseBlockingInspection: (() => void) | undefined;
-      const blockingInspectionGate = new Promise<void>((resolve) => {
-        releaseBlockingInspection = resolve;
-      });
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         handle: async (request) => {
-          if (request.command.type === "host.list_branch_options") {
-            return {
-              ok: true,
-              result: {
-                branches: ["main"],
-                branchesTruncated: false,
-                remoteBranches: ["origin/main"],
-                remoteBranchesTruncated: false,
-                selectedBranch: null,
-              },
-            };
-          }
-          if (request.command.type !== "host.inspect_git_source") {
+          if (request.command.type !== "host.list_branch_options") {
             throw new Error(
               `Unexpected project branch RPC ${request.command.type}`,
             );
           }
-          await (request.command.remoteRefresh === "blocking"
-            ? blockingInspectionGate
-            : backgroundInspectionGate);
           return {
             ok: true,
             result: {
-              checkout: {
-                kind: "branch",
-                branchName: "main",
-                headSha: "abc123",
-              },
-              defaultBranch: "main",
-              defaultBranchRelation: "equal",
-              isWorktree: false,
-              hasUncommittedChanges: false,
-              operation: { kind: "none" },
-              originDefaultBranch: "origin/main",
-              defaultWorktreeBaseBranch: "origin/main",
+              branches: ["main"],
+              branchesTruncated: false,
+              remoteBranches: ["origin/main"],
+              remoteBranchesTruncated: false,
+              selectedBranch: null,
+              source: request.command.includeSource
+                ? {
+                    checkout: {
+                      kind: "branch",
+                      branchName: "main",
+                      headSha: "abc123",
+                    },
+                    defaultBranch: "main",
+                    defaultBranchRelation: "equal",
+                    isWorktree: false,
+                    hasUncommittedChanges: true,
+                    operation: { kind: "none" },
+                    originDefaultBranch: "origin/main",
+                    defaultWorktreeBaseBranch: "origin/main",
+                  }
+                : null,
             },
           };
         },
       });
+      const branchesUrl = (route: string, query = "") =>
+        `/api/v1/projects/${project.id}/${route}?hostId=${host.id}&limit=50${query}`;
+      const expectedResponse = {
+        branches: ["main"],
+        branchesTruncated: false,
+        checkout: { kind: "branch", branchName: "main", headSha: "abc123" },
+        defaultBranch: "main",
+        defaultWorktreeBaseBranch: "origin/main",
+        hasUncommittedChanges: true,
+        remoteBranches: ["origin/main"],
+        remoteBranchesTruncated: false,
+        selectedBranch: null,
+      };
+      const listCommand = {
+        type: "host.list_branch_options",
+        path: "/project/branches",
+        limit: 50,
+      };
 
-      const responsePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/branch-options?hostId=${host.id}&limit=50`,
+      const opened = await harness.app.request(branchesUrl("branch-options"));
+      const searched = await harness.app.request(
+        branchesUrl("branch-options", "&query=ma"),
+      );
+      const refreshed = await harness.app.request(
+        branchesUrl("branches", "&query=ma"),
       );
 
-      try {
-        await vi.waitFor(() => expect(responder.requests).toHaveLength(2));
-        expect(responder.requests.map((request) => request.command)).toEqual([
-          {
-            type: "host.inspect_git_source",
-            path: "/project/branches",
-            remoteRefresh: "background",
-          },
-          {
-            type: "host.list_branch_options",
-            path: "/project/branches",
-            limit: 50,
-            remoteRefresh: "none",
-          },
-        ]);
-      } finally {
-        releaseBackgroundInspection?.();
+      for (const response of [opened, searched, refreshed]) {
+        expect(response.status).toBe(200);
+        await expect(readJson(response)).resolves.toMatchObject(
+          expectedResponse,
+        );
       }
-      const response = await responsePromise;
+      expect(responder.requests.map((request) => request.command)).toEqual([
+        { ...listCommand, remoteRefresh: "background", includeSource: true },
+        {
+          ...listCommand,
+          query: "ma",
+          remoteRefresh: "background",
+          includeSource: false,
+        },
+        {
+          ...listCommand,
+          query: "ma",
+          remoteRefresh: "blocking",
+          includeSource: true,
+        },
+      ]);
+    });
+  });
+
+  it("inspects the source for a search when no recent inspection exists", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-project-branch-search",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/project/branch-search",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: async () => ({
+          ok: true,
+          result: {
+            branches: [],
+            branchesTruncated: false,
+            remoteBranches: [],
+            remoteBranchesTruncated: false,
+            selectedBranch: null,
+            source: {
+              checkout: {
+                kind: "unknown",
+                reason: "Path is not a git repository",
+              },
+              defaultBranch: null,
+              defaultBranchRelation: null,
+              isWorktree: false,
+              hasUncommittedChanges: false,
+              operation: { kind: "none" },
+              originDefaultBranch: null,
+              defaultWorktreeBaseBranch: null,
+            },
+          },
+        }),
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/branch-options?hostId=${host.id}&query=feat`,
+      );
 
       expect(response.status).toBe(200);
       expect(responder.requests.map((request) => request.command)).toEqual([
         {
-          type: "host.inspect_git_source",
-          path: "/project/branches",
+          type: "host.list_branch_options",
+          path: "/project/branch-search",
+          query: "feat",
+          limit: 50,
           remoteRefresh: "background",
-        },
-        {
-          type: "host.list_branch_options",
-          path: "/project/branches",
-          limit: 50,
-          remoteRefresh: "none",
-        },
-      ]);
-      await expect(readJson(response)).resolves.toMatchObject({
-        branches: ["main"],
-        branchesTruncated: false,
-        defaultBranch: "main",
-        defaultWorktreeBaseBranch: "origin/main",
-        remoteBranches: ["origin/main"],
-        remoteBranchesTruncated: false,
-        selectedBranch: null,
-      });
-
-      responder.requests.length = 0;
-      const refreshedResponsePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/branches?hostId=${host.id}&limit=50`,
-      );
-      try {
-        await vi.waitFor(() => expect(responder.requests).toHaveLength(1));
-        expect(responder.requests[0]?.command).toEqual({
-          type: "host.inspect_git_source",
-          path: "/project/branches",
-          remoteRefresh: "blocking",
-        });
-      } finally {
-        releaseBlockingInspection?.();
-      }
-      const refreshedResponse = await refreshedResponsePromise;
-      expect(refreshedResponse.status).toBe(200);
-      expect(responder.requests.map((request) => request.command)).toEqual([
-        {
-          type: "host.inspect_git_source",
-          path: "/project/branches",
-          remoteRefresh: "blocking",
-        },
-        {
-          type: "host.list_branch_options",
-          path: "/project/branches",
-          limit: 50,
-          remoteRefresh: "none",
+          includeSource: true,
         },
       ]);
     });

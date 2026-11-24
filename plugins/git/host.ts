@@ -214,7 +214,6 @@ export default experimental_defineHostEntry({
           path,
           limit,
           priority: "interactive",
-          remoteRefresh: "none",
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         }),

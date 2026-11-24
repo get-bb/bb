@@ -326,6 +326,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       name: "main",
       kind: "local",
     },
+    source: null,
   },
   "host.read_file": {
     path: "/tmp/report.html",
@@ -1090,7 +1091,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(281);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(282);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1131,7 +1132,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(278)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(279)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(280)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(282)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -1511,6 +1513,7 @@ describe("host-daemon command schemas", () => {
         selectedBranch: "origin/main",
         limit: 50,
         remoteRefresh: "background",
+        includeSource: false,
       }),
     ).toMatchObject({
       type: "host.list_branch_options",
@@ -1519,6 +1522,7 @@ describe("host-daemon command schemas", () => {
       selectedBranch: "origin/main",
       limit: 50,
       remoteRefresh: "background",
+      includeSource: false,
     });
 
     expect(
@@ -1644,7 +1648,8 @@ describe("host-daemon command schemas", () => {
         type: "host.list_branch_options",
         path: "/tmp/workspace",
         limit: 50,
-        remoteRefresh: "none",
+        remoteRefresh: "blocking",
+        includeSource: true,
       },
       {
         type: "host.inspect_git_source",
@@ -2591,7 +2596,8 @@ describe("host-daemon command schemas", () => {
       type: "host.list_branch_options",
       path: "/tmp/workspace",
       limit: 50,
-      remoteRefresh: "none",
+      remoteRefresh: "background",
+      includeSource: false,
     };
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({

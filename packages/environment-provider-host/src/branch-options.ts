@@ -421,32 +421,30 @@ export async function readBranchOptions({
   };
 }
 
-export async function listBranchOptions(
-  args: ReadBranchOptionsArgs & { remoteRefresh: "background" | "none" },
-): Promise<GitBranchOptions> {
-  const { remoteRefresh, ...readArgs } = args;
-  const processOptions: GitProcessOptions = {
-    ...(readArgs.shellPath === undefined ? {} : { shellPath: readArgs.shellPath }),
-    ...(readArgs.priority === undefined ? {} : { priority: readArgs.priority }),
-  };
-  const repo = await readGitRepo(readArgs.path, processOptions);
-  if (repo === null) {
-    return {
+export function emptyBranchOptions(
+  selectedBranch: string | undefined,
+): GitBranchOptions {
+  return {
+    branches: [],
+    branchesTruncated: false,
+    remoteBranches: [],
+    remoteBranchesTruncated: false,
+    selectedBranch: classifySelectedBranch({
       branches: [],
-      branchesTruncated: false,
       remoteBranches: [],
-      remoteBranchesTruncated: false,
-      selectedBranch: classifySelectedBranch({
-        branches: [],
-        remoteBranches: [],
-        selectedBranch: readArgs.selectedBranch,
-      }),
-    };
-  }
-  if (remoteRefresh === "background") {
-    void refreshRemoteBranches(repo, processOptions, "background").catch(
-      () => undefined,
-    );
-  }
-  return readBranchOptions(readArgs);
+      selectedBranch,
+    }),
+  };
+}
+
+export async function listBranchOptions(
+  args: ReadBranchOptionsArgs,
+): Promise<GitBranchOptions> {
+  const processOptions: GitProcessOptions = {
+    ...(args.shellPath === undefined ? {} : { shellPath: args.shellPath }),
+    ...(args.priority === undefined ? {} : { priority: args.priority }),
+  };
+  const repo = await readGitRepo(args.path, processOptions);
+  if (repo === null) return emptyBranchOptions(args.selectedBranch);
+  return readBranchOptions(args);
 }

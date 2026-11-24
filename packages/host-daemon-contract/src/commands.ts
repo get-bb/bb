@@ -922,9 +922,14 @@ const hostListBranchOptionsCommandSchema = z
     query: z.string().max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
     selectedBranch: gitBranchNameSchema.optional(),
     limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
-    remoteRefresh: z.enum(["background", "none"]),
+    remoteRefresh: z.enum(["background", "blocking"]),
+    includeSource: z.boolean(),
   })
   .strict();
+
+const hostBranchOptionsResultSchema = gitBranchOptionsSchema.extend({
+  source: gitSourceInspectionSchema.nullable(),
+});
 
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
@@ -1829,7 +1834,7 @@ export const hostDaemonCommandRegistry = {
   "host.list_branch_options": defineHostDaemonCommandDescriptor({
     type: "host.list_branch_options",
     schema: hostListBranchOptionsCommandSchema,
-    resultSchema: gitBranchOptionsSchema,
+    resultSchema: hostBranchOptionsResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,
