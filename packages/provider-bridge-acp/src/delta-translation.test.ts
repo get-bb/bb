@@ -1873,7 +1873,7 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     [{ locations: [{ path: "/workspace/photo.jpg" }] }, "/workspace/photo.jpg"],
     [
       { rawInput: { file_path: "assets/photo.JPEG" } },
-      "/workspace/assets/photo.JPEG",
+      path.resolve(SESSION_CWD, "assets/photo.JPEG"),
     ],
     [
       { locations: [{ path: "~/animation.gif" }] },
@@ -1881,7 +1881,7 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     ],
     [
       { title: "Read `./assets/preview.webp`" },
-      "/workspace/assets/preview.webp",
+      path.resolve(SESSION_CWD, "assets/preview.webp"),
     ],
     [{ rawInput: { path: "/workspace/bitmap.bmp" } }, "/workspace/bitmap.bmp"],
   ])(
@@ -1921,7 +1921,6 @@ describe("acp delta translation (native kinds → core kinds)", () => {
         presentation: {
           label: { pending: "Viewing image", completed: "Viewed image" },
           icon: { glyph: "Eye" },
-          title: path.basename(imagePath),
         },
       };
       expect(startedEvent.item).toMatchObject(image);
@@ -1950,6 +1949,19 @@ describe("acp delta translation (native kinds → core kinds)", () => {
         locations: [{ path: readPath }],
       }),
     ).toMatchObject({ type: "fileRead" });
+  });
+
+  it.each([
+    ["~/notes/plan.md", path.join(homedir(), "notes/plan.md")],
+    ["https://example.invalid/plan.md", "https://example.invalid/plan.md"],
+  ])("resolves an edit path %s like a read path", (editPath, expected) => {
+    expect(
+      openItem({
+        toolCallId: "edit-path",
+        kind: "edit",
+        locations: [{ path: editPath }],
+      }),
+    ).toMatchObject({ type: "fileChange", changes: [{ path: expected }] });
   });
 
   it("recovers the read path from a single code-ticked title token", () => {

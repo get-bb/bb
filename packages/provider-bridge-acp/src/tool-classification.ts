@@ -3,8 +3,6 @@ import type {
   DeltaItemShape,
   DeltaPresentation,
 } from "@bb/provider-bridge-protocol";
-import { homedir } from "node:os";
-import path from "node:path";
 import {
   REASONING_PRESENTATION,
   extractResultText,
@@ -24,6 +22,7 @@ import {
 import {
   classifyAcpToolCall as classifyAcpToolCallOperation,
   extractAcpToolCallPaths,
+  isAcpLocalAbsolutePath,
   resolveAcpToolCallPath,
   type AcpToolCallOperation,
   type AcpToolCallPathOptions,
@@ -378,43 +377,35 @@ function fileChangeItem(
   };
 }
 
+const IMAGE_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+
 function fileReadItem(
   event: AcpToolCallUpdateEvent,
   title: string | undefined,
   options: AcpToolCallPathOptions | undefined,
 ): AcpClassifiedToolCall | null {
   const ticked = tickedTokenFromTitle(title);
-  const candidate =
-    extractAcpToolCallPaths(event)[0] ??
-    (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
-  if (candidate === undefined) {
+  const readPath =
+    extractAcpToolCallPaths(event, options)[0] ??
+    (ticked !== undefined && looksLikePath(ticked)
+      ? resolveAcpToolCallPath(ticked, options)
+      : undefined);
+  if (readPath === undefined) {
     return null;
   }
-  const isUrl =
-    candidate.startsWith("//") ||
-    (!path.isAbsolute(candidate) && /^[a-z][a-z\d+.-]*:/i.test(candidate));
-  const resolvedPath = isUrl
-    ? candidate
-    : candidate.startsWith("~/")
-      ? path.resolve(homedir(), candidate.slice(2))
-      : resolveAcpToolCallPath(candidate, options);
-  if (
-    !isUrl &&
-    path.isAbsolute(resolvedPath) &&
-    /\.(png|jpe?g|gif|webp|bmp)$/i.test(resolvedPath)
-  ) {
+  if (isAcpLocalAbsolutePath(readPath) && IMAGE_PATH_PATTERN.test(readPath)) {
     return {
-      item: { type: "imageView", path: resolvedPath },
+      item: { type: "imageView", path: readPath },
       presentation: {
-        ...fileReadPresentation(resolvedPath),
+        ...fileReadPresentation(readPath),
         label: { pending: "Viewing image", completed: "Viewed image" },
         icon: { glyph: "Eye" },
       },
     };
   }
   return {
-    item: { type: "fileRead", path: resolvedPath },
-    presentation: fileReadPresentation(resolvedPath),
+    item: { type: "fileRead", path: readPath },
+    presentation: fileReadPresentation(readPath),
   };
 }
 
