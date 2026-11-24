@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import {
   existsSync,
   mkdirSync,
@@ -105,6 +106,7 @@ describe("createAgentRuntime process lifecycle", () => {
   let tmpDir: string;
   let tracker: ChildProcessTracker;
   let lifeline: ProcessLifeline;
+  let idleProviderManager: RuntimeProviderProcessManager | undefined;
 
   beforeEach(async () => {
     tracker = trackChildProcesses();
@@ -113,6 +115,8 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   afterEach(async () => {
+    await idleProviderManager?.shutdown();
+    idleProviderManager = undefined;
     tracker.dispose();
     await lifeline.close();
     vi.unstubAllEnvs();
@@ -252,46 +256,44 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
+  function createIdleProviderManager(
+    script = "process.stdin.resume()",
+  ): RuntimeProviderProcessManager {
+    const adapter = createManagerAdapter({});
+    const manager = createProviderProcessManager({
+      createAdapter: () => ({
+        ...adapter,
+        process: {
+          command: process.execPath,
+          args: ["-e", script],
+        },
+        buildPostInitializeRequests: () => [],
+      }),
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    idleProviderManager = manager;
+    return manager;
+  }
+
   it.runIf(process.platform === "linux")(
     "ranks provider processes ahead of bb for the out-of-memory killer",
     async () => {
-      const oomScoreScript = join(tmpDir, "oom-score-provider.cjs");
-      writeFileSync(
-        oomScoreScript,
-        `process.stderr.write(require("node:fs").readFileSync("/proc/self/oom_score_adj", "utf8").trim() + "\\n");
-        setInterval(() => {}, 1000);`,
+      const manager = createIdleProviderManager(
+        'process.stdin.once("data", () => process.stdout.write(require("node:fs").readFileSync("/proc/self/oom_score_adj", "utf8")))',
       );
-      const stderrLines: string[] = [];
-      const manager = createProviderProcessManager({
-        onProcessExit: vi.fn(),
-        onStderr: (line) => {
-          stderrLines.push(line);
-        },
-        rawScriptPath: oomScoreScript,
-        workspacePath: tmpDir,
-      });
-      onTestFinished(() => manager.shutdown());
-
-      const ensure = manager
-        .ensureProvider(MANAGER_PROVIDER)
-        .catch(() => undefined);
-      await waitForRuntimeState({
-        label: "provider oom_score_adj stderr",
-        predicate: () => stderrLines.length > 0,
-      });
-      await manager.shutdown();
-      await ensure;
-
+      await manager.ensureProvider(MANAGER_PROVIDER);
+      const { child } = manager.requireProviderProcess(MANAGER_PROVIDER);
+      const output = once(child.stdout, "data");
+      child.stdin.write("go\n");
+      const [score] = await output;
       const ownScore = Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
-      expect(Number(stderrLines[0])).toBe(Math.min(1_000, ownScore + 500));
+      expect(Number(score)).toBe(Math.min(1_000, ownScore + 500));
     },
   );
 
   it("retires a threadless bridge process superseded by a new artifact hash", async () => {
-    const manager = createProviderProcessManager({
-      onProcessExit: vi.fn(),
-      workspacePath: tmpDir,
-    });
+    const manager = createIdleProviderManager();
 
     const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
     const freshKey = "fake#bridge:bbbbbbbbbbbbbbbb";
@@ -327,8 +329,6 @@ describe("createAgentRuntime process lifecycle", () => {
         providerId: "fake",
       }).child.killed,
     ).toBe(false);
-
-    await manager.shutdown();
   });
 
   it("keeps an old-hash bridge process that still owns a thread", async () => {
