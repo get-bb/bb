@@ -53,7 +53,7 @@ the most-parsed commands ends with the same shape.
     [{id, projectId, environmentId, providerId, title, status, parentThreadId, sectionId, visibility, archivedAt, pinnedAt, createdAt, updatedAt, activity}]    (bare array; title can be null)
 
   bb thread show <id> --json
-    {thread: {id, status, archivedAt, title, projectId, environmentId, parentThreadId, ...}, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread; status is the run state, archivedAt is null unless the thread is archived)
+    {thread: {id, status, archivedAt, title, projectId, environmentId, parentThreadId, ...}, executionOptions: {model, reasoningLevel, serviceTier, permissionMode, ...} | null, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread; status is the run state, archivedAt is null unless the thread is archived; executionOptions is what the next turn uses)
 
   bb thread log <id> --json
     [{id, seq, type, createdAt, threadId, scope, data}]    (bare array of raw events, oldest first; page with --after-seq <seq>); with --message: {message, before, after} of conversation rows

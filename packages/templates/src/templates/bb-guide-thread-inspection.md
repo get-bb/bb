@@ -73,6 +73,11 @@ Inspecting:
     --self                                 Target current thread
 
   Shows pull request status for the attached environment branch when available.
+  `Provider:` is the thread's agent provider. `Model:` and `Reasoning level:`
+  are what the thread's next turn uses: the sticky choice from `bb thread
+  update --model`, else the last turn's, else the project default. `--json`
+  prints them with service tier and permission mode as `executionOptions`
+  (`null` when no model resolves).
   An archived thread's status line names the archive time, as in `Status: idle
   (archived 11/6/2026, 4:18:02 PM)`; status alone is the run state, so check
   `thread.archivedAt` in `--json`.

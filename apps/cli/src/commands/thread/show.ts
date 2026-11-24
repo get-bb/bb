@@ -4,6 +4,7 @@ import {
   type WorkspaceDiffTarget,
   resolveEnvironmentMergeBaseBranch,
   type Environment,
+  type ResolvedThreadExecutionOptions,
   type Thread,
   type ThreadEventRow,
   type ThreadTimelinePendingTodos,
@@ -74,6 +75,7 @@ interface ThreadOutputCommandOptions {
 
 interface ThreadStatusPayload {
   thread: Thread;
+  executionOptions: ResolvedThreadExecutionOptions | null;
 }
 
 type ThreadShowEnvironmentJsonPayload = Environment & {
@@ -269,9 +271,15 @@ export function registerShowCommand(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
-        const thread = await sdk.threads.get({ threadId });
+        const [thread, executionOptions] = await Promise.all([
+          sdk.threads.get({ threadId }),
+          sdk.threads.defaultExecutionOptions({ threadId }),
+        ]);
 
-        const statusPayload: ThreadStatusPayload = { thread };
+        const statusPayload: ThreadStatusPayload = {
+          thread,
+          executionOptions,
+        };
         let environment: Environment | null | undefined;
         const getEnvironment = async () => {
           if (!thread.environmentId) {
@@ -628,7 +636,7 @@ function printThreadStatus(
   environmentInfo: ThreadEnvironmentInfo | null,
   pullRequest: FetchedPullRequest | null,
 ): void {
-  const { thread } = payload;
+  const { thread, executionOptions } = payload;
   console.log(`Thread: ${thread.id}`);
   console.log(
     thread.archivedAt === null
@@ -639,6 +647,11 @@ function printThreadStatus(
     console.log(`  Title: ${thread.title}`);
   }
   console.log(`  Project: ${thread.projectId}`);
+  console.log(`  Provider: ${thread.providerId}`);
+  if (executionOptions !== null) {
+    console.log(`  Model: ${executionOptions.model}`);
+    console.log(`  Reasoning level: ${executionOptions.reasoningLevel}`);
+  }
   if (thread.parentThreadId) {
     console.log(`  Parent: ${thread.parentThreadId}`);
     console.log(`  Parent notifications: ${thread.parentNotifications}`);

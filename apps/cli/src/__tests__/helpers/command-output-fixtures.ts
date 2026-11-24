@@ -6,6 +6,7 @@ import {
   type Environment,
   type PendingInteractionApprovalDecision,
   type ProviderPendingInteraction,
+  type ResolvedThreadExecutionOptions,
   type Thread,
 } from "@bb/domain";
 import type {
@@ -68,6 +69,14 @@ export function makeEmptyHeadStateGetMock() {
     providerCommands: null,
     sessionOptions: null,
   }));
+}
+
+export function makeDefaultExecutionOptionsGetMock(
+  options: ResolvedThreadExecutionOptions | null = null,
+) {
+  return vi.fn(
+    async (): Promise<ResolvedThreadExecutionOptions | null> => options,
+  );
 }
 
 export function makeTimelineResponse(
