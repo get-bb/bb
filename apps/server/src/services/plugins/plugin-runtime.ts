@@ -412,6 +412,10 @@ function linkCallSignal(
   return { signal: controller.signal, unlink };
 }
 
+function firstLine(text: string): string {
+  return text.split("\n", 1)[0] ?? text;
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
@@ -1650,8 +1654,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           descriptors: args.settingsDescriptors,
         }),
     });
-    return deps.providerRegistry.register({
+    let registered = true;
+    const registry = deps.providerRegistry.register({
       ...registration,
+      reportBridgeFailure: (failure) => {
+        if (!registered) return;
+        pluginLog.warn(
+          pluginId,
+          `provider "${providerId}" ${failure.operation} failed on host ${failure.hostId}: ${failure.message}`,
+        );
+        if (statuses.get(pluginId)?.status === "running") {
+          setStatus(
+            pluginId,
+            "running",
+            `provider "${providerId}" ${failure.operation} failed: ${firstLine(failure.message)}`,
+          );
+        }
+      },
       deriveProviderOptions: (context) => {
         try {
           return registration.deriveProviderOptions(context);
@@ -1676,6 +1695,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       iconNames: new Set(args.brandingAssets.icons.keys()),
       installRank: providerInstallRank(args.row),
     });
+    return {
+      dispose() {
+        registered = false;
+        registry.dispose();
+      },
+    };
   }
 
   function replaceUnavailableProviderRegistrations(

@@ -659,6 +659,7 @@ describe("thread runtime config", () => {
         readSettings: () => ({ verbose: true }),
       });
       harness.deps.providerRegistry.register({
+        reportBridgeFailure: () => undefined,
         ...registration,
         pluginId,
         iconNames: new Set<string>(),

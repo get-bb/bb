@@ -1242,7 +1242,11 @@ export interface PluginAgentToolContext {
    * and request cancellation no longer aborts this signal. The tool's eventual
    * result is delivered as a system message (success steers a running turn or
    * starts a new one; an `isError` result only steers). Thread stop/delete and
-   * plugin disposal still abort the signal after detachment.
+   * plugin disposal still abort the signal after detachment. When this plugin
+   * is disposed (reloaded, updated, disabled or removed), BB ignores the
+   * tool's later result and tells the agent at once that the call failed,
+   * starting a new turn if the agent is idle, so it can call the tool again.
+   * When BB shuts down, it tells the agent the same when BB next starts.
    */
   signal: AbortSignal;
 }

@@ -27,6 +27,7 @@ const PROVIDER_ID = "widgets";
 async function setup() {
   const harness = await createTestAppHarness();
   harness.deps.providerRegistry.register({
+    reportBridgeFailure: () => undefined,
     ...buildPluginProviderRegistration({
       iconHash: null,
       available: true,

@@ -76,6 +76,26 @@ describe("callPluginRpc", () => {
   );
 
   it.each([
+    ["plugin_not_found", 404],
+    ["plugin_not_running", 503],
+    ["invalid_caller", 403],
+    ["unsupported_media_type", 415],
+  ])("gives the route failure %s its own typed code", async (code, status) => {
+    const fetchImpl = vi.fn<FetchLike>(async () =>
+      jsonResponse(
+        { ok: false, error: { code, message: "Unavailable" } },
+        false,
+        status,
+      ),
+    );
+    const error = await callPluginRpc(fetchImpl, "demo", "read").catch(
+      (failure: unknown) => failure,
+    );
+    expect(error).toBeInstanceOf(experimental_PluginRpcCallError);
+    expect(error).toMatchObject({ code, status });
+  });
+
+  it.each([
     ["future_refusal", "unknown_error", "future_refusal"],
     [undefined, "handler_error", undefined],
   ])(

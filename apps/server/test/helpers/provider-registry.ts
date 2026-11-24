@@ -118,6 +118,7 @@ export async function registerFirstPartyProviders(
         icons,
       });
       registry.register({
+        reportBridgeFailure: () => undefined,
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
           pluginId,
@@ -156,6 +157,7 @@ export function minimalProviderRegistration(args: {
     nativeCommandRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     resolvesNativeRoots: false,
     deriveProviderOptions: () => ({}),
+    reportBridgeFailure: () => undefined,
     iconNames: new Set<string>(),
   };
 }
@@ -299,6 +301,7 @@ export async function registerFakeProviders(
   for (const providerId of FAKE_PROVIDER_IDS) {
     const pluginId = `provider-${providerId}`;
     registry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         iconHash: null,
         available: true,
@@ -370,6 +373,7 @@ export async function registerConfiguredAcpProvider(
   const pluginId = "provider-acp";
   for (const declaration of await acpProviderDeclarationsFromSetting([entry])) {
     registry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         available: true,
         pluginId,

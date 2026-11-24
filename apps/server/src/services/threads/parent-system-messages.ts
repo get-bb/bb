@@ -150,8 +150,25 @@ export async function queueParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueParentSystemMessageArgs,
 ): Promise<boolean> {
+  const row = await insertParentSystemMessage(deps, args);
+  if (row === null) return false;
+  await attemptQueuedMessageNow(deps, row);
+  return true;
+}
+
+export async function queueParentSystemMessageWithoutDispatch(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: QueueParentSystemMessageArgs,
+): Promise<boolean> {
+  return (await insertParentSystemMessage(deps, args)) !== null;
+}
+
+async function insertParentSystemMessage(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: QueueParentSystemMessageArgs,
+) {
   if (!isWritableParent(getThread(deps.db, args.parentThreadId))) {
-    return false;
+    return null;
   }
   const execution = await buildExecutionOptions(
     deps,
@@ -181,11 +198,10 @@ export async function queueParentSystemMessage(
     },
     { behavior: "immediate" },
   );
-  if (row === null) return false;
+  if (row === null) return null;
   emitPluginMessageQueued(toThreadQueuedMessage(row));
   deps.hub.notifyThread(args.parentThreadId, ["queue-changed"]);
-  await attemptQueuedMessageNow(deps, row);
-  return true;
+  return row;
 }
 
 function isWritableParent(thread: Thread | null): thread is Thread {

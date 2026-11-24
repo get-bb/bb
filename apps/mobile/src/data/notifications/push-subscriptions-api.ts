@@ -21,6 +21,11 @@ const rpcErrorCodeSchema = z.enum([
   "invalid_output",
   "non_json_result",
   "unknown_method",
+  "plugin_not_found",
+  "plugin_not_running",
+  "invalid_caller",
+  "forbidden_origin",
+  "unsupported_media_type",
 ]);
 
 const rpcFailureSchema = z
@@ -54,7 +59,7 @@ class PushRpcError extends Error {
   }
 }
 
-function isDisabledPluginMessage(message: string): boolean {
+function isLegacyDisabledPluginMessage(message: string): boolean {
   return (
     message === "unknown plugin" ||
     message.startsWith(`unknown plugin "${PLUGIN_ID}"`) ||
@@ -69,15 +74,16 @@ function mapRpcError(error: unknown): Error {
   const failure = rpcFailureSchema.safeParse(error.body);
   if (!failure.success) return error;
   if (typeof failure.data.error === "string") {
-    if (isDisabledPluginMessage(failure.data.error)) {
+    if (isLegacyDisabledPluginMessage(failure.data.error)) {
       return new Error(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS);
     }
     return new Error(failure.data.error);
   }
-  return new PushRpcError(
-    failure.data.error.code,
-    failure.data.error.message,
-  );
+  const { code, message } = failure.data.error;
+  if (code === "plugin_not_found" || code === "plugin_not_running") {
+    return new Error(PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS);
+  }
+  return new PushRpcError(code, message);
 }
 
 function isMissingSubscriptionError(error: Error): boolean {

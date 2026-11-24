@@ -303,6 +303,7 @@ export function registerGoalsProvider(
   declaration: PluginProviderDeclaration,
 ): { dispose(): void } {
   return harness.deps.providerRegistry.register({
+    reportBridgeFailure: () => undefined,
     ...buildPluginProviderRegistration({
       iconHash: null,
       available: true,

@@ -61,23 +61,32 @@ describe("createPushSubscriptionsApi", () => {
   });
 
   it.each([
-    { status: 404, message: "unknown plugin" },
+    { status: 404, error: "unknown plugin" },
     {
       status: 503,
-      message: 'plugin "push-notifications" is not running (status: disabled)',
+      error: 'plugin "push-notifications" is not running (status: disabled)',
+    },
+    {
+      status: 404,
+      error: {
+        code: "plugin_not_found",
+        message: 'unknown plugin "push-notifications"',
+      },
+    },
+    {
+      status: 503,
+      error: {
+        code: "plugin_not_running",
+        message:
+          'plugin "push-notifications" is not running (status: disabled)',
+      },
     },
   ])(
     "maps the unavailable plugin response to the settings status",
-    async ({ status, message }) => {
-      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-        Response.json(
-          {
-            ok: false,
-            error: message,
-          },
-          { status },
-        ),
-      );
+    async ({ status, error }) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ ok: false, error }, { status }));
       const api = createPushSubscriptionsApi(fetchImpl);
 
       await expect(

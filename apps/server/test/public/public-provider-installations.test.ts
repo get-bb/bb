@@ -42,6 +42,7 @@ function registerInstallationProviders(
   for (const providerId of providerIds) {
     const pluginId = `provider-${providerId}`;
     harness.deps.providerRegistry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         iconHash: null,
         available: true,
@@ -650,7 +651,8 @@ describe("public provider installation routes", () => {
                   {
                     type: "error" as const,
                     provider: command.providerId,
-                    message: "Codex update is no longer available on this host.",
+                    message:
+                      "Codex update is no longer available on this host.",
                   },
                 ],
               },

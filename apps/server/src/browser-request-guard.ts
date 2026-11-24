@@ -12,6 +12,7 @@ interface BrowserRequestGuardDeps {
 
 export interface BrowserRequestProblem {
   status: 403 | 415;
+  code: "forbidden_host" | "forbidden_origin" | "unsupported_media_type";
   error: string;
 }
 
@@ -111,6 +112,7 @@ export function requestHostProblem(
   }
   return {
     status: 403,
+    code: "forbidden_host",
     error:
       'Host must be localhost, an IP address, the address of a route turned on in Settings → Machines, or the hostname configured in BB_APP_URL. To allow your custom hostname, run "npx bb-app config set BB_APP_URL https://bb.example.com" on the machine running BB (including the desktop app), replacing https://bb.example.com with your app URL, then reload this page.',
   };
@@ -190,6 +192,7 @@ export function browserRequestProblem(
   if (origin !== undefined && !isTrustedOrigin(context, deps, origin)) {
     return {
       status: 403,
+      code: "forbidden_origin",
       error: `origin "${origin}" is not a local BB app origin`,
     };
   }
@@ -204,6 +207,7 @@ export function browserRequestProblem(
   ) {
     return {
       status: 415,
+      code: "unsupported_media_type",
       error: "content-type must be application/json",
     };
   }

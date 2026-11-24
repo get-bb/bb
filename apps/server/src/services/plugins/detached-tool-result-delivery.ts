@@ -6,13 +6,19 @@ import type {
 } from "@bb/domain";
 import type { PluginRowPresentation } from "@get-bb/plugin-sdk";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
-import { queueParentSystemMessage } from "../threads/parent-system-messages.js";
+import type { DetachedPluginToolResultDispatch } from "./plugin-tool-calls.js";
+import {
+  queueParentSystemMessage,
+  queueParentSystemMessageWithoutDispatch,
+} from "../threads/parent-system-messages.js";
 
 interface DeliverDetachedToolResultArgs {
   threadId: string;
   toolName: string;
   presentation: PluginRowPresentation | null;
   response: ToolCallResponse;
+  wakeIdleThread: boolean;
+  dispatch: DetachedPluginToolResultDispatch;
 }
 
 function buildDetachedToolResultInput(args: {
@@ -59,10 +65,18 @@ export async function deliverDetachedToolResult(
   if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
     return;
   }
-  if (!args.response.success && thread.status !== "active") {
+  if (
+    !args.response.success &&
+    !args.wakeIdleThread &&
+    thread.status !== "active"
+  ) {
     return;
   }
-  await queueParentSystemMessage(deps, {
+  const queue =
+    args.dispatch === "after-restart"
+      ? queueParentSystemMessageWithoutDispatch
+      : queueParentSystemMessage;
+  await queue(deps, {
     input: buildDetachedToolResultInput({
       toolName: args.toolName,
       response: args.response,

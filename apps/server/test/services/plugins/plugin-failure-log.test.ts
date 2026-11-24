@@ -2,6 +2,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../src/errors.js";
+import { getProviderStates } from "../../../src/services/system/provider-states.js";
+import { threadScope } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import { internalAuthHeaders } from "../../helpers/commands.js";
+import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+  seedThread,
+} from "../../helpers/seed.js";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -36,6 +47,34 @@ const HOST_SOURCE = `
     handlers: { ping: (input) => input },
   };
 `;
+
+const BRIDGE_PROVIDER_SOURCE = `export default function plugin(bb: any) {
+  bb.providers.register({
+    id: "bridgefail",
+    displayName: "Bridge Fail",
+    capabilities: {
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      fork: "none",
+      supportsManualCompaction: false,
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
+      permissionModes: ["full"],
+      reasoningLevels: ["none"],
+    },
+    maintenance: { health: true },
+    composerActions: [],
+  });
+}`;
+
+const BRIDGE_PROVIDER_MANIFEST = {
+  experimental_providers: [
+    { kind: "agent", id: "bridgefail", displayName: "Bridge Fail" },
+  ],
+};
+
+const BRIDGE_EXIT_MESSAGE =
+  'Provider "bridgefail" exited unexpectedly (code 1)\nstderr: its host artifact exports no "experimental_providerBridge"';
 
 interface PluginLogLine {
   level: string;
@@ -240,6 +279,102 @@ const FAILURES: FailureCase[] = [
       message:
         'provider "failqa" deriveProviderOptions failed for thread thr_one: options exploded',
       stack: "Error: options exploded",
+    },
+  },
+  {
+    name: "bridge-exit-health",
+    serverSource: BRIDGE_PROVIDER_SOURCE,
+    hostSource: HOST_SOURCE,
+    manifest: BRIDGE_PROVIDER_MANIFEST,
+    trigger: async (harness, pluginId) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host_bridge",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`unexpected ${request.command.type}`);
+          }
+          throw Object.assign(new Error(BRIDGE_EXIT_MESSAGE), {
+            code: "provider_process_exited",
+          });
+        },
+      });
+      const { providers } = await getProviderStates(harness.deps, {
+        hostId: host.id,
+      });
+      expect(
+        providers.find((provider) => provider.providerId === "bridgefail"),
+      ).toMatchObject({
+        status: "unknown",
+        statusMessage:
+          'Provider readiness could not be checked: Provider "bridgefail" exited unexpectedly (code 1)',
+      });
+      expect(
+        harness.pluginService.list().find((plugin) => plugin.id === pluginId),
+      ).toMatchObject({
+        status: "running",
+        statusDetail:
+          'provider "bridgefail" provider.health failed: Provider "bridgefail" exited unexpectedly (code 1)',
+      });
+    },
+    expected: {
+      level: "warn",
+      message: `provider "bridgefail" provider.health failed on host host_bridge: ${BRIDGE_EXIT_MESSAGE}`,
+    },
+  },
+  {
+    name: "bridge-exit-session",
+    serverSource: BRIDGE_PROVIDER_SOURCE,
+    hostSource: HOST_SOURCE,
+    manifest: BRIDGE_PROVIDER_MANIFEST,
+    trigger: async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host_bridge",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "bridgefail",
+        status: "active",
+      });
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: session.id,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "system/error",
+                threadId: thread.id,
+                scope: threadScope(),
+                code: "provider_process_exited",
+                message:
+                  'Provider "bridgefail" exited unexpectedly with code 1',
+                detail: "stderr:\nTypeError: bridge exploded",
+              },
+            },
+          ]),
+        }),
+      });
+      expect(response.status).toBe(200);
+    },
+    expected: {
+      level: "warn",
+      message: expect.stringMatching(
+        /^provider "bridgefail" session for thread \S+ failed on host host_bridge: Provider "bridgefail" exited unexpectedly with code 1\nstderr:\nTypeError: bridge exploded$/u,
+      ),
     },
   },
   {

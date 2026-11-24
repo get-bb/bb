@@ -291,7 +291,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     terminalSessions,
   });
   pendingInteractions.start();
-  setPluginToolCallRegistry(new PluginToolCallRegistry({ logger }));
+  const pluginToolCalls = new PluginToolCallRegistry({ logger });
+  setPluginToolCallRegistry(pluginToolCalls);
 
   const appVersion = createAppVersionService({
     installKind: serverConfig.BB_APP_INSTALL_KIND ?? null,
@@ -617,9 +618,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stopPeriodicUpdateChecks();
       if (pendingServerMove === null) {
+        pluginToolCalls.deferDeliveriesToRestart();
         await pluginService.stop().catch((error: unknown) => {
           logger.warn({ err: error }, "Plugin shutdown failed");
         });
+        await pluginToolCalls.settleDeliveries();
       }
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
