@@ -471,6 +471,8 @@ const hostReadFileCommandSchema = z
 
 export const HOST_FILE_CHUNK_MAX_BYTES = 64 * 1024;
 
+const hostFileRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+
 const hostReadFileChunkCommandSchema = z
   .object({
     type: z.literal("host.read_file_chunk"),
@@ -478,10 +480,8 @@ const hostReadFileChunkCommandSchema = z
     rootPath: z.string().min(1),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     length: z.number().int().nonnegative().max(HOST_FILE_CHUNK_MAX_BYTES),
-    revision: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/u)
-      .nullable(),
+    revision: hostFileRevisionSchema.nullable(),
+    knownRevisions: z.array(hostFileRevisionSchema).max(16),
   })
   .strict();
 
@@ -491,7 +491,7 @@ const hostReadFileChunkResultSchema = z
     sizeBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     modifiedAtMs: z.number().finite(),
     mimeType: z.string().nullable(),
-    revision: z.string().regex(/^[a-f0-9]{64}$/u),
+    revision: hostFileRevisionSchema,
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     content: z
       .instanceof(Uint8Array)

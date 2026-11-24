@@ -610,9 +610,13 @@ cannot acquire the app's origin privileges. HTML also carries the no-store
 policy, at any size; the app renders an HTML iframe only for files up
 to 5 MiB and shows larger HTML as source or, past 25 MB, as a Download.
 
-The server uses `host.read_file_chunk` for a metadata-only probe (`length: 0`),
-then reads at most 64 KiB per RPC, keeping up to 16 RPCs in flight ahead of
-the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
+The server's first `host.read_file_chunk` returns the file's metadata together
+with its first 64 KiB, so a file up to 64 KiB takes one daemon round trip. That
+read sends the revisions named in `If-None-Match` as `knownRevisions`; when the
+file still has one of them, the daemon returns no bytes and the server answers
+`304`. HEAD, `If-None-Match: *`, and ranges that do not start at byte 0 make the
+first read metadata-only (`length: 0`). Later reads take at most 64 KiB per RPC,
+keeping up to 16 RPCs in flight ahead of the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
 frame (a 4-byte header length, the JSON frame, then the raw bytes) instead of
 base64 inside JSON. HEAD, `304`, and `416` responses read no contents.
 Cancelling, aborting, or a failed chunk stops subsequent reads and aborts the
