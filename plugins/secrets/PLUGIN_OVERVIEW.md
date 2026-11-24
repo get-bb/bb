@@ -15,7 +15,7 @@ The agent runs one command from inside a thread:
 bb secret request OPENAI_API_KEY --purpose "Configure the server" --describe OPENAI_API_KEY "OpenAI key" --write-env .env.local
 ```
 
-The form shows the purpose, the destination path, and one field per name. Submit to write the file, or cancel to stop the command. Each value must be a single non-empty line of at most 16 KiB. The write is checked against the file version the plugin read, so an edit made at the same time does not get lost.
+The form shows the purpose, the destination path, and one field per name. Submit to write the file, or cancel to stop the command. If the request comes from a child thread, Cancel in the parent thread's Active child threads card only closes the card; the command keeps waiting until you answer or cancel in the child thread. Each value must be a single non-empty line of at most 16 KiB. The write is checked against the file version the plugin read, so an edit made at the same time does not get lost.
 
 The bundled `secrets` skill tells agents to batch known variables into one request and to never read the completed file back.
 
