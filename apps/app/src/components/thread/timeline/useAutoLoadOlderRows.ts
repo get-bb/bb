@@ -42,17 +42,21 @@ function isSentinelWithinPrefetchRange({
   );
 }
 
+type OlderRowsLoadPhase = "idle" | "loading" | "settled";
+
 async function runOlderRowsLoad(
   onLoadOlderRows: () => Promise<void> | void,
-  loadInFlightRef: RefObject<boolean>,
+  loadPhaseRef: RefObject<OlderRowsLoadPhase>,
   setAutoLoadFailed: (failed: boolean) => void,
+  setSettledLoads: (update: (count: number) => number) => void,
 ): Promise<void> {
   try {
     await onLoadOlderRows();
   } catch {
     setAutoLoadFailed(true);
   } finally {
-    loadInFlightRef.current = false;
+    loadPhaseRef.current = "settled";
+    setSettledLoads((count) => count + 1);
   }
 }
 
@@ -63,8 +67,9 @@ export function useAutoLoadOlderRows({
 }: UseAutoLoadOlderRowsArgs): AutoLoadOlderRows {
   const bottomAnchor = useBottomAnchoredScroll();
   const sentinelNodeRef = useRef<HTMLElement | null>(null);
-  const loadInFlightRef = useRef(false);
+  const loadPhaseRef = useRef<OlderRowsLoadPhase>("idle");
   const [autoLoadFailed, setAutoLoadFailed] = useState(false);
+  const [settledLoads, setSettledLoads] = useState(0);
 
   const sentinelRef = useCallback((node: HTMLElement | null) => {
     sentinelNodeRef.current = node;
@@ -80,8 +85,13 @@ export function useAutoLoadOlderRows({
     if (!onLoadOlderRows) {
       return;
     }
-    loadInFlightRef.current = true;
-    void runOlderRowsLoad(onLoadOlderRows, loadInFlightRef, setAutoLoadFailed);
+    loadPhaseRef.current = "loading";
+    void runOlderRowsLoad(
+      onLoadOlderRows,
+      loadPhaseRef,
+      setAutoLoadFailed,
+      setSettledLoads,
+    );
   }, [onLoadOlderRows]);
 
   const loadOlderRows = useCallback(() => {
@@ -100,6 +110,7 @@ export function useAutoLoadOlderRows({
       isLoadingOlderTimelineRows,
       startLoad,
     };
+    if (loadPhaseRef.current === "settled") loadPhaseRef.current = "idle";
   });
 
   const loadIfSentinelInRange = useCallback(() => {
@@ -107,7 +118,7 @@ export function useAutoLoadOlderRows({
     if (
       !live.isAutoLoadEnabled ||
       live.isLoadingOlderTimelineRows ||
-      loadInFlightRef.current
+      loadPhaseRef.current !== "idle"
     ) {
       return;
     }
@@ -151,6 +162,7 @@ export function useAutoLoadOlderRows({
     isAutoLoadEnabled,
     isLoadingOlderTimelineRows,
     loadIfSentinelInRange,
+    settledLoads,
     startLoad,
   ]);
 

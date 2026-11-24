@@ -263,6 +263,31 @@ function installAutoLoadEnvironment() {
   return { anchor, emitIntersection, sentinel };
 }
 
+function holdAnimationFrames() {
+  const held = new Map<number, FrameRequestCallback>();
+  let holding = true;
+  const requestFrame = window.requestAnimationFrame.bind(window);
+  const cancelFrame = window.cancelAnimationFrame.bind(window);
+  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => {
+    if (!holding) return requestFrame(frame);
+    const id = requestFrame(() => {});
+    held.set(id, frame);
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+    held.delete(id);
+    cancelFrame(id);
+  });
+  return {
+    release() {
+      holding = false;
+      const frames = [...held.values()];
+      held.clear();
+      for (const frame of frames) frame(performance.now());
+    },
+  };
+}
+
 function renderControllerWithAutoLoad(anchor: BottomAnchorContextValue) {
   const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness();
   const wrapper = ({ children }: { children: ReactNode }) =>
@@ -873,6 +898,7 @@ describe("useThreadTimelineController", () => {
         }),
       );
 
+    const heldFrames = holdAnimationFrames();
     const { result } = renderControllerWithAutoLoad(anchor);
     await waitFor(() => {
       expect(result.current.timeline.hasOlderTimelineRows).toBe(true);
@@ -882,6 +908,7 @@ describe("useThreadTimelineController", () => {
     });
 
     await withReactSchedulerOutsideAct(async () => {
+      heldFrames.release();
       emitIntersection();
       await waitFor(() => {
         expect(result.current.timeline.hasOlderTimelineRows).toBe(false);

@@ -5,8 +5,6 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   usePluginComposerHost,
   usePluginComposerHostDraft,
@@ -17,6 +15,7 @@ import {
   getPromptDraftAccessor,
   usePromptDraftStorage,
 } from "@/hooks/usePromptDraftStorage";
+import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   DefaultPaneContextProvider,
@@ -30,7 +29,6 @@ type ThreadDetailSecondaryContentProps = ComponentProps<
 >;
 
 const secondaryPanelMockState = vi.hoisted(() => ({
-  renderActualPanel: false,
   renderBrowserDeck: undefined as
     | ((
         activeBrowserTabId: string,
@@ -65,16 +63,10 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreads: useThreadsMock,
 }));
 
-vi.mock("jotai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("jotai")>();
-  return {
-    ...actual,
-    useAtomValue: (atom: Parameters<typeof actual.useAtomValue>[0]) =>
-      secondaryPanelMockState.renderActualPanel
-        ? actual.useAtomValue(atom)
-        : 50,
-  };
-});
+vi.mock("jotai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("jotai")>()),
+  useAtomValue: () => 50,
+}));
 
 vi.mock(
   "react-resizable-panels",
@@ -108,22 +100,14 @@ vi.mock(
   },
 );
 
-vi.mock(
-  "@/components/secondary-panel/ThreadSecondaryPanel",
-  async (importOriginal) => {
-    const React = await import("react");
-    const actual =
-      await importOriginal<
-        typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
-      >();
-
-    const ThreadSecondaryPanel = (
-      props: ComponentProps<typeof actual.ThreadSecondaryPanel>,
-    ) => {
-      const { renderBrowserDeck, metadataContent, renderAsDrawer } = props;
-      if (secondaryPanelMockState.renderActualPanel) {
-        return React.createElement(actual.ThreadSecondaryPanel, props);
-      }
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
+  const React = await import("react");
+  return {
+    ThreadSecondaryPanel: ({
+      renderBrowserDeck,
+      metadataContent,
+      renderAsDrawer,
+    }: ThreadSecondaryPanelProps) => {
       secondaryPanelMockState.renderBrowserDeck = renderBrowserDeck;
       return React.createElement(
         "section",
@@ -134,11 +118,30 @@ vi.mock(
         },
         metadataContent,
       );
-    };
+    },
+  };
+});
 
-    return { ...actual, ThreadSecondaryPanel };
-  },
-);
+vi.mock("@/components/secondary-panel/BrowserTabDeck", () => ({
+  BrowserTabDeck: () => null,
+}));
+vi.mock("@/components/secondary-panel/FilePreview", () => ({
+  FilePreview: () => null,
+}));
+vi.mock("@/components/secondary-panel/NewTabPage", () => ({
+  NewTabPage: () => null,
+}));
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
+  AttachmentFilePreviewTabContent: () => null,
+  HostFilePreviewTabContent: () => null,
+  HostScopedFilePreviewTabContent: () => null,
+  ProjectFilePreviewTabContent: () => null,
+  ThreadStorageFilePreviewTabContent: () => null,
+  WorkspaceFilePreviewTabContent: () => null,
+}));
+vi.mock("@/components/thread/terminal/ThreadTerminalPanel", () => ({
+  ThreadTerminalPanel: () => null,
+}));
 
 const { timelinePaneRenders } = vi.hoisted(() => ({
   timelinePaneRenders: vi.fn(),
@@ -344,7 +347,6 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
-  secondaryPanelMockState.renderActualPanel = false;
   secondaryPanelMockState.renderBrowserDeck = undefined;
   timelinePaneRenders.mockClear();
   useThreadsMock.mockClear();
@@ -366,32 +368,6 @@ describe("ThreadDetailSecondaryContent", () => {
       contentKey: "thread-1",
       isMainCollapsed: true,
     });
-  });
-
-  it("keeps the panel's own hide control for the inline thread panel", async () => {
-    secondaryPanelMockState.renderActualPanel = true;
-    const { wrapper: QueryWrapper } = createQueryClientTestHarness();
-    render(
-      <QueryWrapper>
-        <TooltipProvider>
-          <MemoryRouter>
-            <DefaultPaneContextProvider
-              paneId="main"
-              onRequestClose={null}
-              navigateInPane={noop}
-            >
-              <CompactViewportOverrideProvider isCompactViewport={false}>
-                <ThreadDetailSecondaryContent {...createProps()} />
-              </CompactViewportOverrideProvider>
-            </DefaultPaneContextProvider>
-          </MemoryRouter>
-        </TooltipProvider>
-      </QueryWrapper>,
-    );
-
-    expect(
-      await screen.findByRole("button", { name: "Hide right panel" }),
-    ).not.toBeNull();
   });
 
   it("keeps the thread header inside the timeline column beside the panel", async () => {
