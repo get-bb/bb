@@ -1,3 +1,4 @@
+import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
 import { firstPerIdentity, skillRegistrationId } from "@bb/skill-index";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -33,14 +34,17 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
-import { resolveSharedSkills } from "./shared-skills.js";
+import {
+  sharedSkillNativeRoots,
+  toResolvedSharedSkills,
+} from "./shared-skills.js";
 import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
   SKILL_PATH_LIST_INCLUDE_HIDDEN,
 } from "../../routes/path-list-policy.js";
 import {
+  listNativeRootSkills,
   providerHasNativeRootSurface,
-  scanProviderNativeRoots,
 } from "../providers/native-roots.js";
 import { listSystemProviderInfosForHost } from "../system/execution-options.js";
 
@@ -242,13 +246,45 @@ async function confirmServerSkillManageable(
   );
 }
 
-async function projectSkillIndex(
-  deps: AppDeps,
-  args: { workspace: CommandWorkspace },
-): Promise<{
+export interface ProjectSkillIndex {
   registrations: IndexedSkillRegistration[];
   entries: ListedSkillWithLegacyProvider[];
-}> {
+}
+
+export type ProjectSkillIndexCache = AsyncTtlMemo<string, ProjectSkillIndex>;
+
+export const PROJECT_SKILL_INDEX_TTL_MS = 5 * 60_000;
+
+export function createProjectSkillIndexCache(
+  options: { now?: () => number } = {},
+): ProjectSkillIndexCache {
+  return createAsyncTtlMemo({
+    ttlMs: PROJECT_SKILL_INDEX_TTL_MS,
+    maxEntries: 64,
+    ...options,
+  });
+}
+
+function workspaceSkillRegistrations(
+  skills: readonly DiscoveredSkill[],
+): SkillRegistration[] {
+  return skills.map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    provider: null,
+    scope: "bb-project",
+    pluginId: null,
+    filePath: skill.filePath,
+    manageable: !skill.linked,
+    registrySkillId: null,
+  }));
+}
+
+async function buildProjectSkillIndex(
+  deps: AppDeps,
+  args: { workspace: CommandWorkspace },
+): Promise<ProjectSkillIndex> {
   const visibleProviderIds = new Set(
     (await listSystemProviderInfosForHost(deps, args.workspace.hostId)).map(
       (provider) => provider.id,
@@ -261,28 +297,27 @@ async function projectSkillIndex(
         visibleProviderIds.has(registration.info.id) &&
         providerHasNativeRootSurface(registration),
     );
-  const [perProvider, sharedSkills] = await Promise.all([
-    Promise.all(
-      skillProviders.map(
-        async (registration): Promise<ProviderSkillDiscovery> => {
-          const result = await scanProviderNativeRoots(deps, {
-            type: "host.list_skills",
-            registration,
-            hostId: args.workspace.hostId,
-            cwd: args.workspace.cwd,
-          });
-          return { provider: registration.info.id, skills: result.skills };
-        },
-      ),
-    ),
-    resolveSharedSkills(deps, {
+  const [listing, serverSkills] = await Promise.all([
+    listNativeRootSkills(deps, {
+      registrations: skillProviders,
+      sharedRoots: sharedSkillNativeRoots(deps),
       hostId: args.workspace.hostId,
       cwd: args.workspace.cwd,
     }),
+    listServerSkills(deps),
   ]);
-  const serverSkills = await listServerSkills(deps);
+  const perProvider = listing.providers.map(
+    ({ providerId, skills }): ProviderSkillDiscovery => ({
+      provider: providerId,
+      skills,
+    }),
+  );
+  const sharedSkills = toResolvedSharedSkills(deps, listing.sharedSkills);
   const identities = new Map(sharedSkills.identities);
-  for (const { skills } of perProvider) {
+  for (const skills of [
+    listing.workspaceSkills,
+    ...perProvider.map((discovery) => discovery.skills),
+  ]) {
     for (const skill of skills)
       identities.set(skill.id, {
         contentSha256: skill.contentSha256,
@@ -300,6 +335,7 @@ async function projectSkillIndex(
       });
   }
   const registrations = [
+    ...workspaceSkillRegistrations(listing.workspaceSkills),
     ...assembleSkillList(perProvider),
     ...sharedSkills.summaries,
     ...serverSkills,
@@ -352,13 +388,28 @@ async function projectSkillIndex(
   };
 }
 
+function projectSkillIndex(
+  deps: AppDeps,
+  args: { workspace: CommandWorkspace; refresh: boolean },
+): Promise<ProjectSkillIndex> {
+  return deps.projectSkillIndexes.run(
+    JSON.stringify([
+      args.workspace.hostId,
+      args.workspace.cwd,
+      deps.providerRegistry.getRegistrationRevision(),
+    ]),
+    () => buildProjectSkillIndex(deps, { workspace: args.workspace }),
+    { refresh: args.refresh },
+  );
+}
+
 export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
 ): Promise<ListedSkillWithLegacyProvider[]> {
-  return (await projectSkillIndex(deps, args)).entries.sort(
-    compareSkillSummaries,
-  );
+  return [
+    ...(await projectSkillIndex(deps, { ...args, refresh: true })).entries,
+  ].sort(compareSkillSummaries);
 }
 
 function isServerOwnedSkill(deps: AppDeps, skill: SkillRegistration): boolean {
@@ -470,6 +521,7 @@ async function resolveProjectSkill(
   args: {
     skillId: string;
     workspace: CommandWorkspace;
+    freshness: "listed" | "current";
   },
 ): Promise<IndexedSkillRegistration> {
   const serverSkill = (await listServerSkills(deps)).find(
@@ -484,8 +536,13 @@ async function resolveProjectSkill(
         .catch(() => serverSkill.filePath),
     };
   }
-  const index = await projectSkillIndex(deps, { workspace: args.workspace });
-  const match = index.registrations.find((skill) => skill.id === args.skillId);
+  const find = async (refresh: boolean) =>
+    (
+      await projectSkillIndex(deps, { workspace: args.workspace, refresh })
+    ).registrations.find((skill) => skill.id === args.skillId);
+  const refresh = args.freshness === "current";
+  const match =
+    (await find(refresh)) ?? (refresh ? undefined : await find(true));
   if (!match) {
     throw new ApiError(404, "not_found", "Skill not found");
   }
@@ -499,7 +556,10 @@ export async function listProjectSkillFiles(
     workspace: CommandWorkspace;
   },
 ): Promise<{ files: string[]; truncated: boolean }> {
-  const skill = await resolveProjectSkill(deps, args);
+  const skill = await resolveProjectSkill(deps, {
+    ...args,
+    freshness: "listed",
+  });
   if (isServerOwnedSkill(deps, skill)) {
     return listServerSkillFiles(skill);
   }
@@ -535,7 +595,10 @@ export async function readProjectSkill(
     workspace: CommandWorkspace;
   },
 ): Promise<{ content: string; revision: string }> {
-  const skill = await resolveProjectSkill(deps, args);
+  const skill = await resolveProjectSkill(deps, {
+    ...args,
+    freshness: "listed",
+  });
   if (isServerOwnedSkill(deps, skill)) {
     const filePath =
       args.path === SKILL_FILE_NAME
@@ -589,7 +652,10 @@ export async function writeProjectSkill(
     workspace: CommandWorkspace;
   },
 ): Promise<{ filePath: string; revision: string }> {
-  const skill = await resolveProjectSkill(deps, args);
+  const skill = await resolveProjectSkill(deps, {
+    ...args,
+    freshness: "current",
+  });
   const editableScope = editableSkillScopeSchema.safeParse(skill.scope);
   if (!skill.manageable || !editableScope.success) {
     throw new ApiError(
@@ -661,7 +727,10 @@ export async function deleteProjectSkill(
     workspace: CommandWorkspace;
   },
 ): Promise<string> {
-  const skill = await resolveProjectSkill(deps, args);
+  const skill = await resolveProjectSkill(deps, {
+    ...args,
+    freshness: "current",
+  });
   const editableScope = editableSkillScopeSchema.safeParse(skill.scope);
   if (!skill.manageable || !editableScope.success) {
     throw new ApiError(

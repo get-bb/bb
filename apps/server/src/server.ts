@@ -787,8 +787,8 @@ export function createApp(
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
-    onSettingsChanged: (pluginId) => {
-      deps.providerNativeRoots.invalidate(pluginId);
+    onSettingsChanged: () => {
+      deps.projectSkillIndexes.clear();
       deps.providerRegistry.forgetAllInstalled();
       requestHostDerivedStateRefreshForPluginChange(deps);
     },

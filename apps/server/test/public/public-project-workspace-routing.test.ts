@@ -5,7 +5,7 @@ import {
   registerHostRpcResponder,
   EMPTY_WORKSPACE_AGENT_CONTEXT,
 } from "../helpers/host-rpc.js";
-import { declaredNativeRootSet } from "../helpers/provider-registry.js";
+import { declaredNativeRootScan } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -14,6 +14,8 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+
+const ANY_RESOLUTION = { contributedEnv: [], timeoutMs: expect.any(Number) };
 
 const remoteCommand: HostProviderCommand = {
   name: "remote-only",
@@ -221,12 +223,6 @@ describe("public project workspace routing", () => {
           if (request.command.type === "host.read_workspace_agent_context") {
             return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
           }
-          if (request.command.type === "plugin.host.call") {
-            return {
-              ok: true,
-              result: { output: { skills: [], commands: [] } },
-            };
-          }
           if (request.command.type === "host.read_file") {
             return {
               ok: true,
@@ -272,12 +268,6 @@ describe("public project workspace routing", () => {
           }
           if (request.command.type === "host.read_workspace_agent_context") {
             return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
-          }
-          if (request.command.type === "plugin.host.call") {
-            return {
-              ok: true,
-              result: { output: { skills: [], commands: [] } },
-            };
           }
           if (request.command.type === "host.read_file") {
             return {
@@ -340,12 +330,9 @@ describe("public project workspace routing", () => {
         )?.command,
       ).toEqual({
         type: "host.list_commands",
-        providerId: "codex",
         cwd: "/remote/project",
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "codex",
-        ),
+        provider: declaredNativeRootScan(harness.deps, "codex"),
+        resolution: ANY_RESOLUTION,
       });
     });
   });

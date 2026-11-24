@@ -107,7 +107,7 @@ import {
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import {
   providerHasNativeRootSurface,
-  scanProviderNativeRoots,
+  listProviderNativeCommands,
 } from "../services/providers/native-roots.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import { listProviderLiveCommands } from "../services/providers/provider-live-commands.js";
@@ -829,8 +829,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       if (!providerHasNativeRootSurface(registration)) {
         return { commands: [] };
       }
-      return scanProviderNativeRoots(deps, {
-        type: "host.list_commands",
+      return listProviderNativeCommands(deps, {
         registration,
         hostId: workspace.hostId,
         cwd: workspace.cwd,
