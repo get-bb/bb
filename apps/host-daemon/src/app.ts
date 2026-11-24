@@ -1,9 +1,4 @@
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
-import {
-  readAgentCpuPriority,
-  setAgentWorkloadsLowered,
-  writeAgentCpuPriority,
-} from "@bb/process-utils";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
@@ -267,7 +262,6 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
-  setAgentWorkloadsLowered(readAgentCpuPriority(options.dataDir));
   const machineEnvironment = new MachineEnvironment(
     process.env,
     options.runtimeShellEnv ?? {},
@@ -970,10 +964,6 @@ export async function createHostDaemonApp(
     },
     onIdleProviderSessionTimeout: (value) =>
       idleProviderSessionReaper.setTimeoutMinutes(value),
-    onAgentCpuPriority: (enabled) => {
-      setAgentWorkloadsLowered(enabled);
-      writeAgentCpuPriority(options.dataDir, enabled);
-    },
     createWebSocket: options.createWebSocket,
     getTurnCommandThreadIds: () => router.listThreadIdsHandlingTurnCommands(),
     getActiveThreads: () => runtimeManager.listActiveThreads(),

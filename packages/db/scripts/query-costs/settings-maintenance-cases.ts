@@ -468,17 +468,11 @@ const SETTINGS_CASES: readonly Case[] = [
     name: `${EXPERIMENTS}#setExperiments`,
     run: (db) =>
       setExperiments(db, {
-        agentCpuPriority: false,
         compactExpiredCache: true,
-        keyedPluginCss: true,
         serverMove: false,
         performanceDiagnostics: true,
         pluginUpdates: true,
-        resumeDaemonSessions: true,
         serverRoutes: true,
-        skipFocusedThreadNotifications: true,
-        threadContextCard: true,
-        walCheckpointWorker: true,
       }),
   },
   {

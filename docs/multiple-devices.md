@@ -76,8 +76,8 @@ gate.
 connects it checks every route at once and uses the first that answers,
 favoring routes higher in the order. It stays on that route until the
 connection drops, then picks again, so a machine whose route stops answering
-moves to the next one within seconds, keeping its session when
-`resumeDaemonSessions` is on. Attachments and daemon updates stay on an
+moves to the next one within seconds, keeping its session if it reconnects
+within 30 seconds. Attachments and daemon updates stay on an
 encrypted (HTTPS) route while a machine uses the local network, unless the
 local network is the only route.
 

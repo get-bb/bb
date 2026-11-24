@@ -873,25 +873,6 @@ export function createGitQueries(run: GitQueryRunner) {
     return result.exitCode === 0;
   }
 
-  async function isAncestorRef(
-    cwd: string,
-    ancestorRef: string,
-    descendantRef: string,
-    options: GitTimeoutOptions = {},
-  ): Promise<boolean | undefined> {
-    const result = await run(
-      ["merge-base", "--is-ancestor", ancestorRef, descendantRef],
-      { cwd, ...options, allowFailure: true },
-    );
-    if (result.exitCode === 0) {
-      return true;
-    }
-    if (result.exitCode === 1) {
-      return false;
-    }
-    return undefined;
-  }
-
   async function readOriginHeadBranchName(
     cwd: string,
     options: GitTimeoutOptions = {},
@@ -993,12 +974,7 @@ export function createGitQueries(run: GitQueryRunner) {
     const relation =
       local === undefined || origin === undefined
         ? undefined
-        : await compareBranchOids(
-            cwd,
-            { ref: localRef, oid: local.oid },
-            { ref: originRef, oid: origin.oid },
-            options,
-          );
+        : await compareBranchOids(cwd, local.oid, origin.oid, options);
     return (
       chooseBranchRef(
         local === undefined ? undefined : name,
@@ -1010,43 +986,35 @@ export function createGitQueries(run: GitQueryRunner) {
 
   async function compareBranchOids(
     cwd: string,
-    local: { ref: string; oid: string | undefined },
-    origin: { ref: string; oid: string | undefined },
+    localOid: string | undefined,
+    originOid: string | undefined,
     options: GitTimeoutOptions,
   ): Promise<DefaultBranchRelation> {
-    if (!local.oid || !origin.oid) {
+    if (!localOid || !originOid) {
       return "unknown";
     }
-    if (local.oid === origin.oid) {
+    if (localOid === originOid) {
       return "equal";
     }
 
-    const localIsAncestor = await isAncestorRef(
+    const mergeBase = await run(["merge-base", localOid, originOid], {
       cwd,
-      local.ref,
-      origin.ref,
-      options,
-    );
-    if (localIsAncestor === true) {
+      ...options,
+      allowFailure: true,
+    });
+    if (mergeBase.exitCode === 1) {
+      return "diverged";
+    }
+    if (mergeBase.exitCode !== 0) {
+      return "unknown";
+    }
+    const base = trimOutput(mergeBase.stdout);
+    if (base === localOid) {
       return "local-behind";
     }
-    if (localIsAncestor === undefined) {
-      return "unknown";
-    }
-
-    const originIsAncestor = await isAncestorRef(
-      cwd,
-      origin.ref,
-      local.ref,
-      options,
-    );
-    if (originIsAncestor === true) {
+    if (base === originOid) {
       return "local-ahead";
     }
-    if (originIsAncestor === undefined) {
-      return "unknown";
-    }
-
     return "diverged";
   }
 
@@ -1125,8 +1093,8 @@ export function createGitQueries(run: GitQueryRunner) {
     const originRef = `refs/remotes/origin/${originDefaultBranch}`;
     const defaultBranchRelation = await compareBranchOids(
       cwd,
-      { ref: localRef, oid: refs.get(localRef)?.oid },
-      { ref: originRef, oid: refs.get(originRef)?.oid },
+      refs.get(localRef)?.oid,
+      refs.get(originRef)?.oid,
       options,
     );
     return {

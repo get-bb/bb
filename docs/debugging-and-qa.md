@@ -490,23 +490,15 @@ are exact, so the test does not depend on machine speed. A path that grows by
 design, such as fork copying history or turn details returning the whole turn,
 declares it per axis and may grow at most linearly.
 
-The `agentCpuPriority` experiment (Settings → Experiments) keeps bb responsive
-when agents saturate the CPU:
+bb lowers agent CPU priority so it stays responsive when agents saturate the
+CPU:
 
-- While it is on, the host daemon sets nice 10 (the below-normal priority
-  class on Windows) on provider processes and environment lifecycle scripts as
-  they start, and the builds and tests they launch inherit it. The server
-  sends the value in the session handshake and in
-  `provider-session-policy.replace`, but a toggle takes effect only after
-  restarting bb: a running provider bridge worker keeps the priority it started
-  with while it serves new threads, and a lowered process cannot be raised
-  again. Terminals keep normal priority.
+- The host daemon sets nice 10 (the below-normal priority class on Windows) on
+  provider processes and environment lifecycle scripts as they start, and the
+  builds and tests they launch inherit it. Terminals keep normal priority.
 - On macOS, where the scheduler ignores nice between processes, the launcher
   spawns the server and daemon through `/usr/sbin/taskpolicy -a` (application
-  scheduling, not inherited by their children). The launcher reads the value
-  from `<data dir>/agent-cpu-priority.json` at each spawn, so this half takes
-  effect after restarting bb. The server and the daemon both rewrite that file
-  when the value changes; a missing or unreadable file means off. Check with
+  scheduling, not inherited by their children). Check with
   `ps -axo pid,ppid,pri,ni,command`: the server and daemon show `PRI` 46,
   their children 31.
 
@@ -1454,26 +1446,23 @@ values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
 
-The app also adds `css-scope=owned-root-v1`. When a plugin's `app.js` never
-sets `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes drop
-the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
-plugin's utility selectors; otherwise the plugin keeps the original CSS, and
-`bb plugin build` warns. Authored CSS is never rewritten.
-
-With the `keyedPluginCss` experiment on, the app sends
-`css-scope=plugin-attribute-v1` instead. For the same bundles, the routes also
-key utility selectors on `[data-bb-plugin-scope-<id>]` instead of
-`[data-bb-plugin=<id>]`. Browsers' ancestor filters hash attribute names but
-not values, so only a per-plugin attribute name lets the browser skip another
-plugin's copy of `.flex` without walking every ancestor of each element inside
-the sidebar, composer, or any other plugin root. Plugin roots the host renders
-(slot mounts, panel header content, and portaled overlays) carry
-`data-bb-plugin-scope-<id>=""` next to `data-bb-plugin`. For elements a plugin
-labels itself, including old `portal-scope` copies and
-`element.dataset.bbPlugin = id`, the app watches the document
-(`apps/app/src/lib/plugin-scope-attributes.ts`) and adds the attribute before
-the element is styled. Tabs that send `owned-root-v1` or no scope get the
-variants above.
+The app also adds `css-scope=plugin-attribute-v1`. When a plugin's `app.js`
+never sets `data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes
+drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
+plugin's utility selectors and key them on `[data-bb-plugin-scope-<id>]`
+instead of `[data-bb-plugin=<id>]`; otherwise the plugin keeps the original
+CSS, and `bb plugin build` warns. Authored CSS is never rewritten. Browsers'
+ancestor filters hash attribute names but not values, so only a per-plugin
+attribute name lets the browser skip another plugin's copy of `.flex` without
+walking every ancestor of each element inside the sidebar, composer, or any
+other plugin root. Plugin roots the host renders (slot mounts, panel header
+content, and portaled overlays) carry `data-bb-plugin-scope-<id>=""` next to
+`data-bb-plugin`. For elements a plugin labels itself, including old
+`portal-scope` copies and `element.dataset.bbPlugin = id`, the app watches the
+document (`apps/app/src/lib/plugin-scope-attributes.ts`) and adds the
+attribute before the element is styled. Older tabs that send
+`css-scope=owned-root-v1` get the same selectors without the scope attribute,
+and tabs that send no scope get the original CSS.
 
 To reproduce version skew, load the production main app in Chrome, restart
 the same isolated server on the branch without reloading the tab, and open

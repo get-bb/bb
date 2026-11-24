@@ -1509,8 +1509,8 @@ Docs: `backend-sdk.md`.
 `experimental_useExperiment(key)` returns whether the bb experiment `key` is
 on, from the same live system config core reads (Settings → Experiments,
 `bb settings experiment`). It is false while config loads and for unknown
-keys. Caller: push notifications, which reads
-`skipFocusedThreadNotifications`.
+keys. No core caller reads it now that push notifications' focused-thread
+skip graduated; decide whether to keep it before stabilizing.
 
 **Audit before stabilizing.**
 
@@ -3942,9 +3942,8 @@ A thread pane shows its thread context one of two ways, its
 `ExperimentalThreadContextKind`: `banner`, the context row above the composer,
 or `card`, the thread context card at the pane's upper-right.
 `experimental_useThreadContextKind()` returns the kind of the pane the calling
-component renders in, `banner` outside a thread pane. A pane is `card` while
-the `threadContextCard` experiment is on, for a thread opened as a page whose
-pane is wide enough to fit the card beside the transcript (the `card` layout
+component renders in, `banner` outside a thread pane. A pane is `card` for a
+thread opened as a page whose pane is wide enough to fit the card beside the transcript (the `card` layout
 `ThreadContextCard` measures), except on phones (a compact
 viewport with a coarse pointer, the rule `MessageActionBar` uses). A narrower
 pane is `banner` and its header button opens the card as a popover. Threads

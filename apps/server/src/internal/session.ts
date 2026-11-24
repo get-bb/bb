@@ -1,6 +1,5 @@
 import {
   getAppSettings,
-  getExperiments,
   getLatestSessionForHost,
   getOrCreateServerId,
   getHost,
@@ -20,7 +19,6 @@ import {
   type HostDaemonInternalSchema,
   type ServerMovedErrorDetails,
 } from "@bb/host-daemon-contract";
-import { writeAgentCpuPriority } from "@bb/process-utils";
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppDeps } from "../types.js";
@@ -91,14 +89,6 @@ export function registerInternalSessionRoutes(
   const machineEnvironment = new HostEnvironmentSync(deps, (hostId) =>
     requestHostDerivedStateRefresh(deps, hostId),
   );
-  let launcherAgentCpuPriority: boolean | null = null;
-  const syncLauncherAgentCpuPriority = (): void => {
-    const { agentCpuPriority } = getExperiments(deps.db);
-    if (agentCpuPriority === launcherAgentCpuPriority) return;
-    writeAgentCpuPriority(deps.config.dataDir, agentCpuPriority);
-    launcherAgentCpuPriority = agentCpuPriority;
-  };
-  syncLauncherAgentCpuPriority();
   const sentRoutes = new Map<string, string>();
   const pushRoutes = (hostId: string, serverRoutes: HostDaemonServerRoutes) => {
     const signature = JSON.stringify(serverRoutes);
@@ -149,7 +139,6 @@ export function registerInternalSessionRoutes(
   deps.hub.onChangedMessage((message) => {
     const configChanged =
       message.entity === "system" && message.changes.includes("config-changed");
-    if (configChanged) syncLauncherAgentCpuPriority();
     const hostIds = configChanged
       ? deps.hub.listConnectedHostIds()
       : message.entity === "host" &&
@@ -159,12 +148,10 @@ export function registerInternalSessionRoutes(
         : [];
     if (hostIds.length === 0) return;
     const { idleProviderSessionTimeoutMinutes } = getAppSettings(deps.db);
-    const { agentCpuPriority } = getExperiments(deps.db);
     for (const hostId of hostIds) {
       deps.hub.sendDaemonMessage(hostId, {
         type: "provider-session-policy.replace",
         idleProviderSessionTimeoutMinutes,
-        agentCpuPriority,
       });
     }
   });
@@ -326,9 +313,7 @@ export function registerInternalSessionRoutes(
         serverRoutes,
         heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
-        reconnectGraceMs: getExperiments(deps.db).resumeDaemonSessions
-          ? HOST_RECONNECT_GRACE_MS
-          : 0,
+        reconnectGraceMs: HOST_RECONNECT_GRACE_MS,
         watchSet: deps.watchInterests.reconcileWatchSetForHost(daemon.hostId),
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
@@ -339,7 +324,6 @@ export function registerInternalSessionRoutes(
         machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),
         idleProviderSessionTimeoutMinutes: getAppSettings(deps.db)
           .idleProviderSessionTimeoutMinutes,
-        agentCpuPriority: getExperiments(deps.db).agentCpuPriority,
       },
       201,
     );

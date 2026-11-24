@@ -185,7 +185,20 @@ viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
 
 Reading a thread removes a thread's push, web, and desktop
-notifications once the thread is read on any client.
+notifications once the thread is read on any client, and a thread open in a
+visible, focused bb window or tab gets no web or desktop system notification.
+
+A running thread's changes, pull request, and parent and child threads sit in a
+card at the upper-right of its pane, opened or pinned from the header; phones
+keep them above the composer.
+
+bb runs agent processes and setup and teardown scripts at a lower CPU priority
+(and, on macOS, the bb server and daemon with application scheduling) so it
+stays responsive under heavy agent load; terminals keep normal priority.
+
+A machine stays connected through a network drop of under 30 seconds: its
+daemon resumes the same server session, so terminals and running requests carry
+on, instead of opening a new one.
 
 Thread row metadata adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
@@ -200,41 +213,17 @@ Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
-`agentCpuPriority` runs agent processes and setup and teardown scripts at a
-lower CPU priority (and, on macOS, the bb server and daemon with application
-scheduling) so bb stays responsive under heavy agent load; it takes full effect
-after restarting bb, and terminals keep normal priority. It defaults on for early adopters.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`resumeDaemonSessions` keeps a machine connected through a network drop of
-under 30 seconds: its daemon resumes the same server session, so terminals and
-running requests carry on, instead of opening a new one. It defaults on for
-early adopters and applies from the next disconnect.
 `serverRoutes` lets machines learn every available server access route and
 connect over the first one that answers; see Server access in
 `bb guide machines`. It defaults on for early adopters.
-`keyedPluginCss` loads plugin stylesheets so that style updates inside other
-plugins' UI, such as the sidebar and composer, skip them; it applies after a
-reload and defaults on for early adopters.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
-`skipFocusedThreadNotifications` skips the web and desktop system notification
-for a thread open in a visible, focused bb window or tab. It defaults on for
-early adopters.
-`threadContextCard` moves a running thread's changes, pull request, and parent
-and child threads into a card at the upper-right of its pane, opened or pinned from
-the header. It defaults on for early adopters.
-
-`walCheckpointWorker` copies recent writes into bb's SQLite database files on a
-background thread instead of during a commit, so heavy writing does not stall
-the server. It applies live and defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`, `pluginUpdates`,
-`resumeDaemonSessions`, `serverRoutes`, `skipFocusedThreadNotifications`,
-`threadContextCard`, and `walCheckpointWorker`; an
-experiment you set yourself keeps your value.
+`compactExpiredCache`, `pluginUpdates`, and `serverRoutes`; an experiment you set yourself keeps your value.
 
 Launcher settings
 

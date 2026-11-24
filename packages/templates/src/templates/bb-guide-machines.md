@@ -314,7 +314,7 @@ column of `bb machine list`. Each time a machine connects it probes every route
 answers, giving each better-ranked route a 500 ms head start. It stays on that
 route until the connection drops and then picks again, so when its route stops
 answering a machine moves to the next route that answers, keeping its session
-when `resumeDaemonSessions` is on. Machines remember learned routes in
+if it reconnects within 30 seconds. Machines remember learned routes in
 `server-routes.json` in their data directory, so a restart starts on the best
 one. Attachments and daemon updates always use an encrypted route (HTTPS, such
 as bb connect) unless the server offers only
