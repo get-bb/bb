@@ -614,7 +614,9 @@ export function registerActionsCommands(
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
-            opts.compactFirst === true
+            opts.compactFirst === true &&
+              response.delivery === "queued" &&
+              response.queuedMessage.waitingOn?.kind === "thread-busy"
               ? `Thread ${id} compacting; the message sends when compaction finishes`
               : describeThreadTellOutcome(id, response),
           );

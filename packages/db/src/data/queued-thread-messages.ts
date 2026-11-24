@@ -102,6 +102,8 @@ export interface CreateQueuedThreadMessageInput {
   systemNotice: QueuedMessageSystemNotice | null;
   deliveryMode?: QueuedMessageDeliveryMode;
   coalesce?: { key: string; state: string } | null;
+  executionInputSources?: QueuedThreadMessageRow["executionInputSources"];
+  compactFirst?: boolean;
 }
 
 export interface UpdateCoalescedQueuedThreadMessageInput {
@@ -869,6 +871,8 @@ export function createQueuedThreadMessageInTransaction(
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
       serviceTier: input.serviceTier,
+      executionInputSources: input.executionInputSources ?? {},
+      compactFirst: input.compactFirst ?? false,
       state,
       waitingOn,
       waitHolder:
@@ -1212,7 +1216,7 @@ export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
     oldMaxSequence: number;
     threadId: string;
   },
-): number {
+): QueuedThreadMessageRow[] {
   const retries = db
     .select()
     .from(queuedThreadMessages)
@@ -1243,7 +1247,7 @@ export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
       .where(eq(queuedThreadMessages.id, retry.id))
       .run();
   }
-  return retries.length;
+  return retries;
 }
 
 function hasAcceptedQueuedRetryInput(
@@ -1881,15 +1885,16 @@ export interface RequeueClaimedQueuedThreadMessagesArgs {
   waitingOn: QueuedMessageWaitingOn;
   sendAt: number | null;
   recheckAt: number | null;
+  compactFirstDone: boolean;
 }
 
 export function requeueClaimedQueuedThreadMessages(
   db: DbQueryConnection,
   notifier: DbNotifier,
   args: RequeueClaimedQueuedThreadMessagesArgs,
-): QueuedThreadMessageRow | null {
+): QueuedThreadMessageRow[] {
   const lead = args.claims[0];
-  if (lead === undefined) return null;
+  if (lead === undefined) return [];
   const transition: QueuedMessageTransition = {
     event: "wait.recorded",
     sendAt: args.sendAt,
@@ -1899,21 +1904,33 @@ export function requeueClaimedQueuedThreadMessages(
   const queued = db.transaction(
     (tx) => {
       const now = Date.now();
-      let queuedLead: QueuedThreadMessageRow | null = null;
+      const requeued: QueuedThreadMessageRow[] = [];
       for (const claim of args.claims) {
-        const row = getQueuedThreadMessage(tx, claim.id);
-        if (!row || row.threadId !== args.threadId) continue;
-        const ownsClaim = row.claimToken === claim.claimToken;
-        if (!ownsClaim && (claim !== lead || isQueuedThreadMessageClaimed(row)))
+        const current = getQueuedThreadMessage(tx, claim.id);
+        if (!current || current.threadId !== args.threadId) continue;
+        const ownsClaim = current.claimToken === claim.claimToken;
+        if (
+          !ownsClaim &&
+          (claim !== lead || isQueuedThreadMessageClaimed(current))
+        )
           continue;
+        const row =
+          args.compactFirstDone && current.compactFirst
+            ? tx
+                .update(queuedThreadMessages)
+                .set({ compactFirst: false, updatedAt: now })
+                .where(eq(queuedThreadMessages.id, current.id))
+                .returning()
+                .get()
+            : current;
         const updated = transitionQueuedMessage(tx, { now, row, transition });
-        if (claim === lead) queuedLead = updated;
+        if (updated !== null) requeued.push(updated);
       }
-      return queuedLead;
+      return requeued[0]?.id === lead.id ? requeued : [];
     },
     { behavior: "immediate" },
   );
-  if (queued) {
+  if (queued.length > 0) {
     notifier.notifyThread(args.threadId, ["queue-changed"]);
   }
   return queued;

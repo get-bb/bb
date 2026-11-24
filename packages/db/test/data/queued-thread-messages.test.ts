@@ -1008,7 +1008,8 @@ describe("queued thread messages", () => {
       tail.id,
     ]);
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+            compactFirstDone: false,
+claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
@@ -1089,7 +1090,8 @@ describe("queued thread messages", () => {
       () => true,
     );
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+            compactFirstDone: false,
+claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,

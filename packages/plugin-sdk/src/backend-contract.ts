@@ -383,11 +383,13 @@ export interface PluginThreadEventPayloads {
    *
    * A re-queue fires this again with the new wait, because a row that moved
    * from one wait to another is news to whoever was waiting on the old one.
+   * A grouped dispatch that is re-queued fires it once for every row.
    */
   "message.queued": { entry: ThreadQueuedMessage };
   /**
-   * Fired after a queued row's waits all cleared and it dispatched. The turn
-   * it carried runs after this, so a handler must not assume it has started.
+   * Fired after a queued row's waits all cleared and it dispatched. Rows
+   * grouped into one dispatch each fire it, in queue order. The turn it
+   * carried runs after this, so a handler must not assume it has started.
    */
   "message.dispatched": { entry: ThreadQueuedMessage };
   /**
@@ -403,7 +405,8 @@ export interface PluginThreadEventPayloads {
   "turn.failed": PluginTurnFailedEvent;
   /**
    * Fired after a queued row is removed before it ever dispatched — the user
-   * deleted it from the queued card or `bb thread queue`. This is the only
+   * deleted it from the queued card or `bb thread queue`, or an edit of an
+   * earlier message discarded a queued retry of a turn it replaced. This is the only
    * signal for that removal: a plugin holding external resources for a
    * waiting message (a sandbox mid-provision, a reserved slot) releases them
    * here. Rows that dispatch fire `message.dispatched` instead, and rows that
@@ -703,7 +706,9 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * of core's own notices to a thread (a child finished, needs attention, or
  * changed owner), which arrives with `initiator: "system"`. Compaction and an
  * edited message's re-send operate on the existing conversation and do not
- * pass through it. A handler must therefore be idempotent for one logical
+ * pass through it. A send that asks to compact first is decided before the
+ * compaction runs: a `wait` holds the compaction with the message, and a
+ * `reject` leaves the context uncompacted. A handler must therefore be idempotent for one logical
  * dispatch: passes re-run on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
@@ -732,7 +737,10 @@ export interface MessageDispatchHookContext {
   environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
-  /** Where each execution value came from. */
+  /**
+   * Where each execution value came from. A queued re-attempt reports what
+   * its first attempt was sent with.
+   */
   executionSources: PluginDispatchExecutionSources;
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
@@ -1052,9 +1060,19 @@ export interface PluginBackground {
   ): void;
   /**
    * Register a cron schedule (5-field expression, server-local time). The
-   * durable row keyed (pluginId, name) is upserted at load; the periodic
-   * sweep claims due rows with a CAS on next_run_at, but only while this
-   * plugin is loaded. Failures land in last_status/last_error, visible in
+   * durable row keyed (pluginId, name) is upserted at load and keeps its
+   * next due time across reloads and server restarts while the cron is
+   * unchanged; a changed cron starts from the next time it matches. The
+   * periodic sweep (every 10 s) claims due rows with a CAS on next_run_at,
+   * but only while this plugin is loaded.
+   *
+   * Missed runs are caught up once: due times that pass while the server is
+   * down, the plugin is not loaded, or this schedule's previous run is still
+   * going produce a single run at the next sweep, not one per missed time.
+   * Runs of one schedule never overlap. Runs are not awaited by the sweep,
+   * so a slow run delays neither other schedules nor core's own sweeps;
+   * there is no time limit, and a reload or disable releases a run still
+   * going. Failures land in last_status/last_error, visible in
    * `bb plugin list`.
    */
   schedule(name: string, cron: string, fn: () => void | Promise<void>): void;

@@ -455,13 +455,13 @@ async function runDispatchAttempt(
     payload,
     args.executionDefaults ?? { threadId: thread.id },
   );
-  if (payload.compactFirst) {
-    const { compactFirst, ...request } = payload;
-    await compactThreadContext(deps, thread);
-    payload = request;
-    args = { ...args, payload };
-  }
-  const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
+  const executionInputSources =
+    claimed?.[0]?.executionInputSources ?? payload.executionInputSources ?? {};
+  const { compactFirst: _compactFirst, ...messagePayload } = payload;
+  const resolvedPayload = resolveExecutionIntoPayload(
+    messagePayload,
+    execution,
+  );
   const queuedMessage: QueuedDispatchMessage = {
     input: payload.input,
     execution,
@@ -472,6 +472,8 @@ async function runDispatchAttempt(
     payload: args.queuePayload,
     systemNotice,
     deliveryMode: run.deliveryMode,
+    executionInputSources,
+    compactFirst: payload.compactFirst === true,
   };
 
   const retriesGoFirst = getAppSettings(deps.db).resumeThreadsAfterRestart;
@@ -481,7 +483,10 @@ async function runDispatchAttempt(
   ): DispatchAttemptOutcome => {
     const entry = recordQueuedMessageWait(deps, {
       thread,
-      message: queuedMessage,
+      message: {
+        ...queuedMessage,
+        compactFirst: payload.compactFirst === true,
+      },
       placement:
         retriesGoFirst && args.queuePayload.kind === "retry" ? "front" : "back",
       waitingOn,
@@ -642,6 +647,19 @@ async function runDispatchAttempt(
       return;
     }
 
+    if (payload.compactFirst === true) {
+      await compactThreadContext(deps, thread);
+      const { compactFirst: _compacted, ...request } = payload;
+      payload = request;
+      args = { ...args, payload };
+      continued.outcome = waitOn({ kind: "thread-busy" });
+      requestQueuedMessageDispatch(deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+      return;
+    }
+
     if (firstDispatch) {
       admitted.value = await admitPendingThread(deps, {
         author,
@@ -688,9 +706,7 @@ async function runDispatchAttempt(
         serviceTier: execution.serviceTier,
         permissionMode: execution.permissionMode,
       },
-      executionSources: dispatchExecutionSources(
-        payload.executionInputSources ?? {},
-      ),
+      executionSources: dispatchExecutionSources(executionInputSources),
       attempt,
       initiator: author.initiator,
       senderThreadId: author.senderThreadId,
@@ -788,7 +804,7 @@ async function runDispatchAttempt(
     );
   }
   if (claimed !== null) {
-    settleQueueRowDispatched({ row: claimed[0]! });
+    settleQueueRowDispatched({ rows: claimed });
   }
   return { kind: "dispatched", messageSequence };
 }
@@ -875,7 +891,7 @@ interface AdmitPendingThreadArgs {
 }
 
 interface PendingThreadAdmission {
-  claimedRow: ClaimedQueuedThreadMessageRow | null;
+  claimedRows: readonly ClaimedQueuedThreadMessageRow[];
   messageSequence: number;
   startingThread: Thread;
 }
@@ -926,7 +942,7 @@ async function admitPendingThread(
   const execution = await buildExecutionOptions(deps, args.payload, {
     threadId: args.thread.id,
   });
-  const claimedRow = args.claimed?.[0] ?? null;
+  const claimedRows = args.claimed ?? [];
   let admitted: {
     messageSequence: number;
     startingThread: NonNullable<ReturnType<typeof getThread>>;
@@ -993,7 +1009,7 @@ async function admitPendingThread(
     buildThreadStatusChangeMetadata(deps, startingThread),
   );
   return {
-    claimedRow,
+    claimedRows,
     messageSequence,
     startingThread,
   };
@@ -1003,10 +1019,8 @@ async function launchAdmittedThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   admission: PendingThreadAdmission,
 ): Promise<void> {
-  const { claimedRow, startingThread } = admission;
-  if (claimedRow !== null) {
-    settleQueueRowDispatched({ row: claimedRow });
-  }
+  const { claimedRows, startingThread } = admission;
+  settleQueueRowDispatched({ rows: claimedRows });
   scheduleThreadProvisioningAdvance(deps, startingThread.id);
 }
 
@@ -1036,10 +1050,10 @@ function resolveExecutionIntoPayload(
   };
 }
 
-export async function compactThreadContext(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+export function assertThreadCanCompact(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "providerRegistry">,
   thread: Thread,
-): Promise<void> {
+): void {
   ensureThreadIsWritable(thread);
   if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
@@ -1055,7 +1069,13 @@ export async function compactThreadContext(
       "Context can only be compacted while the thread is idle or errored",
     );
   }
+}
 
+export async function compactThreadContext(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): Promise<void> {
+  assertThreadCanCompact(deps, thread);
   const environment = await requireThreadCommandEnvironment(deps, { thread });
   await attemptDispatch(deps, {
     thread,

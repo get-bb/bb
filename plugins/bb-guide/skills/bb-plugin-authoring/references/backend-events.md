@@ -39,9 +39,10 @@ new outcome fails your typecheck instead of leaving a run open.
 
 Nineteen events. The seven `thread.*` ones are thread lifecycle.
 `interaction.pending` fires after core commits a pending interaction row. The
-three `message.*` ones fire when a dispatch is queued behind a wait (again when
-its wait or `sendAt` is rewritten), when a queued row's waits all clear and it
-dispatches, or when the user removes a queued row before it dispatched. Every
+three `message.*` ones fire once per row: when a dispatch is queued behind a
+wait (again when its wait or `sendAt` is rewritten), when a row's waits clear
+and it dispatches (every row of a grouped dispatch), or when a row is removed
+before it dispatched (the user deletes it, or an edit discards a retry). Every
 listener sees every queued row, so a plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
 `message.cancelled` is the only signal for that removal: release resources held
@@ -477,9 +478,9 @@ bb.background.schedule("sync", "*/5 * * * *", async () => {
 - A **service** starts after the factory completes and must resolve when
   `signal` aborts (reload/disable/shutdown). A crash restarts it with
   capped exponential backoff.
-- A **schedule** is a 5-field cron (server-local time) backed by a durable
-  row keyed (pluginId, name) — it survives server restarts and fires once per
-  due time, but only while the plugin is loaded.
+- A **schedule** is a 5-field cron (server-local time) on a durable row. Due
+  times missed while bb was down, the plugin unloaded, or a run still going
+  get one catch-up run; runs never overlap or delay other schedules.
 - Semantics differ on throw: a service throwing `NeedsConfigurationError`
   transitions the whole plugin to `needs-configuration` and stops
   restarting until the next load; a schedule throw (any error) only lands
