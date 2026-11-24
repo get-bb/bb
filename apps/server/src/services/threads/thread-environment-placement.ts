@@ -123,10 +123,6 @@ type ProviderSelection = Pick<
   "machine" | "inputs"
 >;
 
-interface ResolvedProviderSelection extends ProviderSelection {
-  selectionResolved: boolean;
-}
-
 function refuseProviderSelection(
   environmentProviderId: string,
   detail: string,
@@ -266,25 +262,6 @@ export async function completeProviderSelection(
     });
   }
   return { machine, inputs };
-}
-
-async function resolveCompleteProviderSelection(
-  deps: PlacementDeps,
-  projectId: string,
-  environmentProviderId: string,
-  selection: ProviderSelection,
-): Promise<ResolvedProviderSelection> {
-  const record = getEnvironmentProvider(environmentProviderId);
-  if (record === undefined) {
-    return { ...selection, selectionResolved: false };
-  }
-  const completed = await completeProviderSelection(
-    deps,
-    record,
-    projectId,
-    selection,
-  );
-  return { ...completed, selectionResolved: true };
 }
 
 const VALIDATE_DECISION_SHAPE =
@@ -565,16 +542,6 @@ export async function resolveThreadEnvironmentPlacement(
       if (resolvedEnvironment.unmanagedPath === null) {
         throw new Error(
           "Validated unmanaged host request is missing a workspace path",
-        );
-      }
-      if (
-        getEnvironmentProvider(
-          DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-        ) === undefined
-      ) {
-        refuseProviderSelection(
-          DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-          "is not registered. Enable its plugin before starting a thread.",
         );
       }
       const dataDir = (
@@ -1328,18 +1295,19 @@ async function providerPlacement(
   environmentProviderId: string,
   requested: ProviderSelection,
 ): Promise<ThreadEnvironmentPlacement> {
-  const selection = await resolveCompleteProviderSelection(
+  const record = getEnvironmentProvider(environmentProviderId);
+  if (record === undefined)
+    refuseProviderSelection(
+      environmentProviderId,
+      "is not registered. Enable its plugin before starting a thread.",
+    );
+  const selection = await completeProviderSelection(
     deps,
+    record,
     projectId,
-    environmentProviderId,
     requested,
   );
-  const record = getEnvironmentProvider(environmentProviderId);
-  if (
-    record !== undefined &&
-    selection.selectionResolved &&
-    selection.machine.type === "existing"
-  ) {
+  if (selection.machine.type === "existing") {
     const hostId = selection.machine.hostId;
     const host = getNonDestroyedHostWithStatus(deps, hostId);
     const located =
@@ -1372,6 +1340,7 @@ async function providerPlacement(
       type: "provider",
       environmentProviderId,
       ...selection,
+      selectionResolved: true,
     },
   };
 }
