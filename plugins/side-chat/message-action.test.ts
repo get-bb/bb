@@ -39,7 +39,12 @@ const message = {
   text: "whole message text",
   sourceSeqEnd: 42,
   experimental_messageSeq: 42,
+  experimental_settled: true,
+  experimental_attachments: [],
+  experimental_imageUrls: [],
 };
+
+const messageRequests = { addToChat: null, edit: null, fork: null };
 
 describe("parsePanelParams", () => {
   it("narrows persisted params and rejects malformed values", () => {
@@ -84,6 +89,8 @@ describe("reply-in-side-chat message action", () => {
       threadId: "thr_src",
       message,
       composer: null,
+      experimental_invokedFrom: "button" as const,
+      experimental_messageRequests: messageRequests,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -129,6 +136,8 @@ describe("reply-in-side-chat message action", () => {
       threadId: "thr_src",
       message,
       composer: null,
+      experimental_invokedFrom: "button" as const,
+      experimental_messageRequests: messageRequests,
     };
 
     const first = app.messageActions[0]!.run(context);
@@ -155,6 +164,8 @@ describe("reply-in-side-chat message action", () => {
       message,
       selectedText: "just this part",
       composer: null,
+      experimental_invokedFrom: "button" as const,
+      experimental_messageRequests: messageRequests,
     });
 
     expect(panel.openTab).toHaveBeenCalledWith(

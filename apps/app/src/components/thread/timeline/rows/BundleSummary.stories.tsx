@@ -731,7 +731,7 @@ export function Conversation() {
           <ThreadTimelineRows
             {...baseProps}
             threadRuntimeDisplayStatus="active"
-            onSelectionAddToChat={handleAddToChat}
+            onAddToChat={handleAddToChat}
             timelineRows={interleavedConversationRows}
           />
           <div className="mt-3">

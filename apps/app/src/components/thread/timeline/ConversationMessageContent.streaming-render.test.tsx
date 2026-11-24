@@ -19,6 +19,9 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types";
 import { ConversationMessageContent } from "./ConversationMessageContent";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
+import { buildMessageActions } from "@/lib/plugin-message-actions";
+import { EMPTY_PLUGIN_SLOT_SNAPSHOT } from "@/lib/plugin-slots";
 import { ThreadTimelineNavigationProvider } from "./ThreadTimelineNavigationContext";
 
 const mentionedThread = makeThreadListEntry({
@@ -45,6 +48,30 @@ const registry = buildMessageDirectiveRegistry(
   },
 );
 
+function coreActions(text: string, streaming: boolean) {
+  return buildMessageActions({
+    slots: EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
+    target: {
+      threadId: "thr_stream",
+      message: {
+        id: "msg_stream",
+        threadId: "thr_stream",
+        role: "assistant",
+        text,
+        sourceSeqEnd: 1,
+        experimental_messageSeq: 1,
+        experimental_settled: !streaming,
+        experimental_attachments: [],
+        experimental_imageUrls: [],
+      },
+      messageRequests: { addToChat: null, edit: null, fork: null },
+      canSpawnChild: true,
+    },
+    composerHost: null,
+    actionContext: () => experimental_makeActionContext(),
+  });
+}
+
 function assistant(
   text: string,
   streaming = true,
@@ -60,6 +87,7 @@ function assistant(
       turnId="turn_stream"
       streaming={streaming}
       showActions={showActions}
+      actions={showActions ? coreActions(text, streaming) : undefined}
       mobileActionDisplay="inline"
       text={text}
       timestamp={0}

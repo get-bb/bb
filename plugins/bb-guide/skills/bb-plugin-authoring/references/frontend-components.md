@@ -7,7 +7,7 @@ Host components:
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
   `{ threadId, variant?, layout?, focusRequest?, permissionPolicy?,
-className?, leadingContent?, messageActions? }` —
+className?, leadingContent?, experimental_messageActions? }` —
   `variant` is `"full"` (standard chat controls, default), `"compact"`
   (side-panel presentation), or `"timeline"` (transcript without a
   composer); `layout` is `"contained"` (fills and scrolls within the
@@ -19,16 +19,12 @@ className?, leadingContent?, messageActions? }` —
   instance gets a live picker, letting the user set a mode for this thread
   independently of the one it was forked from);
   `leadingContent` is a `ReactNode` rendered above the conversation,
-  scrolling with it; `messageActions` is a list of
-  `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
-  rendered in this instance's per-message action bar after the native
-  actions and the slot-registered `messageAction`s whose
-  `experimental_surfaces` include `"embedded-chat"` — `roles` limits the action to `"user"` and/or
-  `"assistant"` messages (omitted = both), and `run(message)` receives the
-  same narrow `ThreadChatMessageReference` as the `messageAction` slot;
-  errors from `run` are contained and logged, never breaking the timeline.
-  Unlike the global `messageAction` slot, these actions are scoped to the
-  one `ThreadChat` instance that supplied them. The
+  scrolling with it; `experimental_messageActions` takes `messageAction`
+  registrations for this instance only, validated, filtered and ordered like
+  the slot's (their `experimental_surfaces` is ignored) and run with the
+  rendering plugin's context. The deprecated `messageActions`
+  (`ThreadChatMessageAction` `{ id, title, icon?, roles?, run(message) }`)
+  still works as inline-only registrations. The
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.

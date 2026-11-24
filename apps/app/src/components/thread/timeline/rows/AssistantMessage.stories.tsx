@@ -1,4 +1,5 @@
 import type { TimelineRow } from "@bb/server-contract";
+import { StoryConversationMessage } from "@/components/thread/timeline/story-message-actions";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import { ThreadTimelineRows } from "@/components/thread/timeline/ThreadTimelineRows";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style";
@@ -227,35 +228,30 @@ export function Overview() {
 const overflowStoryPluginActions = [
   {
     key: "story/summarize",
-    pluginId: null,
     icon: "Sparkles",
     label: "Summarize",
     onSelect: noop,
   },
   {
     key: "story/translate",
-    pluginId: null,
     icon: "Globe",
     label: "Translate",
     onSelect: noop,
   },
   {
     key: "story/save",
-    pluginId: null,
     icon: "Bookmark",
     label: "Save to notes",
     onSelect: noop,
   },
   {
     key: "story/pin",
-    pluginId: null,
     icon: "Pin",
     label: "Pin message",
     onSelect: noop,
   },
   {
     key: "story/share",
-    pluginId: null,
     icon: "Share",
     label: "Share",
     onSelect: noop,
@@ -271,7 +267,7 @@ export function ActionOverflow() {
       >
         <TimelineStage>
           <div className="[&_button]:opacity-100">
-            <ConversationMessageContent
+            <StoryConversationMessage
               role="assistant"
               id="row_story_overflow_wide"
               threadId="thr_story"
@@ -294,7 +290,7 @@ export function ActionOverflow() {
         hint="a 160px column collapses trailing actions into the overflow menu"
       >
         <div className="w-[160px] [&_button]:opacity-100">
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="assistant"
             id="row_story_overflow_narrow"
             threadId="thr_story"
@@ -328,7 +324,7 @@ export function MobileActionsAndSelection() {
       <ThreadTimelineRows
         canSpawnChild
         onForkMessage={noop}
-        onSelectionAddToChat={noop}
+        onAddToChat={noop}
         threadId={MOBILE_REVIEW_THREAD_ID}
         threadRuntimeDisplayStatus="idle"
         timelineRows={mobileReviewRows}

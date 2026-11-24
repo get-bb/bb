@@ -1527,9 +1527,14 @@ describe("loadPluginApp", () => {
         text: "An answer.",
         sourceSeqEnd: 12,
         experimental_messageSeq: 12,
+        experimental_settled: true,
+        experimental_attachments: [],
+        experimental_imageUrls: [],
       },
       selectedText: "answer",
       composer: null,
+      experimental_invokedFrom: "selection",
+      experimental_messageRequests: { addToChat: null, edit: null, fork: null },
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({
@@ -1600,6 +1605,9 @@ describe("loadPluginApp", () => {
         text: "test message text",
         sourceSeqEnd: 1,
         experimental_messageSeq: 1,
+        experimental_settled: true,
+        experimental_attachments: [],
+        experimental_imageUrls: [],
       },
     ]);
   });

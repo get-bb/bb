@@ -328,7 +328,7 @@ describe("PluginThreadChat", () => {
     });
   });
 
-  it("forwards leadingContent and maps messageActions to consumer actions", async () => {
+  it("forwards leadingContent and adapts messageActions into instance message actions", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const run = vi.fn();
     render(
@@ -349,18 +349,18 @@ describe("PluginThreadChat", () => {
       unknown
     >;
     expect(timelineHost.leadingContent).toBeTruthy();
-    const actions = timelineHost.consumerMessageActions as Array<
+    const actions = timelineHost.instanceMessageActions as Array<
       Record<string, unknown>
     >;
     expect(actions).toHaveLength(1);
     expect(actions[0]).toEqual(
       expect.objectContaining({
-        id: "send-to-main",
-        pluginId: null,
+        id: "thread-chat/send-to-main",
+        pluginId: "demo",
         icon: "ArrowTurnBackward",
-        label: "Send to main thread",
-        roles: ["assistant"],
-        run,
+        title: "Send to main thread",
+        experimental_roles: ["assistant"],
+        experimental_placements: ["inline"],
       }),
     );
   });

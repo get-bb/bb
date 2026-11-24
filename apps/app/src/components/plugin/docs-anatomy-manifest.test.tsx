@@ -222,24 +222,37 @@ describe("docs anatomy manifest", () => {
   });
 
   it("matches the message action bar's order", () => {
+    const anatomyAction = (
+      key: string,
+      label: string,
+      icon: string | null,
+      placement: "inline" | "menu",
+    ) => ({
+      key,
+      pluginId: "bb--core",
+      icon,
+      label,
+      placement,
+      disabled: false,
+      run: async () => false,
+    });
     render(
       <TooltipProvider delayDuration={0}>
         <MessageActionBar
           timestamp={0}
-          messageText="hello"
           alignment="start"
           mobileActionDisplay="inline"
-          onAddToChat={() => {}}
-          onEdit={() => {}}
-          onFork={() => {}}
-          pluginActions={[
-            {
-              key: "anatomy-plugin-action",
-              pluginId: null,
-              icon: null,
-              label: "Anatomy message action",
-              onSelect: () => {},
-            },
+          actions={[
+            anatomyAction("copy", "Copy message", "Copy", "inline"),
+            anatomyAction("edit", "Edit message", "Edit", "inline"),
+            anatomyAction(
+              "anatomy-plugin-action",
+              "Anatomy message action",
+              null,
+              "inline",
+            ),
+            anatomyAction("add", "Add to chat", "MessageSquarePlus", "menu"),
+            anatomyAction("fork", "Fork into new thread", "Fork", "menu"),
           ]}
         />
       </TooltipProvider>,

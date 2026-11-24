@@ -4,38 +4,31 @@ import {
   useRef,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   firstClientRect,
   readSelectedMessageMarkdown,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
-import type { ThreadTimelinePluginMessageAction } from "./types.js";
+import type { ThreadTimelineMessageAction } from "./types.js";
 
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none max-md:pointer-coarse:min-h-7 max-md:pointer-coarse:px-2 max-md:pointer-coarse:py-1";
+  "inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:min-h-7 max-md:pointer-coarse:px-2 max-md:pointer-coarse:py-1";
 const SELECTION_MENU_COLLISION_PADDING = 8;
 const SELECTION_MENU_CONTENT_CLASS =
   "pointer-events-auto z-50 flex w-auto items-center gap-0.5 rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
 
-interface SelectionAction {
-  icon: IconName;
-  plugin?: { pluginId: string | null; icon: string | null };
-  key?: string;
-  label: string;
-  onSelect: (selection: MessageProseSelection) => void;
-}
-
 export interface TimelineSelectionMenuProps {
   selection: MessageProseSelection | null;
   onAddToChat?: (text: string) => void;
-  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
+  actions?: readonly ThreadTimelineMessageAction[];
   onDismiss: () => void;
   container?: HTMLElement | null;
 }
@@ -130,19 +123,47 @@ function createSelectionAnchor(
   };
 }
 
+interface SelectionMenuButton {
+  key: string;
+  icon: ReactNode;
+  label: string;
+  disabled: boolean;
+  activate: () => void;
+}
+
+const SELECTION_ICON_CLASS = "size-3.5 text-muted-foreground";
+
+function messageActionButton(
+  action: ThreadTimelineMessageAction,
+): SelectionMenuButton {
+  return {
+    key: action.key,
+    icon: (
+      <PluginItemIcon
+        pluginId={action.pluginId}
+        icon={action.icon}
+        className={SELECTION_ICON_CLASS}
+      />
+    ),
+    label: action.label,
+    disabled: action.disabled,
+    activate: () => {
+      void action.run("selection");
+    },
+  };
+}
+
 function ActionButton({
   action,
   onDismiss,
-  selection,
 }: {
-  action: SelectionAction;
+  action: SelectionMenuButton;
   onDismiss: () => void;
-  selection: MessageProseSelection;
 }) {
   const ignoreNextClickRef = useRef(false);
   const activate = () => {
     flushSync(() => {
-      action.onSelect(selection);
+      action.activate();
       window.getSelection()?.removeAllRanges();
       onDismiss();
     });
@@ -159,6 +180,7 @@ function ActionButton({
   return (
     <button
       type="button"
+      disabled={action.disabled}
       className={SELECTION_ACTION_BUTTON_CLASS}
       onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
       onPointerDown={handlePointerDown}
@@ -174,27 +196,7 @@ function ActionButton({
         activate();
       }}
     >
-      {action.plugin ? (
-        action.plugin.pluginId === null ? (
-          <Icon
-            name={pluginIconName(action.plugin.icon)}
-            className="size-3.5 text-muted-foreground"
-            aria-hidden="true"
-          />
-        ) : (
-          <PluginItemIcon
-            pluginId={action.plugin.pluginId}
-            icon={action.plugin.icon}
-            className="size-3.5 text-muted-foreground"
-          />
-        )
-      ) : (
-        <Icon
-          name={action.icon}
-          className="size-3.5 text-muted-foreground"
-          aria-hidden="true"
-        />
-      )}
+      {action.icon}
       {action.label}
     </button>
   );
@@ -203,7 +205,7 @@ function ActionButton({
 export function TimelineSelectionMenu({
   selection,
   onAddToChat,
-  pluginActions = [],
+  actions = [],
   onDismiss,
   container,
 }: TimelineSelectionMenuProps) {
@@ -245,28 +247,28 @@ export function TimelineSelectionMenu({
 
   if (!selection) return null;
 
-  const actions: SelectionAction[] = [
+  const buttons: SelectionMenuButton[] = [
     ...(onAddToChat
       ? [
           {
-            icon: "MessageSquarePlus" as const,
+            key: "add-to-chat",
+            icon: (
+              <Icon
+                name="MessageSquarePlus"
+                className={SELECTION_ICON_CLASS}
+                aria-hidden="true"
+              />
+            ),
             label: "Add to chat",
-            onSelect: (currentSelection: MessageProseSelection) =>
-              onAddToChat(
-                readSelectedMessageMarkdown() ?? currentSelection.text,
-              ),
+            disabled: false,
+            activate: () =>
+              onAddToChat(readSelectedMessageMarkdown() ?? selection.text),
           },
         ]
       : []),
-    ...pluginActions.map((action) => ({
-      icon: "MessageSquarePlus" as const,
-      plugin: { pluginId: action.pluginId, icon: action.icon },
-      key: action.key,
-      label: action.label,
-      onSelect: () => action.onSelect(),
-    })),
+    ...actions.map(messageActionButton),
   ];
-  if (actions.length === 0) return null;
+  if (buttons.length === 0) return null;
 
   return (
     <PopoverPrimitive.Root
@@ -292,19 +294,15 @@ export function TimelineSelectionMenu({
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          {actions.map((action, index) => (
-            <div key={action.key ?? action.label} className="flex items-center">
+          {buttons.map((action, index) => (
+            <div key={action.key} className="flex items-center">
               {index > 0 ? (
                 <span
                   aria-hidden="true"
                   className="mx-0.5 h-4 w-px bg-border"
                 />
               ) : null}
-              <ActionButton
-                action={action}
-                onDismiss={onDismiss}
-                selection={selection}
-              />
+              <ActionButton action={action} onDismiss={onDismiss} />
             </div>
           ))}
         </PopoverPrimitive.Content>

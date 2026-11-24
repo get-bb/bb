@@ -1,4 +1,7 @@
-import type { ThreadChatMessageReference } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalMessageActionInvocation,
+  ExperimentalMessageActionPlacement,
+} from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@bb/domain";
 import type {
   MarkdownPreviewLocalFileLink,
@@ -42,21 +45,14 @@ export type ThreadTimelineAddToChatHandler = (
   attachments?: readonly PromptDraftAttachment[],
 ) => void;
 
-export interface ThreadTimelinePluginMessageAction {
+export interface ThreadTimelineMessageAction {
   key: string;
-  pluginId: string | null;
+  pluginId: string;
   icon: string | null;
   label: string;
-  onSelect: () => void;
-}
-
-export interface ThreadTimelineConsumerMessageAction {
-  id: string;
-  pluginId: string | null;
-  icon: string | null;
-  label: string;
-  roles?: readonly ("user" | "assistant")[];
-  run(message: ThreadChatMessageReference): void | Promise<void>;
+  placement: ExperimentalMessageActionPlacement;
+  disabled: boolean;
+  run(invokedFrom: ExperimentalMessageActionInvocation): Promise<boolean>;
 }
 
 export interface ThreadTimelineUnreadDividerPlacement {

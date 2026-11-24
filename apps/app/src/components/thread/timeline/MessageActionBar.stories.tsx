@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
+import { useStoryMessageActions } from "@/components/thread/timeline/story-message-actions";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -17,16 +18,47 @@ function HoverRevealStage({ children }: { children: ReactNode }) {
   );
 }
 
+function StoryBar({
+  text,
+  mobileActionDisplay,
+  role,
+  onAddToChat,
+  onFork,
+  forkDisabled,
+}: {
+  text: string;
+  mobileActionDisplay: "inline" | "overflow";
+  role: "user" | "assistant";
+  onAddToChat?: () => void;
+  onFork?: () => void;
+  forkDisabled?: boolean;
+}) {
+  const actions = useStoryMessageActions({
+    role,
+    text,
+    onAddToChat,
+    onFork,
+    forkDisabled,
+  });
+  return (
+    <MessageActionBar
+      timestamp={STORY_TIMESTAMP}
+      alignment="end"
+      mobileActionDisplay={mobileActionDisplay}
+      actions={actions}
+    />
+  );
+}
+
 export function Overview() {
   return (
     <>
       <StoryCard>
         <StoryRow label="main timeline" hint="Copy + menu">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="An agent message you can fork or reply to."
-              alignment="end"
+            <StoryBar
+              role="assistant"
+              text="An agent message you can fork or reply to."
               mobileActionDisplay="inline"
               onFork={noop}
             />
@@ -34,10 +66,9 @@ export function Overview() {
         </StoryRow>
         <StoryRow label="user message" hint="Copy + menu">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="A user message you can quote into the composer."
-              alignment="end"
+            <StoryBar
+              role="user"
+              text="A user message you can quote into the composer."
               mobileActionDisplay="overflow"
               onAddToChat={noop}
             />
@@ -45,13 +76,12 @@ export function Overview() {
         </StoryRow>
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="Fork/Reply greyed when the thread can't fork."
-              alignment="end"
+            <StoryBar
+              role="assistant"
+              text="Fork/Reply greyed when the thread can't fork."
               mobileActionDisplay="inline"
               onFork={noop}
-              disabled
+              forkDisabled
             />
           </HoverRevealStage>
         </StoryRow>

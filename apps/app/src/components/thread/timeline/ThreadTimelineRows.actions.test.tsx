@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,7 +18,10 @@ import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import type { PluginMessageActionRegistration } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalMessageActionAvailabilityInput,
+  PluginMessageActionRegistration,
+} from "@get-bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
@@ -29,19 +33,17 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { collectMessageActionRegistration } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { collectThreadChatMessageActions } from "@/lib/plugin-message-actions";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function messageActionRegistrationSet(
   messageActions: readonly PluginMessageActionRegistration[],
 ): PluginRegistrationSet {
   return makePluginRegistrationSet({
-    messageActions: messageActions.map((action) => ({
-      ...action,
-      experimental_surfaces: action.experimental_surfaces ?? [
-        "thread-view",
-        "embedded-chat",
-      ],
-    })),
+    messageActions: messageActions.map((action) =>
+      collectMessageActionRegistration("slots.messageAction", action),
+    ),
   });
 }
 
@@ -297,7 +299,7 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         canSpawnChild
         onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
+        onAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -339,7 +341,7 @@ describe("ThreadTimelineRows actions", () => {
             text: "The latest request.",
           }),
         ]}
-        onSelectionAddToChat={vi.fn()}
+        onAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -495,7 +497,7 @@ describe("ThreadTimelineRows actions", () => {
             },
           }),
         ]}
-        onSelectionAddToChat={vi.fn()}
+        onAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -662,7 +664,7 @@ describe("ThreadTimelineRows actions", () => {
             text: "Quote this agent response.",
           }),
         ]}
-        onMessageAddToChat={onMessageAddToChat}
+        onAddToChat={onMessageAddToChat}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -692,7 +694,7 @@ describe("ThreadTimelineRows actions", () => {
             },
           }),
         ]}
-        onMessageAddToChat={onMessageAddToChat}
+        onAddToChat={onMessageAddToChat}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -726,7 +728,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
 
@@ -756,7 +758,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
 
@@ -798,7 +800,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
 
@@ -847,7 +849,7 @@ describe("ThreadTimelineRows actions", () => {
             conversationRow({ role: "assistant", text: markdown }),
           ]}
           threadRuntimeDisplayStatus="idle"
-          onSelectionAddToChat={onSelectionAddToChat}
+          onAddToChat={onSelectionAddToChat}
         />,
       );
       const prose = container.querySelector("[data-sidebar-swipe-selectable]")!;
@@ -918,7 +920,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
 
@@ -961,7 +963,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
     const textNode = screen.getByText(
@@ -1002,7 +1004,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
+        onAddToChat={onSelectionAddToChat}
       />,
     );
     const textNode = screen.getByText(
@@ -1375,6 +1377,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "An assistant answer.",
       sourceSeqEnd: 9,
       experimental_messageSeq: 9,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
     expect(context.selectedText).toBeUndefined();
     const panelTab = {
@@ -1397,22 +1402,28 @@ describe("ThreadTimelineRows actions", () => {
     expect(panel.openTab).toHaveBeenCalledWith(intent);
   });
 
-  it("omits plugin message actions when the surface has no thread identity", () => {
+  it("runs actions against the message's thread when the surface has no thread identity", () => {
+    const run = vi.fn();
     setPluginSlotRegistrations(
       "demo",
       messageActionRegistrationSet([
-        { id: "summarize", title: "Summarize", run: vi.fn() },
+        { id: "summarize", title: "Summarize", run },
       ]),
     );
-    const markup = toMarkup(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
-          conversationRow({ role: "assistant", text: "An answer." }),
+          conversationRow({
+            role: "assistant",
+            text: "An answer.",
+            threadId: "thr_row",
+          }),
         ]}
         threadRuntimeDisplayStatus="idle"
       />,
     );
-    expect(markup).not.toContain('aria-label="Summarize"');
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
+    expect(run.mock.calls[0]![0].threadId).toBe("thr_row");
   });
 
   it("contains plugin message action errors without breaking the timeline", () => {
@@ -1481,16 +1492,19 @@ describe("ThreadTimelineRows actions", () => {
             threadId: "thr_main",
           }),
         ]}
-        consumerMessageActions={[
-          {
-            id: "send-to-main",
-            pluginId: null,
-            icon: "ArrowTurnBackward",
-            label: "Send to main thread",
-            roles: ["assistant"],
-            run,
-          },
-        ]}
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          legacyActions: [
+            {
+              id: "send-to-main",
+              icon: "ArrowTurnBackward",
+              title: "Send to main thread",
+              roles: ["assistant"],
+              run,
+            },
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1513,6 +1527,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "An assistant answer.",
       sourceSeqEnd: 9,
       experimental_messageSeq: 9,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
   });
 
@@ -1535,17 +1552,19 @@ describe("ThreadTimelineRows actions", () => {
             threadId: "thr_main",
           }),
         ]}
-        consumerMessageActions={[
-          {
-            id: "explodes",
-            pluginId: null,
-            icon: null,
-            label: "Explodes",
-            run: () => {
-              throw new Error("kaboom");
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          legacyActions: [
+            {
+              id: "explodes",
+              title: "Explodes",
+              run: () => {
+                throw new Error("kaboom");
+              },
             },
-          },
-        ]}
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1554,7 +1573,9 @@ describe("ThreadTimelineRows actions", () => {
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[0]!);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('messageAction "explodes" failed: kaboom'),
+      expect.stringContaining(
+        'messageAction "thread-chat/explodes" failed: kaboom',
+      ),
     );
   });
 
@@ -1581,15 +1602,13 @@ describe("ThreadTimelineRows actions", () => {
             messageSeq: 12,
           },
         ]}
-        consumerMessageActions={[
-          {
-            id: "link",
-            pluginId: null,
-            icon: null,
-            label: "Consumer link",
-            run: consumerRun,
-          },
-        ]}
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          legacyActions: [
+            { id: "link", title: "Consumer link", run: consumerRun },
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1603,6 +1622,307 @@ describe("ThreadTimelineRows actions", () => {
       sourceSeqEnd: 19,
       experimental_messageSeq: 12,
     });
+  });
+
+  it("shows an action only on the message roles it names", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "reply",
+          title: "Reply here",
+          experimental_roles: ["assistant"],
+          run: vi.fn(),
+        },
+      ]),
+    );
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({ id: "user_row", role: "user", text: "Ask." }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "Answer.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    const rows = screen
+      .getAllByRole("button", { name: "Reply here" })
+      .map((button) =>
+        button
+          .closest("[data-timeline-row-id]")
+          ?.getAttribute("data-timeline-row-id"),
+      );
+    expect(rows).toEqual(["assistant_row"]);
+  });
+
+  it("hides or disables an action per message from its availability and bb's message requests", () => {
+    const run = vi.fn();
+    const availability = vi.fn(
+      ({
+        messageRequests,
+        canSpawnChild,
+      }: ExperimentalMessageActionAvailabilityInput) =>
+        messageRequests.fork === null
+          ? ("hidden" as const)
+          : canSpawnChild
+            ? ("enabled" as const)
+            : ("disabled" as const),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "fork-elsewhere",
+          title: "Fork elsewhere",
+          experimental_availability: availability,
+          run,
+        },
+      ]),
+    );
+    const rows = [
+      conversationRow({ id: "assistant_row", role: "assistant", text: "Hi." }),
+    ];
+    const { rerender } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={rows}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Fork elsewhere" })).toBeNull();
+    expect(availability.mock.calls[0]![0]).toMatchObject({
+      threadId: "thr_main",
+      message: { id: "assistant_row", experimental_settled: true },
+      messageRequests: { addToChat: null, edit: null, fork: null },
+      canSpawnChild: false,
+    });
+
+    const onForkMessage = vi.fn();
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            onForkMessage={onForkMessage}
+            threadRuntimeDisplayStatus="idle"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const disabled = screen.getByRole("button", { name: "Fork elsewhere" });
+    expect(disabled.hasAttribute("disabled")).toBe(true);
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            canSpawnChild
+            onForkMessage={onForkMessage}
+            threadRuntimeDisplayStatus="idle"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fork elsewhere" }));
+    const context = run.mock.calls[0]![0];
+    expect(context.experimental_invokedFrom).toBe("button");
+    context.experimental_messageRequests.fork();
+    expect(onForkMessage).toHaveBeenCalledWith({ sourceSeqEnd: 1 });
+  });
+
+  it("orders a menu-only action among bb's own menu rows and keeps it out of the row", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "between",
+          title: "Between add and fork",
+          experimental_placements: ["menu"],
+          experimental_order: 15,
+          run: vi.fn(),
+        },
+      ]),
+    );
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        projectId="proj_main"
+        timelineRows={[
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "Hi.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Between add and fork" }),
+    ).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Message actions" }),
+    );
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "Copy link",
+      "Add to chat",
+      "Between add and fork",
+      "Fork into new thread",
+    ]);
+  });
+
+  it("lists an unordered plugin action's overflow row between bb's Copy link and Add to chat", async () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        { id: "summarize", title: "Summarize", run: vi.fn() },
+      ]),
+    );
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        projectId="proj_main"
+        timelineRows={[
+          conversationRow({ id: "earlier_row", role: "assistant", text: "A." }),
+          conversationRow({ id: "latest_row", role: "assistant", text: "B." }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-timeline-row-id="earlier_row"] [aria-label="Message actions"]',
+    );
+    fireEvent.click(trigger!);
+    const drawer = await screen.findByRole("dialog", {
+      name: "Message actions",
+    });
+    const items = await within(drawer).findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Copy link",
+      "Copy message",
+      "Summarize",
+      "Add to chat",
+      "Fork into new thread",
+    ]);
+  });
+
+  it("shows a selection-only action in the selection menu after bb's Add to chat, with the selection's Markdown", async () => {
+    const run = vi.fn();
+    const onAddToChat = vi.fn();
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "quote",
+          title: "Quote selection",
+          experimental_placements: ["selection"],
+          run,
+        },
+      ]),
+    );
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "selectable_row",
+            role: "assistant",
+            text: "Select part of this answer.",
+          }),
+        ]}
+        onAddToChat={onAddToChat}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Quote selection" }),
+    ).toBeNull();
+    const textNode = screen.getByText("Select part of this answer.").firstChild;
+    mockWindowSelection({ node: textNode!, text: "part of this answer" });
+    fireEvent(document, new Event("selectionchange"));
+    const quote = await screen.findByRole("button", {
+      name: "Quote selection",
+    });
+    const menuLabels = [
+      ...quote.parentElement!.parentElement!.querySelectorAll("button"),
+    ].map((button) => button.textContent);
+    expect(menuLabels).toEqual(["Add to chat", "Quote selection"]);
+    fireEvent.click(quote);
+    const context = run.mock.calls[0]![0];
+    expect(context.experimental_invokedFrom).toBe("selection");
+    expect(context.selectedText).toBe("part of this answer");
+    expect(context.experimental_selectedMarkdown).toBe("part of this answer");
+  });
+
+  it("runs ThreadChat's own registrations with the full message action context", () => {
+    const run = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({ id: "user_row", role: "user", text: "Ask." }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "Answer.",
+          }),
+        ]}
+        onAddToChat={vi.fn()}
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          legacyActions: undefined,
+          registrations: [
+            {
+              id: "send-to-main",
+              title: "Send to main thread",
+              experimental_roles: ["assistant"],
+              experimental_placements: ["menu"],
+              run,
+            },
+          ],
+        })}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    const menus = screen.getAllByRole("button", { name: "Message actions" });
+    fireEvent.pointerDown(menus[0]!);
+    expect(
+      screen.queryByRole("menuitem", { name: "Send to main thread" }),
+    ).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    fireEvent.pointerDown(menus[1]!);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Send to main thread" }),
+    );
+    const context = run.mock.calls[0]![0];
+    expect(context.threadId).toBe("thr_main");
+    expect(context.message.id).toBe("assistant_row");
+    expect(context.experimental_invokedFrom).toBe("menu");
+    expect(context.experimental_messageRequests.addToChat).toBeTypeOf(
+      "function",
+    );
   });
 
   it("passes the highlighted text to plugin selection actions", async () => {
@@ -1660,6 +1980,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "Select part of this answer.",
       sourceSeqEnd: 11,
       experimental_messageSeq: 11,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
     expect(context.openPanel({ actionId: "panel" })).toBe(false);
   });
@@ -1745,7 +2068,7 @@ describe("ThreadTimelineRows shared message column width", () => {
         ]}
         canSpawnChild
         onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
+        onAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1823,7 +2146,7 @@ describe("ThreadTimelineRows shared message column width", () => {
         ]}
         canSpawnChild
         onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
+        onAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
       />,
     );

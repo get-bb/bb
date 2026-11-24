@@ -70,7 +70,7 @@ vi.mock("@/components/thread/timeline", async (importOriginal) => {
     useThreadTimelineController: () => mocks.timeline,
     ThreadTimelineSurface: (props: Record<string, unknown>) => {
       mocks.surfaceProps.push(props);
-      const addToChat = props.onSelectionAddToChat as
+      const addToChat = props.onAddToChat as
         | ((text: string) => void)
         | undefined;
       return (
@@ -151,7 +151,7 @@ function screenElement(presentation: ThreadScreenPresentation) {
       thread={THREAD}
       timelineEnabled
       timelineHost={{
-        consumerMessageActions: [],
+        instanceMessageActions: [],
         environmentHostName: null,
         leadingContent: null,
         messageActionSurface: "thread-view",

@@ -212,26 +212,42 @@ message, Original }` — render fenced code blocks of chosen languages in
   independently. Text streaming does not update this context, and windowed-out
   rows unmount the component. See the Plugin Guide message metadata card for the
   public contract and examples.
-- `messageAction` → an action on chat messages: an icon button in the
-  per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu, in bb's thread view and in embedded
-  `ThreadChat`. `experimental_surfaces` limits it to `"thread-view"` and/or
-  `"embedded-chat"` (omitted = both); an empty or unknown list fails
-  registration. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
-  `run(context)` with `{ threadId, message, selectedText?, composer }` plus the
+- `messageAction` → an action on chat messages, in bb's thread view and in
+  embedded `ThreadChat`. bb's own Copy, Edit, Copy link, Add to chat and Fork
+  are registrations of this shape. Host-rendered chrome, no plugin component —
+  registration: `{ id, title, icon?, experimental_surfaces?,
+experimental_roles?, experimental_placements?, experimental_order?,
+experimental_availability?, run }`. `experimental_surfaces` limits it to
+  `"thread-view"` and/or `"embedded-chat"`; `experimental_roles` to `"user"`
+  and/or `"assistant"` messages (both omitted = all). `experimental_placements`
+  picks `"inline"` (an icon button in the action row that overflows into the
+  "…" menu), `"menu"` (menu row only) and `"selection"` (the assistant-text
+  selection menu); omitted = `["inline", "selection"]`, and `"inline"` with
+  `"menu"` fails registration. `experimental_order` sorts every list (ascending; unset sorts last; ties
+  keep registration order; bb's Copy link −30, Copy −20, Edit −10, selection
+  Add to chat −10, Add to chat 10, Fork 20). Inline actions that do not fit
+  join the overflow menu as one block where the row's first inline action
+  sorts. `experimental_availability(input)` is pure and runs per
+  message while rendering; return `"enabled"`, `"disabled"` or `"hidden"` from
+  `{ threadId, message, selectedText?, messageRequests, canSpawnChild }`.
+  Activating it calls `run(context)` with `{ threadId, message, selectedText?,
+experimental_selectedMarkdown?, composer, experimental_invokedFrom,
+experimental_messageRequests }` plus the
   [callback context](frontend-hooks-and-ui.md#callback-context)
-  `{ sdk, navigate, panel }`:
-  `message` is a narrow stable reference
-  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
-  an internal timeline row); `experimental_messageSeq` is the recorded message
-  sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
-  while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
-  selection-menu invocations and holds the exact highlighted text; and
-  `navigate` and `panel` act on that thread view (terminals,
-  files and URLs open in its side panel). Errors from `run` (sync or
-  async) are contained and
-  logged, never breaking the timeline.
+  `{ sdk, navigate, panel }`. `message` is a narrow stable reference
+  `{ id, threadId, role, text, sourceSeqEnd, experimental_messageSeq,
+experimental_settled, experimental_attachments, experimental_imageUrls }`
+  (never an internal timeline row): `experimental_messageSeq` is the sequence
+  `?msg=`, `sdk.threads.message` and `bb thread log --message` use,
+  `sourceSeqEnd` anchors provider-history forks, and `experimental_settled` is
+  false while the message streams or its request is pending.
+  `experimental_messageRequests` is `{ addToChat, edit, fork }`: bb's own
+  flows for that message, each null when bb would not offer it there.
+  `experimental_invokedFrom` is `"button"`, `"menu"` or `"selection"`;
+  `navigate` and `panel` act on that thread view. Resolve `true` from `run` to
+  show a check mark on an inline button. Errors from `run` (sync or async) and
+  from `experimental_availability` are contained and logged, never breaking
+  the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
   component — registration: `{ id, title, defaultShortcut?, experimental_keyScope?, isAvailable?, run }`. Both callbacks

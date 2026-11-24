@@ -23,7 +23,9 @@ describe("SideChatPanel", () => {
       { rpc: {}, sdk: { threads: { send } } },
     );
 
-    fireEvent.click(slot.getByTestId("bb-thread-chat-action-send-to-main"));
+    fireEvent.click(
+      slot.getByTestId("bb-thread-chat-experimental-action-send-to-main"),
+    );
 
     await waitFor(() => {
       expect(send).toHaveBeenCalledWith({

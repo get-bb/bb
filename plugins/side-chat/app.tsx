@@ -10,7 +10,7 @@ import {
   type ExperimentalThreadTabActionContext,
   type ExperimentalPanelController,
   type ExperimentalThreadActionTabProps,
-  type ThreadChatMessageAction,
+  type PluginMessageActionRegistration,
 } from "@get-bb/plugin-sdk/app";
 
 const PLUGIN_ID = "side-chat";
@@ -257,13 +257,14 @@ function SideChatPanel({ params }: ExperimentalThreadActionTabProps) {
     );
   }
 
-  const messageActions: ThreadChatMessageAction[] = [
+  const messageActions: PluginMessageActionRegistration[] = [
     {
       id: "send-to-main",
       title: "Send to main thread",
       icon: "ArrowTurnBackward",
-      roles: ["assistant"],
-      run: (message) => sendToMain(message),
+      experimental_roles: ["assistant"],
+      experimental_placements: ["inline"],
+      run: ({ message }) => sendToMain(message),
     },
   ];
 
@@ -276,7 +277,7 @@ function SideChatPanel({ params }: ExperimentalThreadActionTabProps) {
         permissionPolicy="editable"
         className="min-h-0 flex-1"
         leadingContent={<ReplyingTo anchorText={parsed.sourceMessageText} />}
-        messageActions={messageActions}
+        experimental_messageActions={messageActions}
       />
     </div>
   );
@@ -288,6 +289,7 @@ export default definePluginApp((app) => {
     title: "Reply in side chat",
     icon: "SideChat",
     experimental_surfaces: ["thread-view"],
+    experimental_roles: ["assistant"],
     async run(context: PluginMessageActionContext) {
       const anchorText = context.selectedText ?? context.message.text;
       await openSideChat({

@@ -408,6 +408,65 @@ Before stabilizing, decide whether surfaces should instead follow panel
 capability (whether the surface's panel can host the tab the action opens), and
 whether more surfaces (New thread previews, plugin documents) need names.
 
+## Message action roles, placement, order, availability and bb's message flows (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.203.
+
+`app.slots.messageAction` registrations take `experimental_roles` (user,
+assistant; omitted is both), `experimental_placements` (`"inline"`, `"menu"`,
+`"selection"`; omitted is `["inline", "selection"]`, what every action got
+before; `"inline"` and `"menu"` exclude each other), `experimental_order`
+(ascending across the row, its overflow menu and the selection menu; unset
+sorts last; ties keep registration order, the rule its sibling order fields
+use) and `experimental_availability(input)`, a pure per-message function that
+returns `"enabled"`, `"disabled"` or `"hidden"`. Its input
+(`ExperimentalMessageActionAvailabilityInput`) carries the thread id, the
+message, `selectedText` for the selection menu, `messageRequests` and the
+thread's `canSpawnChild`. A throw or an invalid result hides the action on that
+message and logs. `run` may resolve `true` so an inline button shows a check
+mark for 2 seconds. Validation lives in `collectMessageActionRegistration`
+(`packages/plugin-sdk/src/internal/plugin-app-registration-collector.ts`),
+which fills every default once.
+
+`PluginMessageActionContext` gains `experimental_invokedFrom` (`"button"`,
+`"menu"` or `"selection"`), `experimental_selectedMarkdown` (the selection's
+Markdown source) and `experimental_messageRequests`
+(`ExperimentalMessageRequests`): bb's own `addToChat(text, attachments?)`,
+`edit()` and `fork()` for the message, each null when bb would not offer that
+action there. `ThreadChatMessageReference` gains `experimental_settled`,
+`experimental_attachments` (as `ComposerAttachment`s) and
+`experimental_imageUrls`. `ExperimentalClipboardContent.imageUrl` copies an
+image with the text through bb's own image clipboard writer.
+
+`ThreadChatProps.experimental_messageActions` takes the same registrations for
+one embedded chat; they are validated by the same function and resolved,
+filtered and ordered with the registered ones. The old
+`ThreadChatProps.messageActions` (`ThreadChatMessageAction`, with `roles` and
+`run(message)`) is deprecated and adapted into registrations with
+`experimental_placements: ["inline"]`.
+
+Core callers: bb's Copy link, Copy, Edit, Add to chat (row menu and selection
+menu) and Fork are registrations in
+`apps/app/src/core-contributions/message-actions.ts`, collected with the plugin
+registrations in `apps/app/src/lib/plugin-slots.ts` and resolved for every
+surface by `buildMessageActions` (`apps/app/src/lib/plugin-message-actions.ts`).
+The action row (`MessageActionBar`) and the selection menu
+(`TimelineSelectionMenu`) render only that resolved list. First-party plugin
+callers: Side chat ("Reply in side chat" is assistant-only; "Send to main
+thread" uses `experimental_messageActions`) and Conductor ("Fork to new
+workspace" is assistant-only and hidden when `messageRequests.fork` is null).
+
+Inline actions that do not fit the row join its overflow menu as one block,
+in row order, where the row's first inline action sorts among the menu
+actions. That keeps an unordered plugin action's overflow row between bb's
+Copy link and Add to chat, as before.
+
+Before stabilizing, audit whether the overflow block rule is the right one for
+plugin-ordered menus, whether availability needs a `useData`-style hook for per-message plugin state, whether
+the selection menu needs a separate order, whether `messageRequests.fork` should
+also be reachable from thread actions and commands, and whether generated
+messages (automations, other threads, bb) should get actions.
+
 ## `app.commands.register`
 
 Unprefixed by explicit request. Registers frontend commands

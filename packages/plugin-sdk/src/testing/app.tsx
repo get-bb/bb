@@ -174,6 +174,7 @@ import {
   type ExperimentalVoiceInputTextareaProps,
   type PluginEnvironmentProviderInputsRegistration,
   type PluginMachineProviderInputsRegistration,
+  type ThreadChatMessageReference,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -199,6 +200,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import { experimental_resolveThreadStatus } from "../internal/thread-status.js";
+import { makeActionContext } from "./fixtures.js";
 import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
@@ -948,8 +950,29 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
  * `leadingContent` renders inside the stub; each `messageActions` entry
  * renders as a button (`data-testid="bb-thread-chat-action-<id>"`) that
  * invokes its `run` with a synthetic assistant message reference, so plugin
- * tests can drive the action without the real timeline.
+ * tests can drive the action without the real timeline. Each
+ * `experimental_messageActions` entry renders the same way
+ * (`data-testid="bb-thread-chat-experimental-action-<id>"`) and runs with a
+ * {@link makeActionContext} context, that message, a null composer, an
+ * inline-button invocation, and message requests that do nothing.
  */
+function testMessageReference(
+  threadId: string,
+  role: "user" | "assistant",
+): ThreadChatMessageReference {
+  return {
+    id: "test-message",
+    threadId,
+    role,
+    text: "test message text",
+    sourceSeqEnd: 1,
+    experimental_messageSeq: 1,
+    experimental_settled: true,
+    experimental_attachments: [],
+    experimental_imageUrls: [],
+  };
+}
+
 function TestThreadChat({
   threadId,
   variant = "full",
@@ -959,6 +982,7 @@ function TestThreadChat({
   className,
   leadingContent,
   messageActions,
+  experimental_messageActions,
 }: ThreadChatProps) {
   return (
     <div
@@ -984,13 +1008,35 @@ function TestThreadChat({
           data-testid={`bb-thread-chat-action-${action.id}`}
           data-roles={action.roles === undefined ? "" : action.roles.join(" ")}
           onClick={() => {
+            void action.run(
+              testMessageReference(threadId, action.roles?.[0] ?? "assistant"),
+            );
+          }}
+        >
+          {action.title}
+        </button>
+      ))}
+      {(experimental_messageActions ?? []).map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          data-testid={`bb-thread-chat-experimental-action-${action.id}`}
+          data-roles={(action.experimental_roles ?? []).join(" ")}
+          onClick={() => {
             void action.run({
-              id: "test-message",
+              ...makeActionContext(),
               threadId,
-              role: action.roles?.[0] ?? "assistant",
-              text: "test message text",
-              sourceSeqEnd: 1,
-              experimental_messageSeq: 1,
+              message: testMessageReference(
+                threadId,
+                action.experimental_roles?.[0] ?? "assistant",
+              ),
+              composer: null,
+              experimental_invokedFrom: "button",
+              experimental_messageRequests: {
+                addToChat: null,
+                edit: null,
+                fork: null,
+              },
             });
           }}
         >

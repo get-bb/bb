@@ -23,6 +23,7 @@ import type {
   ExperimentalComposerCommandRegistration,
   PluginComposerScope,
   PluginMessageActionRegistration,
+  ExperimentalMessageActionPlacement,
   ExperimentalMessageActionSurface,
   ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
@@ -341,10 +342,132 @@ export type CollectedPluginCommandRegistration =
 
 export type CollectedPluginMessageActionRegistration = Omit<
   PluginMessageActionRegistration,
-  "experimental_surfaces"
+  "experimental_surfaces" | "experimental_roles" | "experimental_placements"
 > & {
   experimental_surfaces: readonly ExperimentalMessageActionSurface[];
+  experimental_roles: readonly MessageActionRole[];
+  experimental_placements: readonly ExperimentalMessageActionPlacement[];
 };
+
+type MessageActionRole = "user" | "assistant";
+
+const MESSAGE_ACTION_ROLES: readonly MessageActionRole[] = [
+  "user",
+  "assistant",
+];
+const MESSAGE_ACTION_PLACEMENTS: readonly ExperimentalMessageActionPlacement[] =
+  ["inline", "menu", "selection"];
+const DEFAULT_MESSAGE_ACTION_PLACEMENTS: readonly ExperimentalMessageActionPlacement[] =
+  ["inline", "selection"];
+
+function collectMessageActionRoles(
+  kind: string,
+  value: unknown,
+): readonly MessageActionRole[] {
+  if (value === undefined) return MESSAGE_ACTION_ROLES;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every((role) => role === "user" || role === "assistant")
+  ) {
+    throw new Error(
+      `${kind}: "experimental_roles" must be a non-empty array of "user" or "assistant", got ${JSON.stringify(value)}`,
+    );
+  }
+  return MESSAGE_ACTION_ROLES.filter((role) => value.includes(role));
+}
+
+function collectMessageActionPlacements(
+  kind: string,
+  value: unknown,
+): readonly ExperimentalMessageActionPlacement[] {
+  if (value === undefined) return DEFAULT_MESSAGE_ACTION_PLACEMENTS;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (placement) =>
+        placement === "inline" ||
+        placement === "menu" ||
+        placement === "selection",
+    )
+  ) {
+    throw new Error(
+      `${kind}: "experimental_placements" must be a non-empty array of "inline", "menu" or "selection", got ${JSON.stringify(value)}`,
+    );
+  }
+  if (value.includes("inline") && value.includes("menu")) {
+    throw new Error(
+      `${kind}: "experimental_placements" cannot hold both "inline" and "menu"; an inline action already moves into the menu when it does not fit`,
+    );
+  }
+  return MESSAGE_ACTION_PLACEMENTS.filter((placement) =>
+    value.includes(placement),
+  );
+}
+
+function collectMessageActionOrder(
+  kind: string,
+  value: unknown,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(
+      `${kind}: "experimental_order" must be a finite number when set, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Validates one message action and fills its defaults, for
+ * `slots.messageAction` and `ThreadChat`'s `experimental_messageActions`.
+ */
+export function collectMessageActionRegistration(
+  kind: string,
+  registration: PluginMessageActionRegistration,
+): CollectedPluginMessageActionRegistration {
+  const id = requireSlotId(kind, registration?.id);
+  if (typeof registration.run !== "function") {
+    throw new Error(`${kind}: "run" must be a function`);
+  }
+  const order = collectMessageActionOrder(
+    kind,
+    registration.experimental_order,
+  );
+  if (
+    registration.experimental_availability !== undefined &&
+    typeof registration.experimental_availability !== "function"
+  ) {
+    throw new Error(
+      `${kind}: "experimental_availability" must be a function when set`,
+    );
+  }
+  return {
+    id,
+    title: requireNonEmptyString(kind, "title", registration.title),
+    ...(registration.icon !== undefined
+      ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+      : {}),
+    experimental_surfaces: collectMessageActionSurfaces(
+      kind,
+      registration.experimental_surfaces,
+    ),
+    experimental_roles: collectMessageActionRoles(
+      kind,
+      registration.experimental_roles,
+    ),
+    experimental_placements: collectMessageActionPlacements(
+      kind,
+      registration.experimental_placements,
+    ),
+    ...(order === undefined ? {} : { experimental_order: order }),
+    ...(registration.experimental_availability !== undefined
+      ? { experimental_availability: registration.experimental_availability }
+      : {}),
+    run: registration.run,
+  };
+}
 
 const MESSAGE_ACTION_SURFACES: readonly ExperimentalMessageActionSurface[] = [
   "thread-view",
@@ -1383,25 +1506,9 @@ export function collectPluginAppRegistrations(
       },
       messageAction(registration) {
         const kind = "slots.messageAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.messageAction, id);
-        if (typeof registration.run !== "function") {
-          throw new Error(`${kind}: "run" must be a function`);
-        }
-        collected.messageActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
-          experimental_surfaces: collectMessageActionSurfaces(
-            kind,
-            registration.experimental_surfaces,
-          ),
-          run: registration.run,
-        });
+        const action = collectMessageActionRegistration(kind, registration);
+        requireUniqueId(kind, seenIds.messageAction, action.id);
+        collected.messageActions.push(action);
       },
       experimental_messageMetadata(registration) {
         const kind = "slots.experimental_messageMetadata";

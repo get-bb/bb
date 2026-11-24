@@ -1,4 +1,5 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
+import { useStoryMessageActions } from "@/components/thread/timeline/story-message-actions";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
@@ -58,6 +59,11 @@ function UserMessage({
   onAddToChat?: (text: string) => void;
   revealMessageActions?: boolean;
 }) {
+  const actions = useStoryMessageActions({
+    role: "user",
+    text,
+    ...(onAddToChat === undefined ? {} : { onAddToChat }),
+  });
   return (
     <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
@@ -67,7 +73,7 @@ function UserMessage({
         senderThreadTitle={null}
         senderIsPluginSideChat={false}
         resolveMentionLink={resolveMentionLink}
-        onAddToChat={onAddToChat}
+        actions={actions}
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}
