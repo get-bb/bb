@@ -4482,6 +4482,7 @@ Requires SDK 0.6.178.
    split layout, not the calling surface. Check plugin-hosted surfaces (nav
    panel pages, overlays) once they host threads.
 
+
 ## `experimental_makeActionContext` / `ExperimentalActionContextFixture` / `ExperimentalActionContextCall` (`@get-bb/plugin-sdk/testing`)
 
 Requires SDK 0.6.178.
@@ -4508,7 +4509,6 @@ Requires SDK 0.6.178.
   `NavigateCall` shape `renderSlot` uses, and whether composer and message
   contexts need their own builders once their fields grow. Then rename
   project-wide and remove this entry.
-
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 
 Renders a plugin component beside the address bar in each Browser tab. It

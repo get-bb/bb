@@ -1167,7 +1167,7 @@ async function runRemove(
               step: () => undefined,
               log: (text) =>
                 deps.logger.warn(
-                  { environmentId, path: hook.path, text },
+                  { environmentId, text },
                   "Environment teardown hook",
                 ),
             },
