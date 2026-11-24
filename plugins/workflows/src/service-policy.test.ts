@@ -481,7 +481,7 @@ describe("workflow service policy integration", () => {
           test.harness.sdk
             .callsTo("providers.models")
             .map(([args]) => (args as ModelsArgs)?.selectedModel),
-        ).toEqual([undefined, "gpt-test"]);
+        ).toEqual(["gpt-test"]);
         test.service.onThreadIdle("child-1", "completed");
         await eventually(() =>
           expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
@@ -493,26 +493,12 @@ describe("workflow service policy integration", () => {
     },
   );
 
-  it("aborts reasoning discovery when the run is stopped", async () => {
+  it("aborts the model catalog request when the run is stopped", async () => {
     const test = setup();
     harnesses.push(test.harness);
     const discoverySignals: AbortSignal[] = [];
     test.harness.sdk.stub("providers.models", async (args: ModelsArgs) => {
-      if (args?.selectedModel === undefined) {
-        return {
-          providers: [],
-          models: [
-            {
-              ...model(),
-              reasoningDiscovery: "unknown" as const,
-              supportedReasoningEfforts: [],
-            },
-          ],
-          selectedOnlyModels: [],
-          modelLoadError: null,
-        };
-      }
-      const signal = args.signal;
+      const signal = args?.signal;
       if (signal === undefined) throw new Error("Missing discovery signal");
       discoverySignals.push(signal);
       return new Promise((_resolve, reject) => {

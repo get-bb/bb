@@ -114,7 +114,7 @@ describe("workflow validation", () => {
         }),
       ),
     ).resolves.toMatchObject({ valid: true });
-    expect(requests).toEqual([undefined, "gpt-test"]);
+    expect(requests).toEqual(["gpt-test"]);
   });
 
   it("validates every safely discoverable literal tuple", async () => {

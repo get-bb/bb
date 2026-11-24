@@ -1,6 +1,5 @@
 import { inspectWorkflowSource, type LiteralAgentSelection } from "./parser.js";
 import {
-  findWorkflowModel,
   resolveWorkflowReasoning,
   type WorkflowReasoningModel,
 } from "./reasoning-selection.js";
@@ -27,7 +26,7 @@ export interface WorkflowCatalogDependencies {
   loadModels(
     environmentId: string,
     providerId: string,
-    selectedModel?: string,
+    selectedModel: string,
   ): Promise<ModelCatalog>;
 }
 
@@ -60,30 +59,32 @@ export async function validateWorkflowSource(
           `Unavailable provider for literal workflow selection ${tupleDescription(selection)}${selection.line === null ? "" : ` at line ${selection.line}`}`,
         );
       }
-      let models = catalogs.get(provider.id);
+      const catalogKey = JSON.stringify([provider.id, selection.model]);
+      let models = catalogs.get(catalogKey);
       if (models === undefined) {
         try {
-          models = await catalog.loadModels(environmentId, provider.id);
+          models = await catalog.loadModels(
+            environmentId,
+            provider.id,
+            selection.model,
+          );
         } catch (error) {
           throw new Error(
             `Model-load error for provider ${provider.id}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
-        catalogs.set(provider.id, models);
+        catalogs.set(catalogKey, models);
       }
       if (models.modelLoadError !== null) {
         throw new Error(
           `Model-load error for provider ${provider.id}: ${models.modelLoadError.code}`,
         );
       }
-      const found = await findWorkflowModel(
-        models,
-        selection.model,
-        (selectedModel) =>
-          catalog.loadModels(environmentId, provider.id, selectedModel),
+      const model = [...models.models, ...models.selectedOnlyModels].find(
+        (candidate) =>
+          candidate.id === selection.model ||
+          candidate.model === selection.model,
       );
-      catalogs.set(provider.id, found.catalog);
-      const model = found.model;
       if (model === undefined) {
         throw new Error(
           `Model mismatch for literal workflow selection ${tupleDescription(selection)}`,
