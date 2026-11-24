@@ -65,6 +65,17 @@ describe("exclusive slot picks before the server answers", () => {
       "nested-sidebar/title",
     ],
     [
+      "threadRail.outlineProvider",
+      () =>
+        remembersAcrossReload(
+          async () =>
+            (await import("@/components/plugin/thread-rail-outline-pick"))
+              .threadRailOutlineProviderAtom,
+          "threadline/threadline",
+        ),
+      "threadline/threadline",
+    ],
+    [
       "fileOpener.byExtension",
       () =>
         remembersAcrossReload(

@@ -354,6 +354,18 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadRails,
+      "thread-rail",
+      "Adds an item to the rail beside the conversation.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadRailOutlines,
+      "thread-rail-outline",
+      "Replaces the thread outline beside the conversation.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadContextCardRows,
       "thread-context-card-row",
       "Adds a row to the thread context card.",

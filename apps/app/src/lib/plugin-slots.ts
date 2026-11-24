@@ -31,6 +31,8 @@ import type {
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
+  ExperimentalThreadRailRegistration,
+  ExperimentalThreadRailOutlineRegistration,
   ExperimentalThreadContextCardRowRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -80,6 +82,8 @@ export interface PluginRegistrationSet {
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows?: readonly ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles?: readonly ExperimentalThreadHeaderTitleRegistration[];
+  threadRails?: readonly ExperimentalThreadRailRegistration[];
+  threadRailOutlines?: readonly ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections?: readonly CollectedThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
@@ -163,6 +167,10 @@ export interface PluginThreadHeaderRowSlot
   extends ExperimentalThreadHeaderRowRegistration, PluginSlotBase {}
 export interface PluginThreadHeaderTitleSlot
   extends ExperimentalThreadHeaderTitleRegistration, PluginSlotBase {}
+export interface PluginThreadRailSlot
+  extends ExperimentalThreadRailRegistration, PluginSlotBase {}
+export interface PluginThreadRailOutlineSlot
+  extends ExperimentalThreadRailOutlineRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardRowSlot
   extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardSectionSlot
@@ -220,6 +228,8 @@ export interface PluginSlotSnapshot {
   threadInfoSections: readonly PluginThreadInfoSectionSlot[];
   threadHeaderRows: readonly PluginThreadHeaderRowSlot[];
   threadHeaderTitles: readonly PluginThreadHeaderTitleSlot[];
+  threadRails: readonly PluginThreadRailSlot[];
+  threadRailOutlines: readonly PluginThreadRailOutlineSlot[];
   threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
   threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
@@ -261,6 +271,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadInfoSections: [],
   threadHeaderRows: [],
   threadHeaderTitles: [],
+  threadRails: [],
+  threadRailOutlines: [],
   threadContextCardRows: [],
   threadContextCardSections: [],
   threadActions: [],
@@ -310,6 +322,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadInfoSections",
   "threadHeaderRows",
   "threadHeaderTitles",
+  "threadRails",
+  "threadRailOutlines",
   "threadContextCardRows",
   "threadContextCardSections",
   "threadActions",
@@ -406,6 +420,8 @@ function flattenRegistrations(
     threadInfoSections: stamp(set.threadInfoSections),
     threadHeaderRows: stamp(set.threadHeaderRows),
     threadHeaderTitles: stamp(set.threadHeaderTitles),
+    threadRails: stamp(set.threadRails),
+    threadRailOutlines: stamp(set.threadRailOutlines),
     threadContextCardRows: stamp(set.threadContextCardRows),
     threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),

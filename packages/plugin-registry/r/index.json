@@ -434,6 +434,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "use-scroll-overflow-state",
+      "type": "registry:ui"
+    },
+    {
       "name": "use-sidebar-reorder-dnd",
       "type": "registry:ui"
     },

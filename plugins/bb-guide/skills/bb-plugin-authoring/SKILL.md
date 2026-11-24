@@ -71,11 +71,15 @@ the same change.
   (`experimental_threadList`), read live threads, and window rows against the
   sidebar's scroll element.
 - Read references/exclusive-slots.md for which plugin draws a one-plugin
-  surface (composer, thread list, navigation, renderers, file openers, code
-  fences, directives) and how a plugin may write that pick.
+  surface (composer, thread list, navigation, renderers, thread outline, file
+  openers, code fences, directives) and how a plugin may write that pick.
 - Read references/frontend-thread-header-row.md to add a full-width row under
   the thread header (`experimental_threadHeaderRow`), such as a tab strip, or
   to replace the thread title in the header (`experimental_threadHeaderTitle`).
+- Read references/frontend-thread-rail.md to replace bb's thread outline
+  (`experimental_threadRailOutline`), add an item to the rail beside the
+  conversation (`experimental_threadRail`), read a thread's prompts and what
+  the pane shows, or reveal a message.
 - Read references/frontend-sidebar-navigation.md for navigation providers
   (rail or list placement) and controls beside the sidebar toggle.
 - Read references/frontend-thread-row-metadata.md to add a badge to every thread

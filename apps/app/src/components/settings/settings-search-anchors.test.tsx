@@ -53,6 +53,7 @@ function registerReplacementPlugin() {
           },
         ],
         threadHeaderTitles: [{ id: "title", component: () => null }],
+        threadRailOutlines: [{ id: "outline", component: () => null }],
         fileOpeners: [
           {
             id: "editor",

@@ -17,6 +17,8 @@ import {
 } from "@/lib/route-paths";
 import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
 import { useStore } from "jotai";
+import { useRouteState } from "@/hooks/useRouteState";
+import { useTimelinePaneThreadId } from "@/lib/timeline-viewport";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { lookupCachedThread } from "@/lib/cached-thread";
@@ -58,6 +60,8 @@ export type BindPluginActionContext = (
 interface BbNavigateDeps {
   navigate: NavigateFunction;
   onNavigate: (() => void) | null;
+  paneThreadId: string | null;
+  routeThreadId: string | undefined;
   store: ReturnType<typeof useStore>;
   queryClient: QueryClient;
   isCompact: boolean;
@@ -110,9 +114,20 @@ function createBbNavigate(
 } {
   return {
     toThread(threadId, options) {
-      const { isCompact, navigate, onNavigate, queryClient, store } = latest();
+      const {
+        isCompact,
+        navigate,
+        onNavigate,
+        paneThreadId,
+        queryClient,
+        routeThreadId,
+        store,
+      } = latest();
       const messageSeq = options?.messageSeq;
       if (messageSeq !== undefined) assertMessageSeq(messageSeq);
+      const revealInPlace =
+        messageSeq !== undefined &&
+        (routeThreadId === threadId || paneThreadId === threadId);
       onNavigate?.();
       const open = (projectId: string) => {
         openThreadForPlugin({
@@ -125,6 +140,7 @@ function createBbNavigate(
           isCompact,
           split: options?.split ?? false,
           ...(messageSeq === undefined ? {} : { messageSeq }),
+          ...(revealInPlace ? { replace: true } : {}),
         });
       };
       const cached = lookupCachedThread(queryClient, threadId);
@@ -141,6 +157,7 @@ function createBbNavigate(
               threadId,
               ...(messageSeq === undefined ? {} : { messageSeq }),
             }),
+            revealInPlace ? { replace: true } : undefined,
           ),
         );
     },
@@ -246,6 +263,8 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
   const deps: BbNavigateDeps = {
     navigate: useNavigate(),
     onNavigate: useContext(RouteNavigationCallbackContext),
+    paneThreadId: useTimelinePaneThreadId(),
+    routeThreadId: useRouteState().threadId,
     store: useStore(),
     queryClient: useQueryClient(),
     isCompact: useIsCompactViewport(),

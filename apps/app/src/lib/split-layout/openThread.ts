@@ -24,6 +24,7 @@ export interface OpenThreadArgs {
   threadId: string;
   split?: OpenThreadSplit;
   messageSeq?: number;
+  replace?: boolean;
   state?: Record<string, unknown>;
 }
 
@@ -33,6 +34,7 @@ export function openThread({
   threadId,
   split,
   messageSeq,
+  replace,
   state,
 }: OpenThreadArgs): void {
   const route = getThreadLocationPath({
@@ -41,7 +43,11 @@ export function openThread({
     ...(messageSeq === undefined ? {} : { messageSeq }),
   });
   const go = (options?: { replace?: boolean }) => {
-    const merged = { ...options, ...(state === undefined ? {} : { state }) };
+    const merged = {
+      ...options,
+      ...(replace === true ? { replace: true } : {}),
+      ...(state === undefined ? {} : { state }),
+    };
     if (Object.keys(merged).length === 0) {
       void navigate(route);
       return;

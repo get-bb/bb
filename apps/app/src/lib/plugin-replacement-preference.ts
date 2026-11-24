@@ -198,7 +198,8 @@ export type ExclusivePickKey =
   | "sidebar.navigationProvider"
   | "diff.provider"
   | "sourceCode.provider"
-  | "threadHeader.titleProvider";
+  | "threadHeader.titleProvider"
+  | "threadRail.outlineProvider";
 
 export type ExclusivePickMapKey =
   | "fileOpener.byExtension"

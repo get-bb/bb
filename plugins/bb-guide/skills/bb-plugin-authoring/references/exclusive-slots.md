@@ -1,9 +1,9 @@
 # Exclusive slots
 
 The composer, thread list, sidebar navigation, diff renderer, source code
-renderer and thread header title each show one plugin. File openers (per
-extension), code fence renderers (per language) and message directives (per
-name) show one plugin per key. Which one wins is a user setting, stored as a
+renderer, thread header title and thread outline each show one plugin. File
+openers (per extension), code fence renderers (per language) and message
+directives (per name) show one plugin per key. Which one wins is a user setting, stored as a
 synced UI preference whose value is `<pluginId>/<registrationId>`,
 `__automatic__` or `__builtin__` (bb's own view, where bb has one):
 
@@ -15,6 +15,7 @@ synced UI preference whose value is `<pluginId>/<registrationId>`,
 | `experimental_diffRenderer`       | `diff.provider`                               |
 | `experimental_sourceCodeRenderer` | `sourceCode.provider`                         |
 | `experimental_threadHeaderTitle`  | `threadHeader.titleProvider`                  |
+| `experimental_threadRailOutline`  | `threadRail.outlineProvider`                  |
 | `fileOpener`                      | `fileOpener.byExtension` (`{ ext: pick }`)    |
 | `experimental_codeFenceRenderer`  | `codeFence.byLanguage` (`{ language: pick }`) |
 | `messageDirective`                | `messageDirective.byName` (`{ name: pick }`)  |

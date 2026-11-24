@@ -5,7 +5,7 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
+import { observeSharedResize } from "../../lib/shared-resize-observer";
 
 interface ScrollOverflowSentinelRefs<TElement extends HTMLElement> {
   scrollRef: RefObject<TElement | null>;

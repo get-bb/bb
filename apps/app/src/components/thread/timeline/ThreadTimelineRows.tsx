@@ -110,7 +110,6 @@ import type { ScrollPositionKeeper } from "@/components/ui/scroll-position-keepe
 import {
   collectSearchedMessageAncestorRowIds,
   SearchMessageLocationProvider,
-  type MessageRevealRequest,
   useScrollToSearchedMessage,
   useSearchMessageLocation,
 } from "./useScrollToSearchedMessage.js";
@@ -174,7 +173,6 @@ export interface ThreadTimelineRowsProps {
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   timelineRows: TimelineRow[];
-  messageRevealRequest?: MessageRevealRequest | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -2488,10 +2486,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
 
   return (
     <MessageSlotRegistriesProvider>
-      <SearchMessageLocationProvider
-        threadId={props.threadId}
-        revealRequest={props.messageRevealRequest ?? null}
-      >
+      <SearchMessageLocationProvider threadId={props.threadId}>
         <TimelineRendererStaticContext.Provider value={staticContextValue}>
           <LatestActionableAssistantMessageIdContext.Provider
             value={latestActionableAssistantMessageId}

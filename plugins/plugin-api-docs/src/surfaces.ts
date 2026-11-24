@@ -351,6 +351,33 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-rail",
+        title: "Thread outline and rail",
+        summary:
+          "Replace bb's thread outline, or add an item to the rail beside a thread's conversation. With this, a plugin can:",
+        bullets: [
+          "Draw your own outline of every prompt and reply; users pick one ([exclusive slots](exclusive-slots))",
+          "Mark the messages in view and reveal any message in place, as bb's outline does",
+          "Stack a minimap or other strip under the outline, in every pane of a split layout",
+          "Pause while the pane is too narrow; a crash falls back to bb's outline",
+        ],
+        apiSymbols: [
+          "PluginAppSlots.experimental_threadRailOutline",
+          "ExperimentalThreadRailOutlineRegistration",
+          "ExperimentalThreadRailOutlineProps",
+          "PluginAppSlots.experimental_threadRail",
+          "ExperimentalThreadRailRegistration",
+          "ExperimentalThreadRailProps",
+          "experimental_useConversationOutline",
+          "ExperimentalConversationOutline",
+          "ExperimentalConversationOutlineItem",
+          "experimental_useTimelineViewport",
+          "ExperimentalTimelineViewport",
+          "BbNavigate.toThread",
+        ],
+        experimental: true,
+      },
+      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:
@@ -1711,7 +1738,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Count on the same rule that bb's own bundled views follow",
         ],
         reference: [
-          "Exclusive slots. The composer, thread list, sidebar navigation, diff renderer, source code renderer and thread header title each show one plugin. File openers (per extension), code fence renderers (per language) and message directives (per name) show one plugin per key. Which one wins is a user setting, stored as a synced UI preference whose value is <pluginId>/<registrationId>, __automatic__ or __builtin__: composer.provider, sidebar.threadListProvider, sidebar.navigationProvider, diff.provider, sourceCode.provider, threadHeader.titleProvider, and the maps fileOpener.byExtension, codeFence.byLanguage and messageDirective.byName, where a missing key means Automatic",
+          "Exclusive slots. The composer, thread list, sidebar navigation, diff renderer, source code renderer and thread header title and thread outline each show one plugin. File openers (per extension), code fence renderers (per language) and message directives (per name) show one plugin per key. Which one wins is a user setting, stored as a synced UI preference whose value is <pluginId>/<registrationId>, __automatic__ or __builtin__: composer.provider, sidebar.threadListProvider, sidebar.navigationProvider, diff.provider, sourceCode.provider, threadHeader.titleProvider, threadRail.outlineProvider, and the maps fileOpener.byExtension, codeFence.byLanguage and messageDirective.byName, where a missing key means Automatic",
           "The user's pick wins while that plugin is installed and enabled. Otherwise Automatic picks the first plugin the user installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in view. bb's own plugins go through the same rule. While plugins are still loading, a surface whose picked plugin has not arrived yet waits for it instead of drawing another one",
           "A message directive claimed by more than one plugin has no automatic winner. It shows a plugin picker in the message, with the directive text, until the user picks",
           "Users change picks in Settings → Appearance (its Markdown section for code blocks and directives), Settings → Files → File openers, or with bb settings ui set <key> <value>. Your plugin may write a pick through sdk.system.uiPreferences.set, for example on install or when the user turns your view on. The user can change it back at any time. Do not overwrite a pick the user made",

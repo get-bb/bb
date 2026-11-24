@@ -81,6 +81,7 @@
     "tooltip",
     "truncate-start",
     "use-dialog-state",
+    "use-scroll-overflow-state",
     "use-drag-click-suppression",
     "use-reorder-dnd",
     "use-sidebar-reorder-dnd",

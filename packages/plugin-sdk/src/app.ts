@@ -291,6 +291,12 @@ export const experimental_useSidebarThreads = runtimeFunction(
 export const experimental_useThread = runtimeFunction(
   "experimental_useThread",
 );
+export const experimental_useConversationOutline = runtimeFunction(
+  "experimental_useConversationOutline",
+);
+export const experimental_useTimelineViewport = runtimeFunction(
+  "experimental_useTimelineViewport",
+);
 /** @internal Superseded by the thread action registry, `experimental_useThreadRequests()`, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",

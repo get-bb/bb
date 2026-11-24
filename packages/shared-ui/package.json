@@ -389,6 +389,11 @@
       "types": "./src/components/ui/thread-list-empty-state.tsx",
       "default": "./src/components/ui/thread-list-empty-state.tsx"
     },
+    "./use-scroll-overflow-state": {
+      "source": "./src/components/ui/use-scroll-overflow-state.ts",
+      "types": "./src/components/ui/use-scroll-overflow-state.ts",
+      "default": "./src/components/ui/use-scroll-overflow-state.ts"
+    },
     "./use-dialog-state": {
       "source": "./src/components/ui/use-dialog-state.ts",
       "types": "./src/components/ui/use-dialog-state.ts",

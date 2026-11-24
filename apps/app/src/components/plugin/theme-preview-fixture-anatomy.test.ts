@@ -163,14 +163,14 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
       mustContain: [
         'scrollBehavior="bottom-anchor"',
         "scrollOverlay=",
-        "<ThreadTableOfContents",
+        "<PluginThreadRail",
         "footer={promptArea}",
       ],
       because:
         "The thread projection keeps the real bottom-anchored timeline, bottom composer, and held-open table of contents composition.",
     },
     {
-      file: "apps/app/src/components/thread/toc/ThreadTableOfContents.tsx",
+      file: "apps/app/src/core-contributions/thread-outline.tsx",
       mustContain: [
         'aria-label="Thread table of contents"',
         'label="Agent messages"',

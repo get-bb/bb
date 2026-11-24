@@ -27,7 +27,6 @@ import type {
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineUnreadDividerPlacement,
 } from "./types.js";
-import type { MessageRevealRequest } from "./useScrollToSearchedMessage";
 
 export interface HostConnectionNotice {
   label: string;
@@ -61,7 +60,6 @@ export interface ThreadTimelineSurfaceProps {
   stoppingAnchorAt?: number;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
-  messageRevealRequest?: MessageRevealRequest | null;
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -157,7 +155,6 @@ export function ThreadTimelineSurface({
   stoppingAnchorAt = 0,
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
-  messageRevealRequest,
   threadId,
   threadRuntimeDisplayStatus,
   unreadDividerAutoScroll,
@@ -235,7 +232,6 @@ export function ThreadTimelineSurface({
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}
             timelineRows={timelineRowsWithPendingStop}
-            messageRevealRequest={messageRevealRequest}
             threadId={threadId}
             threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
             unreadDividerAutoScroll={unreadDividerAutoScroll}

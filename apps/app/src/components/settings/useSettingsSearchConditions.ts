@@ -37,6 +37,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   const hasThreadLists = choiceLabels.has("Sidebar thread list");
   const hasSidebarNavigations = choiceLabels.has("Navigation");
   const hasThreadHeaderTitles = choiceLabels.has("Thread header title");
+  const hasThreadRailOutlines = choiceLabels.has("Thread outline");
   const hasFilePreferences = accessState !== "unavailable";
 
   return useMemo(() => {
@@ -54,6 +55,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
       ["threadHeaderTitles", hasThreadHeaderTitles],
+      ["threadRailOutlines", hasThreadRailOutlines],
       ["threadLists", hasThreadLists],
     ];
     return new Set(
@@ -70,6 +72,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasSidebarNavigations,
     hasSourceCodeRenderers,
     hasThreadHeaderTitles,
+    hasThreadRailOutlines,
     hasThreadLists,
     performanceDiagnosticsAvailable,
     pluginUpdatesEnabled,
