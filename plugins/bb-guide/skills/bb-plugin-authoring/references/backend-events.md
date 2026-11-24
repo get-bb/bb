@@ -298,7 +298,7 @@ clears it, and omitting it keeps it; a failed create is terminal, and a retry is
 an explicit new attempt on the same environment row after cleanup. `report.step`
 and `report.log` stream durable progress while the call runs.
 
-Experimental: a `created` result (also from `restore`) may list `additionalPaths`, this environment's own folders outside `path` as `{ path, replaces? }` (sibling checkouts); threads there can write each absolute `path`, core stores them as `Environment.additionalPaths` (`replaces` is `null` when absent), and omitting the field on a reused environment keeps the list. `replaces` names the project folder (`bb.sdk.projects.sources.experimental_folders`) an entry stands in for, such as the repository it made a worktree of; threads in the environment no longer get that shared folder. See docs/api_to_audit.md.
+Experimental: a `created` result (also from `restore`) may list `additionalPaths`, this environment's own folders outside `path` as `{ path, replaces? }` (sibling checkouts); threads there can write each absolute `path`, core stores them as `Environment.additionalPaths` (`replaces` is `null` when absent), and omitting the field on a reused environment keeps the list. `replaces` names the project folder (`bb.sdk.projects.sources.experimental_folders`) an entry stands in for, such as the repository it made a worktree of; threads in the environment no longer get that shared folder. `setup(path, { folders })` runs each folder's setup first, in order, and its teardown after `path`'s, in reverse. See docs/api_to_audit.md.
 
 Core claims a provider's directory through `locate` or `setup(path)`.
 `bb.sdk.environments.list({ hostId, path })` compares stored paths without
@@ -330,8 +330,7 @@ status/attempt/message.
 
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
 `ownsPath: true`, or earlier when a version-2 create calls `setup(path)`, and
-`.bb-env-teardown.sh` before `remove` (`setup(path, { folders })`: each folder
-first, in order; teardown after, in reverse). Providers never run these hooks
+`.bb-env-teardown.sh` before `remove`; providers never run these hooks
 themselves, and attached paths (`ownsPath: false`) never run them. Each
 has a 15-minute timeout, and its output goes to the launch report. Setup
 failure fails the launch. Teardown failure is reported, and removal continues

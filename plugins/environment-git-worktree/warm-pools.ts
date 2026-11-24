@@ -386,7 +386,7 @@ export async function createWarmPools(args: {
           projectId,
           hostId: source.hostId,
           sourcePath: source.path,
-          size: pool.size,
+          size,
           folders,
         });
       }

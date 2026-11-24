@@ -1195,8 +1195,15 @@
     {
       "idx": 170,
       "version": "6",
-      "when": 1795547059663,
+      "when": 1795550504233,
       "tag": "0170_environment_setup_folder_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "6",
+      "when": 1795550504908,
+      "tag": "0171_environment_additional_path_entries",
       "breakpoints": true
     }
   ]

@@ -1024,7 +1024,7 @@ describe("warm worktree reconcile", () => {
     expect(off.pools[0]?.checkouts[0]).toMatchObject({ size: 0, hostSize: 0 });
     expect(fixture.deleted).toEqual([READY.id]);
     expect(await fixture.bb.storage.kv.get("warm-pools")).toEqual([
-      { projectId: PROJECT_ID, size: 1, hosts: { [HOST_ID]: 0 } },
+      { projectId: PROJECT_ID, size: 1, hosts: { [HOST_ID]: 0 }, folders: [] },
     ]);
     expect(
       await fixture.provider.create(fixture.context("env_thread", "feature")),

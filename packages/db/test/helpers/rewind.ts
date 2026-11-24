@@ -229,10 +229,6 @@ export function dropProjectFolderSchema(db: DbConnection): void {
   }
 }
 
-export function dropEnvironmentSetupFolderPathsColumn(db: DbConnection): void {
-  db.$client.exec("ALTER TABLE environments DROP COLUMN setup_folder_paths");
-}
-
 export function dropForkHistoryCopyIndex(db: DbConnection): void {
   db.$client.exec("DROP INDEX IF EXISTS threads_fork_history_copy_idx");
 }
