@@ -6,6 +6,7 @@ import {
 import {
   acknowledgeInterruptedEnvironmentHookOperation,
   finishEnvironmentHookOperation,
+  forgetFinishedEnvironmentHookOperations,
   getEnvironmentHookOperation,
   hasEnvironmentHookOperation,
   insertEnvironmentHookOperation,
@@ -392,8 +393,7 @@ const ENVIRONMENT_CASES: readonly Case[] = [
     prepare: (db, fixture, seed) => {
       insertPluginHeldEnvironment(db, fixture, seed);
     },
-    run: (db) =>
-      releaseEnvironmentHolds(db, "plugin:environment-git-worktree"),
+    run: (db) => releaseEnvironmentHolds(db, "plugin:environment-git-worktree"),
   },
   {
     name: `${ENVIRONMENTS}#findOtherLiveThreadAtEnvironmentPath`,
@@ -646,6 +646,13 @@ const ENVIRONMENT_HOOK_CASES: readonly Case[] = [
           error: "Environment hook cancelled",
         },
       ),
+  },
+  {
+    name: `${ENVIRONMENT_HOOKS}#forgetFinishedEnvironmentHookOperations`,
+    run: (db, _fixture, seed) =>
+      forgetFinishedEnvironmentHookOperations(db, [
+        seed.readyEnvironmentSetupOperationId,
+      ]),
   },
   {
     name: `${ENVIRONMENT_HOOKS}#acknowledgeInterruptedEnvironmentHookOperation`,

@@ -328,7 +328,7 @@ export function WarmPoolSettings() {
         const [projectId = "", hostId = ""] = key.split("\0");
         return { key, projectId, hostId };
       });
-    Promise.all(
+    void Promise.all(
       targets.map((target) =>
         rpc
           .call("listBranchableFolders", {
