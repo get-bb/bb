@@ -149,7 +149,7 @@ export async function resolveThreadRuntimeCommandConfig(
       projectId: project.id,
       hostId: args.environment.hostId,
     }),
-    environment,
+    additionalPaths: environment.additionalPaths,
   });
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
     includeAgentInstructions: true,

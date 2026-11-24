@@ -187,16 +187,21 @@ function folderBranchesOf(
   }));
 }
 
+function folderAdditionalPaths(
+  folders: readonly CreatedFolderWorktree[],
+): { path: string; replaces: string }[] {
+  return folders.map((folder) => ({
+    path: folder.path,
+    replaces: folder.sourcePath,
+  }));
+}
+
 function withFolders(
   created: CreatedResult,
   folders: readonly CreatedFolderWorktree[],
 ): CreatedResult {
   if (folders.length === 0) return created;
-  return {
-    ...created,
-    additionalPaths: folders.map((folder) => folder.path),
-    replacedProjectFolders: folders.map((folder) => folder.sourcePath),
-  };
+  return { ...created, additionalPaths: folderAdditionalPaths(folders) };
 }
 
 export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
@@ -687,10 +692,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         ...(ownedBranch === null && folderBranches.length === 0
           ? {}
           : { resource: { ownedBranch, folderBranches } }),
-        additionalPaths: folders.folders.map((folder) => folder.path),
-        replacedProjectFolders: folders.folders.map(
-          (folder) => folder.sourcePath,
-        ),
+        additionalPaths: folderAdditionalPaths(folders.folders),
       };
     },
     async remove(context) {

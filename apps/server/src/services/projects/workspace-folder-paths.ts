@@ -54,40 +54,37 @@ export function workspaceFolderPathProblem(
   return null;
 }
 
-export function validateWorkspaceFolderPaths(args: {
+export interface EnvironmentAdditionalPath {
+  path: string;
+  replaces: string | null;
+}
+
+export function validateEnvironmentAdditionalPaths(args: {
   mainPath: string;
-  paths: readonly string[];
-}): string[] {
-  const accepted: string[] = [];
-  for (const raw of args.paths) {
-    const path = canonicalizeHostPath(raw);
+  entries: readonly EnvironmentAdditionalPath[];
+}): EnvironmentAdditionalPath[] {
+  const accepted: EnvironmentAdditionalPath[] = [];
+  for (const entry of args.entries) {
+    const path = canonicalizeHostPath(entry.path);
     const problem = workspaceFolderPathProblem({
-      existingPaths: accepted,
+      existingPaths: accepted.map((existing) => existing.path),
       mainPath: args.mainPath,
       path,
     });
     if (problem !== null) {
       throw new Error(problem.message);
     }
-    accepted.push(path);
-  }
-  return accepted;
-}
-
-export function validateReplacedProjectFolders(
-  paths: readonly string[],
-): string[] {
-  const accepted: string[] = [];
-  for (const raw of paths) {
-    const path = canonicalizeHostPath(raw);
-    if (!isAbsoluteHostPath(path) || path.includes("\0")) {
+    const replaces =
+      entry.replaces === null ? null : canonicalizeHostPath(entry.replaces);
+    if (
+      replaces !== null &&
+      (!isAbsoluteHostPath(replaces) || replaces.includes("\0"))
+    ) {
       throw new Error(
-        `Replaced project folder ${path} must be an absolute path`,
+        `Folder ${path} replaces ${replaces}, which must be an absolute path`,
       );
     }
-    if (!accepted.some((existing) => areHostPathsEqual(existing, path))) {
-      accepted.push(path);
-    }
+    accepted.push({ path, replaces });
   }
   return accepted;
 }
@@ -95,21 +92,19 @@ export function validateReplacedProjectFolders(
 export function mergeWorkspaceFolderPaths(args: {
   mainPath: string;
   projectFolderPaths: readonly string[];
-  environment: {
-    additionalPaths: readonly string[];
-    replacedProjectFolders: readonly string[];
-  };
+  additionalPaths: readonly EnvironmentAdditionalPath[];
 }): string[] {
   const projectFolderPaths = args.projectFolderPaths.filter(
     (path) =>
-      !args.environment.replacedProjectFolders.some((replaced) =>
-        areHostPathsEqual(replaced, path),
+      !args.additionalPaths.some(
+        (entry) =>
+          entry.replaces !== null && areHostPathsEqual(entry.replaces, path),
       ),
   );
   const merged: string[] = [];
   for (const path of [
     ...projectFolderPaths,
-    ...args.environment.additionalPaths,
+    ...args.additionalPaths.map((entry) => entry.path),
   ]) {
     if (
       areHostPathsEqual(path, args.mainPath) ||

@@ -39,7 +39,6 @@ export function makeEnvironment(
     hostId: "host_test",
     path: "/workspace",
     additionalPaths: [],
-    replacedProjectFolders: [],
     isGitRepo: true,
     isWorktree: true,
     branchName: "feature/test",

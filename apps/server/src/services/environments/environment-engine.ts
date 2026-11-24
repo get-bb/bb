@@ -1,7 +1,6 @@
 import {
   MAX_WORKSPACE_FOLDERS,
-  validateReplacedProjectFolders,
-  validateWorkspaceFolderPaths,
+  validateEnvironmentAdditionalPaths,
 } from "../projects/workspace-folder-paths.js";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
@@ -212,9 +211,18 @@ const createResultSchema = z.discriminatedUnion("status", [
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
     mergeBaseBranch: z.string().min(1).nullable().optional(),
-    additionalPaths: z.array(z.string()).max(MAX_WORKSPACE_FOLDERS).optional(),
-    replacedProjectFolders: z
-      .array(z.string())
+    additionalPaths: z
+      .array(
+        z
+          .object({
+            path: z.string(),
+            replaces: z
+              .string()
+              .optional()
+              .transform((replaces) => replaces ?? null),
+          })
+          .strict(),
+      )
       .max(MAX_WORKSPACE_FOLDERS)
       .optional(),
     resource: resourceSchema.optional(),
@@ -224,6 +232,7 @@ const createResultSchema = z.discriminatedUnion("status", [
     message: z.string().min(1),
   }),
 ]);
+type CreateResult = z.output<typeof createResultSchema>;
 const removeResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("removed") }),
   z.object({ status: z.literal("failed"), message: z.string().min(1) }),
@@ -464,7 +473,7 @@ async function invokeCreate(
   operation: ProviderOperationBase,
   steps: ProviderSteps,
   claimPath: ClaimPath,
-): Promise<PluginEnvironmentProviderCreateResult> {
+): Promise<CreateResult> {
   const provider = record.provider;
   const invocation = await invokeEnvironmentProvider(
     record,
@@ -506,7 +515,7 @@ async function invokeRestore(
   },
   steps: ProviderSteps,
   claimPath: ClaimPath,
-): Promise<PluginEnvironmentProviderCreateResult> {
+): Promise<CreateResult> {
   const restore = providerRestoreCall(
     record,
     context,
@@ -749,7 +758,6 @@ async function runCreate(
             ownsPath: true,
             mergeBaseBranch: provisioning.mergeBaseBranch ?? undefined,
             additionalPaths: provisioning.additionalPaths,
-            replacedProjectFolders: provisioning.replacedProjectFolders,
             resource: provisioning.resource ?? undefined,
           }
         : previous?.status === "destroyed"
@@ -834,23 +842,16 @@ async function runCreate(
       const producedAdditionalPaths =
         result.additionalPaths === undefined
           ? undefined
-          : validateWorkspaceFolderPaths({
+          : validateEnvironmentAdditionalPaths({
               mainPath: producedPath,
-              paths: result.additionalPaths,
+              entries: result.additionalPaths,
             });
-      const producedReplacedProjectFolders =
-        result.replacedProjectFolders === undefined
-          ? undefined
-          : validateReplacedProjectFolders(result.replacedProjectFolders);
       result = {
         ...result,
         path: producedPath,
         ...(producedAdditionalPaths === undefined
           ? {}
           : { additionalPaths: producedAdditionalPaths }),
-        ...(producedReplacedProjectFolders === undefined
-          ? {}
-          : { replacedProjectFolders: producedReplacedProjectFolders }),
       };
       const produced = result;
       signal.throwIfAborted();
@@ -868,7 +869,6 @@ async function runCreate(
           if (!adoptedExistingEnvironment || !existingProviderOwnsLifecycle) {
             row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
             row.additionalPaths = produced.additionalPaths ?? [];
-            row.replacedProjectFolders = produced.replacedProjectFolders ?? [];
             row.resource = produced.resource ?? null;
           } else {
             if (handedOff) {
@@ -879,8 +879,6 @@ async function runCreate(
               row.mergeBaseBranch = produced.mergeBaseBranch;
             if (produced.additionalPaths !== undefined)
               row.additionalPaths = produced.additionalPaths;
-            if (produced.replacedProjectFolders !== undefined)
-              row.replacedProjectFolders = produced.replacedProjectFolders;
           }
           if (row.status === "creating") row.status = "provisioning";
           if (row.ownerThreadId === null) row.claimPath = null;

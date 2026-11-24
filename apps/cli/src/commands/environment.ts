@@ -458,10 +458,11 @@ export function registerEnvironmentCommands(
           console.log(`  Path: ${env.path}`);
         }
         for (const additionalPath of env.additionalPaths) {
-          console.log(`  Folder: ${additionalPath}`);
-        }
-        for (const replacedFolder of env.replacedProjectFolders) {
-          console.log(`  Replaces project folder: ${replacedFolder}`);
+          console.log(
+            additionalPath.replaces === null
+              ? `  Folder: ${additionalPath.path}`
+              : `  Folder: ${additionalPath.path} (replaces project folder ${additionalPath.replaces})`,
+          );
         }
         if (env.name) {
           console.log(`  Name: ${env.name}`);

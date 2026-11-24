@@ -63,6 +63,10 @@ interface CreateCall {
   pathKey: string;
 }
 
+function unreplacedFolders(...paths: string[]) {
+  return paths.map((path) => ({ path, replaces: null }));
+}
+
 function installProviders(
   args: {
     adopt?: () => EnvironmentRow | null;
@@ -110,14 +114,18 @@ function installProviders(
     await args.afterAdopt?.();
     if (args.stepAfterAdopt !== undefined)
       context.report.step(args.stepAfterAdopt);
-    const additionalPaths = args.additionalPaths?.({
-      kind,
-      adopted: held !== null,
-      previous:
-        "previous" in context
-          ? context.previous.environment.additionalPaths
-          : null,
-    });
+    const additionalPaths = args
+      .additionalPaths?.({
+        kind,
+        adopted: held !== null,
+        previous:
+          "previous" in context
+            ? context.previous.environment.additionalPaths.map(
+                (entry) => entry.path,
+              )
+            : null,
+      })
+      ?.map((path) => ({ path }));
     return {
       status: "created",
       path:
@@ -506,10 +514,9 @@ describe("plugin holds", () => {
         project.id,
         `plugin:${POOL_PLUGIN}`,
       );
-      expect(pooled.additionalPaths).toEqual([
-        "/tmp/warm-api",
-        "/tmp/warm-docs",
-      ]);
+      expect(pooled.additionalPaths).toEqual(
+        unreplacedFolders("/tmp/warm-api", "/tmp/warm-docs"),
+      );
       handOff = pooled;
       const thread = await providerThread(harness, {
         hostId: host.id,
@@ -524,7 +531,7 @@ describe("plugin holds", () => {
       );
       expect(await response.json()).toMatchObject({
         id: pooled.id,
-        additionalPaths: ["/tmp/warm-api", "/tmp/warm-docs"],
+        additionalPaths: unreplacedFolders("/tmp/warm-api", "/tmp/warm-docs"),
       });
     });
   });
@@ -548,9 +555,9 @@ describe("plugin holds", () => {
       await expect
         .poll(() => getEnvironment(harness.db, pooled.id)?.heldBy)
         .toBeNull();
-      expect(getEnvironment(harness.db, pooled.id)?.additionalPaths).toEqual([
-        "/tmp/warm-api",
-      ]);
+      expect(getEnvironment(harness.db, pooled.id)?.additionalPaths).toEqual(
+        unreplacedFolders("/tmp/warm-api"),
+      );
     });
   });
 
@@ -645,7 +652,9 @@ describe("plugin holds", () => {
       });
 
       expect(previousPaths).toEqual([["/tmp/warm-api"]]);
-      expect(restored.additionalPaths).toEqual(["/tmp/warm-api"]);
+      expect(restored.additionalPaths).toEqual(
+        unreplacedFolders("/tmp/warm-api"),
+      );
     });
   });
 
@@ -673,7 +682,7 @@ describe("plugin holds", () => {
       expect(restored).toMatchObject({
         id: warm.id,
         heldBy: null,
-        additionalPaths: ["/tmp/warm-api"],
+        additionalPaths: unreplacedFolders("/tmp/warm-api"),
       });
     });
   });

@@ -581,11 +581,7 @@ export const environments = sqliteTable(
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
     additionalPaths: text("additional_paths", { mode: "json" })
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'`),
-    replacedProjectFolders: text("replaced_project_folders", { mode: "json" })
-      .$type<string[]>()
+      .$type<{ path: string; replaces: string | null }[]>()
       .notNull()
       .default(sql`'[]'`),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })

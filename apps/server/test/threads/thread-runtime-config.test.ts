@@ -1062,7 +1062,10 @@ describe("thread runtime config", () => {
         path: workspacePath,
       });
       setEnvironmentColumns(harness.db, environment.id, {
-        additionalPaths: ["/work/docs", "/work/api"],
+        additionalPaths: [
+          { path: "/work/docs", replaces: null },
+          { path: "/work/api", replaces: null },
+        ],
       });
       const thread = seedThread(harness.deps, {
         environmentId: environment.id,
@@ -1166,8 +1169,9 @@ describe("thread runtime config", () => {
         path: workspacePath,
       });
       setEnvironmentColumns(harness.db, environment.id, {
-        additionalPaths: ["/worktrees/thr-1/api"],
-        replacedProjectFolders: ["/work/api"],
+        additionalPaths: [
+          { path: "/worktrees/thr-1/api", replaces: "/work/api" },
+        ],
       });
       const thread = seedThread(harness.deps, {
         environmentId: environment.id,

@@ -1191,39 +1191,36 @@ the Worktree keeps it in its private resource and core has no reader.
 ## Environment folders (`PluginEnvironmentProviderCreateResult.additionalPaths`, `Environment.additionalPaths`)
 
 A `created` result from `create` or `restore` may carry `additionalPaths`:
-absolute host paths of the environment's own extra folders, such as sibling
-checkouts the provider made next to `path`. Core canonicalizes them and fails
-the create when one is relative, equals `path`, is inside `path`, contains
-`path`, or repeats another entry (at most 64). They are stored on
+the environment's own extra folders, each `{ path, replaces? }`. `path` is an
+absolute host path, such as a sibling checkout the provider made next to the
+main `path`. `replaces` names the project folder (`bb project folder`) that
+entry stands in for, such as the repository the provider made a worktree of.
+Core canonicalizes both and fails the create when a `path` is relative,
+equals the main `path`, is inside it, contains it, or repeats another entry,
+or when a `replaces` is relative (at most 64 entries). They are stored on
 `environments.additional_paths` and returned as `Environment.additionalPaths`
-(`[]` when the provider sends none). Omitting the field on a reused
-environment keeps the recorded list. At every session start, turn and steer
-the server merges them after the project's folders for the thread's machine
-(`bb project folder`), drops duplicates and the main folder, and sends the
-list to the daemon, which grants the agent write access for that turn; the
-agent's instructions list the folders as of its session start. The field is a member of a result type, so it carries no
-nested `experimental_` prefix.
+with `replaces` filled as `null` when absent (`[]` when the provider sends
+none). Omitting the field on a reused environment keeps the recorded list.
+At every session start, turn and steer `mergeWorkspaceFolderPaths` in
+`workspace-folder-paths.ts` takes the project's folders for the thread's
+machine, drops every one an entry replaces, adds each entry's `path`, drops
+duplicates and the main folder, and the server sends the list to the daemon,
+which grants the agent write access for that turn; the agent's instructions
+list the folders as of its session start. A replaced folder stays out even
+when its replacement is missing on disk, so the thread never silently writes
+to the shared checkout it was branched away from; the missing replacement is
+reported like any missing folder. The field is a member of a result type,
+so it carries no nested `experimental_` prefix.
 
-`replacedProjectFolders` on the same result lists project folders the
-environment stands in for. Core canonicalizes them and fails the create when
-one is relative (at most 64), stores them on
-`environments.replaced_project_folders`, returns them as
-`Environment.replacedProjectFolders`, and keeps the recorded list when a
-reused environment omits the field. `mergeWorkspaceFolderPaths` in
-`workspace-folder-paths.ts` is the one place that drops those project folders
-before adding the environment's own; a replaced folder stays out even when
-its replacement is missing.
-
-Core path: `environment-engine.ts` records both fields for every provider;
+Core path: `environment-engine.ts` records the field for every provider;
 `thread-runtime-config.ts` is the only reader. The built-in Worktree is the
-first caller: with `folders` in its inputs it returns a worktree of each
-chosen project folder in `additionalPaths` and the folder itself in
-`replacedProjectFolders`. Project checkout returns neither.
+first caller that sets `replaces`: with `folders` in its inputs it returns a
+worktree of each chosen project folder that replaces that folder. Project
+checkout returns none.
 
-Before stabilizing, decide whether a provider needs to change the lists after
-create (today only a restore replaces them), whether removal should be told
-about the folders, and whether a replaced folder should be tied to its
-replacement path (today the lists are independent).
+Before stabilizing, decide whether a provider needs to change the list after
+create (today only a restore replaces it) and whether removal should be told
+about the folders.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 

@@ -362,7 +362,7 @@ function registerStackProvider(stacks: StackBuilder) {
       status: "created" as const,
       path: stack.app,
       ownsPath: true,
-      additionalPaths: [stack.api, stack.docs],
+      additionalPaths: [{ path: stack.api }, { path: stack.docs }],
       resource: stack.app,
     };
   };

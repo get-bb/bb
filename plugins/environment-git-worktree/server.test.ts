@@ -135,7 +135,6 @@ function restoreContext(
         hostId: HOST_ID,
         path: WORKTREE_PATH,
         additionalPaths: [],
-        replacedProjectFolders: [],
         isGitRepo: true,
         isWorktree: true,
         branchName,
@@ -455,8 +454,7 @@ describe("branching project folders", () => {
       path: WORKTREE_PATH,
       ownsPath: true,
       mergeBaseBranch: "main",
-      additionalPaths: [API_WORKTREE],
-      replacedProjectFolders: [API],
+      additionalPaths: [{ path: API_WORKTREE, replaces: API }],
       resource: {
         ownedBranch: {
           name: "bb/test",
@@ -543,7 +541,6 @@ describe("branching project folders", () => {
       status: "created",
       path: WORKTREE_PATH,
       additionalPaths: [],
-      replacedProjectFolders: [],
     });
     expect(fixture.steps).toContain(
       "Skipped /code/gone: it is no longer one of this project's folders",

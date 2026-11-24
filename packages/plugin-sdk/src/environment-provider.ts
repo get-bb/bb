@@ -148,21 +148,16 @@ export type PluginEnvironmentProviderCreateResult =
       /** Ref the workspace's changes are compared against. Null clears the value recorded on a reused environment; omit to keep it. */
       mergeBaseBranch?: string | null;
       /**
-       * Experimental: absolute paths of this environment's own extra folders,
-       * such as sibling checkouts it created next to `path`. Threads in the
-       * environment can read and write them. Core records them with the
-       * environment; omit on a reused environment to keep the recorded list.
+       * Experimental: this environment's own extra folders, such as sibling
+       * checkouts it created next to `path`. Threads in the environment can
+       * read and write each absolute `path`. `replaces` names the project
+       * folder (`sdk.projects.sources.experimental_folders`) the folder stands
+       * in for, such as the repository it made a worktree of; threads in the
+       * environment no longer get that shared folder. Core records the list
+       * with the environment; omit on a reused environment to keep it.
        * See docs/api_to_audit.md.
        */
-      additionalPaths?: string[];
-      /**
-       * Experimental: the project's folders (`sdk.projects.sources.experimental_folders`)
-       * this environment replaces, such as a folder it made a worktree of in
-       * `additionalPaths`. Threads in the environment no longer get those
-       * shared folders. Omit on a reused environment to keep the recorded
-       * list. See docs/api_to_audit.md.
-       */
-      replacedProjectFolders?: string[];
+      additionalPaths?: { path: string; replaces?: string }[];
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };

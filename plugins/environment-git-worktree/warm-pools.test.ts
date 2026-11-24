@@ -407,8 +407,9 @@ describe("warm worktree handoff", () => {
       path: READY.path,
       ownsPath: true,
       mergeBaseBranch: "origin/main",
-      additionalPaths: ["/worktrees/env_warm-1/api"],
-      replacedProjectFolders: ["/code/api"],
+      additionalPaths: [
+        { path: "/worktrees/env_warm-1/api", replaces: "/code/api" },
+      ],
       resource: {
         ...ownedBranch("bb/fix-login-thr_1"),
         folderBranches: [

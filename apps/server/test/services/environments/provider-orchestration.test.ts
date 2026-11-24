@@ -1148,8 +1148,10 @@ describe("core environment orchestration", () => {
           status: "created",
           path: `/tmp/${context.pathKey}`,
           ownsPath: true,
-          additionalPaths: ["/tmp/siblings/api/", "/tmp/siblings/docs"],
-          replacedProjectFolders: ["/work/api/", "/work/api"],
+          additionalPaths: [
+            { path: "/tmp/siblings/api/", replaces: "/work/api/" },
+            { path: "/tmp/siblings/docs" },
+          ],
         }),
       });
       fixture.ask();
@@ -1157,8 +1159,10 @@ describe("core environment orchestration", () => {
       fixture.attach();
       expect(fixture.row()).toMatchObject({
         status: "ready",
-        additionalPaths: ["/tmp/siblings/api", "/tmp/siblings/docs"],
-        replacedProjectFolders: ["/work/api"],
+        additionalPaths: [
+          { path: "/tmp/siblings/api", replaces: "/work/api" },
+          { path: "/tmp/siblings/docs", replaces: null },
+        ],
       });
     }));
 
@@ -1169,7 +1173,9 @@ describe("core environment orchestration", () => {
           status: "created",
           path: `/tmp/${context.pathKey}`,
           ownsPath: true,
-          replacedProjectFolders: ["work/api"],
+          additionalPaths: [
+            { path: "/tmp/siblings/api", replaces: "work/api" },
+          ],
         }),
       });
       fixture.ask();
@@ -1180,7 +1186,6 @@ describe("core environment orchestration", () => {
       });
       expect(fixture.row()).toMatchObject({
         status: "error",
-        replacedProjectFolders: [],
       });
     }));
 
@@ -1191,7 +1196,7 @@ describe("core environment orchestration", () => {
           status: "created",
           path: `/tmp/${context.pathKey}`,
           ownsPath: true,
-          additionalPaths: [`/tmp/${context.pathKey}/nested`],
+          additionalPaths: [{ path: `/tmp/${context.pathKey}/nested` }],
         }),
       });
       fixture.ask();
