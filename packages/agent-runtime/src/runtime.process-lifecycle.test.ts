@@ -106,6 +106,7 @@ describe("createAgentRuntime process lifecycle", () => {
   let tmpDir: string;
   let tracker: ChildProcessTracker;
   let lifeline: ProcessLifeline;
+  let idleProviderManager: RuntimeProviderProcessManager | undefined;
 
   beforeEach(async () => {
     tracker = trackChildProcesses();
@@ -114,6 +115,8 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   afterEach(async () => {
+    await idleProviderManager?.shutdown();
+    idleProviderManager = undefined;
     tracker.dispose();
     await lifeline.close();
     vi.unstubAllEnvs();
@@ -269,7 +272,7 @@ describe("createAgentRuntime process lifecycle", () => {
       onProcessExit: vi.fn(),
       workspacePath: tmpDir,
     });
-    onTestFinished(() => manager.shutdown());
+    idleProviderManager = manager;
     return manager;
   }
 
