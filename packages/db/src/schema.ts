@@ -26,6 +26,7 @@ import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadParentNotificationsValues } from "@bb/domain/thread-parent-notifications";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
+  CallerExecutionInputSource,
   EnvironmentHolder,
   EnvironmentProviderSelection,
   JsonValue,
@@ -1157,6 +1158,24 @@ export const queuedThreadMessages = sqliteTable(
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     serviceTier: text("service_tier").notNull(),
+    executionInputSources: text("execution_input_sources", { mode: "json" })
+      .$type<
+        Partial<
+          Record<
+            | "providerId"
+            | "model"
+            | "reasoningLevel"
+            | "serviceTier"
+            | "permissionMode",
+            CallerExecutionInputSource
+          >
+        >
+      >()
+      .notNull()
+      .default(sql`'{}'`),
+    compactFirst: integer("compact_first", { mode: "boolean" })
+      .notNull()
+      .default(false),
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),

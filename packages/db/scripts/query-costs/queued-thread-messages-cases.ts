@@ -640,6 +640,7 @@ export const QUEUED_THREAD_MESSAGES_COST_CASES: readonly QueryCostCase[] = [
     },
     run: (db, fixture) =>
       requeueClaimedQueuedThreadMessages(db, noopNotifier, {
+        compactFirstDone: false,
         claims: claimedGroup.map(({ id, claimToken }) => ({ id, claimToken })),
         threadId: fixture.threadId,
         waitingOn: { kind: "thread-busy" },

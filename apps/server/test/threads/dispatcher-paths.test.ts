@@ -26,6 +26,8 @@ import {
   sendNextQueuedMessageIfPresent,
 } from "../../src/services/threads/queued-messages.js";
 import { moveThreadStatus } from "../helpers/thread-status.js";
+import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
+import { recordQueuedMessageEvents } from "../helpers/plugin-thread-events.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
@@ -77,7 +79,32 @@ function installDispatchHook(
 
 afterEach(() => {
   setPluginHookProvider(undefined);
+  setPluginThreadEventEmitter(undefined);
 });
+
+async function queueGroupOfTwo(
+  harness: TestAppHarness,
+  thread: Parameters<typeof acceptThreadSendRequest>[1]["thread"],
+  sendAt: number,
+): Promise<string[]> {
+  for (const text of ["First", "Second"]) {
+    await acceptThreadSendRequest(harness.deps, {
+      payload: { input: textInput(text), mode: "queue-if-active", sendAt },
+      thread,
+    });
+  }
+  const rows = listQueuedThreadMessages(harness.db, thread.id);
+  expect(
+    setQueuedThreadMessageGroupBoundary({
+      db: harness.db,
+      notifier: harness.hub,
+      threadId: thread.id,
+      expectedGroupedPrefixQueuedMessageIds: rows.map((row) => row.id),
+      groupBoundaryQueuedMessageId: rows[1]!.id,
+    }).kind,
+  ).toBe("updated");
+  return rows.map((row) => row.id);
+}
 
 function seedRunnableThread(
   harness: TestAppHarness,
@@ -528,6 +555,103 @@ describe("queue intent after the dispatch hook", () => {
       expect(queuedRows(harness, thread.id)).toEqual([
         expect.objectContaining({ waitingOn: { kind: "thread-busy" } }),
       ]);
+    });
+  });
+});
+
+describe("queued-message events for a grouped dispatch", () => {
+  it("fires message.dispatched for every row the dispatch consumed", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-group-dispatched",
+        status: "idle",
+      });
+      const sendAt = Date.now() + 60_000;
+      const ids = await queueGroupOfTwo(harness, thread, sendAt);
+      const events = recordQueuedMessageEvents();
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(1);
+      expect(events).toEqual([
+        { event: "dispatched", id: ids[0] },
+        { event: "dispatched", id: ids[1] },
+      ]);
+    });
+  });
+
+  it("fires message.queued for every row a hook sends back to the queue", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-group-requeued",
+        status: "idle",
+      });
+      const sendAt = Date.now() + 60_000;
+      const ids = await queueGroupOfTwo(harness, thread, sendAt);
+      installDispatchHook((context) =>
+        context.queuedMessages.length > 0
+          ? { action: "wait", reason: "At capacity" }
+          : { action: "proceed" },
+      );
+      const events = recordQueuedMessageEvents();
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      expect(events).toEqual([
+        { event: "queued", id: ids[0] },
+        { event: "queued", id: ids[1] },
+      ]);
+    });
+  });
+});
+
+describe("execution sources on a drained re-attempt", () => {
+  it("hands the hook the sources the first attempt was sent with", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-drained-sources",
+        status: "idle",
+      });
+      const seen: MessageDispatchHookContext["executionSources"][] = [];
+      installDispatchHook((context) => {
+        seen.push(context.executionSources);
+        return { action: "proceed" };
+      });
+      const sendAt = Date.now() + 60_000;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("Later"),
+          mode: "queue-if-active",
+          sendAt,
+          executionInputSources: {
+            model: "explicit",
+            reasoningLevel: "client-preference",
+          },
+        },
+        thread,
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      const expected = {
+        providerId: null,
+        model: "explicit",
+        reasoningLevel: "client-preference",
+        serviceTier: null,
+        permissionMode: null,
+      };
+      expect(seen).toEqual([expected, expected]);
     });
   });
 });

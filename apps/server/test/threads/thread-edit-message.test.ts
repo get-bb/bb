@@ -19,7 +19,9 @@ import {
   type ThreadStatus,
 } from "@bb/domain";
 import { threadResponseSchema } from "@bb/server-contract";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
+import { recordQueuedMessageEvents } from "../helpers/plugin-thread-events.js";
 import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
 import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import {
@@ -289,6 +291,10 @@ function seedEditableThread(
   }
   return { environment, thread };
 }
+
+afterEach(() => {
+  setPluginThreadEventEmitter(undefined);
+});
 
 describe("editThreadMessage", () => {
   it("preserves an agent caller and applies agent permission policy", async () => {
@@ -1478,7 +1484,7 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("retains queued messages when editing a sent message", async () => {
+  it("retains queued messages and reports the retry it discards as cancelled", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
       const queuedMessage = seedQueuedMessage(harness.deps, {
@@ -1487,7 +1493,7 @@ describe("editThreadMessage", () => {
       });
       const retry = createQueuedThreadMessage(harness.db, harness.deps.hub, {
         threadId: thread.id,
-        content: [],
+        content: [{ type: "text", text: "Original message", mentions: [] }],
         model: "gpt-5",
         reasoningLevel: "medium",
         permissionMode: "full",
@@ -1502,6 +1508,7 @@ describe("editThreadMessage", () => {
         },
         systemNotice: null,
       });
+      const events = recordQueuedMessageEvents();
       const editPromise = editThreadMessage(harness.deps, {
         environment,
         thread,
@@ -1525,6 +1532,7 @@ describe("editThreadMessage", () => {
       expect(
         listQueuedThreadMessages(harness.db, thread.id),
       ).not.toContainEqual(expect.objectContaining({ id: retry.id }));
+      expect(events).toEqual([{ event: "cancelled", id: retry.id }]);
     });
   });
 

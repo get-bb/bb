@@ -10,6 +10,7 @@ import {
   dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
+  dropQueuedMessageSourcesAndCompactFirstColumns,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   restoreDiffViewedFilesTable,
@@ -34,6 +35,7 @@ function databaseBeforeHandoff(
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(
     "INSERT INTO diff_viewed_files (environment_id, target_key, path, revision, updated_at) VALUES (?, ?, ?, ?, ?)",
