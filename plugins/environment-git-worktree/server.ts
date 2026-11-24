@@ -209,6 +209,20 @@ function folderAdditionalPaths(
   }));
 }
 
+function folderLabel(folderPath: string): string {
+  return folderPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? folderPath;
+}
+
+function labelledReport(
+  report: PluginEnvironmentProviderProgress,
+  label: string,
+): PluginEnvironmentProviderProgress {
+  return {
+    step: (text) => report.step(`${label}: ${text}`),
+    log: (text) => report.log(`${label}: ${text}`),
+  };
+}
+
 function warmFolderWorktrees(warm: WarmHandOff): CreatedFolderWorktree[] {
   return warm.folders.map((folder) => ({
     sourcePath: folder.sourcePath,
@@ -367,7 +381,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
   ): Promise<void> {
     for (const folder of folders) {
       const operationId = `name#${context.pathKey}#${context.attempt}#${folder.path}`;
-      reports.set(operationId, context.report);
+      reports.set(
+        operationId,
+        labelledReport(context.report, folderLabel(folder.sourcePath)),
+      );
       try {
         const named = await host.call(
           "nameBranch",
