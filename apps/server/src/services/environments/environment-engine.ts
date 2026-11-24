@@ -47,6 +47,7 @@ import {
   environmentHasLiveThreads,
   getEnvironment,
   getEnvironmentHookOperation,
+  forgetFinishedEnvironmentHookOperations,
   getStartingLiveEnvironmentThread,
   hasEnvironmentHookOperation,
   listEnvironmentThreads,
@@ -655,9 +656,15 @@ async function runCreate(
     }
     signal.throwIfAborted();
     if (handedOff) {
-      if (folders.length > 0)
+      const unknownFolder = folders.find(
+        (folder) =>
+          !provisioning.setupFolderPaths.some((recorded) =>
+            areHostPathsEqual(recorded, folder),
+          ),
+      );
+      if (unknownFolder !== undefined)
         throw new Error(
-          "Setup after adopt runs only in the adopted path; its folders were set up when it was made",
+          `Setup after adopt can't run in ${unknownFolder}: the adopted environment did not set it up`,
         );
       if (
         provisioning.path === null ||
@@ -666,7 +673,17 @@ async function runCreate(
         throw new Error(
           `Setup can't run at ${path}: the adopted environment is at ${provisioning.path}`,
         );
+      const adopted = provisioning;
+      forgetFinishedEnvironmentHookOperations(
+        deps.db,
+        adopted.setupFolderPaths.flatMap((recorded, index) =>
+          folders.some((folder) => areHostPathsEqual(folder, recorded))
+            ? [folderHookOperationId(adopted, "setup", index)]
+            : [],
+        ),
+      );
       requested.path = path;
+      requested.folders = folders;
       applyLoggedEnvironmentLifecycleEvent(deps, {
         environmentId: provisioning.id,
         event: { type: "provision.requested" },

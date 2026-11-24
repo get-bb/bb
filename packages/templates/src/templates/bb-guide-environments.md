@@ -43,8 +43,10 @@ Making your repo work with bb:
   When an environment also creates folder worktrees of the project's other
   repositories, each new folder worktree runs its own .bb-env-setup.sh first,
   in order, then the main workspace's runs; teardown runs in the main
-  workspace first, then in each folder in reverse. A folder's setup runs once:
-  a warm worktree handed to a thread does not set its folders up again.
+  workspace first, then in each folder in reverse. Setup runs only for new
+  contents: when a thread takes a warm worktree, a folder worktree that had to
+  be moved to its repository's newer default branch runs its setup again,
+  then the main workspace's; untouched folders do not.
 
   Hooks run only in paths bb created and owns, such as new worktrees and
   checkouts bb cloned; attached project checkouts and personal workspaces never

@@ -100,8 +100,10 @@ export interface PluginEnvironmentProviderSteps {
    * new sibling worktrees. Core runs each folder's setup script once, in the
    * given order, before `path`'s, and runs their teardown scripts after
    * `path`'s, in reverse order. Each folder must be absolute, outside `path`,
-   * and returned in the result's `additionalPaths`. A setup after `adopt`
-   * runs only in `path`, so it takes no folders. See docs/api_to_audit.md.
+   * and returned in the result's `additionalPaths`. After `adopt`, `folders`
+   * may name only folders the adopted environment set up, such as ones the
+   * provider moved to a new commit; core runs their setup again, in their
+   * recorded order, then `path`'s. See docs/api_to_audit.md.
    */
   setup(path: string, options?: { folders?: string[] }): Promise<void>;
   /**

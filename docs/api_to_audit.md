@@ -1168,12 +1168,16 @@ providers receive, so they carry no nested `experimental_` prefix.
   the create made, such as new sibling worktrees. Core canonicalizes them,
   refuses relative ones, `path` itself, ones inside or containing `path`,
   and repeats, and stores them on `environments.setup_folder_paths` with the
-  request; repeating a request with other folders, or passing folders after
-  `adopt`, is refused. The attach operation runs each folder's
-  `.bb-env-setup.sh` once, in order, before `path`'s, each as its own hook
-  operation (`environment:<id>:<key>:setup:folder:<index>`), skipping a
-  folder whose setup already succeeded there, so a setup after `adopt`
-  runs only in `path`. Removal runs `path`'s `.bb-env-teardown.sh`, then
+  request; repeating a request with other folders is refused. The attach
+  operation runs each folder's `.bb-env-setup.sh`, in order, before
+  `path`'s, each as its own hook operation
+  (`environment:<id>:<key>:setup:folder:<index>`), skipping a folder whose
+  setup already succeeded there. After `adopt`, `folders` may name only
+  folders the adopted environment recorded; core forgets their finished
+  setup records (`forgetFinishedEnvironmentHookOperations`), so the attach
+  operation runs those folders again, in recorded order, then `path`, and
+  leaves the others alone. Caller: Worktree's handoff, which names the
+  folder worktrees it fast-forwarded. Removal runs `path`'s `.bb-env-teardown.sh`, then
   each folder's in reverse order. The create fails when a set-up folder is
   missing from the result's `additionalPaths`. Recovery inspects processes
   in each folder and acknowledges each folder's interrupted hooks. Callers:
