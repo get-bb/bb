@@ -82,6 +82,9 @@ const PRESERVED_ENV_VALUES = new Map([
 const GROK_SUBAGENT_ACTION_PROMPT =
   /^Use (?:send_subagent_message|kill_command_or_subagent) with /;
 const GROK_SYNTHETIC_SUBAGENT_MESSAGE = "CHILD_MESSAGE 😀 مراجعة";
+const GROK_SYNTHETIC_SUBAGENT_MESSAGES = new Set([
+  GROK_SYNTHETIC_SUBAGENT_MESSAGE,
+]);
 const GROK_SYNTHETIC_INTERJECT_TEXTS = new Set([
   "INTERJECT_FIRST 😀",
   "INTERJECT_SECOND مراجعة",
@@ -196,7 +199,9 @@ function redactAllStrings(value) {
 
 function redactUserContent(value) {
   if (typeof value === "string") {
-    return value === GROK_SYNTHETIC_SUBAGENT_MESSAGE ? value : "REDACTED_TEXT";
+    return GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(value)
+      ? value
+      : "REDACTED_TEXT";
   }
   if (Array.isArray(value)) return value.map(redactUserContent);
   if (value !== null && typeof value === "object") {
@@ -395,7 +400,7 @@ function redactLine(line) {
     ((parsed.method === "_x.ai/interject" &&
       GROK_SYNTHETIC_INTERJECT_TEXTS.has(parsed.params?.text)) ||
       (parsed.method === "subagent/tell" &&
-        parsed.params?.text?.includes(GROK_SYNTHETIC_SUBAGENT_MESSAGE))) &&
+        GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(parsed.params?.text))) &&
     typeof parsed.params?.text === "string" &&
     redacted.params !== null &&
     typeof redacted.params === "object"

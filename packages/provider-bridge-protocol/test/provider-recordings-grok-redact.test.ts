@@ -241,6 +241,13 @@ describe("Grok recording redaction", () => {
         params: { childRef: "child-alpha", text },
       },
       {
+        method: "subagent/tell",
+        params: {
+          childRef: "child-alpha",
+          text: `${text}\nconfidential customer plan`,
+        },
+      },
+      {
         method: "session/prompt",
         params: { prompt: [{ type: "text", text: actionPrompt }] },
       },
@@ -374,6 +381,15 @@ describe("Grok recording redaction", () => {
       "utf8",
     );
     expect(redacted).toContain(text);
+    expect(redacted).not.toContain("confidential customer plan");
+    expect(readMessages(output)).toContainEqual({
+      method: "subagent/tell",
+      params: { childRef: "child-alpha", text },
+    });
+    expect(readMessages(output)).toContainEqual({
+      method: "subagent/tell",
+      params: { childRef: "child-alpha", text: "REDACTED_TEXT" },
+    });
     expect(readMessages(output)).toContainEqual({
       method: "session/prompt",
       params: { prompt: [{ type: "text", text: actionPrompt }] },

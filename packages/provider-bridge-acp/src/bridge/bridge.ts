@@ -326,6 +326,7 @@ interface AcpThreadSession {
       }
     | undefined;
   grokPromptCost: ThreadUsageCost | undefined;
+  nativeInterjectTail: Promise<void> | undefined;
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   subagents: Map<string, ThreadSubagent>;
@@ -2938,6 +2939,7 @@ async function startAgentSession(
     grokCompactionTokensAfter: undefined,
     grokTokenUsage: undefined,
     grokPromptCost: undefined,
+    nativeInterjectTail: undefined,
     stopping: false,
     turnSettled: undefined,
     subagents: new Map(),
@@ -3651,6 +3653,21 @@ function requestSteerCancel(session: AcpThreadSession): void {
   });
 }
 
+function enqueueNativeInterject(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+  runtimeRequestId: AcpBridgeRequestId,
+  method: string,
+): void {
+  const previous = session.nativeInterjectTail ?? Promise.resolve();
+  session.nativeInterjectTail = previous
+    .catch(() => undefined)
+    .then(() =>
+      steerWithNativeInterject(session, pending, runtimeRequestId, method),
+    )
+    .catch(() => undefined);
+}
+
 async function steerWithNativeInterject(
   session: AcpThreadSession,
   pending: AcpPendingTurnInput,
@@ -4191,6 +4208,11 @@ async function rebuildAgentSession(
   replacement.queuedInputs.push(...queuedInputs);
   for (const grant of session.sessionGrants) {
     replacement.sessionGrants.add(grant);
+  }
+  replacement.nativeInterjectTail = session.nativeInterjectTail;
+  if (replacement.providerThreadId === previousProviderThreadId) {
+    replacement.grokTokenUsage = session.grokTokenUsage;
+    replacement.grokPromptCost = session.grokPromptCost;
   }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
     threadId: session.bbThreadId,
@@ -5483,7 +5505,7 @@ async function handleRequest(
         options: params.options,
       };
       if (session.dialect.nativeInterjectMethod !== undefined) {
-        void steerWithNativeInterject(
+        enqueueNativeInterject(
           session,
           pending,
           request.id,

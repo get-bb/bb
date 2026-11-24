@@ -4668,6 +4668,75 @@ describe("acp bridge", () => {
     await stopThread(providerThreadId);
   });
 
+  it("grok_interject_keeps_native_model_changes_in_steer_order", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-model-order.jsonl");
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_MODEL_DELAY_MS: "200",
+      },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+        options: executionOptions({
+          model: "fake/default",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      }),
+    );
+    const first = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "INTERJECT_TO_B", mentions: [] }],
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+    const second = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjn",
+      input: [{ type: "text", text: "INTERJECT_TO_A", mentions: [] }],
+      options: executionOptions({
+        model: "fake/default",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+
+    expect((await waitForResponse(first)).error).toBeUndefined();
+    expect((await waitForResponse(second)).error).toBeUndefined();
+    const events = loggedAcpRequests(requestLog).flatMap((request) => {
+      if (
+        request.method === "session/set_config_option" &&
+        request.params?.configId === "model" &&
+        typeof request.params.value === "string"
+      ) {
+        return [`model:${request.params.value}`];
+      }
+      if (
+        request.method === "_x.ai/interject" &&
+        typeof request.params?.text === "string"
+      ) {
+        return [`interject:${request.params.text}`];
+      }
+      return [];
+    });
+    expect(events).toEqual([
+      "model:fake/strong",
+      "interject:INTERJECT_TO_B",
+      "model:fake/default",
+      "interject:INTERJECT_TO_A",
+    ]);
+    await stopThread(providerThreadId);
+  });
+
   it("grok_interject_rejects_blank_and_non_text_input_before_calling_agent", async () => {
     const requestLog = join(workspaceDir, "grok-interject-invalid-input.jsonl");
     const { providerThreadId } = await startThread({
@@ -6298,6 +6367,48 @@ describe("acp bridge", () => {
             cost: { amount: 0.132_967_2, currency: "USD" },
           },
         ],
+      },
+    });
+    expect(
+      threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
+    ).toMatchObject({
+      contextWindowUsage: {
+        cost: { amount: 0.265_934_4, currency: "USD" },
+      },
+    });
+  });
+
+  it("grok_usage_accumulators_survive_a_resumed_rebuild", async () => {
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_GROK_CONTEXT: "1",
+        FAKE_ACP_GROK_USAGE: "1",
+        FAKE_ACP_LOAD_SESSION: "1",
+      },
+    };
+    const { providerThreadId } = await startThread(launch);
+    await completeTurnWith(
+      providerThreadId,
+      "first",
+      executionOptions({ providerOptions: launchProviderOptions(launch) }),
+    );
+    await completeTurnWith(
+      providerThreadId,
+      "second",
+      executionOptions({
+        envVars: { FAKE_ACP_USAGE_REBUILD: "1" },
+        providerOptions: launchProviderOptions(launch),
+      }),
+    );
+
+    expect(notifications("session/replaced")).toHaveLength(1);
+    expect(
+      threadEventsOfType("thread/tokenUsage/updated").at(-1),
+    ).toMatchObject({
+      tokenUsage: {
+        total: { totalTokens: 42_160 },
+        last: { totalTokens: 21_080 },
       },
     });
     expect(
