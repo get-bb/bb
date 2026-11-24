@@ -346,6 +346,20 @@ with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.
 
+When the injected skill catalog changes, the host daemon first offers the new
+roots to the environment's running bridges. A bridge whose handshake also
+declares `skills: { reconfigure: true }` receives another `skills/configure`
+and must apply the new roots to every open session from its next turn,
+without restarting the session or the processes it started (Codex sets the
+app-server's extra skill roots). It answers with an error when it could not.
+When every running bridge applies the change, the environment keeps its
+runtime. Otherwise the daemon falls back to the previous behavior: an
+environment with no tracked work (no live turn, open background task or
+in-flight command) is replaced, so its sessions restart with the new catalog
+on their next turn, and a busy one keeps its sessions on the old catalog while
+new sessions use the new one. Leave `reconfigure` undeclared when your bridge
+applies roots only to sessions it starts later.
+
 ### Command catalog
 
 `commands/list { cwd }` returns `{ commands: [{ name, description, inputHint? }] }`,

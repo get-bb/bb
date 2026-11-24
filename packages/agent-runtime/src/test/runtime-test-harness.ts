@@ -80,6 +80,7 @@ export interface ScriptedEchoLaunchScript {
   identifyProcess?: boolean;
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
+  reconfiguresSkills?: boolean;
 }
 
 export interface CreateScriptedEchoLaunchOptions {

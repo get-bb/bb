@@ -1779,7 +1779,7 @@ function handleInitialize(id: string | number): void {
       approvalEnforcedBy: "runtime",
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
-      skills: { configure: true },
+      skills: { configure: true, reconfigure: true },
       commands: { list: false },
     },
   };

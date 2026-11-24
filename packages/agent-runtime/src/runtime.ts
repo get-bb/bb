@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -74,7 +73,10 @@ import {
   type DroppedThreadEnvironmentContribution,
   type ResolvedThreadEnvironmentEntry,
 } from "./thread-shell-environment.js";
-import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
+import {
+  bridgeLaunchProcessKey,
+  providerProcessKey,
+} from "./bridge-launch-process-key.js";
 
 interface RecordThreadExecutionOptionsArgs {
   options: AgentRuntimeExecutionOptions;
@@ -255,15 +257,21 @@ function resolveThreadStoragePath(
   return path.join(rootPath, args.threadId);
 }
 
-export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
-  const skillRoots = options.skillRoots ?? [];
-  for (const skillRoot of skillRoots) {
-    if (!path.isAbsolute(skillRoot.path)) {
+function assertAbsoluteSkillRoots(
+  roots: readonly AgentRuntimeSkillRoot[],
+): void {
+  for (const root of roots) {
+    if (!path.isAbsolute(root.path)) {
       throw new Error(
-        `Agent runtime skill root "${skillRoot.id}" must use an absolute path: ${skillRoot.path}`,
+        `Agent runtime skill root "${root.id}" must use an absolute path: ${root.path}`,
       );
     }
   }
+}
+
+export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
+  let skillRoots = options.skillRoots ?? [];
+  assertAbsoluteSkillRoots(skillRoots);
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
@@ -365,18 +373,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     args: ResolveProviderProcessKeyArgs,
   ): string {
     const roots = args.skillRoots ?? skillRoots;
-    for (const root of roots) {
-      if (!path.isAbsolute(root.path)) {
-        throw new Error(
-          `Agent runtime skill root "${root.id}" must use an absolute path: ${root.path}`,
-        );
-      }
-    }
-    const catalogKey =
-      roots.length === 0
-        ? ""
-        : `#skills:${createHash("sha256").update(JSON.stringify(roots)).digest("hex")}`;
-    return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}${catalogKey}`;
+    assertAbsoluteSkillRoots(roots);
+    return providerProcessKey({
+      bridgeLaunchKey: bridgeLaunchProcessKey(args.bridgeLaunch),
+      providerId: args.providerId,
+      skillRoots: roots,
+    });
   }
 
   function requireProviderProcessForThread(threadId: string): ProviderProcess {
@@ -2727,6 +2729,39 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     listOpenBackgroundWork() {
       return backgroundWorkState.listOpenWork();
+    },
+
+    async reconfigureSkillRoots(args) {
+      assertAbsoluteSkillRoots(args.skillRoots);
+      skillRoots = args.skillRoots;
+      const result = await providerProcesses.reconfigureSkillRoots(
+        args.skillRoots,
+      );
+      const nextProcessKeys = new Map(
+        result.rekeyedProcesses.map((rekeyed) => [
+          rekeyed.fromProcessKey,
+          rekeyed.toProcessKey,
+        ]),
+      );
+      for (const config of threadRuntimeConfigs.values()) {
+        const nextProcessKey = nextProcessKeys.get(config.processKey);
+        if (nextProcessKey !== undefined) {
+          config.processKey = nextProcessKey;
+          config.skillRoots = args.skillRoots;
+        }
+      }
+      for (const rewind of stagedThreadRewinds.values()) {
+        if (rewind.state !== "prepared") {
+          continue;
+        }
+        const nextProcessKey = nextProcessKeys.get(rewind.processKey);
+        if (nextProcessKey !== undefined) {
+          rewind.processKey = nextProcessKey;
+        }
+      }
+      return {
+        appliedToEveryProvider: result.unappliedProcessCount === 0,
+      };
     },
 
     async shutdown() {

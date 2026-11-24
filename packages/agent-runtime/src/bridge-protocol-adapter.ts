@@ -290,6 +290,21 @@ export function createBridgeProtocolAdapter(
             method: BRIDGE_REQUEST_METHODS.skillsConfigure,
             params: { roots: command.skillRoots },
           };
+        case "skills/reconfigure":
+          if (
+            !handshake.skills.configure ||
+            handshake.skills.reconfigure !== true
+          ) {
+            return {
+              kind: "noop",
+              reason: "skills.reconfigure not advertised",
+            };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.skillsConfigure,
+            params: { roots: command.skillRoots },
+          };
         case "thread/start":
           return {
             kind: "request",
