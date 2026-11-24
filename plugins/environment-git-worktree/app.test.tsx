@@ -15,7 +15,11 @@ const app = await loadPluginApp(() => import("./app"));
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
+
+const REMEMBERED_ON_HOST_A =
+  "bb.environment-git-worktree.folders:project-1:host-a";
 
 function inputsSlot() {
   const registration = app.environmentProviderInputs.find(
@@ -229,6 +233,60 @@ describe("worktree inputs control", () => {
         folders: ["/work/api"],
       },
     });
+  });
+
+  it("remembers picked folders for this project and machine and starts the next thread with them", async () => {
+    const picked = render(
+      { branch: { kind: "named", name: "release" }, folders: [] },
+      vi.fn(),
+      WORKTREES,
+      () => ({ pools: [] }),
+      ["/work/api"],
+    );
+    await openPicker(picked.slot);
+    fireEvent.click(await picked.slot.findByRole("button", { name: /^api/u }));
+    expect(window.localStorage.getItem(REMEMBERED_ON_HOST_A)).toBe(
+      JSON.stringify(["/work/api"]),
+    );
+    expect(
+      window.localStorage.getItem(
+        "bb.environment-git-worktree.folders:project-1:host-b",
+      ),
+    ).toBeNull();
+    cleanup();
+
+    const next = render(null, vi.fn(), WORKTREES, () => ({ pools: [] }), [
+      "/work/api",
+    ]);
+    await waitFor(() => {
+      expect(next.onChange).toHaveBeenCalledWith({
+        status: "ready",
+        value: { branch: { kind: "default" }, folders: ["/work/api"] },
+      });
+    });
+  });
+
+  it("forgets a remembered folder that is no longer a branchable project folder", async () => {
+    window.localStorage.setItem(
+      REMEMBERED_ON_HOST_A,
+      JSON.stringify(["/work/api", "/work/gone"]),
+    );
+    const { onChange } = render(
+      { branch: { kind: "default" }, folders: ["/work/api", "/work/gone"] },
+      vi.fn(),
+      WORKTREES,
+      () => ({ pools: [] }),
+      ["/work/api"],
+    );
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({
+        status: "ready",
+        value: { branch: { kind: "default" }, folders: ["/work/api"] },
+      });
+    });
+    expect(window.localStorage.getItem(REMEMBERED_ON_HOST_A)).toBe(
+      JSON.stringify(["/work/api"]),
+    );
   });
 
   it("falls back to the default branch", async () => {

@@ -85,6 +85,45 @@ function selectedFolders(value: JsonValue | null): string[] {
     : [];
 }
 
+const REMEMBERED_FOLDERS_KEY = "bb.environment-git-worktree.folders";
+
+function rememberedFoldersKey(projectId: string, hostId: string): string {
+  return `${REMEMBERED_FOLDERS_KEY}:${projectId}:${hostId}`;
+}
+
+function readRememberedFolders(
+  projectId: string | null,
+  hostId: string | null,
+): string[] {
+  if (projectId === null || hostId === null) return [];
+  try {
+    const stored: unknown = JSON.parse(
+      window.localStorage.getItem(rememberedFoldersKey(projectId, hostId)) ??
+        "[]",
+    );
+    return Array.isArray(stored)
+      ? stored.filter((folder): folder is string => typeof folder === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberFolders(
+  projectId: string | null,
+  hostId: string | null,
+  folders: readonly string[],
+): void {
+  if (projectId === null || hostId === null) return;
+  try {
+    const key = rememberedFoldersKey(projectId, hostId);
+    if (folders.length === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify(folders));
+  } catch {
+    return;
+  }
+}
+
 function folderLabel(folderPath: string): string {
   return folderPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? folderPath;
 }
@@ -174,7 +213,7 @@ function WorktreeInputsControl({
   const [folderResult, setFolderResult] = useState<{
     projectId: string;
     hostId: string;
-    folders: readonly string[];
+    folders: readonly string[] | null;
   } | null>(null);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -195,8 +234,15 @@ function WorktreeInputsControl({
   });
 
   useEffect(() => {
-    if (value === null) onChange({ status: "ready", value: DEFAULT_INPUTS });
-  }, [value, onChange]);
+    if (value !== null) return;
+    onChange({
+      status: "ready",
+      value: {
+        ...DEFAULT_INPUTS,
+        folders: readRememberedFolders(projectId, hostId),
+      },
+    });
+  }, [value, onChange, projectId, hostId]);
 
   const refreshWorktrees = useCallback(async () => {
     const request = ++worktreeRequest.current;
@@ -270,8 +316,9 @@ function WorktreeInputsControl({
   }, [refreshWarmPool]);
   useRealtime(WARM_POOLS_CHANGED_CHANNEL, refreshWarmPool);
 
+  const hasFolders = folders.length > 0;
   useEffect(() => {
-    if (!open || projectId === null || hostId === null) return;
+    if ((!open && !hasFolders) || projectId === null || hostId === null) return;
     let active = true;
     rpc.call("listBranchableFolders", { projectId, hostId }).then(
       (result) => {
@@ -279,13 +326,41 @@ function WorktreeInputsControl({
           setFolderResult({ projectId, hostId, folders: result.folders });
       },
       () => {
-        if (active) setFolderResult({ projectId, hostId, folders: [] });
+        if (active) setFolderResult({ projectId, hostId, folders: null });
       },
     );
     return () => {
       active = false;
     };
-  }, [open, projectId, hostId, rpc]);
+  }, [open, hasFolders, projectId, hostId, rpc]);
+
+  const loadedFolders =
+    folderResult?.projectId === projectId && folderResult?.hostId === hostId
+      ? folderResult.folders
+      : null;
+  useEffect(() => {
+    if (loadedFolders === null) return;
+    const current = selectedFolders(value);
+    const kept = current.filter((folder) => loadedFolders.includes(folder));
+    if (kept.length === current.length) return;
+    rememberFolders(
+      projectId,
+      hostId,
+      readRememberedFolders(projectId, hostId).filter((folder) =>
+        loadedFolders.includes(folder),
+      ),
+    );
+    onChange({
+      status: "ready",
+      value: {
+        branch:
+          branchName === null
+            ? { kind: "default" }
+            : { kind: "named", name: branchName },
+        folders: kept,
+      },
+    });
+  }, [value, loadedFolders, branchName, onChange, projectId, hostId]);
 
   useEffect(() => {
     if (projectId === null || branchName !== null || existingPath !== null)
@@ -348,10 +423,7 @@ function WorktreeInputsControl({
     warmResult?.projectId === projectId && warmResult?.hostId === hostId
       ? warmResult.ready
       : 0;
-  const offeredFolders =
-    folderResult?.projectId === projectId && folderResult?.hostId === hostId
-      ? folderResult.folders
-      : [];
+  const offeredFolders = loadedFolders ?? [];
   const folderOptions = [
     ...offeredFolders,
     ...folders.filter((folder) => !offeredFolders.includes(folder)),
@@ -387,6 +459,10 @@ function WorktreeInputsControl({
     updateOpen(false);
   };
   const toggleFolder = (folder: string) => {
+    const nextFolders = folders.includes(folder)
+      ? folders.filter((entry) => entry !== folder)
+      : [...folders, folder];
+    rememberFolders(projectId, hostId, nextFolders);
     onChange({
       status: "ready",
       value: {
@@ -394,9 +470,7 @@ function WorktreeInputsControl({
           branchName === null
             ? { kind: "default" }
             : { kind: "named", name: branchName },
-        folders: folders.includes(folder)
-          ? folders.filter((entry) => entry !== folder)
-          : [...folders, folder],
+        folders: nextFolders,
       },
     });
   };
