@@ -390,7 +390,7 @@ export function SettingsListItem({
             role="list"
             className={cn(
               "mt-1 border-l border-border",
-              leading === undefined ? "pl-4" : "ml-[7px] pl-5",
+              leading === undefined ? "ml-1.5 pl-3.5" : "ml-[7px] pl-5",
             )}
           >
             {children}
