@@ -330,9 +330,8 @@ status/attempt/message.
 
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
 `ownsPath: true`, or earlier when a version-2 create calls `setup(path)`, and
-`.bb-env-teardown.sh` before `remove`. With `setup(path, { folders })` they
-also run in each listed folder: setup once per folder, in order, before
-`path`'s, and teardown after `path`'s, in reverse. Providers never run these hooks
+`.bb-env-teardown.sh` before `remove` (`setup(path, { folders })`: each folder
+first, in order; teardown after, in reverse). Providers never run these hooks
 themselves, and attached paths (`ownsPath: false`) never run them. Each
 has a 15-minute timeout, and its output goes to the launch report. Setup
 failure fails the launch. Teardown failure is reported, and removal continues
