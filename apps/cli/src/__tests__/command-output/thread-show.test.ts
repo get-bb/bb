@@ -152,7 +152,7 @@ describe("bb thread show command output", () => {
     expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
   });
 
-  it("bb thread show prints the model and reasoning level the next turn uses", async () => {
+  it("bb thread show prints the provider, and the model and reasoning level the next turn uses", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-execution-1",
       projectId: "proj-1",
@@ -180,8 +180,13 @@ describe("bb thread show command output", () => {
       param: { id: "thread-execution-1" },
     });
     const lines = collectLogLines(vi.mocked(console.log));
-    expect(lines).toContain("  Model: claude-haiku-5-5");
-    expect(lines).toContain("  Reasoning level: low");
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        "  Provider: claude-code",
+        "  Model: claude-haiku-5-5",
+        "  Reasoning level: low",
+      ]),
+    );
 
     vi.mocked(console.log).mockClear();
     await runCommand(

@@ -647,6 +647,7 @@ function printThreadStatus(
     console.log(`  Title: ${thread.title}`);
   }
   console.log(`  Project: ${thread.projectId}`);
+  console.log(`  Provider: ${thread.providerId}`);
   if (executionOptions !== null) {
     console.log(`  Model: ${executionOptions.model}`);
     console.log(`  Reasoning level: ${executionOptions.reasoningLevel}`);
