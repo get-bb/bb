@@ -282,8 +282,8 @@ function gridColumns(hasLeading: boolean, hasControl: boolean): string {
   if (!hasControl)
     return hasLeading ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-1";
   return hasLeading
-    ? "grid-cols-[1rem_minmax(0,1fr)] @min-[30rem]/settings-list:grid-cols-[1rem_minmax(0,1fr)_auto] has-[>[data-settings-control]_[role=switch]]:grid-cols-[1rem_minmax(0,1fr)_auto]"
-    : "grid-cols-1 @min-[30rem]/settings-list:grid-cols-[minmax(0,1fr)_auto] has-[>[data-settings-control]_[role=switch]]:grid-cols-[minmax(0,1fr)_auto]";
+    ? "grid-cols-[1rem_minmax(0,1fr)] @min-[30rem]/settings-list:grid-cols-[1rem_minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[aria-haspopup=menu])]:grid-cols-[1rem_minmax(0,1fr)_auto]"
+    : "grid-cols-1 @min-[30rem]/settings-list:grid-cols-[minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[aria-haspopup=menu])]:grid-cols-[minmax(0,1fr)_auto]";
 }
 
 export type SettingsListMeta = readonly (ReactNode | null | false)[];
@@ -393,8 +393,8 @@ export function SettingsListItem({
             className={cn(
               "flex items-center gap-2",
               leading === undefined
-                ? "col-start-1 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-2 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch]]:col-start-2 has-[[role=switch]]:row-start-1 has-[[role=switch]]:mt-0 has-[[role=switch]]:justify-self-end"
-                : "col-start-2 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-3 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch]]:col-start-3 has-[[role=switch]]:row-start-1 has-[[role=switch]]:mt-0 has-[[role=switch]]:justify-self-end",
+                ? "col-start-1 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-2 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[aria-haspopup=menu]]:col-start-2 has-[[role=switch],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[aria-haspopup=menu]]:justify-self-end"
+                : "col-start-2 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-3 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[aria-haspopup=menu]]:col-start-3 has-[[role=switch],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[aria-haspopup=menu]]:justify-self-end",
             )}
           >
             {control}
