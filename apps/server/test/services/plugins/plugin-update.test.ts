@@ -1,6 +1,7 @@
 import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update-jobs.js";
 import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
 import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
+import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import { execFile } from "node:child_process";
 import { cpSync } from "node:fs";
 import {
@@ -11,6 +12,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import Database from "better-sqlite3";
@@ -643,6 +645,43 @@ describe("plugin update service and routes", () => {
     ).toContain("shared one");
     await stat(join(rootDir, "..", "..", "shared", "message.ts"));
   });
+
+  it.skipIf(process.platform === "win32")(
+    "updates a subdirectory plugin whose skills are a symlink out of its directory",
+    async () => {
+      await installSubdirectoryUpdater();
+      await mkdir(join(repo, "shared", "skills", "review"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(repo, "shared", "skills", "review", "SKILL.md"),
+        "---\nname: review\ndescription: Review changes.\n---\n\n# review\n",
+      );
+      await symlink(
+        join("..", "..", "shared", "skills"),
+        join(repo, "plugins", "updater", "skills"),
+      );
+      await git(repo, ["add", "-A"]);
+      await git(repo, ["commit", "-qm", "Link shared skills"]);
+      const nextCommit = await git(repo, ["rev-parse", "HEAD"]);
+
+      await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+        ok: true,
+        result: { applied: true },
+      });
+      expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+        gitResolvedCommit: nextCommit,
+      });
+      const rootDir = service
+        .list()
+        .find((entry) => entry.id === "updater")?.rootDir;
+      if (rootDir === undefined) throw new Error("updater has no rootDir");
+      await stat(join(rootDir, "skills", "review", "SKILL.md"));
+      expect((await readPluginManifest(rootDir)).skillNames).toEqual([
+        "review",
+      ]);
+    },
+  );
 
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",

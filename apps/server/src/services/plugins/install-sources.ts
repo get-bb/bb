@@ -575,11 +575,28 @@ async function moveEntry(from: string, to: string): Promise<void> {
   }
 }
 
+async function protectedCheckoutRoots(
+  targetDir: string,
+  installedRoots: string[],
+): Promise<Set<string>> {
+  const realTargetDir = await realpath(targetDir);
+  const roots = new Set(installedRoots);
+  for (const root of installedRoots) {
+    const real = await realpath(join(targetDir, root)).catch(() => null);
+    if (real === null) continue;
+    const fromRoot = relative(realTargetDir, real);
+    if (fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`)) {
+      roots.add(fromRoot);
+    }
+  }
+  return roots;
+}
+
 async function adoptMissingEntries(
   stagingDir: string,
   targetDir: string,
   skip: string,
-  installedRoots: string[],
+  installedRoots: Set<string>,
   relativeDir = "",
 ): Promise<void> {
   const entries = await readdir(join(stagingDir, relativeDir), {
@@ -591,7 +608,7 @@ async function adoptMissingEntries(
     if (
       relativePath === skip ||
       relativePath === ".git" ||
-      installedRoots.includes(relativePath)
+      installedRoots.has(relativePath)
     ) {
       continue;
     }
@@ -653,12 +670,16 @@ export async function promoteGitPluginArtifact(args: {
       return args.contentHash;
     }
     const realSubdirectory = relative(realStagingDir, stagingRoot);
-    if (realSubdirectory.length > 0 && !args.installedRoots.includes("")) {
+    const installedRoots = await protectedCheckoutRoots(
+      args.targetDir,
+      args.installedRoots,
+    );
+    if (realSubdirectory.length > 0 && !installedRoots.has("")) {
       await adoptMissingEntries(
         realStagingDir,
         args.targetDir,
         realSubdirectory,
-        args.installedRoots,
+        installedRoots,
       );
     }
     await mkdir(dirname(targetRoot), { recursive: true });

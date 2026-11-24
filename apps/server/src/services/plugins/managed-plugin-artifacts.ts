@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { CORE_PLUGIN_DIRECTORIES, derivePluginId } from "@bb/domain";
 import {
@@ -307,6 +307,39 @@ async function keepSparseCheckoutIfResolvable(
   return resolvable || disableSparseCheckout(stagingDir);
 }
 
+async function linksLeaveSparseTree(
+  directory: string,
+  realRoot: string,
+): Promise<boolean> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isSymbolicLink()) {
+      const target = await realpath(path).catch(() => null);
+      if (target === null) return true;
+      const fromRoot = relative(realRoot, target);
+      if (
+        (fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) &&
+        (await stat(target)).isDirectory()
+      ) {
+        return true;
+      }
+    } else if (entry.isDirectory()) {
+      if (await linksLeaveSparseTree(path, realRoot)) return true;
+    }
+  }
+  return false;
+}
+
+async function keepSparseCheckoutIfLinksStayInside(
+  stagingDir: string,
+  pluginRoot: string,
+): Promise<boolean> {
+  const realRoot = await realpath(pluginRoot);
+  return (await linksLeaveSparseTree(realRoot, realRoot))
+    ? disableSparseCheckout(stagingDir)
+    : true;
+}
+
 type GitCheckoutTarget =
   | { selection: PluginSourceSelection; sourceLabel: string }
   | { subdirectory: string | null };
@@ -381,6 +414,12 @@ async function cloneGitCommit(
     }
     if (sparse) {
       sparse = await keepSparseCheckoutIfResolvable(
+        stagingDir,
+        pluginRootDir(stagingDir, subdirectory),
+      );
+    }
+    if (sparse) {
+      sparse = await keepSparseCheckoutIfLinksStayInside(
         stagingDir,
         pluginRootDir(stagingDir, subdirectory),
       );
