@@ -1864,6 +1864,158 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     });
   });
 
+  it("maps a read of an image path to imageView across start and completion", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "read-img-1",
+        name: "read_file",
+        title: "File /workspace/shots/preview.png",
+        kind: "read",
+        status: "in_progress",
+        locations: [{ path: "/workspace/shots/preview.png" }],
+        rawInput: { Path: "/workspace/shots/preview.png" },
+      }),
+    );
+    const completedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "read-img-1",
+        name: "read_file",
+        title: "File /workspace/shots/preview.png",
+        kind: "read",
+        status: "completed",
+        locations: [{ path: "/workspace/shots/preview.png" }],
+        rawInput: { Path: "/workspace/shots/preview.png" },
+      }),
+    );
+
+    expect(startedEvents).toHaveLength(1);
+    expect(completedEvents).toHaveLength(1);
+    const started = startedEvents[0];
+    const completed = completedEvents[0];
+    expect(started?.type).toBe("item/started");
+    expect(completed?.type).toBe("item/completed");
+    if (started?.type === "item/started" && completed?.type === "item/completed") {
+      expect(completed.item.id).toBe(started.item.id);
+      expect(started.item).toMatchObject({
+        type: "imageView",
+        path: "/workspace/shots/preview.png",
+        presentation: {
+          label: { pending: "Viewing image", completed: "Viewed image" },
+          icon: { glyph: "Eye" },
+          title: "preview.png",
+        },
+      });
+      expect(completed.item).toMatchObject({
+        type: "imageView",
+        path: "/workspace/shots/preview.png",
+        presentation: {
+          label: { pending: "Viewing image", completed: "Viewed image" },
+          icon: { glyph: "Eye" },
+          title: "preview.png",
+        },
+      });
+    }
+  });
+
+  it("resolves relative, rawInput.Path, and home-prefixed image reads to absolute imageView paths", () => {
+    expect(
+      openItem({
+        toolCallId: "read-img-rel",
+        title: "Read File",
+        kind: "read",
+        locations: [{ path: "shots/diagram.JPG" }],
+      }),
+    ).toMatchObject({
+      type: "imageView",
+      path: path.resolve(SESSION_CWD, "shots/diagram.JPG"),
+      presentation: {
+        label: { pending: "Viewing image", completed: "Viewed image" },
+        icon: { glyph: "Eye" },
+        title: "diagram.JPG",
+      },
+    });
+
+    expect(
+      openItem({
+        toolCallId: "read-img-raw-cap",
+        title: "Read File",
+        kind: "read",
+        rawInput: { Path: "/workspace/shots/capture.webp" },
+      }),
+    ).toMatchObject({
+      type: "imageView",
+      path: "/workspace/shots/capture.webp",
+    });
+
+    const homeImage = openItem({
+      toolCallId: "read-img-home",
+      title: "Read File",
+      kind: "read",
+      locations: [{ path: "~/shots/screen.png" }],
+    });
+    expect(homeImage).toMatchObject({
+      type: "imageView",
+      presentation: {
+        label: { pending: "Viewing image", completed: "Viewed image" },
+        icon: { glyph: "Eye" },
+        title: "screen.png",
+      },
+    });
+    if (homeImage.type === "imageView") {
+      expect(path.isAbsolute(homeImage.path)).toBe(true);
+      expect(homeImage.path.endsWith(path.join("shots", "screen.png"))).toBe(true);
+    }
+  });
+
+  it("keeps image URLs and relative image reads without cwd as fileRead", () => {
+    const translator = createAcpDeltaTranslator();
+    const assembler = createDeltaAssembler({
+      providerId: "acp",
+      entropyPrefix: ENTROPY,
+      textDeltaFlushMs: 0,
+    });
+    const emit = (event: ProviderRuntimeEvent) =>
+      assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+      });
+    emit(turnStartedEvent());
+    const relNoCwd = emit(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "read-img-no-cwd",
+        title: "Read File",
+        kind: "read",
+        status: "in_progress",
+        locations: [{ path: "shots/a.png" }],
+      }),
+    )[0];
+    expect(relNoCwd?.type).toBe("item/started");
+    if (relNoCwd?.type === "item/started") {
+      expect(relNoCwd.item).toMatchObject({
+        type: "fileRead",
+        path: "shots/a.png",
+      });
+    }
+
+    expect(
+      openItem({
+        toolCallId: "read-img-url",
+        title: "Read File",
+        kind: "read",
+        locations: [{ path: "https://example.com/diagram.png" }],
+      }),
+    ).toMatchObject({
+      type: "fileRead",
+      path: "https://example.com/diagram.png",
+    });
+  });
+
   it("recovers the read path from a single code-ticked title token", () => {
     expect(
       openItem({

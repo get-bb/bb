@@ -71,6 +71,16 @@ export function delegationPresentation(args: {
     : { ...presentation, detail: args.detail };
 }
 
+export function imageViewPresentation(path: string): DeltaPresentation {
+  return withTitle(
+    {
+      label: { pending: "Viewing image", completed: "Viewed image" },
+      icon: { glyph: "Eye" },
+    },
+    presentationTitle(presentationFileName(path)),
+  );
+}
+
 interface KindPresentationSpec {
   label: DeltaPresentation["label"];
   glyph: string;

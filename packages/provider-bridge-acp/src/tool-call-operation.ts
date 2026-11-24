@@ -27,11 +27,14 @@ const acpRawInputCommandSchema = z
 const acpRawInputPathSchema = z
   .object({
     path: z.string().optional(),
+    Path: z.string().optional(),
     filePath: z.string().optional(),
     file_path: z.string().optional(),
     target_file: z.string().optional(),
   })
   .passthrough();
+
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:\/\//i;
 
 export interface AcpToolCallPathOptions {
   cwd?: string | undefined;
@@ -43,7 +46,12 @@ export function resolveAcpToolCallPath(
   options: AcpToolCallPathOptions | undefined,
 ): string {
   const cwd = options?.cwd;
-  if (cwd === undefined || path.isAbsolute(value) || value.startsWith("~")) {
+  if (
+    cwd === undefined ||
+    path.isAbsolute(value) ||
+    value.startsWith("~") ||
+    URL_SCHEME_PATTERN.test(value)
+  ) {
     return value;
   }
   return path.resolve(cwd, value);
@@ -87,6 +95,7 @@ export function extractAcpToolCallPaths(
   }
   const rawInputPath = [
     parsed.data.path,
+    parsed.data.Path,
     parsed.data.filePath,
     parsed.data.file_path,
     parsed.data.target_file,

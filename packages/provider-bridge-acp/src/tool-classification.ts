@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import nodePath from "node:path";
 import type {
   DeltaFileChange,
   DeltaItemShape,
@@ -16,6 +18,7 @@ import { z } from "zod";
 import {
   commandPresentation,
   fileChangePresentation,
+  imageViewPresentation,
   toolKindPresentation,
   type AcpFileChangeVerb,
 } from "./presentation.js";
@@ -376,6 +379,26 @@ function fileChangeItem(
   };
 }
 
+const ACP_IMAGE_READ_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:\/\//i;
+
+function resolveAcpImageReadPath(
+  rawPath: string,
+  options: AcpToolCallPathOptions | undefined,
+): string | null {
+  if (URL_SCHEME_PATTERN.test(rawPath)) {
+    return null;
+  }
+  const expanded = rawPath.startsWith("~/")
+    ? nodePath.join(homedir(), rawPath.slice(2))
+    : rawPath;
+  const resolved = resolveAcpToolCallPath(expanded, options);
+  return nodePath.isAbsolute(resolved) &&
+    ACP_IMAGE_READ_PATH_PATTERN.test(resolved)
+    ? resolved
+    : null;
+}
+
 function fileReadItem(
   event: AcpToolCallUpdateEvent,
   title: string | undefined,
@@ -387,6 +410,13 @@ function fileReadItem(
     (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
   if (path === undefined) {
     return null;
+  }
+  const imagePath = resolveAcpImageReadPath(path, options);
+  if (imagePath !== null) {
+    return {
+      item: { type: "imageView", path: imagePath },
+      presentation: imageViewPresentation(imagePath),
+    };
   }
   return {
     item: { type: "fileRead", path },
