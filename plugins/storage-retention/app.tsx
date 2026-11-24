@@ -2914,12 +2914,12 @@ function heldWorkspaceExplanation(held: {
 }) {
   const folder = held.path.split(/[\\/]/).filter(Boolean).at(-1) ?? held.path;
   const [first] = held.threadTitles;
+  if (first === undefined)
+    return `Can’t be cleared: its ${folder} checkout belongs to an environment that is being kept open. Delete that environment first.`;
   const users =
-    first === undefined
-      ? "an environment"
-      : held.threadTitles.length === 1
-        ? `“${first}”`
-        : `“${first}” and ${plural(held.threadTitles.length - 1, "other thread")}`;
+    held.threadTitles.length === 1
+      ? `“${first}”`
+      : `“${first}” and ${plural(held.threadTitles.length - 1, "other thread")}`;
   return `Can’t be cleared: its ${folder} checkout is still used by ${users}. Archive or move that work first.`;
 }
 function externalWorktreeSelection(
