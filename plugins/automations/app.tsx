@@ -573,6 +573,7 @@ function OverviewView({
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
+        experimental_replacePrompt: true,
       });
     },
     [navigate],
@@ -639,6 +640,7 @@ function DetailView({
           projectId: route.projectId,
           automationId: route.automationId,
         }),
+        experimental_replacePrompt: true,
       });
     },
     [navigate, route],

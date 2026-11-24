@@ -21,6 +21,7 @@ import type {
   PluginHomepageSectionRegistration,
   PluginCommandRegistration,
   ExperimentalComposerCommandRegistration,
+  PluginComposerScope,
   PluginMessageActionRegistration,
   ExperimentalMessageActionSurface,
   ExperimentalMessageMetadataRegistration,
@@ -321,6 +322,10 @@ function isBareKeyShortcut(
 type CollectedCommandShortcut = z.infer<
   ReturnType<typeof createCommandShortcutSchema>
 > | null;
+
+const COMPOSER_COMMAND_SCOPES: ReadonlySet<unknown> = new Set<
+  PluginComposerScope["kind"]
+>(["thread", "queued-message", "new-thread"]);
 
 export type CollectedPluginCommandRegistration =
   | (Omit<PluginCommandRegistration, "defaultShortcut"> & {
@@ -727,13 +732,34 @@ export function collectPluginAppRegistrations(
   function registerComposerCommand(
     registration: ExperimentalComposerCommandRegistration,
   ): void {
+    const kind = "composer.experimental_registerCommand";
+    const command = collectCommand(kind, registration, undefined);
+    const scopes = registration.scopes;
+    if (scopes !== undefined) {
+      if (!Array.isArray(scopes)) {
+        throw new Error(`${kind}: "scopes" must be an array when set`);
+      }
+      for (const scope of scopes) {
+        if (!COMPOSER_COMMAND_SCOPES.has(scope)) {
+          throw new Error(
+            `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
+          );
+        }
+      }
+    }
+    if (
+      registration.isAvailable !== undefined &&
+      typeof registration.isAvailable !== "function"
+    ) {
+      throw new Error(`${kind}: "isAvailable" must be a function`);
+    }
     collected.commandPaletteActions.push({
       target: "composer",
-      ...collectCommand(
-        "composer.experimental_registerCommand",
-        registration,
-        undefined,
-      ),
+      ...command,
+      ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
+      ...(registration.isAvailable !== undefined
+        ? { isAvailable: registration.isAvailable }
+        : {}),
       run: registration.run,
     });
   }

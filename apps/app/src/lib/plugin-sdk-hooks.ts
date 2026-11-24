@@ -92,7 +92,6 @@ import {
   useAppFixedTabTarget,
 } from "@/lib/app-fixed-tab-navigation";
 export {
-  isAutomationEditRoutePath,
   useSdk,
   useBbNavigate,
 } from "./plugin-navigation-hooks";

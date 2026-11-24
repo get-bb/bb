@@ -3,28 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   callPluginRpc,
   fetchPluginSdkSettings,
-  isAutomationEditRoutePath,
 } from "./plugin-sdk-hooks";
-
-describe("isAutomationEditRoutePath", () => {
-  it("recognizes only canonical automation edit routes", () => {
-    expect(
-      isAutomationEditRoutePath(
-        "/plugins/automations/automations/proj_standard/auto_standard/edit",
-      ),
-    ).toBe(true);
-    expect(
-      isAutomationEditRoutePath(
-        "/plugins/automations/automations/proj_standard/auto_standard",
-      ),
-    ).toBe(false);
-    expect(
-      isAutomationEditRoutePath(
-        "/tools/automations/proj_standard/auto_standard/edit",
-      ),
-    ).toBe(false);
-  });
-});
 
 type FetchLike = Parameters<typeof callPluginRpc>[0];
 

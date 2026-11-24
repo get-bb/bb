@@ -63,6 +63,8 @@ import {
   type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginCommandRegistration,
+  type ExperimentalComposerCommandRegistration,
   type PluginMessageActionRegistration,
   type ExperimentalMessageMetadataRegistration,
   type PluginMessageDirectiveRegistration,
@@ -195,6 +197,7 @@ import {
 } from "../thread-info-groups.js";
 import {
   collectPluginAppRegistrations,
+  type CollectedPluginCommandRegistration,
   type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
 } from "../internal/plugin-app-collector.js";
@@ -2233,6 +2236,10 @@ export function installTestPluginRuntime(): void {
 // ---------------------------------------------------------------------------
 
 export interface CapturedPluginApp {
+  /** `app.commands.register` registrations, after the host's validation. */
+  commands: PluginCommandRegistration[];
+  /** `app.composer.experimental_registerCommand` registrations, after the host's validation. */
+  composerCommands: ExperimentalComposerCommandRegistration[];
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
@@ -2310,10 +2317,35 @@ export async function loadPluginApp(
   }
   loadingWithServers = options.hasServers ?? false;
   try {
-    return collectPluginAppRegistrations(definition);
+    const collected = collectPluginAppRegistrations(definition);
+    return {
+      ...collected,
+      ...capturedCommands(collected.commandPaletteActions),
+    };
   } finally {
     loadingWithServers = false;
   }
+}
+
+function capturedCommands(
+  collected: readonly CollectedPluginCommandRegistration[],
+): Pick<CapturedPluginApp, "commands" | "composerCommands"> {
+  const commands: PluginCommandRegistration[] = [];
+  const composerCommands: ExperimentalComposerCommandRegistration[] = [];
+  for (const command of collected) {
+    const shortcut =
+      command.defaultShortcut === null
+        ? {}
+        : { defaultShortcut: command.defaultShortcut };
+    if (command.target === "app") {
+      const { target: _target, defaultShortcut: _shortcut, ...rest } = command;
+      commands.push({ ...rest, ...shortcut });
+    } else {
+      const { target: _target, defaultShortcut: _shortcut, ...rest } = command;
+      composerCommands.push({ ...rest, ...shortcut });
+    }
+  }
+  return { commands, composerCommands };
 }
 
 export interface ContentScriptTestMountOptions {

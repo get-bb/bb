@@ -680,11 +680,41 @@ describe("collectPluginAppRegistrations", () => {
         },
       });
       app.contentScripts.register({ id: "script", mount });
+      app.commands.register({
+        id: "open",
+        title: "Open",
+        defaultShortcut: { key: "k", mod: true },
+        run,
+      });
+      app.composer.experimental_registerCommand({
+        id: "compose",
+        title: "Compose",
+        scopes: ["thread"],
+        run,
+      });
     });
 
-    expect(await loadPluginApp(definition)).toEqual(
-      collectPluginAppRegistrations(definition),
-    );
+    expect(await loadPluginApp(definition)).toEqual({
+      ...collectPluginAppRegistrations(definition),
+      commands: [
+        {
+          id: "open",
+          title: "Open",
+          defaultShortcut: {
+            key: "k",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: false,
+          },
+          run,
+        },
+      ],
+      composerCommands: [
+        { id: "compose", title: "Compose", scopes: ["thread"], run },
+      ],
+    });
   });
 
   it("collects every slot kind as plain data", () => {

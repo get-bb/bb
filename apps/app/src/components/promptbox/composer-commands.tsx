@@ -12,6 +12,7 @@ export const ComposerCommandOwnerProvider =
 export function useComposerCommand(
   command: KeyboardCommandId,
   run: () => void,
+  isAvailable?: () => boolean,
 ): void {
   const ownsCommand = useContext(ComposerCommandOwnerContext);
   useAppCommandHandler(
@@ -22,7 +23,8 @@ export function useComposerCommand(
     },
     0,
     ownsCommand !== null,
-    ({ target }) => ownsCommand?.(target) ?? false,
+    ({ target }) =>
+      (ownsCommand?.(target) ?? false) && (isAvailable?.() ?? true),
   );
 }
 

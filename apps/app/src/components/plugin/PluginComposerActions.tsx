@@ -9,6 +9,7 @@ import {
 import type {
   ComposerPlusMenuItem,
   ComposerView,
+  ExperimentalComposerActionContext,
   PluginComposerApi,
 } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
@@ -284,6 +285,10 @@ export function PluginComposerPlusMenuEntry({
   );
 }
 
+interface RetiredComposerMenuRunMembers {
+  view: ComposerView;
+}
+
 function useComposerMenuItemDisabled(
   item: ComposerPlusMenuItem,
   composer: PluginComposerApi,
@@ -321,12 +326,14 @@ function PluginComposerPlusMenuEntryContent({
   const host = useAppNavigationHost();
 
   const run = async () => {
+    const context: ExperimentalComposerActionContext &
+      RetiredComposerMenuRunMembers = {
+      ...bind(pluginId, () => host),
+      composer,
+      view,
+    };
     try {
-      await item.run({
-        ...bind(pluginId, () => host),
-        composer,
-        view,
-      } as Parameters<ComposerPlusMenuItem["run"]>[0]);
+      await item.run(context);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(

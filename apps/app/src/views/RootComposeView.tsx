@@ -1,6 +1,6 @@
 import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
-import type { ComposerAttachment } from "@get-bb/plugin-sdk";
+import type { ComposerAttachment, NewThreadRequest } from "@get-bb/plugin-sdk";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 
 import {
@@ -30,7 +30,6 @@ import type {
 import {
   NewThreadComposer,
   type NewThreadComposerState,
-  type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
 import {
   ProviderCliBanner,
@@ -416,7 +415,7 @@ export function RootComposeView() {
     useNavigateToThreadAfterCreatePreference();
 
   const handleSubmit = useCallback(
-    async (request: NewThreadComposerSubmission) => {
+    async (request: NewThreadRequest) => {
       const { sendAt, ...requestFields } = request;
       const thread = await createThread.mutateAsync({
         ...requestFields,

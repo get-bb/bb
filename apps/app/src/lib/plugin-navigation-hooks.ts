@@ -1,11 +1,6 @@
 import { useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  matchPath,
-  useLocation,
-  useNavigate,
-  type NavigateFunction,
-} from "react-router-dom";
+import { useNavigate, type NavigateFunction } from "react-router-dom";
 import type {
   BbNavigate,
   ExperimentalPluginActionContext,
@@ -16,11 +11,9 @@ import { usePluginId } from "@/components/plugin/plugin-context";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import {
-  AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
   getThreadLocationPath,
-  AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
 import { useStore } from "jotai";
@@ -51,13 +44,6 @@ import { getActiveComposerHandle } from "@/lib/active-composer";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { bindThreadRequests } from "@/lib/thread-requests";
 
-export function isAutomationEditRoutePath(pathname: string): boolean {
-  return (
-    matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
-    null
-  );
-}
-
 export function useSdk(): PluginBrowserBbSdk {
   const pluginId = usePluginId();
   const queryClient = useQueryClient();
@@ -72,7 +58,6 @@ export type BindPluginActionContext = (
 interface BbNavigateDeps {
   navigate: NavigateFunction;
   onNavigate: (() => void) | null;
-  pathname: string;
   store: ReturnType<typeof useStore>;
   queryClient: QueryClient;
   isCompact: boolean;
@@ -175,10 +160,7 @@ function createBbNavigate(
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
     toCompose(options) {
-      const { isCompact, navigate, onNavigate, pathname, store } = latest();
-      const replacesAutomationEditRoute =
-        pluginId === AUTOMATIONS_PLUGIN_ID &&
-        isAutomationEditRoutePath(pathname);
+      const { isCompact, navigate, onNavigate, store } = latest();
       onNavigate?.();
       openNewThread({
         navigate,
@@ -204,8 +186,9 @@ function createBbNavigate(
           : {}),
         ...(options?.hostId !== undefined ? { hostId: options.hostId } : {}),
         ...(options?.split === true ? { split: true } : {}),
-        ...(replacesAutomationEditRoute
-          ? { replace: true, replaceInitialPrompt: true }
+        ...(options?.initialPrompt !== undefined &&
+        options.experimental_replacePrompt === true
+          ? { replaceInitialPrompt: true }
           : {}),
       });
     },
@@ -263,7 +246,6 @@ export function usePluginActionContextBinder(): BindPluginActionContext {
   const deps: BbNavigateDeps = {
     navigate: useNavigate(),
     onNavigate: useContext(RouteNavigationCallbackContext),
-    pathname: useLocation().pathname,
     store: useStore(),
     queryClient: useQueryClient(),
     isCompact: useIsCompactViewport(),
