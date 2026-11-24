@@ -54,7 +54,6 @@ import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
-  ThreadTimelineForkMessageHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineMessageAction,
   ThreadTimelineUnreadDividerPlacement,
@@ -159,7 +158,7 @@ import {
 export interface ThreadTimelineRowsProps {
   initialExpanded?: ReadonlySet<string>;
   canSpawnChild?: boolean;
-  onForkMessage?: ThreadTimelineForkMessageHandler;
+  canFork?: boolean;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   instanceMessageActions?: readonly PluginMessageActionSlot[];
@@ -182,7 +181,7 @@ export interface ThreadTimelineRowsProps {
 interface TimelineRendererStaticContextValue {
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
-  onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  canFork: boolean;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
   inlineMessageEditor: ThreadTimelineInlineMessageEditor | undefined;
   messageActionSlots: readonly PluginMessageActionSlot[];
@@ -828,7 +827,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     canSpawnChild,
     inlineMessageEditor,
     onEditMessage,
-    onForkMessage,
+    canFork,
     messageActionSlots,
     messageMetadata,
     reportProseSelection,
@@ -892,11 +891,8 @@ const ConversationRowContent = memo(function ConversationRowContent({
                 input: buildEditInput(row),
               })
           : null,
-      fork:
-        onForkMessage === undefined
-          ? null
-          : () => onForkMessage({ sourceSeqEnd: row.sourceSeqEnd }),
     },
+    canFork,
     canSpawnChild,
   };
   const actions = buildMessageActions({
@@ -2329,7 +2325,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => ({
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
-      onForkMessage: props.onForkMessage,
+      canFork: props.canFork ?? false,
       onEditMessage: props.onEditMessage,
       inlineMessageEditor: props.inlineMessageEditor,
       messageActionSlots,
@@ -2346,7 +2342,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [
       props.canSpawnChild,
       getViewRows,
-      props.onForkMessage,
+      props.canFork,
       props.onEditMessage,
       props.inlineMessageEditor,
       messageActionSlots,

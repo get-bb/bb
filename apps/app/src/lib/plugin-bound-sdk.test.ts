@@ -24,11 +24,19 @@ import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { bindSdkToPlugin, getPluginBoundSdk } from "./plugin-bound-sdk";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { settleLazyModules } from "@/test/lazy-modules";
 
 function makeSdk() {
   const threads = {
     spawn: vi.fn(async (args: unknown) => args),
-    fork: vi.fn(async (args: unknown) => args),
+    fork: vi.fn(async (_args: unknown) =>
+      makeThreadResponse({
+        id: "thr_fork",
+        projectId: "proj_1",
+        originKind: "fork",
+        sourceThreadId: "thr_1",
+      }),
+    ),
     getPluginMetadata: vi.fn(async (args: unknown) => args),
     updatePluginMetadata: vi.fn(async (args: unknown) => args),
     update: vi.fn(async ({ threadId }: { threadId: string }) =>
@@ -126,12 +134,23 @@ describe("bindSdkToPlugin", () => {
       origin: "plugin",
       originPluginId: "thread-list",
     });
-    await bound.threads.fork({ sourceThreadId: "thr_1" } as never);
+    await settleLazyModules(
+      bound.threads.fork({ sourceThreadId: "thr_1" } as never),
+    );
     expect(threads.fork).toHaveBeenCalledWith({
       sourceThreadId: "thr_1",
       origin: "plugin",
       originPluginId: "thread-list",
     });
+  });
+
+  it("puts a fork in the thread cache before its caller navigates to it", async () => {
+    const { sdk, queryClient } = makeSdk();
+    const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
+    const fork = await settleLazyModules(
+      bound.threads.fork({ sourceThreadId: "thr_1" }),
+    );
+    expect(queryClient.getQueryData(threadQueryKey("thr_fork"))).toEqual(fork);
   });
 
   it("keeps an explicit non-plugin origin and an explicit plugin id", async () => {

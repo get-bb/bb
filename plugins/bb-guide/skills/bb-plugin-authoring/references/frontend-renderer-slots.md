@@ -229,7 +229,7 @@ experimental_availability?, run }`. `experimental_surfaces` limits it to
   join the overflow menu as one block where the row's first inline action
   sorts. `experimental_availability(input)` is pure and runs per
   message while rendering; return `"enabled"`, `"disabled"` or `"hidden"` from
-  `{ threadId, message, selectedText?, messageRequests, composer,
+  `{ threadId, message, selectedText?, messageRequests, composer, canFork,
 canSpawnChild }`.
   Activating it calls `run(context)` with `{ threadId, message, selectedText?,
 experimental_selectedMarkdown?, composer, experimental_invokedFrom,
@@ -242,8 +242,11 @@ experimental_settled, experimental_attachments, experimental_imageUrls }`
   `?msg=`, `sdk.threads.message` and `bb thread log --message` use,
   `sourceSeqEnd` anchors provider-history forks, and `experimental_settled` is
   false while the message streams or its request is pending.
-  `experimental_messageRequests` is `{ edit, fork }`: bb's own flows for that
-  message, each null when bb would not offer it there. `composer` is the
+  `experimental_messageRequests` is `{ edit }`: bb's inline sent-message
+  editor for that message, null when bb would not offer it there. bb's Fork is
+  `sdk.threads.fork({ sourceThreadId: threadId, sourceSeqEnd:
+message.sourceSeqEnd })` then `navigate.toThread(fork.id)`, offered when
+  `canFork`. `composer` is the
   message's thread composer on this surface (or the inline editor of one of its
   queued messages while open), else null; bb's Add to chat is
   `composer.replace((d) => experimental_appendQuoteToDraft(d, text,

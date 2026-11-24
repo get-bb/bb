@@ -15,7 +15,6 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { isThreadForkable } from "@bb/client-core";
-import { type ThreadTimelineForkMessageHandler } from "@/components/thread/timeline";
 import {
   ThreadTimelineNavigationProvider,
   useThreadTimelineNavigation,
@@ -31,7 +30,6 @@ import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadTimelineSubscription } from "@/hooks/queries/thread-panel-queries";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
-import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -163,16 +161,6 @@ function PluginThreadChatBody({
       openThread({ navigate, ...target });
     },
     [navigate, paneNavigateInPane],
-  );
-  const forkThreadFromMessage = useForkThreadFromMessage({
-    navigateInPane: navigateToThread,
-    sourceThread: thread ?? null,
-  });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
-    (target) => {
-      void forkThreadFromMessage(target);
-    },
-    [forkThreadFromMessage],
   );
   const isForkAvailable =
     hasComposer &&
@@ -375,7 +363,7 @@ function PluginThreadChatBody({
                   : null,
               leadingContent: leadingContent ?? null,
               messageActionSurface: "embedded-chat",
-              onForkMessage: isForkAvailable ? handleForkMessage : null,
+              canFork: isForkAvailable,
               onTitleAction: handleTimelineTitleAction,
               unreadDividerAutoScroll: unreadDividerState.autoScroll,
               unreadDividerPlacement: unreadDividerState.placement,

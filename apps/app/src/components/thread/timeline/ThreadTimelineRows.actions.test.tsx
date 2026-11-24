@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
-import { MemoryRouter, useNavigate } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import type {
@@ -36,6 +36,11 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { collectMessageActionRegistration } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { collectThreadChatMessageActions } from "@/lib/plugin-message-actions";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { sdk } from "@/lib/sdk";
+import { PluginActionContextProvider } from "@/lib/plugin-action-context-provider";
+import { createDeferredPromise } from "@bb/test-helpers";
+import type { ThreadResponse } from "@bb/server-contract";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -101,6 +106,11 @@ function selectMessageMenuItem(name: string) {
     screen.getByRole("button", { name: "Message actions" }),
   );
   fireEvent.click(screen.getByRole("menuitem", { name }));
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.pathname}</span>;
 }
 
 function SameThreadSearchNavigationHarness() {
@@ -332,7 +342,7 @@ describe("ThreadTimelineRows actions", () => {
             }),
           ]}
           canSpawnChild
-          onForkMessage={vi.fn()}
+          canFork
           threadRuntimeDisplayStatus="idle"
         />
       </PluginComposerHostProvider>,
@@ -1712,14 +1722,14 @@ describe("ThreadTimelineRows actions", () => {
     expect(rows).toEqual(["assistant_row"]);
   });
 
-  it("hides or disables an action per message from its availability and bb's message requests", () => {
+  it("hides or disables an action per message from its availability input", () => {
     const run = vi.fn();
     const availability = vi.fn(
       ({
-        messageRequests,
+        canFork,
         canSpawnChild,
       }: ExperimentalMessageActionAvailabilityInput) =>
-        messageRequests.fork === null
+        !canFork
           ? ("hidden" as const)
           : canSpawnChild
             ? ("enabled" as const)
@@ -1750,19 +1760,19 @@ describe("ThreadTimelineRows actions", () => {
     expect(availability.mock.calls[0]![0]).toMatchObject({
       threadId: "thr_main",
       message: { id: "assistant_row", experimental_settled: true },
-      messageRequests: { edit: null, fork: null },
+      messageRequests: { edit: null },
       composer: null,
+      canFork: false,
       canSpawnChild: false,
     });
 
-    const onForkMessage = vi.fn();
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
           <ThreadTimelineRows
             threadId="thr_main"
             timelineRows={rows}
-            onForkMessage={onForkMessage}
+            canFork
             threadRuntimeDisplayStatus="idle"
           />
         </MemoryRouter>
@@ -1778,7 +1788,7 @@ describe("ThreadTimelineRows actions", () => {
             threadId="thr_main"
             timelineRows={rows}
             canSpawnChild
-            onForkMessage={onForkMessage}
+            canFork
             threadRuntimeDisplayStatus="idle"
           />
         </MemoryRouter>
@@ -1787,8 +1797,89 @@ describe("ThreadTimelineRows actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fork elsewhere" }));
     const context = run.mock.calls[0]![0];
     expect(context.experimental_invokedFrom).toBe("button");
-    context.experimental_messageRequests.fork();
-    expect(onForkMessage).toHaveBeenCalledWith({ sourceSeqEnd: 1 });
+  });
+
+  it("forks through the public fork API once per click and opens the fork", async () => {
+    const pending = createDeferredPromise<ThreadResponse>();
+    const fork = vi.spyOn(sdk.threads, "fork").mockReturnValue(pending.promise);
+    renderWithRouter(
+      <PluginActionContextProvider>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Fork from here.",
+              sourceSeqEnd: 7,
+              threadId: "thr_main",
+            }),
+          ]}
+          canFork
+          canSpawnChild
+          threadRuntimeDisplayStatus="idle"
+        />
+        <LocationProbe />
+      </PluginActionContextProvider>,
+    );
+
+    selectMessageMenuItem("Fork into new thread");
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledWith({
+      sourceThreadId: "thr_main",
+      sourceSeqEnd: 7,
+      origin: "app",
+    });
+
+    await act(async () => {
+      pending.resolve(
+        makeThreadResponse({
+          id: "thr_fork",
+          projectId: "proj_main",
+          originKind: "fork",
+          sourceThreadId: "thr_main",
+        }),
+      );
+      await pending.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj_main/threads/thr_fork",
+      ),
+    );
+  });
+
+  it("stays on the source thread when the fork is rejected and lets the user retry", async () => {
+    const fork = vi
+      .spyOn(sdk.threads, "fork")
+      .mockRejectedValue(new Error("fork_source_session_unavailable"));
+    renderWithRouter(
+      <PluginActionContextProvider>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Fork from here.",
+              threadId: "thr_main",
+            }),
+          ]}
+          canFork
+          canSpawnChild
+          threadRuntimeDisplayStatus="idle"
+        />
+        <LocationProbe />
+      </PluginActionContextProvider>,
+    );
+
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("location").textContent).toBe("/");
   });
 
   it("gives message actions only their own thread's composer, including its queued-message editor", () => {
@@ -1884,7 +1975,7 @@ describe("ThreadTimelineRows actions", () => {
             }),
           ]}
           canSpawnChild
-          onForkMessage={vi.fn()}
+          canFork
           threadRuntimeDisplayStatus="idle"
         />
       </PluginComposerHostProvider>,
@@ -1931,7 +2022,7 @@ describe("ThreadTimelineRows actions", () => {
             }),
           ]}
           canSpawnChild
-          onForkMessage={vi.fn()}
+          canFork
           threadRuntimeDisplayStatus="idle"
         />
       </PluginComposerHostProvider>,
@@ -2198,7 +2289,7 @@ describe("ThreadTimelineRows shared message column width", () => {
             }),
           ]}
           canSpawnChild
-          onForkMessage={vi.fn()}
+          canFork
           threadRuntimeDisplayStatus="idle"
         />
       </PluginComposerHostProvider>,
@@ -2277,7 +2368,7 @@ describe("ThreadTimelineRows shared message column width", () => {
             }),
           ]}
           canSpawnChild
-          onForkMessage={vi.fn()}
+          canFork
           threadRuntimeDisplayStatus="idle"
         />
       </PluginComposerHostProvider>,

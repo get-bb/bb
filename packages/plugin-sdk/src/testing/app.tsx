@@ -1033,10 +1033,7 @@ function TestThreadChat({
               ),
               composer: null,
               experimental_invokedFrom: "button",
-              experimental_messageRequests: {
-                edit: null,
-                fork: null,
-              },
+              experimental_messageRequests: { edit: null },
             });
           }}
         >

@@ -30,7 +30,6 @@ import {
   type ThreadTimelineAddToChatHandler,
   type ThreadTimelineEditMessageHandler,
   type ThreadTimelineEditMessageTarget,
-  type ThreadTimelineForkMessageHandler,
   type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineUnreadDividerPlacement,
   type TimelineTitleActionResolver,
@@ -109,7 +108,7 @@ export interface ThreadScreenTimelineHost {
   environmentHostName: string | null;
   leadingContent: ReactNode;
   messageActionSurface: ExperimentalMessageActionSurface;
-  onForkMessage: ThreadTimelineForkMessageHandler | null;
+  canFork: boolean;
   onTitleAction: TimelineTitleActionResolver | null;
   unreadDividerAutoScroll: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
@@ -613,7 +612,7 @@ export function ThreadScreen({
           }
           leadingContent={timelineHost.leadingContent}
           instanceMessageActions={timelineHost.instanceMessageActions}
-          onForkMessage={timelineHost.onForkMessage ?? undefined}
+          canFork={timelineHost.canFork}
           onEditMessage={handleEditSentMessage}
           inlineMessageEditor={inlineMessageEditor}
           onLoadOlderRows={timeline.loadOlderTimelineRows}

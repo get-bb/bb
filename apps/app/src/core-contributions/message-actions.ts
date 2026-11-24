@@ -8,6 +8,7 @@ import {
   definePluginApp,
   experimental_appendQuoteToDraft,
   experimental_copyToClipboard,
+  experimental_showErrorToast,
 } from "@get-bb/plugin-sdk/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 
@@ -64,6 +65,8 @@ function addToChat(
   );
   composer.focus();
 }
+
+const forksInFlight = new Set<string>();
 
 function enabledWhen(condition: boolean) {
   return condition ? "enabled" : "hidden";
@@ -157,12 +160,28 @@ export default definePluginApp((app) => {
     experimental_roles: ["assistant"],
     experimental_placements: ["menu"],
     experimental_order: 20,
-    experimental_availability: ({ messageRequests, canSpawnChild }) => {
-      if (messageRequests.fork === null) return "hidden";
+    experimental_availability: ({ canFork, canSpawnChild }) => {
+      if (!canFork) return "hidden";
       return canSpawnChild ? "enabled" : "disabled";
     },
-    run({ experimental_messageRequests }) {
-      experimental_messageRequests.fork?.();
+    async run({ threadId, message, sdk, navigate }) {
+      if (forksInFlight.has(threadId)) return;
+      forksInFlight.add(threadId);
+      try {
+        const fork = await sdk.threads.fork({
+          sourceThreadId: threadId,
+          sourceSeqEnd: message.sourceSeqEnd,
+          origin: "app",
+        });
+        navigate.toThread(fork.id);
+      } catch (error) {
+        experimental_showErrorToast({
+          error,
+          fallbackMessage: "Failed to fork thread.",
+        });
+      } finally {
+        forksInFlight.delete(threadId);
+      }
     },
   });
 });

@@ -21,7 +21,6 @@ import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import { TimelineReasoningExpansionProvider } from "./TimelineReasoningExpansion.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
-  ThreadTimelineForkMessageHandler,
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
   ThreadTimelineUnreadDividerPlacement,
@@ -43,7 +42,7 @@ export interface ThreadTimelineSurfaceProps {
   timelineError: boolean;
   loadingContent?: ReactNode;
   leadingContent?: ReactNode;
-  onForkMessage?: ThreadTimelineForkMessageHandler;
+  canFork?: boolean;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   instanceMessageActions?: readonly PluginMessageActionSlot[];
@@ -136,7 +135,7 @@ export function ThreadTimelineSurface({
   timelineError,
   loadingContent,
   leadingContent,
-  onForkMessage,
+  canFork,
   onEditMessage,
   inlineMessageEditor,
   instanceMessageActions,
@@ -212,7 +211,7 @@ export function ThreadTimelineSurface({
         ) : timelineRowsWithPendingStop.length > 0 ? (
           <ThreadTimelineRows
             canSpawnChild={canSpawnChild}
-            onForkMessage={onForkMessage}
+            canFork={canFork}
             onEditMessage={onEditMessage}
             inlineMessageEditor={inlineMessageEditor}
             instanceMessageActions={instanceMessageActions}

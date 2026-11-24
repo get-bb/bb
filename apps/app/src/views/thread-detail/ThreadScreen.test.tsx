@@ -155,7 +155,7 @@ function screenElement(presentation: ThreadScreenPresentation) {
         environmentHostName: null,
         leadingContent: null,
         messageActionSurface: "thread-view",
-        onForkMessage: null,
+        canFork: false,
         onTitleAction: null,
         unreadDividerAutoScroll: false,
         unreadDividerPlacement: null,

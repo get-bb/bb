@@ -22,6 +22,7 @@ export interface MessageActionTarget {
   threadId: string;
   message: ThreadChatMessageReference;
   messageRequests: ExperimentalMessageRequests;
+  canFork: boolean;
   canSpawnChild: boolean;
 }
 
@@ -152,6 +153,7 @@ export function buildMessageActions({
       ...(selection === undefined ? {} : { selectedText: selection.text }),
       messageRequests: target.messageRequests,
       composer,
+      canFork: target.canFork,
       canSpawnChild: target.canSpawnChild,
     });
     if (availability === "hidden") continue;

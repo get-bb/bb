@@ -23,7 +23,7 @@ interface StoryMessageActionsArgs {
   text: string;
   composerHost?: PluginComposerHost;
   onEdit?: () => void;
-  onFork?: () => void;
+  canFork?: boolean;
   forkDisabled?: boolean;
   pluginActions?: readonly StoryPluginAction[];
 }
@@ -47,7 +47,7 @@ export function useStoryMessageActions({
   text,
   composerHost,
   onEdit,
-  onFork,
+  canFork = false,
   forkDisabled = false,
   pluginActions = [],
 }: StoryMessageActionsArgs): readonly ThreadTimelineMessageAction[] {
@@ -71,10 +71,8 @@ export function useStoryMessageActions({
         experimental_attachments: [],
         experimental_imageUrls: [],
       },
-      messageRequests: {
-        edit: onEdit ?? null,
-        fork: onFork ?? null,
-      },
+      messageRequests: { edit: onEdit ?? null },
+      canFork,
       canSpawnChild: !forkDisabled,
     },
     composerHost: composerHost ?? null,
@@ -92,7 +90,7 @@ type StoryConversationMessageProps = ConversationMessageContentProps &
 export function StoryConversationMessage({
   composerHost,
   onEdit,
-  onFork,
+  canFork,
   forkDisabled,
   pluginActions,
   ...props
@@ -102,7 +100,7 @@ export function StoryConversationMessage({
     text: props.text,
     ...(composerHost === undefined ? {} : { composerHost }),
     ...(onEdit === undefined ? {} : { onEdit }),
-    ...(onFork === undefined ? {} : { onFork }),
+    ...(canFork === undefined ? {} : { canFork }),
     ...(forkDisabled === undefined ? {} : { forkDisabled }),
     ...(pluginActions === undefined ? {} : { pluginActions }),
   });

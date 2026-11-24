@@ -17,14 +17,6 @@ export type ThreadTimelineLocalFileLinkHandler =
 
 export type ThreadTimelineLinkHandler = MarkdownPreviewLinkHandler;
 
-interface ThreadTimelineForkMessageTarget {
-  sourceSeqEnd: number;
-}
-
-export type ThreadTimelineForkMessageHandler = (
-  target: ThreadTimelineForkMessageTarget,
-) => void;
-
 export interface ThreadTimelineEditMessageTarget {
   messageId: string;
   expectedRequestSequence: number;

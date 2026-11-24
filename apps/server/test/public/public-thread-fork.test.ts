@@ -4,12 +4,15 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createProjectSource,
+  createThreadSection,
   ensurePersonalProject,
   getEnvironment,
   getThread,
+  pinThread,
   projectAttachmentThreads,
   threads,
   setQueuedThreadMessageGroupBoundary,
+  setThreadExecutionOverride,
 } from "@bb/db";
 import {
   PERSONAL_PROJECT_ID,
@@ -1124,6 +1127,80 @@ describe("public thread fork route", () => {
         reasoningLevel: "high",
         serviceTier: "fast",
       });
+    });
+  });
+
+  it("uses the source's current model and reasoning choice over its last turn's", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread, host } = seedForkSource(harness, {
+        model: "gpt-5-mini",
+        reasoningLevel: "high",
+      });
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: sourceThread.providerId,
+        models: [
+          availableModelFixture({
+            model: "gpt-5-mini",
+            reasoningLevels: ["high", "low"],
+          }),
+          availableModelFixture({
+            model: "gpt-5",
+            reasoningLevels: ["high", "low"],
+          }),
+        ],
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: sourceThread.id,
+        modelOverride: "gpt-5",
+        reasoningLevelOverride: "low",
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (queued.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(queued.command.options).toMatchObject({
+        model: "gpt-5",
+        reasoningLevel: "low",
+      });
+    });
+  });
+
+  it("places the fork in the source's section and pins it when the source is pinned", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness);
+      const section = createThreadSection(harness.db, harness.deps.hub, {
+        name: "Forks",
+      });
+      if (section.status !== "created") {
+        throw new Error("Expected section fixture to be created");
+      }
+      harness.db
+        .update(threads)
+        .set({ sectionId: section.section.id })
+        .where(eq(threads.id, sourceThread.id))
+        .run();
+      pinThread(harness.db, harness.deps.hub, { threadId: sourceThread.id });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      expect(fork.sectionId).toBe(section.section.id);
+      expect(fork.pinnedAt).not.toBeNull();
     });
   });
 

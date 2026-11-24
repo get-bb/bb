@@ -29,7 +29,6 @@ import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
 import {
-  type ThreadTimelineForkMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
 } from "@/components/thread/timeline";
@@ -42,7 +41,6 @@ import {
   PluginDetailTabContent,
   usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
-import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -541,16 +539,6 @@ function ThreadDetailViewInternal(
   )
     ? resolvedThreadEnvironmentHost
     : null;
-  const forkThreadFromMessage = useForkThreadFromMessage({
-    navigateInPane,
-    sourceThread: thread ?? null,
-  });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
-    (target) => {
-      void forkThreadFromMessage(target);
-    },
-    [forkThreadFromMessage],
-  );
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -1399,7 +1387,7 @@ function ThreadDetailViewInternal(
         instanceMessageActions: NO_INSTANCE_MESSAGE_ACTIONS,
         leadingContent: null,
         messageActionSurface: "thread-view",
-        onForkMessage: isForkAvailable ? handleForkMessage : null,
+        canFork: isForkAvailable,
         onTitleAction: handleTimelineTitleAction,
         unreadDividerAutoScroll: unreadDividerState.autoScroll,
         unreadDividerPlacement: unreadDividerState.placement,

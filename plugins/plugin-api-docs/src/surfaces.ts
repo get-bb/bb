@@ -444,7 +444,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear under user or assistant messages, in their menu, or on text selected in a reply",
           "Hide or disable itself per message, in bb's thread view, embedded ThreadChat, or one ThreadChat",
           "Receive the message with its link sequence and attachments, or the selected text and its Markdown",
-          "Quote into the thread's prompt box or run bb's Edit and Fork, as bb's own actions do",
+          "Quote into the prompt box, fork the thread, or open bb's Edit, as bb's own actions do",
         ],
         apiSymbols: [
           "PluginMessageActionRegistration",

@@ -128,8 +128,8 @@ export default definePluginApp((app) => {
     title: "Fork to new workspace",
     icon: "FolderGit",
     experimental_roles: ["assistant"],
-    experimental_availability: ({ messageRequests }) =>
-      messageRequests.fork === null ? "hidden" : "enabled",
+    experimental_availability: ({ canFork }) =>
+      canFork ? "enabled" : "hidden",
     async run(context) {
       await forkToNewWorkspace(context).catch((error: unknown) =>
         reportFailure("Could not fork to a new workspace", error),

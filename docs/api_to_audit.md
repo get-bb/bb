@@ -431,12 +431,20 @@ which fills every default once.
 `PluginMessageActionContext` gains `experimental_invokedFrom` (`"button"`,
 `"menu"` or `"selection"`), `experimental_selectedMarkdown` (the selection's
 Markdown source) and `experimental_messageRequests`
-(`ExperimentalMessageRequests`): bb's own `edit()` and `fork()` for the
-message, each null when bb would not offer that action there. Add to chat is
+(`ExperimentalMessageRequests`): bb's own `edit()` for the message, null
+when bb would not offer it there. Edit is a request because bb's inline
+sent-message editor has no public API; Add to chat and Fork are not, because
+they do. Add to chat is
 not a request: it is `composer.replace` with `experimental_appendQuoteToDraft`
 (below), so a plugin quotes into the draft exactly as bb does. The context's
 `composer` is the message's thread composer on this surface, or the inline
 editor of that thread's queued message while one is open, else null.
+The availability input's `canFork` says whether bb offers its Fork on the
+message; bb's Fork into new thread is `sdk.threads.fork({ sourceThreadId,
+sourceSeqEnd, origin: "app" })` then `navigate.toThread`, so a plugin forks
+exactly as bb does. The fork route takes the source's next-turn model and
+reasoning level, section and pin, and the plugin-bound `fork` puts the new
+thread in the app's cache before the caller navigates.
 `ThreadChatMessageReference` gains `experimental_settled`,
 `experimental_attachments` (as `ComposerAttachment`s) and
 `experimental_imageUrls`. `ExperimentalClipboardContent.imageUrl` copies an
@@ -451,7 +459,8 @@ filtered and ordered with the registered ones. The old
 
 Core callers: bb's Copy link, Copy, Edit, Add to chat (row menu and selection
 menu; `composer.replace` with `experimental_appendQuoteToDraft`, then
-`composer.focus()`) and Fork are registrations in
+`composer.focus()`) and Fork (`sdk.threads.fork`, then `navigate.toThread`)
+are registrations in
 `apps/app/src/core-contributions/message-actions.ts`, collected with the plugin
 registrations in `apps/app/src/lib/plugin-slots.ts` and resolved for every
 surface by `buildMessageActions` (`apps/app/src/lib/plugin-message-actions.ts`).
@@ -459,7 +468,7 @@ The action row (`MessageActionBar`) and the selection menu
 (`TimelineSelectionMenu`) render only that resolved list. First-party plugin
 callers: Side chat ("Reply in side chat" is assistant-only; "Send to main
 thread" uses `experimental_messageActions`) and Conductor ("Fork to new
-workspace" is assistant-only and hidden when `messageRequests.fork` is null).
+workspace" is assistant-only and hidden unless `canFork`).
 
 Inline actions that do not fit the row join its overflow menu as one block,
 in row order, where the row's first inline action sorts among the menu
@@ -468,8 +477,8 @@ Copy link and Add to chat, as before.
 
 Before stabilizing, audit whether the overflow block rule is the right one for
 plugin-ordered menus, whether availability needs a `useData`-style hook for per-message plugin state, whether
-the selection menu needs a separate order, whether `messageRequests.fork` should
-also be reachable from thread actions and commands, and whether generated
+the selection menu needs a separate order, whether `messageRequests` should
+shrink to a flat `experimental_edit` now that it holds only Edit, and whether generated
 messages (automations, other threads, bb) should get actions.
 
 ## `app.commands.register`

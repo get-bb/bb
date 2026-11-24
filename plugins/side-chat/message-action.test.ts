@@ -44,7 +44,7 @@ const message = {
   experimental_imageUrls: [],
 };
 
-const messageRequests = { edit: null, fork: null };
+const messageRequests = { edit: null };
 
 describe("parsePanelParams", () => {
   it("narrows persisted params and rejects malformed values", () => {

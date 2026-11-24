@@ -282,7 +282,7 @@ export function ActionOverflow() {
               streaming={false}
               timestamp={0}
               composerHost={promptDraft.composerHost}
-              onFork={noop}
+              canFork
               pluginActions={overflowStoryPluginActions}
             />
           </div>
@@ -305,7 +305,7 @@ export function ActionOverflow() {
             streaming={false}
             timestamp={0}
             composerHost={promptDraft.composerHost}
-            onFork={noop}
+            canFork
             pluginActions={overflowStoryPluginActions}
           />
         </div>
@@ -328,7 +328,7 @@ export function MobileActionsAndSelection() {
       <PluginComposerHostProvider value={promptDraft.composerHost}>
         <ThreadTimelineRows
           canSpawnChild
-          onForkMessage={noop}
+          canFork
           threadId={MOBILE_REVIEW_THREAD_ID}
           threadRuntimeDisplayStatus="idle"
           timelineRows={mobileReviewRows}

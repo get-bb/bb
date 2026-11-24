@@ -8,7 +8,6 @@ export default {
   title: "thread/timeline/Message Action Bar",
 };
 
-const noop = () => undefined;
 const STORY_TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
 
 function HoverRevealStage({ children }: { children: ReactNode }) {
@@ -24,14 +23,14 @@ function StoryBar({
   mobileActionDisplay,
   role,
   withComposer = false,
-  onFork,
+  canFork,
   forkDisabled,
 }: {
   text: string;
   mobileActionDisplay: "inline" | "overflow";
   role: "user" | "assistant";
   withComposer?: boolean;
-  onFork?: () => void;
+  canFork?: boolean;
   forkDisabled?: boolean;
 }) {
   const promptDraft = useStoryPromptDraft();
@@ -39,8 +38,8 @@ function StoryBar({
     role,
     text,
     ...(withComposer ? { composerHost: promptDraft.composerHost } : {}),
-    onFork,
-    forkDisabled,
+    ...(canFork === undefined ? {} : { canFork }),
+    ...(forkDisabled === undefined ? {} : { forkDisabled }),
   });
   return (
     <MessageActionBar
@@ -62,7 +61,7 @@ export function Overview() {
               role="assistant"
               text="An agent message you can fork or reply to."
               mobileActionDisplay="inline"
-              onFork={noop}
+              canFork
             />
           </HoverRevealStage>
         </StoryRow>
@@ -82,7 +81,7 @@ export function Overview() {
               role="assistant"
               text="Fork/Reply greyed when the thread can't fork."
               mobileActionDisplay="inline"
-              onFork={noop}
+              canFork
               forkDisabled
             />
           </HoverRevealStage>

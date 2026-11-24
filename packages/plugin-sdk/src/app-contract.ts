@@ -4008,9 +4008,9 @@ export type ExperimentalMessageActionInvocation =
   | "selection";
 
 /**
- * bb's own flows on one message, the ones bb's Edit and Fork actions run.
- * Each is null when bb would not offer that action on this message right
- * now. Experimental: see docs/api_to_audit.md.
+ * bb's own flows on one message that have no public API of their own, the
+ * ones bb's Edit action runs. Each is null when bb would not offer that
+ * action on this message right now. Experimental: see docs/api_to_audit.md.
  */
 export interface ExperimentalMessageRequests {
   /**
@@ -4022,15 +4022,6 @@ export interface ExperimentalMessageRequests {
    * is in flight, and no other message is being edited.
    */
   edit: (() => void) | null;
-  /**
-   * bb's Fork into new thread from this message: a new thread in the same
-   * environment with the thread's default model, reasoning level, permission
-   * mode, section and pin state, opened in the pane that showed the message.
-   * Failures show bb's error toast. Null when the thread cannot fork: its
-   * provider does not support forking, it has no environment, or it is
-   * archived.
-   */
-  fork: (() => void) | null;
 }
 
 /**
@@ -4052,6 +4043,14 @@ export interface ExperimentalMessageActionAvailabilityInput {
    * will get none.
    */
   composer: PluginComposerApi | null;
+  /**
+   * Whether bb offers its Fork on this message: false when the thread's
+   * provider cannot fork, the thread has no environment or is archived, or
+   * this `ThreadChat` has no composer. bb's own Fork into new thread is
+   * `sdk.threads.fork({ sourceThreadId: threadId, sourceSeqEnd:
+   * message.sourceSeqEnd })` then `navigate.toThread`.
+   */
+  canFork: boolean;
   /**
    * The thread's `canSpawnChild`: false when it is at bb's thread-nesting
    * limit, where bb shows its own Fork disabled.
@@ -4167,7 +4166,7 @@ export interface PluginMessageActionContext extends ExperimentalPluginActionCont
    */
   experimental_invokedFrom: ExperimentalMessageActionInvocation;
   /**
-   * bb's own Edit and Fork for this message (see
+   * bb's own Edit for this message (see
    * {@link ExperimentalMessageRequests}). Experimental: see
    * docs/api_to_audit.md.
    */

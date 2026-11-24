@@ -170,7 +170,9 @@ Forking:
   personal workspace or --new-environment worktree for a fresh worktree on the
   source machine; --environment can select another environment or unmanaged
   path on that machine. A different machine is rejected because the source
-  provider session lives on its original machine. Omit --prompt to create an
+  provider session lives on its original machine. A fork takes the model and
+  reasoning level the source would use for its next turn (its picker choice,
+  else its last turn's), plus its section and pin. Omit --prompt to create an
   idle fork. A visible idle fork without --title is named after its source with
   a numbered prefix: "foo" becomes "(1) foo" and "(1) foo" becomes "(2) foo".
   Forks created with a first prompt get a title from that prompt.
