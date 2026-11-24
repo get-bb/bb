@@ -4421,7 +4421,7 @@ Docs: `frontend-registration.md`, `frontend-thread-list.md`.
    attributes layer should batch those reads across registrations, whether
    `useData` should move onto `experimental_useRpcQuery`, and whether
    `threadIds` should go once `experimental_threads` is stable. Requires SDK
-   0.6.192.
+   0.6.202.
 2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.
