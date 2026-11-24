@@ -296,6 +296,7 @@ export class RuntimeManager {
   >();
   private readonly threadControlTails = new Map<string, Promise<void>>();
   private providerMaintenanceSlot: ProviderMaintenanceRuntimeSlot | null = null;
+  private readonly pendingMaintenanceShutdowns = new Set<Promise<void>>();
   private readonly retiredProviderMaintenanceSlots =
     new Set<ProviderMaintenanceRuntimeSlot>();
   private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
@@ -822,8 +823,15 @@ export class RuntimeManager {
   private async shutdownProviderMaintenanceSlot(
     slot: ProviderMaintenanceRuntimeSlot,
   ): Promise<void> {
-    const runtime = await slot.runtime.catch(() => null);
-    await runtime?.shutdown();
+    const stopped = slot.runtime
+      .catch(() => null)
+      .then((runtime) => runtime?.shutdown());
+    this.pendingMaintenanceShutdowns.add(stopped);
+    try {
+      await stopped;
+    } finally {
+      this.pendingMaintenanceShutdowns.delete(stopped);
+    }
   }
 
   private async shutdownAllProviderMaintenanceRuntimes(): Promise<void> {
@@ -834,9 +842,10 @@ export class RuntimeManager {
     ].filter((slot) => slot !== null);
     this.providerMaintenanceSlot = null;
     this.retiredProviderMaintenanceSlots.clear();
-    await Promise.all(
-      slots.map((slot) => this.shutdownProviderMaintenanceSlot(slot)),
-    );
+    await Promise.all([
+      ...this.pendingMaintenanceShutdowns,
+      ...slots.map((slot) => this.shutdownProviderMaintenanceSlot(slot)),
+    ]);
   }
 
   private clearProviderMaintenanceIdleTimer(): void {
