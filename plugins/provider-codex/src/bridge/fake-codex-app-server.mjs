@@ -224,7 +224,7 @@ if (script?.launchLogPath) {
       codexHome: process.env.CODEX_HOME ?? null,
       testEnv: Object.fromEntries(
         Object.entries(process.env).filter(([name]) =>
-          name.startsWith("BB_TEST_"),
+          name.startsWith("CODEX_SIGNATURE_TEST_"),
         ),
       ),
     })}\n`,

@@ -85,7 +85,10 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
 }, 30_000);
 
 it("rebuilds the session only when a turn changes or removes an env var", async () => {
-  const original = { BB_TEST_SECRET: "original", BB_TEST_REMOVED: "gone" };
+  const original = {
+    CODEX_SIGNATURE_TEST_SECRET: "original",
+    CODEX_SIGNATURE_TEST_REMOVED: "gone",
+  };
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -98,10 +101,16 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
     .parse(started.result);
 
   const turnEnvVars: Record<string, string>[] = [
-    { BB_TEST_REMOVED: "gone", BB_TEST_SECRET: "original" },
-    { BB_TEST_SECRET: "rotated", BB_TEST_REMOVED: "gone" },
-    { BB_TEST_SECRET: "rotated" },
-    { BB_TEST_SECRET: "rotated" },
+    {
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+      CODEX_SIGNATURE_TEST_SECRET: "original",
+    },
+    {
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+    },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ];
   const replacementsAfterTurn: number[] = [];
   for (const [index, envVars] of turnEnvVars.entries()) {
@@ -133,8 +142,11 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
     );
   expect(launchedEnvs).toEqual([
     original,
-    { BB_TEST_SECRET: "rotated", BB_TEST_REMOVED: "gone" },
-    { BB_TEST_SECRET: "rotated" },
+    {
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+    },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ]);
   const sessionConfigs = recordedRequests()
     .filter(
@@ -148,7 +160,9 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
           .parse(request.params).config,
     );
   expect(sessionConfigs).toHaveLength(3);
-  expect(JSON.stringify(sessionConfigs)).not.toContain("BB_TEST_");
+  expect(JSON.stringify(sessionConfigs)).not.toContain(
+    "CODEX_SIGNATURE_TEST_",
+  );
 }, 30_000);
 
 it("forks the session from its rollout when a writable folder is removed, and adds folders in place", async () => {
