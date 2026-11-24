@@ -121,6 +121,8 @@ export function makePendingSteerTimelineRow(): TimelineUserConversationRow {
 export function makeThread(overrides: MakeThreadArgs): Thread {
   return {
     status: "idle",
+    modelOverride: null,
+    reasoningLevelOverride: null,
     title: null,
     titleFallback: null,
     sectionId: null,

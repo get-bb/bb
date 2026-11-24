@@ -148,6 +148,46 @@ describe("bb thread show command output", () => {
     expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
   });
 
+  it("bb thread show prints model and reasoning overrides when set", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-overrides-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "idle",
+      modelOverride: "gpt-5",
+      reasoningLevelOverride: "high",
+    });
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
+    });
+
+    await runCommand(["thread", "show", "thread-overrides-1"], register);
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Model: gpt-5");
+    expect(lines).toContain("  Reasoning: high");
+  });
+
+  it("bb thread show omits model and reasoning lines when overrides are null", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-overrides-2",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "idle",
+    });
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
+    });
+
+    await runCommand(["thread", "show", "thread-overrides-2"], register);
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines.some((line) => line.includes("Model:"))).toBe(false);
+    expect(lines.some((line) => line.includes("Reasoning:"))).toBe(false);
+  });
+
   it("bb thread show --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-show-self");
     const thread: domain.Thread = fixtures.makeThread({

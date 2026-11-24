@@ -639,6 +639,12 @@ function printThreadStatus(
     console.log(`  Title: ${thread.title}`);
   }
   console.log(`  Project: ${thread.projectId}`);
+  if (thread.modelOverride) {
+    console.log(`  Model: ${thread.modelOverride}`);
+  }
+  if (thread.reasoningLevelOverride) {
+    console.log(`  Reasoning: ${thread.reasoningLevelOverride}`);
+  }
   if (thread.parentThreadId) {
     console.log(`  Parent: ${thread.parentThreadId}`);
     console.log(`  Parent notifications: ${thread.parentNotifications}`);
