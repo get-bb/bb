@@ -146,12 +146,35 @@ function createReadMemo<T extends { outcome: string }>() {
 
 export type ReadCacheUse = "shared" | "bypass";
 
+type StatusMergeBase =
+  | { kind: "environment" }
+  | { kind: "explicit"; branch?: string };
+
+interface StatusRequest {
+  environmentId: string;
+  mergeBase: StatusMergeBase;
+}
+
+interface StatusLoad {
+  read: {
+    path: string;
+    freshness: GitReadFreshness;
+    mergeBaseBranch?: string;
+  };
+  resolve(result: GitStatusResult): void;
+  reject(error: unknown): void;
+}
+
 export interface GitReads {
   status(
     environmentId: string,
-    mergeBase: { kind: "environment" } | { kind: "explicit"; branch?: string },
+    mergeBase: StatusMergeBase,
     cache: ReadCacheUse,
   ): Promise<GitStatusResult>;
+  statuses(
+    environmentIds: readonly string[],
+    cache: ReadCacheUse,
+  ): Promise<GitStatusResult>[];
   diff(
     environmentId: string,
     target: WorkspaceDiffTarget,
@@ -234,32 +257,95 @@ export function createGitReads(
     return { environment, hostId: environment.hostId, path };
   }
 
-  return {
-    async status(environmentId, mergeBase, cache) {
-      const ready = await requireReady(environmentId);
-      if (ready === null) return notApplicable("status");
-      const mergeBaseBranch =
-        mergeBase.kind === "environment"
-          ? resolveEnvironmentMergeBaseBranch(ready.environment)
-          : mergeBase.branch;
-      return statusCache.read(
-        { environmentId, hostId: ready.hostId },
-        [ready.path, mergeBaseBranch ?? null],
-        cache,
-        async () => {
-          const result = await host.call(
-            "status",
-            {
-              path: ready.path,
-              freshness: freshness(environmentId, cache === "shared"),
-              ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
-            },
-            ready.hostId,
-          );
-          return result.outcome === "available"
+  async function loadStatuses(
+    hostId: string,
+    loads: readonly StatusLoad[],
+  ): Promise<void> {
+    try {
+      const results = await host.call(
+        "statuses",
+        { reads: loads.map((load) => load.read) },
+        hostId,
+      );
+      loads.forEach((load, index) => {
+        const result = results[index];
+        if (result === undefined) {
+          load.reject(new Error("The machine returned no status result"));
+          return;
+        }
+        load.resolve(
+          result.outcome === "available"
             ? { outcome: "available", workspace: result.value }
-            : result;
-        },
+            : result,
+        );
+      });
+    } catch (error) {
+      for (const load of loads) load.reject(error);
+    }
+  }
+
+  function readStatuses(
+    requests: readonly StatusRequest[],
+    cache: ReadCacheUse,
+  ): Promise<GitStatusResult>[] {
+    const started = Promise.all(
+      requests.map(({ environmentId }) =>
+        requireReady(environmentId).then(
+          (ready) => ({ ready }),
+          (error: unknown) => ({ error }),
+        ),
+      ),
+    ).then((prepared) => {
+      const loadsByHost = new Map<string, StatusLoad[]>();
+      const results = prepared.map((entry, index): Promise<GitStatusResult> => {
+        if ("error" in entry) return Promise.reject(entry.error);
+        const { ready } = entry;
+        if (ready === null) return Promise.resolve(notApplicable("status"));
+        const { environmentId, mergeBase } = requests[index]!;
+        const mergeBaseBranch =
+          mergeBase.kind === "environment"
+            ? resolveEnvironmentMergeBaseBranch(ready.environment)
+            : mergeBase.branch;
+        return statusCache.read(
+          { environmentId, hostId: ready.hostId },
+          [ready.path, mergeBaseBranch ?? null],
+          cache,
+          () =>
+            new Promise<GitStatusResult>((resolve, reject) => {
+              const loads = loadsByHost.get(ready.hostId) ?? [];
+              loads.push({
+                read: {
+                  path: ready.path,
+                  freshness: freshness(environmentId, cache === "shared"),
+                  ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
+                },
+                resolve,
+                reject,
+              });
+              loadsByHost.set(ready.hostId, loads);
+            }),
+        );
+      });
+      for (const [hostId, loads] of loadsByHost)
+        void loadStatuses(hostId, loads);
+      return results;
+    });
+    return requests.map((_, index) =>
+      started.then((results) => results[index]!),
+    );
+  }
+
+  return {
+    status(environmentId, mergeBase, cache) {
+      return readStatuses([{ environmentId, mergeBase }], cache)[0]!;
+    },
+    statuses(environmentIds, cache) {
+      return readStatuses(
+        environmentIds.map((environmentId) => ({
+          environmentId,
+          mergeBase: { kind: "environment" },
+        })),
+        cache,
       );
     },
     async diff(environmentId, target, limits = {}) {

@@ -7,6 +7,8 @@ import { initRepo, makeTempDir } from "@bb/test-helpers";
 import { runGit } from "bb-environment-provider-host/workspace-git";
 import { describe, expect, it, vi } from "vitest";
 import hostEntry from "./host.js";
+import { WorkspaceReads } from "./host/workspace-reads.js";
+import { makeWorkspaceStatus } from "./testing.js";
 
 const FILE_COUNT = 20;
 const LINE = "x".repeat(4_000);
@@ -92,6 +94,72 @@ describe("Git plugin host branches", () => {
         timeout: 10_000,
       });
     } finally {
+      await harness.experimental_dispose();
+    }
+  });
+});
+
+describe("Git plugin host statuses", () => {
+  it("answers each read on its own and gives up on one that outlasts the deadline", async () => {
+    const fast = await initRepo(
+      await makeTempDir("bb-git-host-statuses-fast-"),
+    );
+    const slow = await initRepo(
+      await makeTempDir("bb-git-host-statuses-slow-"),
+    );
+    const missing = path.join(
+      await makeTempDir("bb-git-host-statuses-"),
+      "gone",
+    );
+    const tempDir = await makeTempDir("bb-git-host-statuses-temp-");
+    const harness = experimental_createHostEntryHarness(hostEntry, {
+      experimental_paths: { dataDir: tempDir, tempDir },
+    });
+    const freshness = { work: "w", refs: "r" };
+    try {
+      const warm = await harness.experimental_call("statuses", {
+        reads: [
+          { path: fast, freshness },
+          { path: slow, freshness },
+        ],
+      });
+      expect(warm.map((result) => result.outcome)).toEqual([
+        "available",
+        "available",
+      ]);
+
+      vi.spyOn(WorkspaceReads.prototype, "getStatus").mockImplementation(
+        function (this: WorkspaceReads) {
+          return this.path === slow
+            ? new Promise(() => {})
+            : Promise.resolve(makeWorkspaceStatus());
+        },
+      );
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const pending = harness.experimental_call("statuses", {
+        reads: [
+          { path: fast, freshness },
+          { path: slow, freshness: { work: "w2", refs: "r" } },
+          { path: missing, freshness },
+        ],
+      });
+      await vi.advanceTimersByTimeAsync(20_000);
+      const results = await pending;
+      expect(results[0]).toEqual({
+        outcome: "available",
+        value: makeWorkspaceStatus(),
+      });
+      expect(results[1]).toMatchObject({
+        outcome: "unavailable",
+        failure: { workspacePath: slow },
+      });
+      expect(results[2]).toMatchObject({
+        outcome: "unavailable",
+        failure: { code: "path_not_found", workspacePath: missing },
+      });
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
       await harness.experimental_dispose();
     }
   });

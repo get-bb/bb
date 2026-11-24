@@ -28,6 +28,7 @@ import {
 const STATUS_MAX_FILES = 200;
 const STATUS_MAX_UNTRACKED_LINE_STAT_FILES = 50;
 const STATUS_MAX_UNTRACKED_LINE_STAT_BYTES = 8 * 1024 * 1024;
+const STATUS_READ_DEADLINE_MS = 20_000;
 const DIFF_MAX_FILES = 500;
 const PATCH_MAX_BYTES_PER_FILE = 512 * 1024;
 const PATCH_BATCH_MAX_BYTES = 6 * 1024 * 1024;
@@ -108,6 +109,28 @@ async function read<T>(
   }
 }
 
+function withinDeadline<T>(
+  path: string,
+  pending: Promise<HostRead<T>>,
+): Promise<HostRead<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<HostRead<T>>((resolve) => {
+    timer = setTimeout(
+      () =>
+        resolve({
+          outcome: "unavailable",
+          failure: {
+            code: "unknown",
+            message: `Git status took longer than ${STATUS_READ_DEADLINE_MS / 1000} s`,
+            workspacePath: path,
+          },
+        }),
+      STATUS_READ_DEADLINE_MS,
+    );
+  });
+  return Promise.race([pending, expired]).finally(() => clearTimeout(timer));
+}
+
 function fitPatchBatch(entries: readonly DiffPatchEntry[]): {
   patches: DiffPatchEntry[];
   deferred: string[];
@@ -139,15 +162,22 @@ export default experimental_defineHostEntry({
     await Promise.all(reads.map((entry) => entry.dispose()));
   },
   handlers: {
-    status: ({ path, freshness, mergeBaseBranch }, context) =>
-      read(path, context, (reads) =>
-        reads.getStatus({
-          freshness,
-          ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
-          maxFiles: STATUS_MAX_FILES,
-          maxUntrackedLineStatFiles: STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
-          maxUntrackedLineStatBytes: STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
-        }),
+    statuses: ({ reads }, context) =>
+      Promise.all(
+        reads.map(({ path, freshness, mergeBaseBranch }) =>
+          withinDeadline(
+            path,
+            read(path, context, (workspace) =>
+              workspace.getStatus({
+                freshness,
+                ...(mergeBaseBranch === undefined ? {} : { mergeBaseBranch }),
+                maxFiles: STATUS_MAX_FILES,
+                maxUntrackedLineStatFiles: STATUS_MAX_UNTRACKED_LINE_STAT_FILES,
+                maxUntrackedLineStatBytes: STATUS_MAX_UNTRACKED_LINE_STAT_BYTES,
+              }),
+            ),
+          ),
+        ),
       ),
     diff: ({ path, freshness, target, maxDiffBytes, maxFileListBytes }, context) =>
       interactive(() =>

@@ -42,8 +42,13 @@ function environment(overrides: Partial<Environment> = {}): Environment {
 
 function hostResult(call: ExperimentalFakeHostRpcCall): unknown {
   switch (call.method) {
-    case "status":
-      return { outcome: "available", value: makeWorkspaceStatus() };
+    case "statuses": {
+      const input = call.input as { reads: unknown[] };
+      return input.reads.map(() => ({
+        outcome: "available",
+        value: makeWorkspaceStatus(),
+      }));
+    }
     case "files":
       return {
         outcome: "available",
@@ -170,8 +175,8 @@ describe("Git plugin server", () => {
         },
       },
       experimental_callHostRpc: (call) =>
-        call.method === "status"
-          ? { outcome: "available", value: statusOnBranch(state.branch) }
+        call.method === "statuses"
+          ? [{ outcome: "available", value: statusOnBranch(state.branch) }]
           : hostResult(call),
     });
     plugin(fake.bb);
@@ -260,11 +265,132 @@ describe("Git plugin server", () => {
     });
     expect(fake.harness.experimental_hostRpcCalls).toMatchObject([
       {
-        method: "status",
+        method: "statuses",
         hostId: "host-1",
-        input: { path: "/work/env-1", mergeBaseBranch: "release" },
+        input: {
+          reads: [{ path: "/work/env-1", mergeBaseBranch: "release" }],
+        },
       },
     ]);
+  });
+
+  describe("status for many environments", () => {
+    const environments = {
+      "env-a": environment({ id: "env-a", path: "/work/a" }),
+      "env-b": environment({ id: "env-b", path: "/work/b" }),
+      "env-c": environment({ id: "env-c", path: "/work/c", hostId: "host-2" }),
+      "env-d": environment({ id: "env-d", path: "/work/d", hostId: "host-2" }),
+    };
+
+    function setupHosts(
+      answer: (read: { path: string }, hostId: string) => unknown,
+    ) {
+      const fake = createFakePluginHost({
+        pluginId: "bb--git",
+        sdk: {
+          subscribe: () => () => {},
+          environments: {
+            get: async ({ environmentId }: { environmentId: string }) =>
+              environments[environmentId as keyof typeof environments],
+          },
+        },
+        experimental_callHostRpc: (call) => {
+          if (call.method !== "statuses") return hostResult(call);
+          const input = call.input as { reads: { path: string }[] };
+          return input.reads.map((read) => answer(read, call.hostId));
+        },
+      });
+      plugin(fake.bb);
+      return fake;
+    }
+
+    function onBranch(read: { path: string }) {
+      return { outcome: "available", value: statusOnBranch(read.path) };
+    }
+
+    function branches(rows: unknown) {
+      return Object.fromEntries(
+        Object.entries(
+          rows as Record<
+            string,
+            {
+              outcome: string;
+              workspace?: { branch: { currentBranch: string | null } };
+            }
+          >,
+        ).map(([key, row]) => [
+          key,
+          row.workspace?.branch.currentBranch ?? row.outcome,
+        ]),
+      );
+    }
+
+    it("makes one host call per host and answers each key with its own workspace", async () => {
+      const fake = setupHosts(onBranch);
+      const rows = await fake.harness.callRpc("status", {
+        keys: ["env-c", "env-a", "env-d", "env-b"],
+      });
+      expect(branches(rows)).toEqual({
+        "env-a": "/work/a",
+        "env-b": "/work/b",
+        "env-c": "/work/c",
+        "env-d": "/work/d",
+      });
+      expect(
+        fake.harness.experimental_hostRpcCalls.map((call) => ({
+          hostId: call.hostId,
+          paths: (call.input as { reads: { path: string }[] }).reads.map(
+            (read) => read.path,
+          ),
+        })),
+      ).toEqual([
+        { hostId: "host-2", paths: ["/work/c", "/work/d"] },
+        { hostId: "host-1", paths: ["/work/a", "/work/b"] },
+      ]);
+    });
+
+    it("fails only the rows of a host whose call fails or whose workspace is unavailable", async () => {
+      const fake = setupHosts((read, hostId) => {
+        if (hostId === "host-2") throw new Error("host-2 is offline");
+        return read.path === "/work/b"
+          ? {
+              outcome: "unavailable",
+              failure: {
+                code: "path_not_found",
+                message: "Path does not exist: /work/b",
+                workspacePath: "/work/b",
+              },
+            }
+          : onBranch(read);
+      });
+      const rows = await fake.harness.callRpc("status", {
+        keys: ["env-a", "env-b", "env-c", "env-d"],
+      });
+      expect(branches(rows)).toEqual({
+        "env-a": "/work/a",
+        "env-b": "unavailable",
+        "env-c": "failed",
+        "env-d": "failed",
+      });
+    });
+
+    it("asks the host only for environments it has no fresh status for", async () => {
+      const fake = setupHosts(onBranch);
+      await fake.harness.callRpc("status", { keys: ["env-a"] });
+      await fake.harness.callRpc("status", { keys: ["env-a", "env-b"] });
+      expect(
+        fake.harness.experimental_hostRpcCalls.map(
+          (call) => (call.input as { reads: { path: string }[] }).reads.length,
+        ),
+      ).toEqual([1, 1]);
+      expect(
+        (
+          fake.harness.experimental_hostRpcCalls[1]?.input as {
+            reads: { path: string }[];
+          }
+        ).reads[0]?.path,
+      ).toBe("/work/b");
+    });
   });
 
   it("shares one host read for repeated status reads", async () => {
@@ -276,7 +402,7 @@ describe("Git plugin server", () => {
     await fake.harness.callRpc("status", { keys: ["env-1"] });
     expect(
       fake.harness.experimental_hostRpcCalls.filter(
-        (call) => call.method === "status",
+        (call) => call.method === "statuses",
       ),
     ).toHaveLength(1);
   });
@@ -287,7 +413,7 @@ describe("Git plugin server", () => {
     await fake.harness.callRpc("workspaceStatus", { environmentId: "env-1" });
     expect(
       fake.harness.experimental_hostRpcCalls.filter(
-        (call) => call.method === "status",
+        (call) => call.method === "statuses",
       ),
     ).toHaveLength(2);
   });

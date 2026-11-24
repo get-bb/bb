@@ -13,6 +13,7 @@ import {
   parseGitPatchKey,
   type GitPatchKey,
   type GitPatchResult,
+  type GitStatusResult,
   type GitStatusRow,
 } from "./contract.js";
 import { gitRpcContract } from "./rpc-contract.js";
@@ -82,16 +83,20 @@ export default function gitPlugin(bb: BbPluginApi): void {
 
   const servedStatus = new Map<string, string>();
 
+  function toStatusRow(read: Promise<GitStatusResult>): Promise<GitStatusRow> {
+    return read.catch((error: unknown) => ({
+      outcome: "failed" as const,
+      message:
+        error instanceof experimental_PluginRpcRefusal
+          ? error.message
+          : "Workspace status unavailable.",
+    }));
+  }
+
   function statusRow(environmentId: string): Promise<GitStatusRow> {
-    return reads
-      .status(environmentId, { kind: "environment" }, "shared")
-      .catch((error: unknown) => ({
-        outcome: "failed" as const,
-        message:
-          error instanceof experimental_PluginRpcRefusal
-            ? error.message
-            : "Workspace status unavailable.",
-      }));
+    return toStatusRow(
+      reads.status(environmentId, { kind: "environment" }, "shared"),
+    );
   }
 
   function turnEnded(environmentId: string | null): void {
@@ -231,10 +236,14 @@ export default function gitPlugin(bb: BbPluginApi): void {
     gitRpcContract,
     {
       async status({ keys }) {
+        const rows = reads.statuses(keys, "shared");
         const results = await Promise.all(
           keys.map(
-            async (environmentId): Promise<readonly [string, GitStatusRow]> => {
-              const row = await statusRow(environmentId);
+            async (
+              environmentId,
+              index,
+            ): Promise<readonly [string, GitStatusRow]> => {
+              const row = await toStatusRow(rows[index]!);
               servedStatus.set(environmentId, JSON.stringify(row));
               return [environmentId, row];
             },

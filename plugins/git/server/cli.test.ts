@@ -146,10 +146,9 @@ function filesHost() {
 
 describe("bb git", () => {
   it("prints status against the requested merge base and qualifies incomplete counts", async () => {
-    const { fake } = setup(() => ({
-      outcome: "available",
-      value: dirtyStatus,
-    }));
+    const { fake } = setup(() => [
+      { outcome: "available", value: dirtyStatus },
+    ]);
     expect(
       await stdout(fake, ["status", "env-1", "--merge-base-branch", "main"]),
     ).toBe(
@@ -168,17 +167,19 @@ describe("bb git", () => {
       ].join("\n"),
     );
     expect(fake.harness.experimental_hostRpcCalls).toMatchObject([
-      { method: "status", input: { mergeBaseBranch: "main" } },
+      { method: "statuses", input: { reads: [{ mergeBaseBranch: "main" }] } },
     ]);
   });
 
   it("does not print line totals that untracked files leave incomplete", async () => {
-    const { fake } = setup(() => ({
-      outcome: "available",
-      value: makeWorkspaceStatus({
-        workingTree: { ...dirtyStatus.workingTree, lineStatsComplete: false },
-      }),
-    }));
+    const { fake } = setup(() => [
+      {
+        outcome: "available",
+        value: makeWorkspaceStatus({
+          workingTree: { ...dirtyStatus.workingTree, lineStatsComplete: false },
+        }),
+      },
+    ]);
     expect(await stdout(fake, ["status", "env-1"])).toBe(
       [
         "State: dirty_uncommitted",
@@ -204,10 +205,9 @@ describe("bb git", () => {
   });
 
   it("prints status JSON in the workspace schema's key order", async () => {
-    const { fake } = setup(() => ({
-      outcome: "available",
-      value: dirtyStatus,
-    }));
+    const { fake } = setup(() => [
+      { outcome: "available", value: dirtyStatus },
+    ]);
     const output = await stdout(fake, [
       "status",
       "env-1",

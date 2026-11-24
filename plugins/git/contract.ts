@@ -378,15 +378,24 @@ const hostReadFreshnessSchema = z
 export type GitReadFreshness = z.infer<typeof hostReadFreshnessSchema>;
 
 export const gitHostContract = defineRpcContract({
-  status: {
+  statuses: {
     experimental_retryable: true,
-    input: hostPathSchema
-      .extend({
-        freshness: hostReadFreshnessSchema,
-        mergeBaseBranch: z.string().min(1).optional(),
+    input: z
+      .object({
+        reads: z
+          .array(
+            hostPathSchema
+              .extend({
+                freshness: hostReadFreshnessSchema,
+                mergeBaseBranch: z.string().min(1).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(GIT_STATUS_MAX_KEYS),
       })
       .strict(),
-    output: hostReadResultSchema(workspaceStatusSchema),
+    output: z.array(hostReadResultSchema(workspaceStatusSchema)),
   },
   diff: {
     experimental_retryable: true,
