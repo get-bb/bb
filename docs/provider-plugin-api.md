@@ -254,7 +254,7 @@ semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
   fork: "none" | "tip" | "checkpoint",
   approvalEnforcedBy: "runtime" | "provider",
   steerMode: "inject" | "queue", // declared and recorded; nothing acts on it yet
-  skills: { configure: boolean }, // the bridge handles skills/configure
+  skills: { configure: boolean, reconfigure?: boolean }, // handles skills/configure; reconfigure: a repeat applies to open sessions
 }
 ```
 

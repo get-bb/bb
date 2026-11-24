@@ -36,7 +36,7 @@ export type ProviderExecutionContext = {
 
 export type AdapterCommand =
   | {
-      type: "skills/configure";
+      type: "skills/configure" | "skills/reconfigure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | {

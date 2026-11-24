@@ -9,6 +9,7 @@ import {
   createScriptedEchoLaunch,
   createScriptedEchoRequestRecord,
   fullRuntimeOptions,
+  scriptedEchoProcessEnv,
   waitForThreadAgentMessageText,
   withBridgeLaunch,
 } from "./test/runtime-test-harness.js";
@@ -175,5 +176,123 @@ describe("skills/configure handshake capability", () => {
       text: "original session still works",
       threadId: "original",
     });
+  });
+
+  async function startReconfigurableRuntime(args: {
+    reconfiguresSkills: boolean;
+  }) {
+    const events: ThreadEvent[] = [];
+    const record = createScriptedEchoRequestRecord();
+    const originalRoots = [
+      { id: "original", path: stageSkillRoot(), skills: [] },
+    ];
+    const currentRoots = [
+      {
+        id: "current",
+        path: join(workspacePath, "current-skills"),
+        skills: [],
+      },
+    ];
+    mkdirSync(currentRoots[0]!.path);
+    const runtime = withBridgeLaunch(
+      createAgentRuntime({
+        workspacePath,
+        env: {
+          ...record.env,
+          ...scriptedEchoProcessEnv({
+            identifyProcess: true,
+            reconfiguresSkills: args.reconfiguresSkills,
+          }),
+        },
+        skillRoots: originalRoots,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({ contentItems: [], success: true }),
+      }),
+      createScriptedEchoLaunch(),
+    );
+    runtimes.push(runtime);
+    const startArgs = {
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    };
+    const existing = await runtime.startThread({
+      ...startArgs,
+      threadId: "existing",
+    });
+    const configureRequests = () =>
+      record
+        .read()
+        .filter((entry) => entry.method === "skills/configure")
+        .map((entry) => entry.params);
+    const runExistingTurn = async (text: string) => {
+      await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
+        clientRequestId: "creq_skrecfg222",
+        threadId: "existing",
+        input: [promptTextInput({ text })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "fake",
+        runtime,
+        text,
+        threadId: "existing",
+      });
+    };
+    return {
+      configureRequests,
+      currentRoots,
+      existing,
+      originalRoots,
+      runExistingTurn,
+      runtime,
+      startArgs,
+    };
+  }
+
+  it("applies a changed catalog to the open sessions of a bridge that declares skills.reconfigure", async () => {
+    const harness = await startReconfigurableRuntime({
+      reconfiguresSkills: true,
+    });
+
+    await expect(
+      harness.runtime.reconfigureSkillRoots({
+        skillRoots: harness.currentRoots,
+      }),
+    ).resolves.toEqual({ appliedToEveryProvider: true });
+    const added = await harness.runtime.startThread({
+      ...harness.startArgs,
+      skillRoots: harness.currentRoots,
+      threadId: "added",
+    });
+
+    expect(harness.configureRequests()).toEqual([
+      { roots: harness.originalRoots },
+      { roots: harness.currentRoots },
+    ]);
+    expect(added.providerThreadId.split("-")[1]).toBe(
+      harness.existing.providerThreadId.split("-")[1],
+    );
+    await harness.runExistingTurn("existing session kept its bridge");
+  });
+
+  it("leaves a bridge that cannot reconfigure skills on its catalog and reports it", async () => {
+    const harness = await startReconfigurableRuntime({
+      reconfiguresSkills: false,
+    });
+
+    await expect(
+      harness.runtime.reconfigureSkillRoots({
+        skillRoots: harness.currentRoots,
+      }),
+    ).resolves.toEqual({ appliedToEveryProvider: false });
+
+    expect(harness.configureRequests()).toEqual([
+      { roots: harness.originalRoots },
+    ]);
+    await harness.runExistingTurn("existing session still answers");
   });
 });

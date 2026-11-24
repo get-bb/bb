@@ -270,6 +270,14 @@ export interface ReapIdleProviderSessionsResult {
   reapedSessions: ReapedIdleProviderSession[];
 }
 
+export interface ReconfigureSkillRootsArgs {
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}
+
+export interface ReconfigureSkillRootsResult {
+  appliedToEveryProvider: boolean;
+}
+
 export interface RenameThreadArgs {
   threadId: string;
   title: string;
@@ -391,6 +399,10 @@ export interface AgentRuntime {
   getLiveThreadIds(): string[];
 
   hasOpenBackgroundWork(): boolean;
+
+  reconfigureSkillRoots(
+    args: ReconfigureSkillRootsArgs,
+  ): Promise<ReconfigureSkillRootsResult>;
 
   listOpenBackgroundWork(): RuntimeOpenBackgroundWork[];
 

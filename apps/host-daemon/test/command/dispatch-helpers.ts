@@ -337,6 +337,9 @@ export function createFakeRuntime() {
     listOpenBackgroundWork() {
       return [];
     },
+    async reconfigureSkillRoots() {
+      return { appliedToEveryProvider: false };
+    },
     async listModels() {
       return {
         models: [] satisfies AvailableModel[],

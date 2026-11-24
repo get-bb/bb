@@ -748,6 +748,28 @@ export class RuntimeManager {
     ]);
   }
 
+  private async applySkillCatalogInPlace(
+    entry: RuntimeEntry,
+    skillConfig: RuntimeSkillConfig,
+  ): Promise<boolean> {
+    const result = await entry.runtime.reconfigureSkillRoots({
+      skillRoots: skillConfig.skillRoots,
+    });
+    if (!result.appliedToEveryProvider) {
+      return false;
+    }
+    const previousCatalogHash = entry.skillCatalogHash;
+    entry.retainedSkillCatalogHashes.clear();
+    if (previousCatalogHash !== null) {
+      entry.retainedSkillCatalogHashes.add(previousCatalogHash);
+    }
+    entry.retainedSkillCatalogHashes.add(skillConfig.catalogHash);
+    entry.skillCatalogHash = skillConfig.catalogHash;
+    entry.skillRoots = skillConfig.skillRoots;
+    await this.cleanupUnusedInjectedSkillStagingDirs([skillConfig.catalogHash]);
+    return true;
+  }
+
   private async ensureCompatibleEntry(
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
@@ -770,6 +792,10 @@ export class RuntimeManager {
       (args.entry.skillCatalogHash === null &&
         args.skillConfig.skillRoots.length === 0)
     ) {
+      return args.entry;
+    }
+
+    if (await this.applySkillCatalogInPlace(args.entry, args.skillConfig)) {
       return args.entry;
     }
 

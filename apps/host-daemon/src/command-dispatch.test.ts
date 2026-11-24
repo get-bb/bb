@@ -182,6 +182,9 @@ function createRuntime(): FakeDispatchRuntime {
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getLiveThreadIds: vi.fn(() => [...activeTurnsByThreadId.keys()]),
     hasOpenBackgroundWork: () => false,
+    reconfigureSkillRoots: vi.fn(async () => ({
+      appliedToEveryProvider: false,
+    })),
     listOpenBackgroundWork: () => [],
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {

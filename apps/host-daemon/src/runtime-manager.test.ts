@@ -227,6 +227,9 @@ function createFakeRuntime() {
     ],
     hasOpenBackgroundWork: () => openBackgroundWork,
     listOpenBackgroundWork: () => [],
+    reconfigureSkillRoots: vi.fn<AgentRuntime["reconfigureSkillRoots"]>(
+      async () => ({ appliedToEveryProvider: false }),
+    ),
     shutdown: vi.fn(async () => undefined),
     endActiveTurn: (threadId) => {
       activeTurnsByThreadId.delete(threadId);
@@ -721,6 +724,76 @@ describe("RuntimeManager", () => {
     await expect(
       fs.stat(path.join(stagingRoot, firstEntry.skillCatalogHash ?? "")),
     ).rejects.toThrow();
+  });
+
+  it("applies a changed skill catalog to an idle runtime in place when every provider applies it live", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-live-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    runtime.reconfigureSkillRoots.mockResolvedValue({
+      appliedToEveryProvider: true,
+    });
+    const createRuntime = vi.fn(() => runtime);
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime,
+    });
+
+    const firstEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      workspacePath: "/tmp/env-1",
+    });
+    const firstCatalogHash = firstEntry.skillCatalogHash;
+    await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "second-token",
+    });
+
+    const secondEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(secondEntry).toBe(firstEntry);
+    expect(createRuntime).toHaveBeenCalledTimes(1);
+    expect(runtime.shutdown).not.toHaveBeenCalled();
+    expect(secondEntry.skillCatalogHash).not.toBe(firstCatalogHash);
+    expect(runtime.reconfigureSkillRoots).toHaveBeenCalledWith({
+      skillRoots: secondEntry.skillRoots,
+    });
+    expect(secondEntry.skillRoots[0]?.path).toContain(
+      secondEntry.skillCatalogHash ?? "",
+    );
+    expect(manager.get("env-skills")).toBe(secondEntry);
+
+    const secondCatalogHash = secondEntry.skillCatalogHash;
+    await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "third-token",
+    });
+    const thirdEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+    const stagingRoot = path.join(dataDir, "runtime", "global-skills");
+    const stagedCatalogs = await fs.readdir(stagingRoot);
+    expect(stagedCatalogs.sort()).toEqual(
+      [secondCatalogHash, thirdEntry.skillCatalogHash].sort(),
+    );
+    expect(stagedCatalogs).not.toContain(firstCatalogHash);
   });
 
   it("keeps the staged catalog of an environment still being created while another environment swaps catalogs", async () => {
