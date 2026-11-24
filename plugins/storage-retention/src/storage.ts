@@ -204,26 +204,48 @@ function linkedThreads(link: ThreadLink, threads: Thread[]) {
       archived: thread.archivedAt !== null,
     }));
 }
+type WorkspaceHold = { path: string; environments: Environment[] };
 function entriesHoldingWorkspaces(
   rootPath: string,
   environments: Environment[],
 ) {
-  const workspaces = new Map<string, string>();
+  const holds = new Map<string, WorkspaceHold>();
   const key = (name: string) => hostPath(`${rootPath}/${name}`);
   for (const env of environments) {
     if (!liveEnvironment(env)) continue;
     const relative = getRelativeHostPath({ rootPath, candidatePath: env.path });
     const name = relative?.split("/")[0];
     const entryKey = name ? key(name) : null;
-    if (entryKey !== null && !workspaces.has(entryKey))
-      workspaces.set(entryKey, env.path);
+    if (entryKey === null) continue;
+    const hold = holds.get(entryKey);
+    if (hold === undefined)
+      holds.set(entryKey, { path: env.path, environments: [env] });
+    else hold.environments.push(env);
   }
-  const get = (name: string) => {
-    const entryKey = key(name);
-    return entryKey === null ? undefined : workspaces.get(entryKey);
+  return {
+    holds: [...holds.values()],
+    get: (name: string) => {
+      const entryKey = key(name);
+      return entryKey === null ? undefined : holds.get(entryKey);
+    },
   };
-  return { has: (name: string) => get(name) !== undefined, get };
 }
+function heldWorkspace(
+  hold: (WorkspaceHold & { threads: Thread[]; inUse: boolean }) | undefined,
+) {
+  return hold?.inUse === true
+    ? {
+        path: hold.path,
+        threadTitles: hold.threads.map(
+          (thread) => thread.title ?? thread.titleFallback ?? thread.id,
+        ),
+      }
+    : null;
+}
+const threadHoldsEnvironment = (thread: Thread) =>
+  (thread.archivedAt === null && thread.deletedAt === null) ||
+  thread.status === "active" ||
+  thread.status === "stopping";
 const retiredEnvironments = (environments: Environment[]) =>
   environments.filter(
     (env) =>
@@ -238,12 +260,7 @@ const retiredEnvironments = (environments: Environment[]) =>
 function leftoverEnvironments(retired: Environment[], threads: Thread[]) {
   const occupied = new Set(
     threads
-      .filter(
-        (thread) =>
-          thread.archivedAt === null ||
-          thread.status === "active" ||
-          thread.status === "stopping",
-      )
+      .filter(threadHoldsEnvironment)
       .map((thread) => thread.environmentId),
   );
   return retired.filter((env) => !occupied.has(env.id));
@@ -335,46 +352,47 @@ export function createStorage(
     changed();
   }
   const leftoverCleanups = new Map<string, LeftoverCleanup>();
-  async function readHeldWorkspaces(
-    held: { threadId: string; path: string }[],
-    environments: Environment[],
-  ) {
-    const result = new Map<string, { path: string; threadTitles: string[] }>();
-    if (held.length === 0) return result;
-    const users = new Map(
-      held.map(({ threadId, path }) => [
-        threadId,
-        environments.filter(
-          (env) =>
-            liveEnvironment(env) && hostPath(env.path) === hostPath(path),
+  async function readWorkspaces(rootPath: string, environments: Environment[]) {
+    const workspaces = entriesHoldingWorkspaces(rootPath, environments);
+    const users = (
+      await readThreadsInEnvironments(
+        bb,
+        workspaces.holds.flatMap((hold) =>
+          hold.environments.map((env) => env.id),
         ),
-      ]),
-    );
-    const threads = await readThreadsInEnvironments(
-      bb,
-      [
-        ...new Set(
-          [...users.values()].flatMap((envs) => envs.map((env) => env.id)),
-        ),
-      ],
-      lifecycle.signal,
-    );
-    for (const { threadId, path } of held) {
-      const envIds = new Set(users.get(threadId)?.map((env) => env.id));
-      result.set(threadId, {
-        path,
-        threadTitles: threads
-          .filter(
-            (thread) =>
-              thread.id !== threadId &&
-              thread.archivedAt === null &&
-              thread.environmentId !== null &&
-              envIds.has(thread.environmentId),
-          )
-          .map((thread) => thread.title ?? thread.titleFallback ?? thread.id),
+        lifecycle.signal,
+      )
+    ).filter(threadHoldsEnvironment);
+    return (name: string) => {
+      const hold = workspaces.get(name);
+      if (hold === undefined) return undefined;
+      const ids = new Set(hold.environments.map((env) => env.id));
+      const threads = users.filter(
+        (thread) =>
+          thread.environmentId !== null && ids.has(thread.environmentId),
+      );
+      return {
+        ...hold,
+        threads,
+        inUse:
+          threads.length > 0 ||
+          hold.environments.some((env) => env.heldBy !== null),
+      };
+    };
+  }
+  async function releaseWorkspace(hold: WorkspaceHold) {
+    for (const env of hold.environments)
+      await bb.sdk.environments.delete({ environmentId: env.id });
+    for (const env of hold.environments) {
+      const current = await bb.sdk.environments.get({
+        environmentId: env.id,
+        signal: lifecycle.signal,
       });
+      if (current.status !== "destroyed")
+        throw new Error(
+          `The environment using ${hold.path} is still being removed. Clear the files again once it finishes`,
+        );
     }
-    return result;
   }
   const scanRemovals = new Map<string, Removal>();
   const removedTargets = new Map<
@@ -482,7 +500,7 @@ export function createStorage(
     return environments;
   }
   async function workspaceEntries(hostId: string, rootPath: string) {
-    return entriesHoldingWorkspaces(rootPath, await readEnvironments(hostId));
+    return readWorkspaces(rootPath, await readEnvironments(hostId));
   }
   async function readLeftoverEnvironments(environments: Environment[]) {
     const retired = retiredEnvironments(environments);
@@ -553,13 +571,11 @@ export function createStorage(
     for (const thread of environmentThreads) byId.set(thread.id, thread);
     const threads = [...byId.values()];
     const linked = (path: string) => linkedThreads(links.get(path)!, threads);
-    const workspaces =
+    const workspace =
       machine.threadStorageRootPath === null
-        ? new Map<string, string>()
-        : entriesHoldingWorkspaces(
-            machine.threadStorageRootPath,
-            allEnvironments,
-          );
+        ? () => undefined
+        : await readWorkspaces(machine.threadStorageRootPath, allEnvironments);
+    const held = (name: string) => workspace(name)?.inUse === true;
     const environments = new Map(
       leftoverEnvironments(retired, threads).map((env) => [env.id, env]),
     );
@@ -629,7 +645,7 @@ export function createStorage(
       return thread ? [{ ...entry, thread }] : [];
     });
     const orphans = entries.filter(
-      (entry) => !byId.has(entry.name) && !workspaces.has(entry.name),
+      (entry) => !byId.has(entry.name) && !held(entry.name),
     );
     const worktrees = scan.worktrees.flatMap((entry) => {
       const env = environments.get(entry.environmentId);
@@ -664,23 +680,14 @@ export function createStorage(
       return (
         thread !== undefined &&
         clearableArchived(thread) &&
-        !workspaces.has(entry.name)
+        workspace(entry.name) === undefined
       );
     });
     const largest = owned
       .sort((a, b) => b.sizeBytes - a.sizeBytes)
       .slice(0, 20);
-    const heldWorkspaces = await readHeldWorkspaces(
-      largest.flatMap(({ thread }) => {
-        const workspace = workspaces.get(thread.id);
-        return workspace === undefined
-          ? []
-          : [{ threadId: thread.id, path: workspace }];
-      }),
-      allEnvironments,
-    );
     const clearableOwned = owned.filter(
-      (entry) => clearableArchived(entry.thread) && !workspaces.has(entry.name),
+      (entry) => clearableArchived(entry.thread) && !held(entry.name),
     );
     return {
       hostId,
@@ -720,7 +727,7 @@ export function createStorage(
         pinned: thread.pinnedAt !== null,
         running: ["starting", "active", "stopping"].includes(thread.status),
         sizeBytes,
-        heldWorkspace: heldWorkspaces.get(thread.id) ?? null,
+        heldWorkspace: heldWorkspace(workspace(thread.id)),
       })),
       leftoverWorktrees: worktrees,
       projectWorktrees: projects
@@ -1099,13 +1106,17 @@ export function createStorage(
         workspaceEntries(hostId, rootPath),
       ]);
       const batch = candidates.filter((entry) => {
-        if (workspaces.has(entry.name)) return false;
+        if (workspaces(entry.name)?.inUse === true) return false;
         const thread = byId.get(entry.name);
         return eligibility === "orphan"
           ? thread === undefined
           : thread !== undefined && clearableArchived(thread);
       });
       if (batch.length === 0) continue;
+      for (const entry of batch) {
+        const hold = workspaces(entry.name);
+        if (hold !== undefined) await releaseWorkspace(hold);
+      }
       await worker.call(
         "discard",
         {
@@ -1174,7 +1185,7 @@ export function createStorage(
           return (
             thread !== undefined &&
             clearableArchived(thread) &&
-            !workspaces.has(name)
+            workspaces(name) === undefined
           );
         });
         if (batch.length === 0) continue;
@@ -1613,15 +1624,14 @@ export function createStorage(
         if (["starting", "active", "stopping"].includes(current.status))
           throw new Error("Stop the thread before clearing its storage");
       }
-      const workspace = (await workspaceEntries(hostId, rootPath)).get(
-        threadId,
-      );
-      if (workspace !== undefined) {
+      const workspace = (await workspaceEntries(hostId, rootPath))(threadId);
+      if (workspace?.inUse === true) {
         if (archivedAt !== null) return { ok: true as const };
         throw new Error(
-          `This thread’s storage contains the workspace ${workspace}, which an environment still uses`,
+          `This thread’s storage contains the workspace ${workspace.path}, which an environment still uses`,
         );
       }
+      if (workspace !== undefined) await releaseWorkspace(workspace);
       const removedBytes =
         archivedAt === null
           ? null

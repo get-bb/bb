@@ -17,7 +17,9 @@ Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
 The machine page offers Clear archived files for whole storage folders, including
 small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
-keeps conversations and uploaded attachments and requires confirmation. The
+keeps conversations and uploaded attachments and requires confirmation. A folder holding an
+environment's workspace is cleared only once no unarchived or running thread
+uses that environment and nothing holds it; the environment is deleted first. The
 matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes`.
 
 The Clean up section offers Remove instances for `~/.bb-dev` entries whose
