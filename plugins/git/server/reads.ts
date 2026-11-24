@@ -87,11 +87,7 @@ function requireWorkspacePath(environment: Environment): string {
   return environment.path;
 }
 
-const FILE_READ_FAILURE_CODES = [
-  "ENOENT",
-  "invalid_path",
-  "file_too_large",
-] as const;
+const FILE_READ_FAILURE_CODES = ["ENOENT", "invalid_path", "file_too_large"] as const;
 
 function fileReadFailure(error: unknown): {
   code: (typeof FILE_READ_FAILURE_CODES)[number];

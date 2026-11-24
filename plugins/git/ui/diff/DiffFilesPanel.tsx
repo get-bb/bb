@@ -197,13 +197,7 @@ export function DiffFilesPanel({
     }
     virtualizer.scrollToIndex(index, { align: "start" });
     onScrolledToPath?.();
-  }, [
-    isPlaceholder,
-    scrollToPath,
-    visibleFiles,
-    virtualizer,
-    onScrolledToPath,
-  ]);
+  }, [isPlaceholder, scrollToPath, visibleFiles, virtualizer, onScrolledToPath]);
 
   if (visibleFiles.length === 0) {
     return (

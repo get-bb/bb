@@ -13,7 +13,10 @@ import {
   listEnvironments,
   updateEnvironmentMetadata,
 } from "@bb/db";
-import { environmentStatusValues, type EnvironmentStatus } from "@bb/domain";
+import {
+  environmentStatusValues,
+  type EnvironmentStatus,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -40,7 +43,9 @@ import {
   requireEnvironment,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import { ensureHostSessionReadyForWork } from "../services/hosts/host-lifecycle.js";
+import {
+  ensureHostSessionReadyForWork,
+} from "../services/hosts/host-lifecycle.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
@@ -51,7 +56,9 @@ import {
   DEFAULT_PATH_LIST_EXCLUDE_NAMES,
   WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
 } from "./path-list-policy.js";
-import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
+import {
+  requireWorkspaceCommandTarget,
+} from "../services/environments/workspace-command-target.js";
 
 const LISTED_ENVIRONMENT_STATUSES: readonly EnvironmentStatus[] =
   environmentStatusValues.filter((status) => status !== "destroyed");
@@ -279,7 +286,11 @@ export function registerEnvironmentRoutes(
         maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
       });
     if (!workspaceStatus.workingTree.hasUncommittedChanges) {
-      throw new ApiError(409, "no_changes", "No uncommitted changes to commit");
+      throw new ApiError(
+        409,
+        "no_changes",
+        "No uncommitted changes to commit",
+      );
     }
 
     const aiMessage = await generateCommitMessage(deps, {
