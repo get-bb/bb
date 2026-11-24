@@ -659,6 +659,121 @@ describe("third-party marketplaces", () => {
     );
   });
 
+  describe.skipIf(process.platform === "win32")(
+    "git marketplace read through symlinks inside the repository",
+    () => {
+      const notes = (iconUrl: string) =>
+        JSON.stringify(
+          manifest("acme-plugins", [entry({ icon: { url: iconUrl } })]),
+        );
+
+      it.each([
+        {
+          layout: "marketplace.json links to catalog/marketplace.json",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "catalog", "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "catalog", "marketplace.json"),
+              notes("./catalog/icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "catalog", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(
+              join("catalog", "marketplace.json"),
+              join(repo, "marketplace.json"),
+            );
+          },
+        },
+        {
+          layout: "the subdirectory tools/bb links to catalog",
+          subdirectory: "tools/bb",
+          build: async (repo: string) => {
+            await mkdir(join(repo, "catalog", "icons"), { recursive: true });
+            await mkdir(join(repo, "tools"), { recursive: true });
+            await writeFile(
+              join(repo, "catalog", "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "catalog", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(join("..", "catalog"), join(repo, "tools", "bb"));
+          },
+        },
+        {
+          layout: "icons/notes.svg links to assets/notes.svg",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "assets"), { recursive: true });
+            await mkdir(join(repo, "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(join(repo, "assets", "notes.svg"), VALID_SVG);
+            await symlink(
+              join("..", "assets", "notes.svg"),
+              join(repo, "icons", "notes.svg"),
+            );
+          },
+        },
+        {
+          layout: "icons links to assets/icons",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "assets", "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "assets", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(join("assets", "icons"), join(repo, "icons"));
+          },
+        },
+      ])("reads the catalog when $layout", async ({ subdirectory, build }) => {
+        const repo = await mkdtemp(join(tmpdir(), "bb-marketplace-repo-"));
+        cleanup.push(repo);
+        await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
+        await run("git", ["config", "user.email", "test@example.com"], {
+          cwd: repo,
+        });
+        await run("git", ["config", "user.name", "Test"], { cwd: repo });
+        await build(repo);
+        await run("git", ["-c", "core.excludesFile=/dev/null", "add", "."], {
+          cwd: repo,
+        });
+        await run("git", ["commit", "-qm", "catalog"], { cwd: repo });
+        const warnings: string[] = [];
+        const catalog = service({
+          fetch: marketplaceFetch({}),
+          warn: (message) => warnings.push(message),
+        });
+
+        const added = await catalog.addMarketplace({
+          source: `git:${repo}@main`,
+          subdirectory,
+        });
+
+        expect(added).toMatchObject({
+          name: "acme-plugins",
+          entryCount: 1,
+          resolvedCommit: await headCommit(repo),
+        });
+        expect(
+          getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+        ).toBe("image/svg+xml");
+        expect(warnings).toEqual([]);
+      });
+    },
+  );
+
   it("removes a checkout left by a prior process crash", async () => {
     const repo = await gitMarketplace({
       name: "acme-plugins",

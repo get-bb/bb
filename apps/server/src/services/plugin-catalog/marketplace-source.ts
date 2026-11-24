@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { PluginMarketplaceSourceKind } from "@bb/db";
 import {
@@ -415,11 +415,11 @@ async function disableSparseCheckout(checkout: string): Promise<void> {
   await gitCommand(checkout, ["sparse-checkout", "disable"]);
 }
 
-function manifestIconDirectories(
+function manifestLocalIconPaths(
   catalog: MarketplaceManifest,
   root: string,
-): string[] | null {
-  const directories = new Set<string>();
+): string[] {
+  const paths = new Set<string>();
   for (const entry of catalog.plugins) {
     let icon: MarketplaceIconLocation | null;
     try {
@@ -427,44 +427,79 @@ function manifestIconDirectories(
     } catch {
       continue;
     }
-    if (icon === null || icon.kind !== "local") continue;
-    const directory = dirname(icon.relativePath);
-    if (directory === ".") continue;
-    if (SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(directory)) return null;
-    directories.add(directory);
+    if (icon !== null && icon.kind === "local") paths.add(icon.relativePath);
   }
-  return [...directories];
+  return [...paths];
 }
 
-async function addIconDirectories(checkout: string): Promise<void> {
+async function crossesSymlink(
+  checkout: string,
+  relativePath: string,
+): Promise<boolean> {
+  let current = checkout;
+  for (const segment of relativePath.split("/")) {
+    current = join(current, segment);
+    const entry = await lstat(current).catch(() => null);
+    if (entry === null) return false;
+    if (entry.isSymbolicLink()) return true;
+  }
+  return false;
+}
+
+async function sparseCheckoutHoldsCatalog(
+  checkout: string,
+  subdirectory: string | null,
+): Promise<boolean> {
+  const inRoot = (path: string) =>
+    subdirectory === null ? path : `${subdirectory}/${path}`;
+  const manifestPath = inRoot(MARKETPLACE_MANIFEST_FILENAME);
+  if (await crossesSymlink(checkout, manifestPath)) return false;
   const raw = await readFile(
-    join(checkout, MARKETPLACE_MANIFEST_FILENAME),
+    join(checkout, ...manifestPath.split("/")),
     "utf8",
   ).catch(() => null);
-  if (raw === null) return;
+  if (raw === null) return true;
   let catalog: MarketplaceManifest;
   try {
     catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
   } catch {
-    return;
+    return true;
   }
-  const directories = manifestIconDirectories(catalog, checkout);
-  if (directories === null) return disableSparseCheckout(checkout);
-  if (directories.length === 0) return;
-  try {
-    await gitCommand(checkout, ["sparse-checkout", "add", ...directories]);
-  } catch {
-    return disableSparseCheckout(checkout);
+  const iconPaths = manifestLocalIconPaths(
+    catalog,
+    join(checkout, ...(subdirectory === null ? [] : subdirectory.split("/"))),
+  );
+  if (subdirectory === null) {
+    const directories = [
+      ...new Set(
+        iconPaths.map((path) => dirname(path)).filter((path) => path !== "."),
+      ),
+    ];
+    if (
+      directories.some((directory) =>
+        SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(directory),
+      )
+    ) {
+      return false;
+    }
+    if (
+      directories.length > 0 &&
+      !(await gitCommand(checkout, [
+        "sparse-checkout",
+        "add",
+        ...directories,
+      ]).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      return false;
+    }
   }
-  for (const directory of directories) {
-    const resolvable = await realpath(
-      join(checkout, ...directory.split("/")),
-    ).then(
-      () => true,
-      () => false,
-    );
-    if (!resolvable) return disableSparseCheckout(checkout);
+  for (const path of iconPaths) {
+    if (await crossesSymlink(checkout, inRoot(path))) return false;
   }
+  return true;
 }
 
 async function fetchGitMarketplaceCommit(
@@ -503,7 +538,9 @@ async function fetchGitMarketplaceCommit(
       "--detach",
       "FETCH_HEAD",
     ]);
-    if (sparse && subdirectory === null) await addIconDirectories(checkout);
+    if (sparse && !(await sparseCheckoutHoldsCatalog(checkout, subdirectory))) {
+      await disableSparseCheckout(checkout);
+    }
     return true;
   } catch {
     await rm(checkout, { recursive: true, force: true });
