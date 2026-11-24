@@ -30,7 +30,11 @@ Check an explicit model selection with:
 ```sh
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb provider models <provider-id> --environment "$BB_ENVIRONMENT_ID" --json
+bb provider models <provider-id> --environment "$BB_ENVIRONMENT_ID" --selected-model <model-id> --json
 ```
+
+A model with `reasoningDiscovery: "unknown"` lists no reasoning levels until
+its levels are discovered. The `--selected-model` form discovers them.
 
 Do not guess model identifiers or partial selection tuples.
 

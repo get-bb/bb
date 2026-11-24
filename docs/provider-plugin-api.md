@@ -501,7 +501,9 @@ instead of answered from cache; a failure of that retry is reported in
 `modelLoadError`. Concurrent reads share one discovery request. Interactive
 pickers pass `preferCached: true` to answer immediately from the cache,
 including a recent model-load failure, while discovery refreshes in the
-background.
+background. A model with `reasoningDiscovery: "unknown"` has no reasoning
+levels yet. Pass its id as `selectedModel` (`--selected-model` in the CLI) to
+wait for that model's reasoning discovery; the result is cached.
 
 ## 6. Distribution
 

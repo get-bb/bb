@@ -882,6 +882,7 @@ describe("@bb/sdk", () => {
         hostId: "host_remote",
         projectId: "proj_remote",
         providerId: "acp-remote",
+        selectedModel: "model-remote",
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
 
@@ -899,7 +900,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/execution-options?hostId=host_remote&projectId=proj_remote&providerId=acp-remote",
+        url: "http://bb.test/api/v1/system/execution-options?hostId=host_remote&projectId=proj_remote&providerId=acp-remote&selectedModel=model-remote",
       },
     ]);
   });

@@ -62,6 +62,8 @@ function model() {
   };
 }
 
+type ModelsArgs = { selectedModel?: string; signal?: AbortSignal } | undefined;
+
 interface WorkerState {
   status: "active" | "idle" | "error";
   output: string | null;
@@ -420,6 +422,111 @@ describe("workflow service policy integration", () => {
       }
     },
   );
+
+  it.each([
+    { parent: "medium", requested: "high", resolved: "high" },
+    { parent: "high", requested: null, resolved: "high" },
+  ] as const)(
+    "discovers reasoning for an unknown model: parent=$parent requested=$requested",
+    async ({ parent, requested, resolved }) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      test.harness.sdk.stub("providers.models", async (args: ModelsArgs) => ({
+        providers: [],
+        models: [
+          args?.selectedModel === "gpt-test"
+            ? {
+                ...model(),
+                supportedReasoningEfforts: ["low", "medium", "high"].map(
+                  (reasoningEffort) => ({
+                    reasoningEffort,
+                    description: "test",
+                  }),
+                ),
+              }
+            : {
+                ...model(),
+                reasoningDiscovery: "unknown" as const,
+                supportedReasoningEfforts: [],
+              },
+        ],
+        selectedOnlyModels: [],
+        modelLoadError: null,
+      }));
+      test.harness.sdk.stub("threads.defaultExecutionOptions", async () => ({
+        model: "gpt-test",
+        reasoningLevel: parent,
+        permissionMode: "full",
+        serviceTier: "default",
+        source: "default",
+      }));
+      const run = await test.start(
+        source(
+          requested === null
+            ? 'return await agent("review");'
+            : `return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "${requested}" });`,
+        ),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() => {
+          expect(getRunRequired(test.db, run.id).error).toBeNull();
+          expect(test.childCount()).toBe(1);
+        });
+        expect(test.harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject(
+          { model: "gpt-test", reasoningLevel: resolved },
+        );
+        expect(
+          test.harness.sdk
+            .callsTo("providers.models")
+            .map(([args]) => (args as ModelsArgs)?.selectedModel),
+        ).toEqual(["gpt-test"]);
+        test.service.onThreadIdle("child-1", "completed");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it("aborts the model catalog request when the run is stopped", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const discoverySignals: AbortSignal[] = [];
+    test.harness.sdk.stub("providers.models", async (args: ModelsArgs) => {
+      const signal = args?.signal;
+      if (signal === undefined) throw new Error("Missing discovery signal");
+      discoverySignals.push(signal);
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const run = await test.start(
+      source(
+        'return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "high" });',
+      ),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(discoverySignals).toHaveLength(1));
+      await expect(test.service.stop(run.id)).resolves.toBe(true);
+      await eventually(() => {
+        expect(discoverySignals[0]?.aborted).toBe(true);
+        expect(getRunRequired(test.db, run.id).status).toBe("cancelled");
+      });
+      expect(test.childCount()).toBe(0);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
 
   it("applies live settings to future run snapshots without mutating existing runs", async () => {
     const initial = {
