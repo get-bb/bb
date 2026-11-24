@@ -569,9 +569,13 @@ describe("plugin holds", () => {
       hostId: host.id,
       projectId: project.id,
     });
-    await expect
-      .poll(() => getEnvironment(harness.db, pooled.id)?.heldBy)
-      .toBeNull();
+    await waitForQueuedCommand(
+      harness,
+      (command) =>
+        command.command.type === "thread.start" &&
+        command.command.threadId === thread.id,
+      5_000,
+    );
     handOff.current = null;
     harness.db
       .update(threads)
