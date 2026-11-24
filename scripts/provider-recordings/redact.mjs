@@ -94,6 +94,7 @@ const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
   "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
 ]);
+const GROK_SYNTHETIC_CANCEL_MESSAGE = "Subagent cancellation initiated";
 const GROK_SYNTHETIC_SUBAGENT_PROMPTS = new Set([
   'Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly "CHILD_MESSAGE 😀 مراجعة". Send it only to that child, then return the tool result.',
   'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.',
@@ -355,10 +356,16 @@ function preserveGrokToolResults(value, redacted) {
       redactedOutput.Result !== null &&
       typeof redactedOutput.Result === "object"
     ) {
-      for (const key of ["task_id", "outcome", "message"]) {
+      for (const key of ["task_id", "outcome"]) {
         if (typeof rawOutput.Result[key] === "string") {
           redactedOutput.Result[key] = rawOutput.Result[key];
         }
+      }
+      if (typeof rawOutput.Result.message === "string") {
+        redactedOutput.Result.message =
+          rawOutput.Result.message === GROK_SYNTHETIC_CANCEL_MESSAGE
+            ? GROK_SYNTHETIC_CANCEL_MESSAGE
+            : "REDACTED_TEXT";
       }
     }
   }

@@ -8370,6 +8370,66 @@ describe("acp bridge: questions the agent asks", () => {
     ).toHaveLength(promptsBefore + 1);
   });
 
+  it("does not run a subagent action cancelled while session options apply", async () => {
+    const requestLog = join(workspaceDir, "grok-action-cancel-reserve.log");
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_CONFIG_DELAY_MS: "400",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+    const promptsBefore = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/prompt",
+    ).length;
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "cancelled during options",
+      options: {
+        ...executionOptions({}),
+        sessionOptions: { approach: "plan" },
+      },
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "session/set_config_option" &&
+            request.params?.["configId"] === "approach" &&
+            request.params?.["value"] === "plan",
+        )
+          ? true
+          : undefined,
+      "tell session option",
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId: tellId },
+      }),
+    );
+    expect((await waitForResponse(tellId)).error?.message).toContain(
+      "Parent turn ended before the subagent action was acknowledged",
+    );
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore);
+    const recovered = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered after cancel",
+      }),
+    );
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.result).toMatchObject({ childRef: "child-alpha" });
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore + 1);
+  });
+
   it("grok_subagent_tell_targets_only_requested_child", async () => {
     const { providerThreadId } = await startGrokSubagentThread();
     const text = `CHILD_MESSAGE 😀 مراجعة\n${"x".repeat(64_001)}`;

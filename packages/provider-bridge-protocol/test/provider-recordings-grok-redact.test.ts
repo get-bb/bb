@@ -350,6 +350,21 @@ describe("Grok recording redaction", () => {
       {
         method: "session/update",
         params: {
+          update: {
+            rawOutput: {
+              type: "KillTask",
+              Result: {
+                task_id: "child-alpha",
+                outcome: "killed",
+                message: "confidential cancellation note",
+              },
+            },
+          },
+        },
+      },
+      {
+        method: "session/update",
+        params: {
           update: { rawOutput: { type: "Text", text: "private-tool-output" } },
         },
       },
@@ -424,6 +439,7 @@ describe("Grok recording redaction", () => {
     expect(redacted).not.toContain("private-key-value");
     expect(redacted).not.toContain("private-subagent-message");
     expect(redacted).not.toContain("private-tell-body");
+    expect(redacted).not.toContain("confidential cancellation note");
     expect(readMessages(output)).toContainEqual({
       method: "session/update",
       params: {
@@ -484,6 +500,21 @@ describe("Grok recording redaction", () => {
                   task_id: "child-alpha",
                   outcome: "killed",
                   message: "Subagent cancellation initiated",
+                },
+              },
+            },
+          },
+        },
+        {
+          method: "session/update",
+          params: {
+            update: {
+              rawOutput: {
+                type: "KillTask",
+                Result: {
+                  task_id: "child-alpha",
+                  outcome: "killed",
+                  message: "REDACTED_TEXT",
                 },
               },
             },

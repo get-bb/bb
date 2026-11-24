@@ -885,6 +885,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run every thread started with it through a bridge the plugin ships",
           "Report context usage, service tiers, and install status",
           "Distinguish unknown reasoning from confirmed models with no selectable levels",
+          "Show message and cancel controls for a running subagent when capabilities.experimental_supportsSubagentMessaging is true. Absence and false hide them",
         ],
         apiSymbols: [
           "contextSnapshotSchema",
@@ -892,6 +893,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ContextCategory",
           "ContextEntry",
           "PluginProviderDeclaration",
+          "PluginProviderCapabilities.experimental_supportsSubagentMessaging",
           "AvailableModel",
           "AvailableModel.reasoningDiscovery",
           "ModelServiceTier",

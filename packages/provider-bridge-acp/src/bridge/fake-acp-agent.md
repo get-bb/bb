@@ -12,3 +12,5 @@
 - `FAKE_ACP_GROK_SUBAGENT_WRONG_TEXT=1` sends `WRONG` instead of the requested tell text.
 - `FAKE_ACP_GROK_SUBAGENT_RESULT_ON_TOOL_CALL=1` puts the completed tool result on the first `tool_call`.
 - `FAKE_ACP_CONFIG_DELAY_MS=<ms>` waits before answering `session/set_config_option` for `approach`.
+
+Prompt text `advertise-commands` advertises the configured slash commands, twice.

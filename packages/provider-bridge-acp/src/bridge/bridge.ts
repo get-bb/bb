@@ -346,6 +346,8 @@ interface AcpThreadSession {
   pendingSubagentActions: Map<string, PendingGrokSubagentAction>;
   grokToolCallsById: Map<string, GrokToolCallState>;
   subagentActionReserved: boolean;
+  subagentActionRequestId: AcpBridgeRequestId | undefined;
+  subagentActionCancelRequested: boolean;
   turnStartReserved: boolean;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
@@ -2961,6 +2963,8 @@ async function startAgentSession(
     pendingSubagentActions: new Map(),
     grokToolCallsById: new Map(),
     subagentActionReserved: false,
+    subagentActionRequestId: undefined,
+    subagentActionCancelRequested: false,
     turnStartReserved: false,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
@@ -5359,9 +5363,19 @@ async function startGrokSubagentAction(
       ? request.params.text
       : undefined;
   session.subagentActionReserved = true;
+  session.subagentActionRequestId = request.id;
+  session.subagentActionCancelRequested = false;
   try {
     if (options.sessionOptions !== undefined) {
       await applySessionOptionSelections(session, options.sessionOptions);
+    }
+    if (session.subagentActionCancelRequested) {
+      sendError(
+        request.id,
+        -32000,
+        "Parent turn ended before the subagent action was acknowledged",
+      );
+      return;
     }
     if (
       session.stopping ||
@@ -5416,6 +5430,17 @@ async function startGrokSubagentAction(
       toolName,
       ...(requestedText === undefined ? {} : { text: requestedText }),
     });
+    const pendingAction = session.pendingSubagentActions.get(
+      String(request.id),
+    );
+    if (session.subagentActionCancelRequested && pendingAction !== undefined) {
+      failPendingSubagentAction(
+        session,
+        pendingAction,
+        "Parent turn ended before the subagent action was acknowledged",
+      );
+      return;
+    }
     runTurn(session, {
       clientRequestId,
       input: [{ type: "text", text, mentions: [] }],
@@ -5425,6 +5450,8 @@ async function startGrokSubagentAction(
     });
   } finally {
     session.subagentActionReserved = false;
+    session.subagentActionRequestId = undefined;
+    session.subagentActionCancelRequested = false;
   }
 }
 
@@ -5785,18 +5812,28 @@ function cancelSubagentActionFromRuntime(parsed: unknown): boolean {
     return true;
   }
   const key = String(params.data.requestId);
+  let reservedSession: AcpThreadSession | undefined;
   for (const session of sessionsByBbThreadId.values()) {
     const action = session.pendingSubagentActions.get(key);
-    if (action === undefined) {
-      continue;
+    if (action !== undefined) {
+      failPendingSubagentAction(
+        session,
+        action,
+        "Parent turn ended before the subagent action was acknowledged",
+      );
+      requestSteerCancel(session);
+      return true;
     }
-    failPendingSubagentAction(
-      session,
-      action,
-      "Parent turn ended before the subagent action was acknowledged",
-    );
-    requestSteerCancel(session);
-    break;
+    if (
+      reservedSession === undefined &&
+      session.subagentActionReserved &&
+      String(session.subagentActionRequestId) === key
+    ) {
+      reservedSession = session;
+    }
+  }
+  if (reservedSession !== undefined) {
+    reservedSession.subagentActionCancelRequested = true;
   }
   return true;
 }
