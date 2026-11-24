@@ -64,6 +64,7 @@ export const UI_PREFERENCE_KEYS = [
   "diff.provider",
   "sourceCode.provider",
   "threadHeader.titleProvider",
+  "threadRail.outlineProvider",
   "fileOpener.byExtension",
   "codeFence.byLanguage",
   "messageDirective.byName",
@@ -198,6 +199,11 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     `Plugin that draws the thread title in the thread header: a plugin key, __builtin__ for bb's own title, or __automatic__ for the first header title from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "threadRail.outlineProvider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that draws the thread outline at the top of the rail beside a thread's conversation: a plugin key, __builtin__ for bb's own outline, or __automatic__ for the first thread outline from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
   ),
   "fileOpener.byExtension": defineUiPreference(
     pickMapSchema,

@@ -88,7 +88,7 @@ import {
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@bb/shared-ui/prompt-banner-actions";
-import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";

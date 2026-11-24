@@ -9,7 +9,13 @@ import {
 } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { MemoryRouter, useLocation, type Location } from "react-router-dom";
+import {
+  MemoryRouter,
+  useLocation,
+  useNavigationType,
+  type Location,
+  type NavigationType,
+} from "react-router-dom";
 import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import type {
   BbNavigate,
@@ -34,6 +40,7 @@ afterEach(() => {
 interface Harness {
   navigate: () => BbNavigate;
   locations: Location[];
+  navigationTypes: NavigationType[];
   store: ReturnType<typeof createStore>;
   composeProjectId: () => string | null;
 }
@@ -55,6 +62,7 @@ function renderNavigate({
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   const locations: Location[] = [];
+  const navigationTypes: NavigationType[] = [];
   let current: BbNavigate | null = null;
   function Probe() {
     const navigate = useBbNavigate();
@@ -65,7 +73,11 @@ function renderNavigate({
   }
   function LocationProbe() {
     const location = useLocation();
-    if (locations.at(-1)?.key !== location.key) locations.push(location);
+    const navigationType = useNavigationType();
+    if (locations.at(-1)?.key !== location.key) {
+      locations.push(location);
+      navigationTypes.push(navigationType);
+    }
     return null;
   }
   let composeProjectId: string | null = null;
@@ -94,6 +106,7 @@ function renderNavigate({
       return current;
     },
     locations,
+    navigationTypes,
     store,
     composeProjectId: () => composeProjectId,
   };
@@ -123,6 +136,28 @@ describe("useBbNavigate thread and settings locations", () => {
         messageSeq: 42,
       }),
     ).toBe(href(opened[0]!));
+  });
+
+  it("reveals a message of the thread the route shows in place, replacing the history entry each time", () => {
+    const { navigate, locations, navigationTypes } = renderNavigate({
+      initialPath: "/projects/proj_demo/threads/thr_target",
+    });
+    act(() => {
+      navigate().toThread("thr_target", { messageSeq: 42 });
+    });
+    act(() => {
+      navigate().toThread("thr_target", { messageSeq: 42 });
+    });
+    act(() => {
+      navigate().toThread("thr_target");
+    });
+    expect(locations.slice(1).map(href)).toEqual([
+      "/projects/proj_demo/threads/thr_target#msg=42",
+      "/projects/proj_demo/threads/thr_target#msg=42",
+      "/projects/proj_demo/threads/thr_target",
+    ]);
+    expect(navigationTypes.slice(1)).toEqual(["REPLACE", "REPLACE", "PUSH"]);
+    expect(locations[1]?.key).not.toBe(locations[2]?.key);
   });
 
   it("keeps the message when the thread is already open in another pane", () => {

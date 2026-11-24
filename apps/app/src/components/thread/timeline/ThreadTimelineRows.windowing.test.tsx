@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import {
+  MemoryRouter,
+  useNavigate,
+  type NavigateFunction,
+} from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { buildTimelineViewRows } from "@bb/thread-view";
@@ -15,11 +19,7 @@ import {
   delegationRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import {
-  collectSearchedMessageAncestorRowIds,
-  type MessageRevealRequest,
-} from "./useScrollToSearchedMessage";
-import type { ReactElement } from "react";
+import { collectSearchedMessageAncestorRowIds } from "./useScrollToSearchedMessage";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 function rect(top: number, height: number): DOMRect {
@@ -358,7 +358,7 @@ describe("ThreadTimelineRows windowing", () => {
     );
   });
 
-  it("keeps an offscreen in-place reveal target realized and reveals it after an older URL target", async () => {
+  it("keeps an offscreen message-link target realized and reveals it again when the link replaces itself", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");
     Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
@@ -383,9 +383,14 @@ describe("ThreadTimelineRows windowing", () => {
       }),
     );
     const queryClient = new QueryClient();
-    const timeline = (
-      messageRevealRequest: MessageRevealRequest | null,
-    ): ReactElement => (
+    const navigation: { navigate: NavigateFunction | null } = {
+      navigate: null,
+    };
+    function CaptureNavigate() {
+      navigation.navigate = useNavigate();
+      return null;
+    }
+    const view = render(
       <MemoryRouter
         initialEntries={[
           {
@@ -397,24 +402,27 @@ describe("ThreadTimelineRows windowing", () => {
           },
         ]}
       >
+        <CaptureNavigate />
         <QueryClientProvider client={queryClient}>
           <BottomAnchorContext.Provider value={bottomAnchor}>
             <CompactViewportOverrideProvider isCompactViewport>
               <ThreadTimelineRows
                 threadId="thr_large_search"
                 timelineRows={rows}
-                messageRevealRequest={messageRevealRequest}
                 threadRuntimeDisplayStatus="idle"
               />
             </CompactViewportOverrideProvider>
           </BottomAnchorContext.Provider>
         </QueryClientProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    const view = render(timeline(null));
+    const navigate = (path: string, options?: { replace: boolean }) =>
+      act(() => {
+        void navigation.navigate?.(path, options);
+      });
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalled());
     scrollElementIntoView.mockClear();
-    view.rerender(timeline({ threadId: "thr_other", messageSeq: 41, key: 1 }));
+    navigate("/threads/thr_other#msg=41");
     expect(
       view.container.querySelector(
         '[data-timeline-row-id="search-message-40"]',
@@ -422,19 +430,24 @@ describe("ThreadTimelineRows windowing", () => {
     ).toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(scrollElementIntoView).not.toHaveBeenCalled();
-    view.rerender(
-      timeline({ threadId: "thr_large_search", messageSeq: 41, key: 2 }),
-    );
-    const outlineTarget = view.container.querySelector<HTMLElement>(
+    navigate("/threads/thr_large_search#msg=41", { replace: true });
+    const target = view.container.querySelector<HTMLElement>(
       '[data-timeline-row-id="search-message-40"]',
     );
-    expect(outlineTarget).not.toBeNull();
-    expect(outlineTarget?.textContent).toContain("Search message 40");
+    expect(target).not.toBeNull();
+    expect(target?.textContent).toContain("Search message 40");
+    const revealed = {
+      element: target,
+      options: { block: "start", inline: "nearest" },
+    };
     await waitFor(() =>
-      expect(scrollElementIntoView).toHaveBeenCalledWith({
-        element: outlineTarget,
-        options: { block: "start", inline: "nearest" },
-      }),
+      expect(scrollElementIntoView).toHaveBeenCalledWith(revealed),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    scrollElementIntoView.mockClear();
+    navigate("/threads/thr_large_search#msg=41", { replace: true });
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith(revealed),
     );
   });
 });

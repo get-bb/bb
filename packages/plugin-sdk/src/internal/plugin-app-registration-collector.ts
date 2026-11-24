@@ -40,6 +40,8 @@ import type {
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
+  ExperimentalThreadRailRegistration,
+  ExperimentalThreadRailOutlineRegistration,
   ExperimentalThreadContextCardRowRegistration,
   ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
@@ -394,6 +396,8 @@ export interface CollectedPluginAppRegistrations {
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
+  threadRails: ExperimentalThreadRailRegistration[];
+  threadRailOutlines: ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -540,6 +544,8 @@ export function collectPluginAppRegistrations(
     threadInfoSections: [],
     threadHeaderRows: [],
     threadHeaderTitles: [],
+    threadRails: [],
+    threadRailOutlines: [],
     threadContextCardRows: [],
     threadContextCardSections: [],
     threadActions: [],
@@ -583,6 +589,8 @@ export function collectPluginAppRegistrations(
     threadInfoSection: new Set<string>(),
     threadHeaderRow: new Set<string>(),
     threadHeaderTitle: new Set<string>(),
+    threadRail: new Set<string>(),
+    threadRailOutline: new Set<string>(),
     threadContextCardRow: new Set<string>(),
     threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
@@ -1162,6 +1170,25 @@ export function collectPluginAppRegistrations(
         collected.threadHeaderRows.push({
           id,
           ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadRail(registration) {
+        const kind = "slots.experimental_threadRail";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRail, id);
+        collected.threadRails.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadRailOutline(registration) {
+        const kind = "slots.experimental_threadRailOutline";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRailOutline, id);
+        collected.threadRailOutlines.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

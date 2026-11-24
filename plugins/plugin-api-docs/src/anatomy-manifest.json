@@ -159,6 +159,46 @@
         }
       ]
     },
+    "thread-rail": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": { "anchor": [] },
+      "fixtureClassAnchors": ["h-[3px] shrink-0 rounded-full", "w-5 bg-foreground/30"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadRail.tsx",
+          "anchors": [
+            "data-thread-rail=\"\"",
+            "slotKind=\"threadRailOutline\"",
+            "slotKind=\"threadRail\"",
+            "<BuiltInThreadRailOutline {...props} />",
+            "THREAD_RAIL_MIN_VISIBLE_WIDTH_PX = 56 * 16"
+          ]
+        },
+        {
+          "path": "apps/app/src/core-contributions/thread-outline.tsx",
+          "anchors": [
+            "app.slots.experimental_threadRailOutline",
+            "aria-label=\"Thread table of contents\"",
+            "h-[3px] shrink-0 rounded-full",
+            "w-5 bg-foreground/30"
+          ]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadScreen.tsx",
+          "anchors": ["<PluginThreadRail", "<TimelineViewportProvider"]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadRail.test.tsx",
+          "anchors": [
+            "replaces bb's outline with an installed plugin's under Automatic, with rail items below it",
+            "falls back to bb's outline when the picked one crashes"
+          ]
+        }
+      ]
+    },
     "thread-context-card": {
       "groupId": "app-shell",
       "fidelity": "anchor",

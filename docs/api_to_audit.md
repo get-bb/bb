@@ -2190,7 +2190,11 @@ Docs: `frontend-hooks-and-ui.md`.
 `toThread(threadId, { messageSeq })` opens the thread's message link,
 `…/threads/<id>#msg=<seq>`, through the same placement as `split`, so bb
 loads older history, scrolls to and highlights the message, or toasts
-"Message not found"; a repeated call reveals it again. That option is stable
+"Message not found"; a repeated call reveals it again. When the route
+already shows the thread (the focused pane's thread, as after a click in it),
+the call replaces the current history entry instead of pushing one, so a run
+of reveals leaves one entry and Back leaves the thread (SDK 0.6.196; earlier
+SDKs pushed an entry per call). That option is stable
 and unprefixed, so it matches the href option below; this entry covers the
 experimental members around it.
 `experimental_toSettings()` opens the calling plugin's settings page, and
@@ -2224,8 +2228,11 @@ because its hits can be non-message events. Every reveal of a message in the
 timeline, whether from a message link, the palette or the thread outline,
 runs through `useScrollToSearchedMessage`: it loads older pages, keeps the
 target rendered, waits for its position to settle, highlights it, and toasts
-when it is missing. The outline sends an in-place request with the
-message's seq instead of a URL, so it adds no history entry. `getSettingsTargetPath`
+when it is missing. bb's thread outline reveals through `toThread` itself
+(`core-contributions/thread-outline.tsx`), so it gets the same in-place
+replace as a plugin; the private in-place reveal request it used before is
+gone. Test: `plugin-navigation-hooks.test.tsx` (replace while the route shows
+the thread, push otherwise). `getSettingsTargetPath`
 (`settings-sections.ts`) is the only settings path builder: sections, plugin,
 machine and project pages, including `experimental_toSettings` and
 `experimental_settingsHref`. The sidebar footer's `openSettings` /
@@ -4172,6 +4179,36 @@ Docs: `frontend-thread-header-row.md`.
    header actions on phones and in narrow split panes.
 4. **Window title.** Decide whether a plugin should be able to set the window
    title for a thread, or whether it stays core-owned.
+
+## `app.slots.experimental_threadRail` and `app.slots.experimental_threadRailOutline` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.196.
+
+- **Surface:** `PluginAppSlots.experimental_threadRail(registration)` with `ExperimentalThreadRailRegistration` (`{ id, order?, component }`) and `ExperimentalThreadRailProps` (the header row's `{ threadId, projectId, environment }` plus `visible`); `PluginAppSlots.experimental_threadRailOutline(registration)` with `ExperimentalThreadRailOutlineRegistration` (`{ id, component }`) and `ExperimentalThreadRailOutlineProps` (an alias of the rail props). The pair mirrors `experimental_threadHeaderRow` (additive) and `experimental_threadHeaderTitle` (exclusive).
+- **Behavior:** `PluginThreadRail` (`apps/app/src/components/plugin/PluginThreadRail.tsx`) renders a column at the right edge of the conversation, in the scroll overlay of thread pages and split panes (not panel or transcript presentations). At the top it renders one outline, chosen by the shared exclusive-slot rule from the synced `threadRail.outlineProvider` pick: a plugin key, `__builtin__` for bb's outline, or Automatic (the first outline from a plugin the user installed by plugin id, then bb's own bundled or official-marketplace ones, then bb's). "Thread outline" under Settings > Appearance > Interface sets it, as does `bb settings ui set threadRail.outlineProvider`. Below the outline, rail items stack by `order` (unset last, then registration order). Each mounts in its own `PluginSlotMount`; a crashing rail item disappears for that thread, and a crashing plugin outline is replaced by bb's for that thread. While the pane's content box is under 56rem, the whole rail stays mounted but hidden and inert, and every component receives `visible: false`, so it can pause reads. `visible` is a prop rather than a hook because the sibling slot props already carry host layout state that way (`isCompactViewport` on sidebar navigation, sidebar header, thread list and browser toolbar props); `experimental_useTabVisible` is a hook only because one tab component serves several prop shapes.
+- **Core callers:** bb's thread outline (`apps/app/src/core-contributions/thread-outline.tsx`) registers through `experimental_threadRailOutline` with `definePluginApp`, imports only public SDK members and registry items (`bb/core-contribution-imports`), and is collected once as the builtin (`BUILT_IN_THREAD_RAIL_OUTLINE` in `PluginThreadRail.tsx`, so only the thread view loads it) rather than as a claimant, so `__builtin__` renders it through the plugin shape. `ThreadScreen` mounts `PluginThreadRail` where it used to mount `ThreadTableOfContents`. bb registers no rail item. Tests: `PluginThreadRail.test.tsx` (bb's outline through the public hooks, narrow-pane hiding with `visible: false`, Agent replies read only on that tab, an archived sender's title, the active prompt from the viewport, the twenty-tick cap, a plugin outline under Automatic with items below, `__builtin__`, crash fallback), `pinned-replacement-surfaces.test.tsx` and `exclusive-pick-first-paint.test.ts` (the pick in the shared exclusive-slot tables), `plugin-app-thread-rail.test.ts` (registration).
+- **Plugin callers:** none in-repo. Community outline plugins (threadline, which hides `[data-thread-toc]` to replace bb's outline) can register an outline; minimap-like strips can register rail items.
+- **Stabilization:** decide whether the rail needs a placement other than right of the conversation (sticky-prompt and pinned-turns draw over the top of the transcript, with no core caller yet), whether rail items need groups, and whether the outline pick needs an off value. Then rename project-wide and remove this entry.
+
+## `experimental_useConversationOutline` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.196.
+
+- **Surface:** `PluginSdkApp.experimental_useConversationOutline(threadId, role, options?: { enabled? }): ExperimentalConversationOutline`, `ExperimentalConversationOutline` (`{ status, items }`) and `ExperimentalConversationOutlineItem` (`{ id, messageSeq, role, preview, senderThreadId, attachmentSummary }`).
+- **Behavior:** `useConversationOutline` (`apps/app/src/lib/conversation-outline.ts`) reads the whole thread's user prompts or assistant replies through the conversation outline route behind `useSdk().threads.conversationOutline`, which refreshes when a turn completes, and lays the messages of the thread's loaded timeline page over it by id (live first, new ones appended), so prompts appear as they are sent and replies as they stream. It reads the timeline from the query cache with a disabled observer, so it never fetches a timeline itself; inside the thread's own pane it waits for the pane's first timeline page before reading the whole thread. A whole-thread read taken before the latest context clear is ignored until it reloads. Messages nested under a collapsed turn count, as on the server. `preview` is the text's start with whitespace collapsed, at most 200 characters, without a `[bb message from thread:<id>]` prefix, whose id becomes `senderThreadId`. `items` keeps its identity until an item changes: on a 713-word streamed reply the user list changed once while bb's previous outline re-rendered 41 to 58 times. bb's outline reads replies only while its popover is open, so the rail does not re-render while a reply streams. A streaming reply's `messageSeq` is its latest update's sequence until it completes. `enabled: false` makes no request and leaves `status` at `loading`.
+- **Core callers:** bb's thread outline (`core-contributions/thread-outline.tsx`) reads `user` always and `assistant` only while its Agent tab is open, both disabled while the rail is hidden. Tests: `conversation-outline.test.tsx` (merge and append, nested rows, the context boundary, waiting for the pane's first timeline page and `enabled: false`, no re-render while the pane refetches an unchanged timeline, identity while a reply streams).
+- **Plugin callers:** none in-repo. Community readers of `conversationOutline` (sticky-prompt, threadline, pinned-turns, maxwell, genui) can switch from polling.
+- **Stabilization:** decide whether items need the user message's initiator (system messages) and whether a streaming reply should keep a stable seq. Then rename project-wide and remove this entry.
+
+## `experimental_useTimelineViewport` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.196.
+
+- **Surface:** `PluginSdkApp.experimental_useTimelineViewport(): ExperimentalTimelineViewport | null` and `ExperimentalTimelineViewport` (`{ visibleMessageIds, atLatest }`).
+- **Behavior:** `ThreadScreen` wraps each thread page in `TimelineViewportProvider` (`apps/app/src/lib/timeline-viewport.tsx`), one store per pane holding the ids of the pane's conversation rows. `TimelineViewportScrollSource`, mounted inside the pane's scroll body, hands the store the scroll element, so the hook reads only the store and does not re-render with the scroll body as a reply streams. It answers for the pane the component renders in (the rail, message metadata, timeline renderers) and is null elsewhere, including panel and transcript presentations and the thread header. The store listens to scroll and resize only while something subscribes, measures 120 ms after they settle with a binary search over mounted message rows (at most 0.2 ms on a 143-turn thread), and notifies only when the visible ids or `atLatest` (within 4 px of the bottom) change. Ids rather than seqs because a streaming reply's seq moves.
+- **Core callers:** bb's thread outline marks the first visible prompt and reply, or the last ones at the latest message. Tests: `timeline-viewport.test.tsx` (visible ids top to bottom, `atLatest`, logarithmic measurements, settle timing and render count, null outside a pane) and `PluginThreadRail.test.tsx` (the outline's active tick).
+- **Plugin callers:** none in-repo. sticky-prompt, threadline, minimap and pinned-turns compute the same from the DOM.
+- **Stabilization:** decide whether the thread header should get the answer too (it renders outside the pane's scroll body) and whether callers need the turn that owns the top row when no message is in view. Then rename project-wide and remove this entry.
 
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 

@@ -45,7 +45,7 @@ import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
 import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
-import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,

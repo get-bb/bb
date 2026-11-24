@@ -117,6 +117,11 @@ import {
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
   type ExperimentalThreadHeaderRowRegistration,
+  type ExperimentalThreadRailRegistration,
+  type ExperimentalThreadRailOutlineRegistration,
+  type ExperimentalConversationOutline,
+  type ExperimentalConversationOutlineItem,
+  type ExperimentalTimelineViewport,
   type ExperimentalThreadHeaderTitleRegistration,
   type ExperimentalThreadContextCardRowRegistration,
   type ExperimentalThreadContextKind,
@@ -401,6 +406,8 @@ interface SlotEnv {
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarDraftThreadIds: ReadonlySet<string>;
   threadStates: ReadonlyMap<string, ExperimentalThreadState>;
+  conversationOutlines: Readonly<Record<string, TestConversationOutlines>>;
+  timelineViewport: ExperimentalTimelineViewport | null;
   experiments: ReadonlySet<string>;
   threadContextKind: ExperimentalThreadContextKind;
   threadExtensionStates: Readonly<
@@ -875,6 +882,15 @@ function TestThreadActionsContextMenu({
     </div>
   );
 }
+
+/** A thread's outline items per role, for `conversationOutlines`. */
+export interface TestConversationOutlines {
+  user?: readonly ExperimentalConversationOutlineItem[];
+  assistant?: readonly ExperimentalConversationOutlineItem[];
+}
+
+const NO_OUTLINE_ITEMS: readonly ExperimentalConversationOutlineItem[] =
+  Object.freeze([]);
 
 const NOT_FOUND_THREAD: ExperimentalThreadState = Object.freeze({
   status: "notFound",
@@ -1985,6 +2001,21 @@ const testPluginSdkApp = {
       NOT_FOUND_THREAD
     );
   },
+  experimental_useConversationOutline(
+    threadId,
+    role,
+    options,
+  ): ExperimentalConversationOutline {
+    const outlines = useSlotEnv("experimental_useConversationOutline")
+      .conversationOutlines[threadId];
+    const items = outlines?.[role] ?? NO_OUTLINE_ITEMS;
+    return options?.enabled === false
+      ? { status: "loading", items: NO_OUTLINE_ITEMS }
+      : { status: "ready", items };
+  },
+  experimental_useTimelineViewport(): ExperimentalTimelineViewport | null {
+    return useSlotEnv("experimental_useTimelineViewport").timelineViewport;
+  },
   experimental_useProviders(): PluginProvidersState {
     return useSlotEnv("experimental_useProviders").providers;
   },
@@ -2261,6 +2292,8 @@ export interface CapturedPluginApp {
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
+  threadRails: ExperimentalThreadRailRegistration[];
+  threadRailOutlines: ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: import("../internal/plugin-app-registration-collector.js").CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -2597,6 +2630,14 @@ export interface RenderSlotOptions<
    * report `notFound`.
    */
   threads?: Readonly<Record<string, ExperimentalThreadState>>;
+  /**
+   * What `experimental_useConversationOutline(id, role)` reports per thread
+   * id and role, always `ready`; with `enabled: false` it reports `loading`
+   * and no items. Omitted → no items.
+   */
+  conversationOutlines?: Readonly<Record<string, TestConversationOutlines>>;
+  /** What `experimental_useTimelineViewport()` reports. Omitted → null. */
+  timelineViewport?: ExperimentalTimelineViewport;
   /** Experiment keys `experimental_useExperiment()` reports as on. Omitted → none. */
   experiments?: readonly string[];
   /** What `experimental_useThreadContextKind()` reports. Omitted → `banner`. */
@@ -3660,6 +3701,8 @@ export function renderSlot<
       options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,
     sidebarDraftThreadIds,
     threadStates,
+    conversationOutlines: options.conversationOutlines ?? {},
+    timelineViewport: options.timelineViewport ?? null,
     experiments: new Set(options.experiments ?? []),
     threadContextKind: options.threadContextKind ?? "banner",
     threadExtensionStates: options.threadExtensionStates ?? {},

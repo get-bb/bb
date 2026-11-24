@@ -20,6 +20,7 @@ export type SettingsSearchCondition =
   | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadHeaderTitles"
+  | "threadRailOutlines"
   | "threadLists";
 
 interface SettingsSearchSetting {
@@ -182,6 +183,11 @@ export const SETTINGS_SEARCH_INDEX: Record<
         title: "Thread header title",
         keywords: ["thread title", "header", "plugin"],
         when: "threadHeaderTitles",
+      },
+      {
+        title: "Thread outline",
+        keywords: ["table of contents", "outline", "rail", "plugin"],
+        when: "threadRailOutlines",
       },
       {
         title: "Sidebar footer",

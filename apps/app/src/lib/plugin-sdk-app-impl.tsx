@@ -1,3 +1,5 @@
+import { useConversationOutline } from "@/lib/conversation-outline";
+import { useTimelineViewport } from "@/lib/timeline-viewport";
 import { applicationLinkApprovals } from "./application-url";
 import { matchesAppShortcutKey } from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
@@ -235,6 +237,8 @@ export const pluginSdkAppImplementation = {
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useThread: useThreadState,
+  experimental_useConversationOutline: useConversationOutline,
+  experimental_useTimelineViewport: useTimelineViewport,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,
   experimental_useArchiveEnvironmentThreads: useArchiveEnvironmentThreads,

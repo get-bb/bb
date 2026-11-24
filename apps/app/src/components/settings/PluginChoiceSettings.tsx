@@ -5,6 +5,7 @@ import {
   sourceCodeRendererProviderAtom,
 } from "@/components/code/codeRendererProvider";
 import { threadHeaderTitleProviderAtom } from "@/components/plugin/PluginThreadHeaderTitle";
+import { threadRailOutlineProviderAtom } from "@/components/plugin/thread-rail-outline-pick";
 import { composerRendererProviderAtom } from "@/components/promptbox/composer-provider";
 import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavigationProvider";
 import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
@@ -97,6 +98,7 @@ export function usePluginChoices(): PluginChoices {
   const diffRenderers = usePluginSlotKind("diffRenderers");
   const sourceCodeRenderers = usePluginSlotKind("sourceCodeRenderers");
   const threadHeaderTitles = usePluginSlotKind("threadHeaderTitles");
+  const threadRailOutlines = usePluginSlotKind("threadRailOutlines");
   const fileOpenerSlots = usePluginSlotKind("fileOpeners");
   const codeFenceRenderers = usePluginSlotKind("codeFenceRenderers");
   const messageDirectives = usePluginSlotKind("messageDirectives");
@@ -169,6 +171,22 @@ export function usePluginChoices(): PluginChoices {
       builtIn: {
         title: BB_BUILT_IN,
         description: "The thread's name, renamed in place.",
+      },
+    },
+    {
+      kind: "slot",
+      label: "Thread outline",
+      description: "The outline of your messages beside a thread.",
+      claimants: threadRailOutlines.map((slot) => ({
+        pluginId: slot.pluginId,
+        id: slot.id,
+        title: getPluginDisplayName(slot.pluginId),
+      })),
+      atom: threadRailOutlineProviderAtom,
+      rule: REPLACEMENT_RULE,
+      builtIn: {
+        title: BB_BUILT_IN,
+        description: "A rail of your messages that jumps to each one.",
       },
     },
   ];

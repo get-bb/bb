@@ -2210,6 +2210,115 @@ export interface ExperimentalThreadHeaderRowRegistration {
 }
 
 /**
+ * Props passed to an `experimental_threadRail` component: a header row's
+ * props plus whether the rail is showing.
+ */
+export interface ExperimentalThreadRailProps extends ExperimentalThreadHeaderRowProps {
+  /**
+   * False while the pane is too narrow for a rail beside the conversation.
+   * bb keeps the item mounted, hidden and inert then, so pause reads that only
+   * feed what the rail draws.
+   */
+  visible: boolean;
+}
+
+/**
+ * A narrow column at the right edge of a thread pane's conversation, beside
+ * the messages, such as a minimap. It shows in panes that show the full
+ * conversation, not in side-panel or embedded transcripts. The thread outline
+ * (see {@link ExperimentalThreadRailOutlineRegistration}) sits at the top, then
+ * items stack top to bottom in order. Return null to take no space for this
+ * thread. A crash removes only this item for that thread.
+ */
+export interface ExperimentalThreadRailRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Ascending; unset sorts last; ties keep registration order. */
+  order?: number;
+  component: ComponentType<ExperimentalThreadRailProps>;
+}
+
+/**
+ * Props passed to an `experimental_threadRailOutline` component, the same
+ * props a rail item receives.
+ */
+export type ExperimentalThreadRailOutlineProps = ExperimentalThreadRailProps;
+
+/**
+ * Replaces bb's thread outline at the top of the rail beside every thread
+ * pane's conversation, such as a timeline of prompts with previews. bb keeps
+ * the rest of the rail. Read the thread's messages with
+ * `experimental_useConversationOutline`, what the pane shows with
+ * `experimental_useTimelineViewport`, and reveal a message with
+ * `navigate.toThread(threadId, { messageSeq })`. bb's own outline is
+ * registered through this slot too. Exclusive (see "Exclusive slots" in the
+ * Plugin Guide); the user's pick is `threadRail.outlineProvider`, which can
+ * also choose bb's outline (`__builtin__`). A crash shows bb's outline for
+ * that thread.
+ */
+export interface ExperimentalThreadRailOutlineRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<ExperimentalThreadRailOutlineProps>;
+}
+
+/**
+ * One message in {@link ExperimentalConversationOutline}: a user prompt or an
+ * assistant reply, without its full text.
+ */
+export interface ExperimentalConversationOutlineItem {
+  /**
+   * The message's id, the same value as `ThreadChatMessageReference.id` and
+   * `ExperimentalMessageMetadataContext.id`, and in
+   * {@link ExperimentalTimelineViewport.visibleMessageIds}.
+   */
+  id: string;
+  /**
+   * The message's link sequence; pass it to `navigate.toThread` or
+   * `navigate.experimental_threadHref`. A reply that is still streaming
+   * reports the sequence of its latest update until it completes, so read it
+   * again rather than keeping it.
+   */
+  messageSeq: number;
+  role: "user" | "assistant";
+  /**
+   * The start of the message's text with whitespace collapsed, at most 200
+   * characters, without the `[bb message from thread:…]` prefix of a message
+   * another thread sent. Empty for a message with only attachments.
+   */
+  preview: string;
+  /** The thread that sent this user message, or null. */
+  senderThreadId: string | null;
+  /** Null when the message has no attachments. */
+  attachmentSummary: { imageCount: number; fileCount: number } | null;
+}
+
+/**
+ * What {@link PluginSdkApp.experimental_useConversationOutline} reports.
+ * `status` is the read of the whole thread's messages; `items` already holds
+ * the messages bb has loaded in an open pane while it is `loading`.
+ */
+export interface ExperimentalConversationOutline {
+  status: "loading" | "ready" | "error";
+  /** Oldest first. */
+  items: readonly ExperimentalConversationOutlineItem[];
+}
+
+/**
+ * Which messages a thread pane shows (see
+ * {@link PluginSdkApp.experimental_useTimelineViewport}).
+ */
+export interface ExperimentalTimelineViewport {
+  /**
+   * Ids of the conversation messages with any part in view, top to bottom:
+   * {@link ExperimentalConversationOutlineItem.id} values.
+   */
+  visibleMessageIds: readonly string[];
+  /** The conversation is scrolled to its latest message. */
+  atLatest: boolean;
+}
+
+/**
  * Props passed to an `experimental_threadHeaderTitle` component, the same
  * props a header row receives.
  */
@@ -4199,6 +4308,22 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadHeaderTitleRegistration,
   ): void;
   /**
+   * Add an item to the rail beside the conversation of every thread pane that
+   * shows one (see {@link ExperimentalThreadRailRegistration}). Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadRail(
+    registration: ExperimentalThreadRailRegistration,
+  ): void;
+  /**
+   * Replace bb's thread outline at the top of the rail (see
+   * {@link ExperimentalThreadRailOutlineRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadRailOutline(
+    registration: ExperimentalThreadRailOutlineRegistration,
+  ): void;
+  /**
    * Add a row to the thread context card, in panes that show one (see
    * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -5706,7 +5831,10 @@ export interface BbNavigate {
    * `messageSeq` opens the thread at that message, as a message
    * link does: bb loads older history as needed, scrolls to the message and
    * highlights it, or shows a "Message not found" toast. Repeating the call
-   * reveals the message again.
+   * reveals the message again. When the focused pane already shows the
+   * thread, as after a click inside it, bb reveals the message in place and
+   * replaces the current history entry instead of adding one, so Back leaves
+   * the thread rather than stepping through reveals.
    */
   toThread(
     threadId: string,
@@ -6301,6 +6429,32 @@ export interface PluginSdkApp {
    * request. Experimental: see docs/api_to_audit.md.
    */
   experimental_useThread(threadId: string): ExperimentalThreadState;
+  /**
+   * A thread's user prompts or assistant replies, oldest first (see
+   * {@link ExperimentalConversationOutline}). It covers the whole thread,
+   * including messages bb has not loaded or drawn. While the thread is open
+   * in a pane, messages appear as they are sent and stream, before the
+   * whole-thread read catches up. After a context clear it holds only messages
+   * after the clear until that read reloads. `items` keeps its identity until
+   * one of them changes: a user list changes when a prompt is added, while an
+   * assistant list changes with each update of a streaming reply. With
+   * `enabled: false` bb makes no request and `status` stays `loading`; `items`
+   * still holds the messages loaded in an open pane. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useConversationOutline(
+    threadId: string,
+    role: "user" | "assistant",
+    options?: { enabled?: boolean },
+  ): ExperimentalConversationOutline;
+  /**
+   * Which messages the thread pane this component renders in or beside shows
+   * (see {@link ExperimentalTimelineViewport}), or null outside a thread pane
+   * that shows the full conversation. It updates once scrolling or resizing
+   * settles, and re-renders only when the answer changes. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useTimelineViewport(): ExperimentalTimelineViewport | null;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.

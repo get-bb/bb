@@ -213,6 +213,9 @@ function createUiPreferences(): UiPreferenceEntries {
     "threadHeader.titleProvider": uiPreferenceEntry(
       "threadHeader.titleProvider",
     ),
+    "threadRail.outlineProvider": uiPreferenceEntry(
+      "threadRail.outlineProvider",
+    ),
     "fileOpener.byExtension": uiPreferenceEntry("fileOpener.byExtension"),
     "codeFence.byLanguage": uiPreferenceEntry("codeFence.byLanguage"),
     "messageDirective.byName": uiPreferenceEntry("messageDirective.byName"),

@@ -21,6 +21,8 @@ import {
   threadHeaderTitleProviderAtom,
   usePluginThreadHeaderTitle,
 } from "@/components/plugin/PluginThreadHeaderTitle";
+import { usePluginThreadRailOutline } from "@/components/plugin/PluginThreadRail";
+import { threadRailOutlineProviderAtom } from "@/components/plugin/thread-rail-outline-pick";
 import {
   composerRendererProviderAtom,
   useComposerReplacement,
@@ -152,6 +154,14 @@ const SURFACES: PinnedSurface[] = [
     registrations: ({ id }) => ({ threadHeaderTitles: [{ id, component }] }),
     optionTitle: (provider) => provider.pluginId,
     useResolvedPluginId: () => resolvedPluginId(usePluginThreadHeaderTitle()),
+  },
+  {
+    name: "thread outline",
+    settingLabel: "Thread outline",
+    setPick: (store, pick) => store.set(threadRailOutlineProviderAtom, pick),
+    registrations: ({ id }) => ({ threadRailOutlines: [{ id, component }] }),
+    optionTitle: (provider) => provider.pluginId,
+    useResolvedPluginId: () => resolvedPluginId(usePluginThreadRailOutline()),
   },
   {
     name: "file opener",
