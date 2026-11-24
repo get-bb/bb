@@ -133,6 +133,41 @@ describe("machine Git environment", () => {
     }
   });
 
+  it("keeps local credential helpers for other hosts and replaces them only for github.com HTTPS", async () => {
+    const { env, home } = await gitEnv();
+    const config = join(home, "gitconfig");
+    const log = join(home, "helpers.log");
+    for (const [key, name] of [
+      ["credential.https://gitlab.example.helper", "local-gitlab"],
+      ["credential.https://github.com.helper", "local-github"],
+      ["credential.helper", "local-default"],
+    ] as const) {
+      await exec("git", [
+        "config",
+        "--file",
+        config,
+        "--add",
+        key,
+        `!f() { test "$1" = get || exit 0; echo ${name} >> "${log}"; printf 'username=${name}\\npassword=synthetic\\n'; }; f`,
+      ]);
+    }
+    for (const [host, username] of [
+      ["gitlab.example", "local-gitlab"],
+      ["bitbucket.example", "local-default"],
+    ]) {
+      const result = await fill(env, `protocol=https\nhost=${host}\n\n`);
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`username=${username}\n`);
+    }
+    await writeFile(log, "");
+    const github = await fill(env, "protocol=https\nhost=github.com\n\n");
+    expect(github.code).toBe(0);
+    expect(github.stdout).toContain(
+      "username=x-access-token\npassword=test-private-token\n",
+    );
+    expect(await readFile(log, "utf8")).toBe("");
+  });
+
   it("clones a local bare repo through a fake HTTPS helper that requests Git credentials", async () => {
     const { env, home } = await gitEnv();
     const source = join(home, "source");
