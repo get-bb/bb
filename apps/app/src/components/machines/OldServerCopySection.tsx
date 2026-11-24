@@ -13,7 +13,7 @@ import {
   SettingsRow,
   SettingsRowList,
   SettingsSection,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { useDeleteOldServerCopy } from "@/hooks/mutations/server-move-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 

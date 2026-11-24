@@ -5,7 +5,7 @@ import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { Switch } from "@bb/shared-ui/switch";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
 import {
   ConfirmDeleteDialog,

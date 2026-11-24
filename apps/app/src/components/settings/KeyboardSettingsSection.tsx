@@ -49,7 +49,7 @@ import {
   SettingsBadge,
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { ShortcutPill } from "@bb/shared-ui/shortcut-pill";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";

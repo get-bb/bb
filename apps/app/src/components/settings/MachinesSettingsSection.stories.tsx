@@ -1,7 +1,7 @@
 import type { Host, MachineLifecycle } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { MachineRowContent } from "./MachinesSettingsSection";
-import { SettingsRowList } from "@/components/ui/settings-section";
+import { SettingsRowList } from "@bb/shared-ui/settings-section";
 import {
   MANUAL_MACHINE_PROVIDER,
   MODAL_MACHINE_PROVIDER,

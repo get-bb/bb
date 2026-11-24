@@ -8,7 +8,7 @@ import { threadHeaderTitleProviderAtom } from "@/components/plugin/PluginThreadH
 import { composerRendererProviderAtom } from "@/components/promptbox/composer-provider";
 import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavigationProvider";
 import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { fileOpenerPreferenceAtom } from "@/lib/file-opener-preference";
 import {
   codeFencePicksAtom,

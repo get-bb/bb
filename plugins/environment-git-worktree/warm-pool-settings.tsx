@@ -6,6 +6,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@bb/shared-ui/select";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  SettingsList,
+  SettingsListItem,
+  SettingsListMessage,
+  type SettingsListMeta,
+} from "@bb/shared-ui/settings-section";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { WARM_POOLS_CHANGED_CHANNEL } from "./channels.js";
 import type { worktreeRpcContract } from "./server.js";
@@ -33,20 +40,12 @@ function changeKey(change: Pick<WarmPoolSizeChange, "projectId" | "hostId">) {
   return `${change.projectId}\0${change.hostId ?? ""}`;
 }
 
-function checkoutSummary(checkout: Checkout): string | null {
-  if (checkout.size === 0) return null;
-  return checkout.preparing > 0
-    ? `${checkout.ready} ready · ${checkout.preparing} setting up`
-    : `${checkout.ready} ready`;
-}
-
-function CheckoutError({ checkout }: { checkout: Checkout }) {
-  if (checkout.size === 0 || checkout.lastError === null) return null;
-  return (
-    <p className="mt-1 text-xs break-words text-destructive">
-      {checkout.lastError}
-    </p>
-  );
+function checkoutMeta(checkout: Checkout): SettingsListMeta {
+  if (checkout.size === 0) return [];
+  return [
+    `${checkout.ready} ready`,
+    checkout.preparing > 0 && `${checkout.preparing} setting up`,
+  ];
 }
 
 function SizeSelect(props: {
@@ -62,7 +61,13 @@ function SizeSelect(props: {
       disabled={props.disabled}
       onValueChange={props.onChange}
     >
-      <SelectTrigger aria-label={props.label} className="w-36 shrink-0">
+      <SelectTrigger
+        aria-label={props.label}
+        className={cn(
+          "w-36",
+          props.value === FOLLOW_PROJECT && "text-subtle-foreground",
+        )}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -81,26 +86,21 @@ function SizeSelect(props: {
   );
 }
 
-function PoolRow(props: {
+function PoolItem(props: {
   pool: Pool;
   saving: ReadonlySet<string>;
   onChange(change: WarmPoolSizeChange): void;
 }) {
   const { pool, saving, onChange } = props;
-  const perMachine = pool.checkouts.length > 1;
-  const single = perMachine ? null : (pool.checkouts[0] ?? null);
-  const singleSummary = single === null ? null : checkoutSummary(single);
+  const single = pool.checkouts.length === 1 ? pool.checkouts[0] : undefined;
   return (
-    <div className="space-y-2">
-      <div className="flex min-h-9 items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {pool.projectName}
-          </div>
-          {singleSummary === null ? null : (
-            <div className="text-xs text-muted-foreground">{singleSummary}</div>
-          )}
-        </div>
+    <SettingsListItem
+      title={pool.projectName}
+      meta={single === undefined ? [] : checkoutMeta(single)}
+      error={
+        single === undefined || single.size === 0 ? null : single.lastError
+      }
+      control={
         <SizeSelect
           label={`${pool.projectName} warm worktrees`}
           value={String(pool.size)}
@@ -116,56 +116,43 @@ function PoolRow(props: {
             });
           }}
         />
-      </div>
-      {single === null ? null : <CheckoutError checkout={single} />}
-      {perMachine
-        ? pool.checkouts.map((checkout) => {
-            const summary = checkoutSummary(checkout);
-            return (
-              <div key={`${checkout.hostId}:${checkout.path}`} className="pl-4">
-                <div className="flex min-h-9 items-center gap-3">
-                  <div
-                    className="flex min-w-0 flex-1 items-baseline gap-2"
-                    title={checkout.path}
-                  >
-                    <span className="truncate text-sm text-foreground">
-                      {checkout.hostName}
-                    </span>
-                    {summary === null ? null : (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {summary}
-                      </span>
-                    )}
-                  </div>
-                  <SizeSelect
-                    label={`${pool.projectName} warm worktrees on ${checkout.hostName}`}
-                    value={
-                      checkout.hostSize === null
-                        ? FOLLOW_PROJECT
-                        : String(checkout.hostSize)
-                    }
-                    disabled={saving.has(
-                      changeKey({
-                        projectId: pool.projectId,
-                        hostId: checkout.hostId,
-                      }),
-                    )}
-                    followProjectLabel={`Project (${sizeLabel(String(pool.size))})`}
-                    onChange={(value) => {
-                      onChange({
-                        projectId: pool.projectId,
-                        hostId: checkout.hostId,
-                        size: value === FOLLOW_PROJECT ? null : Number(value),
-                      });
-                    }}
-                  />
-                </div>
-                <CheckoutError checkout={checkout} />
-              </div>
-            );
-          })
-        : null}
-    </div>
+      }
+    >
+      {single === undefined
+        ? pool.checkouts.map((checkout) => (
+            <SettingsListItem
+              key={`${checkout.hostId}:${checkout.path}`}
+              title={checkout.hostName}
+              meta={checkoutMeta(checkout)}
+              error={checkout.size === 0 ? null : checkout.lastError}
+              control={
+                <SizeSelect
+                  label={`${pool.projectName} warm worktrees on ${checkout.hostName}`}
+                  value={
+                    checkout.hostSize === null
+                      ? FOLLOW_PROJECT
+                      : String(checkout.hostSize)
+                  }
+                  disabled={saving.has(
+                    changeKey({
+                      projectId: pool.projectId,
+                      hostId: checkout.hostId,
+                    }),
+                  )}
+                  followProjectLabel={`Project (${sizeLabel(String(pool.size))})`}
+                  onChange={(value) => {
+                    onChange({
+                      projectId: pool.projectId,
+                      hostId: checkout.hostId,
+                      size: value === FOLLOW_PROJECT ? null : Number(value),
+                    });
+                  }}
+                />
+              }
+            />
+          ))
+        : undefined}
+    </SettingsListItem>
   );
 }
 
@@ -177,42 +164,27 @@ export function WarmPoolSettingsContent(props: {
 }) {
   const { status, error, saving, onChange } = props;
   return (
-    <div className="w-full space-y-3">
-      <div className="pr-2">
-        <h3 className="text-sm font-medium text-foreground">Warm worktrees</h3>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Worktrees set up ahead of time, so new threads on the default branch
-          start right away. Each machine keeps the project&apos;s count unless
-          you set its own.
-        </p>
-      </div>
-      {status === null ? (
-        <p
-          className={
-            error === null
-              ? "text-sm text-muted-foreground"
-              : "text-sm text-destructive"
-          }
-          role={error === null ? "status" : "alert"}
-        >
-          {error ?? "Loading projects…"}
-        </p>
-      ) : status.pools.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects yet.</p>
-      ) : (
-        <div className="ml-2 space-y-5 border-l border-border/60 py-1 pl-4">
-          {status.pools.map((pool) => (
-            <PoolRow
+    <div className="w-full space-y-2">
+      <SettingsList label="Warm worktrees">
+        {status === null ? (
+          <SettingsListMessage tone={error === null ? "muted" : "error"}>
+            {error ?? "Loading projects…"}
+          </SettingsListMessage>
+        ) : status.pools.length === 0 ? (
+          <SettingsListMessage>No projects yet.</SettingsListMessage>
+        ) : (
+          status.pools.map((pool) => (
+            <PoolItem
               key={pool.projectId}
               pool={pool}
               saving={saving}
               onChange={onChange}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </SettingsList>
       {status !== null && error !== null ? (
-        <p className="text-xs text-destructive" role="alert">
+        <p className="text-xs text-destructive-text" role="alert">
           {error}
         </p>
       ) : null}

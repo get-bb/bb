@@ -551,6 +551,9 @@ function WorktreeInputsControl({
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "warm-worktrees",
+    title: "Warm worktrees",
+    description:
+      "Worktrees set up ahead of time, so new threads on the default branch start right away. Each machine keeps the project's count unless you set its own.",
     component: WarmPoolSettings,
   });
   app.slots.experimental_environmentProviderInputs({

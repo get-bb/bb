@@ -6,7 +6,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { applicationLinkApprovals } from "@/lib/application-url";
 import { appToast } from "@/components/ui/app-toast";
-import { SettingsWithControl } from "@/components/ui/settings-section";
+import { SettingsWithControl } from "@bb/shared-ui/settings-section";
 
 export function ApplicationLinkApprovalsSettings() {
   const listLabelId = useId();

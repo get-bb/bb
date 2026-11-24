@@ -1,5 +1,11 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  createContext,
+  forwardRef,
+  useContext,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
+import { cn } from "../../lib/utils";
 
 interface SettingsSectionProps {
   action?: ReactNode;
@@ -54,14 +60,7 @@ export function SettingsSection({
         {action ? <div className="shrink-0 self-start">{action}</div> : null}
       </div>
       {banner}
-      <div
-        className={cn(
-          "rounded-lg border border-border bg-card px-4 py-3.5",
-          bodyClassName,
-        )}
-      >
-        {children}
-      </div>
+      <div className={cn(SETTINGS_CARD_CLASS, bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -188,6 +187,171 @@ export function SettingsWithControl({
           {children}
         </div>
       </div>
+    </div>
+  );
+}
+
+export const SETTINGS_CARD_CLASS =
+  "rounded-lg border border-border bg-card px-4 py-3.5";
+
+export function SettingsList({
+  children,
+  title,
+  description,
+  label,
+}: {
+  children: ReactNode;
+  title?: string;
+  description?: ReactNode;
+  label?: string;
+}) {
+  const list = (
+    <div
+      role="list"
+      aria-label={label ?? title}
+      className={SETTINGS_CARD_CLASS}
+    >
+      <SettingsRowList>{children}</SettingsRowList>
+    </div>
+  );
+  if (title === undefined && description === undefined) return list;
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        {title === undefined ? null : (
+          <h3 className="text-xs font-medium text-foreground">{title}</h3>
+        )}
+        {description === undefined ? null : (
+          <p className="text-xs leading-snug text-subtle-foreground/75">
+            {description}
+          </p>
+        )}
+      </div>
+      {list}
+    </div>
+  );
+}
+
+export function SettingsListMessage({
+  children,
+  tone = "muted",
+}: {
+  children: ReactNode;
+  tone?: "muted" | "error";
+}) {
+  return (
+    <p
+      role={tone === "error" ? "alert" : "status"}
+      className={cn(
+        "py-2.5 text-sm first:pt-0 last:pb-0",
+        tone === "error" ? "text-destructive-text" : "text-subtle-foreground",
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+const SettingsListDepthContext = createContext(0);
+
+export type SettingsListMeta = readonly (ReactNode | null | false)[];
+
+interface SettingsListItemProps {
+  title: ReactNode;
+  badge?: string;
+  meta?: SettingsListMeta;
+  description?: ReactNode;
+  leading?: ReactNode;
+  control?: ReactNode;
+  error?: ReactNode;
+  children?: ReactNode;
+}
+
+export function SettingsListItem({
+  title,
+  badge,
+  meta = [],
+  description,
+  leading,
+  control,
+  error,
+  children,
+}: SettingsListItemProps) {
+  const depth = useContext(SettingsListDepthContext);
+  const nested = depth > 0;
+  const visibleMeta = meta.filter(
+    (item): item is Exclude<typeof item, null | false> =>
+      item !== null && item !== false,
+  );
+  return (
+    <div
+      role="listitem"
+      className={cn("text-sm", nested ? "py-1" : "py-2.5 first:pt-0 last:pb-0")}
+    >
+      <div
+        className={cn(
+          "flex min-h-9 gap-3",
+          description === undefined ? "items-center" : "items-start",
+        )}
+      >
+        {leading === undefined ? null : (
+          <div className="flex min-h-5 w-4 shrink-0 items-center justify-center">
+            {leading}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+            <span
+              className={cn(
+                "min-w-0 truncate text-foreground",
+                nested ? "font-normal" : "font-medium",
+              )}
+            >
+              {title}
+            </span>
+            {badge === undefined ? null : (
+              <span className="self-center">
+                <SettingsBadge>{badge}</SettingsBadge>
+              </span>
+            )}
+            {visibleMeta.map((item, index) => (
+              <span
+                key={index}
+                className="inline-flex min-w-0 items-baseline gap-x-1.5 text-xs text-subtle-foreground"
+              >
+                <span aria-hidden>·</span>
+                <span className="min-w-0 truncate">{item}</span>
+              </span>
+            ))}
+          </div>
+          {description === undefined ? null : (
+            <div className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {description}
+            </div>
+          )}
+        </div>
+        {control === undefined ? null : (
+          <div className="flex shrink-0 items-center gap-2">{control}</div>
+        )}
+      </div>
+      {error === undefined || error === null ? null : (
+        <p
+          role="alert"
+          className="mt-1 text-xs leading-snug break-words text-destructive-text"
+        >
+          {error}
+        </p>
+      )}
+      {children === undefined ? null : (
+        <SettingsListDepthContext.Provider value={depth + 1}>
+          <div
+            role="list"
+            className={cn("mt-1", leading === undefined ? "pl-4" : "pl-7")}
+          >
+            {children}
+          </div>
+        </SettingsListDepthContext.Provider>
+      )}
     </div>
   );
 }

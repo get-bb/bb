@@ -4,7 +4,7 @@ import { MobileServerAccess } from "./MachineAccessSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { sdk } from "@/lib/sdk";
 import { getNativeShell } from "@/lib/native-shell";
 
