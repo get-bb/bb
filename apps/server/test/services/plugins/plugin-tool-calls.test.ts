@@ -152,6 +152,7 @@ describe("PluginToolCallRegistry", () => {
     expect(onDetachedResult).toHaveBeenCalledWith({
       response: textResponse("the user answered"),
       wakeIdleThread: false,
+      dispatch: "now",
     });
     expect(registry.size).toBe(0);
   });
@@ -241,15 +242,54 @@ describe("PluginToolCallRegistry", () => {
     expect(toolSignal?.reason).toBe("plugin-disposed");
     expect(onDetachedResult).toHaveBeenCalledExactlyOnceWith({
       response: textResponse(
-        'Tool "ask" failed: the "fixture" plugin stopped before the call finished (it was reloaded, updated or disabled), so its result will not arrive. Call the tool again if you still need it.',
+        'Tool "ask" failed: the "fixture" plugin stopped before the call finished (it was reloaded, updated or disabled, or bb restarted), so its result will not arrive. Call the tool again if you still need it.',
         false,
       ),
       wakeIdleThread: true,
+      dispatch: "now",
     });
     expect(registry.size).toBe(0);
     result.resolve(textResponse("cancelled by the stopping plugin", false));
     await vi.advanceTimersByTimeAsync(0);
     expect(onDetachedResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers a stopping plugin's failure to the next start and waits until it is queued", async () => {
+    const registry = createRegistry();
+    const queued = createDeferredPromise<void>();
+    const onDetachedResult = vi.fn(() => queued.promise);
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ask",
+      roundTrip: new AbortController().signal,
+      invoke: () => {
+        detachActivePluginToolCallForUserInput();
+        return new Promise<ToolCallResponse>(() => undefined);
+      },
+      onDetachedResult,
+    });
+    await response;
+
+    registry.deferDeliveriesToRestart();
+    registry.abortForPlugin("fixture", "plugin-disposed");
+    let settled = false;
+    const settling = registry.settleDeliveries().then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onDetachedResult).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        wakeIdleThread: true,
+        dispatch: "after-restart",
+      }),
+    );
+    expect(settled).toBe(false);
+    queued.resolve();
+    await settling;
+    expect(settled).toBe(true);
   });
 
   it("turns a rejected invocation into a failed tool result", async () => {

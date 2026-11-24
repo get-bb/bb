@@ -156,8 +156,9 @@ Inside a tool's `execute`, opening a form returns a waiting notice to the
 agent while the plugin continues awaiting the answer. BB delivers the tool's
 eventual result separately: success resumes an active or idle agent; errors
 only reach an active agent. If the plugin is reloaded, updated or disabled
-first, BB ignores the tool's result and tells the agent, active or idle, that
-the call failed and can be made again.
+first, or bb shuts down, BB ignores the tool's result and tells the agent,
+active or idle, that the call failed and can be made again. After a shutdown,
+that notice reaches the agent when bb starts again.
 
 Pass `ctx.signal` to cancel the form with its caller. For CLI commands,
 disconnection cancels it. For tools, request cancellation aborts the signal

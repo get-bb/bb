@@ -15,9 +15,12 @@ export interface RunPluginToolCallArgs {
   onDetachedResult(result: DetachedPluginToolResult): Promise<void>;
 }
 
+export type DetachedPluginToolResultDispatch = "now" | "after-restart";
+
 export interface DetachedPluginToolResult {
   response: ToolCallResponse;
   wakeIdleThread: boolean;
+  dispatch: DetachedPluginToolResultDispatch;
 }
 
 type PluginToolCallAbandonment = "plugin" | "thread";
@@ -60,13 +63,15 @@ function failedToolCallResponse(
 
 function pluginStoppedError(pluginId: string): Error {
   return new Error(
-    `the "${pluginId}" plugin stopped before the call finished (it was reloaded, updated or disabled), so its result will not arrive. Call the tool again if you still need it.`,
+    `the "${pluginId}" plugin stopped before the call finished (it was reloaded, updated or disabled, or bb restarted), so its result will not arrive. Call the tool again if you still need it.`,
   );
 }
 
 export class PluginToolCallRegistry {
   private readonly calls = new Set<TrackedPluginToolCall>();
+  private readonly deliveries = new Set<Promise<void>>();
   private readonly logger: ServerLogger;
+  private dispatch: DetachedPluginToolResultDispatch = "now";
 
   constructor(args: { logger: ServerLogger }) {
     this.logger = args.logger;
@@ -101,18 +106,29 @@ export class PluginToolCallRegistry {
         resolve(response);
       };
 
-      const deliverDetached = (result: DetachedPluginToolResult) => {
-        void args.onDetachedResult(result).catch((error: unknown) => {
-          this.logger.warn(
-            {
-              err: error,
-              threadId: args.threadId,
-              callId: args.callId,
-              tool: args.toolName,
-            },
-            "Failed to deliver a detached plugin tool result",
-          );
-        });
+      const deliverDetached = (
+        response: ToolCallResponse,
+        wakeIdleThread: boolean,
+      ) => {
+        const delivery = args
+          .onDetachedResult({
+            response,
+            wakeIdleThread,
+            dispatch: this.dispatch,
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              {
+                err: error,
+                threadId: args.threadId,
+                callId: args.callId,
+                tool: args.toolName,
+              },
+              "Failed to deliver a detached plugin tool result",
+            );
+          })
+          .finally(() => this.deliveries.delete(delivery));
+        this.deliveries.add(delivery);
       };
 
       const finish = (): boolean => {
@@ -129,7 +145,7 @@ export class PluginToolCallRegistry {
           resolve(response);
           return;
         }
-        deliverDetached({ response, wakeIdleThread: false });
+        deliverDetached(response, false);
       };
 
       abandon = (by, reason) => {
@@ -148,7 +164,7 @@ export class PluginToolCallRegistry {
           return;
         }
         if (by === "plugin") {
-          deliverDetached({ response, wakeIdleThread: true });
+          deliverDetached(response, true);
           return;
         }
         this.logger.info(
@@ -192,6 +208,16 @@ export class PluginToolCallRegistry {
   abortForPlugin(pluginId: string, reason: string): void {
     for (const call of [...this.calls]) {
       if (call.pluginId === pluginId) call.abandon("plugin", reason);
+    }
+  }
+
+  deferDeliveriesToRestart(): void {
+    this.dispatch = "after-restart";
+  }
+
+  async settleDeliveries(): Promise<void> {
+    while (this.deliveries.size > 0) {
+      await Promise.all(this.deliveries);
     }
   }
 

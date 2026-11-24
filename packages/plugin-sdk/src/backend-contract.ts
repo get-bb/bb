@@ -1246,6 +1246,7 @@ export interface PluginAgentToolContext {
    * is disposed (reloaded, updated, disabled or removed), BB ignores the
    * tool's later result and tells the agent at once that the call failed,
    * starting a new turn if the agent is idle, so it can call the tool again.
+   * When BB shuts down, it tells the agent the same when BB next starts.
    */
   signal: AbortSignal;
 }
