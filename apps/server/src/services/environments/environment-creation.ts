@@ -39,6 +39,7 @@ import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "./environment-provider-ids.js";
 import { once } from "../lib/once.js";
 import { threadTitleSettled } from "../threads/thread-metadata-inference.js";
 import { assertEnvironmentPathAvailable } from "./path-admission.js";
+import { createGitCheckoutInspector } from "./provider-availability.js";
 import {
   advanceEnvironmentProvisioning,
   versionOneThreadlessRefusal,
@@ -163,11 +164,17 @@ export async function createEnvironmentBeforeThread(
     refuse(`No environment provider "${providerId}" is registered`, 404);
   if (record.provider.apiVersion === 1)
     refuse(versionOneThreadlessRefusal(record));
-  const selection = await completeProviderSelection(deps, record, project.id, {
-    machine: { type: "existing", hostId },
-    inputs:
-      args.provider?.inputs ?? (record.provider.inputs === null ? null : {}),
-  });
+  const selection = await completeProviderSelection(
+    deps,
+    record,
+    project.id,
+    {
+      machine: { type: "existing", hostId },
+      inputs:
+        args.provider?.inputs ?? (record.provider.inputs === null ? null : {}),
+    },
+    createGitCheckoutInspector(deps),
+  );
   const host = getNonDestroyedHostWithStatus(deps, hostId);
   if (host === null) refuse(`Machine ${hostId} no longer exists`, 404);
   const located = await locateEnvironment(deps, record, {

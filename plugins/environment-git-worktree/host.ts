@@ -11,10 +11,8 @@ import {
   resolveWorktreeTargetPath,
 } from "./host/paths.js";
 import {
-  checkPoolMember,
-  fastForwardWorktree,
+  claimPoolMember,
   nameHandedOffBranch,
-  readRemoteBase,
   refreshDefaultBase,
   restorePoolMember,
 } from "./host/handoff.js";
@@ -103,27 +101,12 @@ export function createWorktreeHostEntry() {
           signal: context.signal,
         });
       },
-      async readRemoteBase(input, context) {
-        return readRemoteBase({
-          sourcePath: input.sourcePath,
-          signal: context.signal,
-        });
-      },
-      async fastForward(input, context) {
-        await fastForwardWorktree({
-          path: input.path,
-          commit: input.commit,
-          signal: context.signal,
-        });
-        return null;
-      },
-      async checkPoolMember(input, context) {
-        return checkPoolMember({
+      async claimPoolMember(input, context) {
+        return claimPoolMember({
           sourcePath: input.sourcePath,
           path: input.path,
           placeholder: input.placeholder,
-          baseBranch: input.baseBranch,
-          baseCommit: input.baseCommit,
+          base: input.base,
           signal: context.signal,
         });
       },

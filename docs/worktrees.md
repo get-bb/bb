@@ -133,10 +133,11 @@ A project can keep up to four warm worktrees per checkout: worktrees already
 created at the project's default base with `.worktreeinclude` copied and
 `.bb-env-setup.sh` finished. A new worktree thread on the default base takes
 one instead of waiting for git and the setup script, in the same order as a
-fresh worktree: bb asks the remote for its current default base
-(`git ls-remote`), hands the warm worktree to the thread, brings it up to date
-while the thread's title is generated, and names the branch from the title
-last. A warm worktree at the remote's commit starts the thread without running
+fresh worktree: in one call to the machine, bb asks the remote for its current
+default base (`git ls-remote`), checks the warm worktree and fast-forwards it
+to that commit; it then hands the warm worktree to the thread, reruns setup
+while the thread's title is generated if the worktree moved, and names the
+branch from the title last. A warm worktree at the remote's commit starts the thread without running
 setup again. A warm worktree behind it is fast-forwarded to that commit and
 `.bb-env-setup.sh` runs again before the thread starts, so a thread never
 starts on older code than a fresh worktree would. If bb restarts before the

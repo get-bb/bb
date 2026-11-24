@@ -74,6 +74,7 @@ import {
 import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
+import { createGitCheckoutInspector } from "../environments/provider-availability.js";
 import {
   getEnvironmentProvider,
   listEnvironmentCompositions,
@@ -731,7 +732,9 @@ export async function createThreadFromRequest(
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
+  const inspectGitCheckout = createGitCheckoutInspector(deps);
   const requestedEnvironment = await resolveCreateThreadEnvironment(deps, {
+    inspectGitCheckout,
     parentThread:
       forkSourceEnvironmentId !== undefined
         ? null
@@ -841,6 +844,7 @@ export async function createThreadFromRequest(
     await resolveThreadEnvironmentPlacement(deps, {
       projectId: request.projectId,
       requestedEnvironment: request.environment,
+      inspectGitCheckout,
     });
   request.input = await resolvePromptAttachmentReferences({
     db: deps.db,

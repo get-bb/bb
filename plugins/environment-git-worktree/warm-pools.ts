@@ -4,6 +4,7 @@ import { z } from "zod";
 import { WARM_POOLS_CHANGED_CHANNEL } from "./channels.js";
 import {
   MAX_POOL_SIZE,
+  type RemoteBase,
   worktreeHostContract,
   worktreeHostSignals,
 } from "./contract.js";
@@ -645,39 +646,21 @@ export async function createWarmPools(args: {
     });
     if (creating.heldBy !== null) return null;
     const tried = new Set<string>();
-    const readRemoteBase = () =>
-      host.call(
-        "readRemoteBase",
-        { sourcePath: request.sourcePath },
-        {
-          hostId: request.hostId,
-          signal: request.signal,
-          timeoutMs: HANDOFF_TIMEOUT_MS,
-        },
-      );
-    let remoteBase: ReturnType<typeof readRemoteBase> | null = null;
+    let base: RemoteBase | null = null;
     for (;;) {
       const member = await serialFor(request)(() => reserve(request, tried));
       if (member === null || member.path === null || member.branchName === null)
         break;
       tried.add(member.id);
-      remoteBase ??= readRemoteBase();
-      let base;
-      let checked;
+      let claimed;
       try {
-        base = await remoteBase;
-        if (base === null) {
-          reserved.delete(member.id);
-          break;
-        }
-        checked = await host.call(
-          "checkPoolMember",
+        claimed = await host.call(
+          "claimPoolMember",
           {
             sourcePath: request.sourcePath,
             path: member.path,
             placeholder: member.branchName,
-            baseBranch: base.ref,
-            baseCommit: base.commit,
+            base,
           },
           {
             hostId: request.hostId,
@@ -687,16 +670,31 @@ export async function createWarmPools(args: {
         );
       } catch (error) {
         reserved.delete(member.id);
+        await serialFor(request)(() =>
+          discard(member, "its claim failed and it may have moved"),
+        );
         if (request.signal.aborted) throw error;
         bb.log.warn(
           `Warm worktree ${member.id} could not be handed off: ${errorMessage(error)}`,
         );
         break;
       }
-      if (checked.status !== "usable") {
+      if (claimed.status === "no-base") {
         reserved.delete(member.id);
-        if (checked.status === "busy") break;
-        const reason = checked.reason;
+        break;
+      }
+      if (claimed.status === "base-unavailable") {
+        reserved.delete(member.id);
+        bb.log.warn(
+          `Warm worktree ${member.id} could not be handed off: ${claimed.reason}`,
+        );
+        break;
+      }
+      base = claimed.base;
+      if (claimed.status !== "usable") {
+        reserved.delete(member.id);
+        if (claimed.status === "busy") break;
+        const reason = claimed.reason;
         await serialFor(request)(() =>
           discard(member, `it cannot be handed off: ${reason}`),
         );
@@ -704,16 +702,20 @@ export async function createWarmPools(args: {
       }
       const handed: WarmHandOff = {
         path: member.path,
-        baseBranch: base.ref,
-        baseCommit: base.commit,
-        memberCommit: checked.head,
-        offline: base.offline,
+        baseBranch: claimed.base.ref,
+        baseCommit: claimed.base.commit,
+        memberCommit: claimed.head,
+        offline: claimed.base.offline,
         placeholder: member.branchName,
       };
       try {
         await request.adopt(member.id, handed);
       } catch (error) {
         reserved.delete(member.id);
+        if (handed.memberCommit !== handed.baseCommit)
+          await serialFor(request)(() =>
+            discard(member, "it moved to a new base but was not adopted"),
+          );
         if (request.signal.aborted) throw error;
         bb.log.warn(
           `Warm worktree ${member.id} could not be adopted: ${errorMessage(error)}`,

@@ -343,17 +343,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         });
         if (warm !== null) {
           const commit = warm.baseCommit.slice(0, 7);
-          const hostOptions = {
-            hostId: context.host.id,
-            signal: context.signal,
-            timeoutMs: CREATE_TIMEOUT_MS,
-          };
           if (warm.memberCommit !== warm.baseCommit) {
-            await host.call(
-              "fastForward",
-              { path: warm.path, commit: warm.baseCommit },
-              hostOptions,
-            );
             context.report.step(
               `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
             );
@@ -372,7 +362,11 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               fromBranch: warm.placeholder,
               toBranch: branchName,
             },
-            hostOptions,
+            {
+              hostId: context.host.id,
+              signal: context.signal,
+              timeoutMs: CREATE_TIMEOUT_MS,
+            },
           );
           return {
             status: "created",

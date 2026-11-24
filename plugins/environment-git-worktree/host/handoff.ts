@@ -17,6 +17,11 @@ import {
 const HANDOFF_LOCK_TIMEOUT_MS = 2_000;
 const REMOTE_BASE_READ_TIMEOUT_MS = 10_000;
 
+function errorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text === "" ? "unknown error" : text;
+}
+
 function signalOption(signal: AbortSignal | undefined) {
   return signal === undefined ? {} : { signal };
 }
@@ -112,13 +117,13 @@ export async function refreshDefaultBase(args: {
   };
 }
 
-export interface RemoteBase {
+interface RemoteBase {
   ref: string;
   commit: string;
   offline: boolean;
 }
 
-export async function readRemoteBase(args: {
+async function readRemoteBase(args: {
   sourcePath: string;
   signal: AbortSignal | undefined;
 }): Promise<RemoteBase | null> {
@@ -222,12 +227,12 @@ export async function restorePoolMember(args: {
   );
 }
 
-export type PoolMemberCheck =
+type PoolMemberCheck =
   | { status: "usable"; head: string }
   | { status: "refused"; reason: string }
   | { status: "busy" };
 
-export async function checkPoolMember(args: {
+async function checkPoolMember(args: {
   sourcePath: string;
   path: string;
   placeholder: string;
@@ -291,6 +296,61 @@ export async function checkPoolMember(args: {
   }
 }
 
+type PoolMemberClaim =
+  | { status: "no-base" }
+  | { status: "base-unavailable"; reason: string }
+  | { status: "usable"; base: RemoteBase; head: string }
+  | { status: "refused"; base: RemoteBase; reason: string }
+  | { status: "busy"; base: RemoteBase };
+
+export async function claimPoolMember(args: {
+  sourcePath: string;
+  path: string;
+  placeholder: string;
+  base: RemoteBase | null;
+  signal: AbortSignal | undefined;
+}): Promise<PoolMemberClaim> {
+  let base = args.base;
+  if (base === null) {
+    try {
+      base = await readRemoteBase({
+        sourcePath: args.sourcePath,
+        signal: args.signal,
+      });
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+      return { status: "base-unavailable", reason: errorText(error) };
+    }
+  }
+  if (base === null) return { status: "no-base" };
+  const checked = await checkPoolMember({
+    sourcePath: args.sourcePath,
+    path: args.path,
+    placeholder: args.placeholder,
+    baseBranch: base.ref,
+    baseCommit: base.commit,
+    signal: args.signal,
+  });
+  if (checked.status !== "usable") return { ...checked, base };
+  if (checked.head !== base.commit) {
+    try {
+      await fastForwardWorktree({
+        path: args.path,
+        commit: base.commit,
+        signal: args.signal,
+      });
+    } catch (error) {
+      if (args.signal?.aborted) throw error;
+      return {
+        status: "refused",
+        base,
+        reason: `it could not be fast-forwarded to ${base.ref}: ${errorText(error)}`,
+      };
+    }
+  }
+  return { status: "usable", base, head: checked.head };
+}
+
 export async function nameHandedOffBranch(args: {
   path: string;
   fromBranch: string;
@@ -311,7 +371,7 @@ export async function nameHandedOffBranch(args: {
   );
 }
 
-export async function fastForwardWorktree(args: {
+async function fastForwardWorktree(args: {
   path: string;
   commit: string;
   signal: AbortSignal | undefined;

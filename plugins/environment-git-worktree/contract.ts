@@ -26,6 +26,16 @@ export const ownedBranchSchema = z
   })
   .strict();
 
+const remoteBaseSchema = z
+  .object({
+    ref: z.string().min(1),
+    commit: z.string().min(1),
+    offline: z.boolean(),
+  })
+  .strict();
+
+export type RemoteBase = z.infer<typeof remoteBaseSchema>;
+
 export const MAX_POOL_SIZE = 4;
 
 export const worktreeHostContract = defineRpcContract({
@@ -126,35 +136,38 @@ export const worktreeHostContract = defineRpcContract({
       z.object({ status: z.literal("no-repository") }).strict(),
     ]),
   },
-  readRemoteBase: {
-    input: z.object({ sourcePath: z.string().min(1) }).strict(),
-    output: z
-      .object({
-        ref: z.string().min(1),
-        commit: z.string().min(1),
-        offline: z.boolean(),
-      })
-      .strict()
-      .nullable(),
-  },
-  checkPoolMember: {
+  claimPoolMember: {
     input: z
       .object({
         sourcePath: z.string().min(1),
         path: z.string().min(1),
         placeholder: z.string().min(1),
-        baseBranch: z.string().min(1),
-        baseCommit: z.string().min(1),
+        base: remoteBaseSchema.nullable(),
       })
       .strict(),
     output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("no-base") }).strict(),
       z
-        .object({ status: z.literal("usable"), head: z.string().min(1) })
+        .object({
+          status: z.literal("base-unavailable"),
+          reason: z.string().min(1),
+        })
         .strict(),
       z
-        .object({ status: z.literal("refused"), reason: z.string().min(1) })
+        .object({
+          status: z.literal("usable"),
+          base: remoteBaseSchema,
+          head: z.string().min(1),
+        })
         .strict(),
-      z.object({ status: z.literal("busy") }).strict(),
+      z
+        .object({
+          status: z.literal("refused"),
+          base: remoteBaseSchema,
+          reason: z.string().min(1),
+        })
+        .strict(),
+      z.object({ status: z.literal("busy"), base: remoteBaseSchema }).strict(),
     ]),
   },
   nameHandedOffBranch: {
@@ -164,12 +177,6 @@ export const worktreeHostContract = defineRpcContract({
         fromBranch: z.string().min(1),
         toBranch: z.string().min(1),
       })
-      .strict(),
-    output: z.null(),
-  },
-  fastForward: {
-    input: z
-      .object({ path: z.string().min(1), commit: z.string().min(1) })
       .strict(),
     output: z.null(),
   },

@@ -95,8 +95,10 @@ import {
 import { decideWithinBox } from "./dispatch-hooks.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import {
-  resolveGitCheckoutAvailability,
+  createGitCheckoutInspector,
+  gitCheckoutAvailability,
   resolvePluginEnvironmentProviderAvailability,
+  type GitCheckoutInspector,
 } from "../environments/provider-availability.js";
 import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibility.js";
 
@@ -224,6 +226,7 @@ export async function completeProviderSelection(
   record: PluginEnvironmentProviderRecord,
   projectId: string,
   selection: ProviderSelection,
+  inspectGitCheckout: GitCheckoutInspector,
 ): Promise<ProviderSelection> {
   const environmentProviderId = record.provider.id;
   const requires = record.provider.requires;
@@ -259,6 +262,7 @@ export async function completeProviderSelection(
       hostId: machine.hostId,
       inputs,
       projectId,
+      inspectGitCheckout,
     });
   }
   return { machine, inputs };
@@ -280,7 +284,12 @@ const validateDecisionSchema = z.discriminatedUnion("action", [
 export async function validateProviderSelection(
   deps: PlacementDeps,
   record: PluginEnvironmentProviderRecord,
-  args: { hostId: string; inputs: JsonValue | null; projectId: string },
+  args: {
+    hostId: string;
+    inputs: JsonValue | null;
+    projectId: string;
+    inspectGitCheckout: GitCheckoutInspector;
+  },
 ): Promise<void> {
   const environmentProviderId = record.provider.id;
   const requires = record.provider.requires;
@@ -310,10 +319,9 @@ export async function validateProviderSelection(
     );
   }
   if (requires.gitCheckout && projectCheckout !== null) {
-    const availability = await resolveGitCheckoutAvailability(deps, {
-      hostId: host.id,
-      path: projectCheckout.path,
-    });
+    const availability = await gitCheckoutAvailability(
+      args.inspectGitCheckout({ hostId: host.id, path: projectCheckout.path }),
+    );
     if (availability.status !== "available") {
       throw new ApiError(
         409,
@@ -426,6 +434,7 @@ export async function validateProviderSelection(
 export interface ResolveThreadEnvironmentPlacementArgs {
   projectId: string;
   requestedEnvironment: EnvironmentArgs | ProviderEnvironmentArgs;
+  inspectGitCheckout: GitCheckoutInspector;
 }
 
 function reuseEnvironmentPlacement(
@@ -511,7 +520,7 @@ export async function resolveThreadEnvironmentPlacement(
           "requires a project with a Git remote",
         );
     }
-    return providerPlacement(deps, args.projectId, environmentProviderId, {
+    return providerPlacement(deps, args, environmentProviderId, {
       machine,
       inputs: requested.inputs,
     });
@@ -528,7 +537,7 @@ export async function resolveThreadEnvironmentPlacement(
       if (workspace.type !== "unmanaged") {
         return providerPlacement(
           deps,
-          args.projectId,
+          args,
           DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
           {
             machine: {
@@ -560,7 +569,7 @@ export async function resolveThreadEnvironmentPlacement(
       }
       return providerPlacement(
         deps,
-        args.projectId,
+        args,
         DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
         {
           machine: {
@@ -577,7 +586,7 @@ export async function resolveThreadEnvironmentPlacement(
     case "personal": {
       return providerPlacement(
         deps,
-        args.projectId,
+        args,
         DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
         {
           machine: {
@@ -604,10 +613,13 @@ export async function resolveProviderOperationContext(
   try {
     selection = intent.selectionResolved
       ? { machine: intent.machine, inputs: intent.inputs }
-      : await completeProviderSelection(deps, record, thread.projectId, {
-          machine: intent.machine,
-          inputs: intent.inputs,
-        });
+      : await completeProviderSelection(
+          deps,
+          record,
+          thread.projectId,
+          { machine: intent.machine, inputs: intent.inputs },
+          createGitCheckoutInspector(deps),
+        );
   } catch (error) {
     throw providerFailure(
       intent.environmentProviderId,
@@ -926,6 +938,7 @@ async function reserveEnvironmentBeforeMachine(
         args.record,
         args.thread.projectId,
         args.intent,
+        createGitCheckoutInspector(deps),
       );
   if (selection.machine.type !== "new")
     throw new Error("Expected a new machine selection");
@@ -1291,10 +1304,11 @@ export function prepareProviderEnvironment(
 
 async function providerPlacement(
   deps: PlacementDeps,
-  projectId: string,
+  args: { projectId: string; inspectGitCheckout: GitCheckoutInspector },
   environmentProviderId: string,
   requested: ProviderSelection,
 ): Promise<ThreadEnvironmentPlacement> {
+  const projectId = args.projectId;
   const record = getEnvironmentProvider(environmentProviderId);
   if (record === undefined)
     refuseProviderSelection(
@@ -1306,6 +1320,7 @@ async function providerPlacement(
     record,
     projectId,
     requested,
+    args.inspectGitCheckout,
   );
   if (selection.machine.type === "existing") {
     const hostId = selection.machine.hostId;
