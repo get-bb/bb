@@ -117,6 +117,15 @@ export const worktreeRpcContract = defineRpcContract({
       .strict(),
     output: warmPoolStatusSchema,
   },
+  setWarmPoolFolders: {
+    input: z
+      .object({
+        projectId: z.string().min(1),
+        folders: z.array(z.string().min(1)).max(MAX_FOLDERS),
+      })
+      .strict(),
+    output: warmPoolStatusSchema,
+  },
 });
 
 const JSON_OPTION = {
@@ -134,6 +143,9 @@ function formatWarmPoolStatus(status: WarmPoolStatus): string {
   return enabled
     .flatMap((pool) => [
       `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"} per machine, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
+      ...(pool.folders.length === 0
+        ? []
+        : [`  Also branches: ${pool.folders.join(", ")}`]),
       ...pool.checkouts.flatMap((checkout) => [
         `  ${checkout.hostName} (${checkout.hostId}) ${checkout.path}: keeps ${checkout.size}${
           checkout.hostSize === null ? "" : " (set for this machine)"
@@ -193,6 +205,15 @@ function folderAdditionalPaths(
   return folders.map((folder) => ({
     path: folder.path,
     replaces: folder.sourcePath,
+  }));
+}
+
+function warmFolderWorktrees(warm: WarmHandOff): CreatedFolderWorktree[] {
+  return warm.folders.map((folder) => ({
+    sourcePath: folder.sourcePath,
+    path: folder.path,
+    baseBranch: folder.baseBranch,
+    ownsBranch: true,
   }));
 }
 
@@ -542,21 +563,19 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           projectId: context.project.id,
           hostId: context.host.id,
           sourcePath: context.projectCheckout.path,
+          folders: branched.folders,
           adopt: (environmentId, handed) =>
             context.adopt(environmentId, {
               ownedBranch: ownedBranch(handed.placeholder, handed.baseBranch),
-              folderBranches: [],
+              folderBranches: folderBranchesOf(
+                warmFolderWorktrees(handed),
+                handed.placeholder,
+              ),
             }),
           signal: context.signal,
         });
         if (warm !== null) {
-          const folders = await createFolderWorktrees(context, {
-            path: warm.path,
-            folders: branched.folders,
-            branchName: null,
-            branchMode: "reset",
-          });
-          if (folders.status === "failed") return folders;
+          const folders = warmFolderWorktrees(warm);
           const commit = warm.baseCommit.slice(0, 7);
           const hostOptions = {
             hostId: context.host.id,
@@ -565,6 +584,19 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           };
           let branchName: string | null = null;
           try {
+            const movedFolders = warm.folders.filter(
+              (folder) => folder.memberCommit !== folder.baseCommit,
+            );
+            for (const folder of movedFolders) {
+              await host.call(
+                "fastForward",
+                { path: folder.path, commit: folder.baseCommit },
+                hostOptions,
+              );
+              context.report.step(
+                `Moved the warm worktree of ${folder.sourcePath} from ${folder.memberCommit.slice(0, 7)} to ${folder.baseCommit.slice(0, 7)}; its setup runs again`,
+              );
+            }
             if (warm.memberCommit !== warm.baseCommit) {
               await host.call(
                 "fastForward",
@@ -574,33 +606,49 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               context.report.step(
                 `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
               );
-              await context.setup(warm.path);
+            } else if (movedFolders.length > 0) {
+              context.report.step(
+                "Setup runs again in the warm worktree after its folders moved",
+              );
             }
+            if (
+              warm.memberCommit !== warm.baseCommit ||
+              movedFolders.length > 0
+            )
+              await context.setup(warm.path, {
+                folders: movedFolders.map((folder) => folder.path),
+              });
             context.report.step(
               warm.offline
                 ? `Using a warm worktree at the last fetched ${warm.baseBranch} (${commit}); it may be out of date`
                 : `Using a warm worktree at ${warm.baseBranch} (${commit})`,
             );
             branchName = await context.branchName();
-            await host.call(
-              "nameHandedOffBranch",
-              {
-                path: warm.path,
-                fromBranch: warm.placeholder,
-                toBranch: branchName,
-              },
-              hostOptions,
-            );
-            await nameFolderBranches(context, folders.folders, branchName);
+            for (const path of [
+              warm.path,
+              ...folders.map((folder) => folder.path),
+            ])
+              await host.call(
+                "nameHandedOffBranch",
+                {
+                  path,
+                  fromBranch: warm.placeholder,
+                  toBranch: branchName,
+                },
+                hostOptions,
+              );
           } catch (error) {
-            if (folders.folders.length > 0) {
+            if (folders.length > 0) {
               await removeEnvironmentWorktrees(
                 context,
                 warm.path,
                 ownedBranch(branchName ?? warm.placeholder, warm.baseBranch),
-                branchName === null
-                  ? []
-                  : folderBranchesOf(folders.folders, branchName),
+                [
+                  ...folderBranchesOf(folders, warm.placeholder),
+                  ...(branchName === null
+                    ? []
+                    : folderBranchesOf(folders, branchName)),
+                ],
               );
             }
             throw error;
@@ -613,10 +661,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               mergeBaseBranch: warm.baseBranch,
               resource: {
                 ownedBranch: ownedBranch(branchName, warm.baseBranch),
-                folderBranches: folderBranchesOf(folders.folders, branchName),
+                folderBranches: folderBranchesOf(folders, branchName),
               },
             },
-            folders.folders,
+            folders,
           );
         }
       }
@@ -636,7 +684,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         await removeEnvironmentWorktrees(context, created.path, null, []);
         return folders;
       }
-      await context.setup(created.path);
+      await context.setup(created.path, {
+        folders: folders.folders.map((folder) => folder.path),
+      });
       return nameManagedWorktree(context, created, folders.folders);
     },
     async restore(context) {
@@ -683,6 +733,9 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         );
         return folders;
       }
+      await context.setup(created.path, {
+        folders: folders.folders.map((folder) => folder.path),
+      });
       const folderBranches = folderBranchesOf(
         folders.folders.filter((folder) => folder.ownsBranch),
         branchName,
@@ -780,6 +833,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       await pools.setHostSize(projectId, hostId, size);
       return pools.status();
     },
+    async setWarmPoolFolders({ projectId, folders }) {
+      await pools.setFolders(projectId, folders);
+      return pools.status();
+    },
   });
 
   bb.cli.register(
@@ -846,6 +903,44 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             if (hostId !== undefined)
               await pools.setHostSize(projectId, hostId, size);
             else if (size !== null) await pools.setSize(projectId, size);
+            const status = await pools.status();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? JSON.stringify(status)
+                : formatWarmPoolStatus(status),
+            };
+          },
+        }),
+        "pool folders": cliCommand({
+          summary: "Set which project folders warm worktrees also branch",
+          description:
+            "Warm worktrees of the project also get a worktree of each listed project folder, with setup finished, and are handed only to new threads that branch exactly those folders. List none to stop branching folders. Members made with other folders are replaced.",
+          positionals: [
+            {
+              name: "project-id",
+              description: "Project id, as `bb project list` prints it",
+              required: true,
+            },
+            {
+              name: "folders",
+              description:
+                "Absolute project folder paths, as `bb project folder list <project-id>` prints them",
+              variadic: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          async run(input) {
+            try {
+              await pools.setFolders(
+                input.positionals["project-id"],
+                input.positionals.folders ?? [],
+              );
+            } catch (error) {
+              throw new PluginCliError(errorMessage(error), {
+                code: "invalid_folders",
+              });
+            }
             const status = await pools.status();
             return {
               exitCode: 0,

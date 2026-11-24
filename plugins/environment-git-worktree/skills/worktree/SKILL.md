@@ -12,6 +12,7 @@ they sit on, and how many threads took one or missed since the server started.
 ```sh
 bb worktree pool status [--json]
 bb worktree pool set <project-id> <size> [--host <host-id>] [--json]
+bb worktree pool folders <project-id> [<folder>...] [--json]
 ```
 
 `size` is 0 to 4 per checkout; `0` turns the pool off and deletes its idle
@@ -39,9 +40,19 @@ A worktree thread can also branch the project's other git repositories
 '{"branch":{"kind":"default"},"folders":["/abs/folder"]}'`. Each listed folder
 gets its own worktree next to the main one, on the thread's branch and from that
 repository's default branch, and the thread works in that worktree instead of
-the shared folder; folders not listed stay shared. Removing the environment
-removes every worktree and the branches bb made. A warm worktree still serves
-the main repository; the folder worktrees are made when the thread takes it.
+the shared folder; folders not listed stay shared. Each new folder worktree
+runs its own `.bb-env-setup.sh` before the main worktree's, in the order
+listed, and its `.bb-env-teardown.sh` after the main one's. Removing the
+environment removes every worktree and the branches bb made.
+
+`bb worktree pool folders <project-id> <folder>...` makes the project's warm
+worktrees also branch those folders, with every setup finished; list no
+folders to stop. A warm worktree goes only to a new thread that branches
+exactly the same folders, so set the pool's folders to the set threads
+usually pick. Others build fresh worktrees; members with other folders are
+replaced. On handoff, a folder worktree behind its repository's default
+branch is fast-forwarded and its `.bb-env-setup.sh` runs again, then the main
+worktree's; folders that did not move are not set up again.
 
 Warm worktrees are ordinary environments held by the Worktree plugin:
 `bb environment list --held-by plugin:environment-git-worktree` lists them, and

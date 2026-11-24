@@ -157,4 +157,6 @@ Folders:
   that shared folder. A Worktree environment created with
   `{"branch":{"kind":"default"},"folders":["/abs/folder"]}` makes a worktree
   of each listed folder's git repository on the thread's branch, next to the
-  main worktree, and replaces that folder with it.
+  main worktree, and replaces that folder with it. Each folder worktree runs
+  its own .bb-env-setup.sh once, in the order listed, before the main
+  worktree's, and its .bb-env-teardown.sh after the main one's.

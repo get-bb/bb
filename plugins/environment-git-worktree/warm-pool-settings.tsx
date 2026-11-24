@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Checkbox } from "@bb/shared-ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,14 @@ export type WarmPoolSizeChange =
 
 function changeKey(change: Pick<WarmPoolSizeChange, "projectId" | "hostId">) {
   return `${change.projectId}\0${change.hostId ?? ""}`;
+}
+
+function folderLabel(folderPath: string): string {
+  return folderPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? folderPath;
+}
+
+function poolIsOn(pool: Pool): boolean {
+  return pool.checkouts.some((checkout) => checkout.size > 0);
 }
 
 function checkoutMeta(checkout: Checkout): SettingsListMeta {
@@ -87,13 +96,58 @@ function SizeSelect(props: {
   );
 }
 
+function FolderItems(props: {
+  pool: Pool;
+  branchable: readonly string[];
+  onFoldersChange(projectId: string, folders: string[]): void;
+}) {
+  const { pool, branchable, onFoldersChange } = props;
+  return [
+    ...branchable,
+    ...pool.folders.filter((folder) => !branchable.includes(folder)),
+  ].map((folder) => {
+    const checked = pool.folders.includes(folder);
+    return (
+      <SettingsListItem
+        key={`folder:${folder}`}
+        title={`Also branch ${folderLabel(folder)}`}
+        description={folder}
+        leading={
+          <Checkbox
+            aria-label={`${pool.projectName} warm worktrees also branch ${folderLabel(folder)}`}
+            checked={checked}
+            onCheckedChange={() => {
+              onFoldersChange(
+                pool.projectId,
+                checked
+                  ? pool.folders.filter((entry) => entry !== folder)
+                  : [...pool.folders, folder],
+              );
+            }}
+          />
+        }
+      />
+    );
+  });
+}
+
 function PoolItem(props: {
   pool: Pool;
   saving: ReadonlySet<string>;
+  branchable: readonly string[];
   onChange(change: WarmPoolSizeChange): void;
+  onFoldersChange(projectId: string, folders: string[]): void;
 }) {
-  const { pool, saving, onChange } = props;
+  const { pool, saving, branchable, onChange, onFoldersChange } = props;
   const single = pool.checkouts.length === 1 ? pool.checkouts[0] : undefined;
+  const folderItems =
+    poolIsOn(pool) && branchable.length + pool.folders.length > 0 ? (
+      <FolderItems
+        pool={pool}
+        branchable={branchable}
+        onFoldersChange={onFoldersChange}
+      />
+    ) : null;
   return (
     <SettingsListItem
       title={pool.projectName}
@@ -119,8 +173,9 @@ function PoolItem(props: {
         />
       }
     >
-      {single === undefined
-        ? pool.checkouts.map((checkout) => (
+      {single === undefined ? (
+        <>
+          {pool.checkouts.map((checkout) => (
             <SettingsListItem
               key={`${checkout.hostId}:${checkout.path}`}
               title={checkout.hostName}
@@ -151,8 +206,12 @@ function PoolItem(props: {
                 />
               }
             />
-          ))
-        : undefined}
+          ))}
+          {folderItems}
+        </>
+      ) : (
+        (folderItems ?? undefined)
+      )}
     </SettingsListItem>
   );
 }
@@ -161,9 +220,18 @@ export function WarmPoolSettingsContent(props: {
   status: WarmPoolStatus | null;
   error: string | null;
   saving: ReadonlySet<string>;
+  branchableFolders: ReadonlyMap<string, readonly string[]>;
   onChange(change: WarmPoolSizeChange): void;
+  onFoldersChange(projectId: string, folders: string[]): void;
 }) {
-  const { status, error, saving, onChange } = props;
+  const {
+    status,
+    error,
+    saving,
+    branchableFolders,
+    onChange,
+    onFoldersChange,
+  } = props;
   return (
     <div className="w-full space-y-2">
       <SettingsList label="Warm worktrees" dividers={false}>
@@ -179,7 +247,9 @@ export function WarmPoolSettingsContent(props: {
               key={pool.projectId}
               pool={pool}
               saving={saving}
+              branchable={branchableFolders.get(pool.projectId) ?? []}
               onChange={onChange}
+              onFoldersChange={onFoldersChange}
             />
           ))
         )}
@@ -222,6 +292,67 @@ export function WarmPoolSettings() {
   }, [refetch]);
   useRealtime(WARM_POOLS_CHANGED_CHANNEL, refetch);
 
+  const [branchableFolders, setBranchableFolders] = useState<
+    ReadonlyMap<string, readonly string[]>
+  >(new Map());
+  const activeCheckouts = (status?.pools ?? [])
+    .filter(poolIsOn)
+    .flatMap((pool) =>
+      pool.checkouts.map((checkout) => `${pool.projectId}\0${checkout.hostId}`),
+    )
+    .join("\n");
+  useEffect(() => {
+    let active = true;
+    const targets = activeCheckouts
+      .split("\n")
+      .filter(Boolean)
+      .map((entry) => {
+        const [projectId = "", hostId = ""] = entry.split("\0");
+        return { projectId, hostId };
+      });
+    Promise.all(
+      targets.map((target) =>
+        rpc.call("listBranchableFolders", target).then(
+          (result) => ({
+            projectId: target.projectId,
+            folders: result.folders,
+          }),
+          () => ({ projectId: target.projectId, folders: [] }),
+        ),
+      ),
+    ).then((results) => {
+      if (!active) return;
+      const next = new Map<string, string[]>();
+      for (const result of results)
+        next.set(result.projectId, [
+          ...new Set([
+            ...(next.get(result.projectId) ?? []),
+            ...result.folders,
+          ]),
+        ]);
+      setBranchableFolders(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [activeCheckouts, rpc]);
+
+  async function changeFolders(
+    projectId: string,
+    folders: string[],
+  ): Promise<void> {
+    setError(null);
+    try {
+      const updated = await rpc.call("setWarmPoolFolders", {
+        projectId,
+        folders,
+      });
+      if (activeRef.current) setStatus(updated);
+    } catch (saveError) {
+      if (activeRef.current) setError(errorMessage(saveError));
+    }
+  }
+
   async function change(next: WarmPoolSizeChange): Promise<void> {
     const key = changeKey(next);
     setSaving((current) => new Set(current).add(key));
@@ -256,8 +387,12 @@ export function WarmPoolSettings() {
       status={status}
       error={error}
       saving={saving}
+      branchableFolders={branchableFolders}
       onChange={(next) => {
         void change(next);
+      }}
+      onFoldersChange={(projectId, folders) => {
+        void changeFolders(projectId, folders);
       }}
     />
   );

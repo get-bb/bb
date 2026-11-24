@@ -30,6 +30,7 @@ const status: WarmPoolStatus = {
       projectId: "prj_bb",
       projectName: "bb",
       size: 2,
+      folders: ["~/Projects/bb-api"],
       handedOff: 14,
       missed: 2,
       checkouts: [
@@ -58,6 +59,7 @@ const status: WarmPoolStatus = {
       projectId: "prj_site",
       projectName: "marketing-site",
       size: 0,
+      folders: [],
       handedOff: 0,
       missed: 0,
       checkouts: [
@@ -86,6 +88,7 @@ const status: WarmPoolStatus = {
       projectId: "prj_docs",
       projectName: "docs",
       size: 1,
+      folders: [],
       handedOff: 3,
       missed: 0,
       checkouts: [
@@ -102,6 +105,7 @@ const status: WarmPoolStatus = {
       projectId: "prj_scratch",
       projectName: "scratch",
       size: 0,
+      folders: [],
       handedOff: 0,
       missed: 0,
       checkouts: [
@@ -136,6 +140,11 @@ function apply(current: WarmPoolStatus, change: WarmPoolSizeChange) {
   };
 }
 
+const branchableFolders = new Map([
+  ["prj_bb", ["~/Projects/bb-api", "~/Projects/bb-docs"]],
+  ["prj_docs", ["~/Projects/docs-assets"]],
+]);
+
 export function Interactive() {
   const [current, setCurrent] = useState(status);
   return (
@@ -144,7 +153,15 @@ export function Interactive() {
         status={current}
         error={null}
         saving={new Set()}
+        branchableFolders={branchableFolders}
         onChange={(change) => setCurrent((value) => apply(value, change))}
+        onFoldersChange={(projectId, folders) =>
+          setCurrent((value) => ({
+            pools: value.pools.map((pool) =>
+              pool.projectId === projectId ? { ...pool, folders } : pool,
+            ),
+          }))
+        }
       />
     </div>
   );

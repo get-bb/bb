@@ -93,8 +93,13 @@ async function setup(
       order.push("branchName");
       return "bb/test";
     },
-    setup: async (path) => {
-      order.push(`setup ${path}`);
+    setup: async (path, options) => {
+      const folders = options?.folders ?? [];
+      order.push(
+        folders.length === 0
+          ? `setup ${path}`
+          : `setup ${path} after ${folders.join(", ")}`,
+      );
     },
     adopt: async (id) => {
       order.push(`adopt ${id}`);
@@ -489,7 +494,10 @@ describe("branching project folders", () => {
         { sourcePath: API, path: API_WORKTREE, branchName: "bb/test" },
       ],
     ]);
-    expect(fixture.order).toEqual([`setup ${WORKTREE_PATH}`, "branchName"]);
+    expect(fixture.order).toEqual([
+      `setup ${WORKTREE_PATH} after ${API_WORKTREE}`,
+      "branchName",
+    ]);
 
     await fixture.provider.remove({
       environment: null,
@@ -529,6 +537,21 @@ describe("branching project folders", () => {
       status: "failed",
     });
     expect(fixture.harness.experimental_hostRpcCalls).toEqual([]);
+  });
+
+  it("sets up each folder worktree a restore makes before its main worktree", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const restored = await fixture.restore({
+      ...restoreContext(fixture.context, "bb/original-thread"),
+      inputs: { branch: { kind: "default" }, folders: [API] },
+    });
+    expect(restored).toMatchObject({
+      status: "created",
+      additionalPaths: [{ path: API_WORKTREE, replaces: API }],
+    });
+    expect(fixture.order).toEqual([
+      `setup ${WORKTREE_PATH} after ${API_WORKTREE}`,
+    ]);
   });
 
   it("restores without a folder that left the project, and clears the recorded folder lists", async () => {

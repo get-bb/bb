@@ -1164,6 +1164,22 @@ providers receive, so they carry no nested `experimental_` prefix.
   bound. Stopping the only thread of an environment whose create has not
   returned aborts the create and removes the environment, and the thread
   goes back to its provider request. Caller: Worktree's cold create.
+- `setup(path, { folders })` (experimental option) also names extra folders
+  the create made, such as new sibling worktrees. Core canonicalizes them,
+  refuses relative ones, `path` itself, ones inside or containing `path`,
+  and repeats, and stores them on `environments.setup_folder_paths` with the
+  request; repeating a request with other folders, or passing folders after
+  `adopt`, is refused. The attach operation runs each folder's
+  `.bb-env-setup.sh` once, in order, before `path`'s, each as its own hook
+  operation (`environment:<id>:<key>:setup:folder:<index>`), skipping a
+  folder whose setup already succeeded there, so a setup after `adopt`
+  runs only in `path`. Removal runs `path`'s `.bb-env-teardown.sh`, then
+  each folder's in reverse order. The create fails when a set-up folder is
+  missing from the result's `additionalPaths`. Recovery inspects processes
+  in each folder and acknowledges each folder's interrupted hooks. Callers:
+  Worktree's cold create and restore, which list the folder worktrees they
+  made. Before stabilizing, decide whether `additionalPaths` entries should
+  carry the setup request instead of a separate list.
 - `locate({ host, projectCheckout, inputs })` answers `{ path, reuse }` or
   null before create, replacing `experimental_existingPath`. Core checks
   path admission and claims the path on the reservation; `reuse: true` joins

@@ -40,6 +40,12 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
+  When an environment also creates folder worktrees of the project's other
+  repositories, each new folder worktree runs its own .bb-env-setup.sh first,
+  in order, then the main workspace's runs; teardown runs in the main
+  workspace first, then in each folder in reverse. A folder's setup runs once:
+  a warm worktree handed to a thread does not set its folders up again.
+
   Hooks run only in paths bb created and owns, such as new worktrees and
   checkouts bb cloned; attached project checkouts and personal workspaces never
   run hooks. A server restart does not interrupt a running hook, but a daemon
