@@ -245,4 +245,64 @@ describe("turn-start watchdog", () => {
       ),
     ).toBe(false);
   });
+
+  it("refuses a subagent tell while a turn start is still reserved", async () => {
+    const realSetTimeout = setTimeout;
+    const record = createScriptedEchoRequestRecord();
+    runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, env: record.env, onEvent: () => {} },
+      launch: {
+        scripted: {
+          swallowTurnStart: true,
+          turnStartResponseDelayMs: 600_000,
+        },
+      },
+    });
+    const liveRuntime = runtime;
+
+    await liveRuntime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+
+    vi.useFakeTimers();
+    try {
+      const turnStart = liveRuntime.runTurn({
+        additionalWorkspaceWriteRoots: [],
+        clientRequestId: "creq_222222222y",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+      for (
+        let attempt = 0;
+        record.last("turn/start") === undefined;
+        attempt += 1
+      ) {
+        if (attempt >= 1_000) {
+          throw new Error("The bridge never received turn/start");
+        }
+        await new Promise((resolve) => realSetTimeout(resolve, 10));
+      }
+      await expect(
+        liveRuntime.tellSubagent({
+          threadId: "t1",
+          childRef: "child-1",
+          clientRequestId: "creq_23456789ad",
+          options: fullRuntimeOptions,
+          text: "while the turn is starting",
+        }),
+      ).rejects.toThrow(CompetingTurnError);
+      expect(
+        record.read().some((request) => request.method === "subagent/tell"),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(30_001);
+      await expect(turnStart).resolves.toEqual({ status: "unconfirmed" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

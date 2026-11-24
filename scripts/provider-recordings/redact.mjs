@@ -27,6 +27,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
   copyFileSync,
@@ -574,13 +575,35 @@ function outputContains(parent, child) {
   );
 }
 
+function canonicalPath(target) {
+  const absolute = resolve(target);
+  const missing = [];
+  let current = absolute;
+  for (;;) {
+    try {
+      const real = realpathSync(current);
+      return missing.reduceRight((path, part) => join(path, part), real);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+      const parent = dirname(current);
+      if (parent === current) {
+        return absolute;
+      }
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
 function main() {
   const { inDir, outDir, home } = parseArgs(process.argv.slice(2));
   if (home === "/" || home === "") {
     throw new Error("refusing to redact with an empty home directory");
   }
-  const inputRoot = resolve(inDir);
-  const outputRoot = resolve(outDir);
+  const inputRoot = canonicalPath(inDir);
+  const outputRoot = canonicalPath(outDir);
   if (inputRoot === outputRoot) {
     throw new Error("input and output directories must differ");
   }

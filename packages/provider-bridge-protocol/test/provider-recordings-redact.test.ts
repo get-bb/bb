@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -163,6 +164,43 @@ it("refuses an output directory that contains the input recordings", () => {
           fileURLToPath(REDACT_SCRIPT),
           inputDir,
           root,
+          "--home",
+          "/home/tester",
+        ],
+        { encoding: "utf8" },
+      ),
+    ).toThrow(/contains the input recordings/);
+    expect(readFileSync(sibling, "utf8")).toBe("keep-me");
+    expect(readFileSync(join(inputDir, "session.ndjson"), "utf8")).toContain(
+      "ok",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("refuses an output directory that contains a symlinked input", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-link-"));
+  const outputDir = join(root, "run");
+  const inputDir = join(outputDir, "raw");
+  const inputLink = join(root, "input");
+  const sibling = join(outputDir, "sibling.txt");
+  try {
+    mkdirSync(inputDir, { recursive: true });
+    writeFileSync(
+      join(inputDir, "session.ndjson"),
+      `${JSON.stringify({ line: JSON.stringify({ ok: true }) })}\n`,
+    );
+    writeFileSync(sibling, "keep-me");
+    symlinkSync(inputDir, inputLink);
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(REDACT_SCRIPT),
+          inputLink,
+          outputDir,
           "--home",
           "/home/tester",
         ],

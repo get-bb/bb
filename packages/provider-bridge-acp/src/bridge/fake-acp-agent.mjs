@@ -678,6 +678,8 @@ function spawnGrokSubagent(args) {
     process.env.FAKE_ACP_GROK_SUBAGENT_NOTIFY_BEFORE_RESULT === "1";
   const resultOnToolCall =
     process.env.FAKE_ACP_GROK_SUBAGENT_SPAWN_RESULT_ON_TOOL_CALL === "1";
+  const outputOnUpdate =
+    process.env.FAKE_ACP_GROK_SUBAGENT_SPAWN_OUTPUT_ON_UPDATE === "1";
   const meta = {
     "x.ai/tool": {
       version: 1,
@@ -714,12 +716,20 @@ function spawnGrokSubagent(args) {
     sessionUpdate: "tool_call",
     toolCallId,
     title: "spawn_subagent",
-    rawInput: {
-      description,
-      ...(result === null ? {} : { prompt: result }),
-      background: true,
-      run_in_background: true,
-    },
+    rawInput: outputOnUpdate
+      ? {
+          variant: "Task",
+          description,
+          ...(result === null ? {} : { prompt: result }),
+          run_in_background: true,
+          task_id: null,
+        }
+      : {
+          description,
+          ...(result === null ? {} : { prompt: result }),
+          background: true,
+          run_in_background: true,
+        },
     _meta: meta,
   });
   notifyUpdate({
@@ -727,13 +737,17 @@ function spawnGrokSubagent(args) {
     toolCallId,
     title: description,
     status: "completed",
-    rawInput: {
-      variant: "Task",
-      ...(result === null ? {} : { prompt: result }),
-      description,
-      run_in_background: true,
-      task_id: null,
-    },
+    ...(outputOnUpdate
+      ? {}
+      : {
+          rawInput: {
+            variant: "Task",
+            ...(result === null ? {} : { prompt: result }),
+            description,
+            run_in_background: true,
+            task_id: null,
+          },
+        }),
     rawOutput: {
       type: "Text",
       text: `Subagent started in background.\nsubagent_id: ${childRef}\ndescription: ${description}`,
@@ -781,6 +795,13 @@ async function handleGrokSubagentTell(text) {
   };
   const resultOnToolCall =
     process.env.FAKE_ACP_GROK_SUBAGENT_RESULT_ON_TOOL_CALL === "1";
+  const inputOnUpdate =
+    process.env.FAKE_ACP_GROK_SUBAGENT_INPUT_ON_UPDATE === "1";
+  const tellInput = {
+    subagent_id: addressed,
+    text: content,
+    delivery: "interject",
+  };
   notifyUpdate({
     sessionUpdate: "tool_call",
     toolCallId: `tell-${addressed}`,
@@ -788,11 +809,7 @@ async function handleGrokSubagentTell(text) {
       process.env.FAKE_ACP_GROK_SUBAGENT_DISPLAY_TITLE === "1"
         ? "Sending message to subagent"
         : "send_subagent_message",
-    rawInput: {
-      subagent_id: addressed,
-      text: content,
-      delivery: "interject",
-    },
+    ...(inputOnUpdate ? {} : { rawInput: tellInput }),
     ...(resultOnToolCall ? { status: "completed", rawOutput: tellResult } : {}),
     _meta: {
       "x.ai/tool": {
@@ -836,6 +853,7 @@ async function handleGrokSubagentTell(text) {
     toolCallId: `tell-${addressed}`,
     title: "Sending message to subagent",
     status: "completed",
+    ...(inputOnUpdate ? { rawInput: tellInput } : {}),
     rawOutput:
       process.env.FAKE_ACP_GROK_SUBAGENT_MALFORMED === "1"
         ? { type: "SendSubagentMessage", outcome: "failed" }

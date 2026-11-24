@@ -1344,11 +1344,27 @@ export function createAcpDeltaTranslator(
       childRef: report.childRef,
       label: report.label,
     };
+    const alreadyOpen = open.delegation !== undefined;
     mergedToolCalls.set(key, { ...open, delegation: report });
     const presentation = delegationPresentation({
       label: report.label,
       ...(report.detail === undefined ? {} : { detail: report.detail }),
     });
+    const progress: ThreadDelta = {
+      kind: "item.progress",
+      key: { providerItemId: report.toolCallId },
+      snapshot: {
+        type: "delegation",
+        childRef: report.childRef,
+        label: report.label,
+        background: classified.item.background,
+        ...(report.detail === undefined ? {} : { summary: report.detail }),
+      },
+      flush: true,
+    };
+    if (alreadyOpen) {
+      return [progress];
+    }
     return [
       {
         kind: "item.open",
@@ -1356,18 +1372,7 @@ export function createAcpDeltaTranslator(
         item,
         presentation,
       },
-      {
-        kind: "item.progress",
-        key: { providerItemId: report.toolCallId },
-        snapshot: {
-          type: "delegation",
-          childRef: report.childRef,
-          label: report.label,
-          background: classified.item.background,
-          ...(report.detail === undefined ? {} : { summary: report.detail }),
-        },
-        flush: true,
-      },
+      progress,
     ];
   }
 

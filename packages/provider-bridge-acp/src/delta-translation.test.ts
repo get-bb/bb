@@ -3369,6 +3369,30 @@ describe("acp delta translation (dialects)", () => {
     ]);
   });
 
+  it("does not reopen a background grok delegation for a later progress report", () => {
+    const harness = dialectHarness("grok");
+    harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const first = harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "explore",
+    });
+    expect(first.map((delta) => delta.kind)).toEqual([
+      "item.open",
+      "item.progress",
+    ]);
+    const progress = harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "turn 2",
+    });
+    expect(progress.map((delta) => delta.kind)).toEqual(["item.progress"]);
+  });
+
   it("closes a failed or cancelled background grok spawn without a child", () => {
     for (const status of ["failed", "cancelled"] as const) {
       const harness = dialectHarness("grok");

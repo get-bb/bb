@@ -110,6 +110,43 @@ describe("SubagentActionControls", () => {
     ).toBeNull();
   });
 
+  it("keeps a newer draft when the message is accepted", async () => {
+    let resolveTell: (result: {
+      childRef: string;
+      messageId: string;
+    }) => void = () => {};
+    tell.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTell = resolve;
+      }),
+    );
+    renderControls(
+      delegationRow({
+        childRef: "child-1",
+        status: "pending",
+        threadId: "thr_1",
+      }),
+    );
+    const textbox = screen.getByRole("textbox", {
+      name: "Message subagent child-1",
+    });
+    fireEvent.change(textbox, { target: { value: "first" } });
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
+    fireEvent.change(textbox, { target: { value: "first plus" } });
+    resolveTell({ childRef: "child-1", messageId: "message-1" });
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Message message-1 accepted",
+      ),
+    );
+    expect(textbox).toHaveProperty("value", "first plus");
+    expect(tell).toHaveBeenCalledWith({
+      threadId: "thr_1",
+      childRef: "child-1",
+      text: "first",
+    });
+  });
+
   it("disables message and cancellation for a settled child", () => {
     renderControls(delegationRow({ childRef: "child-1", status: "completed" }));
     fireEvent.change(

@@ -1564,6 +1564,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     return runThreadOperation({
       threadId,
       work: async () => {
+        if (pendingTurnStarts.has(threadId)) {
+          throw new CompetingTurnError(threadId);
+        }
         const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
         const currentProc = requireProviderProcessForThread(threadId);
         assertProviderSupportsExecutionOptions({

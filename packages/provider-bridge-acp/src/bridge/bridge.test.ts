@@ -8098,6 +8098,138 @@ describe("acp bridge: questions the agent asks", () => {
     });
   });
 
+  it("grok_subagent_spawn_output_on_later_update_still_registers", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_SPAWN_OUTPUT_ON_UPDATE: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "running" },
+        { childRef: "child-beta", status: "completed", result: "BETA_DONE" },
+      ],
+    });
+  });
+
+  it("grok_subagent_tell_binds_when_input_arrives_on_update", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_INPUT_ON_UPDATE: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered later",
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      messageId: "message-child-alpha",
+    });
+  });
+
+  it("grok_turn_start_reserves_the_session_before_a_subagent_action", async () => {
+    const requestLog = join(workspaceDir, "grok-turn-reserve.log");
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_CONFIG_DELAY_MS: "400",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+    const promptsBefore = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/prompt",
+    ).length;
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang", mentions: [] }],
+      options: {
+        ...executionOptions({}),
+        sessionOptions: { approach: "plan" },
+      },
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "session/set_config_option" &&
+            request.params?.["configId"] === "approach" &&
+            request.params?.["value"] === "plan",
+        )
+          ? true
+          : undefined,
+      "turn session option",
+    );
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "while the turn is starting",
+    });
+    expect((await waitForResponse(tellId)).error?.message).toContain(
+      "The parent session already has an active turn",
+    );
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore);
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore + 1);
+    await stopThread(providerThreadId);
+  });
+
+  it("grok_subagent_action_reserves_the_session_before_a_turn", async () => {
+    const requestLog = join(workspaceDir, "grok-action-reserve.log");
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_CONFIG_DELAY_MS: "400",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    });
+    const promptsBefore = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/prompt",
+    ).length;
+    const tellId = subagentRequest("subagent/tell", providerThreadId, {
+      childRef: "child-alpha",
+      text: "hold the session",
+      options: {
+        ...executionOptions({}),
+        sessionOptions: { approach: "plan" },
+      },
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "session/set_config_option" &&
+            request.params?.["configId"] === "approach" &&
+            request.params?.["value"] === "plan",
+        )
+          ? true
+          : undefined,
+      "tell session option",
+    );
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    expect((await waitForResponse(turnId)).error?.message).toContain(
+      "A turn is already active",
+    );
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore);
+    expect((await waitForResponse(tellId)).error).toBeUndefined();
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toHaveLength(promptsBefore + 1);
+  });
+
   it("grok_subagent_tell_targets_only_requested_child", async () => {
     const { providerThreadId } = await startGrokSubagentThread();
     const text = `CHILD_MESSAGE 😀 مراجعة\n${"x".repeat(64_001)}`;

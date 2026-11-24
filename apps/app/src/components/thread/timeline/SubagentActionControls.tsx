@@ -22,13 +22,14 @@ export function SubagentActionControls({
     setMessage(null);
     try {
       if (kind === "tell") {
+        const submitted = text;
         const result = await sdk.threads.subagents.tell({
           threadId: row.threadId,
           childRef,
-          text,
+          text: submitted,
         });
         setMessage(`Message ${result.messageId} accepted`);
-        setText("");
+        setText((current) => (current === submitted ? "" : current));
       } else {
         await sdk.threads.subagents.cancel({
           threadId: row.threadId,

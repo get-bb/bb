@@ -283,6 +283,16 @@ interface AcpNativeConfigState {
 
 type AcpSessionRebuildCause = "cancel-error" | "lost-session";
 
+interface GrokToolCallState {
+  sessionUpdate: string;
+  toolCallId: string;
+  title?: string;
+  status?: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  _meta?: unknown;
+}
+
 interface AcpThreadSession {
   bbThreadId: string;
   construction: AcpSessionParams;
@@ -334,7 +344,9 @@ interface AcpThreadSession {
   subagentIdsByToolCall: Map<string, string>;
   earlyGrokSubagentNotifications: Map<string, GrokSubagentNotification[]>;
   pendingSubagentActions: Map<string, PendingGrokSubagentAction>;
+  grokToolCallsById: Map<string, GrokToolCallState>;
   subagentActionReserved: boolean;
+  turnStartReserved: boolean;
   pendingPermissions: Set<PendingAcpPermission>;
   sessionGrants: Set<string>;
   pendingElicitations: Map<AcpAgentRequestResponder, AbortController>;
@@ -2947,7 +2959,9 @@ async function startAgentSession(
     subagentIdsByToolCall: new Map(),
     earlyGrokSubagentNotifications: new Map(),
     pendingSubagentActions: new Map(),
+    grokToolCallsById: new Map(),
     subagentActionReserved: false,
+    turnStartReserved: false,
     pendingPermissions: new Set(),
     sessionGrants: new Set(),
     pendingElicitations: new Map(),
@@ -4650,6 +4664,44 @@ function grokSubagentActionMatches(
   return grokSubagentToolText(update.rawInput) === action.text;
 }
 
+function rememberGrokToolCall(
+  session: AcpThreadSession,
+  update: {
+    sessionUpdate: string;
+    toolCallId?: string;
+    title?: string;
+    status?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+    _meta?: unknown;
+  },
+): GrokToolCallState | undefined {
+  if (update.toolCallId === undefined) {
+    return undefined;
+  }
+  const previous = session.grokToolCallsById.get(update.toolCallId);
+  const next: GrokToolCallState = {
+    sessionUpdate: update.sessionUpdate,
+    toolCallId: update.toolCallId,
+    ...(previous?.title !== undefined ? { title: previous.title } : {}),
+    ...(previous?.status !== undefined ? { status: previous.status } : {}),
+    ...(previous?.rawInput !== undefined
+      ? { rawInput: previous.rawInput }
+      : {}),
+    ...(previous?.rawOutput !== undefined
+      ? { rawOutput: previous.rawOutput }
+      : {}),
+    ...(previous?._meta !== undefined ? { _meta: previous._meta } : {}),
+    ...(update.title !== undefined ? { title: update.title } : {}),
+    ...(update.status !== undefined ? { status: update.status } : {}),
+    ...(update.rawInput !== undefined ? { rawInput: update.rawInput } : {}),
+    ...(update.rawOutput !== undefined ? { rawOutput: update.rawOutput } : {}),
+    ...(update._meta !== undefined ? { _meta: update._meta } : {}),
+  };
+  session.grokToolCallsById.set(update.toolCallId, next);
+  return next;
+}
+
 function noteGrokSubagentToolCall(
   session: AcpThreadSession,
   update: {
@@ -4659,13 +4711,15 @@ function noteGrokSubagentToolCall(
     status?: string;
     rawInput?: unknown;
     rawOutput?: unknown;
+    _meta?: unknown;
   },
 ): string | undefined {
-  if (update.toolCallId === undefined) {
+  const merged = rememberGrokToolCall(session, update);
+  if (merged === undefined) {
     return undefined;
   }
-  const spawnedSubagentId = bindGrokSpawnedSubagent(session, update);
-  noteGrokSubagentActionResult(session, update);
+  const spawnedSubagentId = bindGrokSpawnedSubagent(session, merged);
+  noteGrokSubagentActionResult(session, merged);
   return spawnedSubagentId;
 }
 
@@ -4696,18 +4750,8 @@ function bindGrokSpawnedSubagent(
 
 function noteGrokSubagentActionResult(
   session: AcpThreadSession,
-  update: {
-    sessionUpdate: string;
-    toolCallId?: string;
-    title?: string;
-    status?: string;
-    rawInput?: unknown;
-    rawOutput?: unknown;
-  },
+  update: GrokToolCallState,
 ): void {
-  if (update.toolCallId === undefined) {
-    return;
-  }
   let action = Array.from(session.pendingSubagentActions.values()).find(
     (candidate) => candidate.toolCallId === update.toolCallId,
   );
@@ -4717,7 +4761,12 @@ function noteGrokSubagentActionResult(
         candidate.toolCallId === undefined &&
         grokSubagentActionMatches(session, candidate, update),
     );
-    if (pending === undefined || update.sessionUpdate !== "tool_call") {
+    if (
+      pending === undefined ||
+      update.rawInput === undefined ||
+      (update.sessionUpdate !== "tool_call" &&
+        update.sessionUpdate !== "tool_call_update")
+    ) {
       return;
     }
     pending.toolCallId = update.toolCallId;
@@ -5164,7 +5213,11 @@ async function startGrokSubagentAction(
   > & { id: AcpBridgeRequestId },
 ): Promise<void> {
   const { childRef, clientRequestId, options } = request.params;
-  if (session.activePromptKind !== null || session.subagentActionReserved) {
+  if (
+    session.activePromptKind !== null ||
+    session.subagentActionReserved ||
+    session.turnStartReserved
+  ) {
     sendError(
       request.id,
       -32000,
@@ -5445,33 +5498,57 @@ async function handleRequest(
           agentTurnHasOpenWork(session) ? "cancelled" : "end_turn",
         );
       }
-      if (session.activePromptKind !== null) {
+      if (
+        session.activePromptKind !== null ||
+        session.subagentActionReserved ||
+        session.turnStartReserved
+      ) {
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      const reconciled = reconcileExecutionSettings(session, params.options);
-      session = reconciled instanceof Promise ? await reconciled : reconciled;
-      if (params.options.sessionOptions !== undefined) {
-        try {
-          await applySessionOptionSelections(
-            session,
-            params.options.sessionOptions,
-          );
-        } catch (error) {
-          scheduleRebuildIfSessionLost(session, error);
-          throw error;
+      const reservedSession = session;
+      reservedSession.turnStartReserved = true;
+      try {
+        const reconciled = reconcileExecutionSettings(session, params.options);
+        session = reconciled instanceof Promise ? await reconciled : reconciled;
+        if (session !== reservedSession) {
+          reservedSession.turnStartReserved = false;
+          session.turnStartReserved = true;
         }
-      }
-      const pending: AcpPendingTurnInput = {
-        clientRequestId: params.clientRequestId,
-        input: params.input,
-        requestId: request.id,
-        options: params.options,
-      };
-      if (isStandaloneBuiltinCompactCommand(params.input)) {
-        startCompaction(session, pending);
-      } else {
-        runTurn(session, pending);
+        if (params.options.sessionOptions !== undefined) {
+          try {
+            await applySessionOptionSelections(
+              session,
+              params.options.sessionOptions,
+            );
+          } catch (error) {
+            scheduleRebuildIfSessionLost(session, error);
+            throw error;
+          }
+        }
+        if (
+          session.stopping ||
+          sessionsByBbThreadId.get(session.bbThreadId) !== session ||
+          session.activePromptKind !== null ||
+          session.subagentActionReserved
+        ) {
+          sendError(request.id, -32000, "A turn is already active");
+          return;
+        }
+        const pending: AcpPendingTurnInput = {
+          clientRequestId: params.clientRequestId,
+          input: params.input,
+          requestId: request.id,
+          options: params.options,
+        };
+        if (isStandaloneBuiltinCompactCommand(params.input)) {
+          startCompaction(session, pending);
+        } else {
+          runTurn(session, pending);
+        }
+      } finally {
+        session.turnStartReserved = false;
+        reservedSession.turnStartReserved = false;
       }
       return;
     }
