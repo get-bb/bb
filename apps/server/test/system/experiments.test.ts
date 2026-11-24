@@ -62,20 +62,14 @@ describe("experiments settings", () => {
   it("changes only the experiments a PUT names", async () => {
     await withTestHarness(async (harness) => {
       await putExperiments(harness, { serverMove: true });
-      const put = await putExperiments(harness, { threadContextCard: true });
+      const put = await putExperiments(harness, { serverRoutes: true });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        agentCpuPriority: false,
         compactExpiredCache: false,
-        keyedPluginCss: false,
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
-        resumeDaemonSessions: false,
-        serverRoutes: false,
-        skipFocusedThreadNotifications: false,
-        threadContextCard: true,
-        walCheckpointWorker: false,
+        serverRoutes: true,
       });
       expect(
         harness.db.$client
@@ -84,7 +78,7 @@ describe("experiments settings", () => {
           )
           .all()
           .map((row) => row.key),
-      ).toEqual(["serverMove", "threadContextCard"]);
+      ).toEqual(["serverMove", "serverRoutes"]);
     });
   });
 

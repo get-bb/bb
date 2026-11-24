@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Browser, BrowserContext, Page } from "playwright-core";
+import type { Browser, BrowserContext, Page, Request } from "playwright-core";
 import { z } from "zod";
 
 const PROBE_SCRIPT = readFileSync(
@@ -10,6 +10,7 @@ const PROBE_SCRIPT = readFileSync(
 const QUIET_MS = 1_000;
 const STARTUP_QUIET_MS = 3_000;
 const SETTLE_TIMEOUT_MS = 30_000;
+const PENDING_REQUEST_POLL_MS = 50;
 const VIOLATION_LIST_LIMIT = 40;
 
 const renderSchema = z.object({
@@ -49,6 +50,19 @@ export async function openThread(
   });
   await context.addInitScript({ content: PROBE_SCRIPT });
   const page = await context.newPage();
+  const pendingRequests = new Set<Request>();
+  let lastRequestActivityAt = Date.now();
+  const settleRequest = (request: Request) => {
+    pendingRequests.delete(request);
+    lastRequestActivityAt = Date.now();
+  };
+  page.on("request", (request) => {
+    pendingRequests.add(request);
+    lastRequestActivityAt = Date.now();
+  });
+  page.on("response", (response) => settleRequest(response.request()));
+  page.on("requestfinished", settleRequest);
+  page.on("requestfailed", settleRequest);
   await page.goto(`${serverUrl}/threads/${threadId}`);
   await page.waitForSelector("[data-timeline-row-id]", {
     timeout: SETTLE_TIMEOUT_MS,
@@ -59,12 +73,27 @@ export async function openThread(
 
   const settleFor = async (quietMs: number) => {
     const since = await page.evaluate(() => window.__renderProbe.renderCount());
+    const deadline = Date.now() + SETTLE_TIMEOUT_MS;
     try {
-      await page.waitForFunction(
-        (minimum) => window.__renderProbe.quietFor() >= minimum,
-        quietMs,
-        { timeout: SETTLE_TIMEOUT_MS, polling: 100 },
-      );
+      for (;;) {
+        await page.waitForFunction(
+          (minimum) => window.__renderProbe.quietFor() >= minimum,
+          quietMs,
+          { timeout: Math.max(1, deadline - Date.now()), polling: 100 },
+        );
+        const requestsQuietFor = Date.now() - lastRequestActivityAt;
+        if (pendingRequests.size === 0 && requestsQuietFor >= quietMs) return;
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `Requests still awaiting a response: ${[...pendingRequests].map((request) => `${request.method()} ${request.url()}`).join(", ")}`,
+          );
+        }
+        await page.waitForTimeout(
+          pendingRequests.size === 0
+            ? quietMs - requestsQuietFor
+            : PENDING_REQUEST_POLL_MS,
+        );
+      }
     } catch (error) {
       const report = reportSchema.parse(
         await page.evaluate(
@@ -73,7 +102,7 @@ export async function openThread(
         ),
       );
       throw new Error(
-        `The page never stayed free of React commits for ${quietMs} ms within ${SETTLE_TIMEOUT_MS} ms. It kept rendering:\n${summarize(report.renders).join("\n")}`,
+        `The page never stayed free of React commits and pending requests for ${quietMs} ms within ${SETTLE_TIMEOUT_MS} ms. It kept rendering:\n${summarize(report.renders).join("\n")}`,
         { cause: error },
       );
     }

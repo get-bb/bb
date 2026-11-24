@@ -51,10 +51,6 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
-import { appQueryClient } from "./app-query-client";
-import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -211,7 +207,7 @@ function cssHrefs(pluginId: string): Array<string | null> {
 }
 
 function pluginSheet(pluginId: string, version: string): string {
-  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 }
 
 function fireLoad(link: Element | null | undefined): void {
@@ -1384,39 +1380,13 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
-    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
   const sheet = (hash: string) =>
-    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 
-  function setKeyedPluginCss(keyedPluginCss: boolean): void {
-    appQueryClient.setQueryData(
-      systemConfigQueryKey(),
-      makeSystemConfig({
-        experiments: { ...defaultExperiments, keyedPluginCss },
-      }),
-    );
-  }
-
-  it.each([
-    [false, "owned-root-v1"],
-    [true, "plugin-attribute-v1"],
-  ])(
-    "with keyedPluginCss %s, requests the %s stylesheet",
-    (keyedPluginCss, scope) => {
-      setKeyedPluginCss(keyedPluginCss);
-      retainPluginCss("hello");
-      void applyPluginCss("hello", "/assets/app.css?h=aaa");
-      expect(cssHrefs("hello")[0]).toBe(
-        `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=${scope}`,
-      );
-    },
-  );
-
-  it("keys plugin UI labeled the old way once it requests a keyed stylesheet", async () => {
-    setKeyedPluginCss(true);
+  it("keys plugin UI labeled the old way once it requests a stylesheet", async () => {
     retainPluginCss("hello");
     void applyPluginCss("hello", "/assets/app.css?h=aaa");
     const overlay = document.createElement("div");
@@ -1438,7 +1408,7 @@ describe("applyPluginCss", () => {
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
     ).toBe(
-      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`,
     );
     void applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssLinks("hello")[0]).toBe(first);

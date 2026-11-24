@@ -196,7 +196,6 @@ describe("createServerClient", () => {
             sessionId: "session-1",
             machineEnvironment: { revision: 0, entries: [] },
             idleProviderSessionTimeoutMinutes: 30,
-            agentCpuPriority: false,
             heartbeatIntervalMs: 5_000,
             leaseTimeoutMs: 30_000,
             reconnectGraceMs: 30_000,

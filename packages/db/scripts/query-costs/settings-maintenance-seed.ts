@@ -846,9 +846,8 @@ function seedSettings(db: DbConnection): void {
   setSkippedAppUpdate(db, "2026.11.1");
   setAutoAppUpdate(db, true);
   setExperiments(db, {
-    agentCpuPriority: true,
-    threadContextCard: true,
-    walCheckpointWorker: true,
+    compactExpiredCache: true,
+    serverRoutes: true,
     pluginUpdates: false,
   });
   setStoredAppearance(db, {
