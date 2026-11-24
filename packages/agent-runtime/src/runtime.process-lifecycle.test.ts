@@ -8,7 +8,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   afterEach,
   beforeEach,
@@ -37,7 +36,6 @@ import {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   createScriptedEchoLaunch,
-  scriptedEchoBridgeModulePath,
   createScriptedEchoProcessLog,
   createScriptedEchoRequestRecord,
   createScriptedEchoRuntime,
@@ -257,34 +255,35 @@ describe("createAgentRuntime process lifecycle", () => {
   it.runIf(process.platform === "linux")(
     "ranks provider processes ahead of bb for the out-of-memory killer",
     async () => {
-      const reportPath = join(tmpDir, "provider-oom-score-adj");
-      const reportingBridgePath = join(tmpDir, "oom-reporting-bridge.mjs");
+      const oomScoreScript = join(tmpDir, "oom-score-provider.cjs");
       writeFileSync(
-        reportingBridgePath,
-        [
-          'import { readFileSync, writeFileSync } from "node:fs";',
-          `export * from ${JSON.stringify(pathToFileURL(scriptedEchoBridgeModulePath).href)};`,
-          `writeFileSync(${JSON.stringify(reportPath)}, readFileSync("/proc/self/oom_score_adj", "utf8"));`,
-        ].join("\n"),
+        oomScoreScript,
+        `process.stderr.write(require("node:fs").readFileSync("/proc/self/oom_score_adj", "utf8").trim() + "\\n");
+        setInterval(() => {}, 1000);`,
       );
-      const adapter = createProviderForId("fake", {
-        bridgeLaunch: createScriptedEchoLaunch({
-          modulePath: reportingBridgePath,
-        }),
-      });
+      const stderrLines: string[] = [];
       const manager = createProviderProcessManager({
-        createAdapter: () => adapter,
         onProcessExit: vi.fn(),
+        onStderr: (line) => {
+          stderrLines.push(line);
+        },
+        rawScriptPath: oomScoreScript,
         workspacePath: tmpDir,
       });
       onTestFinished(() => manager.shutdown());
 
-      await manager.ensureProvider(MANAGER_PROVIDER);
+      const ensure = manager
+        .ensureProvider(MANAGER_PROVIDER)
+        .catch(() => undefined);
+      await waitForRuntimeState({
+        label: "provider oom_score_adj stderr",
+        predicate: () => stderrLines.length > 0,
+      });
+      await manager.shutdown();
+      await ensure;
 
       const ownScore = Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
-      expect(Number(readFileSync(reportPath, "utf8"))).toBe(
-        Math.min(1_000, ownScore + 500),
-      );
+      expect(Number(stderrLines[0])).toBe(Math.min(1_000, ownScore + 500));
     },
   );
 
