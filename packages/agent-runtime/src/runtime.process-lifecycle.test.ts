@@ -475,17 +475,16 @@ describe("createAgentRuntime process lifecycle", () => {
   it("drains provider stderr before reporting process exit", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const crashScript = join(tmpDir, "delayed-stderr-provider.cjs");
-    const delayedWriter =
-      'setTimeout(() => process.stderr.write("stderr-after-exit"), 50);';
+    const exitWatcher =
+      'process.on("disconnect", () => setTimeout(() => process.stderr.write("stderr-after-exit"), 50)); process.send("ready");';
     writeFileSync(
       crashScript,
       `const { spawn } = require("node:child_process");
-      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(exitWatcher)}], {
         detached: process.platform === "win32",
-        stdio: ["ignore", "ignore", "inherit"],
+        stdio: ["ignore", "ignore", "inherit", "ipc"],
       });
-      writer.unref();
-      process.exit(42);`,
+      writer.once("message", () => process.exit(42));`,
     );
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
