@@ -4827,6 +4827,62 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
   });
 
+  it("grok_queue_unsent_interject_is_stale_when_the_turn_ends", async () => {
+    const requestLog = join(workspaceDir, "grok-interject-unsent.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        FAKE_ACP_GROK_INTERJECT_DELAY_MS: "1000",
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "slow", mentions: [] }],
+      }),
+    );
+    const first = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjm",
+      input: [{ type: "text", text: "first queued", mentions: [] }],
+    });
+    const second = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjn",
+      input: [{ type: "text", text: "second never sent", mentions: [] }],
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "_x.ai/interject" &&
+            request.params?.["text"] === "first queued",
+        )
+          ? true
+          : undefined,
+      "first interject",
+    );
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    const queued = await waitForResponse(second);
+    expect(queued.error).toMatchObject({
+      code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+      data: {
+        recovery: { kind: "staleTurn", retryable: false },
+      },
+    });
+    expect(
+      loggedAcpRequests(requestLog).flatMap((request) =>
+        request.method === "_x.ai/interject" ? [request.params?.["text"]] : [],
+      ),
+    ).toEqual(["first queued"]);
+    expect(
+      threadEventsOfType("turn/input/accepted").map(
+        (event) => event.clientRequestId,
+      ),
+    ).not.toContain("creq_abcdefghjn");
+    expect((await waitForResponse(first)).error).toBeDefined();
+  });
+
   it("grok_queue_stale_ack_does_not_dispatch_replacement", async () => {
     const requestLog = join(workspaceDir, "grok-interject-stale.jsonl");
     const { bbThreadId, providerThreadId } = await startThread({
@@ -8251,6 +8307,32 @@ describe("acp bridge: questions the agent asks", () => {
       subagents: [
         { childRef: "child-alpha", status: "completed", result: text },
         { childRef: "child-beta", status: "completed", result: "BETA_DONE" },
+      ],
+    });
+  });
+
+  it("does not acknowledge a tell whose later update targets another child", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_RETARGET_ON_UPDATE: "1",
+      FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "for alpha only",
+      }),
+    );
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      'Grok tell action targeted subagent "child-beta" instead of "child-alpha"',
+    );
+    const listed = await waitForResponse(
+      subagentRequest("subagent/list", providerThreadId),
+    );
+    expect(listed.result).toMatchObject({
+      subagents: [
+        { childRef: "child-alpha", status: "running" },
+        { childRef: "child-beta", status: "completed" },
       ],
     });
   });

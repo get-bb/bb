@@ -232,6 +232,8 @@ const USER_CONTENT_KEYS = new Set([
   "rawOutput",
   "content",
   "summary_preview",
+  "planContent",
+  "comments",
 ]);
 
 /**

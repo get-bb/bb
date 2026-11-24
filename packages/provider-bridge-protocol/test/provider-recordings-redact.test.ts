@@ -179,6 +179,64 @@ it("refuses an output directory that contains the input recordings", () => {
   }
 });
 
+it("redacts Grok plan content and denial comments", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-plan-"));
+  const inputDir = join(root, "input");
+  const outputDir = join(root, "output");
+  const plan = "Private plan for the customer project";
+  const comments = "Private rejection: do not ship this";
+  try {
+    mkdirSync(inputDir);
+    writeFileSync(
+      join(inputDir, "plan.ndjson"),
+      [
+        JSON.stringify({
+          line: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 7,
+            method: "_x.ai/exit_plan_mode",
+            params: {
+              sessionId: "session-1",
+              toolCallId: "tool-1",
+              planContent: plan,
+            },
+          }),
+        }),
+        JSON.stringify({
+          line: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 7,
+            result: { outcome: "cancelled", comments },
+          }),
+        }),
+      ].join("\n") + "\n",
+    );
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(REDACT_SCRIPT),
+        inputDir,
+        outputDir,
+        "--home",
+        "/home/tester",
+      ],
+      { encoding: "utf8" },
+    );
+    const output = readFileSync(join(outputDir, "plan.ndjson"), "utf8");
+
+    expect(stdout).toContain("0 survivors");
+    expect(output).not.toContain(plan);
+    expect(output).not.toContain(comments);
+    expect(output).toContain("REDACTED_TEXT");
+    expect(output).toContain("session-1");
+    expect(output).toContain("tool-1");
+    expect(output).toContain("cancelled");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("refuses an output directory that contains a symlinked input", () => {
   const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-link-"));
   const outputDir = join(root, "run");

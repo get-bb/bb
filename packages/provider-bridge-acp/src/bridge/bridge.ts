@@ -3725,7 +3725,14 @@ async function steerWithNativeInterject(
         sendResult(runtimeRequestId, { threadId: session.bbThreadId });
         return;
       }
-      throw new Error("No active turn to interject");
+      const message = "No active turn to interject";
+      sendError(
+        runtimeRequestId,
+        BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+        message,
+        { recovery: { kind: "staleTurn", message, retryable: false } },
+      );
+      return;
     }
     const turnSettled = session.turnSettled;
     const result = decodeGrokInterjectResult(
@@ -4774,6 +4781,17 @@ function noteGrokSubagentActionResult(
       return;
     }
     action = pending;
+  }
+  if (update.rawInput !== undefined) {
+    const targeted = grokSubagentToolTarget(action.toolName, update.rawInput);
+    if (targeted !== action.childRef) {
+      failPendingSubagentAction(
+        session,
+        action,
+        `Grok ${action.kind} action targeted subagent "${targeted ?? "unknown"}" instead of "${action.childRef}"`,
+      );
+      return;
+    }
   }
   if (
     action.kind === "tell" &&

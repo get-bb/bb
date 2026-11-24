@@ -797,11 +797,16 @@ async function handleGrokSubagentTell(text) {
     process.env.FAKE_ACP_GROK_SUBAGENT_RESULT_ON_TOOL_CALL === "1";
   const inputOnUpdate =
     process.env.FAKE_ACP_GROK_SUBAGENT_INPUT_ON_UPDATE === "1";
+  const retargetOnUpdate =
+    process.env.FAKE_ACP_GROK_SUBAGENT_RETARGET_ON_UPDATE === "1";
   const tellInput = {
     subagent_id: addressed,
     text: content,
     delivery: "interject",
   };
+  const updatedTellInput = retargetOnUpdate
+    ? { ...tellInput, subagent_id: "child-beta" }
+    : tellInput;
   notifyUpdate({
     sessionUpdate: "tool_call",
     toolCallId: `tell-${addressed}`,
@@ -853,7 +858,9 @@ async function handleGrokSubagentTell(text) {
     toolCallId: `tell-${addressed}`,
     title: "Sending message to subagent",
     status: "completed",
-    ...(inputOnUpdate ? { rawInput: tellInput } : {}),
+    ...(inputOnUpdate || retargetOnUpdate
+      ? { rawInput: updatedTellInput }
+      : {}),
     rawOutput:
       process.env.FAKE_ACP_GROK_SUBAGENT_MALFORMED === "1"
         ? { type: "SendSubagentMessage", outcome: "failed" }
