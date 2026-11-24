@@ -121,6 +121,7 @@ export const worktreeRpcContract = defineRpcContract({
     input: z
       .object({
         projectId: z.string().min(1),
+        hostId: z.string().min(1),
         folders: z.array(z.string().min(1)).max(MAX_FOLDERS),
       })
       .strict(),
@@ -143,15 +144,15 @@ function formatWarmPoolStatus(status: WarmPoolStatus): string {
   return enabled
     .flatMap((pool) => [
       `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"} per machine, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
-      ...(pool.folders.length === 0
-        ? []
-        : [`  Also branches: ${pool.folders.join(", ")}`]),
       ...pool.checkouts.flatMap((checkout) => [
         `  ${checkout.hostName} (${checkout.hostId}) ${checkout.path}: keeps ${checkout.size}${
           checkout.hostSize === null ? "" : " (set for this machine)"
         }, ${checkout.ready} ready, ${checkout.preparing} being set up${
           checkout.base === null ? "" : ` on ${checkout.base}`
         }`,
+        ...(checkout.folders.length === 0
+          ? []
+          : [`    Also branches: ${checkout.folders.join(", ")}`]),
         ...(checkout.lastError === null
           ? []
           : [`    Problem: ${checkout.lastError}`]),
@@ -833,11 +834,26 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       await pools.setHostSize(projectId, hostId, size);
       return pools.status();
     },
-    async setWarmPoolFolders({ projectId, folders }) {
-      await pools.setFolders(projectId, folders);
+    async setWarmPoolFolders({ projectId, hostId, folders }) {
+      await pools.setFolders(projectId, hostId, folders);
       return pools.status();
     },
   });
+
+  async function onlyCheckoutHost(projectId: string): Promise<string> {
+    const project = await bb.sdk.projects.get({ projectId });
+    const hosts = project.sources
+      .filter((source) => source.type === "local_path")
+      .map((source) => source.hostId);
+    const [hostId] = hosts;
+    if (hostId === undefined)
+      throw new Error(`Project ${projectId} has no checkout on any machine`);
+    if (hosts.length > 1)
+      throw new Error(
+        `Project ${projectId} has checkouts on ${hosts.length} machines; pass --host <host-id>`,
+      );
+    return hostId;
+  }
 
   bb.cli.register(
     defineCli({
@@ -913,9 +929,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
           },
         }),
         "pool folders": cliCommand({
-          summary: "Set which project folders warm worktrees also branch",
+          summary:
+            "Set which project folders a machine's warm worktrees also branch",
           description:
-            "Warm worktrees of the project also get a worktree of each listed project folder, with setup finished, and are handed only to new threads that branch exactly those folders. List none to stop branching folders. Members made with other folders are replaced.",
+            "The project's warm worktrees on a machine also get a worktree of each listed project folder on that machine, with setup finished, and are handed only to new threads that branch exactly those folders. Folders are set per machine because each machine's checkout has its own folder paths. List none to stop branching folders. Members made with other folders are replaced.",
           positionals: [
             {
               name: "project-id",
@@ -925,15 +942,28 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             {
               name: "folders",
               description:
-                "Absolute project folder paths, as `bb project folder list <project-id>` prints them",
+                "Absolute project folder paths on that machine, as `bb project folder list <project-id> --machine <host-id>` prints them",
               variadic: true,
             },
           ],
-          options: { json: JSON_OPTION },
+          options: {
+            host: {
+              type: "string",
+              placeholder: "id",
+              aliases: ["host-id"],
+              description:
+                "Machine whose checkout to set, as `bb host list` prints its id; optional when the project has one checkout",
+            },
+            json: JSON_OPTION,
+          },
           async run(input) {
+            const projectId = input.positionals["project-id"];
             try {
+              const hostId =
+                input.options.host ?? (await onlyCheckoutHost(projectId));
               await pools.setFolders(
-                input.positionals["project-id"],
+                projectId,
+                hostId,
                 input.positionals.folders ?? [],
               );
             } catch (error) {

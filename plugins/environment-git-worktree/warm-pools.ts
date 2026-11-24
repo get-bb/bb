@@ -30,7 +30,7 @@ const configurationSchema = z.array(
       projectId: z.string().min(1),
       size: poolSizeSchema,
       hosts: z.record(z.string().min(1), poolSizeSchema).default({}),
-      folders: poolFoldersSchema.default([]),
+      folders: z.record(z.string().min(1), poolFoldersSchema).default({}),
     })
     .strict(),
 );
@@ -43,7 +43,6 @@ export const warmPoolStatusSchema = z
           projectId: z.string().min(1),
           projectName: z.string(),
           size: poolSizeSchema,
-          folders: poolFoldersSchema,
           handedOff: z.number().int().min(0),
           missed: z.number().int().min(0),
           checkouts: z.array(
@@ -54,6 +53,7 @@ export const warmPoolStatusSchema = z
                 path: z.string().min(1),
                 size: poolSizeSchema,
                 hostSize: poolSizeSchema.nullable(),
+                folders: poolFoldersSchema,
                 ready: z.number().int().min(0),
                 preparing: z.number().int().min(0),
                 base: z.string().nullable(),
@@ -125,7 +125,11 @@ export interface WarmPools {
     hostId: string,
     size: number | null,
   ): Promise<void>;
-  setFolders(projectId: string, folders: readonly string[]): Promise<void>;
+  setFolders(
+    projectId: string,
+    hostId: string,
+    folders: readonly string[],
+  ): Promise<void>;
   handOff(args: {
     environmentId: string;
     projectId: string;
@@ -209,11 +213,18 @@ export async function createWarmPools(args: {
       .filter((entry) => Object.keys(entry.hosts).length > 0)
       .map((entry) => [entry.projectId, new Map(Object.entries(entry.hosts))]),
   );
-  const poolFolders = new Map(
+  const hostFolders = new Map(
     configuration
-      .filter((entry) => entry.folders.length > 0)
-      .map((entry) => [entry.projectId, entry.folders]),
+      .filter((entry) => Object.keys(entry.folders).length > 0)
+      .map((entry) => [
+        entry.projectId,
+        new Map(Object.entries(entry.folders)),
+      ]),
   );
+
+  function foldersOn(projectId: string, hostId: string): string[] {
+    return hostFolders.get(projectId)?.get(hostId) ?? [];
+  }
   const checkouts = new Map<string, CheckoutState>();
   const counters = new Map<string, Counters>();
   const reserved = new Map<string, number>();
@@ -232,7 +243,7 @@ export async function createWarmPools(args: {
 
   function configuredProjects(): string[] {
     return [
-      ...new Set([...sizes.keys(), ...hostSizes.keys(), ...poolFolders.keys()]),
+      ...new Set([...sizes.keys(), ...hostSizes.keys(), ...hostFolders.keys()]),
     ];
   }
 
@@ -288,7 +299,11 @@ export async function createWarmPools(args: {
               left.localeCompare(right),
             ),
           ),
-          folders: poolFolders.get(projectId) ?? [],
+          folders: Object.fromEntries(
+            [...(hostFolders.get(projectId) ?? [])].sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
         })),
     );
   }
@@ -343,7 +358,7 @@ export async function createWarmPools(args: {
         if (isNotFound(error)) {
           sizes.delete(projectId);
           hostSizes.delete(projectId);
-          poolFolders.delete(projectId);
+          hostFolders.delete(projectId);
           await saveConfiguration();
         } else {
           unreachable.add(projectId);
@@ -357,7 +372,7 @@ export async function createWarmPools(args: {
         if (source.type !== "local_path") continue;
         const size = sizeOn(projectId, source.hostId);
         if (size === 0) continue;
-        const configuredFolders = poolFolders.get(projectId) ?? [];
+        const configuredFolders = foldersOn(projectId, source.hostId);
         let folders: string[] = [];
         if (configuredFolders.length > 0) {
           try {
@@ -739,7 +754,6 @@ export async function createWarmPools(args: {
           projectId: project.id,
           projectName: project.name,
           size: sizes.get(project.id) ?? 0,
-          folders: poolFolders.get(project.id) ?? [],
           ...(counters.get(project.id) ?? { handedOff: 0, missed: 0 }),
           checkouts: project.sources
             .filter((source) => source.type === "local_path")
@@ -756,6 +770,7 @@ export async function createWarmPools(args: {
                 path: source.path,
                 size: sizeOn(project.id, source.hostId),
                 hostSize: hostSizes.get(project.id)?.get(source.hostId) ?? null,
+                folders: foldersOn(project.id, source.hostId),
                 ready: onHost.filter((member) => member.status === "ready")
                   .length,
                 preparing: onHost.filter(isPreparing).length,
@@ -978,32 +993,37 @@ export async function createWarmPools(args: {
       else hostSizes.set(projectId, hosts);
       await saveAndReconcile();
     },
-    async setFolders(projectId, folders) {
+    async setFolders(projectId, hostId, folders) {
       const requested = poolFoldersSchema.parse([...folders]);
       const project = await bb.sdk.projects.get({ projectId });
+      const source = project.sources.find(
+        (candidate) =>
+          candidate.type === "local_path" && candidate.hostId === hostId,
+      );
+      if (source === undefined)
+        throw new Error(
+          `Project ${projectId} has no checkout on machine ${hostId}`,
+        );
       const known = (
-        await Promise.all(
-          project.sources
-            .filter((source) => source.type === "local_path")
-            .map((source) =>
-              bb.sdk.projects.sources.experimental_folders.list({
-                projectId,
-                sourceId: source.id,
-              }),
-            ),
-        )
-      ).flatMap((entries) => entries.map((entry) => entry.path));
+        await bb.sdk.projects.sources.experimental_folders.list({
+          projectId,
+          sourceId: source.id,
+        })
+      ).map((entry) => entry.path);
       const chosen: string[] = [];
       for (const folder of requested) {
         const match = known.find((entry) => samePath(entry, folder));
         if (match === undefined)
           throw new Error(
-            `${folder} is not one of this project's folders. List them with \`bb project folder list ${projectId}\`.`,
+            `${folder} is not one of this project's folders on machine ${hostId}. List them with \`bb project folder list ${projectId} --machine ${hostId}\`.`,
           );
         if (!chosen.some((entry) => samePath(entry, match))) chosen.push(match);
       }
-      if (chosen.length === 0) poolFolders.delete(projectId);
-      else poolFolders.set(projectId, chosen);
+      const hosts = hostFolders.get(projectId) ?? new Map<string, string[]>();
+      if (chosen.length === 0) hosts.delete(hostId);
+      else hosts.set(hostId, chosen);
+      if (hosts.size === 0) hostFolders.delete(projectId);
+      else hostFolders.set(projectId, hosts);
       await saveAndReconcile();
     },
     async handOff(request) {

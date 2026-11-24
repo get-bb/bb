@@ -14,6 +14,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin from "./server.js";
+import { warmPoolStatusSchema } from "./warm-pools.js";
 
 type CreateContext = PluginEnvironmentProviderCreateContext<
   PluginEnvironmentProviderRequirements,
@@ -238,7 +239,7 @@ async function setup(args: {
     {
       projectId: PROJECT_ID,
       size: args.size ?? 1,
-      folders: args.folders ?? [],
+      folders: args.folders === undefined ? {} : { [HOST_ID]: args.folders },
     },
   ]);
   await plugin(bb);
@@ -947,6 +948,41 @@ describe("warm worktree reconcile", () => {
     await fixture.harness.lifecycle.dispose();
   });
 
+  it("keeps the folders a machine's warm worktrees branch, refusing ones that are not that machine's project folders", async () => {
+    const fixture = await setup({ members: [READY] });
+    const status = await fixture.harness.callRpc("setWarmPoolFolders", {
+      projectId: PROJECT_ID,
+      hostId: HOST_ID,
+      folders: ["/code/api/"],
+    });
+    expect(
+      warmPoolStatusSchema.parse(status).pools[0]?.checkouts[0]?.folders,
+    ).toEqual(["/code/api"]);
+    expect(await fixture.bb.storage.kv.get("warm-pools")).toEqual([
+      {
+        projectId: PROJECT_ID,
+        size: 1,
+        hosts: {},
+        folders: { [HOST_ID]: ["/code/api"] },
+      },
+    ]);
+    await expect(
+      fixture.harness.callRpc("setWarmPoolFolders", {
+        projectId: PROJECT_ID,
+        hostId: HOST_ID,
+        folders: ["/code/other"],
+      }),
+    ).rejects.toThrow("not one of this project's folders on machine host_1");
+    await expect(
+      fixture.harness.callRpc("setWarmPoolFolders", {
+        projectId: PROJECT_ID,
+        hostId: "host_other",
+        folders: ["/code/api"],
+      }),
+    ).rejects.toThrow("has no checkout on machine host_other");
+    await fixture.harness.lifecycle.dispose();
+  });
+
   it("starts the next refill as soon as the previous member finishes setup", async () => {
     const fixture = await setup({ members: [], size: 2 });
     await expect.poll(() => fixture.created.length, { timeout: 8_000 }).toBe(1);
@@ -1024,7 +1060,7 @@ describe("warm worktree reconcile", () => {
     expect(off.pools[0]?.checkouts[0]).toMatchObject({ size: 0, hostSize: 0 });
     expect(fixture.deleted).toEqual([READY.id]);
     expect(await fixture.bb.storage.kv.get("warm-pools")).toEqual([
-      { projectId: PROJECT_ID, size: 1, hosts: { [HOST_ID]: 0 }, folders: [] },
+      { projectId: PROJECT_ID, size: 1, hosts: { [HOST_ID]: 0 }, folders: {} },
     ]);
     expect(
       await fixture.provider.create(fixture.context("env_thread", "feature")),

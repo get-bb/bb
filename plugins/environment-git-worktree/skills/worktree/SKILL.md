@@ -12,7 +12,7 @@ they sit on, and how many threads took one or missed since the server started.
 ```sh
 bb worktree pool status [--json]
 bb worktree pool set <project-id> <size> [--host <host-id>] [--json]
-bb worktree pool folders <project-id> [<folder>...] [--json]
+bb worktree pool folders <project-id> [<folder>...] [--host <host-id>] [--json]
 ```
 
 `size` is 0 to 4 per checkout; `0` turns the pool off and deletes its idle
@@ -47,7 +47,11 @@ environment removes every worktree and the branches bb made.
 
 `bb worktree pool folders <project-id> <folder>...` makes the project's warm
 worktrees also branch those folders, with every setup finished; list no
-folders to stop. A warm worktree goes only to a new thread that branches
+folders to stop. Folders are set per machine, because each machine's
+checkout has its own folder paths: pass `--host <host-id>` when the project
+has checkouts on more than one machine, and list that machine's paths
+(`bb project folder list <project-id> --machine <host-id>`). A warm worktree
+goes only to a new thread that branches
 exactly the same folders, so set the pool's folders to the set threads
 usually pick. Others build fresh worktrees; members with other folders are
 replaced. On handoff, a folder worktree behind its repository's default
